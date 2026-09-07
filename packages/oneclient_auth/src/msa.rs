@@ -353,7 +353,6 @@ pub async fn refresh_microsoft_account(
     let msa = refresh_msa_token(client, &creds.refresh_token).await?;
     let mut account = account_from_msa_token(client, msa, |_, _, _| {}).await?;
     account.id = creds.id;
-    account.username = creds.username.clone();
     Ok(account)
 }
 

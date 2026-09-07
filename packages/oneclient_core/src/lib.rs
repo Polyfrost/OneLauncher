@@ -12,6 +12,7 @@ mod java_store;
 pub mod logger;
 pub mod migration;
 pub mod recovery;
+pub mod relocate;
 pub mod reporting;
 pub mod settings;
 pub mod storage;
@@ -22,22 +23,25 @@ pub mod verify;
 pub mod versions;
 
 pub use oneclient_content::bundles::{
-    apply_bundle_updates, check_bundle_updates, effective_enabled, install_bundle,
+    apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,
+    cluster_has_bundle_content, effective_enabled,
+    install_bundle,
     install_cluster_bundles,
     install_package_from_bundle, is_bundle_syncing, list_cluster_bundle_overrides,
+    pending_optional_mods, resolve_optional_mods, skip_optional_mods, PendingOptionalMod,
     set_bundle_package_enabled, set_bundle_package_opt_in, set_bundle_package_override,
     set_bundle_package_overrides,
     ApplyBundleUpdatesResult, Bundle, BundleArchive, BundleError, BundleFile,
-    BundleFileKind, BundleManifest, BundlesManager, BundleUpdateCheckResult,
+    BundleFileKind, BundleManifest, BundleOptionalPackage, BundlesManager, BundleUpdateCheckResult,
     BundleWithUpdateStatus, FileUpdateStatus, get_bundles_with_update_status,
-    remove_artifact_from_cluster, toggle_artifact_enabled,
+    remove_artifact_from_cluster, set_artifact_enabled_to,
 };
 pub use changelog::{fetch_changelog, parse_changelog, ChangelogGroup};
 pub use tos::{fetch_terms, TermsDocument};
 pub use oneclient_discord::{DiscordRpc, Presence};
 pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
-    ensure_from_bundles, ensure_from_versions, estimate_cluster_download,
+    ensure_from_bundles, ensure_from_versions, estimate_cluster_download, required_java_major,
 };
 pub use error::{LauncherError, LauncherResult, SentryExclusion};
 pub use game::{GameError, LaunchedGame, get_loader_versions, launch_cluster};
@@ -55,6 +59,7 @@ pub use oneclient_cluster::screenshots::{
     ScreenshotInfo, ScreenshotsError, delete_screenshot, list_cluster_screenshots, load_screenshot,
 };
 pub use oneclient_content::packages::LinkedArtifactInfo;
+pub use oneclient_db::models::SeenStatus;
 pub use oneclient_content::packages::updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
     cached_browser_package_updates, check_browser_package_updates,

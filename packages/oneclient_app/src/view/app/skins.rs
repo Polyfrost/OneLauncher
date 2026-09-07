@@ -77,8 +77,7 @@ fn anim_chip(name: &'static str, active: bool) -> impl IntoElement {
         } else {
             colors::component_bg()
         })
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .child(
             label()
                 .text(name)
@@ -158,8 +157,7 @@ fn skin_grid(count: usize) -> impl IntoElement {
                         colors::component_border()
                     },
                 ))
-                .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                .cursor(CursorIcon::Pointer)
                 .child(
                     Icon::new(IconType::Users01)
                         .size(24.)

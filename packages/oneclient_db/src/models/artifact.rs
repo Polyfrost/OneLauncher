@@ -1,3 +1,4 @@
+use serde::{Deserialize, Serialize};
 use sqlx::FromRow;
 
 #[derive(Debug, Clone, FromRow)]
@@ -22,12 +23,59 @@ pub struct ProviderReleaseRow {
 	pub mc_loaders: String,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[repr(i64)]
+pub enum SeenStatus {
+	New = 0,
+	Updated = 1,
+	#[default]
+	Seen = 2,
+}
+
+impl SeenStatus {
+	pub fn as_i64(self) -> i64 {
+		self as i64
+	}
+
+	pub fn from_repr(value: i64) -> Option<Self> {
+		match value {
+			0 => Some(Self::New),
+			1 => Some(Self::Updated),
+			2 => Some(Self::Seen),
+			_ => None,
+		}
+	}
+}
+
 #[derive(Debug, Clone, FromRow)]
 pub struct ClusterArtifactRow {
 	pub cluster_id: i64,
 	pub hash: String,
 	pub cluster_file_name: String,
 	pub enabled: i64,
+	pub seen_status: i64,
+}
+
+impl ClusterArtifactRow {
+	pub fn status(&self) -> SeenStatus {
+		SeenStatus::from_repr(self.seen_status).unwrap_or_default()
+	}
+}
+
+#[derive(Debug, Clone, FromRow)]
+pub struct LinkedArtifactRow {
+	pub hash: String,
+	pub cluster_file_name: String,
+	pub enabled: i64,
+	pub seen_status: i64,
+	pub content_type: i64,
+	pub file_name: String,
+	pub provider: Option<i64>,
+	pub project_id: Option<String>,
+	pub version_id: Option<String>,
+	pub display_name: Option<String>,
+	pub display_version: Option<String>,
+	pub published_at: Option<String>,
 }
 
 // used for resourcepacks and shaders

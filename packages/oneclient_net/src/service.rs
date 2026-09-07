@@ -13,9 +13,6 @@ use crate::response::{ResponseExt, ResponseOptions};
 
 const MAX_THROTTLE_RETRIES: u32 = 6;
 
-/// Backstop against runaway fan-out not the download throttle
-/// Must stay above the sum of per-phase caller concurrency or it becomes the
-/// bottleneck
 const MAX_INFLIGHT_REQUESTS: usize = 64;
 
 fn retry_after(response: &Response) -> Option<std::time::Duration> {
@@ -115,18 +112,7 @@ impl RequestClient {
                 env!("CARGO_PKG_HOMEPAGE")
             ));
 
-        // Hickory must be explicitly off on Windows it reads UDP into a fixed
-        // buffer and Windows fails oversized datagrams with WSAEMSGSIZE (10040)
-        // instead of truncating breaking sign-in for large DNS replies
-        #[cfg(target_os = "windows")]
-        {
-            builder = builder.no_hickory_dns();
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            builder = builder.hickory_dns(true);
-        }
+        builder = builder.no_hickory_dns();
 
         let client = builder.build()?;
 
@@ -144,6 +130,12 @@ impl RequestClient {
         let mut request: HttpRequest = request.into();
         let mut retries = 0;
         let mut throttle_retries = 0u32;
+
+        if oneclient_common::consent::blocks_url(request.request.url().as_str()) {
+            let url = request.request.url().to_string();
+            tracing::debug!(%url, "request withheld: terms and privacy policy declined");
+            return Err(RequestError::ConsentRequired { url });
+        }
 
         apply_curseforge_auth(&mut request.request, &self.config.load().curseforge_api_key)?;
 

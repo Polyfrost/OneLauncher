@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tUPDATE cluster_artifacts\n\t\tSET seen_status = ?\n\t\tWHERE cluster_id = ? AND hash = ?\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "cd9609d707fa11bc4c246cd69c879159d23af897bdcb0bd9f04df73a7805a713"
+}

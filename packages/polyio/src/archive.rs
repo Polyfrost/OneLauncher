@@ -135,13 +135,34 @@ pub async fn extract_zip(
 	zip_path: impl AsRef<std::path::Path>,
 	dest_path: impl AsRef<std::path::Path>,
 ) -> PolyIOResult<()> {
-	extract_zip_filtered(
-		zip_path,
-		dest_path,
-		None::<fn(&StoredZipEntry) -> bool>,
-		None::<fn(&str) -> String>,
-	)
+	let zip_path = zip_path.as_ref().to_path_buf();
+	let dest_path = dest_path.as_ref().to_path_buf();
+
+	off_caller_thread(move || async move {
+		extract_zip_filtered(
+			zip_path,
+			dest_path,
+			None::<fn(&StoredZipEntry) -> bool>,
+			None::<fn(&str) -> String>,
+		)
+		.await
+	})
 	.await
+}
+
+/// Inflating an archive is CPU work sitting between short async writes, and
+/// installs are driven from freya's UI-thread executor, so a large extraction
+/// run inline stalls rendering for as long as it takes
+async fn off_caller_thread<F, Fut>(work: F) -> PolyIOResult<()>
+where
+	F: FnOnce() -> Fut + Send + 'static,
+	Fut: std::future::Future<Output = PolyIOResult<()>>,
+{
+	let handle = tokio::runtime::Handle::current();
+
+	tokio::task::spawn_blocking(move || handle.block_on(work()))
+		.await
+		.map_err(std::io::Error::other)?
 }
 
 #[tracing::instrument(
@@ -201,8 +222,14 @@ pub async fn extract_zip_filtered(
 	Ok(())
 }
 
+/// Ceiling on a single entry read by [`read_zip_file_entries`] mod manifests,
+/// icons and bundle overrides sit far below it a decompression bomb does not
+pub const MAX_ZIP_ENTRY_BYTES: u64 = 16 * 1024 * 1024;
+
 /// Each matching entry is read fully into memory so this is for small files
 /// not large archives
+///
+/// Entries claiming or producing more than [`MAX_ZIP_ENTRY_BYTES`] are skipped
 #[tracing::instrument(
     level = "debug",
     skip(zip_path, filter),
@@ -228,13 +255,53 @@ pub async fn read_zip_file_entries(
 			continue;
 		}
 
-		let mut entry_reader = reader.reader_without_entry(index).await?;
+		if entry.uncompressed_size() > MAX_ZIP_ENTRY_BYTES {
+			tracing::warn!(
+				"skipping '{name}' in {}: declares {} bytes over the {MAX_ZIP_ENTRY_BYTES} byte entry cap",
+				zip_path.display(),
+				entry.uncompressed_size()
+			);
+			continue;
+		}
+
+		let entry_reader = reader.reader_without_entry(index).await?;
 		let mut data = Vec::new();
-		futures_lite::AsyncReadExt::read_to_end(&mut entry_reader, &mut data).await?;
+		futures_lite::AsyncReadExt::read_to_end(
+			&mut futures_lite::AsyncReadExt::take(entry_reader, MAX_ZIP_ENTRY_BYTES + 1),
+			&mut data,
+		)
+		.await?;
+
+		if data.len() as u64 > MAX_ZIP_ENTRY_BYTES {
+			tracing::warn!(
+				"skipping '{name}' in {}: decompressed past the {MAX_ZIP_ENTRY_BYTES} byte entry cap",
+				zip_path.display()
+			);
+			continue;
+		}
+
 		out.push((name, data));
 	}
 
 	Ok(out)
+}
+
+#[tracing::instrument(
+    level = "debug",
+    skip(zip_path),
+    fields(zip_path = %zip_path.as_ref().display())
+)]
+pub async fn zip_entry_names(
+	zip_path: impl AsRef<std::path::Path>,
+) -> PolyIOResult<Vec<String>> {
+	let reader = async_zip::tokio::read::fs::ZipFileReader::new(zip_path.as_ref()).await?;
+
+	Ok(reader
+		.file()
+		.entries()
+		.iter()
+		.filter_map(|entry| entry.filename().as_str().ok().map(ToString::to_string))
+		.collect())
 }
 
 /// Returns a zip file entry's bytes without reading the entire file into memory
@@ -278,14 +345,20 @@ where
     )
 )]
 pub async fn extract_tar_gz(archive: impl AsRef<std::path::Path>, dest: impl AsRef<std::path::Path>) -> PolyIOResult<()> {
-	crate::create_dir_all(&dest).await?;
+	let archive = archive.as_ref().to_path_buf();
+	let dest = dest.as_ref().to_path_buf();
 
-    let file = tokio::fs::File::open(archive).await?;
-    let buf_reader = tokio::io::BufReader::new(file);
-    let gzip_decoder = async_compression::tokio::bufread::GzipDecoder::new(buf_reader);
+	off_caller_thread(move || async move {
+		crate::create_dir_all(&dest).await?;
 
-    let mut tar_archive = tokio_tar::Archive::new(gzip_decoder);
-    tar_archive.unpack(dest).await?;
+		let file = tokio::fs::File::open(archive).await?;
+		let buf_reader = tokio::io::BufReader::new(file);
+		let gzip_decoder = async_compression::tokio::bufread::GzipDecoder::new(buf_reader);
 
-    Ok(())
+		let mut tar_archive = tokio_tar::Archive::new(gzip_decoder);
+		tar_archive.unpack(dest).await?;
+
+		Ok(())
+	})
+	.await
 }

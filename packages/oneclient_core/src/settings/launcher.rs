@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
@@ -12,12 +13,25 @@ pub enum ViewLayout {
 	List,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
+pub const DEFAULT_GRID_COLUMNS: u8 = 3;
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
 #[serde(default)]
 pub struct ViewState {
 	pub layout: ViewLayout,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub sort: Option<String>,
+	pub columns: u8,
+}
+
+impl Default for ViewState {
+	fn default() -> Self {
+		Self {
+			layout: ViewLayout::default(),
+			sort: None,
+			columns: DEFAULT_GRID_COLUMNS,
+		}
+	}
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -28,21 +42,28 @@ pub struct LauncherSettings {
 	pub auto_update: bool,
 	pub crash_reporting: bool,
 	pub enable_gamemode: bool,
+	pub use_discrete_gpu: bool,
 	pub discord_enabled: bool,
 	pub max_concurrent_requests: usize,
 	pub global_game_settings: GameSettingsProfile,
 	pub allow_parallel_running_clusters: bool,
 	pub dynamic_background_enabled: bool,
+	pub start_maximized: bool,
+	pub animations_enabled: bool,
 	pub view_states: BTreeMap<String, ViewState>,
 	pub seen_onboarding: bool,
+	pub skip_microsoft_java: bool,
 	pub accepted_tos_version: u32,
 	pub accepted_privacy_version: u32,
+	pub declined_tos: bool,
 	pub seen_versions: Vec<String>,
 	pub seen_changelog_version: Option<String>,
 	pub modrinth_api_key: Option<String>,
 	pub curseforge_api_key: Option<String>,
 	pub custom_api_endpoint: Option<String>,
 	pub custom_meta_url_base: Option<String>,
+	pub data_dir: Option<PathBuf>,
+	pub previous_data_dir: Option<PathBuf>,
 }
 
 impl LauncherSettings {
@@ -64,20 +85,27 @@ impl Default for LauncherSettings {
 			crash_reporting: true,
 			discord_enabled: true,
 			enable_gamemode: false,
+			use_discrete_gpu: false,
 			max_concurrent_requests: 25,
 			global_game_settings: GameSettingsProfile::default_global_profile(),
 			allow_parallel_running_clusters: false,
 			dynamic_background_enabled: true,
+			start_maximized: false,
+			animations_enabled: true,
 			view_states: BTreeMap::new(),
 			seen_onboarding: false,
+			skip_microsoft_java: false,
 			accepted_tos_version: 0,
 			accepted_privacy_version: 0,
+			declined_tos: false,
 			seen_versions: Vec::new(),
 			seen_changelog_version: None,
 			modrinth_api_key: None,
 			curseforge_api_key: None,
 			custom_api_endpoint: None,
 			custom_meta_url_base: None,
+			data_dir: None,
+			previous_data_dir: None,
 		}
 	}
 }

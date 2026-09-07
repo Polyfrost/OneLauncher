@@ -27,7 +27,9 @@ fn use_skeleton_pulse() -> f32 {
 }
 
 #[derive(PartialEq)]
-struct SkeletonCard;
+struct SkeletonCard {
+    metrics: GridMetrics,
+}
 
 impl Component for SkeletonCard {
     fn render(&self) -> impl IntoElement {
@@ -35,13 +37,13 @@ impl Component for SkeletonCard {
         rect()
             .vertical()
             .width(Size::flex(1.0))
-            .height(Size::px(CARD_H))
+            .height(Size::px(self.metrics.card_h))
             .corner_radius(CornerRadius::new_all(10.))
             .background(CARD_BG)
             .border(border_all_color(1., colors::component_border()))
             .overflow(Overflow::Clip)
             .opacity(pulse)
-            .child(skeleton_block(Size::fill(), BANNER_H))
+            .child(skeleton_block(Size::fill(), self.metrics.banner_h))
             .child(
                 rect()
                     .vertical()
@@ -88,13 +90,13 @@ impl Component for SkeletonListRow {
     }
 }
 
-pub(super) fn skeleton_grid_row() -> impl IntoElement {
+pub(super) fn skeleton_grid_row(metrics: GridMetrics) -> impl IntoElement {
     rect()
         .horizontal()
         .width(Size::fill())
-        .height(Size::px(CARD_H))
+        .height(Size::px(metrics.card_h))
         .spacing(GRID_SPACING)
         .content(Content::Flex)
-        .children((0..GRID_COLUMNS).map(|_| SkeletonCard.into_element()))
+        .children((0..metrics.cols).map(move |_| SkeletonCard { metrics }.into_element()))
         .into_element()
 }

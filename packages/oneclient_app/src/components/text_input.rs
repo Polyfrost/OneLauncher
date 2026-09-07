@@ -25,6 +25,18 @@ pub fn validate_number(validator: InputValidator) {
     validator.set_valid(valid);
 }
 
+/// Validates the input if user has entered more MB of memory than his machine has
+pub fn validate_memory(validator: InputValidator) {
+    let text = validator.text();
+
+    let valid = text.is_empty()
+        || text
+            .parse::<u32>()
+            .is_ok_and(|mb| mb <= crate::utils::total_ram_mb());
+
+    validator.set_valid(valid);
+}
+
 #[derive(Clone, PartialEq)]
 pub struct TextInput {
     input: Input,

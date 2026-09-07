@@ -2,12 +2,15 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::components::{
-    AccountSwitcher, ClusterUpdatePopup, GenericPromptOverlay, JavaPromptOverlay,
+    AccountSwitcher, ClusterUpdatePopup, GenericPromptOverlay, JavaPromptOverlay, OptionalModsPopup, MicrosoftJavaPromptOverlay,
     NotificationCenter, PackageUpdatePopup, SplashCurtain, StatusBar, Toasts,
     UpdatePromptOverlay,
 };
-use crate::hooks::{SplashState, use_provide_splash};
-use crate::layout::HomeArtPrefetch;
+use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
+#[cfg(not(target_os = "macos"))]
+use crate::hooks::use_start_maximized;
+use crate::layout::{HomeArtPrefetch, PendingLaunchDriver};
+use crate::motion::AnimationClockDriver;
 use crate::routes::Route;
 use crate::theme;
 use crate::theme::colors;
@@ -20,6 +23,7 @@ impl Component for RootLayout {
         let active = use_state(|| false);
         let home_ready = use_state(|| false);
         use_provide_splash(SplashState { active, home_ready });
+        use_provide_overlay_claims();
 
         // macOS rounds the window natively so Freya must not round on top of it
         #[cfg(target_os = "macos")]
@@ -30,7 +34,10 @@ impl Component for RootLayout {
         #[cfg(not(target_os = "macos"))]
         let corner = {
             let root_size = Platform::get().root_size;
-            let mut maximized = use_state(|| false);
+            // Seeded because the query below only answers after the window is visible
+            // which would round the corners of the first frames of a maximized launch
+            let start_maximized = use_start_maximized();
+            let mut maximized = use_state(move || start_maximized);
             let size = *root_size.read();
             let dep = (size.width as i32, size.height as i32);
             use_side_effect_with_deps(&dep, move |_| {
@@ -69,12 +76,16 @@ impl Component for RootLayout {
             .child(Toasts)
             .child(UpdatePromptOverlay)
             .child(JavaPromptOverlay)
+            .child(MicrosoftJavaPromptOverlay)
             // Must stay last it renders whatever the overlays above did not claim
             .child(GenericPromptOverlay)
             .child(ClusterUpdatePopup)
+            .child(OptionalModsPopup)
             .child(PackageUpdatePopup)
             .child(StatusBar)
             .child(SplashCurtain)
+            .child(AnimationClockDriver)
             .child(HomeArtPrefetch)
+            .child(PendingLaunchDriver)
     }
 }

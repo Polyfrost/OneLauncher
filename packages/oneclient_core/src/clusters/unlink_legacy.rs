@@ -117,6 +117,8 @@ async fn adopt_dedicated(
 	swept: &[ContentType],
 	report: &mut SweepReport,
 ) {
+  let _manifest = manifest::lock().await;
+  
 	if manifest::load(cluster_root, manifest::MANIFEST_NAME)
 		.await
 		.is_some()

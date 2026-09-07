@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cluster_artifacts SET seen_status = ? WHERE seen_status <> ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "011448f2ce79e981700ee75c8cd5db5e0fcb793b72671c20a925b73ee6fb9456"
+}

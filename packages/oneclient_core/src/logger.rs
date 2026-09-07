@@ -34,8 +34,6 @@ const APP_TARGETS: &[&str] = &[
 /// to `info` and that would otherwise let this lot flood the log
 const NOISY_TARGETS: &[&str] = &[
     "calloop",
-    "freya_core",
-    "freya_winit",
     "h2",
     "hickory_proto",
     "hickory_resolver",
@@ -54,6 +52,26 @@ const NOISY_TARGETS: &[&str] = &[
     "want",
     "winit",
     "zbus",
+];
+
+const UI_TARGETS: &[&str] = &[
+    "freya",
+    "freya_components",
+    "freya_core",
+    "freya_radio",
+    "freya_winit",
+    "ragnarok",
+    "torin",
+];
+
+const UI_FLOOD_TARGETS: &[&str] = &[
+    "freya_core::accessibility",
+    "freya_core::runner",
+    "freya_core::tree",
+    "freya_winit::renderer",
+    "ragnarok::executor",
+    "ragnarok::nodes_state",
+    "torin::torin",
 ];
 
 /// Whether `target` belongs to one of [`APP_TARGETS`] rather than a dependency
@@ -99,6 +117,12 @@ pub fn debug_directives() -> String {
 fn directives(app_level: &str, base_level: &str) -> String {
     let mut out = String::from(base_level);
     for target in NOISY_TARGETS {
+        out.push_str(&format!(",{target}=warn"));
+    }
+    for target in UI_TARGETS {
+        out.push_str(&format!(",{target}=info"));
+    }
+    for target in UI_FLOOD_TARGETS {
         out.push_str(&format!(",{target}=warn"));
     }
     for target in APP_TARGETS {

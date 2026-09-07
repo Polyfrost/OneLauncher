@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use super::settings_page;
-use crate::components::{Icon, IconType, toggle, toggle_disabled};
+use crate::components::{Icon, IconType, toggle};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -50,7 +50,6 @@ pub struct SettingsAppearance;
 impl Component for SettingsAppearance {
     fn render(&self) -> impl IntoElement {
         let selected_theme = use_state(|| 0usize);
-        let animations_on = use_state(|| true);
 
         let settings = use_settings_snapshot().settings;
         let dispatch = use_dispatch();
@@ -60,15 +59,22 @@ impl Component for SettingsAppearance {
             move || v
         });
 
+        let animations_on = use_state({
+            let v = settings.animations_enabled;
+            move || v
+        });
+
         let mut first = use_state(|| true);
         use_side_effect(move || {
-            let enabled = *dynamic_bg.read();
+            let parallax = *dynamic_bg.read();
+            let animations = *animations_on.read();
             if *first.peek() {
                 first.set(false);
                 return;
             }
             let mut next = settings.clone();
-            next.dynamic_background_enabled = enabled;
+            next.dynamic_background_enabled = parallax;
+            next.animations_enabled = animations;
             dispatch.set_settings(next);
         });
 
@@ -249,10 +255,10 @@ fn dynamic_background_row(enabled: State<bool>) -> impl IntoElement {
 }
 
 fn animations_row(animations_on: State<bool>) -> impl IntoElement {
-    settings_row_disabled(
+    settings_row(
         IconType::Play,
         "Animations",
-        "Toggle all animations in the launcher. May cause buggy behavior.",
-        toggle_disabled(animations_on),
+        "Disable all launcher animations and transitions.",
+        toggle(animations_on),
     )
 }

@@ -2,6 +2,7 @@ mod error;
 mod install;
 mod manager;
 mod manifest;
+mod optional;
 mod overrides;
 mod polymrpack;
 mod runtime;
@@ -18,17 +19,21 @@ pub use install::{
     reconcile_duplicate_activity,
     remove_artifact_from_cluster, set_artifact_enabled_to, set_bundle_package_enabled,
     set_bundle_package_opt_in,
-    toggle_artifact_enabled,
     set_bundle_package_override, set_bundle_package_overrides,
 };
 pub use manager::{Bundle, BundlesManager};
+pub use optional::{
+    PendingOptionalMod, pending_optional_mods, resolve_optional_mods, skip_optional_mods,
+};
 pub use manifest::BundleManifest as RemoteBundleManifest;
 pub use runtime::{is_bundle_syncing, sync_all_cluster_bundles};
 pub use types::{
-    ApplyBundleUpdatesResult, BundleArchive, BundleFile, BundleFileKind, BundleManifest,
-    BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate, BundleUpdateCheckResult,
-    BundleWithUpdateStatus, FileUpdateStatus,
+    ApplyBundleUpdatesResult, BundleArchive, BundleFile, BundleFileKind, BundleOptionalPackage,
+    BundleManifest, BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate,
+    BundleUpdateCheckResult, BundleWithUpdateStatus, FileUpdateStatus,
 };
 pub use updates::{
-    apply_bundle_updates, check_bundle_updates, get_bundles_with_update_status,
+    apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,
+    cluster_has_bundle_content,
+    get_bundles_with_update_status,
 };

@@ -55,6 +55,14 @@ impl ClusterManager {
 	}
 
 	#[tracing::instrument(level = "debug", skip(self))]
+	pub async fn find_by_folder_name(&self, folder_name: &str) -> ClusterResult<Option<Cluster>> {
+		cluster_dao::get_by_folder_name(&self.db, folder_name)
+			.await?
+			.map(Cluster::try_from_row)
+			.transpose()
+	}
+
+	#[tracing::instrument(level = "debug", skip(self))]
 	pub async fn list(&self) -> ClusterResult<Vec<Cluster>> {
 		let rows = cluster_dao::list_all(&self.db).await?;
 		rows.into_iter()

@@ -15,11 +15,11 @@ pub fn snapshots() -> Vec<PathBuf> {
 }
 
 pub fn open_data_folder() {
-    let Ok(dir) = oneclient_common::paths::launcher_dir() else {
+    let Ok(dir) = oneclient_common::paths::data_dir() else {
         return;
     };
 
-    crate::platform::open_url(&dir.to_string_lossy());
+    crate::platform::open_path(&dir.to_string_lossy());
 }
 
 pub fn restore_latest(actions: &Actions) {

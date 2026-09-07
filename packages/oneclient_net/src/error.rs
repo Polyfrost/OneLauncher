@@ -63,6 +63,12 @@ pub enum RequestError {
         actual: u64,
     },
 
+    #[error(
+        "OneClient did not contact {url} because the Terms of Service and Privacy Policy were \
+         declined. Accept them in Settings to turn Polyfrost services back on."
+    )]
+    ConsentRequired { url: String },
+
     #[error("Invalid URL: {0}")]
     UrlParseError(#[from] url::ParseError),
 

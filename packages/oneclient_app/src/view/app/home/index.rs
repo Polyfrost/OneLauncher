@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{ActiveClusterPanel, RecentsRow};
+use crate::theme;
 
 #[derive(PartialEq)]
 pub struct Home;
@@ -13,7 +14,7 @@ impl Component for Home {
             .height(Size::fill())
             .content(Content::Flex)
             .overflow(Overflow::Clip)
-            .padding(48.)
+            .padding(theme::HOME_PADDING_PX)
             .main_align(Alignment::Center)
             .child(
                 rect()

@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::IconType;
+use crate::hooks::use_onboarding_selection;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::view::onboarding::{
@@ -12,6 +13,12 @@ pub struct OnboardingWelcome;
 
 impl Component for OnboardingWelcome {
     fn render(&self) -> impl IntoElement {
+        let next = if *use_onboarding_selection().picks_location.read() {
+            Route::OnboardingLocation {}
+        } else {
+            Route::OnboardingTerms {}
+        };
+
         let content = rect()
             .vertical()
             .width(Size::fill())
@@ -31,7 +38,7 @@ impl Component for OnboardingWelcome {
         onboarding_page(
             onboarding_illustration(IconType::OnboardingWelcome),
             content,
-            onboarding_nav(None, Route::OnboardingTerms {}, true),
+            onboarding_nav(None, next, true),
         )
     }
 }

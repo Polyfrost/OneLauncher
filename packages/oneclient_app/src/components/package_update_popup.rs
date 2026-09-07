@@ -3,11 +3,12 @@
 use std::collections::HashMap;
 
 use freya::prelude::*;
+use oneclient_common::{PackageUpdateMode, Patch};
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
-use oneclient_core::BrowserPackageUpdate;
+use oneclient_core::{BrowserPackageUpdate, ProfileUpdate};
 use oneclient_db::models::ClusterId;
 
-use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea, checkbox_labeled};
 use crate::hooks::{
     package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch,
 };
@@ -63,6 +64,7 @@ impl Component for PackageUpdatePopup {
 
         // Absent entries default to Update so groups arriving mid-modal need no reconciliation
         let choices = use_state(HashMap::<RowKey, RowChoice>::new);
+        let mut dont_show_again = use_state(|| false);
 
         let groups = snapshot.package_updates.clone();
 
@@ -83,6 +85,8 @@ impl Component for PackageUpdatePopup {
         }
 
         let Some(groups) = groups.filter(|groups| !groups.is_empty()) else {
+            // The popup stays mounted, so the tick must not survive into the next prompt
+            dont_show_again.set_if_modified(false);
             return rect().into_element();
         };
 
@@ -95,7 +99,7 @@ impl Component for PackageUpdatePopup {
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
                     .center()
-                    .child(dialog(&groups, &meta, dispatch, choices)),
+                    .child(dialog(&groups, &meta, dispatch, choices, dont_show_again)),
             )
             .into_element()
     }
@@ -113,6 +117,7 @@ fn dialog(
     meta: &MetaMap,
     dispatch: crate::Actions,
     choices: State<HashMap<RowKey, RowChoice>>,
+    dont_show_again: State<bool>,
 ) -> impl IntoElement {
     rect()
         .vertical()
@@ -130,7 +135,7 @@ fn dialog(
             0.,
             Color::from_argb(150, 0, 0, 0),
         )))
-        .child(content(groups, meta, dispatch, choices))
+        .child(content(groups, meta, dispatch, choices, dont_show_again))
 }
 
 fn content(
@@ -138,10 +143,13 @@ fn content(
     meta: &MetaMap,
     dispatch: crate::Actions,
     choices: State<HashMap<RowKey, RowChoice>>,
+    dont_show_again: State<bool>,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
     let proceed_dispatch = dispatch.clone();
+    let dsa_dispatch = dispatch.clone();
     let total: usize = groups.iter().map(|group| group.packages.len()).sum();
+    let clusters: Vec<ClusterId> = groups.iter().map(|group| group.cluster_id).collect();
 
     let subtitle = match groups {
         [only] => format!(
@@ -194,40 +202,73 @@ fn content(
                 .horizontal()
                 .width(Size::fill())
                 .cross_align(Alignment::Center)
-                .main_align(Alignment::End)
+                .main_align(Alignment::SpaceBetween)
                 .spacing(8.)
                 .child(
-                    Button::new()
-                        .ghost()
-                        .on_press(move |_| dismiss.close_package_updates())
-                        .text("Cancel"),
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .main_align(Alignment::Start)
+                        .cross_align(Alignment::Center)
+                        .spacing(6.)
+                        .child(
+                            checkbox_labeled(dont_show_again, "Don't show again?")
+                        )
                 )
                 .child(
-                    Button::new()
-                        .primary()
-                        .on_press(move |_| {
-                            let answers = choices.read();
-                            for update in &all {
-                                match answers
-                                    .get(&row_key(update))
-                                    .copied()
-                                    .unwrap_or_default()
-                                {
-                                    RowChoice::Update => {
-                                        proceed_dispatch.apply_package_update(update.clone());
+                    rect()
+                        .width(Size::fill())
+                        .direction(Direction::Horizontal)
+                        .cross_align(Alignment::Center)
+                        .main_align(Alignment::End)
+                        .child(
+                            Button::new()
+                                .ghost()
+                                .on_press(move |_| dismiss.close_package_updates())
+                                .text("Cancel"),
+                        )
+                        .child(
+                            Button::new()
+                                .primary()
+                                .on_press(move |_| {
+                                    if *dont_show_again.peek() {
+                                        // A cluster override outranks the global one, so the prompt
+                                        // is only silenced by writing the cluster that raised it
+                                        for cluster_id in &clusters {
+                                            dsa_dispatch.update_cluster_profile(
+                                                *cluster_id,
+                                                ProfileUpdate {
+                                                    browser_update_mode: Patch::Set(
+                                                        PackageUpdateMode::Skip,
+                                                    ),
+                                                    ..Default::default()
+                                                },
+                                            );
+                                        }
                                     }
-                                    RowChoice::Skip => {}
-                                    RowChoice::SkipVersion => proceed_dispatch
-                                        .skip_package_update(
-                                            update.cluster_id,
-                                            update.hash.clone(),
-                                        ),
-                                }
-                            }
-                            proceed_dispatch.close_package_updates();
-                        })
-                        .child(Icon::new(IconType::DownloadCloud02).size(15.))
-                        .text("Proceed"),
+
+                                    let answers = choices.read();
+                                    for update in &all {
+                                        match answers
+                                            .get(&row_key(update))
+                                            .copied()
+                                            .unwrap_or_default()
+                                        {
+                                            RowChoice::Update => {
+                                                proceed_dispatch.apply_package_update(update.clone());
+                                            }
+                                            RowChoice::Skip => {}
+                                            RowChoice::SkipVersion => proceed_dispatch
+                                                .skip_package_update(
+                                                    update.cluster_id,
+                                                    update.hash.clone(),
+                                                ),
+                                        }
+                                    }
+                                    proceed_dispatch.close_package_updates();
+                                })
+                                .child(Icon::new(IconType::DownloadCloud02).size(15.))
+                                .text("Proceed"),
+                        )
                 ),
         )
 }

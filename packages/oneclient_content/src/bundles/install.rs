@@ -13,7 +13,7 @@ use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 use oneclient_common::domain::{ContentType, GameLoader};
-use crate::packages::store::{PackageStore, evict_if_unused, try_unlink_materialized};
+use crate::packages::store::{LiveSync, PackageStore, evict_if_unused, try_unlink_materialized};
 use crate::packages::types::ExternalFile;
 use crate::ctx::ContentCtx;
 
@@ -110,7 +110,7 @@ pub async fn install_package_from_bundle(
                     .await?
             };
 
-            let artifact = PackageStore::install_to_cluster(
+            let (artifact, _) = PackageStore::install_to_cluster(
                 *provider,
                 &project,
                 &version,
@@ -195,12 +195,9 @@ pub async fn install_bundle(
 
 /// `suppression` comes from [`find_user_suppression`] so a choice filed under a
 /// bundle the file has since left still counts
-pub(crate) fn disable_was_deliberate(hidden: bool, suppression: Option<OverrideType>) -> bool {
+pub(crate) fn disable_was_deliberate(suppression: Option<OverrideType>) -> bool {
     match suppression {
-        Some(OverrideType::Removed) => true,
-        // Hidden files are never-shown dependencies
-        // they follow the bundle so only an outright removal keeps one off
-        Some(OverrideType::Disabled) => !hidden,
+        Some(OverrideType::Removed | OverrideType::Disabled) => true,
         Some(OverrideType::Enabled) | None => false,
     }
 }
@@ -244,7 +241,7 @@ pub async fn heal_bundle_activity(
         // a package that moved keeps its old override row and reading only its
         // current bundle would switch it back on
         let suppression = find_user_suppression(&overrides, package_id);
-        if disable_was_deliberate(is_hidden, suppression) {
+        if disable_was_deliberate(suppression) {
             continue;
         }
 
@@ -263,12 +260,6 @@ pub async fn heal_bundle_activity(
         {
             tracing::warn!(hash = %row.hash, error = %err, "failed to re-enable bundle content");
             continue;
-        }
-
-        // Drop the stale override everywhere or a copy under another bundle
-        // keeps answering "off" and the two records never settle
-        if suppression == Some(OverrideType::Disabled) {
-            clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
         }
     }
 
@@ -461,7 +452,7 @@ pub async fn set_bundle_package_override(
 }
 
 /// For bundle files the cluster has not installed
-/// installed ones go through [`toggle_artifact_enabled`]
+/// installed ones go through [`set_artifact_enabled_to`]
 /// Matching the manifest default clears the override
 /// switching *on* also drops objections filed under other bundles
 #[tracing::instrument(level = "debug", skip(ctx))]
@@ -572,26 +563,7 @@ pub async fn on_user_remove_artifact(
     handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await
 }
 
-#[tracing::instrument(level = "debug", skip(ctx))]
-#[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn toggle_artifact_enabled(
-    cluster_id: i64,
-    hash: &str,
-    ctx: &ContentCtx,
-) -> ContentResult<bool> {
-    let enabled = PackageStore::set_artifact_enabled(cluster_id, hash, ctx).await?;
-
-    if enabled {
-        on_user_enable_artifact(cluster_id, hash, ctx).await?;
-    } else {
-        on_user_disable_artifact(cluster_id, hash, ctx).await?;
-    }
-
-    Ok(enabled)
-}
-
-/// Prefer this over [`toggle_artifact_enabled`] unless the current value is
-/// known to be the opposite
+/// The caller passes the value it wants
 /// a relinked artifact keeps its old `enabled` so a flip on an already-correct
 /// row puts it wrong
 #[tracing::instrument(level = "debug", skip(ctx))]
@@ -600,14 +572,16 @@ pub async fn set_artifact_enabled_to(
     hash: &str,
     enabled: bool,
     ctx: &ContentCtx,
-) -> ContentResult<()> {
-    PackageStore::set_artifact_enabled_to(cluster_id, hash, enabled, ctx).await?;
+) -> ContentResult<LiveSync> {
+    let (_, live) = PackageStore::set_artifact_enabled_to(cluster_id, hash, enabled, ctx).await?;
 
     if enabled {
-        on_user_enable_artifact(cluster_id, hash, ctx).await
+        on_user_enable_artifact(cluster_id, hash, ctx).await?;
     } else {
-        on_user_disable_artifact(cluster_id, hash, ctx).await
+        on_user_disable_artifact(cluster_id, hash, ctx).await?;
     }
+
+    Ok(live)
 }
 
 /// Writes the override alongside the flag
@@ -726,10 +700,7 @@ pub async fn remove_artifact_from_cluster(
         .await?
         .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
 
-    let link = artifact_dao::list_cluster_artifacts(&ctx.db, cluster_id)
-        .await?
-        .into_iter()
-        .find(|l| l.hash == hash);
+    let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
     // Database first unconditionally
     // on Windows a jar held open by a running game blocks deleting every hard
@@ -840,32 +811,32 @@ mod tests {
 
     #[test]
     fn a_disable_with_no_override_behind_it_is_an_accident() {
-        assert!(!disable_was_deliberate(false, None));
-        assert!(!disable_was_deliberate(true, None));
+        assert!(!disable_was_deliberate(None));
     }
 
     #[test]
     fn a_users_own_disable_is_respected() {
-        assert!(disable_was_deliberate(
-            false,
-            Some(OverrideType::Disabled)
-        ));
-        assert!(disable_was_deliberate(false, Some(OverrideType::Removed)));
+        assert!(disable_was_deliberate(Some(OverrideType::Disabled)));
+        assert!(disable_was_deliberate(Some(OverrideType::Removed)));
     }
 
     #[test]
-    fn a_hidden_dependency_cannot_be_disabled_on_its_own() {
+    fn a_hidden_dependency_can_be_disabled_on_its_own() {
+        let file = BundleFile {
+            hidden: true,
+            ..file(true)
+        };
+
         assert!(
-            !disable_was_deliberate(true, Some(OverrideType::Disabled)),
-            "a hidden file follows its bundle; only removing it keeps it off"
+            disable_was_deliberate(Some(OverrideType::Disabled)),
+            "the hidden filter offers the toggle so the choice behind it has to outlive a launch"
         );
-        assert!(disable_was_deliberate(true, Some(OverrideType::Removed)));
+        assert!(!effective_enabled(&file, Some(OverrideType::Disabled)));
     }
 
     #[test]
     fn an_opt_in_override_never_reads_as_a_disable() {
-        assert!(!disable_was_deliberate(false, Some(OverrideType::Enabled)));
-        assert!(!disable_was_deliberate(true, Some(OverrideType::Enabled)));
+        assert!(!disable_was_deliberate(Some(OverrideType::Enabled)));
     }
 
     #[test]

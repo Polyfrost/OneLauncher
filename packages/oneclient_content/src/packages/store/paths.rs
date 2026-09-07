@@ -15,12 +15,12 @@ pub fn cache_file_path(
 }
 
 pub fn artifact_absolute_path(stored_path: &str) -> ContentResult<PathBuf> {
-    let root = paths::launcher_dir()?;
+    let root = paths::data_dir()?;
     Ok(root.join(stored_path))
 }
 
 pub fn relative_cache_path(abs: &Path) -> ContentResult<String> {
-    let root = paths::launcher_dir()?;
+    let root = paths::data_dir()?;
 
     let rel = abs
         .strip_prefix(root)

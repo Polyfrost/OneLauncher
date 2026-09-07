@@ -32,6 +32,12 @@ pub enum McError {
 	#[error("no matching version found")]
 	NoMatchingVersion,
 
+	#[error(
+		"{version} ships no native libraries for {platform}; this platform is not supported \
+		 by this version"
+	)]
+	NoNativesForPlatform { version: String, platform: String },
+
 	#[error("cancelled: {failed} file(s) could not be downloaded")]
 	IncompleteInstallCancelled { failed: usize },
 

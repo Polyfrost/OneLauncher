@@ -6,8 +6,8 @@ use freya::router::{Outlet, use_route};
 use crate::Route;
 use crate::components::OnboardingNavbar;
 use crate::hooks::{
-    OnboardingSelectionState, has_migration_data, onboarding_bundles_items, use_migration,
-    use_onboarding_bundles, use_provide_onboarding_selection,
+    OnboardingSelectionState, has_migration_data, onboarding_bundles_items, use_launcher,
+    use_migration, use_onboarding_bundles, use_provide_onboarding_selection, use_settings_snapshot,
 };
 use crate::theme::colors;
 use crate::view::onboarding::{
@@ -28,6 +28,10 @@ impl Component for OnboardingShell {
         let setup_started = use_state(|| false);
         let import_folder = use_state(|| None::<String>);
         let import_dedicated = use_state(|| false);
+        let picks_location = use_state({
+            let fresh = use_launcher().needs_location;
+            move || fresh
+        });
         use_provide_onboarding_selection(OnboardingSelectionState {
             selected,
             user_touched,
@@ -38,13 +42,18 @@ impl Component for OnboardingShell {
             setup_started,
             import_folder,
             import_dedicated,
+            picks_location,
         });
 
         let migration_query = use_migration();
         let detected_migration = has_migration_data(&migration_query);
 
         let route = use_route::<Route>();
-        let step_index = onboarding_step_index(&route, detected_migration);
+        let choosing_location = *picks_location.read();
+        let step_index = onboarding_step_index(&route, detected_migration, choosing_location);
+
+        let onboarded = use_settings_snapshot().settings.seen_onboarding;
+        let reconsent = onboarded && matches!(&route, Route::OnboardingTerms {});
 
         let bundles = use_onboarding_bundles();
 
@@ -85,10 +94,13 @@ impl Component for OnboardingShell {
                     .height(Size::fill())
                     .content(Content::Flex)
                     .layer(Layer::Relative(30))
-                    .child(progress_bar(
-                        step_index,
-                        onboarding_total(detected_migration),
-                    ))
+                    .maybe_child((!reconsent).then(|| {
+                        progress_bar(
+                            step_index,
+                            onboarding_total(detected_migration, choosing_location),
+                        )
+                        .into_element()
+                    }))
                     .child(OnboardingNavbar)
                     .child(
                         rect()

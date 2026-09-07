@@ -1,12 +1,17 @@
 use freya::prelude::*;
 
-use crate::components::{Icon, IconType, OverlayPopup};
+use crate::components::{Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup};
 use crate::theme::colors;
 
 const MENU_BG: Color = Color::from_rgb(25, 32, 38);
 const MENU_BORDER: Color = Color::from_argb(26, 255, 255, 255);
 const MENU_FG: Color = Color::from_rgb(155, 161, 166);
 const MENU_DANGER: Color = Color::from_rgb(242, 84, 90);
+
+/// Panel padding and border on both axes, which the measured list sits inside of
+const PANEL_INSET: f32 = 14.;
+/// Gap the clamped menu keeps from the window edges
+const EDGE_MARGIN: f32 = 8.;
 
 enum Entry {
     Action {
@@ -18,11 +23,25 @@ enum Entry {
     Separator,
 }
 
+fn separator(item_width: Option<f32>) -> Rect {
+    let mut sep = rect()
+        .height(Size::px(1.))
+        .margin(Gaps::new_symmetric(4., 0.))
+        .background(MENU_BORDER);
+    if let Some(w) = item_width {
+        sep = sep.width(Size::px(w));
+    }
+    sep
+}
+
 pub struct ContextMenu {
     x: f32,
     y: f32,
+    upwards: bool,
+    title: Option<String>,
     entries: Vec<Entry>,
     on_close: EventHandler<()>,
+    overlay_level: u8,
 }
 
 impl ContextMenu {
@@ -30,13 +49,31 @@ impl ContextMenu {
         Self {
             x,
             y,
+            upwards: false,
+            title: None,
             entries: Vec::new(),
             on_close: (|()| {}).into(),
+            overlay_level: OVERLAY_BASE_LEVEL,
         }
+    }
+
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    pub fn open_upwards(mut self) -> Self {
+        self.upwards = true;
+        self
     }
 
     pub fn on_close(mut self, on_close: impl Into<EventHandler<()>>) -> Self {
         self.on_close = on_close.into();
+        self
+    }
+
+    pub fn overlay_level(mut self, level: u8) -> Self {
+        self.overlay_level = level;
         self
     }
 
@@ -87,26 +124,32 @@ impl Component for ContextMenu {
     fn render(&self) -> impl IntoElement {
         let on_close = self.on_close.clone();
 
-        let mut width = use_state(|| 0f32);
+        let mut size = use_state(Size2D::zero);
 
-        let item_width = {
-            let w = *width.read();
-            (w > 0.).then_some(w)
-        };
+        let measured = *size.read();
+        let item_width = (measured.width > 0.).then_some(measured.width);
 
         let mut list = rect().vertical().spacing(4.);
+
+        if let Some(title) = &self.title {
+            list = list
+                .child(
+                    // Asymmetric on purpose
+                    rect().padding(Gaps::new(6., 8., 4., 8.)).child(
+                        label()
+                            .text(title.clone())
+                            .font_size(11.)
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .max_lines(1)
+                            .color(colors::fg_secondary()),
+                    ),
+                )
+                .child(separator(item_width));
+        }
+
         for entry in &self.entries {
             list = match entry {
-                Entry::Separator => {
-                    let mut sep = rect()
-                        .height(Size::px(1.))
-                        .margin(Gaps::new_symmetric(4., 0.))
-                        .background(MENU_BORDER);
-                    if let Some(w) = item_width {
-                        sep = sep.width(Size::px(w));
-                    }
-                    list.child(sep)
-                }
+                Entry::Separator => list.child(separator(item_width)),
                 Entry::Action {
                     icon,
                     label,
@@ -127,11 +170,27 @@ impl Component for ContextMenu {
         }
 
         let list = list.on_sized(move |e: Event<SizedEventData>| {
-            let measured = e.data().area.width();
-            if (measured - *width.peek()).abs() > 0.5 {
-                width.set(measured);
+            let area = e.data().area.size;
+            let prev = *size.peek();
+            if (area.width - prev.width).abs() > 0.5 || (area.height - prev.height).abs() > 0.5 {
+                size.set(area);
             }
         });
+
+        let placed = measured.width > 0.;
+        let menu_width = measured.width + PANEL_INSET;
+        let menu_height = measured.height + PANEL_INSET;
+
+        let (x, y) = if placed {
+            let top = if self.upwards && self.y - menu_height >= 0. {
+                self.y - menu_height
+            } else {
+                self.y
+            };
+            clamp_to_window(self.x, top, menu_width, menu_height)
+        } else {
+            (self.x, self.y)
+        };
 
         let panel = rect()
             .vertical()
@@ -144,14 +203,36 @@ impl Component for ContextMenu {
                 bottom: 1.,
                 left: 1.,
             }))
+            .opacity(if placed { 1. } else { 0. })
             .child(list);
 
         OverlayPopup::new()
             .backdrop(false)
-            .position(Position::new_global().top(self.y).left(self.x))
+            .overlay_level(self.overlay_level)
+            .position(Position::new_global().top(y).left(x))
             .on_close(move |_| on_close.call(()))
             .child(panel.into_element())
     }
+}
+
+/// `root_size` is physical while the press position is logical, so it has to be
+/// scaled down before the two are compared
+fn clamp_to_window(x: f32, y: f32, menu_width: f32, menu_height: f32) -> (f32, f32) {
+    let platform = Platform::get();
+    let scale = *platform.scale_factor.peek() as f32;
+    if scale <= 0. {
+        return (x, y);
+    }
+
+    let window = *platform.root_size.peek();
+    let clamp = |pos: f32, len: f32, limit: f32| {
+        pos.clamp(EDGE_MARGIN, (limit - len - EDGE_MARGIN).max(EDGE_MARGIN))
+    };
+
+    (
+        clamp(x, menu_width, window.width / scale),
+        clamp(y, menu_height, window.height / scale),
+    )
 }
 
 #[derive(PartialEq)]
@@ -192,14 +273,9 @@ impl Component for ContextMenuRow {
             } else {
                 Color::TRANSPARENT
             })
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| {
                 on_select.call(());
                 on_close.call(());

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            DELETE FROM cluster_optional_mods\n            WHERE cluster_id = ? AND package_id = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e2ee6fbe534dd47ce658d547c2bfc3a4e86dfce86da3a4ffe35d25d1fa412d13"
+}

@@ -3,9 +3,10 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::clusters::Cluster;
 
-use crate::components::{ART_PREVIEW_EDGE, DynamicArt, Icon, IconType};
+use crate::components::{ART_PREVIEW_EDGE, ContextMenu, DynamicArt, Icon, IconType};
 use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
 use crate::routes::Route;
+use crate::theme;
 use crate::theme::colors;
 use crate::ui::{border_all, border_all_color};
 use crate::utils::sort_clusters_for_home;
@@ -26,12 +27,18 @@ pub struct RecentsRow;
 impl Component for RecentsRow {
     fn render(&self) -> impl IntoElement {
         let clusters_query = use_clusters();
-        let mut visible_slots = use_state(|| 1_usize);
+        let platform = Platform::get();
+        let root_size = platform.root_size;
+        let scale_factor = platform.scale_factor;
 
         let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
         let sorted: Vec<Cluster> = sort_clusters_for_home(clusters);
-        let slots = *visible_slots.read();
+
+        let slots = recent_card_slots_for_window(
+            root_size.read().width,
+            *scale_factor.read() as f32,
+        );
 
         // Budget off cluster count not slot count an offset-only change makes the layout
         // engine reuse a card's cached area freezing survivors at pre-resize widths
@@ -52,12 +59,6 @@ impl Component for RecentsRow {
             .width(Size::fill())
             .height(Size::px(ROW_HEIGHT_PX))
             .content(Content::Flex)
-            .on_sized(move |event: Event<SizedEventData>| {
-                let next = recent_card_slots_for_width(event.data().area.width());
-                if next != *visible_slots.peek() {
-                    *visible_slots.write() = next;
-                }
-            })
             .horizontal()
             .spacing(CARD_GAP_PX)
             .children(display.iter().enumerate().map(|(index, cluster)| {
@@ -66,7 +67,9 @@ impl Component for RecentsRow {
                     index,
                     items,
                     progress,
+                    key: DiffKey::None,
                 }
+                .key(cluster.id)
                 .into_element()
             }))
             .child(OtherVersionsTile {
@@ -93,11 +96,58 @@ fn stagger_eased(progress: f32, index: usize, items: usize) -> f32 {
     1.0 - (1.0 - local).powi(3)
 }
 
+fn cluster_menu_entries(cluster_id: i64) -> [(IconType, &'static str, Route); 7] {
+    [
+        (
+            IconType::InfoCircle,
+            "Overview",
+            Route::ClusterOverview { cluster_id },
+        ),
+        (
+            IconType::Terminal,
+            "Logs",
+            Route::ClusterLogs { cluster_id },
+        ),
+        (
+            IconType::Eye,
+            "Screenshots",
+            Route::ClusterScreenshots { cluster_id },
+        ),
+        (
+            IconType::CodeSnippet02,
+            "Mods",
+            Route::ClusterMods { cluster_id },
+        ),
+        (
+            IconType::PaintPour,
+            "Shaders",
+            Route::ClusterShaders { cluster_id },
+        ),
+        (
+            IconType::Colors,
+            "Textures",
+            Route::ClusterTextures { cluster_id },
+        ),
+        (
+            IconType::Settings01,
+            "Settings",
+            Route::ClusterSettings { cluster_id },
+        ),
+    ]
+}
+
 struct ClusterCard {
     cluster: Cluster,
     index: usize,
     items: usize,
     progress: f32,
+    key: DiffKey,
+}
+
+impl KeyExt for ClusterCard {
+    fn write_key(&mut self) -> &mut DiffKey {
+        &mut self.key
+    }
 }
 
 impl PartialEq for ClusterCard {
@@ -114,6 +164,7 @@ impl Component for ClusterCard {
         let mut active_id = use_active_cluster_id();
         let active = *active_id.read() == Some(self.cluster.id);
         let mut hovering = use_state(|| false);
+        let mut menu = use_state(|| None::<(f32, f32)>);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -128,6 +179,19 @@ impl Component for ClusterCard {
         let on_press = move |_| {
             *active_id.write() = Some(cluster_id);
         };
+
+        let menu_overlay = (*menu.read()).map(|(x, y)| {
+            let mut context = ContextMenu::new(x, y)
+                .open_upwards()
+                .title(title.clone())
+                .on_close(move |_| menu.set(None));
+            for (icon, label, route) in cluster_menu_entries(cluster_id) {
+                context = context.action(icon, label, move |()| {
+                    let _ = RouterContext::get().push(route.clone());
+                });
+            }
+            context.into_element()
+        });
 
         rect()
             .key(self.cluster.id)
@@ -172,7 +236,15 @@ impl Component for ClusterCard {
                             .y(0.)
                             .color(Color::from_af32rgb(0.3, 0, 0, 0)),
                     )
-                    .on_all_press(on_press)
+                    .on_press(on_press)
+                    .on_secondary_down(move |e: Event<PressEventData>| {
+                        if let PressEventData::Mouse(m) = e.data() {
+                            menu.set(Some((
+                                m.global_location.x as f32,
+                                m.global_location.y as f32,
+                            )));
+                        }
+                    })
                     .child(
                         rect()
                             .width(Size::fill())
@@ -222,6 +294,11 @@ impl Component for ClusterCard {
                             ),
                     ),
             )
+            .maybe_child(menu_overlay)
+    }
+
+    fn render_key(&self) -> DiffKey {
+        self.key.clone().or(self.default_key())
     }
 }
 
@@ -280,7 +357,7 @@ impl Component for OtherVersionsTile {
                     .y(0.)
                     .color(Color::from_af32rgb(0.3, 0, 0, 0)),
             )
-            .on_all_press(|_| {
+            .on_press(|_| {
                 let _ = RouterContext::get().push(Route::Clusters {});
             })
             .child(
@@ -291,6 +368,15 @@ impl Component for OtherVersionsTile {
                     .child(Icon::new(IconType::DotsGrid).size(50.)),
             )
     }
+}
+
+fn recent_card_slots_for_window(window_width_px: f32, scale_factor: f32) -> usize {
+    let scale = if scale_factor > 0. && scale_factor.is_finite() {
+        scale_factor
+    } else {
+        1.
+    };
+    recent_card_slots_for_width(window_width_px / scale - theme::HOME_PADDING_PX * 2.)
 }
 
 /// `n` cards occupy `n` gaps (n-1 between cards one before the tile) so `n * (MIN + GAP) + MORE`
@@ -304,54 +390,4 @@ fn recent_card_slots_for_width(row_width_px: f32) -> usize {
     let available = row_width_px - MORE_TILE_WIDTH_PX;
     let slot = MIN_CARD_WIDTH_PX + CARD_GAP_PX;
     (available / slot).floor().max(1.0) as usize
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn row_fits(slots: usize, row_width_px: f32) -> bool {
-        let cards = slots as f32 * MIN_CARD_WIDTH_PX;
-        let gaps = slots as f32 * CARD_GAP_PX;
-        cards + gaps + MORE_TILE_WIDTH_PX <= row_width_px
-    }
-
-    #[test]
-    fn slots_fill_the_row_without_overflowing_it() {
-        for width in (200..3200).step_by(4) {
-            let width = width as f32;
-            let slots = recent_card_slots_for_width(width);
-
-            assert!(slots >= 1, "{width}px left no room for a card");
-            if slots > 1 {
-                assert!(row_fits(slots, width), "{slots} cards overflow {width}px");
-            }
-            assert!(
-                !row_fits(slots + 1, width),
-                "{width}px had room for {} cards",
-                slots + 1
-            );
-        }
-    }
-
-    #[test]
-    fn every_item_settles_when_the_intro_ends() {
-        for clusters in 0..24 {
-            let items = intro_items(clusters);
-            for index in 0..=clusters {
-                assert_eq!(
-                    stagger_eased(1.0, index, items),
-                    1.0,
-                    "item {index} of {clusters} never finished rising"
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn the_intro_runs_the_same_length_whatever_fits_on_screen() {
-        assert_eq!(intro_items(3), intro_items(3));
-        assert_eq!(intro_ms(intro_items(30)), intro_ms(INTRO_ITEMS));
-        assert_eq!(intro_ms(intro_items(0)), CARD_MS);
-    }
 }

@@ -42,6 +42,11 @@ fn drop_opted_out_breadcrumbs(breadcrumb: Breadcrumb) -> Option<Breadcrumb> {
 }
 
 pub fn init(enabled: bool) -> Option<ClientInitGuard> {
+    if oneclient_common::consent::declined() {
+        tracing::debug!("crash reporting disabled: terms and privacy policy declined");
+        return None;
+    }
+
     if !enabled {
         tracing::debug!("crash reporting disabled by settings");
         return None;

@@ -210,17 +210,17 @@ impl PackageProvider for CurseForgeProvider {
         Ok(response.data.into_iter().map(|c| c.name).collect())
     }
 
-    #[tracing::instrument(level = "debug", skip(self, _project_id, ctx))]
+    #[tracing::instrument(level = "debug", skip(self, ctx))]
     async fn get_version(
         &self,
-        _project_id: &str,
+        project_id: &str,
         version_id: &str,
         ctx: &ContentCtx,
     ) -> ContentResult<VersionDetail> {
         let response: CfData<CfFile> = fetch_json(
             &ctx.net,
             Method::GET,
-            &api_url(&format!("/mods/files/{version_id}")),
+            &api_url(&format!("/mods/{project_id}/files/{version_id}")),
             None,
         )
         .await?;
@@ -339,7 +339,7 @@ async fn fetch_body(
 
     match response {
         Ok(response) => match html_to_markdown(&response.data) {
-            Some(markdown) => PackageBody::Raw(markdown),
+            Some(markdown) => PackageBody::raw(markdown),
             None => fallback(),
         },
         Err(err) => {

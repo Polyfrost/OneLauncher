@@ -3,6 +3,9 @@ use oneclient_content::packages::ProviderId;
 
 use crate::{AppAssets, theme::colors};
 
+#[derive(Clone, Copy, PartialEq)]
+pub struct IconTint(pub State<Color>);
+
 #[derive(PartialEq)]
 pub struct Icon {
     pub icon: IconType,
@@ -49,12 +52,18 @@ impl Component for Icon {
     fn render(&self) -> impl IntoElement {
         let path = self.icon.path();
         let bytes = use_memo(move || AppAssets::get_bytes(path).unwrap_or_default());
+        let tint = use_hook(try_consume_context::<IconTint>);
+
+        let color = self
+            .color
+            .or_else(|| tint.map(|tint| *tint.0.read()))
+            .unwrap_or_else(colors::fg_primary);
 
         SvgViewer::new((path, bytes.read().cloned()))
             .show_loader(false)
             .width(Size::px(self.size_px))
             .height(Size::px(self.size_px))
-            .map(self.color, |svg, color| svg.color(color))
+            .color(color)
             .map(self.rotation, |svg, degrees| svg.rotation(degrees))
     }
 }

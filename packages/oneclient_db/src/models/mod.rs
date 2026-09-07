@@ -3,12 +3,15 @@ mod browser_package_update;
 mod bundle;
 mod cluster;
 mod cluster_bundle;
+mod cluster_optional_mod;
 mod game_session;
 mod java;
 mod package_metadata;
 mod setting_profile;
 
-pub use artifact::{ArtifactRow, ClusterArtifactRow, ProviderReleaseRow};
+pub use artifact::{
+    ArtifactRow, ClusterArtifactRow, LinkedArtifactRow, ProviderReleaseRow, SeenStatus,
+};
 pub use browser_package_update::BrowserPackageUpdateRow;
 pub use package_metadata::PackageMetadataRow;
 pub use bundle::{BundleRow, NewBundle};
@@ -16,6 +19,7 @@ pub use cluster::{ClusterId, ClusterPatch, ClusterRow, NewCluster};
 pub use cluster_bundle::{
     BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType,
 };
+pub use cluster_optional_mod::{ClusterOptionalModRow, OptionalModStatus};
 pub use game_session::{
     GameSessionId, GameSessionRow, GameSessionServerRow, NewGameSession, ServerJoinCount,
     SessionSpan, UnfinishedSession,

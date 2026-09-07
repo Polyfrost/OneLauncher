@@ -1,5 +1,9 @@
 use super::*;
 
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use super::backdrop::{next_rotation_delay, rotation_tick};
 use crate::theme::colors;
 
 const ONBOARDING_TIPS_BACKUP: &[&str] = &[
@@ -35,7 +39,7 @@ fn parse_funfacts(text: &str) -> Vec<String> {
         .collect()
 }
 
-/// One stable random tip for the lifetime of the component
+/// A random tip that rotates in step with the backdrop art
 pub(super) fn use_onboarding_tip() -> String {
     let mut tips = use_state(|| {
         ONBOARDING_TIPS_BACKUP
@@ -78,18 +82,46 @@ pub(super) fn use_onboarding_tip() -> String {
         });
     });
 
+    // Random offset against the shared tick so the run does not always open on
+    // the same fact
     let seed = use_hook(|| {
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.subsec_nanos() as usize)
             .unwrap_or(0)
     });
+    let mut tick = use_state(rotation_tick);
 
+    let stop = use_hook(|| Arc::new(AtomicBool::new(false)));
+
+    use_drop({
+        let stop = stop.clone();
+        move || stop.store(true, Ordering::Relaxed)
+    });
+
+    use_hook({
+        let stop = stop.clone();
+        move || {
+            spawn(async move {
+                loop {
+                    tokio::time::sleep(next_rotation_delay()).await;
+
+                    if stop.load(Ordering::Relaxed) {
+                        break;
+                    }
+
+                    tick.set(rotation_tick());
+                }
+            });
+        }
+    });
+
+    // Wrapped at read time the list is swapped out once the remote facts land
     let list = tips.read();
     if list.is_empty() {
         String::new()
     } else {
-        list[seed % list.len()].clone()
+        list[seed.wrapping_add(*tick.read()) % list.len()].clone()
     }
 }
 

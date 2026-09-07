@@ -29,6 +29,7 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
         .env_remove("_JAVA_OPTIONS")
         .env_remove("JAVA_TOOL_OPTIONS")
         .env_remove("JDK_JAVA_OPTIONS");
+    oneclient_common::process::no_window(command.as_std_mut());
 
     let program = command.as_std().get_program().to_string_lossy();
     let args: Vec<String> = command
@@ -94,9 +95,12 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
 }
 
 fn has_usable_awt(info: &HashMap<String, String>) -> bool {
+	if !probe_flag(info, "java.awt.link") {
+		tracing::warn!("java.awt.link returned false. ignoring")
+	}
+
     probe_flag(info, "java.awt")
         && probe_flag(info, "java.awt.natives")
-        && probe_flag(info, "java.awt.link")
 }
 
 fn probe_flag(info: &HashMap<String, String>, key: &str) -> bool {
@@ -163,8 +167,12 @@ mod tests {
     }
 
     #[test]
-    fn natives_that_refuse_to_link_are_not_usable() {
-        assert!(!has_usable_awt(&awt("true", "true", "false")));
+    fn a_link_probe_that_fails_does_not_rule_the_image_out() {
+        assert!(has_usable_awt(&awt("true", "true", "false")));
+        assert!(has_usable_awt(&info(&[
+            ("java.awt", "true"),
+            ("java.awt.natives", "true"),
+        ])));
     }
 
     #[test]

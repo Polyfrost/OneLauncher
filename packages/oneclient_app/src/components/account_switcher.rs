@@ -179,16 +179,9 @@ impl Component for AccountRow {
             .maybe(*hovered.read() && !active, |el| {
                 el.background(colors::ghost_overlay_hover())
             })
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                if !active {
-                    Cursor::set(CursorIcon::Pointer);
-                }
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor((!active).then_some(CursorIcon::Pointer))
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(switch)
             .child(
                 Avatar::new(id.to_string())

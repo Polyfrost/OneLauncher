@@ -312,7 +312,7 @@ pub async fn seed_bundle_archive(
 	)
 	.await?;
 
-	let path = oneclient_common::paths::launcher_dir()?.join(&disk_path);
+	let path = oneclient_common::paths::data_dir()?.join(&disk_path);
 	state.bundles.cache_archive_manifest(path, manifest).await;
 
 	Ok(())

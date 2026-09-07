@@ -26,8 +26,8 @@ futures-lite.workspace = true
 futures-util.workspace = true
 tokio.workspace = true
 
-# HTML package descriptions -> markdown
 htmd.workspace = true
+pulldown-cmark.workspace = true
 
 chrono.workspace = true
 reqwest.workspace = true
@@ -35,6 +35,7 @@ serde.workspace = true
 serde_json.workspace = true
 sqlx.workspace = true
 thiserror.workspace = true
+toml.workspace = true
 tracing.workspace = true
 url.workspace = true
 uuid.workspace = true

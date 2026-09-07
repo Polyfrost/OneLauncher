@@ -225,6 +225,8 @@ async fn reconcile(
 		.map(|log| log_replay::replay(&log.content, started_at))
 		.unwrap_or_default();
 
+	let now = Utc::now().max(started_at);
+
 	// Prefer the log's own timestamps over mtime mtime only helps when nothing
 	// in the log carries a time
 	let ended_at = replay
@@ -232,7 +234,7 @@ async fn reconcile(
 		.or(replay.last_activity)
 		.or_else(|| log.as_ref().and_then(|log| log.modified))
 		.unwrap_or(started_at)
-		.clamp(started_at, Utc::now());
+		.clamp(started_at, now);
 
 	tracing::info!(
 		cluster_id,

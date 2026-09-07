@@ -7,6 +7,7 @@ use crate::hooks::{
     StorageAction, mutation_is_running, try_storage_report, use_storage_action, use_storage_report,
 };
 use crate::theme::colors;
+use crate::utils::plural;
 
 /// Rows narrower than this would render as a sliver so they get a floor
 const MIN_BAR_FRACTION: f32 = 0.015;
@@ -20,9 +21,7 @@ impl Component for SettingsStorage {
         let report_query = use_storage_report();
 
         let Some(report) = try_storage_report(&report_query) else {
-            return settings_page()
-                .child(hero_placeholder())
-                .into_element();
+            return settings_page().child(hero_placeholder()).into_element();
         };
 
         let refresh = Button::new()
@@ -33,7 +32,7 @@ impl Component for SettingsStorage {
             })
             .child(label().text("Refresh"));
 
-        let mut page = settings_page()
+        settings_page()
             .child(hero(&report, refresh.into_element()))
             .child(section_header("FREE UP SPACE"))
             .child(
@@ -50,43 +49,37 @@ impl Component for SettingsStorage {
                 ReclaimRow {
                     icon: IconType::Trash01,
                     title: "Leftover cluster content",
-                    description: legacy_content_description(&report.legacy_cluster_content),
+                    description: legacy_content_description(
+                        &report.legacy_cluster_content,
+                        &report.unused_natives,
+                    ),
                     action: StorageAction::CleanLegacyClusterContent,
-                    empty: report.legacy_cluster_content.is_empty(),
+                    empty: report.legacy_cluster_content.is_empty()
+                        && report.unused_natives.is_empty(),
                 }
                 .into_element(),
-            );
-
-        page = page.child(section_header("WHAT'S USING SPACE"));
-        page = match largest(&report.categories) {
-            Some(largest) => {
-                let mut list = page;
-                for entry in report.categories.iter().filter(|e| e.bytes > 0) {
-                    list = list.child(usage_row(entry, largest, colors::brand()));
-                }
-                list
-            }
-            None => page.child(empty_note("Nothing stored yet.")),
-        };
-
-        page = page.child(section_header("CLUSTERS"));
-        page = match largest(&report.clusters) {
-            Some(largest) => {
-                let mut list = page;
-                for entry in report.clusters.iter().filter(|e| e.bytes > 0) {
-                    list = list.child(usage_row(entry, largest, colors::fg_secondary()));
-                }
-                list
-            }
-            None => page.child(empty_note("No cluster is using any space.")),
-        };
-
-        page.child(footnote()).into_element()
+            )
+            .child(section_header("WHAT'S USING SPACE"))
+            .child(usage_list(
+                &report.categories,
+                colors::brand(),
+                "Nothing stored yet.",
+            ))
+            .child(section_header("CLUSTERS"))
+            .child(usage_list(
+                &report.clusters,
+                colors::fg_secondary(),
+                "No cluster is using any space.",
+            ))
+            .child(footnote())
+            .into_element()
     }
 }
 
 fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
-    let reclaimable = report.unreferenced_cache.bytes + report.legacy_cluster_content.bytes;
+    let reclaimable = report.unreferenced_cache.bytes
+        + report.legacy_cluster_content.bytes
+        + report.unused_natives.bytes;
 
     let subtitle = if reclaimable > 0 {
         format!("{} can be freed", format_bytes(reclaimable))
@@ -145,7 +138,6 @@ fn hero_placeholder() -> impl IntoElement {
         .into_element()
 }
 
-/// A component rather than a function because it owns a hook each instance gets its own scope so a button tracks only its own progress
 #[derive(PartialEq)]
 struct ReclaimRow {
     icon: IconType,
@@ -261,35 +253,74 @@ fn proportion_bar(fraction: f32, fill: Color) -> impl IntoElement {
         .into_element()
 }
 
+/// One row per entry that holds anything, bars scaled against the biggest of them
+fn usage_list(entries: &[StorageEntry], bar: Color, empty: &'static str) -> Element {
+    let Some(largest) = largest(entries) else {
+        return empty_note(empty).into_element();
+    };
+
+    let mut list = rect().vertical().width(Size::fill()).spacing(4.);
+    for entry in entries.iter().filter(|entry| entry.bytes > 0) {
+        list = list.child(usage_row(entry, largest, bar));
+    }
+
+    list.into_element()
+}
+
 fn largest(entries: &[StorageEntry]) -> Option<u64> {
     entries.iter().map(|e| e.bytes).max().filter(|max| *max > 0)
 }
 
 fn unused_cache_description(entry: &ReclaimableEntry) -> String {
     if entry.is_empty() {
-        return "Nothing here — every cached file belongs to an installed package.".to_string();
+        return "Nothing here - every cached file belongs to an installed package.".to_string();
     }
 
     format!(
         "{} across {} file{} that no installed package points at.",
         format_bytes(entry.bytes),
         entry.files,
-        plural(entry.files)
+        plural(entry.files as i64)
     )
 }
 
-fn legacy_content_description(entry: &ReclaimableEntry) -> String {
-    if entry.is_empty() {
-        return "Nothing here — no cluster folder is holding old content.".to_string();
+fn legacy_content_description(
+    content: &ReclaimableEntry,
+    natives: &ReclaimableEntry,
+) -> String {
+    if content.is_empty() && natives.is_empty() {
+        return "Nothing here - no old cluster content and no unused natives.".to_string();
     }
 
-    format!(
-        "{} across {} file{} left in cluster folders by an older version. Already ignored when \
-         you play; this just reclaims the space.",
-        format_bytes(entry.bytes),
-        entry.files,
-        plural(entry.files)
-    )
+    let mut parts = Vec::new();
+
+    if !content.is_empty() {
+        parts.push(format!(
+            "{} across {} file{} left in cluster folders by an older version",
+            format_bytes(content.bytes),
+            content.files,
+            plural(content.files as i64)
+        ));
+    }
+
+    if !natives.is_empty() {
+        parts.push(format!(
+            "{} across {} native folder{} no cluster uses any more",
+            format_bytes(natives.bytes),
+            natives.files,
+            plural(natives.files as i64)
+        ));
+    }
+
+    // Natives are not inert deleting them costs a re-download on the next launch
+    // so promising the space is free would be a lie
+    let tail = if natives.is_empty() {
+        "Already ignored when you play; this just reclaims the space."
+    } else {
+        "Nothing a cluster still needs is touched; anything else is fetched again on demand."
+    };
+
+    format!("{}. {tail}", parts.join(", plus "))
 }
 
 fn empty_note(text: &'static str) -> impl IntoElement {
@@ -320,8 +351,4 @@ fn footnote() -> impl IntoElement {
                 .color(colors::fg_secondary()),
         )
         .into_element()
-}
-
-fn plural(count: usize) -> &'static str {
-    if count == 1 { "" } else { "s" }
 }

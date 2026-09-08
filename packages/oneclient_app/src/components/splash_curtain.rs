@@ -65,15 +65,14 @@ impl Component for CurtainFade {
             });
         });
 
-        let opacity = fade.get().value();
+        let alpha = fade.get().value().clamp(0., 1.);
 
         rect()
             .width(Size::fill())
             .height(Size::fill())
             .position(Position::new_global().top(0.).left(0.))
             .layer(Layer::Overlay)
-            .opacity(opacity)
-            .background(colors::page())
+            .background(colors::page().with_a((255. * alpha).round() as u8))
             .window_drag()
             .into_element()
     }

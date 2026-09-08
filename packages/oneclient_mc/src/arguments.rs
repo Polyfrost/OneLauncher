@@ -6,6 +6,7 @@ use interfrost::api::modded::SidedDataEntry;
 use interfrost::utils::get_path_from_artifact;
 
 use oneclient_common::constants::{self, DUMMY_REPLACE_NEWLINE};
+use oneclient_common::paths;
 use crate::rules::validate_rules;
 use crate::error::McError;
 use oneclient_common::Resolution;
@@ -343,13 +344,19 @@ pub fn parse_minecraft_argument(
             "${assets_root}",
             &polyio::canonicalize(assets_directory)?.display().to_string(),
         )
-        .replace(
-            "${game_assets}",
-            &polyio::canonicalize(assets_directory)?.display().to_string(),
-        )
+        .replace("${game_assets}", &legacy_assets_path()?)
         .replace("${version_type}", version_type.as_str())
         .replace("${resolution_width}", &resolution.width.to_string())
         .replace("${resolution_height}", &resolution.height.to_string()))
+}
+
+fn legacy_assets_path() -> McResult<String> {
+    let dir = paths::legacy_assets_dir()?;
+
+    Ok(polyio::canonicalize(&dir)
+        .unwrap_or(dir)
+        .display()
+        .to_string())
 }
 
 fn parse_java_argument(

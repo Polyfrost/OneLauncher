@@ -50,6 +50,11 @@ impl DownloadPlan {
     }
 }
 
+#[must_use]
+pub fn uses_legacy_assets(assets: &str) -> bool {
+    matches!(assets, "legacy" | "pre-1.6")
+}
+
 fn asset_object_path(dir: &Path, name: &str, hash: &str, legacy: bool) -> PathBuf {
     if legacy {
         dir.join(name.replace('/', std::path::MAIN_SEPARATOR_STR))
@@ -75,6 +80,12 @@ fn library_artifact_size(lib: &Library) -> u64 {
         .as_ref()
         .and_then(|downloads| downloads.artifact.as_ref())
         .map_or(0, |artifact| u64::from(artifact.size))
+}
+
+fn has_main_artifact(lib: &Library) -> bool {
+    lib.downloads
+        .as_ref()
+        .is_none_or(|downloads| downloads.artifact.is_some())
 }
 
 fn native_download<'a>(lib: &'a Library, java_arch: &str) -> Option<&'a LibraryDownload> {
@@ -155,7 +166,7 @@ pub async fn plan_downloads(
     minecraft_updated: bool,
     force: bool,
 ) -> McResult<DownloadPlan> {
-    let legacy = version.assets == "legacy";
+    let legacy = uses_legacy_assets(&version.assets);
     let asset_dir = if legacy {
         paths::legacy_assets_dir()?
     } else {
@@ -208,11 +219,12 @@ pub async fn plan_downloads(
                 continue;
             };
 
-            let artifact = force
-                || !matches_expected_size(
-                    &lib_dir.join(&artifact_path),
-                    library_artifact_size(&lib),
-                );
+            let artifact = has_main_artifact(&lib)
+                && (force
+                    || !matches_expected_size(
+                        &lib_dir.join(&artifact_path),
+                        library_artifact_size(&lib),
+                    ));
             let natives = force || !natives_extracted(&natives_dir, &lib, &java_arch);
 
             if !artifact && !natives {
@@ -426,7 +438,7 @@ pub async fn verify_game_files(
     java_arch: &str,
     minecraft_updated: bool,
 ) -> McResult<VerifyReport> {
-    let legacy = version.assets == "legacy";
+    let legacy = uses_legacy_assets(&version.assets);
     let asset_dir = if legacy {
         paths::legacy_assets_dir()?
     } else {
@@ -599,7 +611,7 @@ pub async fn download_minecraft(
         download_assets(
             ctx,
             progress,
-            version.assets == "legacy",
+            uses_legacy_assets(&version.assets),
             assets,
         ),
         download_client(ctx, progress, version, force),
@@ -1032,6 +1044,9 @@ pub fn natives_missing(
             );
         }
 
+        if !has_main_artifact(lib) {
+            continue;
+        }
         let Ok(rel) = interfrost::utils::get_path_from_artifact(&lib.name) else {
             continue;
         };
@@ -1098,7 +1113,7 @@ pub fn game_files_missing(
     minecraft_updated: bool,
 ) -> McResult<bool> {
     let index = paths::assets_index_dir()?.join(format!("{}.json", version_info.asset_index.id));
-    let objects = if version_info.assets == "legacy" {
+    let objects = if uses_legacy_assets(&version_info.assets) {
         paths::legacy_assets_dir()?
     } else {
         paths::assets_object_dir()?
@@ -1480,6 +1495,67 @@ mod tests {
         std::fs::write(&index, b"{}").unwrap();
 
         (index, objects)
+    }
+
+    #[test]
+    fn a_natives_only_library_has_no_main_jar_to_fetch() {
+        let natives_only = serde_json::from_str::<Library>(
+            r#"{
+                "name": "org.lwjgl.lwjgl:lwjgl-platform:2.9.4+legacyfabric.15",
+                "downloads": { "classifiers": { "natives-osx": { "sha1": "a", "size": 1, "url": "https://maven.legacyfabric.net/natives-osx.jar" } } },
+                "natives": { "osx-arm64": "natives-osx" }
+            }"#,
+        )
+        .unwrap();
+        let with_artifact = serde_json::from_str::<Library>(
+            r#"{
+                "name": "org.ow2.asm:asm:9.10.1",
+                "downloads": { "artifact": { "sha1": "b", "size": 2, "url": "https://maven.fabricmc.net/asm.jar" } }
+            }"#,
+        )
+        .unwrap();
+        let coordinates_only =
+            serde_json::from_str::<Library>(r#"{ "name": "net.fabricmc:fabric-loader:0.19.5" }"#)
+                .unwrap();
+
+        assert!(!has_main_artifact(&natives_only));
+        assert!(has_main_artifact(&with_artifact));
+        assert!(has_main_artifact(&coordinates_only));
+    }
+
+    #[test]
+    fn old_versions_keep_their_assets_in_a_flat_tree() {
+        assert!(uses_legacy_assets("pre-1.6"));
+        assert!(uses_legacy_assets("legacy"));
+        assert!(!uses_legacy_assets("1.8"));
+        assert!(!uses_legacy_assets("1.14"));
+    }
+
+    #[test]
+    fn a_manifest_without_a_wildcard_resolves_per_game_version() {
+        let manifest = serde_json::from_str::<interfrost::api::modded::Manifest>(
+            r#"{"gameVersions": [
+                { "id": "b1.7.3", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/b1.7.3/0.19.5.json", "stable": true },
+                    { "id": "0.19.4", "url": "https://meta.example/b1.7.3/0.19.4.json", "stable": false }
+                ]},
+                { "id": "1.8.9", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/1.8.9/0.19.5.json", "stable": true }
+                ]}
+            ]}"#,
+        )
+        .unwrap();
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "b1.7.3", None);
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.5");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "b1.7.3", Some("0.19.4"));
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.4");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.21", None);
+        assert!(!saw && resolved.is_none());
     }
 
     #[test]

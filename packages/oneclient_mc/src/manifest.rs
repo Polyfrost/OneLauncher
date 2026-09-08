@@ -27,7 +27,7 @@ struct MetadataInner {
     neo: Option<ModdedManifest>,
     fabric: Option<ModdedManifest>,
     quilt: Option<ModdedManifest>,
-    legacyfabric: Option<ModdedManifest>,
+    ornithe: Option<ModdedManifest>,
 }
 
 impl MetadataStore {
@@ -87,7 +87,7 @@ impl MetadataStore {
             GameLoader::NeoForge => self.inner.neo.as_ref(),
             GameLoader::Fabric => self.inner.fabric.as_ref(),
             GameLoader::Quilt => self.inner.quilt.as_ref(),
-            GameLoader::LegacyFabric => self.inner.legacyfabric.as_ref(),
+            GameLoader::Ornithe => self.inner.ornithe.as_ref(),
             GameLoader::Vanilla => None,
         }
         .ok_or_else(|| McError::FetchError)
@@ -164,18 +164,20 @@ impl MetadataStore {
         check_modded!(neo);
         check_modded!(fabric);
         check_modded!(quilt);
+        check_modded!(ornithe);
 
         changed
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn fetch_all(&mut self, ctx: &McCtx) {
-        let (minecraft, forge, neo, fabric, quilt) = tokio::join!(
+        let (minecraft, forge, neo, fabric, quilt, ornithe) = tokio::join!(
             fetch_vanilla_manifest(ctx),
             fetch_modded_manifest(ctx, GameLoader::Forge),
             fetch_modded_manifest(ctx, GameLoader::NeoForge),
             fetch_modded_manifest(ctx, GameLoader::Fabric),
             fetch_modded_manifest(ctx, GameLoader::Quilt),
+            fetch_modded_manifest(ctx, GameLoader::Ornithe),
         );
 
         self.inner.minecraft = minecraft.ok();
@@ -183,6 +185,7 @@ impl MetadataStore {
         self.inner.neo = neo.ok();
         self.inner.fabric = fabric.ok();
         self.inner.quilt = quilt.ok();
+        self.inner.ornithe = ornithe.ok();
     }
 
     #[tracing::instrument(level = "debug", skip(self, ctx))]
@@ -201,12 +204,8 @@ impl MetadataStore {
 
         let mut loaders = Vec::new();
         for loader in GameLoader::modded_loaders() {
-            let manifest = match self.get_modded(*loader) {
-                Ok(manifest) => manifest,
-                Err(McError::NotModdedManifest(_)) => {
-                    continue
-                }
-                Err(e) => return Err(e),
+            let Ok(manifest) = self.get_modded(*loader) else {
+                continue;
             };
 
             let found = manifest.game_versions.iter().any(|entry| {

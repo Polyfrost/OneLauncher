@@ -28,7 +28,7 @@ use crate::bundles::types::{
     BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate, BundleUpdateCheckResult,
     BundleWithUpdateStatus, FileUpdateStatus, external_bundle_key, managed_bundle_key,
 };
-use oneclient_common::domain::{GameLoader, ProviderId};
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use crate::packages::store::PackageStore;
 use crate::packages::types::LinkedArtifactInfo;
 use crate::ctx::ContentCtx;
@@ -346,13 +346,22 @@ async fn check_bundle_updates_inner(
     for hash in all_installed_external_hashes {
         planned_addition_keys.insert(external_bundle_key(&hash));
     }
+    let installed_keys = planned_addition_keys.clone();
+    let shared_keys = keys_shipped_by_several_bundles(
+        archives
+            .iter()
+            .filter(|a| addition_eligible_bundles.contains(&a.manifest.name)),
+    );
 
     for archive in &archives {
         if !addition_eligible_bundles.contains(&archive.manifest.name) {
             continue;
         }
+        let suppressed_types =
+            suppressed_content_types(archive, &overrides_map, &installed_keys, &shared_keys);
 
         for file in &archive.manifest.files {
+            let suppressed = suppressed_types.contains(&file.content_type());
             let file_id = file.kind.package_id();
             let user_override = overrides_map
                 .get(&(archive.manifest.name.clone(), file_id.clone()))
@@ -370,7 +379,7 @@ async fn check_bundle_updates_inner(
                 continue;
             }
 
-            if !crate::bundles::effective_enabled(file, user_override) {
+            if suppressed || !crate::bundles::effective_enabled(file, user_override) {
                 if user_override.is_none()
                     && !file.hidden
                     && !optional_available.iter().any(|(key, _)| *key == file_key)
@@ -916,6 +925,75 @@ fn bundle_package_key(
     } else {
         managed_bundle_key(ProviderId::Modrinth, package_id)
     }
+}
+
+fn keys_shipped_by_several_bundles<'a>(
+    archives: impl IntoIterator<Item = &'a BundleArchive>,
+) -> HashSet<String> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+
+    for archive in archives {
+        let mut seen: HashSet<String> = HashSet::new();
+        for file in &archive.manifest.files {
+            let key = match &file.kind {
+                BundleFileKind::Managed {
+                    provider,
+                    project_id,
+                    ..
+                } => managed_bundle_key(*provider, project_id),
+                BundleFileKind::External(ext) => external_bundle_key(&ext.sha1),
+            };
+            if seen.insert(key.clone()) {
+                *counts.entry(key).or_default() += 1;
+            }
+        }
+    }
+
+    counts
+        .into_iter()
+        .filter_map(|(key, count)| (count > 1).then_some(key))
+        .collect()
+}
+
+fn suppressed_content_types(
+    archive: &BundleArchive,
+    overrides_map: &HashMap<(String, String), OverrideType>,
+    installed_keys: &HashSet<String>,
+    shared_keys: &HashSet<String>,
+) -> HashSet<ContentType> {
+    let bundle_name = &archive.manifest.name;
+    let mut all_suppressed: HashMap<ContentType, bool> = HashMap::new();
+
+    for file in archive.manifest.files.iter().filter(|f| !f.hidden) {
+        let override_type =
+            overrides_map.get(&(bundle_name.clone(), file.kind.package_id())).copied();
+        let key = match &file.kind {
+            BundleFileKind::Managed {
+                provider,
+                project_id,
+                ..
+            } => managed_bundle_key(*provider, project_id),
+            BundleFileKind::External(ext) => external_bundle_key(&ext.sha1),
+        };
+        if override_type.is_none() && !installed_keys.contains(&key) {
+            continue;
+        }
+        if shared_keys.contains(&key) {
+            continue;
+        }
+
+        let suppressed = matches!(
+            override_type,
+            Some(OverrideType::Disabled | OverrideType::Removed)
+        );
+        let entry = all_suppressed.entry(file.content_type()).or_insert(true);
+        *entry = *entry && suppressed;
+    }
+
+    all_suppressed
+        .into_iter()
+        .filter_map(|(ct, all)| all.then_some(ct))
+        .collect()
 }
 
 /// Stricter than subscription

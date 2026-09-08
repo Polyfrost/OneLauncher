@@ -224,6 +224,8 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
             "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
         ),
     };
+
+    notice_bar(text)
 }
 
 pub(super) fn global_notice(noun_plural: &'static str) -> Element {

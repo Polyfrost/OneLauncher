@@ -352,21 +352,29 @@ async fn drop_materialized_content(state: &LauncherState) {
 	let mut dirs = Vec::new();
 
 	if let Ok(shared) = paths::shared_minecraft_dir() {
-		dirs.push(shared);
+		dirs.push((shared.clone(), manifest::MANIFEST_NAME));
+		dirs.push((shared, manifest::GLOBAL_MANIFEST_NAME));
 	}
 
 	match state.clusters.list().await {
-		Ok(clusters) => dirs.extend(
-			clusters
-				.iter()
-				.filter(|cluster| cluster.uses_dedicated_dir())
-				.filter_map(|cluster| cluster.game_dir().ok()),
-		),
+		Ok(clusters) => {
+			for cluster in &clusters {
+				if let Ok(dir) = cluster.dir() {
+					dirs.push((dir, manifest::MODS_MANIFEST_NAME));
+				}
+
+				if cluster.uses_dedicated_dir()
+					&& let Ok(dir) = cluster.game_dir()
+				{
+					dirs.push((dir, manifest::MANIFEST_NAME));
+				}
+			}
+		}
 		Err(err) => tracing::warn!(%err, "could not list clusters; only clearing the shared folder"),
 	}
 
-	for dir in dirs {
-		let Some(loaded) = manifest::load(&dir).await else {
+	for (dir, manifest_name) in dirs {
+		let Some(loaded) = manifest::load(&dir, manifest_name).await else {
 			continue;
 		};
 
@@ -379,7 +387,7 @@ async fn drop_materialized_content(state: &LauncherState) {
 			}
 		}
 
-		manifest::clear(&dir).await;
+		manifest::clear(&dir, manifest_name).await;
 	}
 
 	if let Ok(shared) = paths::shared_minecraft_dir() {

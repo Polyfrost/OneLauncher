@@ -2,7 +2,9 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use freya::prelude::spawn_forever;
+use tokio::sync::mpsc::UnboundedSender;
 use oneclient_common::Patch;
+use oneclient_core::settings::store::save_settings_and_apply;
 use oneclient_core::{LauncherState, ProfileUpdate};
 use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt, Signal};
@@ -24,15 +26,25 @@ enum MicrosoftJavaAnswer {
 }
 
 pub fn spawn_auto_install() {
-    spawn_forever(auto_install());
+    tokio::spawn(auto_install(ui_refresh_channel()));
 }
 
-async fn auto_install() {
+fn ui_refresh_channel() -> UnboundedSender<()> {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
+    spawn_forever(async move {
+        while rx.recv().await.is_some() {
+            crate::hooks::invalidate_profile_queries().await;
+        }
+    });
+    tx
+}
+
+async fn auto_install(refresh: UnboundedSender<()>) {
     let Ok(state) = launcher::state() else {
         return;
     };
 
-    if opted_out(&state) {
+    if opted_out(&state) || already_migrated(&state) {
         return;
     }
 
@@ -74,11 +86,9 @@ async fn auto_install() {
         major,
         "fetching a Microsoft runtime for the cluster on Automatic"
     );
-    install_and_unpin(cluster_id, major);
+    install_and_unpin(cluster_id, major, refresh);
 }
 
-/// Asked before the game starts the install that may follow lands on the next
-/// launch not this one
 pub async fn offer_for_pinned_cluster(actions: &Actions, cluster_id: ClusterId) {
     let Ok(state) = launcher::state() else {
         return;
@@ -96,13 +106,47 @@ pub async fn offer_for_pinned_cluster(actions: &Actions, cluster_id: ClusterId) 
         return;
     }
 
-    if !publishes(&state, pinned.major).await || !claim_ask(cluster_id) {
+    let major = match oneclient_core::required_java_major(&state, cluster_id).await {
+        Ok(Some(major)) => major,
+        Ok(None) => {
+            tracing::info!(cluster_id, "the cluster's manifest names no Java version");
+            return;
+        }
+        Err(err) => {
+            tracing::warn!(cluster_id, "could not read the cluster's Java version: {err:#}");
+            return;
+        }
+    };
+
+    let installed = match state
+        .java
+        .has_vendor_runtime(&JavaVendor::Microsoft, Some(major))
+        .await
+    {
+        Ok(installed) => installed,
+        Err(err) => {
+            tracing::warn!("could not check for a Microsoft Java runtime: {err:#}");
+            false
+        }
+    };
+
+    if !installed && !publishes(&state, major).await {
         return;
     }
 
-    match actions.events().ask(offer_prompt()).await {
+    if !claim_ask(cluster_id) {
+        return;
+    }
+
+    match actions.events().ask(offer_prompt(installed)).await {
         Ok(Some(chosen)) => match chosen.value {
-            MicrosoftJavaAnswer::Install => install_and_unpin(cluster_id, pinned.major),
+            MicrosoftJavaAnswer::Install => {
+                if installed {
+                    unpin_to_automatic(&state, cluster_id, major, true, ui_refresh_channel()).await;
+                } else {
+                    install_and_unpin(cluster_id, major, ui_refresh_channel());
+                }
+            }
             MicrosoftJavaAnswer::Never => actions.skip_microsoft_java(),
         },
         Ok(None) => tracing::info!(cluster_id, "Microsoft Java offer dismissed"),
@@ -110,13 +154,21 @@ pub async fn offer_for_pinned_cluster(actions: &Actions, cluster_id: ClusterId) 
     }
 }
 
-fn offer_prompt() -> Prompt<MicrosoftJavaAnswer> {
+fn offer_prompt(installed: bool) -> Prompt<MicrosoftJavaAnswer> {
+    let closing = if installed {
+        "You already have it installed, so this cluster switches over right away."
+    } else {
+        "Minecraft will launch with Microsoft OpenJDK next time."
+    };
+
     Prompt::new(
         "Microsoft Java runtime",
-        "Based on our research, we now recommend Microsoft's OpenJDK \
-         as they have specific optimizations for Minecraft. \
-         Would you like to use Microsoft OpenJDK as your default Java installation? \
-         Minecraft will launch with Microsoft OpenJDK next time.",
+        format!(
+            "Based on our research, we now recommend Microsoft's OpenJDK \
+             as they have specific optimizations for Minecraft. \
+             Would you like to use Microsoft OpenJDK as your default Java installation? \
+             {closing}"
+        ),
     )
     .option(
         Choice::new(MICROSOFT_JAVA_CHOICE_NEVER, "Don't ask again"),
@@ -129,8 +181,8 @@ fn offer_prompt() -> Prompt<MicrosoftJavaAnswer> {
     .dismiss("Cancel")
 }
 
-fn install_and_unpin(cluster_id: ClusterId, major: u32) {
-    spawn_forever(async move {
+fn install_and_unpin(cluster_id: ClusterId, major: u32, refresh: UnboundedSender<()>) {
+    tokio::spawn(async move {
         let Ok(state) = launcher::state() else { return };
         let events = state.services.events.clone();
 
@@ -153,36 +205,73 @@ fn install_and_unpin(cluster_id: ClusterId, major: u32) {
         events.signal(Signal::JavaChanged);
         tracing::info!(cluster_id, version = %runtime.version, "installed a Microsoft runtime");
 
-        // Cleared rather than pointed at the new runtime Automatic ranks the
-        // default vendor first so it lands on this one anyway and the cluster
-        // keeps following later Microsoft installs instead of freezing on one
-        let update = ProfileUpdate {
-            java_path: Patch::Clear,
-            ..Default::default()
-        };
-
-        match state.clusters.update_profile(cluster_id, update).await {
-            Ok(_) => {
-                crate::hooks::invalidate_profile_queries().await;
-                events
-                    .notify("Java switched")
-                    .body(format!(
-                        "This cluster is back on Automatic and picks Microsoft {major} from its \
-                         next launch."
-                    ))
-                    .send();
-            }
-            // Only when installation was successfull and the cluster is not pointing to the new version
-            Err(err) => events
-                .notify("Cluster not switched")
-                .body(format!(
-                    "Microsoft {major} was installed but the cluster still points at its old \
-                     runtime: {err}"
-                ))
-                .error()
-                .send(),
-        }
+        unpin_to_automatic(&state, cluster_id, major, false, refresh).await;
     });
+}
+
+async fn unpin_to_automatic(
+    state: &Arc<LauncherState>,
+    cluster_id: ClusterId,
+    major: u32,
+    immediate: bool,
+    refresh: UnboundedSender<()>,
+) {
+    let events = state.services.events.clone();
+
+    mark_migrated(state).await;
+
+    // Cleared rather than pointed at the new runtime Automatic ranks the
+    // default vendor first so it lands on this one anyway and the cluster
+    // keeps following later Microsoft installs instead of freezing on one
+    let update = ProfileUpdate {
+        java_path: Patch::Clear,
+        ..Default::default()
+    };
+
+    match state.clusters.update_profile(cluster_id, update).await {
+        Ok(_) => {
+            let _ = refresh.send(());
+            let body = if immediate {
+                format!(
+                    "This cluster is back on Automatic and runs on Microsoft {major} from now \
+                     on."
+                )
+            } else {
+                format!(
+                    "This cluster is back on Automatic and picks Microsoft {major} from its next \
+                     launch."
+                )
+            };
+            events.notify("Java switched").body(body).send();
+        }
+        // Only when installation was successfull and the cluster is not pointing to the new version
+        Err(err) => events
+            .notify("Cluster not switched")
+            .body(format!(
+                "Microsoft {major} is ready but the cluster still points at its old runtime: {err}"
+            ))
+            .error()
+            .send(),
+    }
+}
+
+fn already_migrated(state: &Arc<LauncherState>) -> bool {
+    state.settings.read().microsoft_java_migrated
+}
+
+async fn mark_migrated(state: &Arc<LauncherState>) {
+    let snapshot = {
+        let mut settings = state.settings.write();
+        if settings.microsoft_java_migrated {
+            return;
+        }
+        settings.microsoft_java_migrated = true;
+        settings.clone()
+    };
+
+    if let Err(err) = save_settings_and_apply(&state.services, &snapshot).await {
+        tracing::warn!("could not record the Microsoft Java migration: {err:#}");
+    }
 }
 
 fn opted_out(state: &Arc<LauncherState>) -> bool {

@@ -24,7 +24,9 @@ impl Component for SettingsStorage {
         let scan = use_storage_scan_progress();
 
         let Some(report) = try_storage_report(&report_query) else {
-            return settings_page().child(hero_placeholder()).into_element();
+            return settings_page()
+                .child(scan_card(scan.as_ref()))
+                .into_element();
         };
 
         let refresh = Button::new()
@@ -41,8 +43,7 @@ impl Component for SettingsStorage {
             page = page.child(scan_card(scan.as_ref()));
         }
 
-        page = page
-            .child(section_header("FREE UP SPACE"))
+        page.child(section_header("FREE UP SPACE"))
             .child(
                 ReclaimRow {
                     icon: IconType::FileX02,

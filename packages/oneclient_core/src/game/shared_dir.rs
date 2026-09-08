@@ -83,6 +83,9 @@ pub async fn materialize_content(
     let previous_mods = manifest::load(&cluster_dir, manifest::MODS_MANIFEST_NAME).await;
     let previous_global = manifest::load(&global_root, manifest::GLOBAL_MANIFEST_NAME).await;
     crate::game::heal::clear_zeroed_files(game_dir).await;
+    if mods_in_cluster {
+        crate::game::heal::clear_zeroed_mods(&cluster_dir).await;
+    }
 
     let linked = PackageStore::list_linked_artifacts(cluster.id, &services.content())
         .await
@@ -143,34 +146,29 @@ pub async fn materialize_content(
         tracing::warn!(cluster_id = cluster.id, %err, "failed to resolve duplicate package versions");
     }
 
-  // TODO(merge): Fix this
-//     let (mods, rest): (Vec<Desired>, Vec<Desired>) = desired_mods(services, cluster)
-//         .await?
-//         .into_iter()
-//         .partition(|_| mods_in_cluster);
+    let (mods, rest): (Vec<Desired>, Vec<Desired>) = desired_mods(services, cluster)
+        .await?
+        .into_iter()
+        .partition(|_| mods_in_cluster);
 
-//     // read across every cluster rather than this one so a pack installed anywhere is present here too
-//     let packs = desired_global(services).await?;
-//     // Held from the database snapshot through the save so a package removed
-//     // mid-launch is not resurrected by our own write; the two calls above take
-//     // it themselves so it cannot be taken any earlier
-//     let _manifest = manifest::lock().await;
+    // read across every cluster rather than this one so a pack installed anywhere is present here too
+    let packs = desired_global(services).await?;
 
-//     // In the shared directory this often belongs to another cluster so every
-//     // use of it checks the id
-//     let previous = manifest::load(game_dir).await;
+    // Held from the database snapshot through the save so a package removed
+    // mid-launch is not resurrected by our own write; the two calls above take
+    // it themselves so it cannot be taken any earlier
+    let _manifest = manifest::lock().await;
 
-//     let desired = desired_content(services, cluster).await?;
-//     let desired_paths: HashSet<String> = desired.iter().map(Desired::relative_path).collect();
+    let mods_root = if mods_in_cluster { &cluster_dir } else { game_dir };
+    for content_type in SWAP_TYPES {
+        sweep_staging_files(&mods_root.join(content_type.folder_name())).await;
+    }
+    for content_type in GLOBAL_TYPES {
+        sweep_staging_files(&global_root.join(content_type.folder_name())).await;
+    }
 
-//     for content_type in SWAP_TYPES {
-//         sweep_staging_files(&game_dir.join(content_type.folder_name())).await;
-//     }
-
-//     // While the game is still closed this is what lands a package removed
-//     // mid-session and clears another cluster's content from the shared dir
-//     prune_previous(game_dir, previous.as_ref(), &desired_paths).await;
-
+    // While the game is still closed this is what lands a package removed
+    // mid-session and clears another cluster's content from the shared dir
     let mod_paths: HashSet<String> = mods.iter().map(Desired::relative_path).collect();
     let rest_paths: HashSet<String> = rest.iter().map(Desired::relative_path).collect();
     let pack_paths: HashSet<String> = packs.iter().map(Desired::relative_path).collect();
@@ -428,6 +426,7 @@ async fn disable_hand_removed(
         } else {
             oneclient_content::bundles::set_artifact_enabled_to(cluster.id, &hash, false, &ctx)
                 .await
+                .map(|_| ())
                 .map_err(Into::into)
         };
 
@@ -559,7 +558,7 @@ pub async fn dematerialize_content(
         let ours = ours_in_folder(*content_type, &linked, current.as_ref());
         stash_content_files(&dir, &stash, &ours).await;
         sweep_staging_files(&dir).await;
-        ensure_note(&dir, content_type).await;
+        ensure_note(&dir, *content_type).await;
     }
 
     manifest::clear(game_dir, manifest::MANIFEST_NAME).await;

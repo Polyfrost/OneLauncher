@@ -118,8 +118,8 @@ pub async fn try_unlink_materialized(
 		return false;
 	};
 
-  let _guard = manifest::lock().await;
-  
+	let _guard = manifest::lock().await;
+
 	let Some(mut loaded) = manifest::load(&root, manifest_name).await else {
 		return false;
 	};
@@ -165,7 +165,7 @@ pub async fn try_link_materialized(
 		return LiveSync::Skipped;
 	}
 
-	let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name) else {
+	let Some((root, manifest_name)) = materialized_root(cluster, content_type) else {
 		return LiveSync::Deferred;
 	};
 
@@ -181,19 +181,25 @@ pub async fn try_link_materialized(
 	let _guard = manifest::lock().await;
 
 	// No manifest means nothing is playing out of this folder right now
-	let Some(mut loaded) = manifest::load(&game_dir).await else {
+	let Some(mut loaded) = manifest::load(&root, manifest_name).await else {
 		return LiveSync::Skipped;
 	};
 
-	if loaded.cluster_id != cluster.id {
+	if !content_type.is_global() && loaded.cluster_id != cluster.id {
 		return LiveSync::Deferred;
 	}
 
 	let relative = manifest::entry_path(content_type.folder_name(), file_name);
-	let dest = game_dir.join(content_type.folder_name()).join(file_name);
+	let dest = root.join(&relative);
+
+	let ours = if content_type.is_global() {
+		loaded.contains(&relative)
+	} else {
+		loaded.owns(cluster.id, &relative)
+	};
 
 	// Same rule as the unlink path: never write over a file we did not place
-	if !loaded.owns(cluster.id, &relative) && polyio::symlink_metadata(&dest).await.is_ok() {
+	if !ours && polyio::symlink_metadata(&dest).await.is_ok() {
 		tracing::debug!(
 			file = file_name,
 			"a file we do not own already sits in the game folder; leaving it to the next launch"
@@ -215,7 +221,7 @@ pub async fn try_link_materialized(
 		path: relative,
 		hash: artifact.hash.clone(),
 	});
-	manifest::save(&game_dir, &loaded).await;
+	manifest::save(&root, manifest_name, &loaded).await;
 
 	LiveSync::Applied
 }

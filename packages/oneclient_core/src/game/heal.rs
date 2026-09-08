@@ -23,6 +23,27 @@ const SWEPT_CONTENT: [(ContentType, bool); 3] = [
 ];
 
 #[tracing::instrument(level = "debug")]
+pub async fn clear_zeroed_mods(cluster_dir: &Path) -> usize {
+    let mods_dir = cluster_dir.join(ContentType::Mod.folder_name());
+
+    tokio::task::spawn_blocking(move || {
+        let cleared = sweep_dir(&mods_dir, true);
+
+        if cleared > 0 {
+            tracing::info!(
+                cleared,
+                mods_dir = %mods_dir.display(),
+                "cleared zero-filled files; affected mods will regenerate defaults"
+            );
+        }
+
+        cleared
+    })
+    .await
+    .unwrap_or(0)
+}
+
+#[tracing::instrument(level = "debug")]
 pub async fn clear_zeroed_files(game_dir: &Path) -> usize {
     let game_dir = game_dir.to_path_buf();
 

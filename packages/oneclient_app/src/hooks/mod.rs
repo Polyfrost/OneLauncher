@@ -127,6 +127,7 @@ pub fn use_storage_scan_progress() -> Option<StorageScanProgress> {
     use_radio(AppChannel::StorageScan)
         .read()
         .storage_scan
+        .clone()
 }
 
 pub fn use_pending_launch() -> Option<String> {

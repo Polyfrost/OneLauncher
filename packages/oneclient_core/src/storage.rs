@@ -109,23 +109,21 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
         files: unreferenced.len(),
     };
 
-  // TODO(merge): Fix this
-//     steps.begin("leftover cluster content");
-//     let legacy = legacy_cluster_content(&cluster_list).await;
+    steps.begin("leftover cluster content");
+    let legacy = legacy_cluster_content(&cluster_list).await;
 
-//     steps.begin("total size");
-//     let total_bytes = dir_size(launcher).await;
-//     let mut total_bytes = dir_size(data).await;
-//     if data != config {
-//         total_bytes += dir_size(paths::logs_dir()?).await;
-//     }
+    steps.begin("total size");
+    let mut total_bytes = dir_size(data).await;
+    if data != config {
+        total_bytes += dir_size(paths::logs_dir()?).await;
+    }
 
     Ok(StorageReport {
         total_bytes,
         categories,
         clusters,
         unreferenced_cache,
-        legacy_cluster_content: legacy_cluster_content(state).await?,
+        legacy_cluster_content: legacy,
         unused_natives: unused_natives(state).await,
     })
 }
@@ -243,7 +241,7 @@ async fn unused_natives(state: &LauncherState) -> ReclaimableEntry {
 
 /// Content is materialized from the cache now so anything in a cluster's own
 /// folder is an inert leftover from an older launcher space not correctness
-async fn legacy_cluster_content(state: &LauncherState) -> LauncherResult<ReclaimableEntry> {
+async fn legacy_cluster_content(clusters: &[Cluster]) -> ReclaimableEntry {
     let mut found = ReclaimableEntry::default();
 
     for cluster in clusters {

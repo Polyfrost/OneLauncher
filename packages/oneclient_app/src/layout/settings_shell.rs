@@ -439,6 +439,7 @@ impl Component for SettingsShell {
                             .width(Size::fill())
                             .height(Size::flex(1.0))
                             .show_scrollbar(true)
+                            .scrollbar_gutter(true)
                             .spacing(4.)
                             .scroll_controller(scroll)
                             .on_ctx(|ctx| {

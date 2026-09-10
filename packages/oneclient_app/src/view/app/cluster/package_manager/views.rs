@@ -613,6 +613,7 @@ impl Component for ContentBox {
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::fill())
+                    .scrollbar_gutter(true)
                     .lazy(count, CARD_H, CARD_SPACING, move |i| {
                         let item = items[i].clone();
                         let key = item.package_id.clone();
@@ -626,6 +627,7 @@ impl Component for ContentBox {
             CardLayout::Grid => ScrollArea::new()
                 .width(Size::fill())
                 .height(Size::fill())
+                .scrollbar_gutter(true)
                 .content(move |ctx: ScrollAreaCtx| {
                     grid_content(&items, package_type, cluster_id, grid_columns, ctx).into_element()
                 })

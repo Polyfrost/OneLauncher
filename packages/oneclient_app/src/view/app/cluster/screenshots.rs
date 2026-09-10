@@ -139,6 +139,7 @@ impl Component for ClusterScreenshots {
         let body = ScrollArea::new()
             .width(Size::fill())
             .height(Size::flex(1.0))
+            .scrollbar_gutter(true)
             .children(vec![content]);
 
         let confirm_overlay = confirm_delete.read().then(|| {

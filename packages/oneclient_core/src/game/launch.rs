@@ -290,6 +290,7 @@ async fn start(
         &libraries,
         &classpaths,
         &version_name,
+        &version.id,
         profile.mem_max.unwrap_or_else(oneclient_common::default_mem_max),
         profile.launch_args.clone().unwrap_or_default(),
         &java.os_arch,

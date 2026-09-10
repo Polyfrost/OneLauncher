@@ -19,6 +19,7 @@ pub fn java_arguments(
     libraries_path: &Path,
     classpaths: &str,
     version: &str,
+    mc_version: &str,
     mem_max: u32,
     custom_args: String,
     java_arch: &str,
@@ -55,6 +56,10 @@ pub fn java_arguments(
     let custom = split_custom_args(&custom_args);
 
     parsed.extend(performance_flags(java_major, java_arch, mem_max, &custom));
+
+    if needs_shadow_stack(mc_version) {
+        parsed.push(SHADOW_STACK_FLAG.to_string());
+    }
 
     parsed.push(format!("-Xmx{mem_max}M"));
     parsed.extend(custom);
@@ -100,6 +105,27 @@ pub fn performance_flags(
     }
 
     flags
+}
+
+const SHADOW_STACK_FLAG: &str = "-XX:StackShadowPages=32";
+
+const SHADOW_STACK_MIN: (u32, u32, u32, u32) = (26, 3, 0, 10);
+
+fn needs_shadow_stack(mc_version: &str) -> bool {
+    let mut parts = mc_version.split('-');
+    let base = parts.next().unwrap_or(mc_version);
+
+    let ordinal = if parts.any(|part| part == "snapshot") {
+        parts.next().and_then(|n| n.parse().ok()).unwrap_or(u32::MAX)
+    } else {
+        u32::MAX
+    };
+
+    oneclient_common::version::parse_mc_version(base).is_some_and(|v| {
+        v.minor.is_some_and(|minor| {
+            (v.major, minor, v.patch.unwrap_or(0), ordinal) >= SHADOW_STACK_MIN
+        })
+    })
 }
 
 fn is_collector_flag(arg: &str) -> bool {
@@ -785,6 +811,98 @@ mod tests {
     #[test]
     fn a_java_7_runtime_is_left_untouched() {
         assert_eq!(flags(7, "amd64", 4096), vec!["-Xms512M"]);
+    }
+}
+
+
+#[cfg(test)]
+mod shadow_stack_tests {
+    use super::needs_shadow_stack;
+
+    #[test]
+    fn lands_in_argv_ahead_of_custom_args() {
+        let args = super::java_arguments(
+            false,
+            Some(&[]),
+            std::path::Path::new("/natives"),
+            std::path::Path::new("/libraries"),
+            "cp",
+            "26.3-snapshot-10-fabric-0.17",
+            "26.3-snapshot-10",
+            4096,
+            "-XX:StackShadowPages=64".to_string(),
+            "amd64",
+            21,
+        )
+        .unwrap();
+
+        let flag = args
+            .iter()
+            .position(|a| a == super::SHADOW_STACK_FLAG)
+            .expect("flag missing from argv");
+        let custom = args
+            .iter()
+            .position(|a| a == "-XX:StackShadowPages=64")
+            .expect("custom arg missing from argv");
+        assert!(flag < custom, "custom arg must come last to win: {args:?}");
+    }
+
+    #[test]
+    fn not_added_below_the_cutoff() {
+        let args = super::java_arguments(
+            false,
+            Some(&[]),
+            std::path::Path::new("/natives"),
+            std::path::Path::new("/libraries"),
+            "cp",
+            "26.3-snapshot-9-fabric-0.17",
+            "26.3-snapshot-9",
+            4096,
+            String::new(),
+            "amd64",
+            21,
+        )
+        .unwrap();
+        assert!(!args.iter().any(|a| a == super::SHADOW_STACK_FLAG), "{args:?}");
+    }
+
+    #[test]
+    fn gates_on_26_3_snapshot_10() {
+        for v in [
+            "26.3-snapshot-10",
+            "26.3-snapshot-11",
+            "26.3-snapshot-40",
+            "26.3",
+            "26.3-pre-1",
+            "26.3-pre-3",
+            "26.3-fabric-0.17",
+            "26.3.1",
+            "26.4-snapshot-1",
+            "27.0",
+        ] {
+            assert!(needs_shadow_stack(v), "{v} should get the flag");
+        }
+
+        for v in [
+            "26.3-snapshot-9",
+            "26.3-snapshot-1",
+            "26.2",
+            "26.2.9",
+            "26.2-snapshot-40",
+            "26.2-fabric-0.17",
+            "26",
+            "1.21.5",
+            "1.21.5-pre1",
+            "26.2-rc-2",
+            "26.1.2-rc-1",
+            "1.RV-Pre1",
+            "b1.8.1",
+            "rd-132211",
+            "1.8.9",
+            "25w14a",
+        ] {
+            assert!(!needs_shadow_stack(v), "{v} should not get the flag");
+        }
     }
 }
 

@@ -229,7 +229,10 @@ fn copy_error_button(message: &str, dispatch: crate::Actions) -> impl IntoElemen
         .into_element()
 }
 
-pub(crate) fn appshell_overlay() -> Rect {
+pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
+    let alpha = alpha.clamp(0., 1.);
+    let scale = |a: u8| (f32::from(a) * alpha).round() as u8;
+
     rect()
         .width(Size::fill())
         .height(Size::fill())
@@ -242,15 +245,15 @@ pub(crate) fn appshell_overlay() -> Rect {
                 .width(Size::fill())
                 .background(
                     LinearGradient::new()
-                        .stop((Color::BLACK.with_a(100), 0.))
-                        .stop((colors::page().with_a(255), 95.0)),
+                        .stop((Color::BLACK.with_a(scale(100)), 0.))
+                        .stop((colors::page().with_a(scale(255)), 95.0)),
                 ),
         )
         .child(
             rect()
                 .height(Size::fill())
                 .width(Size::fill())
-                .background(colors::page()),
+                .background(colors::page().with_a(scale(255))),
         )
 }
 

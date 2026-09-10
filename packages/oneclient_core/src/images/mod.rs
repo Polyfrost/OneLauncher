@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 
 use bytes::Bytes;
@@ -11,14 +11,63 @@ use oneclient_common::paths;
 use oneclient_net::RequestClient;
 use crate::{LauncherError, LauncherResult};
 
-pub const DEFAULT_IMAGE_EDGE: u32 = 1600;
+pub const DEFAULT_IMAGE_EDGE: u32 = 1200;
 
 /// Image urls come from untrusted remote descriptions, so cap what is fetched and decoded.
 const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 
+/// Every decoded image also stays on disk
+/// one entry per (url, max_edge) pair for every image during the lifetme of the program
+const MEMORY_CACHE_BUDGET: usize = 32 * 1024 * 1024;
+
+#[derive(Debug, Default)]
+struct MemoryCache {
+    entries: HashMap<String, Bytes>,
+    order: VecDeque<String>,
+    bytes: usize,
+}
+
+impl MemoryCache {
+    fn get(&mut self, key: &str) -> Option<Bytes> {
+        let hit = self.entries.get(key)?.clone();
+        if let Some(at) = self.order.iter().position(|k| k == key) {
+            self.order.remove(at);
+        }
+        self.order.push_back(key.to_string());
+        Some(hit)
+    }
+
+    fn insert(&mut self, key: String, value: Bytes) {
+        // A single oversized image must not evict the entire cache to store itself.
+        if value.len() > MEMORY_CACHE_BUDGET {
+            return;
+        }
+
+        if let Some(old) = self.entries.remove(&key) {
+            self.bytes -= old.len();
+            if let Some(at) = self.order.iter().position(|k| *k == key) {
+                self.order.remove(at);
+            }
+        }
+
+        self.bytes += value.len();
+        self.entries.insert(key.clone(), value);
+        self.order.push_back(key);
+
+        while self.bytes > MEMORY_CACHE_BUDGET {
+            let Some(oldest) = self.order.pop_front() else {
+                break;
+            };
+            if let Some(dropped) = self.entries.remove(&oldest) {
+                self.bytes -= dropped.len();
+            }
+        }
+    }
+}
+
 #[derive(Debug, Default)]
 pub struct ImageCacheStore {
-    memory: Mutex<HashMap<String, Bytes>>,
+    memory: Mutex<MemoryCache>,
 }
 
 impl ImageCacheStore {
@@ -35,7 +84,7 @@ impl ImageCacheStore {
         max_edge: u32,
     ) -> LauncherResult<Bytes> {
         let mem_key = Self::mem_key(url, max_edge);
-        if let Some(hit) = self.memory.lock().await.get(&mem_key).cloned() {
+        if let Some(hit) = self.memory.lock().await.get(&mem_key) {
             return Ok(hit);
         }
 

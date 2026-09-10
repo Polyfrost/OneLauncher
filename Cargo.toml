@@ -160,3 +160,11 @@ inherits = "release"
 
 debug = true
 strip = false
+
+[profile.release-fastprofiling]
+inherits = "release"
+
+codegen-units = 16
+debug = true
+lto = false
+strip = false

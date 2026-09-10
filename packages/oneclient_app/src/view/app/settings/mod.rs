@@ -24,8 +24,10 @@ pub use minecraft::SettingsMinecraft;
 pub use storage::SettingsStorage;
 
 use crate::{
-    components::{Icon, IconType},
+    components::{Button, Icon, IconType, OverlayPopup},
+    hooks::ResetNotice,
     theme::colors,
+    ui::border_all_color,
 };
 
 pub fn settings_page() -> Rect {
@@ -102,5 +104,134 @@ fn settings_row_inner(
                 ),
         )
         .child(trailing)
+        .into_element()
+}
+
+pub fn take_notice(mut announce: State<bool>, notice: ResetNotice) -> Option<ResetNotice> {
+    if !*announce.peek() {
+        return None;
+    }
+    announce.set(false);
+    Some(notice)
+}
+
+const RESET_BLOCKED: &str =
+    "Minecraft is running. Close the game before resetting these options.";
+
+pub fn reset_row(
+    mut confirming: State<bool>,
+    blocked: bool,
+    description: &'static str,
+    summary: &'static str,
+    on_reset: EventHandler<()>,
+) -> Element {
+    let row = if blocked {
+        settings_row_disabled(
+            IconType::RefreshCw01,
+            "Reset to defaults",
+            RESET_BLOCKED,
+            Button::new().danger().small().disabled(true).text("Reset"),
+        )
+        .into_element()
+    } else {
+        settings_row(
+            IconType::RefreshCw01,
+            "Reset to defaults",
+            description,
+            Button::new()
+                .danger()
+                .small()
+                .on_press(move |_| confirming.set(true))
+                .text("Reset"),
+        )
+        .into_element()
+    };
+
+    let mut section = rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(4.)
+        .child(section_header("RESET"))
+        .child(row);
+
+    if blocked {
+        if *confirming.peek() {
+            confirming.set(false);
+        }
+    } else if *confirming.read() {
+        section = section.child(confirm_reset(confirming, summary, on_reset));
+    }
+
+    section.into_element()
+}
+
+fn confirm_reset(
+    mut confirming: State<bool>,
+    summary: &'static str,
+    on_reset: EventHandler<()>,
+) -> Element {
+    let card = rect()
+        .vertical()
+        .width(Size::px(440.))
+        .max_width(Size::window_percent(90.))
+        .spacing(14.)
+        .padding(Gaps::new_all(20.))
+        .corner_radius(CornerRadius::new_all(14.))
+        .background(colors::page_elevated())
+        .border(border_all_color(1., colors::component_border()))
+        .child(
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(10.)
+                .child(Icon::new(IconType::RefreshCw01).size(20.))
+                .child(
+                    label()
+                        .text("Reset to defaults?")
+                        .font_size(16.)
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .color(colors::fg_primary()),
+                ),
+        )
+        .child(
+            label()
+                .text(summary)
+                .font_size(12.)
+                .max_lines(8)
+                .width(Size::fill())
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .main_align(Alignment::End)
+                .spacing(8.)
+                .child(
+                    Button::new()
+                        .secondary()
+                        .on_press(move |_| confirming.set(false))
+                        .text("Cancel"),
+                )
+                .child(
+                    Button::new()
+                        .danger()
+                        .on_press(move |_| {
+                            on_reset.call(());
+                            confirming.set(false);
+                        })
+                        .text("Reset"),
+                ),
+        );
+
+    OverlayPopup::new()
+        .on_close(move |_| confirming.set(false))
+        .child(
+            rect()
+                .width(Size::window_percent(100.))
+                .height(Size::window_percent(100.))
+                .center()
+                .child(card),
+        )
         .into_element()
 }

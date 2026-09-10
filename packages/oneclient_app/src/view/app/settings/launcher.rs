@@ -3,18 +3,25 @@ use std::path::{Path, PathBuf};
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::relocate::RelocationPlan;
-use oneclient_core::settings::data_dir;
+use oneclient_core::settings::{LauncherSettings, data_dir};
 use oneclient_core::storage::format_bytes;
 
-use super::{section_header, settings_page, settings_row};
+use super::{reset_row, section_header, settings_page, settings_row, take_notice};
 use crate::Route;
 use crate::components::{Button, Icon, IconType, OverlayPopup, open_folder_button, toggle};
 use crate::hooks::{
-    Actions, DiscardLeftoversKeys, mutation_error, mutation_is_running, try_leftovers,
-    use_discard_leftovers, use_dispatch, use_launcher, use_leftovers, use_settings_snapshot,
+    Actions, DiscardLeftoversKeys, ResetNotice, mutation_error, mutation_is_running, try_leftovers,
+    use_discard_leftovers, use_dispatch, use_game_active, use_launcher, use_leftovers,
+    use_settings_snapshot,
 };
 use crate::theme::colors;
 use crate::ui::{border_all_color, note, path_block};
+
+const RESET_NOTICE: ResetNotice = ResetNotice {
+    title: "Launcher settings reset",
+    body: "Discord RPC, crash reporting and the window size are back to their defaults. \
+           Restart OneClient to finish applying them.",
+};
 
 #[derive(PartialEq)]
 pub struct SettingsLauncher;
@@ -24,24 +31,25 @@ impl Component for SettingsLauncher {
         let settings = use_settings_snapshot().settings;
         let dispatch = use_dispatch();
 
-        let discord_rpc = use_state({
+        let mut discord_rpc = use_state({
             let v = settings.discord_enabled;
             move || v
         });
 
-        let crash_reporting = use_state({
+        let mut crash_reporting = use_state({
             let v = settings.crash_reporting;
             move || v
         });
 
-        let start_maximized = use_state({
+        let mut start_maximized = use_state({
             let v = settings.start_maximized;
             move || v
         });
 
         let mut first = use_state(|| true);
+        let mut announce = use_state(|| false);
         {
-            let settings = settings.clone();
+            let dispatch = dispatch.clone();
             use_side_effect(move || {
                 let discord = *discord_rpc.read();
                 let crash = *crash_reporting.read();
@@ -50,13 +58,23 @@ impl Component for SettingsLauncher {
                     first.set(false);
                     return;
                 }
-                let mut next = settings.clone();
-                next.discord_enabled = discord;
-                next.crash_reporting = crash;
-                next.start_maximized = maximized;
-                dispatch.set_settings(next);
+                dispatch.edit_settings_notifying(take_notice(announce, RESET_NOTICE), |settings| {
+                    settings.discord_enabled = discord;
+                    settings.crash_reporting = crash;
+                    settings.start_maximized = maximized;
+                });
             });
         }
+
+        let game_active = use_game_active();
+        let confirming_reset = use_state(|| false);
+        let reset = move |()| {
+            let defaults = LauncherSettings::default();
+            announce.set(true);
+            discord_rpc.set(defaults.discord_enabled);
+            crash_reporting.set(defaults.crash_reporting);
+            start_maximized.set(defaults.start_maximized);
+        };
 
         // The only way back for someone who declined during onboarding
         let consent_summary = if settings.declined_tos {
@@ -100,6 +118,17 @@ impl Component for SettingsLauncher {
             ))
             .child(section_header("FOLDERS AND FILES"))
             .child(DataFolder.into_element())
+            .child(reset_row(
+                confirming_reset,
+                game_active,
+                "Put the options on this page back to their defaults. Your launcher folder \
+                 and your answer to the terms are left alone.",
+                "Discord RPC, Crash Reporting and Start Maximized go back to their defaults. \
+                 Your Launcher Folder stays where it is, and your answer to the Terms & \
+                 Privacy notice is not changed. Crash reporting and the window size take \
+                 effect the next time OneClient starts.",
+                reset.into(),
+            ))
             .into_element()
     }
 }

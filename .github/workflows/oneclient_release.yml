@@ -407,6 +407,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cp target/release/.cargo-packager/deb/*/data/usr/share/applications/oneclient_app.desktop \
+             target/release/oneclient_app.desktop
           cargo generate-rpm -p packages/oneclient_app
           cp target/generate-rpm/*.rpm "${{ steps.outdir.outputs.dir }}/"
 

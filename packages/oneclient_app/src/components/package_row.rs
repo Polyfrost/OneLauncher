@@ -40,6 +40,7 @@ pub struct PackageEntry {
     pub name: String,
     pub file_name: String,
     pub author: String,
+    pub version: Option<String>,
     pub description: String,
     pub icon_url: Option<String>,
     pub size: u64,

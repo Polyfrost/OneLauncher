@@ -31,6 +31,7 @@ use polyio::{normalize_hash, sha1_file};
 use oneclient_events::GroupedProgressChild;
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
 pub struct PackageStore;
@@ -209,6 +210,64 @@ impl PackageStore {
                 seen_status: SeenStatus::from_repr(row.seen_status).unwrap_or_default(),
             })
             .collect())
+    }
+
+    #[tracing::instrument(level = "debug", skip(ctx))]
+    pub async fn read_cluster_jar_manifests(
+        cluster_id: i64,
+        content_type: ContentType,
+        ctx: &ContentCtx,
+    ) -> HashMap<String, local_manifest::JarManifest> {
+        let links = match artifact_dao::list_cluster_artifacts_detailed(&ctx.db, cluster_id).await {
+            Ok(links) => links,
+            Err(err) => {
+                tracing::debug!(cluster_id, "listing cluster artifacts failed: {err}");
+                return HashMap::new();
+            }
+        };
+
+        let game_dir = match Self::get_cluster(cluster_id, ctx).await {
+            Ok(cluster) => common_paths::cluster_game_dir(&cluster.folder_name).ok(),
+            Err(err) => {
+                tracing::debug!(cluster_id, "cluster lookup failed: {err}");
+                None
+            }
+        };
+
+        let mut out = HashMap::new();
+
+        for link in links {
+            if ContentType::from_repr(link.content_type as u8) != Some(content_type) {
+                continue;
+            }
+
+            let staged = game_dir.as_ref().map(|dir| {
+                dir.join(content_type.folder_name())
+                    .join(&link.cluster_file_name)
+            });
+
+            let mut manifest = local_manifest::JarManifest::default();
+
+            if let Ok(Some(row)) = artifact_dao::get_artifact_by_hash(&ctx.db, &link.hash).await
+                && let Ok(cached) = artifact_absolute_path(&row.path)
+                && polyio::try_exists(&cached).await.unwrap_or(false)
+            {
+                manifest = local_manifest::read_jar_manifest(&cached).await;
+            }
+
+            if manifest.is_empty()
+                && let Some(staged) = staged
+                && polyio::try_exists(&staged).await.unwrap_or(false)
+            {
+                manifest = local_manifest::read_jar_manifest(&staged).await;
+            }
+
+            if !manifest.is_empty() {
+                out.insert(link.hash, manifest);
+            }
+        }
+
+        out
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]

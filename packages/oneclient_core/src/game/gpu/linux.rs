@@ -208,7 +208,11 @@ mod tests {
         let dgpu = || gpu("0000:01:00.0", NVIDIA, Some(false));
         let nothing = Vec::new();
 
-        let cases: Vec<(&str, Vec<Gpu>, Vec<(&'static str, String)>)> = vec![
+		type CaseMessage<'a> = &'a str;
+		type GpuList = Vec<Gpu>;
+		type CardmOdel =  Vec<(&'static str, String)>;
+
+        let cases: Vec<(CaseMessage<'_>, GpuList, CardmOdel)> = vec![
             ("no cards at all", vec![], nothing.clone()),
             ("a lone amd card", vec![gpu("0000:01:00.0", AMD, Some(true))], nothing.clone()),
             ("a lone nvidia card", vec![gpu("0000:01:00.0", NVIDIA, Some(true))], nothing.clone()),

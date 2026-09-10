@@ -163,9 +163,7 @@ pub async fn estimate_cluster_download(
     let info = {
         let mut metadata = state.metadata.lock().await;
         let (version, _index, _updated) =
-            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version)
-                .await
-                .map_err(|_| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
+            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version).await?;
         let loader_version = get_loader_version(
             &mut metadata,
             &state.services.mc(),
@@ -211,9 +209,7 @@ async fn install_cluster(
     let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
 
     let (version, _version_index, minecraft_updated) =
-        resolve_minecraft_version(metadata, &state.services.mc(), &mc_version)
-            .await
-            .map_err(|_| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
+        resolve_minecraft_version(metadata, &state.services.mc(), &mc_version).await?;
 
     let loader_version = get_loader_version(
         metadata,

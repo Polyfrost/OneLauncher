@@ -50,6 +50,10 @@ impl MetadataStore {
             self.initialize(ctx).await?;
         }
 
+        if self.inner.minecraft.is_none() {
+            self.refetch_errored(ctx).await;
+        }
+
         self.get_vanilla()
     }
 
@@ -180,12 +184,12 @@ impl MetadataStore {
             fetch_modded_manifest(ctx, GameLoader::Ornithe),
         );
 
-        self.inner.minecraft = minecraft.ok();
-        self.inner.forge = forge.ok();
-        self.inner.neo = neo.ok();
-        self.inner.fabric = fabric.ok();
-        self.inner.quilt = quilt.ok();
-        self.inner.ornithe = ornithe.ok();
+        keep_fetched(&mut self.inner.minecraft, minecraft);
+        keep_fetched(&mut self.inner.forge, forge);
+        keep_fetched(&mut self.inner.neo, neo);
+        keep_fetched(&mut self.inner.fabric, fabric);
+        keep_fetched(&mut self.inner.quilt, quilt);
+        keep_fetched(&mut self.inner.ornithe, ornithe);
     }
 
     #[tracing::instrument(level = "debug", skip(self, ctx))]
@@ -225,6 +229,12 @@ impl MetadataStore {
             .insert(mc_version.to_owned(), loaders.clone());
 
         Ok(loaders)
+    }
+}
+
+fn keep_fetched<T>(slot: &mut Option<T>, fetched: McResult<T>) {
+    if let Ok(data) = fetched {
+        *slot = Some(data);
     }
 }
 

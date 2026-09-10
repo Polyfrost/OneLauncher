@@ -82,7 +82,7 @@ fn library_artifact_size(lib: &Library) -> u64 {
         .map_or(0, |artifact| u64::from(artifact.size))
 }
 
-fn has_main_artifact(lib: &Library) -> bool {
+pub(crate) fn has_main_artifact(lib: &Library) -> bool {
     lib.downloads
         .as_ref()
         .is_none_or(|downloads| downloads.artifact.is_some())
@@ -794,7 +794,11 @@ pub async fn download_version_info(
                     .map_err(McError::from)?,
             };
 
+            let legacy_args = info.minecraft_arguments.clone();
             info = interfrost::api::modded::merge_partial_version(partial, info);
+            if info.minecraft_arguments.is_none() {
+                info.minecraft_arguments = legacy_args;
+            }
 
             for lib in &mut info.libraries {
                 lib.name = lib.name.replace("${interpulse.gameVersion}", &version.id);
@@ -1439,7 +1443,8 @@ pub async fn resolve_minecraft_version(
         version_index = manifest.versions.iter().position(|it| it.id == mc_version);
     }
 
-    let version_index = version_index.ok_or(McError::NoMatchingVersion)?;
+    let version_index =
+        version_index.ok_or_else(|| McError::InvalidVersion(mc_version.to_string()))?;
     let versions = &manifest.versions;
 
     Ok((

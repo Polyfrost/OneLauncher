@@ -63,7 +63,7 @@ impl Component for RootLayout {
             .background(colors::page())
             .color(colors::fg_primary())
             .font_family(theme::DEFAULT_FONT)
-            .corner_radius(CornerRadius::new_all(corner))
+            //.corner_radius(CornerRadius::new_all(corner))
             .overflow(Overflow::Clip)
             .child(
                 rect()

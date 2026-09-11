@@ -419,6 +419,7 @@ impl Component for PackageManager {
         let search = use_state(String::new);
         let enabled_filter = use_state(|| EnabledFilter::All);
         let hidden_filter = use_state(|| HiddenFilter::Hide);
+        let toolbar_width = use_state(|| 0f32);
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
@@ -478,6 +479,7 @@ impl Component for PackageManager {
                 grid_columns,
                 cluster_id,
                 package_type,
+                toolbar_width,
             ))
             .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
             .child(ContentBox::new(

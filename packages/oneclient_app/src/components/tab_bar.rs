@@ -93,6 +93,7 @@ fn tab_label(text: &str, font_size: f32, active: bool) -> impl IntoElement {
                 .text(text.to_string())
                 .font_size(font_size)
                 .font_weight(ACTIVE_WEIGHT)
+                .max_lines(1)
                 .color(Color::TRANSPARENT)
                 .text_align(TextAlign::Center),
         )
@@ -115,6 +116,7 @@ fn tab_label(text: &str, font_size: f32, active: bool) -> impl IntoElement {
                         } else {
                             FontWeight::NORMAL
                         })
+                        .max_lines(1)
                         .color(colors::fg_primary())
                         .text_align(TextAlign::Center),
                 ),
@@ -135,9 +137,20 @@ fn count_pill(count: &str, font_size: f32) -> impl IntoElement {
         )
 }
 
+fn min_tab_width(text: &str, font_size: f32) -> f32 {
+    text.chars().count() as f32 * font_size * 0.62
+}
+
 impl IntoElement for TabBar {
     fn into_element(self) -> Element {
         let font_size = self.font_size;
+
+        let overflows = self.width == Size::auto();
+        let content = if overflows {
+            Content::Normal
+        } else {
+            Content::Fit
+        };
 
         rect()
             .horizontal()
@@ -145,13 +158,15 @@ impl IntoElement for TabBar {
             .height(self.height)
             .spacing(self.spacing)
             .cross_align(Alignment::Center)
-            .content(Content::Fit)
+            .content(content)
             .children(self.tabs.into_iter().map(|tab| {
+                let min_width = overflows.then(|| min_tab_width(&tab.label, font_size));
                 TabButton {
                     label: tab.label,
                     active: tab.active,
                     count: tab.count,
                     font_size,
+                    min_width,
                     on_press: tab.on_press,
                 }
                 .into_element()
@@ -166,6 +181,7 @@ struct TabButton {
     active: bool,
     count: Option<String>,
     font_size: f32,
+    min_width: Option<f32>,
     on_press: Option<EventHandler<Event<PressEventData>>>,
 }
 
@@ -181,6 +197,8 @@ impl Component for TabButton {
         let mut el = rect()
             .vertical()
             .content(Content::Fit)
+            .cross_align(Alignment::Center)
+            .map(self.min_width, |el, w| el.min_width(Size::px(w)))
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)

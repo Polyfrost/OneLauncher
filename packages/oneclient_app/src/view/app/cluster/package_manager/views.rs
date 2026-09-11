@@ -122,6 +122,17 @@ impl HiddenFilter {
 
 const FILTER_PANEL_W: f32 = 172.;
 const FILTER_BTN_W: f32 = 34.;
+const TOOLBAR_STACK_W: f32 = 640.;
+const TABS_ROW_H: f32 = 34.;
+
+fn tabs_scrollbar_theme() -> ScrollBarThemePartial {
+    ScrollBarThemePartial {
+        thumb_background: Some(colors::fg_secondary().with_a(120).into()),
+        hover_thumb_background: Some(colors::fg_secondary().with_a(190).into()),
+        active_thumb_background: Some(colors::fg_primary().into()),
+        ..Default::default()
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn toolbar_bar(
@@ -137,6 +148,7 @@ pub(super) fn toolbar_bar(
     grid_columns: State<u8>,
     cluster_id: i64,
     package_type: &'static str,
+    mut toolbar_width: State<f32>,
 ) -> impl IntoElement {
     let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
@@ -146,69 +158,131 @@ pub(super) fn toolbar_bar(
     let mut top_corners = CornerRadius::new_all(0.);
     top_corners.fill_top(12.);
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(8.)
-        .content(Content::Flex)
-        .overflow(Overflow::Clip)
-        .padding(Gaps::new_symmetric(8., 12.))
-        .corner_radius(top_corners)
-        .background(colors::page_elevated())
+    let measured = *toolbar_width.read();
+    let stacked = measured > 0. && measured < TOOLBAR_STACK_W;
+
+    let filter_tabs = ScrollView::new()
+        .direction(Direction::Horizontal)
+        .invert_scroll_wheel(true)
+        .show_scrollbar(stacked)
+        .scrollbar_theme(tabs_scrollbar_theme())
+        .width(if stacked {
+            Size::fill()
+        } else {
+            Size::flex(1.0)
+        })
+        .height(if stacked {
+            Size::fill()
+        } else {
+            Size::auto()
+        })
         .child(
-            ScrollView::new()
-                .direction(Direction::Horizontal)
-                .show_scrollbar(false)
-                .width(Size::flex(1.0))
-                .height(Size::auto())
-                .child(
-                    TabBar::new()
-                        .width(Size::auto())
-                        .height(Size::auto())
-                        .spacing(20.)
-                        .font_size(12.)
-                        .tabs(tab_items),
-                ),
+            TabBar::new()
+                .width(Size::auto())
+                .height(if stacked {
+                    Size::fill()
+                } else {
+                    Size::auto()
+                })
+                .spacing(20.)
+                .font_size(12.)
+                .tabs(tab_items),
         )
-        .child(
-            TextInput::new(search)
-                .placeholder("Search...")
-                .width(Size::px(180.))
-                .leading(
-                    Icon::new(IconType::SearchMd)
-                        .size(14.)
-                        .color(colors::fg_secondary())
-                        .into_element(),
-                ),
-        )
-        .child(FilterButton {
+        .into_element();
+
+    let mut controls: Vec<Element> = vec![
+        TextInput::new(search)
+            .placeholder("Search...")
+            .width(Size::px(180.))
+            .leading(
+                Icon::new(IconType::SearchMd)
+                    .size(14.)
+                    .color(colors::fg_secondary())
+                    .into_element(),
+            )
+            .into_element(),
+        FilterButton {
             sort,
             current_sort,
             enabled_filter,
             hidden_filter,
+        }
+        .into_element(),
+    ];
+
+    if *layout.read() == ViewLayout::Grid {
+        controls.push(grid_columns_picker(grid_columns, 34.).into_element());
+    }
+
+    controls.push(
+        SegmentedControl::new(layout)
+            .height(34.)
+            .icon_size(15.)
+            .equal_width(34.)
+            .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
+            .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
+            .into_element(),
+    );
+    controls.push(
+        Button::new()
+            .primary()
+            .height(Size::px(34.))
+            .font_size(12.)
+            .on_press(move |_| open_browser(cluster_id, package_type))
+            .child(Icon::new(IconType::Plus).size(15.))
+            .text("Add Content")
+            .into_element(),
+    );
+
+    let inner = if stacked {
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(8.)
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .height(Size::px(TABS_ROW_H))
+                    .cross_align(Alignment::Center)
+                    .child(filter_tabs),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(8.)
+                    .content(Content::Flex)
+                    .children(controls),
+            )
+            .into_element()
+    } else {
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .content(Content::Flex)
+            .child(filter_tabs)
+            .children(controls)
+            .into_element()
+    };
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .overflow(Overflow::Clip)
+        .padding(Gaps::new_symmetric(8., 12.))
+        .corner_radius(top_corners)
+        .background(colors::page_elevated())
+        .on_sized(move |event: Event<SizedEventData>| {
+            let next = event.data().area.width();
+            if (*toolbar_width.peek() - next).abs() > 0.5 {
+                toolbar_width.set(next);
+            }
         })
-        .maybe_child(
-            (*layout.read() == ViewLayout::Grid)
-                .then(|| grid_columns_picker(grid_columns, 34.).into_element()),
-        )
-        .child(
-            SegmentedControl::new(layout)
-                .height(34.)
-                .icon_size(15.)
-                .equal_width(34.)
-                .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
-                .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid)),
-        )
-        .child(
-            Button::new()
-                .primary()
-                .height(Size::px(34.))
-                .font_size(12.)
-                .on_press(move |_| open_browser(cluster_id, package_type))
-                .child(Icon::new(IconType::Plus).size(15.))
-                .text("Add Content"),
-        )
+        .child(inner)
         .into_element()
 }
 

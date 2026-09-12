@@ -1,7 +1,8 @@
 use super::*;
 
-use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
+use freya::animation::{AnimNum, Ease, Function, OnCreation, OnFinish, use_animation};
 use freya::router::RouterContext;
+use freya::text_edit::Clipboard;
 use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
@@ -122,6 +123,7 @@ impl HiddenFilter {
 
 const FILTER_PANEL_W: f32 = 172.;
 const FILTER_BTN_W: f32 = 34.;
+const COPY_SPIN_TIME: u64 = 800;
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn toolbar_bar(
@@ -137,6 +139,7 @@ pub(super) fn toolbar_bar(
     grid_columns: State<u8>,
     cluster_id: i64,
     package_type: &'static str,
+    export: Option<Vec<PackageEntry>>,
 ) -> impl IntoElement {
     let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
@@ -200,6 +203,7 @@ pub(super) fn toolbar_bar(
                 .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
                 .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid)),
         )
+        .maybe_child(export.map(|rows| CopyListButton { cluster_id, rows }.into_element()))
         .child(
             Button::new()
                 .primary()
@@ -210,6 +214,102 @@ pub(super) fn toolbar_bar(
                 .text("Add Content"),
         )
         .into_element()
+}
+
+#[derive(PartialEq)]
+struct CopyListButton {
+    cluster_id: i64,
+    rows: Vec<PackageEntry>,
+}
+
+impl Component for CopyListButton {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let cluster_id = self.cluster_id;
+        let rows = self.rows.clone();
+        let mut busy = use_state(|| false);
+        let is_busy = *busy.read();
+
+        let spin = use_animation(|conf| {
+            conf.on_finish(OnFinish::restart());
+            AnimNum::new(0., 360.)
+                .time(COPY_SPIN_TIME)
+                .function(Function::Linear)
+        });
+
+        use_side_effect_with_deps(&is_busy, move |&is_busy| {
+            let mut spin = spin;
+            if is_busy {
+                spin.start();
+            } else {
+                spin.reset();
+            }
+        });
+
+        let rotation = if is_busy { spin.get().value() } else { 0. };
+
+        Button::new()
+            .secondary()
+            .icon()
+            .width(Size::px(FILTER_BTN_W))
+            .height(Size::px(34.))
+            .on_press(move |_| {
+                if *busy.read() {
+                    return;
+                }
+                busy.set(true);
+
+                let dispatch = dispatch.clone();
+                let rows = rows.clone();
+                spawn(async move {
+                    let count = rows.len();
+                    let text = build_export(cluster_id, rows).await;
+
+                    let Some(text) = text else {
+                        busy.set(false);
+                        dispatch
+                            .notify("Copy failed")
+                            .body("Could not read your mod list.")
+                            .error()
+                            .send();
+                        return;
+                    };
+
+                    let copied = Clipboard::set(text);
+                    busy.set(false);
+
+                    if let Err(err) = copied {
+                        tracing::warn!("clipboard copy failed: {err:?}");
+                        dispatch
+                            .notify("Copy failed")
+                            .body("Could not copy your mods to the clipboard.")
+                            .error()
+                            .send();
+                    } else {
+                        dispatch
+                            .notify("Copied to clipboard")
+                            .body(format!(
+                                "{count} mod{} copied to your clipboard.",
+                                utils::plural(count as i64)
+                            ))
+                            .info()
+                            .icon(IconType::ClipboardCheck)
+                            .send();
+                    }
+                });
+            })
+            .child(
+                rect().rotate(rotation).child(
+                    Icon::new(if is_busy {
+                        IconType::Loading02
+                    } else {
+                        IconType::Copy01
+                    })
+                    .size(16.)
+                    .color(colors::fg_secondary()),
+                ),
+            )
+    }
 }
 
 pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {

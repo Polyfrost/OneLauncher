@@ -7,7 +7,7 @@ use crate::components::{
 };
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::{format_duration_hm, plural};
 
 use super::{card, card_header};
@@ -371,6 +371,7 @@ impl Component for ServerIcon {
                 .height(Size::px(size))
                 .aspect_ratio(AspectRatio::Min)
                 .corner_radius(CornerRadius::new_all(6.))
+                .fallback(server_icon_placeholder(self.is_ip, size))
                 .into_element(),
             None => server_icon_placeholder(self.is_ip, size),
         }

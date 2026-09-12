@@ -13,7 +13,7 @@ use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo}
 use crate::components::{Icon, IconType};
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{ImageFallbackExt, border_all_color};
 
 const BANNER_BG: Color = Color::from_rgb(21, 28, 34);
 
@@ -251,27 +251,34 @@ impl Component for Thumbnail {
         let query = use_cached_image(self.icon_url.clone(), 256);
         let loaded = loaded_image(self.icon_url.as_deref(), &query);
 
+        let placeholder = thumbnail_placeholder(size, radius, 0.4);
+
         match loaded {
             Some((url, bytes)) => ImageViewer::new((url, bytes))
                 .width(Size::px(size))
                 .height(Size::px(size))
                 .aspect_ratio(AspectRatio::Min)
                 .corner_radius(CornerRadius::new_all(radius))
+                .fallback(placeholder)
                 .into_element(),
-            None => rect()
-                .center()
-                .width(Size::px(size))
-                .height(Size::px(size))
-                .corner_radius(CornerRadius::new_all(radius))
-                .background(colors::component_bg())
-                .child(
-                    Icon::new(IconType::DotsGrid)
-                        .size(size * 0.4)
-                        .color(colors::fg_secondary()),
-                )
-                .into_element(),
+            None => placeholder,
         }
     }
+}
+
+fn thumbnail_placeholder(size: f32, radius: f32, icon_ratio: f32) -> Element {
+    rect()
+        .center()
+        .width(Size::px(size))
+        .height(Size::px(size))
+        .corner_radius(CornerRadius::new_all(radius))
+        .background(colors::component_bg())
+        .child(
+            Icon::new(IconType::DotsGrid)
+                .size(size * icon_ratio)
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
 }
 
 #[derive(PartialEq)]
@@ -311,6 +318,8 @@ impl Component for PackageBanner {
             .overflow(Overflow::Clip)
             .background(BANNER_BG);
 
+        let icon_placeholder = thumbnail_placeholder(icon, 10., 0.45);
+
         match loaded {
             Some((url, bytes)) => banner
                 .child(
@@ -324,7 +333,8 @@ impl Component for PackageBanner {
                                 .width(Size::fill())
                                 .height(Size::fill())
                                 .aspect_ratio(AspectRatio::Max)
-                                .image_cover(ImageCover::Center),
+                                .image_cover(ImageCover::Center)
+                                .fallback(rect().width(Size::fill()).height(Size::fill())),
                         )
                         .layer(Layer::Relative(1)),
                 )
@@ -347,23 +357,12 @@ impl Component for PackageBanner {
                                 .width(Size::px(icon))
                                 .height(Size::px(icon))
                                 .aspect_ratio(AspectRatio::Min)
-                                .corner_radius(CornerRadius::new_all(10.)),
+                                .corner_radius(CornerRadius::new_all(10.))
+                                .fallback(icon_placeholder),
                         )
                         .layer(Layer::Relative(5)),
                 ),
-            None => banner.child(
-                rect()
-                    .center()
-                    .width(Size::px(icon))
-                    .height(Size::px(icon))
-                    .corner_radius(CornerRadius::new_all(10.))
-                    .background(colors::component_bg())
-                    .child(
-                        Icon::new(IconType::DotsGrid)
-                            .size(icon * 0.45)
-                            .color(colors::fg_secondary()),
-                    ),
-            ),
+            None => banner.child(icon_placeholder),
         }
     }
 }

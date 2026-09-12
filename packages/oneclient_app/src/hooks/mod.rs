@@ -69,7 +69,7 @@ pub use queries::{
 use crate::notifications::NotificationSnapshot;
 use crate::state::{
     AppChannel, GameState, InstallState, LauncherInit, LoginProgress, RelocationState,
-    SettingsState,
+    SettingsState, StorageScanProgress,
 };
 use freya::prelude::*;
 use freya::radio::use_radio;
@@ -121,6 +121,12 @@ pub fn use_game_snapshot() -> GameState {
 
 pub fn use_installs_snapshot() -> InstallState {
     use_radio(AppChannel::Installs).read().installs.clone()
+}
+
+pub fn use_storage_scan_progress() -> Option<StorageScanProgress> {
+    use_radio(AppChannel::StorageScan)
+        .read()
+        .storage_scan
 }
 
 pub fn use_pending_launch() -> Option<String> {

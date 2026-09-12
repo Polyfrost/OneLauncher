@@ -4706,6 +4706,7 @@ dependencies = [
  "async-trait",
  "async_zip",
  "futures-lite",
+ "futures-util",
  "oneclient_common",
  "oneclient_events",
  "oneclient_net",
@@ -5073,6 +5074,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

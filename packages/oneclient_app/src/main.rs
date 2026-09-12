@@ -11,7 +11,7 @@ use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, StartMaximizedState, cli, constants,
     events, platform, router, theme, use_provide_actions, use_provide_link_confirm,
-    use_provide_start_maximized,
+    use_provide_start_maximized, microsoft_java,
 };
 use std::cell::Cell;
 use tokio::runtime::Builder;

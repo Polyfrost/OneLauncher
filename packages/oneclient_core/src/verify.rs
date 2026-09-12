@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use oneclient_cluster::ClusterError;
 use oneclient_content::packages::PackageStore;
 use oneclient_content::packages::store::artifact_absolute_path;
 use oneclient_db::dao::artifact as artifact_dao;
@@ -109,9 +108,7 @@ async fn run_verify(
     let (version_info, minecraft_updated) = {
         let mut metadata = state.metadata.lock().await;
         let (version, _index, minecraft_updated) =
-            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version)
-                .await
-                .map_err(|_| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
+            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version).await?;
 
         let loader_version = get_loader_version(
             &mut metadata,

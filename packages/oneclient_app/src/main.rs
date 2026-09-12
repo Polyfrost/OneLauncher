@@ -182,7 +182,6 @@ fn main() {
 
     let _sentry_guard = oneclient_core::reporting::init(settings.crash_reporting);
 
-
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
@@ -201,7 +200,7 @@ fn main() {
         )))
         .with_size(1200., 800.)
         .with_min_size(800., 600.)
-        .with_transparency(true)
+        .with_transparency(false)
         .with_background(Color::TRANSPARENT)
         // A half-copied data folder is unrecoverable, so the window refuses to
         // close while one is being moved; the move screen says as much

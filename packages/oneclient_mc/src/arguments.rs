@@ -6,6 +6,7 @@ use interfrost::api::modded::SidedDataEntry;
 use interfrost::utils::get_path_from_artifact;
 
 use oneclient_common::constants::{self, DUMMY_REPLACE_NEWLINE};
+use oneclient_common::paths;
 use crate::rules::validate_rules;
 use crate::error::McError;
 use oneclient_common::Resolution;
@@ -41,13 +42,20 @@ pub fn java_arguments(
             },
             java_arch,
         )?;
-    } else {
+    }
+
+    if !parsed
+        .iter()
+        .any(|arg| arg.starts_with("-Djava.library.path="))
+    {
         parsed.push(format!(
             "-Djava.library.path={}",
             polyio::canonicalize(natives_path)
                 .map_err(|_| McError::LibraryPath(natives_path.display().to_string()))?
                 .display()
         ));
+    }
+    if !parsed.iter().any(|arg| arg == "-cp" || arg == "-classpath") {
         parsed.push("-cp".to_string());
         parsed.push(classpaths.to_string());
     }
@@ -174,8 +182,28 @@ pub fn minecraft_arguments(
     resolution: Resolution,
     java_arch: &str,
 ) -> McResult<Vec<String>> {
+    let mut parsed = Vec::new();
+
+    // a legacy version states its arguments as a string and a loader merged onto
+    // one adds a list on top the game needs both, in that order
+    if let Some(legacy_args) = legacy_args {
+        for arg in legacy_args.split(' ') {
+            parsed.push(parse_minecraft_argument(
+                &arg.replace(' ', DUMMY_REPLACE_NEWLINE),
+                access_token,
+                username,
+                uuid,
+                version,
+                asset_index,
+                game_directory,
+                assets_directory,
+                version_type,
+                resolution,
+            )?);
+        }
+    }
+
     if let Some(args) = args {
-        let mut parsed = Vec::new();
         parse_arguments(
             version_updated,
             args,
@@ -196,29 +224,9 @@ pub fn minecraft_arguments(
             },
             java_arch,
         )?;
-
-        Ok(parsed)
-    } else if let Some(legacy_args) = legacy_args {
-        let mut parsed = Vec::new();
-        for arg in legacy_args.split(' ') {
-            parsed.push(parse_minecraft_argument(
-                &arg.replace(' ', DUMMY_REPLACE_NEWLINE),
-                access_token,
-                username,
-                uuid,
-                version,
-                asset_index,
-                game_directory,
-                assets_directory,
-                version_type,
-                resolution,
-            )?);
-        }
-
-        Ok(parsed)
-    } else {
-        Ok(Vec::new())
     }
+
+    Ok(parsed)
 }
 
 pub fn append_profile_game_arguments(
@@ -343,13 +351,19 @@ pub fn parse_minecraft_argument(
             "${assets_root}",
             &polyio::canonicalize(assets_directory)?.display().to_string(),
         )
-        .replace(
-            "${game_assets}",
-            &polyio::canonicalize(assets_directory)?.display().to_string(),
-        )
+        .replace("${game_assets}", &legacy_assets_path()?)
         .replace("${version_type}", version_type.as_str())
         .replace("${resolution_width}", &resolution.width.to_string())
         .replace("${resolution_height}", &resolution.height.to_string()))
+}
+
+fn legacy_assets_path() -> McResult<String> {
+    let dir = paths::legacy_assets_dir()?;
+
+    Ok(polyio::canonicalize(&dir)
+        .unwrap_or(dir)
+        .display()
+        .to_string())
 }
 
 fn parse_java_argument(
@@ -391,6 +405,10 @@ pub fn classpaths(
             continue;
         }
         if !lib.include_in_classpath {
+            continue;
+        }
+        // natives-only libraries (classifiers, no artifact) have no jar on disk
+        if !crate::install::has_main_artifact(lib) {
             continue;
         }
 
@@ -516,7 +534,11 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::{ZGC_MIN_HEAP_MB, is_collector_flag, performance_flags, split_custom_args};
+    use super::{
+        Library, ZGC_MIN_HEAP_MB, classpaths, is_collector_flag, java_arguments,
+        minecraft_arguments, performance_flags, split_custom_args,
+    };
+    use oneclient_common::Resolution;
 
     #[test]
     fn blank_input_contributes_nothing() {
@@ -786,5 +808,92 @@ mod tests {
     fn a_java_7_runtime_is_left_untouched() {
         assert_eq!(flags(7, "amd64", 4096), vec!["-Xms512M"]);
     }
-}
 
+    #[test]
+    fn a_natives_only_library_is_not_a_classpath_entry() {
+        let libraries: Vec<Library> = serde_json::from_str(
+            r#"[
+                { "name": "net.fabricmc:fabric-loader:0.19.5" },
+                { "name": "org.lwjgl.lwjgl:lwjgl:2.9.4+legacyfabric.15",
+                  "downloads": { "artifact": { "sha1": "a", "size": 1, "url": "https://maven.legacyfabric.net/lwjgl.jar" } } },
+                { "name": "org.lwjgl.lwjgl:lwjgl-platform:2.9.4+legacyfabric.15",
+                  "downloads": { "classifiers": { "natives-osx": { "sha1": "b", "size": 2, "url": "https://maven.legacyfabric.net/natives-osx.jar" } } },
+                  "natives": { "osx": "natives-osx" } }
+            ]"#,
+        )
+        .unwrap();
+
+        let dir = std::env::temp_dir().join("oneclient-classpath-test");
+        let client = dir.join("client.jar");
+        for lib in ["net/fabricmc/fabric-loader/0.19.5/fabric-loader-0.19.5.jar",
+                    "org/lwjgl/lwjgl/lwjgl/2.9.4+legacyfabric.15/lwjgl-2.9.4+legacyfabric.15.jar"] {
+            let path = dir.join(lib);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"").unwrap();
+        }
+        std::fs::write(&client, b"").unwrap();
+
+        let cp = classpaths(&dir, &libraries, &client, "x86", false)
+            .expect("a jar that was never downloaded must not fail the launch");
+        assert!(!cp.contains("lwjgl-platform"));
+        assert!(cp.contains("fabric-loader") && cp.contains("lwjgl-2.9.4"));
+    }
+
+    #[test]
+    fn a_loader_on_a_legacy_version_still_gets_a_classpath() {
+        // ornithe's manifest declares two -D flags and nothing else
+        // 1.8.9 has no `arguments` block to supply -cp or the natives path
+        let loader_jvm: Vec<interfrost::api::minecraft::Argument> = serde_json::from_str(
+            r#"["-Dfabric.fixPackageAccess=true", "-Dfabric.gameVersion=1.8.9"]"#,
+        )
+        .unwrap();
+        let natives = std::env::temp_dir();
+
+        let args = java_arguments(
+            false,
+            Some(&loader_jvm),
+            &natives,
+            &natives,
+            "/libs/fabric-loader.jar",
+            "1.8.9",
+            2048,
+            String::new(),
+            "arm64",
+            21,
+        )
+        .unwrap();
+
+        assert!(args.contains(&"-Dfabric.fixPackageAccess=true".to_string()));
+        let cp = args.iter().position(|a| a == "-cp").expect("no classpath");
+        assert_eq!(args[cp + 1], "/libs/fabric-loader.jar");
+        assert!(args.iter().any(|a| a.starts_with("-Djava.library.path=")));
+    }
+
+    #[test]
+    fn a_loader_game_argument_does_not_replace_the_legacy_string() {
+        let loader_game: Vec<interfrost::api::minecraft::Argument> =
+            serde_json::from_str(r#"["--fabric"]"#).unwrap();
+        let dir = std::env::temp_dir();
+
+        let args = minecraft_arguments(
+            false,
+            Some(&loader_game),
+            Some("--username ${auth_player_name} --gameDir ${game_directory}"),
+            "token",
+            "player",
+            uuid::Uuid::nil(),
+            "1.8.9",
+            "1.8",
+            &dir,
+            &dir,
+            interfrost::api::minecraft::VersionType::Release,
+            Resolution::default(),
+            "arm64",
+        )
+        .unwrap();
+
+        assert_eq!(args.first().unwrap(), "--username");
+        assert_eq!(args[1], "player");
+        assert_eq!(args.last().unwrap(), "--fabric");
+    }
+}

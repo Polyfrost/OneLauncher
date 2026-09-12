@@ -56,6 +56,12 @@ impl ContentType {
         }
     }
 
+    // installed once for the whole launcher rather than per cluster
+    #[must_use]
+    pub const fn is_global(self) -> bool {
+        matches!(self, Self::ResourcePack | Self::Shader)
+    }
+
     #[must_use]
     pub const fn reloads_in_game(self) -> bool {
         matches!(self, Self::ResourcePack | Self::Shader)

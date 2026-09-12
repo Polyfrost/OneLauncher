@@ -20,6 +20,7 @@ use crate::use_dispatch;
 const SIDEBAR_WIDTH_PX: f32 = 225.;
 const ITEM_HEIGHT_PX: f32 = 33.;
 const SEARCH_WIDTH_PX: f32 = 256.;
+const SEARCH_MIN_WIDTH_PX: f32 = 120.;
 const SEARCH_RESULTS_MAX: usize = 12;
 
 thread_local! {
@@ -386,6 +387,7 @@ impl Component for SettingsShell {
         let changelog_unread = has_unread_changelog();
 
         let search = use_state(String::new);
+        let header_width = use_state(|| 0f32);
         let query = SearchQuery::new(&search.read());
         let scroll = use_scroll_controller(ScrollConfig::default);
         SETTINGS_SCROLL_CONTROLLER.with(|cell| *cell.borrow_mut() = Some(scroll));
@@ -433,7 +435,11 @@ impl Component for SettingsShell {
                     .height(Size::fill())
                     .overflow(Overflow::Clip)
                     .spacing(24.)
-                    .child(content_header(active.label().to_string(), search))
+                    .child(content_header(
+                        active.label().to_string(),
+                        search,
+                        header_width,
+                    ))
                     .child(
                         ScrollArea::new()
                             .width(Size::fill())
@@ -450,27 +456,49 @@ impl Component for SettingsShell {
     }
 }
 
-fn content_header(title: String, search: State<String>) -> impl IntoElement {
+fn content_header(
+    title: String,
+    search: State<String>,
+    mut width: State<f32>,
+) -> impl IntoElement {
+    let search_width = search_width_for(*width.read());
+
     rect()
         .horizontal()
         .width(Size::fill())
+        .content(Content::Flex)
         .cross_align(Alignment::Center)
-        .main_align(Alignment::SpaceBetween)
+        .spacing(12.)
+        .on_sized(move |event: Event<SizedEventData>| {
+            let next = event.data().area.width();
+            if (*width.peek() - next).abs() > 0.5 {
+                width.set(next);
+            }
+        })
         .child(
             label()
                 .text(title)
                 .font_size(30.)
                 .font_weight(FontWeight::SEMI_BOLD)
+                .max_lines(1)
+                .width(Size::flex(1.0))
                 .color(colors::fg_primary()),
         )
-        .child(search_box(search))
+        .child(search_box(search, search_width))
 }
 
-fn search_box(mut search: State<String>) -> impl IntoElement {
+fn search_width_for(header_width: f32) -> f32 {
+    if header_width <= 0. {
+        return SEARCH_WIDTH_PX;
+    }
+    (header_width * 0.45).clamp(SEARCH_MIN_WIDTH_PX, SEARCH_WIDTH_PX)
+}
+
+fn search_box(mut search: State<String>, width: f32) -> impl IntoElement {
     let has_query = !search.read().trim().is_empty();
     let base = TextInput::new(search)
         .placeholder("Search settings...")
-        .width(Size::px(SEARCH_WIDTH_PX))
+        .width(Size::px(width))
         .leading(
             Icon::new(IconType::SearchMd)
                 .size(16.)
@@ -631,7 +659,7 @@ fn sidebar(active: SettingsTab, changelog_unread: bool) -> impl IntoElement {
         .padding(Gaps::new(16., 0., 0., 0.))
         .content(Content::Flex)
         .child(
-            rect()
+            ScrollArea::new()
                 .width(Size::fill())
                 .height(Size::flex(1.0))
                 .spacing(16.)
@@ -741,6 +769,9 @@ impl Component for SidebarInfo {
             .width(Size::fill())
             .spacing(4.)
             .font_size(12.)
+            .padding(Gaps::new(
+                15.,0.,0.,0.
+            ))
             .color(colors::fg_secondary())
             .children(
                 items

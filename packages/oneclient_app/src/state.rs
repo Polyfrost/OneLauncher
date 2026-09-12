@@ -214,6 +214,15 @@ impl GameState {
     }
 
     #[must_use]
+    pub fn any_active(&self) -> bool {
+        !self.pending.is_empty()
+            || self
+                .stages
+                .values()
+                .any(|stage| *stage != LaunchStage::Exited)
+    }
+
+    #[must_use]
     pub fn logs_for(&self, cluster_id: i64) -> Arc<Vec<Arc<str>>> {
         self.logs.get(&cluster_id).cloned().unwrap_or_default()
     }
@@ -231,6 +240,21 @@ mod tests {
         assert!(game.begin_launch(1));
         assert!(!game.begin_launch(1));
         assert!(game.begin_launch(2));
+    }
+
+    #[test]
+    fn a_cluster_that_exited_no_longer_counts_as_active() {
+        let mut game = GameState::default();
+        assert!(!game.any_active());
+
+        game.stages.insert(1, LaunchStage::Downloading);
+        assert!(game.any_active());
+
+        game.stages.insert(1, LaunchStage::Exited);
+        assert!(!game.any_active());
+
+        game.begin_launch(2);
+        assert!(game.any_active(), "a click core has not answered yet still blocks");
     }
 
     #[test]

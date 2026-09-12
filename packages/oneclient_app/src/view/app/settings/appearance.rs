@@ -1,11 +1,17 @@
 use freya::prelude::*;
+use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
 use crate::components::{Icon, IconType, toggle};
-use crate::hooks::{use_dispatch, use_settings_snapshot};
+use crate::hooks::{ResetNotice, use_dispatch, use_game_active, use_settings_snapshot};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::view::app::settings::{settings_row, settings_row_disabled};
+use crate::view::app::settings::{reset_row, settings_row, settings_row_disabled, take_notice};
+
+const RESET_NOTICE: ResetNotice = ResetNotice {
+    title: "Appearance reset",
+    body: "The parallax background and animations are back on.",
+};
 
 #[derive(Clone, Copy)]
 struct ThemePreview {
@@ -49,34 +55,48 @@ pub struct SettingsAppearance;
 
 impl Component for SettingsAppearance {
     fn render(&self) -> impl IntoElement {
-        let selected_theme = use_state(|| 0usize);
+        let mut selected_theme = use_state(|| 0usize);
 
         let settings = use_settings_snapshot().settings;
         let dispatch = use_dispatch();
 
-        let dynamic_bg = use_state({
+        let mut dynamic_bg = use_state({
             let v = settings.dynamic_background_enabled;
             move || v
         });
 
-        let animations_on = use_state({
+        let mut animations_on = use_state({
             let v = settings.animations_enabled;
             move || v
         });
 
         let mut first = use_state(|| true);
-        use_side_effect(move || {
-            let parallax = *dynamic_bg.read();
-            let animations = *animations_on.read();
-            if *first.peek() {
-                first.set(false);
-                return;
-            }
-            let mut next = settings.clone();
-            next.dynamic_background_enabled = parallax;
-            next.animations_enabled = animations;
-            dispatch.set_settings(next);
-        });
+        let mut announce = use_state(|| false);
+        {
+            let dispatch = dispatch.clone();
+            use_side_effect(move || {
+                let parallax = *dynamic_bg.read();
+                let animations = *animations_on.read();
+                if *first.peek() {
+                    first.set(false);
+                    return;
+                }
+                dispatch.edit_settings_notifying(take_notice(announce, RESET_NOTICE), |settings| {
+                    settings.dynamic_background_enabled = parallax;
+                    settings.animations_enabled = animations;
+                });
+            });
+        }
+
+        let game_active = use_game_active();
+        let confirming_reset = use_state(|| false);
+        let reset = move |()| {
+            let defaults = LauncherSettings::default();
+            announce.set(true);
+            selected_theme.set(0);
+            dynamic_bg.set(defaults.dynamic_background_enabled);
+            animations_on.set(defaults.animations_enabled);
+        };
 
         settings_page()
             .child(theme_section(selected_theme))
@@ -99,6 +119,13 @@ impl Component for SettingsAppearance {
                         .color(colors::fg_primary()),
                 ),
             )
+            .child(reset_row(
+                confirming_reset,
+                game_active,
+                "Put the options on this page back to their defaults.",
+                "The parallax background and animations go back on.",
+                reset.into(),
+            ))
             .into_element()
     }
 }

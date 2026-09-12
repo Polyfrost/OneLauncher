@@ -44,6 +44,8 @@ pub fn use_start_maximized() -> bool {
     consume_root_context::<StartMaximizedState>().0
 }
 
+pub const BROWSER_COMPAT_DEFAULT: bool = true;
+
 #[derive(Clone)]
 pub struct BrowserCompatState(pub State<bool>);
 

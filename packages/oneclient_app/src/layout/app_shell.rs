@@ -20,7 +20,8 @@ use oneclient_core::clusters::Cluster;
 use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
-    ActiveClusterState, BrowserCompatState, BrowserStateStore, use_active_cluster_id, use_clusters,
+    ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
+    use_active_cluster_id, use_clusters,
     use_game_snapshot, use_launcher, use_provide_active_cluster, use_provide_browser_compat,
     use_provide_browser_state, use_splash,
 };
@@ -37,7 +38,7 @@ impl Component for AppShell {
         let active_cluster = use_state(|| None::<ClusterId>);
         use_provide_active_cluster(ActiveClusterState(active_cluster));
 
-        let browser_compat = use_state(|| true);
+        let browser_compat = use_state(|| BROWSER_COMPAT_DEFAULT);
         use_provide_browser_compat(BrowserCompatState(browser_compat));
 
         let browser_state = use_state(HashMap::new);

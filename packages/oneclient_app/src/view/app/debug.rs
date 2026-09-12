@@ -9,7 +9,7 @@ use oneclient_net::status::{self, ServiceStatus};
 
 use crate::Actions;
 use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialog, toggle};
-use crate::hooks::use_dispatch;
+use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch};
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
     OptionalModsGroup,
@@ -97,6 +97,8 @@ impl Component for Debug {
                         vec![CorruptionSimulator.into_element()],
                     ))
                     .child(divider())
+                    .child(section("Clusters", vec![ClusterList.into_element()]))
+                    .child(divider())
                     .child(section("SQL Console", vec![SqlConsole.into_element()]))
                     .child(divider())
                     .child(section(
@@ -109,6 +111,92 @@ impl Component for Debug {
                         ])],
                     )),
             )
+    }
+}
+
+#[derive(PartialEq)]
+struct ClusterList;
+
+impl Component for ClusterList {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let active_id = use_active_cluster_id();
+        let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
+
+        let mut list = rect().vertical().width(Size::fill()).spacing(8.);
+
+        if clusters.is_empty() {
+            return list.child(
+                label()
+                    .text("No clusters in the database.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            );
+        }
+
+        for cluster in clusters {
+            let cluster_id = cluster.id;
+            let launch = dispatch.clone();
+            let mut active_id = active_id;
+            let loader_version = cluster
+                .mc_loader_version
+                .as_deref()
+                .map_or_else(String::new, |version| format!(" {version}"));
+
+            list = list.child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .main_align(Alignment::SpaceBetween)
+                    .spacing(12.)
+                    .padding(Gaps::new_symmetric(10., 14.))
+                    .corner_radius(CornerRadius::new_all(10.))
+                    .background(colors::page_elevated())
+                    .child(
+                        rect()
+                            .vertical()
+                            .child(
+                                label()
+                                    .text(cluster.name.clone())
+                                    .font_size(14.)
+                                    .color(colors::fg_primary()),
+                            )
+                            .child(
+                                label()
+                                    .text(format!(
+                                        "#{cluster_id} · {} · {}{loader_version} · {:?}",
+                                        cluster.mc_version, cluster.mc_loader, cluster.stage
+                                    ))
+                                    .font_size(12.)
+                                    .color(colors::fg_secondary()),
+                            ),
+                    )
+                    .child(
+                        rect()
+                            .horizontal()
+                            .spacing(8.)
+                            .child(
+                                Button::new()
+                                    .primary()
+                                    .on_press(move |_| launch.launch_cluster(cluster_id))
+                                    .text("Launch"),
+                            )
+                            .child(
+                                Button::new()
+                                    .secondary()
+                                    .on_press(move |_| {
+                                        *active_id.write() = Some(cluster_id);
+                                        let _ = RouterContext::get()
+                                            .push(Route::ClusterOverview { cluster_id });
+                                    })
+                                    .text("View"),
+                            ),
+                    ),
+            );
+        }
+
+        list
     }
 }
 

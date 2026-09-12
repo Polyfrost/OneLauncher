@@ -1,5 +1,6 @@
 mod analytics;
 mod error;
+pub mod fabric;
 mod gpu;
 mod heal;
 mod launch;
@@ -37,6 +38,7 @@ pub use oneclient_mc::{
     validate_rules,
     verify_game_files,
 };
+pub use fabric::{mods_folder_argument, uses_cluster_mods_folder};
 pub use shared_dir::{
     dematerialize_content, import_manual_content, link_cluster_logs, materialize_content,
     unlink_cluster_logs, write_allowed_symlinks,

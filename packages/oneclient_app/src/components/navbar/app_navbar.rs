@@ -8,8 +8,8 @@ use crate::{
     Route,
     components::{Avatar, Icon, IconType},
     hooks::{
-        settled_or_loading, try_default_account, use_active_cluster_id, use_clusters,
-        use_current_account, use_dispatch, use_notifications_snapshot,
+        settled_or_loading, try_default_account, use_active_cluster_id, use_browser_type,
+        use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
     },
     theme,
     utils::sort_clusters_for_home,
@@ -126,6 +126,7 @@ fn navbar_center() -> impl IntoElement {
 fn browse_target() -> Route {
     let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
     let active = *use_active_cluster_id().read();
+    let package_type = use_browser_type().read().clone();
 
     let cluster_id = active
         .filter(|id| clusters.iter().any(|cluster| cluster.id == *id))
@@ -134,7 +135,7 @@ fn browse_target() -> Route {
     match cluster_id {
         Some(cluster_id) => Route::Browser {
             cluster_id,
-            package_type: "mod".to_string(),
+            package_type,
             pick_cluster: true,
         },
         None => Route::Clusters {},

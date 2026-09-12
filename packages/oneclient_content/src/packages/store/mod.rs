@@ -282,6 +282,10 @@ impl PackageStore {
         )
         .await?;
 
+        if content_type.is_global() {
+            artifact_dao::set_enabled_for_hash(&ctx.db, hash, i64::from(enabled)).await?;
+        }
+
         // Only the enable side has an outcome to report; a pack that is not in
         // the running folder needs no removing from it
         let live = if enabled {

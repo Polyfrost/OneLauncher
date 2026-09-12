@@ -24,9 +24,6 @@ pub enum GameError {
     #[error("processor main class not found for {0}")]
     ProcessorMainClass(String),
 
-    #[error("invalid game version {0}")]
-    InvalidVersion(String),
-
     #[error("cluster {0} is already running")]
     AlreadyRunning(i64),
 

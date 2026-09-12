@@ -46,9 +46,6 @@ pub enum ClusterError {
 	#[error("cluster is in {0} stage")]
 	Busy(ClusterStage),
 
-    #[error("invalid Minecraft version '{0}'")]
-    InvalidVersion(String),
-
     #[error("cluster is missing a required Java version")]
     MissingJavaVersion,
 

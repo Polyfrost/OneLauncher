@@ -41,7 +41,7 @@ impl Component for CategorySidebar {
 
         rect()
             .vertical()
-            .width(Size::px(190.))
+            .width(Size::px(CATEGORY_SIDEBAR_W))
             .height(Size::fill())
             .spacing(8.)
             .child(

@@ -1,7 +1,6 @@
 mod analytics;
 mod error;
 pub mod fabric;
-#[cfg(any(target_os = "linux", test))]
 mod gpu;
 mod heal;
 mod launch;

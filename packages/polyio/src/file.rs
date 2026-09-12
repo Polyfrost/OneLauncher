@@ -620,6 +620,10 @@ pub async fn symlink_metadata(path: impl AsRef<std::path::Path>) -> PolyIOResult
 		})
 }
 
+fn resolved_target(original: &std::path::Path) -> PathBuf {
+	crate::canonicalize(original).unwrap_or_else(|_| original.to_path_buf())
+}
+
 /// Symlink on Unix hard link on Windows so both paths must be on one volume
 #[tracing::instrument(
     level = "debug",
@@ -633,7 +637,8 @@ pub async fn symlink_file(
 	original: impl AsRef<std::path::Path>,
 	link: impl AsRef<std::path::Path>,
 ) -> PolyIOResult<()> {
-	let original = original.as_ref();
+	let original = resolved_target(original.as_ref());
+	let original = original.as_path();
 	let link = link.as_ref();
 
 	#[cfg(windows)]
@@ -723,7 +728,8 @@ pub async fn symlink_dir(
 	original: impl AsRef<std::path::Path>,
 	link: impl AsRef<std::path::Path>,
 ) -> PolyIOResult<()> {
-	let original = original.as_ref();
+	let original = resolved_target(original.as_ref());
+	let original = original.as_path();
 	let link = link.as_ref();
 
 	#[cfg(windows)]
@@ -844,6 +850,45 @@ mod tests {
 	fn write_buffer_falls_back_without_a_length() {
 		assert_eq!(write_buffer_size(None), DEFAULT_WRITE_BUFFER);
 		assert_eq!(write_buffer_size(Some(0)), DEFAULT_WRITE_BUFFER);
+	}
+
+	#[cfg(unix)]
+	#[tokio::test]
+	async fn a_link_target_is_stored_resolved() {
+		let root = scratch("resolved-target");
+		let real = root.join("var").join("home");
+		std::fs::create_dir_all(&real).unwrap();
+		std::os::unix::fs::symlink(&real, root.join("home")).unwrap();
+
+		let pack = real.join("pack.zip");
+		std::fs::write(&pack, b"pack").unwrap();
+
+		let through_link = root.join("home").join("pack.zip");
+		let link = root.join("resourcepacks.zip");
+
+		symlink_file(&through_link, &link).await.unwrap();
+
+		assert_eq!(
+			read_link(&link).await.unwrap(),
+			crate::canonicalize(&pack).unwrap(),
+			"the stored target must be the resolved path, not the spelling we were given"
+		);
+
+		std::fs::remove_dir_all(&root).ok();
+	}
+
+	#[cfg(unix)]
+	#[tokio::test]
+	async fn a_missing_target_is_stored_as_given() {
+		let root = scratch("unresolved-target");
+		let missing = root.join("not-here.zip");
+		let link = root.join("link.zip");
+
+		symlink_file(&missing, &link).await.unwrap();
+
+		assert_eq!(read_link(&link).await.unwrap(), missing);
+
+		std::fs::remove_dir_all(&root).ok();
 	}
 
 	fn scratch(tag: &str) -> PathBuf {

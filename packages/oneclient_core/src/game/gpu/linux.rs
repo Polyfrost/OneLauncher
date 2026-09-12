@@ -1,73 +1,108 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-const VENDOR_NVIDIA: u16 = 0x10de;
+const INTEL_INTEGRATED: &str = "0000:00:02.0";
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Driver {
+    AmdGpu,
+    Radeon,
+    Nouveau,
+    Nvidia,
+    I915,
+    Xe,
+    Other,
+}
+
+impl Driver {
+    fn from_name(name: Option<&str>) -> Self {
+        match name {
+            Some("amdgpu") => Self::AmdGpu,
+            Some("radeon") => Self::Radeon,
+            Some("nouveau") => Self::Nouveau,
+            Some("nvidia") => Self::Nvidia,
+            Some("i915") => Self::I915,
+            Some("xe") => Self::Xe,
+            Some(other) => {
+                tracing::warn!(driver = other, "unknown graphics driver");
+                Self::Other
+            }
+            None => Self::Other,
+        }
+    }
+
+    fn vulkan_icd(self) -> Option<&'static str> {
+        match self {
+            Self::AmdGpu | Self::Radeon => Some("*radeon*,*amd*"),
+            Self::Nvidia => Some("*nvidia*"),
+            Self::I915 | Self::Xe => Some("*intel*"),
+            Self::Nouveau | Self::Other => None,
+        }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Gpu {
-    /// The sysfs address, `0000:01:00.0`
     pub pci_address: String,
-    pub vendor_id: u16,
-    /// The card the firmware booted with
-    /// `None` on the platforms that never publish the attribute
     pub boot_vga: Option<bool>,
-    /// `device/class`; display controllers are `0x03xxxx`
-    pub class: Option<u32>,
-    /// The kernel module bound to the card, `nvidia` or `nouveau` for the same silicon
-    pub driver: Option<String>,
-    pub has_render_node: bool,
+    pub driver: Driver,
+    pub render_node: Option<PathBuf>,
+    pub discrete: bool,
 }
 
 impl Gpu {
-    /// The proprietary driver renders through `/dev/nvidia*`, so it is a target
-    /// whether or not `nvidia-drm` is loaded to publish a render node
     fn nvidia_proprietary(&self) -> bool {
-        self.driver.as_deref() == Some("nvidia")
+        self.driver == Driver::Nvidia
     }
 
-    /// A server's BMC display adapter is a display controller with no render node, and naming it in `DRI_PRIME` drops the game to software rendering
     fn can_render(&self) -> bool {
-        (self.has_render_node || self.nvidia_proprietary())
-            && self.class.is_none_or(|class| class >> 16 == 0x03)
+        self.render_node.is_some() || self.nvidia_proprietary()
+    }
+
+    fn priority(&self) -> u32 {
+        u32::from(self.discrete) * 2 + u32::from(self.boot_vga == Some(true))
     }
 }
 
-/// Empty whenever offload does not apply
 pub fn offload_env(gpus: &[Gpu]) -> Vec<(&'static str, String)> {
-    if gpus.len() < 2 {
-        return Vec::new();
-    }
-
-    let Some(boot) = gpus.iter().find(|gpu| gpu.boot_vga == Some(true)) else {
-        return Vec::new();
-    };
-
-    if boot.vendor_id == VENDOR_NVIDIA {
-        return Vec::new();
-    }
-
-    let Some(target) = gpus
+    let Some(best) = gpus
         .iter()
-        .find(|gpu| gpu.boot_vga != Some(true) && gpu.can_render())
+        .filter(|gpu| gpu.can_render())
+        .max_by_key(|gpu| gpu.priority())
     else {
         return Vec::new();
     };
 
-    if target.nvidia_proprietary() {
-        return vec![
+    if !best.discrete || best.boot_vga == Some(true) {
+        return Vec::new();
+    }
+
+    let mut env = if best.nvidia_proprietary() {
+        vec![
             ("__NV_PRIME_RENDER_OFFLOAD", "1".to_string()),
             ("__VK_LAYER_NV_optimus", "NVIDIA_only".to_string()),
             ("__GLX_VENDOR_LIBRARY_NAME", "nvidia".to_string()),
-        ];
+        ]
+    } else {
+        let prime = pci_tag(&best.pci_address).unwrap_or_else(|| "1".to_string());
+        vec![("DRI_PRIME", prime)]
+    };
+
+    if let Some(icd) = best.driver.vulkan_icd() {
+        env.push(("VK_LOADER_DRIVERS_SELECT", icd.to_string()));
     }
 
-    let prime = pci_tag(&target.pci_address).unwrap_or_else(|| "1".to_string());
-
-    vec![("DRI_PRIME", prime)]
+    env
 }
 
 #[cfg(target_os = "linux")]
 pub fn detect() -> Vec<Gpu> {
-    read_pci_devices(Path::new("/sys/bus/pci/devices"))
+    let mut gpus = read_pci_devices(Path::new("/sys/bus/pci/devices"));
+
+    for gpu in &mut gpus {
+        gpu.discrete = probe_discrete(gpu);
+    }
+
+    gpus
 }
 
 fn read_pci_devices(root: &Path) -> Vec<Gpu> {
@@ -84,34 +119,22 @@ fn read_pci_devices(root: &Path) -> Vec<Gpu> {
         };
 
         let device = entry.path();
-        let class = read_class(&device.join("class"));
 
-        if class.is_none_or(|class| class >> 16 != 0x03) {
+        if read_class(&device.join("class")).is_none_or(|class| class >> 16 != 0x03) {
             continue;
         }
 
-        let Some(vendor_id) = read_hex(&device.join("vendor")) else {
-            continue;
-        };
-
         gpus.push(Gpu {
             pci_address: address.to_string(),
-            vendor_id,
             boot_vga: read_flag(&device.join("boot_vga")),
-            class,
-            driver: read_link_name(&device.join("driver")),
-            has_render_node: has_render_node(&device.join("drm")),
+            driver: Driver::from_name(read_link_name(&device.join("driver")).as_deref()),
+            render_node: render_node(&device.join("drm")),
+            discrete: false,
         });
     }
 
     gpus.sort_by(|a, b| a.pci_address.cmp(&b.pci_address));
     gpus
-}
-
-fn read_hex(path: &Path) -> Option<u16> {
-    let raw = std::fs::read_to_string(path).ok()?;
-    let raw = raw.trim();
-    u16::from_str_radix(raw.strip_prefix("0x").unwrap_or(raw), 16).ok()
 }
 
 fn read_flag(path: &Path) -> Option<bool> {
@@ -129,21 +152,17 @@ fn read_link_name(path: &Path) -> Option<String> {
     Some(link.file_name()?.to_str()?.to_string())
 }
 
-/// The `drm` directory on the device holds its own `cardN` plus a `renderD*` whenever the card can be rendered on
-fn has_render_node(drm: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(drm) else {
-        return false;
-    };
+fn render_node(drm: &Path) -> Option<PathBuf> {
+    let entries = std::fs::read_dir(drm).ok()?;
 
-    entries.flatten().any(|entry| {
-        entry
-            .file_name()
-            .to_str()
-            .is_some_and(|name| name.starts_with("renderD"))
+    entries.flatten().find_map(|entry| {
+        let name = entry.file_name();
+        name.to_str()?
+            .starts_with("renderD")
+            .then(|| Path::new("/dev/dri").join(&name))
     })
 }
 
-/// Mesa builds its tag as `pci-%04x_%02x_%02x_%1u`, which is the sysfs `0000:01:00.0` spelling with the separators swapped
 fn pci_tag(address: &str) -> Option<String> {
     let (domain, rest) = address.split_once(':')?;
     let (bus, rest) = rest.split_once(':')?;
@@ -160,29 +179,188 @@ fn pci_tag(address: &str) -> Option<String> {
     Some(format!("pci-{domain}_{bus}_{device}_{function}"))
 }
 
+fn probe_discrete(gpu: &Gpu) -> bool {
+    match gpu.driver {
+        Driver::Nvidia => true,
+        Driver::AmdGpu => answered(gpu, drm::amdgpu_is_discrete(gpu)),
+        Driver::Xe => answered(gpu, drm::xe_is_discrete(gpu)),
+        Driver::I915 => gpu.pci_address != INTEL_INTEGRATED,
+        Driver::Nouveau | Driver::Radeon | Driver::Other => gpu.boot_vga == Some(false),
+    }
+}
+
+fn answered(gpu: &Gpu, probe: std::io::Result<bool>) -> bool {
+    probe.unwrap_or_else(|error| {
+        tracing::warn!(
+            card = gpu.pci_address,
+            ?error,
+            "no discreteness answer; assuming integrated"
+        );
+        false
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+mod drm {
+    use super::Gpu;
+
+    fn unavailable() -> std::io::Result<bool> {
+        Err(std::io::Error::from(std::io::ErrorKind::Unsupported))
+    }
+
+    pub fn amdgpu_is_discrete(_gpu: &Gpu) -> std::io::Result<bool> {
+        unavailable()
+    }
+
+    pub fn xe_is_discrete(_gpu: &Gpu) -> std::io::Result<bool> {
+        unavailable()
+    }
+}
+
+#[cfg(target_os = "linux")]
+mod drm {
+    use std::fs::File;
+    use std::os::fd::AsRawFd;
+
+    use super::Gpu;
+
+    const DRM_IOCTL_BASE: u32 = b'd' as u32;
+    const DRM_COMMAND_BASE: u32 = 0x40;
+
+    fn open(gpu: &Gpu) -> std::io::Result<Option<File>> {
+        let Some(node) = &gpu.render_node else {
+            return Ok(None);
+        };
+
+        std::fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(node)
+            .map(Some)
+    }
+
+    fn check(result: i32) -> std::io::Result<()> {
+        if result == 0 {
+            Ok(())
+        } else {
+            Err(std::io::Error::last_os_error())
+        }
+    }
+
+    fn command_write<T>(file: &File, index: u32, data: &T) -> std::io::Result<()> {
+        let request = libc::_IOW::<T>(DRM_IOCTL_BASE, DRM_COMMAND_BASE + index);
+        check(unsafe { libc::ioctl(file.as_raw_fd(), request, std::ptr::from_ref(data)) })
+    }
+
+    fn command_read_write<T>(file: &File, index: u32, data: &mut T) -> std::io::Result<()> {
+        let request = libc::_IOWR::<T>(DRM_IOCTL_BASE, DRM_COMMAND_BASE + index);
+        check(unsafe { libc::ioctl(file.as_raw_fd(), request, std::ptr::from_mut(data)) })
+    }
+
+    pub fn amdgpu_is_discrete(gpu: &Gpu) -> std::io::Result<bool> {
+        let Some(file) = open(gpu)? else {
+            return Ok(false);
+        };
+
+        #[repr(C)]
+        struct InfoDevice {
+            _before_ids_flags: [u32; 34],
+            ids_flags: u64,
+        }
+
+        #[repr(C)]
+        struct Info {
+            return_pointer: u64,
+            return_size: u32,
+            query: u32,
+            _query_args: [u32; 4],
+        }
+
+        let mut result = InfoDevice {
+            _before_ids_flags: [0; 34],
+            ids_flags: 0,
+        };
+
+        const AMDGPU_INFO_DEV_INFO: u32 = 0x16;
+        let query = Info {
+            return_pointer: std::ptr::from_mut(&mut result) as u64,
+            return_size: size_of_val(&result) as u32,
+            query: AMDGPU_INFO_DEV_INFO,
+            _query_args: [0; 4],
+        };
+
+        const DRM_AMDGPU_INFO: u32 = 0x05;
+        command_write(&file, DRM_AMDGPU_INFO, &query)?;
+
+        const AMDGPU_IDS_FLAGS_FUSION: u64 = 0x1;
+        Ok(result.ids_flags & AMDGPU_IDS_FLAGS_FUSION == 0)
+    }
+
+    pub fn xe_is_discrete(gpu: &Gpu) -> std::io::Result<bool> {
+        let Some(file) = open(gpu)? else {
+            return Ok(false);
+        };
+
+        #[repr(C)]
+        struct DeviceQuery {
+            extensions: u64,
+            query: u32,
+            size: u32,
+            data: u64,
+            _reserved: [u64; 2],
+        }
+
+        const DRM_XE_DEVICE_QUERY: u32 = 0x00;
+        const DRM_XE_DEVICE_QUERY_CONFIG: u32 = 0x2;
+
+        let mut query = DeviceQuery {
+            extensions: 0,
+            query: DRM_XE_DEVICE_QUERY_CONFIG,
+            size: 0,
+            data: 0,
+            _reserved: [0; 2],
+        };
+
+        command_read_write(&file, DRM_XE_DEVICE_QUERY, &mut query)?;
+
+        const INFO_OFFSET: usize = 1;
+        const CONFIG_FLAGS: usize = 1;
+        let words = (query.size as usize).div_ceil(size_of::<u64>());
+
+        if words <= INFO_OFFSET + CONFIG_FLAGS {
+            tracing::warn!(size = query.size, "xe config too short to hold its flags");
+            return Ok(false);
+        }
+
+        let mut data = vec![0_u64; words];
+        query.data = data.as_mut_ptr() as u64;
+
+        command_read_write(&file, DRM_XE_DEVICE_QUERY, &mut query)?;
+
+        const DRM_XE_QUERY_CONFIG_FLAG_HAS_VRAM: u64 = 1 << 0;
+        Ok(data[INFO_OFFSET + CONFIG_FLAGS] & DRM_XE_QUERY_CONFIG_FLAG_HAS_VRAM != 0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const NVIDIA: u16 = 0x10de;
-    const AMD: u16 = 0x1002;
-    const INTEL: u16 = 0x8086;
-    const ASPEED: u16 = 0x1a03;
+    const AMD_INTEGRATED: &str = "0000:0c:00.0";
 
-    fn gpu(address: &str, vendor_id: u16, boot_vga: Option<bool>) -> Gpu {
+    fn gpu(address: &str, driver: Driver, boot_vga: Option<bool>) -> Gpu {
+        let discrete = match driver {
+            Driver::Nvidia => true,
+            Driver::I915 => address != INTEL_INTEGRATED,
+            _ => boot_vga == Some(false),
+        };
+
         Gpu {
             pci_address: address.to_string(),
-            vendor_id,
             boot_vga,
-            class: Some(0x03_0000),
-            driver: Some(match vendor_id {
-                NVIDIA => "nvidia",
-                AMD => "amdgpu",
-                INTEL => "i915",
-                _ => "unknown",
-            }
-            .to_string()),
-            has_render_node: true,
+            driver,
+            render_node: Some(PathBuf::from("/dev/dri/renderD128")),
+            discrete,
         }
     }
 
@@ -191,100 +369,112 @@ mod tests {
             ("__NV_PRIME_RENDER_OFFLOAD", "1".to_string()),
             ("__VK_LAYER_NV_optimus", "NVIDIA_only".to_string()),
             ("__GLX_VENDOR_LIBRARY_NAME", "nvidia".to_string()),
+            ("VK_LOADER_DRIVERS_SELECT", "*nvidia*".to_string()),
         ]
     }
 
-    fn dri_prime(card: &str) -> Vec<(&'static str, String)> {
-        vec![("DRI_PRIME", card.to_string())]
+    fn dri_prime(card: &str, icd: &str) -> Vec<(&'static str, String)> {
+        vec![
+            ("DRI_PRIME", card.to_string()),
+            ("VK_LOADER_DRIVERS_SELECT", icd.to_string()),
+        ]
     }
 
-    /// The whole truth table `offload_env` decides over: vendor, which card the
-    /// firmware booted, which module is bound, and whether there is a render node.
-    /// Getting a row wrong is silent — the game lands on the wrong card or on
-    /// llvmpipe and only ever gets reported as "it runs slow"
     #[test]
     fn offload_env_names_the_right_card_for_every_pairing() {
-        let igpu = || gpu("0000:00:02.0", INTEL, Some(true));
-        let dgpu = || gpu("0000:01:00.0", NVIDIA, Some(false));
-        let nothing = Vec::new();
+        let igpu = || gpu(INTEL_INTEGRATED, Driver::I915, Some(true));
+        let dgpu = || gpu("0000:01:00.0", Driver::Nvidia, Some(false));
 
-		type CaseMessage<'a> = &'a str;
-		type GpuList = Vec<Gpu>;
-		type CardmOdel =  Vec<(&'static str, String)>;
+        type Case = (&'static str, Vec<Gpu>, Vec<(&'static str, String)>);
+        let amd = "*radeon*,*amd*";
 
-        let cases: Vec<(CaseMessage<'_>, GpuList, CardmOdel)> = vec![
-            ("no cards at all", vec![], nothing.clone()),
-            ("a lone amd card", vec![gpu("0000:01:00.0", AMD, Some(true))], nothing.clone()),
-            ("a lone nvidia card", vec![gpu("0000:01:00.0", NVIDIA, Some(true))], nothing.clone()),
-            ("a lone intel card", vec![igpu()], nothing.clone()),
+        let cases: Vec<Case> = vec![
+            ("no cards at all", vec![], vec![]),
+            (
+                "a lone amd card",
+                vec![gpu("0000:01:00.0", Driver::AmdGpu, Some(true))],
+                vec![],
+            ),
+            (
+                "a lone nvidia card",
+                vec![gpu("0000:01:00.0", Driver::Nvidia, Some(true))],
+                vec![],
+            ),
+            ("a lone intel card", vec![igpu()], vec![]),
             (
                 "an all-amd hybrid never names nvidia",
-                vec![gpu("0000:00:02.0", AMD, Some(true)), gpu("0000:01:00.0", AMD, Some(false))],
-                dri_prime("pci-0000_01_00_0"),
+                vec![
+                    gpu(AMD_INTEGRATED, Driver::AmdGpu, Some(true)),
+                    gpu("0000:01:00.0", Driver::AmdGpu, Some(false)),
+                ],
+                dri_prime("pci-0000_01_00_0", amd),
             ),
             (
                 "an intel + amd hybrid never names nvidia",
-                vec![igpu(), gpu("0000:01:00.0", AMD, Some(false))],
-                dri_prime("pci-0000_01_00_0"),
+                vec![igpu(), gpu("0000:01:00.0", Driver::AmdGpu, Some(false))],
+                dri_prime("pci-0000_01_00_0", amd),
             ),
             (
-                // `DRI_PRIME` alongside these names a card the proprietary driver
-                // owns and steers any Mesa path still in play onto nouveau
                 "an optimus laptop gets the nvidia variables and no DRI_PRIME",
                 vec![igpu(), dgpu()],
                 nvidia_offload(),
             ),
             (
-                // `__GLX_VENDOR_LIBRARY_NAME=nvidia` would ask glvnd for a vendor
-                // library that is not installed, and the game lands on llvmpipe
-                "the same laptop on nouveau gets DRI_PRIME instead",
-                vec![igpu(), Gpu { driver: Some("nouveau".to_string()), ..dgpu() }],
-                dri_prime("pci-0000_01_00_0"),
+                "the same laptop on nouveau gets DRI_PRIME and no ICD filter",
+                vec![igpu(), Gpu { driver: Driver::Nouveau, ..dgpu() }],
+                vec![("DRI_PRIME", "pci-0000_01_00_0".to_string())],
             ),
             (
-                // No `nvidia-drm`, so nothing publishes `renderD*` — the proprietary
-                // driver renders through `/dev/nvidia*` all the same
                 "an nvidia card without a render node is still a target",
-                vec![igpu(), Gpu { has_render_node: false, ..dgpu() }],
+                vec![igpu(), Gpu { render_node: None, ..dgpu() }],
                 nvidia_offload(),
             ),
             (
                 "an unbound card is never the target",
-                vec![igpu(), Gpu { driver: None, has_render_node: false, ..dgpu() }],
-                nothing.clone(),
+                vec![igpu(), Gpu { driver: Driver::Other, render_node: None, ..dgpu() }],
+                vec![],
             ),
             (
-                // Workstation: iGPU on the display, the BMC's ASPEED at a lower
-                // address than the real dGPU, and no render node on the BMC
                 "a bmc display adapter is skipped for the real card behind it",
                 vec![
                     igpu(),
-                    Gpu { has_render_node: false, ..gpu("0000:03:00.0", ASPEED, Some(false)) },
-                    gpu("0000:c1:00.0", AMD, Some(false)),
+                    Gpu { render_node: None, ..gpu("0000:03:00.0", Driver::Other, Some(false)) },
+                    gpu("0000:c1:00.0", Driver::AmdGpu, Some(false)),
                 ],
-                dri_prime("pci-0000_c1_00_0"),
+                dri_prime("pci-0000_c1_00_0", amd),
             ),
             (
-                "a card that is not a display controller is never the target",
-                vec![igpu(), Gpu { class: Some(0x12_0000), ..gpu("0000:01:00.0", AMD, Some(false)) }],
-                nothing.clone(),
+                "the discrete card wins over a renderable card at a lower address",
+                vec![
+                    igpu(),
+                    Gpu { discrete: false, ..gpu("0000:03:00.0", Driver::AmdGpu, Some(false)) },
+                    gpu("0000:c1:00.0", Driver::AmdGpu, Some(false)),
+                ],
+                dri_prime("pci-0000_c1_00_0", amd),
             ),
             (
-                // Desktop with the monitor on the NVIDIA card and the iGPU still
-                // on. `DRI_PRIME` would move Mesa onto the integrated one
                 "nothing happens when the discrete card already drives the display",
-                vec![gpu("0000:01:00.0", NVIDIA, Some(true)), gpu("0000:00:02.0", INTEL, Some(false))],
-                nothing.clone(),
+                vec![
+                    gpu("0000:01:00.0", Driver::Nvidia, Some(true)),
+                    gpu(INTEL_INTEGRATED, Driver::I915, Some(false)),
+                ],
+                vec![],
             ),
             (
-                "nothing happens when no card claims to be the boot gpu",
-                vec![gpu("0000:00:02.0", INTEL, None), gpu("0000:01:00.0", NVIDIA, None)],
-                nothing.clone(),
+                "the driver still finds the discrete card when nothing publishes boot_vga",
+                vec![
+                    gpu(INTEL_INTEGRATED, Driver::I915, None),
+                    gpu("0000:01:00.0", Driver::Nvidia, None),
+                ],
+                nvidia_offload(),
             ),
             (
                 "a malformed pci address falls back to the ordinal",
-                vec![gpu("0000:00:02.0", AMD, Some(true)), gpu("not-an-address", AMD, Some(false))],
-                dri_prime("1"),
+                vec![
+                    gpu(AMD_INTEGRATED, Driver::AmdGpu, Some(true)),
+                    gpu("not-an-address", Driver::AmdGpu, Some(false)),
+                ],
+                dri_prime("1", amd),
             ),
         ];
 
@@ -302,15 +492,49 @@ mod tests {
         assert_eq!(pci_tag("0000:0g:00.0"), None, "not hex");
     }
 
+    #[test]
+    fn a_driver_that_will_not_answer_is_never_called_discrete() {
+        let mut apu = gpu(AMD_INTEGRATED, Driver::AmdGpu, Some(false));
+        apu.discrete = probe_discrete(&apu);
+        assert!(!apu.discrete);
+
+        let mut dgpu = gpu("0000:03:00.0", Driver::AmdGpu, Some(true));
+        dgpu.discrete = probe_discrete(&dgpu);
+        assert!(!dgpu.discrete);
+
+        assert!(
+            offload_env(&[apu, dgpu]).is_empty(),
+            "knowing nothing, leave the renderer alone"
+        );
+    }
+
+    #[test]
+    fn the_cards_we_can_place_without_asking_the_driver() {
+        assert!(probe_discrete(&gpu("0000:01:00.0", Driver::Nvidia, Some(false))));
+        assert!(!probe_discrete(&gpu(INTEL_INTEGRATED, Driver::I915, Some(true))));
+        assert!(
+            probe_discrete(&gpu("0000:03:00.0", Driver::I915, Some(false))),
+            "an arc board does not sit at the integrated address"
+        );
+        assert!(
+            probe_discrete(&gpu("0000:01:00.0", Driver::Nouveau, Some(false))),
+            "no query, so boot_vga is all we have"
+        );
+    }
+
+    #[test]
+    fn an_unknown_module_name_is_not_fatal() {
+        assert_eq!(Driver::from_name(Some("asahi")), Driver::Other);
+        assert_eq!(Driver::from_name(None), Driver::Other);
+    }
+
     fn write(path: &Path, contents: &str) {
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
         std::fs::write(path, contents).unwrap();
     }
 
-    fn write_card(bus: &Path, address: &str, vendor: &str, boot_vga: &str, driver: &str) {
+    fn write_card(bus: &Path, address: &str, boot_vga: &str, driver: &str) {
         let device = bus.join(address);
-        // sysfs spells these with a trailing newline
-        write(&device.join("vendor"), &format!("{vendor}\n"));
         write(&device.join("boot_vga"), &format!("{boot_vga}\n"));
         write(&device.join("class"), "0x030000\n");
 
@@ -320,35 +544,36 @@ mod tests {
     }
 
     #[test]
-    fn reads_vendor_boot_flag_driver_and_render_node_out_of_a_sysfs_tree() {
+    fn reads_boot_flag_driver_and_render_node_out_of_a_sysfs_tree() {
         let scratch = polyio::testing::ScratchDir::new("gpu-sysfs");
         let bus = scratch.join("devices");
 
-        write_card(&bus, "0000:00:02.0", "0x8086", "1", "i915");
+        write_card(&bus, INTEL_INTEGRATED, "1", "i915");
         write(
-            &bus.join("0000:00:02.0")
+            &bus.join(INTEL_INTEGRATED)
                 .join("drm")
                 .join("renderD128")
                 .join("dev"),
             "226:128\n",
         );
-        write_card(&bus, "0000:01:00.0", "0x10de", "0", "nvidia");
+        write_card(&bus, "0000:01:00.0", "0", "nvidia");
 
         let gpus = read_pci_devices(&bus);
 
         assert_eq!(gpus.len(), 2);
-        assert_eq!(gpus[0].pci_address, "0000:00:02.0");
-        assert_eq!(gpus[0].vendor_id, INTEL);
+        assert_eq!(gpus[0].pci_address, INTEL_INTEGRATED);
         assert_eq!(gpus[0].boot_vga, Some(true));
-        assert!(gpus[0].has_render_node);
-        assert_eq!(gpus[1].vendor_id, NVIDIA);
+        assert_eq!(gpus[0].driver, Driver::I915);
+        assert_eq!(
+            gpus[0].render_node,
+            Some(PathBuf::from("/dev/dri/renderD128")),
+            "the node the ioctl probes open"
+        );
         assert_eq!(gpus[1].boot_vga, Some(false));
-        assert_eq!(gpus[1].class, Some(0x03_0000));
-        assert_eq!(gpus[1].driver.as_deref(), Some("nvidia"));
-        assert!(!gpus[1].has_render_node, "no nvidia-drm in this tree");
+        assert_eq!(gpus[1].driver, Driver::Nvidia);
+        assert_eq!(gpus[1].render_node, None, "no nvidia-drm in this tree");
 
-        // and the whole point: this pair earns the NVIDIA variables
-        assert_eq!(offload_env(&gpus).len(), 3);
+        assert!(gpus.iter().all(|gpu| !gpu.discrete));
     }
 
     #[test]
@@ -356,22 +581,15 @@ mod tests {
         let scratch = polyio::testing::ScratchDir::new("gpu-bus");
         let bus = scratch.join("devices");
 
-        write_card(&bus, "0000:01:00.0", "0x1002", "1", "amdgpu");
-        // the audio function of that same card
-        let audio = bus.join("0000:01:00.1");
-        write(&audio.join("vendor"), "0x1002\n");
-        write(&audio.join("class"), "0x040300\n");
-        // a network card
-        let net = bus.join("0000:02:00.0");
-        write(&net.join("vendor"), "0x8086\n");
-        write(&net.join("class"), "0x020000\n");
-        // present but unreadable as a device
+        write_card(&bus, "0000:01:00.0", "1", "amdgpu");
+        write(&bus.join("0000:01:00.1").join("class"), "0x040300\n");
+        write(&bus.join("0000:02:00.0").join("class"), "0x020000\n");
         std::fs::create_dir_all(bus.join("0000:03:00.0")).unwrap();
 
         let gpus = read_pci_devices(&bus);
 
         assert_eq!(gpus.len(), 1, "one card, counted once");
-        assert_eq!(gpus[0].vendor_id, AMD);
+        assert_eq!(gpus[0].driver, Driver::AmdGpu);
     }
 
     #[test]

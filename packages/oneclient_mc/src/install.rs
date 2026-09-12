@@ -1079,6 +1079,9 @@ pub fn libraries_missing(
         if !lib.include_in_classpath {
             continue;
         }
+        if !has_main_artifact(lib) {
+            continue;
+        }
         let Ok(rel) = interfrost::utils::get_path_from_artifact(&lib.name) else {
             continue;
         };

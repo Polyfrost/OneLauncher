@@ -105,7 +105,7 @@ impl Component for SettingsMinecraft {
                 IconType::Database01,
                 "Memory",
                 "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
-                memory_field(memory),
+                memory_field(memory, "Default", oneclient_common::default_mem_max()),
             ))
             .child(settings_row(
                 IconType::Terminal,

@@ -90,7 +90,7 @@ mod tests {
             GameLoader::Forge,
             GameLoader::NeoForge,
             GameLoader::Quilt,
-            GameLoader::LegacyFabric,
+            GameLoader::Ornithe,
         ] {
             assert!(!uses_cluster_mods_folder(loader, Some("0.16.5"), ""));
         }

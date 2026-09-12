@@ -28,6 +28,9 @@ pub enum ClusterError {
 	#[error("invalid settings profile: {reason}")]
 	InvalidProfile { reason: String },
 
+	#[error("invalid minecraft version: {0}")]
+	InvalidVersion(String),
+
 	#[error(transparent)]
 	Logs(#[from] crate::logs::LogsError),
 

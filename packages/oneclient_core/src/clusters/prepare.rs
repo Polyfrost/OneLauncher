@@ -165,6 +165,7 @@ pub async fn required_java_major(
             resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version)
                 .await
                 .map_err(|_| ClusterError::InvalidVersion(cluster.mc_version.clone()))?;
+
         let loader_version = get_loader_version(
             &mut metadata,
             &state.services.mc(),

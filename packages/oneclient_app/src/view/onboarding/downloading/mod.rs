@@ -44,7 +44,7 @@ struct ClusterPlan {
     mc_version: String,
     /// `(bundle_name, package_id, override)` for every file whose fate differs from the manifest default
     overrides: Vec<(String, String, OverrideType)>,
-    /// Manifest `predownload` flag versions without it fetch on first launch
+    /// Manifest `predownload` flag versions without it fetch their content on first launch
     predownload: bool,
 }
 
@@ -614,9 +614,6 @@ fn archive_overrides(
     overrides
 }
 
-const GAME_SIZE_GUESS: u64 = 180_000_000;
-const JRE_SIZE_GUESS: u64 = 45_000_000;
-
 fn rough_download_estimate(
     items: &[ClusterBundles],
     selected: &std::collections::HashSet<String>,
@@ -638,7 +635,6 @@ fn rough_download_estimate(
                 }
             }
         }
-        total += GAME_SIZE_GUESS + JRE_SIZE_GUESS;
     }
     total
 }
@@ -736,10 +732,10 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
             if let Ok(state) = crate::launcher::state() {
                 let mut sum = 0u64;
                 for plan in plans.iter().filter(|p| p.predownload) {
-                    match oneclient_core::estimate_cluster_download(
-                        &state,
+                    match oneclient_content::bundles::enabled_bundle_bytes(
                         plan.cluster_id,
                         state.bundles.as_ref(),
+                        &state.services.content(),
                     )
                     .await
                     {
@@ -814,39 +810,20 @@ async fn install_one(
         GroupedProgressSession::start(events, format!("Downloading {}", plan.mc_version));
 
     let _ = ui_tx.send(InstallUiEvent::Activity(format!(
-        "Downloading Minecraft {}...",
+        "Installing mods & content for {}...",
         plan.mc_version
     )));
 
-    let prepared = oneclient_core::clusters::prepare_cluster_locked(
-        &state,
+    let bundles_result = oneclient_core::install_cluster_bundles(
         plan.cluster_id,
-        false,
-        true,
-        true,
+        state.bundles.as_ref(),
         Some(&session),
+        &state.services.content(),
     )
     .await;
 
-    let bundles_result = if prepared.is_ok() {
-        let _ = ui_tx.send(InstallUiEvent::Activity(format!(
-            "Installing mods & content for {}...",
-            plan.mc_version
-        )));
-        oneclient_core::install_cluster_bundles(
-            plan.cluster_id,
-            state.bundles.as_ref(),
-            Some(&session),
-            &state.services.content(),
-        )
-        .await
-    } else {
-        Ok(())
-    };
-
     session.finish();
 
-    prepared?;
     bundles_result?;
     Ok(())
 }
@@ -1097,20 +1074,18 @@ mod tests {
     fn estimate_skips_declined_bundles_and_counts_opted_in_extras() {
         let sb = skyblock();
         let all = items(vec![sb.clone()]);
-        let baseline = GAME_SIZE_GUESS + JRE_SIZE_GUESS;
-
         let declined = rough_download_estimate(&all, &HashSet::new(), &versions());
-        assert_eq!(declined, baseline, "declined bundle should cost nothing");
+        assert_eq!(declined, 0, "declined bundle should cost nothing");
 
         let accepted = rough_download_estimate(&all, &keys(&sb, &["skyblock-main"]), &versions());
-        assert_eq!(accepted, baseline + 2);
+        assert_eq!(accepted, 2);
 
         let with_extra = rough_download_estimate(
             &all,
             &keys(&sb, &["skyblock-main", "skycubed"]),
             &versions(),
         );
-        assert_eq!(with_extra, baseline + 3);
+        assert_eq!(with_extra, 3);
     }
 
     #[test]

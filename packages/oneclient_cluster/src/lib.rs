@@ -13,7 +13,7 @@ pub mod logs;
 pub mod profiles;
 pub mod screenshots;
 
-pub use cluster::{Cluster, ClusterLinkTarget};
+pub use cluster::{Cluster, ClusterLinkTarget, remove_mods_link};
 pub use error::{ClusterError, ClusterResult};
 pub use manager::ClusterManager;
 pub use options::{ClusterUpdate, CreateClusterOptions};

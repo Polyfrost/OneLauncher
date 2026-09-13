@@ -15,7 +15,8 @@ homepage = "https://polyfrost.org/projects/oneclient"
 license = "GPL-3.0-only"
 readme = "README.md"
 repository = "https://github.com/Polyfrost/OneLauncher"
-version = "2.3.1"
+rust-version = "1.97"
+version = "2.4.0"
 
 [workspace.dependencies]
 # core
@@ -36,7 +37,7 @@ polyio = {path = "./packages/polyio"}
 
 # core (extra)
 discord-rich-presence = {version = "=1.1.0"}
-interfrost = {version = "=1.3.2"}
+interfrost = {version = "=1.4.0"}
 
 # logging
 sentry = {version = "=0.48.5", default-features = false, features = [
@@ -103,7 +104,7 @@ sha1 = {version = "=0.10.6", default-features = false}
 sha2 = {version = "=0.10.9", default-features = false}
 
 # util
-arboard = {version = "=3.6.1"}
+arboard = {version = "=3.6.1", features = ["wayland-data-control"]}
 arc-swap = {version = "=1.7.1"}
 base64 = {version = "=0.22.1"}
 bytes = {version = "=1.11.1"}
@@ -113,6 +114,7 @@ dunce = {version = "=1.0.5"}
 htmd = {version = "=0.5.4"}
 indicatif = {version = "=0.18.4", features = ["tokio"]}
 junction = {version = "=2.0.0"}
+libc = {version = "=0.2.189"}
 notify = {version = "=8.2.0"}
 parking_lot = {version = "=0.12.5"}
 pulldown-cmark = {version = "=0.13.4", default-features = false}
@@ -129,6 +131,7 @@ trash = {version = "=5.2.6"}
 percent-encoding = {version = "=2.3.2"}
 url = {version = "=2.5.8", features = ["serde"]}
 uuid = {version = "=1.23.1", features = ["serde", "v4"]}
+windows-sys = {version = "=0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem"]}
 
 # util (codegen/macro)
 anyhow = {version = "=1.0.102"}

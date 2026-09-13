@@ -225,7 +225,7 @@ pub(crate) fn predownload_toggle_row(predownload: State<bool>) -> impl IntoEleme
                 .spacing(3.)
                 .child(
                     label()
-                        .text("Download content now")
+                        .text("Download mods now")
                         .font_size(14.)
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
@@ -233,9 +233,9 @@ pub(crate) fn predownload_toggle_row(predownload: State<bool>) -> impl IntoEleme
                 .child(
                     label()
                         .text(
-                            "Downloads Minecraft and your chosen mods now, so you can play as \
-                             soon as setup finishes. Turn it off to download each version the \
-                             first time you play it.",
+                            "Downloads your chosen mods now. Minecraft itself is always \
+                             downloaded the first time you play a version. Turn this off to \
+                             leave the mods until then too.",
                         )
                         .font_size(11.)
                         .color(colors::fg_secondary()),

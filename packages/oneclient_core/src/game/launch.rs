@@ -148,9 +148,7 @@ async fn start(
         let mut metadata = state.metadata.lock().await;
 
         let (version, _index, updated) =
-            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version)
-                .await
-                .map_err(|_| GameError::InvalidVersion(cluster.mc_version.clone()))?;
+            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version).await?;
 
         let loader_version = get_loader_version(
             &mut metadata,
@@ -253,15 +251,22 @@ async fn start(
         tracing::warn!(cluster_id, error = %err, "failed to write allowed_symlinks.txt");
     }
 
-    // The one moment nothing holds the content open so this is where a package
-    // removed or disabled mid-session actually leaves the folder
-    if let Err(err) = crate::game::materialize_content(&state.services, &cluster, &cwd).await {
+    let custom_args = profile.launch_args.clone().unwrap_or_default();
+    let loader_version_id = loader_version.as_ref().map(|lv| lv.id.as_str());
+
+    let mods_in_cluster = crate::game::uses_cluster_mods_folder(
+        cluster.mc_loader,
+        loader_version_id,
+        &custom_args,
+    );
+
+    if let Err(err) =
+        crate::game::materialize_content(&state.services, &cluster, &cwd, mods_in_cluster).await
+    {
         tracing::warn!(cluster_id, error = %err, "failed to materialize cluster content");
     }
 
     if !dedicated {
-        // Redirects the shared dir's `logs`/`crash-reports` into this cluster's
-        // folder so output is attributable unlinked on exit
         crate::game::link_cluster_logs(&cluster, &cwd).await;
     }
 
@@ -283,7 +288,7 @@ async fn start(
         updated,
     )?;
 
-    let jvm_args = arguments::java_arguments(
+    let mut jvm_args = arguments::java_arguments(
         updated,
         arg_map.get(&ArgumentType::Jvm).map(Vec::as_slice),
         &natives,
@@ -295,6 +300,17 @@ async fn start(
         &java.os_arch,
         java.major,
     )?;
+
+    let mods_dir = paths::cluster_mods_dir(&cluster.folder_name)?;
+    if let Some(arg) = crate::game::mods_folder_argument(
+        cluster.mc_loader,
+        loader_version_id,
+        &custom_args,
+        &mods_dir,
+    ) {
+        tracing::debug!(cluster_id, mods_dir = %mods_dir.display(), "redirecting fabric mods folder");
+        jvm_args.push(arg);
+    }
 
     let mut mc_args = arguments::minecraft_arguments(
         updated,
@@ -325,14 +341,15 @@ async fn start(
     );
     tracing::debug!(cluster_id, ?jvm_args, main_class = %version_info.main_class, "jvm arguments");
 
-    let use_discrete_gpu = state.settings.read().use_discrete_gpu;
-    if use_discrete_gpu {
-        oneclient_java::prefer_dedicated_gpu(std::path::Path::new(&java.absolute_path)).await;
+    let mut command = base_command(&profile, &java.absolute_path);
+
+	if profile.use_discrete_gpu() {
+        crate::game::gpu::prefer_discrete(&mut command, &java.absolute_path).await;
     }
 
-    let mut command = base_command(&profile, &java.absolute_path);
-    apply_env(&mut command, &profile);
-    command
+	apply_env(&mut command, &profile);
+
+	command
         .args(jvm_args)
         .arg(&version_info.main_class)
         .args(mc_args)
@@ -667,45 +684,12 @@ fn base_command(profile: &GameSettingsProfile, java_path: &str) -> Command {
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     command.env_remove("_JAVA_OPTIONS");
 
-    #[cfg(target_os = "linux")]
-    apply_discrete_gpu(command, profile);
-
     if let Some(env) = &profile.launch_env {
         for pair in env.split_whitespace() {
             if let Some((key, value)) = pair.split_once('=') {
                 command.env(key, value);
             }
         }
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn apply_discrete_gpu(command: &mut Command, profile: &GameSettingsProfile) {
-    let requested = profile
-        .os_extra
-        .as_ref()
-        .and_then(|extra| extra.use_discrete_gpu)
-        .unwrap_or(false);
-
-    if !requested {
-        return;
-    }
-
-    let gpus = crate::game::gpu::detect();
-    let env = crate::game::gpu::offload_env(&gpus);
-
-    if env.is_empty() {
-        tracing::info!(
-            gpus = gpus.len(),
-            "discrete GPU was requested but nothing here is a valid offload target; \
-             leaving the renderer alone"
-        );
-        return;
-    }
-
-    for (key, value) in env {
-        tracing::debug!(key, value, "offloading the game to the discrete GPU");
-        command.env(key, value);
     }
 }
 

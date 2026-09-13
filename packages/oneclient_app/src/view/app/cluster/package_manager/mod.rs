@@ -619,6 +619,11 @@ impl Component for PackageManager {
                     .then(|| export_rows(&items, hidden))
                     .filter(|rows| !rows.is_empty()),
             ))
+            .maybe_child(
+                content_type
+                    .is_global()
+                    .then(|| views::global_notice(noun_plural)),
+            )
             .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
             .child(ContentBox::new(
                 filtered,

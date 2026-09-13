@@ -14,10 +14,11 @@ pub use overlay_claims::{
 pub use view_state::{PersistedView, use_view_state};
 
 pub use active_cluster::{
-    ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserUiState, LinkConfirmState,
-    OnboardingSelectionState, SplashState, StartMaximizedState, use_active_cluster_id,
-    use_browser_compat, use_browser_state_store, use_link_confirm, use_onboarding_selection,
-    use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
+    ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserTypeState, BrowserUiState,
+    LinkConfirmState, OnboardingSelectionState, SplashState, StartMaximizedState,
+    use_active_cluster_id, use_browser_compat, use_browser_state_store, use_browser_type,
+    use_link_confirm, use_onboarding_selection, use_provide_active_cluster,
+    use_provide_browser_compat, use_provide_browser_state, use_provide_browser_type,
     use_provide_link_confirm, use_provide_onboarding_selection, use_provide_splash,
     use_provide_start_maximized, use_splash, use_start_maximized,
 };
@@ -69,7 +70,7 @@ pub use queries::{
 use crate::notifications::NotificationSnapshot;
 use crate::state::{
     AppChannel, GameState, InstallState, LauncherInit, LoginProgress, RelocationState,
-    SettingsState,
+    SettingsState, StorageScanProgress,
 };
 use freya::prelude::*;
 use freya::radio::use_radio;
@@ -121,6 +122,13 @@ pub fn use_game_snapshot() -> GameState {
 
 pub fn use_installs_snapshot() -> InstallState {
     use_radio(AppChannel::Installs).read().installs.clone()
+}
+
+pub fn use_storage_scan_progress() -> Option<StorageScanProgress> {
+    use_radio(AppChannel::StorageScan)
+        .read()
+        .storage_scan
+        .clone()
 }
 
 pub fn use_pending_launch() -> Option<String> {

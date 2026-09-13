@@ -4,7 +4,7 @@ use oneclient_content::packages::ProviderId;
 use crate::components::{Icon, provider_badge};
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
@@ -36,6 +36,7 @@ impl Component for OnboardingModCard {
                 .height(Size::px(44.))
                 .aspect_ratio(AspectRatio::Min)
                 .corner_radius(CornerRadius::new_all(8.))
+                .fallback(icon_box(self.provider))
                 .into_element(),
 
             None => icon_box(self.provider).into_element(),

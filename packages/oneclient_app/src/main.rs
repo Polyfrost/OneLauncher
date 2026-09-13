@@ -11,7 +11,7 @@ use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, StartMaximizedState, cli, constants,
     events, platform, router, theme, use_provide_actions, use_provide_link_confirm,
-    use_provide_start_maximized,
+    use_provide_start_maximized, microsoft_java,
 };
 use std::cell::Cell;
 use tokio::runtime::Builder;
@@ -60,7 +60,10 @@ impl App for OneClientApp {
                     match events::start_launcher(station, events_bus).await {
                         // Must follow startup `sync_bundles` needs the launcher handle and firing
                         // it early leaves `syncing_bundles` stuck disabling every launch button
-                        Ok(()) => startup.sync_bundles(),
+                        Ok(()) => {
+                            startup.sync_bundles();
+                            microsoft_java::spawn_auto_install();
+                        }
                         Err(err) => {
                             events::report_startup_failure(&station, &err);
                             oneclient_app::updater::spawn_update_check(false, rescue_bus);
@@ -182,7 +185,6 @@ fn main() {
 
     let _sentry_guard = oneclient_core::reporting::init(settings.crash_reporting);
 
-
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
@@ -201,7 +203,7 @@ fn main() {
         )))
         .with_size(1200., 800.)
         .with_min_size(800., 600.)
-        .with_transparency(true)
+        .with_transparency(false)
         .with_background(Color::TRANSPARENT)
         // A half-copied data folder is unrecoverable, so the window refuses to
         // close while one is being moved; the move screen says as much

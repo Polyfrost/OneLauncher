@@ -10,21 +10,33 @@ use crate::error::JavaResult;
 mod adoptium;
 mod corretto;
 mod liberica;
+mod microsoft;
 mod zulu;
 
 pub use adoptium::AdoptiumRuntimeProvider;
 pub use corretto::CorrettoRuntimeProvider;
 pub use liberica::LibericaRuntimeProvider;
+pub use microsoft::MicrosoftRuntimeProvider;
 use serde::{Deserialize, Deserializer, Serialize};
 pub use zulu::ZuluRuntimeProvider;
 
 pub fn runtime_providers() -> Vec<Box<dyn JavaRuntimeProvider>> {
     vec![
+		Box::new(MicrosoftRuntimeProvider),
         Box::new(ZuluRuntimeProvider),
         Box::new(AdoptiumRuntimeProvider),
         Box::new(CorrettoRuntimeProvider),
         Box::new(LibericaRuntimeProvider),
     ]
+}
+
+// For making sure microsoft jdk provider is first
+#[must_use]
+pub fn default_vendor() -> JavaVendor {
+    runtime_providers()
+        .first()
+        .expect("the provider list is never empty")
+        .vendor()
 }
 
 #[async_trait::async_trait]

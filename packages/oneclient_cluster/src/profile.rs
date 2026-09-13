@@ -26,37 +26,25 @@ pub struct GameSettingsProfile {
 pub use oneclient_common::Resolution;
 pub use oneclient_common::domain::PackageUpdateMode;
 
-cfg_select! {
-	target_os = "linux" => {
-		#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-		#[serde(default)]
-		pub struct SettingsOsExtra {
-			pub enable_gamemode: Option<bool>,
-			pub use_discrete_gpu: Option<bool>,
-			/// Keys this build has no field for, kept verbatim so a profile edited
-			/// on one OS does not clear another OS's settings
-			#[serde(flatten)]
-			pub unknown: serde_json::Map<String, serde_json::Value>,
-		}
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SettingsOsExtra {
+	#[cfg(target_os = "linux")]
+	pub enable_gamemode: Option<bool>,
+	#[cfg(any(target_os = "linux", windows))]
+	pub use_discrete_gpu: Option<bool>,
+	#[serde(flatten)]
+	pub unknown: serde_json::Map<String, serde_json::Value>,
+}
 
-		impl Default for SettingsOsExtra {
-			fn default() -> Self {
-				Self {
-					enable_gamemode: Some(true),
-					use_discrete_gpu: Some(false),
-					unknown: serde_json::Map::new(),
-				}
-			}
-		}
-	}
-	_ => {
-		#[derive(Default, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-		#[serde(default)]
-		pub struct SettingsOsExtra {
-			/// Keys this build has no field for, kept verbatim so a profile edited
-			/// on one OS does not clear another OS's settings
-			#[serde(flatten)]
-			pub unknown: serde_json::Map<String, serde_json::Value>,
+impl Default for SettingsOsExtra {
+	fn default() -> Self {
+		Self {
+			#[cfg(target_os = "linux")]
+			enable_gamemode: Some(true),
+			#[cfg(any(target_os = "linux", windows))]
+			use_discrete_gpu: Some(true),
+			unknown: serde_json::Map::new(),
 		}
 	}
 }
@@ -76,6 +64,17 @@ impl GameSettingsProfile {
 			hook_post: None,
 			os_extra: Some(SettingsOsExtra::default()),
 			browser_update_mode: Some(PackageUpdateMode::default()),
+		}
+	}
+
+	pub fn use_discrete_gpu(&self) -> bool {
+		cfg_select! {
+			any(target_os = "linux", target_os = "windows") => self
+				.os_extra
+				.as_ref()
+				.and_then(|extra| extra.use_discrete_gpu)
+				.unwrap_or(false),
+			_ => false
 		}
 	}
 

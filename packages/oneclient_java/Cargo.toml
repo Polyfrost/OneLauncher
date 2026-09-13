@@ -24,6 +24,7 @@ async-tempfile.workspace = true
 async_zip.workspace = true
 astral-tokio-tar.workspace = true
 futures-lite.workspace = true
+futures-util.workspace = true
 tokio.workspace = true
 
 reqwest.workspace = true

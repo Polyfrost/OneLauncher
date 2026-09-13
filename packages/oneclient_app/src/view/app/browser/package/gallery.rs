@@ -9,7 +9,7 @@ use crate::components::{
 };
 use crate::hooks::{loaded_image, query_is_busy, use_cached_image, use_view_state};
 use crate::theme::colors;
-use crate::ui::{border_all_color, flow_grid};
+use crate::ui::{ImageFallbackExt, border_all_color, flow_grid};
 
 const MAX_COL_W: f32 = 400.;
 const GRID_GAP: f32 = 16.;
@@ -118,6 +118,7 @@ impl Component for GalleryTile {
                     .height(Size::fill())
                     .aspect_ratio(AspectRatio::Max)
                     .image_cover(ImageCover::Center)
+                    .fallback(broken_image(32.))
                     .into_element()
             }));
 
@@ -202,6 +203,7 @@ impl Component for GalleryViewer {
                     .width(Size::fill())
                     .height(Size::fill())
                     .aspect_ratio(AspectRatio::Min)
+                    .fallback(broken_image(48.))
                     .into_element()
             }))
             // A full-size fetch separate from the tile's cached copy a failed fetch is not loading
@@ -263,6 +265,19 @@ impl Component for GalleryViewer {
             )
             .into_element()
     }
+}
+
+fn broken_image(size: f32) -> Element {
+    rect()
+        .center()
+        .width(Size::fill())
+        .height(Size::fill())
+        .child(
+            Icon::new(IconType::FileX02)
+                .size(size)
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
 }
 
 fn chevron_btn(

@@ -620,6 +620,10 @@ pub async fn symlink_metadata(path: impl AsRef<std::path::Path>) -> PolyIOResult
 		})
 }
 
+fn resolved_target(original: &std::path::Path) -> PathBuf {
+	crate::canonicalize(original).unwrap_or_else(|_| original.to_path_buf())
+}
+
 /// Symlink on Unix hard link on Windows so both paths must be on one volume
 #[tracing::instrument(
     level = "debug",
@@ -633,7 +637,8 @@ pub async fn symlink_file(
 	original: impl AsRef<std::path::Path>,
 	link: impl AsRef<std::path::Path>,
 ) -> PolyIOResult<()> {
-	let original = original.as_ref();
+	let original = resolved_target(original.as_ref());
+	let original = original.as_path();
 	let link = link.as_ref();
 
 	#[cfg(windows)]
@@ -647,9 +652,70 @@ pub async fn symlink_file(
 	})
 }
 
-/// Windows gets a junction which needs no elevated privilege unlike a real
-/// directory symlink
-/// Remove with [`remove_symlink_dir`]
+// what a file is on disk rather than what it is called
+#[cfg(windows)]
+#[tracing::instrument(
+    level = "debug",
+    skip(path),
+    fields(path = %path.as_ref().display())
+)]
+pub async fn file_id(path: impl AsRef<std::path::Path>) -> PolyIOResult<(u64, u64)> {
+	use std::os::windows::io::AsRawHandle;
+
+	use windows_sys::Win32::Storage::FileSystem::{
+		BY_HANDLE_FILE_INFORMATION, GetFileInformationByHandle,
+	};
+
+	let path = path.as_ref().to_path_buf();
+	let display = path.to_string_lossy().to_string();
+
+	tokio::task::spawn_blocking(move || {
+		let file = std::fs::File::open(&path)?;
+		let mut info = BY_HANDLE_FILE_INFORMATION {
+			dwFileAttributes: 0,
+			ftCreationTime: unsafe { std::mem::zeroed() },
+			ftLastAccessTime: unsafe { std::mem::zeroed() },
+			ftLastWriteTime: unsafe { std::mem::zeroed() },
+			dwVolumeSerialNumber: 0,
+			nFileSizeHigh: 0,
+			nFileSizeLow: 0,
+			nNumberOfLinks: 0,
+			nFileIndexHigh: 0,
+			nFileIndexLow: 0,
+		};
+
+		let filled = unsafe {
+			GetFileInformationByHandle(file.as_raw_handle().cast(), std::ptr::from_mut(&mut info))
+		};
+
+		if filled == 0 {
+			return Err(std::io::Error::last_os_error());
+		}
+
+		let index = (u64::from(info.nFileIndexHigh) << 32) | u64::from(info.nFileIndexLow);
+		Ok((u64::from(info.dwVolumeSerialNumber), index))
+	})
+	.await
+	.map_err(std::io::Error::other)?
+	.map_err(|e| IOError::PathIOError {
+		source: e,
+		path: display,
+	})
+}
+
+#[cfg(not(windows))]
+#[tracing::instrument(
+    level = "debug",
+    skip(path),
+    fields(path = %path.as_ref().display())
+)]
+pub async fn file_id(path: impl AsRef<std::path::Path>) -> PolyIOResult<(u64, u64)> {
+	use std::os::unix::fs::MetadataExt;
+
+	let meta = stat(path).await?;
+	Ok((meta.dev(), meta.ino()))
+}
+
 #[tracing::instrument(
     level = "debug",
     skip(original, link),
@@ -662,7 +728,8 @@ pub async fn symlink_dir(
 	original: impl AsRef<std::path::Path>,
 	link: impl AsRef<std::path::Path>,
 ) -> PolyIOResult<()> {
-	let original = original.as_ref();
+	let original = resolved_target(original.as_ref());
+	let original = original.as_path();
 	let link = link.as_ref();
 
 	#[cfg(windows)]
@@ -685,7 +752,34 @@ pub async fn symlink_dir(
 		})
 }
 
-/// A Windows junction must be removed with `remove_dir` not `remove_file`
+#[tracing::instrument(
+    level = "debug",
+    skip(path),
+    fields(path = %path.as_ref().display())
+)]
+pub async fn read_link(path: impl AsRef<std::path::Path>) -> PolyIOResult<std::path::PathBuf> {
+	let path = path.as_ref();
+
+	let target = tokio::fs::read_link(path)
+		.await
+		.map_err(|e| IOError::PathIOError {
+			source: e,
+			path: path.to_string_lossy().to_string(),
+		})?;
+
+	#[cfg(windows)]
+	{
+		let text = target.to_string_lossy().into_owned();
+		for prefix in [r"\??\", r"\\?\"] {
+			if let Some(rest) = text.strip_prefix(prefix) {
+				return Ok(std::path::PathBuf::from(rest));
+			}
+		}
+	}
+
+	Ok(target)
+}
+
 #[tracing::instrument(
     level = "debug",
     skip(path),
@@ -756,6 +850,45 @@ mod tests {
 	fn write_buffer_falls_back_without_a_length() {
 		assert_eq!(write_buffer_size(None), DEFAULT_WRITE_BUFFER);
 		assert_eq!(write_buffer_size(Some(0)), DEFAULT_WRITE_BUFFER);
+	}
+
+	#[cfg(unix)]
+	#[tokio::test]
+	async fn a_link_target_is_stored_resolved() {
+		let root = scratch("resolved-target");
+		let real = root.join("var").join("home");
+		std::fs::create_dir_all(&real).unwrap();
+		std::os::unix::fs::symlink(&real, root.join("home")).unwrap();
+
+		let pack = real.join("pack.zip");
+		std::fs::write(&pack, b"pack").unwrap();
+
+		let through_link = root.join("home").join("pack.zip");
+		let link = root.join("resourcepacks.zip");
+
+		symlink_file(&through_link, &link).await.unwrap();
+
+		assert_eq!(
+			read_link(&link).await.unwrap(),
+			crate::canonicalize(&pack).unwrap(),
+			"the stored target must be the resolved path, not the spelling we were given"
+		);
+
+		std::fs::remove_dir_all(&root).ok();
+	}
+
+	#[cfg(unix)]
+	#[tokio::test]
+	async fn a_missing_target_is_stored_as_given() {
+		let root = scratch("unresolved-target");
+		let missing = root.join("not-here.zip");
+		let link = root.join("link.zip");
+
+		symlink_file(&missing, &link).await.unwrap();
+
+		assert_eq!(read_link(&link).await.unwrap(), missing);
+
+		std::fs::remove_dir_all(&root).ok();
 	}
 
 	fn scratch(tag: &str) -> PathBuf {

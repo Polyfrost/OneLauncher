@@ -8,6 +8,7 @@ use oneclient_common::{VersionKey, parse_mc_version};
 use crate::AppAssets;
 use crate::hooks::{loaded_image, use_cached_image, use_version_metadata};
 use crate::layout::HOME_BACKGROUND_ASSET;
+use crate::ui::ImageFallbackExt;
 
 /// The size cluster cards request so it is usually already cached when anything else wants it
 pub const ART_PREVIEW_EDGE: u32 = 512;
@@ -121,6 +122,7 @@ impl Component for DynamicArt {
             .height(Size::fill())
             .aspect_ratio(AspectRatio::Max)
             .image_cover(ImageCover::Center)
+            .fallback(rect().width(Size::fill()).height(Size::fill()))
             .into_element()
     }
 }

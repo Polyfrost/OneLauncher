@@ -10,7 +10,7 @@ mod package_metadata;
 mod setting_profile;
 
 pub use artifact::{
-    ArtifactRow, ClusterArtifactRow, LinkedArtifactRow, ProviderReleaseRow, SeenStatus,
+    ArtifactRow, ClusterArtifactRow, LinkedArtifactRow, ProviderReleaseRow, SeenStatus, GlobalArtifactRow
 };
 pub use browser_package_update::BrowserPackageUpdateRow;
 pub use package_metadata::PackageMetadataRow;

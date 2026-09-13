@@ -249,6 +249,14 @@ async fn relink_cluster_files(
 
 	for content_type in FILE_CONTENT_TYPES {
 		let dir = cluster_root.join(content_type.folder_name());
+
+		if polyio::symlink_metadata(&dir)
+			.await
+			.is_ok_and(|meta| meta.file_type().is_symlink())
+		{
+			continue;
+		}
+
 		let files = match list_files(&dir).await {
 			Ok(files) => files,
 			Err(_) => continue,

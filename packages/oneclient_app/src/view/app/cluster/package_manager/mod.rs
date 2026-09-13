@@ -481,6 +481,11 @@ impl Component for PackageManager {
                 package_type,
                 toolbar_width,
             ))
+            .maybe_child(
+                content_type
+                    .is_global()
+                    .then(|| views::global_notice(noun_plural)),
+            )
             .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
             .child(ContentBox::new(
                 filtered,

@@ -77,3 +77,11 @@ pub struct LinkedArtifactRow {
 	pub display_version: Option<String>,
 	pub published_at: Option<String>,
 }
+
+// used for resourcepacks and shaders
+#[derive(Debug, Clone, FromRow)]
+pub struct GlobalArtifactRow {
+	pub hash: String,
+	pub file_name: String,
+	pub enabled: i64,
+}

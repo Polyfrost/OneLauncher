@@ -7,6 +7,7 @@
 
 use std::collections::HashSet;
 
+use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
 
 use oneclient_common::domain::ProviderId;
@@ -83,6 +84,7 @@ struct Candidate {
 	version_id: String,
 	display_name: String,
 	display_version: String,
+	published_at: Option<DateTime<Utc>>,
 }
 
 /// A missing bundle tracking row is the marker for "the user added this themselves"
@@ -108,6 +110,7 @@ fn browser_installed(
 					.clone()
 					.unwrap_or_else(|| info.file_name.clone()),
 				display_version: info.display_version.clone().unwrap_or_default(),
+				published_at: info.published_at.as_deref().and_then(parse_published),
 			})
 		})
 		.collect()
@@ -201,7 +204,16 @@ pub async fn check_browser_package_updates(
 	Ok(check)
 }
 
-/// `None` when the installed version is already the newest compatible one
+fn parse_published(raw: &str) -> Option<DateTime<Utc>> {
+	DateTime::parse_from_rfc3339(raw)
+		.ok()
+		.map(|at| at.with_timezone(&Utc))
+}
+
+fn is_upgrade(installed_published: Option<DateTime<Utc>>, latest_published: DateTime<Utc>) -> bool {
+	installed_published.is_none_or(|installed| latest_published > installed)
+}
+
 async fn latest_for(
 	candidate: &Candidate,
 	cluster: &ClusterRow,
@@ -213,6 +225,16 @@ async fn latest_for(
 	};
 
 	if latest.version_id == candidate.version_id {
+		return Ok(None);
+	}
+
+	if !is_upgrade(candidate.published_at, latest.published) {
+		tracing::debug!(
+			project_id = %candidate.project_id,
+			installed = %candidate.version_id,
+			offered = %latest.version_id,
+			"update not offered, the installed version is not older than the pick"
+		);
 		return Ok(None);
 	}
 
@@ -447,6 +469,10 @@ mod tests {
 	use super::*;
 	use oneclient_common::domain::ContentType;
 
+	fn at(raw: &str) -> DateTime<Utc> {
+		parse_published(raw).expect("test dates are rfc 3339")
+	}
+
 	fn linked(
 		hash: &str,
 		provider: Option<ProviderId>,
@@ -547,5 +573,55 @@ mod tests {
 		let pending = check.pending();
 		assert_eq!(pending.len(), 1);
 		assert_eq!(pending[0].hash, "b");
+	}
+
+	#[test]
+	fn a_newer_pick_is_an_upgrade() {
+		assert!(is_upgrade(
+			Some(at("2026-01-01T00:00:00Z")),
+			at("2026-02-01T00:00:00Z")
+		));
+	}
+
+	#[test]
+	fn a_pick_older_than_the_installed_build_is_not_an_upgrade() {
+		assert!(
+			!is_upgrade(
+				Some(at("2026-02-01T00:00:00Z")),
+				at("2026-01-01T00:00:00Z")
+			),
+			"a hand-installed build newer than the provider pick must not be offered a downgrade"
+		);
+	}
+
+	#[test]
+	fn a_pick_published_at_the_same_moment_is_not_an_upgrade() {
+		assert!(!is_upgrade(
+			Some(at("2026-02-01T00:00:00Z")),
+			at("2026-02-01T00:00:00Z")
+		));
+	}
+
+	#[test]
+	fn an_unknown_installed_date_still_offers_the_update() {
+		assert!(is_upgrade(None, at("2026-02-01T00:00:00Z")));
+	}
+
+	#[test]
+	fn candidates_carry_the_installed_publish_date() {
+		let mut info = linked("a", Some(ProviderId::Modrinth), Some("sodium"), Some("v1"));
+		info.published_at = Some("2026-02-01T00:00:00Z".into());
+
+		let found = browser_installed(&[info], &HashSet::new());
+		assert_eq!(found[0].published_at, Some(at("2026-02-01T00:00:00Z")));
+	}
+
+	#[test]
+	fn an_unparseable_publish_date_leaves_the_candidate_undated() {
+		let mut info = linked("a", Some(ProviderId::Modrinth), Some("sodium"), Some("v1"));
+		info.published_at = Some("not a date".into());
+
+		let found = browser_installed(&[info], &HashSet::new());
+		assert_eq!(found[0].published_at, None);
 	}
 }

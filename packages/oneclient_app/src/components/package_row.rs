@@ -7,7 +7,7 @@ use crate::components::{Icon, IconType, toggle_controlled};
 use crate::hooks::{ClusterAction, loaded_image, use_cached_image, use_cluster_mutation};
 use crate::routes::Route;
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
 pub(crate) const CARD_BG: Color = Color::from_rgb(26, 34, 41);
@@ -268,6 +268,7 @@ pub(crate) fn grid_card(
                         .font_size(14.)
                         .font_weight(FontWeight::MEDIUM)
                         .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
                         .width(Size::fill())
                         .color(CARD_NAME.with_a(content_alpha)),
                 )
@@ -277,6 +278,7 @@ pub(crate) fn grid_card(
                             .text(format!("by {}", item.author))
                             .font_size(10.)
                             .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
                             .color(colors::fg_secondary().with_a(content_alpha)),
                     )
@@ -368,6 +370,7 @@ fn package_info(
                 .child(
                     rect()
                         .horizontal()
+                        .width(Size::fill())
                         .cross_align(Alignment::Center)
                         .spacing(8.)
                         .child(
@@ -376,6 +379,8 @@ fn package_info(
                                 .font_size(15.)
                                 .font_weight(FontWeight::MEDIUM)
                                 .max_lines(1)
+                                .text_overflow(TextOverflow::Ellipsis)
+                                .max_width(Size::percent(60.))
                                 .color(CARD_NAME),
                         )
                         .child(if remote {
@@ -391,6 +396,9 @@ fn package_info(
                         label()
                             .text(format!("by {}", item.author))
                             .font_size(10.)
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .width(Size::fill())
                             .color(colors::fg_secondary()),
                     )
                 })
@@ -400,6 +408,7 @@ fn package_info(
                             .text(item.description.clone())
                             .font_size(11.)
                             .max_lines(2)
+                            .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
                             .color(colors::fg_secondary()),
                     )
@@ -422,6 +431,7 @@ pub(crate) fn package_icon(
             .height(Size::px(size))
             .aspect_ratio(AspectRatio::Min)
             .corner_radius(CornerRadius::new_all(8.))
+            .fallback(icon_box(IconType::DotsGrid, size))
             .into_element(),
 
         None if icon_url.is_some() => icon_box(IconType::DotsGrid, size),

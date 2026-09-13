@@ -172,3 +172,14 @@ pub fn entrance_motion_layer(
         )
         .into_element()
 }
+
+pub trait ImageFallbackExt: Sized {
+    fn fallback(self, placeholder: impl IntoElement) -> Self;
+}
+
+impl ImageFallbackExt for ImageViewer {
+    fn fallback(self, placeholder: impl IntoElement) -> Self {
+        let placeholder = placeholder.into_element();
+        self.error_renderer(move |_: String| placeholder.clone())
+    }
+}

@@ -46,4 +46,5 @@ sha2.workspace = true
 
 [target.'cfg(windows)'.dependencies]
 junction.workspace = true
+windows-sys.workspace = true
 

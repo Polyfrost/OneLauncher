@@ -156,7 +156,7 @@ pub async fn offer_for_pinned_cluster(actions: &Actions, cluster_id: ClusterId) 
 
 fn offer_prompt(installed: bool) -> Prompt<MicrosoftJavaAnswer> {
     let closing = if installed {
-        "You already have it installed, so this cluster switches over right away."
+        "You already have it installed, so this cluster will switch over immediately."
     } else {
         "Minecraft will launch with Microsoft OpenJDK next time."
     };
@@ -233,13 +233,13 @@ async fn unpin_to_automatic(
             let _ = refresh.send(());
             let body = if immediate {
                 format!(
-                    "This cluster is back on Automatic and runs on Microsoft {major} from now \
-                     on."
+                    "This cluster is back on Automatic and will run on the optimized Microsoft \
+                     {major} JDK from now on."
                 )
             } else {
                 format!(
-                    "This cluster is back on Automatic and picks Microsoft {major} from its next \
-                     launch."
+                    "This cluster is back on Automatic and will pick the optimized Microsoft \
+                     {major} JDK from its next launch."
                 )
             };
             events.notify("Java switched").body(body).send();
@@ -248,7 +248,8 @@ async fn unpin_to_automatic(
         Err(err) => events
             .notify("Cluster not switched")
             .body(format!(
-                "Microsoft {major} is ready but the cluster still points at its old runtime: {err}"
+                "Optimized Microsoft {major} JDK is ready but the cluster still points at its \
+                 old runtime: {err}. Please report to discord.gg/polyfrost"
             ))
             .error()
             .send(),

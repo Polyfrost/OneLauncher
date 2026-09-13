@@ -1016,17 +1016,20 @@ async fn ensure_links_note(dir: &Path) {
         return;
     }
 
+    let noun = ContentType::Mod.folder_name();
+
     polyio::write(
         &note,
-        "Every folder in here is one of your OneClient clusters.\n\
-        \n\
-        They're shortcuts. Open one and you land in that cluster's own mods \
-        folder, which is where its mods really live. Drop a jar in there and \
-        that cluster will pick it up the next time you play - and only that \
-        cluster.\n\
-        \n\
-        Loose jars sitting directly in this folder aren't read by anything, so \
-        put them inside a cluster's folder instead.\n",
+        format!(
+            "PLEASE READ CAREFULLY!!!!\n\
+            \n\
+            OneClient SPLITS your {noun} folder per version/cluster, so that you can have \
+            separate {noun} in each.\n\
+            \n\
+            Add / remove {noun} IN THESE FOLDERS!!!\n\
+            \n\
+            Also... you can drag your {noun} and stuff straight into the launcher as well...\n"
+        ),
     )
     .await
     .ok();

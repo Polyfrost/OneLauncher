@@ -11,7 +11,7 @@ mod charts;
 mod servers;
 mod tiles;
 
-use charts::{DailyChart, MonthlyChart, WhenChart, distribution_card};
+use charts::{DailyChart, PlaytimeChart, distribution_card};
 use servers::servers_section;
 use tiles::{personas_row, tiles_row};
 
@@ -33,10 +33,7 @@ fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
 
     root = root.child(DailyChart::new(stats.daily.clone()));
 
-    let mut charts: Vec<Element> = vec![
-        WhenChart::from_stats(stats).into_element(),
-        MonthlyChart::new(stats.daily.clone()).into_element(),
-    ];
+    let mut charts: Vec<Element> = vec![PlaytimeChart::from_stats(stats).into_element()];
     if let Some(dist) = distribution_card(&stats.session_secs, force_all) {
         charts.push(dist);
     }

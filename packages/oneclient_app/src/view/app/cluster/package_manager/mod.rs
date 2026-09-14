@@ -423,7 +423,6 @@ impl Component for PackageManager {
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
-        let grid_columns = view.columns;
         let query = SearchQuery::new(&search.read());
         let sort_mode = sort
             .read()
@@ -476,7 +475,6 @@ impl Component for PackageManager {
                 enabled_filter,
                 hidden_filter,
                 layout,
-                grid_columns,
                 cluster_id,
                 package_type,
                 toolbar_width,
@@ -495,7 +493,6 @@ impl Component for PackageManager {
                 cluster_id,
                 content_kind,
                 card_layout,
-                *grid_columns.read(),
             ))
     }
 }

@@ -7,7 +7,7 @@ use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, ScrollAreaCtx,
-    Segment, SegmentedControl, TabBar, TabItem, TextInput, grid_columns_picker, resolved_columns,
+    Segment, SegmentedControl, TabBar, TabItem, TextInput,
 };
 use crate::hooks::{use_dispatch, use_overlay_claim};
 use crate::routes::Route;
@@ -145,7 +145,6 @@ pub(super) fn toolbar_bar(
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
     layout: State<ViewLayout>,
-    grid_columns: State<u8>,
     cluster_id: i64,
     package_type: &'static str,
     mut toolbar_width: State<f32>,
@@ -209,10 +208,6 @@ pub(super) fn toolbar_bar(
         }
         .into_element(),
     ];
-
-    if *layout.read() == ViewLayout::Grid {
-        controls.push(grid_columns_picker(grid_columns, 34.).into_element());
-    }
 
     controls.push(
         SegmentedControl::new(layout)
@@ -649,7 +644,6 @@ pub(super) struct ContentBox {
     cluster_id: i64,
     kind: ContentKind,
     layout: CardLayout,
-    grid_columns: u8,
 }
 
 impl ContentBox {
@@ -662,7 +656,6 @@ impl ContentBox {
         cluster_id: i64,
         kind: ContentKind,
         layout: CardLayout,
-        grid_columns: u8,
     ) -> Self {
         Self {
             items,
@@ -672,7 +665,6 @@ impl ContentBox {
             cluster_id,
             kind,
             layout,
-            grid_columns,
         }
     }
 }
@@ -686,7 +678,6 @@ impl Component for ContentBox {
         let noun_plural = self.noun_plural;
         let kind = &self.kind;
         let layout = self.layout;
-        let grid_columns = self.grid_columns;
 
         let dispatch = use_dispatch();
 
@@ -711,7 +702,7 @@ impl Component for ContentBox {
                 .width(Size::fill())
                 .height(Size::fill())
                 .content(move |ctx: ScrollAreaCtx| {
-                    grid_content(&items, package_type, cluster_id, grid_columns, ctx).into_element()
+                    grid_content(&items, package_type, cluster_id, ctx).into_element()
                 })
                 .into_element(),
         });
@@ -776,12 +767,11 @@ fn grid_content(
     items: &[PackageEntry],
     package_type: &'static str,
     cluster_id: i64,
-    grid_columns: u8,
     ctx: ScrollAreaCtx,
 ) -> impl IntoElement {
     let count = items.len();
-    let fits = ((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize;
-    let cols = resolved_columns(grid_columns).min(fits.max(1));
+    let cols =
+        (((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize).clamp(1, 5);
     let rows_total = count.div_ceil(cols);
     let slot = CARD_GRID_H + GRID_GAP;
 

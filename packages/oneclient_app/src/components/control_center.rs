@@ -6,14 +6,14 @@ use freya::{
 
 use crate::{
     Route,
-    components::{Avatar, Icon, IconType, OverlayPopup},
+    components::{Avatar, Button, Icon, IconType, OVERLAY_MAX_LEVEL, OverlayPopup},
     hooks::{
         RemoveAccountKeys, query_error, query_is_loading, try_accounts, try_default_account,
         use_accounts, use_control_center_open, use_current_account, use_dispatch,
         use_remove_account, use_settings_snapshot,
     },
     theme::colors,
-    ui::divider,
+    ui::{border_all_color, divider},
 };
 
 const PANEL_WIDTH: f32 = 344.;
@@ -146,9 +146,15 @@ impl Component for AccountHeader {
             colors::fg_secondary()
         };
 
+        let signed_out = account.is_none() && !loading;
+        let action_label = if signed_out { "Sign In" } else { "Switch" };
         let open_switcher = move |_| {
             dispatch.close_control_center();
-            dispatch.open_account_switcher();
+            if signed_out {
+                let _ = RouterContext::get().push(Route::SettingsAccounts {});
+            } else {
+                dispatch.open_account_switcher();
+            }
         };
 
         rect()
@@ -202,7 +208,7 @@ impl Component for AccountHeader {
                     .on_press(open_switcher)
                     .child(
                         label()
-                            .text("Switch")
+                            .text(action_label)
                             .font_size(13.)
                             .color(colors::fg_secondary()),
                     )
@@ -436,13 +442,14 @@ impl Component for PanelFooter {
             .clone()
             .or_else(|| oneclient_core::settings::data_dir::default_path().ok());
 
-        let account_id = try_default_account(&current).map(|account| account.id);
+        let account = try_default_account(&current);
+        let account_id = account.as_ref().map(|account| account.id);
+        let username = account
+            .as_ref()
+            .map(|account| account.username.clone())
+            .unwrap_or_default();
 
-        let sign_out = move |_| {
-            if !*confirming.peek() {
-                confirming.set(true);
-                return;
-            }
+        let confirm_sign_out = move |_| {
             if let Some(id) = account_id {
                 remove.mutate(RemoveAccountKeys { id });
             }
@@ -450,40 +457,113 @@ impl Component for PanelFooter {
         };
 
         rect()
-            .horizontal()
+            .vertical()
             .width(Size::fill())
-            .content(Content::Flex)
-            .cross_align(Alignment::Center)
             .child(
-                footer_action(
-                    IconType::Folder,
-                    "Open launcher folder",
-                    colors::fg_primary(),
-                )
-                .on_press(move |_| {
-                    if let Some(folder) = folder.clone() {
-                        std::fs::create_dir_all(&folder).ok();
-                        crate::platform::open_path(&folder.to_string_lossy());
-                    }
-                }),
-            )
-            .child(rect().width(Size::flex(1.0)))
-            .map(account_id, |el, _| {
-                el.child(
-                    footer_action(
-                        IconType::LogOut01,
-                        if *confirming.read() {
-                            "Confirm sign out"
-                        } else {
-                            "Sign out"
-                        },
-                        if *confirming.read() {
-                            colors::danger()
-                        } else {
-                            colors::fg_primary()
-                        },
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .content(Content::Flex)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        footer_action(
+                            IconType::Folder,
+                            "Open launcher folder",
+                            colors::fg_primary(),
+                        )
+                        .on_press(move |_| {
+                            if let Some(folder) = folder.clone() {
+                                std::fs::create_dir_all(&folder).ok();
+                                crate::platform::open_path(&folder.to_string_lossy());
+                            }
+                        }),
                     )
-                    .on_press(sign_out),
+                    .child(rect().width(Size::flex(1.0)))
+                    .map(account_id, |el, _| {
+                        el.child(
+                            footer_action(
+                                IconType::LogOut01,
+                                "Sign out",
+                                colors::fg_primary(),
+                            )
+                            .on_press(move |_| confirming.set(true)),
+                        )
+                    }),
+            )
+            .maybe(*confirming.read(), |el| {
+                el.child(
+                    OverlayPopup::new()
+                        .overlay_level(OVERLAY_MAX_LEVEL)
+                        .on_close(move |_| confirming.set(false))
+                        .child(
+                            rect()
+                                .width(Size::window_percent(100.))
+                                .height(Size::window_percent(100.))
+                                .center()
+                                .child(
+                                    rect()
+                                        .vertical()
+                                        .width(Size::px(400.))
+                                        .max_width(Size::window_percent(90.))
+                                        .spacing(14.)
+                                        .padding(Gaps::new_all(20.))
+                                        .corner_radius(CornerRadius::new_all(14.))
+                                        .background(colors::page_elevated())
+                                        .border(border_all_color(
+                                            1.,
+                                            colors::component_border(),
+                                        ))
+                                        .child(
+                                            rect()
+                                                .horizontal()
+                                                .cross_align(Alignment::Center)
+                                                .spacing(10.)
+                                                .child(
+                                                    Icon::new(IconType::AlertTriangle)
+                                                        .size(20.)
+                                                        .color(colors::code_warn()),
+                                                )
+                                                .child(
+                                                    label()
+                                                        .text("Sign out?")
+                                                        .font_size(16.)
+                                                        .font_weight(FontWeight::SEMI_BOLD)
+                                                        .color(colors::fg_primary()),
+                                                ),
+                                        )
+                                        .child(
+                                            label()
+                                                .text(format!(
+                                                    "{username} will be removed from OneClient. You will need to sign in again to use this account."
+                                                ))
+                                                .font_size(12.)
+                                                .max_lines(4)
+                                                .width(Size::fill())
+                                                .color(colors::fg_secondary()),
+                                        )
+                                        .child(
+                                            rect()
+                                                .horizontal()
+                                                .width(Size::fill())
+                                                .main_align(Alignment::End)
+                                                .spacing(8.)
+                                                .child(
+                                                    Button::new()
+                                                        .secondary()
+                                                        .text("Cancel")
+                                                        .on_press(move |_| {
+                                                            confirming.set(false)
+                                                        }),
+                                                )
+                                                .child(
+                                                    Button::new()
+                                                        .danger()
+                                                        .text("Sign out")
+                                                        .on_press(confirm_sign_out),
+                                                ),
+                                        ),
+                                ),
+                        ),
                 )
             })
     }

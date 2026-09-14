@@ -18,7 +18,6 @@ pub(super) fn tiles_row(analytics: &Analytics, _force_all: bool) -> Element {
 
 const TILE_GAP: f32 = 14.;
 const TILE_MIN_W: f32 = 190.;
-const LEAD_H: f32 = 128.;
 const TILE_H: f32 = 104.;
 
 #[derive(PartialEq)]
@@ -86,7 +85,7 @@ impl Component for TilesRow {
                 .horizontal()
                 .content(Content::Flex)
                 .width(Size::fill())
-                .height(Size::px(LEAD_H))
+                .height(Size::px(TILE_H))
                 .spacing(TILE_GAP)
                 .child(
                     rect()
@@ -107,7 +106,7 @@ impl Component for TilesRow {
             root = root.child(
                 rect()
                     .width(Size::fill())
-                    .height(Size::px(LEAD_H))
+                    .height(Size::px(TILE_H))
                     .child(hero),
             );
         }
@@ -146,19 +145,20 @@ fn hero_tile(icon: IconType, caption: &str, value: String, note: String) -> Elem
     card()
         .width(Size::fill())
         .height(Size::fill())
-        .spacing(12.)
+        .padding(Gaps::new_symmetric(16., 20.))
+        .spacing(10.)
         .background(colors::brand().with_a(18))
         .border(border_all_color(1., colors::brand().with_a(90)))
         .child(
             rect()
                 .horizontal()
                 .cross_align(Alignment::Center)
-                .spacing(10.)
-                .child(icon_chip(icon, 30., colors::brand()))
+                .spacing(8.)
+                .child(icon_chip(icon, 24., colors::brand()))
                 .child(
                     label()
                         .text(caption.to_string())
-                        .font_size(13.)
+                        .font_size(12.)
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_secondary()),
                 ),
@@ -171,13 +171,13 @@ fn hero_tile(icon: IconType, caption: &str, value: String, note: String) -> Elem
                 .child(
                     label()
                         .text(value)
-                        .font_size(38.)
+                        .font_size(30.)
                         .font_weight(FontWeight::BOLD)
                         .max_lines(1)
                         .color(colors::fg_primary()),
                 )
                 .child(
-                    rect().margin(Gaps::new(0., 0., 7., 0.)).child(
+                    rect().margin(Gaps::new(0., 0., 5., 0.)).child(
                         label()
                             .text(note)
                             .font_size(12.)

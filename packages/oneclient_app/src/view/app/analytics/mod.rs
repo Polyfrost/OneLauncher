@@ -127,6 +127,8 @@ fn empty_analytics() -> Analytics {
         daily,
         session_secs: Vec::new(),
         active_days: 0,
+        current_streak: 0,
+        longest_streak: 0,
         avg_secs_per_active_day: 0.0,
         peak_hour: None,
         peak_weekday: None,

@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
 
-use chrono::{DateTime, Datelike, Local, Timelike};
+use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, TimeZone, Timelike, Utc};
 use oneclient_db::dao::game_session as session_dao;
 use oneclient_db::models::{GameSessionServerRow, SessionSpan};
 
@@ -50,6 +50,8 @@ pub struct PlaytimeStats {
 	pub daily: Vec<DayPlaytime>,
 	pub session_secs: Vec<i64>,
 	pub active_days: usize,
+	pub current_streak: usize,
+	pub longest_streak: usize,
 	pub avg_secs_per_active_day: f64,
 	pub peak_hour: Option<usize>,
 	pub peak_weekday: Option<usize>,
@@ -59,12 +61,16 @@ pub struct PlaytimeStats {
 
 impl PlaytimeStats {
 	pub fn from_spans(spans: &[SessionSpan]) -> Self {
+		Self::from_spans_on(spans, Local::now().date_naive())
+	}
+
+	fn from_spans_on(spans: &[SessionSpan], today: NaiveDate) -> Self {
 		let mut per_weekday = [0i64; 7];
 		let mut per_hour = [0i64; 24];
 		let mut total_secs = 0i64;
 		let mut night_secs = 0i64;
 		let mut session_count = 0usize;
-		let mut daily: Vec<DayPlaytime> = Vec::new();
+		let mut by_day: BTreeMap<NaiveDate, i64> = BTreeMap::new();
 		let mut session_secs: Vec<i64> = Vec::new();
 
 		for span in spans {
@@ -83,25 +89,34 @@ impl PlaytimeStats {
 				continue;
 			}
 
-			let local = start.with_timezone(&Local);
-			let hour = local.hour() as usize;
-			let weekday = local.weekday().num_days_from_monday() as usize;
-
 			total_secs += secs;
 			session_count += 1;
 			session_secs.push(secs);
-			per_hour[hour] += secs;
-			per_weekday[weekday] += secs;
-			if NIGHT_HOURS.contains(&hour) {
-				night_secs += secs;
-			}
 
-			let date = local.format("%Y-%m-%d").to_string();
-			match daily.last_mut() {
-				Some(last) if last.date == date => last.secs += secs,
-				_ => daily.push(DayPlaytime { date, secs }),
-			}
+			for_each_local_hour(
+				start.with_timezone(&Utc),
+				end.with_timezone(&Utc),
+				|at, slice| {
+					let hour = at.hour() as usize;
+					per_hour[hour] += slice;
+					per_weekday[at.weekday().num_days_from_monday() as usize] += slice;
+					if NIGHT_HOURS.contains(&hour) {
+						night_secs += slice;
+					}
+					*by_day.entry(at.date_naive()).or_insert(0) += slice;
+				},
+			);
 		}
+
+		let dates: Vec<NaiveDate> = by_day.keys().copied().collect();
+		let (current_streak, longest_streak) = streaks(&dates, today);
+		let daily: Vec<DayPlaytime> = by_day
+			.iter()
+			.map(|(date, secs)| DayPlaytime {
+				date: date.format("%Y-%m-%d").to_string(),
+				secs: *secs,
+			})
+			.collect();
 
 		let active_days = daily.len();
 		let avg_secs_per_active_day = if active_days > 0 {
@@ -134,6 +149,8 @@ impl PlaytimeStats {
 			daily,
 			session_secs,
 			active_days,
+			current_streak,
+			longest_streak,
 			avg_secs_per_active_day,
 			peak_hour,
 			peak_weekday,
@@ -141,6 +158,62 @@ impl PlaytimeStats {
 			personas,
 		}
 	}
+}
+
+fn for_each_local_hour(
+	start: DateTime<Utc>,
+	end: DateTime<Utc>,
+	mut f: impl FnMut(DateTime<Local>, i64),
+) {
+	let mut cur = start;
+	while cur < end {
+		let local = cur.with_timezone(&Local);
+		let boundary = next_local_hour(local);
+		let next = if boundary > cur {
+			boundary.min(end)
+		} else {
+			(cur + Duration::hours(1)).min(end)
+		};
+		f(local, (next - cur).num_seconds());
+		cur = next;
+	}
+}
+
+fn next_local_hour(local: DateTime<Local>) -> DateTime<Utc> {
+	let naive = local.naive_local();
+	let top = match naive.date().and_hms_opt(naive.hour(), 0, 0) {
+		Some(top) => top + Duration::hours(1),
+		None => return (local + Duration::hours(1)).with_timezone(&Utc),
+	};
+
+	Local
+		.from_local_datetime(&top)
+		.earliest()
+		.map(|at| at.with_timezone(&Utc))
+		.unwrap_or_else(|| (local + Duration::hours(1)).with_timezone(&Utc))
+}
+
+fn streaks(days: &[NaiveDate], today: NaiveDate) -> (usize, usize) {
+	let mut longest = 0usize;
+	let mut run = 0usize;
+	let mut prev: Option<NaiveDate> = None;
+
+	for &day in days {
+		run = match prev {
+			Some(p) if p == day => run,
+			Some(p) if p.succ_opt() == Some(day) => run + 1,
+			_ => 1,
+		};
+		longest = longest.max(run);
+		prev = Some(day);
+	}
+
+	let current = match days.last() {
+		Some(last) if *last == today || Some(*last) == today.pred_opt() => run,
+		_ => 0,
+	};
+
+	(current, longest)
 }
 
 fn argmax(buckets: &[i64]) -> Option<usize> {
@@ -329,6 +402,86 @@ mod tests {
 		assert_eq!(servers[1].joins, 1);
 		assert_eq!(servers[1].total_secs, 1800);
 		assert!(servers[1].is_ip);
+	}
+
+	fn day(s: &str) -> NaiveDate {
+		NaiveDate::parse_from_str(s, "%Y-%m-%d").expect("a date")
+	}
+
+	fn local_span(start: &str, end: &str) -> SessionSpan {
+		let at = |s: &str| {
+			Local
+				.from_local_datetime(
+					&chrono::NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S").expect("a time"),
+				)
+				.earliest()
+				.expect("an unambiguous local time")
+				.to_rfc3339()
+		};
+		SessionSpan {
+			started_at: at(start),
+			ended_at: Some(at(end)),
+		}
+	}
+
+	#[test]
+	fn an_overnight_session_is_split_across_both_days() {
+		let spans = vec![local_span("2026-07-16 22:00:00", "2026-07-17 04:00:00")];
+		let stats = PlaytimeStats::from_spans_on(&spans, day("2026-07-17"));
+
+		assert_eq!(stats.total_secs, 6 * 3600);
+		assert_eq!(stats.session_count, 1, "still one session");
+		assert_eq!(stats.daily.len(), 2);
+		assert_eq!(stats.daily[0].date, "2026-07-16");
+		assert_eq!(stats.daily[0].secs, 2 * 3600);
+		assert_eq!(stats.daily[1].date, "2026-07-17");
+		assert_eq!(stats.daily[1].secs, 4 * 3600);
+	}
+
+	#[test]
+	fn a_multi_day_session_books_a_full_day_per_day() {
+		let spans = vec![local_span("2026-07-16 12:00:00", "2026-07-19 12:00:00")];
+		let stats = PlaytimeStats::from_spans_on(&spans, day("2026-07-19"));
+
+		assert_eq!(stats.daily.len(), 4, "three nights means four days touched");
+		assert_eq!(stats.daily[1].secs, 24 * 3600);
+		assert_eq!(stats.daily[2].secs, 24 * 3600);
+		assert_eq!(
+			stats.daily.iter().map(|d| d.secs).sum::<i64>(),
+			stats.total_secs
+		);
+		assert!(stats.per_hour.iter().all(|&h| h > 0));
+	}
+
+	#[test]
+	fn weekday_totals_follow_the_hours_played_not_the_start() {
+		let spans = vec![local_span("2026-07-17 23:00:00", "2026-07-18 09:00:00")];
+		let stats = PlaytimeStats::from_spans_on(&spans, day("2026-07-18"));
+
+		assert_eq!(stats.per_weekday[4], 3600, "Friday keeps only its one hour");
+		assert_eq!(stats.per_weekday[5], 9 * 3600);
+		assert_eq!(stats.peak_weekday, Some(5));
+	}
+
+	#[test]
+	fn a_streak_survives_an_empty_today_but_not_an_empty_yesterday() {
+		let days = [day("2026-07-15"), day("2026-07-16"), day("2026-07-17")];
+
+		assert_eq!(streaks(&days, day("2026-07-17")), (3, 3));
+		assert_eq!(streaks(&days, day("2026-07-18")), (3, 3), "today is not over");
+		assert_eq!(streaks(&days, day("2026-07-19")), (0, 3), "yesterday was missed");
+	}
+
+	#[test]
+	fn a_gap_ends_the_run_but_keeps_the_record() {
+		let days = [
+			day("2026-07-01"),
+			day("2026-07-02"),
+			day("2026-07-03"),
+			day("2026-07-10"),
+		];
+		assert_eq!(streaks(&days, day("2026-07-10")), (1, 3));
+		assert_eq!(streaks(&[], day("2026-07-10")), (0, 0));
 	}
 
 	#[test]

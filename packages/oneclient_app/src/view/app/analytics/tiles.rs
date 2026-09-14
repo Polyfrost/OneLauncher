@@ -32,8 +32,8 @@ pub(super) fn tiles_row(analytics: &Analytics, force_all: bool) -> Element {
         ),
         stat_tile(
             IconType::Rocket02,
-            "Active days",
-            stats.active_days.to_string(),
+            "Day streak",
+            stats.current_streak.to_string(),
         ),
     ];
     if force_all || !analytics.servers.is_empty() {

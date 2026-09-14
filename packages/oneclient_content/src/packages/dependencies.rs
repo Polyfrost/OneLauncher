@@ -193,15 +193,13 @@ fn choose_version(
 		.cloned()
 }
 
-/// Mirrors the store's install-time compatibility check
-/// must stay in sync with it
+#[must_use]
+pub(crate) fn supports_game_version(game_versions: &[String], mc_version: &str) -> bool {
+	game_versions.is_empty() || game_versions.iter().any(|v| v == mc_version)
+}
+
 fn fits_cluster(version: &VersionSummary, cluster: &ClusterRow, loader: GameLoader) -> bool {
-	if !version.game_versions.is_empty()
-		&& !version
-			.game_versions
-			.iter()
-			.any(|v| cluster.mc_version.contains(v))
-	{
+	if !supports_game_version(&version.game_versions, &cluster.mc_version) {
 		return false;
 	}
 

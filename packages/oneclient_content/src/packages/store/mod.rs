@@ -629,12 +629,10 @@ fn ensure_compatible(
         }
     }
 
-    if !version.game_versions.is_empty()
-        && !version
-            .game_versions
-            .iter()
-            .any(|v| cluster.mc_version.contains(v))
-    {
+    if !crate::packages::dependencies::supports_game_version(
+        &version.game_versions,
+        &cluster.mc_version,
+    ) {
         return Err(PackageError::IncompatibleMcVersion.into());
     }
 

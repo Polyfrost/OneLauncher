@@ -1083,7 +1083,7 @@ impl Actions {
             if install.result.is_ok() {
                 // Before the refresh below so the version list never renders
                 // the moment where both copies read as active
-                if let Err(err) = oneclient_content::bundles::reconcile_duplicate_activity(
+                if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
                     cluster_id,
                     &state.services.content(),
                 )

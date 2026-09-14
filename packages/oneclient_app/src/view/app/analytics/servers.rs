@@ -8,12 +8,11 @@ use crate::components::{
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
-use crate::utils::{format_duration_hm, plural};
+use crate::utils::{format_duration, plural};
 
 use super::{card, card_header};
 
-/// Number of servers charted the rest are grouped into an "Other" slice
-const TOP_SERVERS: usize = 10;
+const MAX_SLICES: usize = 10;
 
 pub(super) fn servers_section(servers: &[ServerStat]) -> Element {
     ServersSection {
@@ -37,12 +36,17 @@ impl Component for ServersSection {
         let mut sorted = self.servers.clone();
         sorted.sort_by_key(|s| std::cmp::Reverse(s.total_secs));
 
-        let (top, rest) = sorted.split_at(sorted.len().min(TOP_SERVERS));
+        let keep = if sorted.len() > MAX_SLICES {
+            MAX_SLICES - 1
+        } else {
+            sorted.len()
+        };
+        let (top, rest) = sorted.split_at(keep);
         let mut values: Vec<i64> = top.iter().map(|s| s.total_secs).collect();
         let mut labels: Vec<String> = top.iter().map(server_label).collect();
         if !rest.is_empty() {
             values.push(rest.iter().map(|s| s.total_secs).sum());
-            labels.push(format!("{} more", rest.len()));
+            labels.push("Other".to_string());
         }
 
         let details = (!self.servers.is_empty()).then(|| {
@@ -155,7 +159,7 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>) -> Element {
                 )
                 .child(
                     label()
-                        .text(format_duration_hm(*value))
+                        .text(format_duration(*value))
                         .font_size(11.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
@@ -223,7 +227,7 @@ impl Component for ServerDetailsPopup {
                             .child(
                                 label()
                                     .text(format!(
-                                        "{} server{} by playtime",
+                                        "All {} server{} by playtime",
                                         servers.len(),
                                         plural(servers.len() as i64)
                                     ))
@@ -332,7 +336,7 @@ impl Component for ServerRow {
                     )
                     .child(
                         label()
-                            .text(format_duration_hm(s.total_secs))
+                            .text(format_duration(s.total_secs))
                             .font_size(12.)
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),

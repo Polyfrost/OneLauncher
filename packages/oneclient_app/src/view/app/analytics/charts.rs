@@ -6,7 +6,7 @@ use freya::prelude::*;
 use oneclient_core::game::{DayPlaytime, PlaytimeStats, WEEKDAY_LABELS};
 
 use crate::components::{BarChart, IconType, Segment, SegmentedControl, ValueUnit};
-use crate::utils::{format_day, format_duration_hm, format_hour, parse_day};
+use crate::utils::{format_day, format_duration, format_hour, parse_day};
 
 use super::{chart_card, nav_button};
 
@@ -141,12 +141,12 @@ impl Component for DailyChart {
             (Some((a, _)), Some((b, _))) => {
                 format!(
                     "{} · {} – {}",
-                    format_duration_hm(win_total),
+                    format_duration(win_total),
                     format_day(*a),
                     format_day(*b)
                 )
             }
-            _ => format_duration_hm(win_total),
+            _ => format_duration(win_total),
         };
 
         let can_older = off < max_offset;

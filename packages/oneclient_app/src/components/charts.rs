@@ -2,7 +2,7 @@ use freya::engine::prelude::{Paint, PaintStyle, PathBuilder, SkColor, SkRect};
 use freya::prelude::*;
 
 use crate::theme::colors;
-use crate::utils::format_duration_hm;
+use crate::utils::format_duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueUnit {
@@ -13,7 +13,7 @@ pub enum ValueUnit {
 impl ValueUnit {
     pub fn format(self, value: i64) -> String {
         match self {
-            ValueUnit::Duration => format_duration_hm(value),
+            ValueUnit::Duration => format_duration(value),
             ValueUnit::Count => format!("{value}×"),
         }
     }
@@ -487,7 +487,7 @@ fn gridlines(height: f32) -> Element {
 
 fn y_axis(max: i64, unit: ValueUnit, height: f32) -> Element {
     let fmt = |v: i64| match unit {
-        ValueUnit::Duration => format_duration_hm(v),
+        ValueUnit::Duration => format_duration(v),
         ValueUnit::Count => v.to_string(),
     };
 

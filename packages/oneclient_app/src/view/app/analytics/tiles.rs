@@ -5,7 +5,7 @@ use oneclient_core::game::{Analytics, Persona};
 use crate::components::{Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::utils::format_duration_hm;
+use crate::utils::format_duration;
 
 use super::card;
 
@@ -22,13 +22,13 @@ pub(super) fn tiles_row(analytics: &Analytics, force_all: bool) -> Element {
         stat_tile(
             IconType::ClockRewind,
             "Total playtime",
-            format_duration_hm(stats.total_secs),
+            format_duration(stats.total_secs),
         ),
         stat_tile(IconType::Play, "Sessions", stats.session_count.to_string()),
         stat_tile(
             IconType::Calendar,
             "Avg / session",
-            format_duration_hm(avg_session),
+            format_duration(avg_session),
         ),
         stat_tile(
             IconType::Rocket02,

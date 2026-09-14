@@ -64,16 +64,16 @@ impl Persona {
 
 	pub fn description(self) -> &'static str {
 		match self {
-			Persona::Veteran => "Over 500 hours played. That is a lot of blocks.",
-			Persona::Marathoner => "You have sat through a session of 8 hours or more.",
-			Persona::Regular => "You have played a week straight at least once.",
-			Persona::Loyalist => "Most of your server time goes to one favourite.",
-			Persona::Explorer => "You have joined ten or more different servers.",
-			Persona::NightOwl => "Most of your playtime happens after dark.",
-			Persona::EarlyBird => "A good chunk of your playtime is before 9am.",
-			Persona::WeekendWarrior => "Your weekends carry most of your playtime.",
-			Persona::Gamer => "You average over 5 hours on the days you play.",
-			Persona::Sprinter => "You drop in often, but rarely for long.",
+			Persona::Veteran => "500h+ played",
+			Persona::Marathoner => "An 8h+ session",
+			Persona::Regular => "A week straight",
+			Persona::Loyalist => "Mostly one server",
+			Persona::Explorer => "10+ servers joined",
+			Persona::NightOwl => "Mostly after dark",
+			Persona::EarlyBird => "Mostly before 9am",
+			Persona::WeekendWarrior => "Mostly weekends",
+			Persona::Gamer => "5h+ per day played",
+			Persona::Sprinter => "Short and frequent",
 		}
 	}
 }

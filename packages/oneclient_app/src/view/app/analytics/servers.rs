@@ -3,7 +3,8 @@ use freya::prelude::*;
 use oneclient_core::game::ServerStat;
 
 use crate::components::{
-    Button, Icon, IconType, OverlayPopup, PieChart, ScrollArea, ValueUnit, slice_color,
+    Button, Icon, IconType, OverlayPopup, PieChart, ScrollArea, Segment, SegmentedControl,
+    ValueUnit, slice_color,
 };
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
@@ -13,6 +14,28 @@ use crate::utils::{format_duration, plural};
 use super::{card, card_header};
 
 const MAX_SLICES: usize = 10;
+
+#[derive(Clone, Copy, PartialEq)]
+enum ServerMetric {
+    Playtime,
+    Joins,
+}
+
+impl ServerMetric {
+    fn of(self, s: &ServerStat) -> i64 {
+        match self {
+            ServerMetric::Playtime => s.total_secs,
+            ServerMetric::Joins => s.joins,
+        }
+    }
+
+    fn unit(self) -> ValueUnit {
+        match self {
+            ServerMetric::Playtime => ValueUnit::Duration,
+            ServerMetric::Joins => ValueUnit::Count,
+        }
+    }
+}
 
 pub(super) fn servers_section(servers: &[ServerStat]) -> Element {
     ServersSection {
@@ -30,11 +53,13 @@ impl Component for ServersSection {
     fn render(&self) -> impl IntoElement {
         let hovered = use_state(|| Option::<usize>::None);
         let mut show_all = use_state(|| false);
+        let metric = use_state(|| ServerMetric::Playtime);
+        let m = *metric.read();
 
         let total_joins: i64 = self.servers.iter().map(|s| s.joins).sum();
 
         let mut sorted = self.servers.clone();
-        sorted.sort_by_key(|s| std::cmp::Reverse(s.total_secs));
+        sorted.sort_by_key(|s| std::cmp::Reverse(m.of(s)));
 
         let keep = if sorted.len() > MAX_SLICES {
             MAX_SLICES - 1
@@ -42,20 +67,32 @@ impl Component for ServersSection {
             sorted.len()
         };
         let (top, rest) = sorted.split_at(keep);
-        let mut values: Vec<i64> = top.iter().map(|s| s.total_secs).collect();
+        let mut values: Vec<i64> = top.iter().map(|s| m.of(s)).collect();
         let mut labels: Vec<String> = top.iter().map(server_label).collect();
         if !rest.is_empty() {
-            values.push(rest.iter().map(|s| s.total_secs).sum());
+            values.push(rest.iter().map(|s| m.of(s)).sum());
             labels.push("Other".to_string());
         }
 
         let details = (!self.servers.is_empty()).then(|| {
-            Button::new()
-                .ghost()
-                .small()
-                .on_press(move |_| show_all.set(true))
-                .child(Icon::new(IconType::Eye).size(12.))
-                .text("Details")
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .child(
+                    SegmentedControl::new(metric)
+                        .height(30.)
+                        .segment(Segment::new(ServerMetric::Playtime).label("Playtime"))
+                        .segment(Segment::new(ServerMetric::Joins).label("Joins")),
+                )
+                .child(
+                    Button::new()
+                        .ghost()
+                        .small()
+                        .on_press(move |_| show_all.set(true))
+                        .child(Icon::new(IconType::Eye).size(12.))
+                        .text("Details"),
+                )
                 .into_element()
         });
 
@@ -82,13 +119,14 @@ impl Component for ServersSection {
                     .spacing(20.)
                     .child(
                         PieChart::new(values.clone(), labels.clone())
-                            .unit(ValueUnit::Duration)
+                            .unit(m.unit())
                             .hovered(hovered),
                     )
                     .child(rect().width(Size::flex(1.0)).child(legend(
                         &values,
                         &labels,
                         *hovered.read(),
+                        m.unit(),
                     ))),
             )
             .maybe_child(show_all.read().then(|| {
@@ -109,7 +147,7 @@ impl Component for ServersSection {
     }
 }
 
-fn legend(values: &[i64], labels: &[String], active: Option<usize>) -> Element {
+fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueUnit) -> Element {
     let total: i64 = values.iter().sum();
     let mut list = rect().vertical().width(Size::fill()).spacing(4.);
 
@@ -159,7 +197,7 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>) -> Element {
                 )
                 .child(
                     label()
-                        .text(format_duration(*value))
+                        .text(unit.format(*value))
                         .font_size(11.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),

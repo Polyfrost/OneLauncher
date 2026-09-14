@@ -1,6 +1,6 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use chrono::{Local, NaiveDate};
+use chrono::{Datelike, Local, Months, NaiveDate};
 use freya::prelude::*;
 
 use oneclient_core::game::{DayPlaytime, PlaytimeStats, WEEKDAY_LABELS};
@@ -242,6 +242,100 @@ fn continuous_series(daily: &[DayPlaytime]) -> Vec<(NaiveDate, i64)> {
     }
     out
 }
+
+#[derive(PartialEq)]
+pub(super) struct MonthlyChart {
+    daily: Vec<DayPlaytime>,
+}
+
+impl MonthlyChart {
+    pub(super) fn new(daily: Vec<DayPlaytime>) -> Self {
+        Self { daily }
+    }
+}
+
+impl Component for MonthlyChart {
+    fn render(&self) -> impl IntoElement {
+        let months = monthly_series(&self.daily);
+        let Some((first, _)) = months.first() else {
+            return chart_card(
+                "Playtime by month",
+                "No sessions recorded yet".to_string(),
+                None,
+                rect().height(Size::px(120.)).into_element(),
+            );
+        };
+
+        let values: Vec<i64> = months.iter().map(|(_, s)| *s).collect();
+        let labels: Vec<String> = months
+            .iter()
+            .map(|(m, _)| MONTH_ABBR[m.month0() as usize].to_string())
+            .collect();
+        let readout: Vec<String> = months
+            .iter()
+            .map(|(m, _)| format!("{} {}", MONTH_ABBR[m.month0() as usize], m.year()))
+            .collect();
+
+        let best = values
+            .iter()
+            .enumerate()
+            .max_by_key(|(_, v)| **v)
+            .filter(|(_, v)| **v > 0)
+            .map(|(i, _)| i);
+
+        let subtitle = match best {
+            Some(i) => format!("Best month so far: {}", readout[i]),
+            None => format!("Since {} {}", MONTH_ABBR[first.month0() as usize], first.year()),
+        };
+
+        chart_card(
+            "Playtime by month",
+            subtitle,
+            None,
+            BarChart::new(values, labels)
+                .readout_labels(readout)
+                .highlight(best)
+                .unit(ValueUnit::Duration)
+                .gap(4.)
+                .into_element(),
+        )
+    }
+}
+
+fn monthly_series(daily: &[DayPlaytime]) -> Vec<(NaiveDate, i64)> {
+    let mut totals: BTreeMap<NaiveDate, i64> = BTreeMap::new();
+    for day in daily {
+        let Some(date) = parse_day(&day.date) else {
+            continue;
+        };
+        let Some(month) = date.with_day(1) else {
+            continue;
+        };
+        *totals.entry(month).or_insert(0) += day.secs;
+    }
+
+    let (Some(first), Some(last)) = (
+        totals.keys().min().copied(),
+        totals.keys().max().copied(),
+    ) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    let mut cur = first;
+    while cur <= last {
+        out.push((cur, totals.get(&cur).copied().unwrap_or(0)));
+        cur = match cur.checked_add_months(Months::new(1)) {
+            Some(next) => next,
+            None => break,
+        };
+    }
+    out
+}
+
+const MONTH_ABBR: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 pub(super) fn distribution_card(session_secs: &[i64], force: bool) -> Option<Element> {
     if session_secs.len() < 2 && !force {

@@ -26,14 +26,29 @@ pub(super) fn tiles_row(analytics: &Analytics, force_all: bool) -> Element {
         ),
         stat_tile(IconType::Play, "Sessions", stats.session_count.to_string()),
         stat_tile(
-            IconType::Calendar,
+            IconType::Sliders04,
             "Avg / session",
             format_duration(avg_session),
+        ),
+        stat_tile(
+            IconType::Maximize01,
+            "Longest session",
+            format_duration(stats.longest_session_secs),
         ),
         stat_tile(
             IconType::Rocket02,
             "Day streak",
             stats.current_streak.to_string(),
+        ),
+        stat_tile(
+            IconType::CheckCircle,
+            "Best streak",
+            stats.longest_streak.to_string(),
+        ),
+        stat_tile(
+            IconType::Calendar,
+            "Days played",
+            stats.active_days.to_string(),
         ),
     ];
     if force_all || !analytics.servers.is_empty() {
@@ -44,13 +59,26 @@ pub(super) fn tiles_row(analytics: &Analytics, force_all: bool) -> Element {
         ));
     }
 
-    rect()
-        .horizontal()
-        .content(Content::Flex)
-        .width(Size::fill())
-        .spacing(16.)
-        .children(tiles)
-        .into_element()
+    tile_grid(tiles)
+}
+
+const TILES_PER_ROW: usize = 4;
+
+fn tile_grid(tiles: Vec<Element>) -> Element {
+    let mut grid = rect().vertical().width(Size::fill()).spacing(16.);
+    for chunk in tiles.chunks(TILES_PER_ROW) {
+        let mut row = rect()
+            .horizontal()
+            .content(Content::Flex)
+            .width(Size::fill())
+            .spacing(16.)
+            .children(chunk.to_vec());
+        for _ in chunk.len()..TILES_PER_ROW {
+            row = row.child(rect().width(Size::flex(1.0)));
+        }
+        grid = grid.child(row);
+    }
+    grid.into_element()
 }
 
 fn stat_tile(icon: IconType, caption: &str, value: String) -> Element {

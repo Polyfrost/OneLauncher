@@ -49,6 +49,7 @@ pub struct PlaytimeStats {
 	pub per_hour: [i64; 24],
 	pub daily: Vec<DayPlaytime>,
 	pub session_secs: Vec<i64>,
+	pub longest_session_secs: i64,
 	pub active_days: usize,
 	pub current_streak: usize,
 	pub longest_streak: usize,
@@ -108,6 +109,7 @@ impl PlaytimeStats {
 			);
 		}
 
+		let longest_session_secs = session_secs.iter().copied().max().unwrap_or(0);
 		let dates: Vec<NaiveDate> = by_day.keys().copied().collect();
 		let (current_streak, longest_streak) = streaks(&dates, today);
 		let daily: Vec<DayPlaytime> = by_day
@@ -148,6 +150,7 @@ impl PlaytimeStats {
 			per_hour,
 			daily,
 			session_secs,
+			longest_session_secs,
 			active_days,
 			current_streak,
 			longest_streak,

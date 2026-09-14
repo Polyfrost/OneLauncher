@@ -27,8 +27,8 @@ fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
 
     root = root.child(tiles_row(analytics, force_all));
 
-    if !stats.personas.is_empty() {
-        root = root.child(personas_row(&stats.personas));
+    if !analytics.personas.is_empty() {
+        root = root.child(personas_row(&analytics.personas));
     }
 
     root = root.child(DailyChart::new(stats.daily.clone()));
@@ -137,12 +137,12 @@ fn empty_analytics() -> Analytics {
         peak_hour: None,
         peak_weekday: None,
         night_share: 0.0,
-        personas: Vec::new(),
     };
 
     Analytics {
         playtime,
         servers: Vec::new(),
+        personas: Vec::new(),
     }
 }
 

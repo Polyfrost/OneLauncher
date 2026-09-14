@@ -8,8 +8,23 @@ use oneclient_db::models::{GameSessionServerRow, SessionSpan};
 use crate::error::LauncherResult;
 
 const NIGHT_HOURS: [usize; 8] = [22, 23, 0, 1, 2, 3, 4, 5];
+const MORNING_HOURS: [usize; 4] = [5, 6, 7, 8];
+const WEEKEND_DAYS: [usize; 2] = [5, 6];
+
 const NIGHT_OWL_SHARE: f64 = 0.35;
+const EARLY_BIRD_SHARE: f64 = 0.30;
+const WEEKEND_SHARE: f64 = 0.55;
+const LOYALIST_SHARE: f64 = 0.70;
+
 const GAMER_SECS_PER_DAY: f64 = 5.0 * 3600.0;
+const MARATHON_SECS: i64 = 8 * 3600;
+const VETERAN_SECS: i64 = 500 * 3600;
+const REGULAR_STREAK: usize = 7;
+const EXPLORER_SERVERS: usize = 10;
+const SPRINTER_SECS: i64 = 30 * 60;
+const SPRINTER_SESSIONS: usize = 10;
+
+const MAX_PERSONAS: usize = 6;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DayPlaytime {
@@ -19,24 +34,110 @@ pub struct DayPlaytime {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Persona {
+	Veteran,
+	Marathoner,
+	Regular,
+	Loyalist,
+	Explorer,
 	NightOwl,
+	EarlyBird,
+	WeekendWarrior,
 	Gamer,
+	Sprinter,
 }
 
 impl Persona {
 	pub fn title(self) -> &'static str {
 		match self {
+			Persona::Veteran => "Veteran",
+			Persona::Marathoner => "Marathoner",
+			Persona::Regular => "Regular",
+			Persona::Loyalist => "Loyalist",
+			Persona::Explorer => "Explorer",
 			Persona::NightOwl => "Night Owl",
+			Persona::EarlyBird => "Early Bird",
+			Persona::WeekendWarrior => "Weekend Warrior",
 			Persona::Gamer => "Gamer",
+			Persona::Sprinter => "Sprinter",
 		}
 	}
 
 	pub fn description(self) -> &'static str {
 		match self {
+			Persona::Veteran => "Over 500 hours played. That is a lot of blocks.",
+			Persona::Marathoner => "You have sat through a session of 8 hours or more.",
+			Persona::Regular => "You have played a week straight at least once.",
+			Persona::Loyalist => "Most of your server time goes to one favourite.",
+			Persona::Explorer => "You have joined ten or more different servers.",
 			Persona::NightOwl => "Most of your playtime happens after dark.",
+			Persona::EarlyBird => "A good chunk of your playtime is before 9am.",
+			Persona::WeekendWarrior => "Your weekends carry most of your playtime.",
 			Persona::Gamer => "You average over 5 hours on the days you play.",
+			Persona::Sprinter => "You drop in often, but rarely for long.",
 		}
 	}
+}
+
+fn personas_for(stats: &PlaytimeStats, servers: &[ServerStat]) -> Vec<Persona> {
+	if stats.total_secs <= 0 {
+		return Vec::new();
+	}
+
+	let total = stats.total_secs as f64;
+	let share = |hours: &[usize]| -> f64 {
+		hours.iter().map(|&h| stats.per_hour[h]).sum::<i64>() as f64 / total
+	};
+	let weekend = WEEKEND_DAYS
+		.iter()
+		.map(|&d| stats.per_weekday[d])
+		.sum::<i64>() as f64
+		/ total;
+
+	let server_secs: i64 = servers.iter().map(|s| s.total_secs).sum();
+	let top_server_share = servers
+		.iter()
+		.map(|s| s.total_secs)
+		.max()
+		.filter(|_| server_secs > 0)
+		.map_or(0.0, |top| top as f64 / server_secs as f64);
+
+	let mut lengths: Vec<i64> = stats.session_secs.clone();
+	lengths.sort_unstable();
+	let median = lengths.get(lengths.len() / 2).copied().unwrap_or(0);
+
+	let earned = [
+		(Persona::Veteran, stats.total_secs >= VETERAN_SECS),
+		(
+			Persona::Marathoner,
+			stats.longest_session_secs >= MARATHON_SECS,
+		),
+		(Persona::Regular, stats.longest_streak >= REGULAR_STREAK),
+		(
+			Persona::Loyalist,
+			servers.len() > 1 && top_server_share >= LOYALIST_SHARE,
+		),
+		(Persona::Explorer, servers.len() >= EXPLORER_SERVERS),
+		(Persona::NightOwl, share(&NIGHT_HOURS) >= NIGHT_OWL_SHARE),
+		(
+			Persona::EarlyBird,
+			share(&MORNING_HOURS) >= EARLY_BIRD_SHARE,
+		),
+		(Persona::WeekendWarrior, weekend >= WEEKEND_SHARE),
+		(
+			Persona::Gamer,
+			stats.avg_secs_per_active_day > GAMER_SECS_PER_DAY,
+		),
+		(
+			Persona::Sprinter,
+			stats.session_count >= SPRINTER_SESSIONS && median < SPRINTER_SECS,
+		),
+	];
+
+	earned
+		.into_iter()
+		.filter_map(|(persona, earned)| earned.then_some(persona))
+		.take(MAX_PERSONAS)
+		.collect()
 }
 
 pub const WEEKDAY_LABELS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -57,7 +158,6 @@ pub struct PlaytimeStats {
 	pub peak_hour: Option<usize>,
 	pub peak_weekday: Option<usize>,
 	pub night_share: f64,
-	pub personas: Vec<Persona>,
 }
 
 impl PlaytimeStats {
@@ -135,14 +235,6 @@ impl PlaytimeStats {
 		let peak_hour = argmax(&per_hour);
 		let peak_weekday = argmax(&per_weekday);
 
-		let mut personas = Vec::new();
-		if total_secs > 0 && night_share >= NIGHT_OWL_SHARE {
-			personas.push(Persona::NightOwl);
-		}
-		if avg_secs_per_active_day > GAMER_SECS_PER_DAY {
-			personas.push(Persona::Gamer);
-		}
-
 		Self {
 			total_secs,
 			session_count,
@@ -158,7 +250,6 @@ impl PlaytimeStats {
 			peak_hour,
 			peak_weekday,
 			night_share,
-			personas,
 		}
 	}
 }
@@ -306,26 +397,38 @@ pub fn aggregate_servers(rows: &[GameSessionServerRow]) -> Vec<ServerStat> {
 pub struct Analytics {
 	pub playtime: PlaytimeStats,
 	pub servers: Vec<ServerStat>,
+	pub personas: Vec<Persona>,
+}
+
+impl Analytics {
+	pub fn new(playtime: PlaytimeStats, servers: Vec<ServerStat>) -> Self {
+		let personas = personas_for(&playtime, &servers);
+		Self {
+			playtime,
+			servers,
+			personas,
+		}
+	}
 }
 
 #[tracing::instrument(level = "debug", skip(db))]
 pub async fn global_analytics(db: &oneclient_db::DbPool) -> LauncherResult<Analytics> {
 	let spans = session_dao::all_session_spans(db).await?;
 	let servers = session_dao::all_session_servers(db).await?;
-	Ok(Analytics {
-		playtime: PlaytimeStats::from_spans(&spans),
-		servers: aggregate_servers(&servers),
-	})
+	Ok(Analytics::new(
+		PlaytimeStats::from_spans(&spans),
+		aggregate_servers(&servers),
+	))
 }
 
 #[tracing::instrument(level = "debug", skip(db))]
 pub async fn cluster_analytics(db: &oneclient_db::DbPool, cluster_id: i64) -> LauncherResult<Analytics> {
 	let spans = session_dao::session_spans_for_cluster(db, cluster_id).await?;
 	let servers = session_dao::session_servers_for_cluster(db, cluster_id).await?;
-	Ok(Analytics {
-		playtime: PlaytimeStats::from_spans(&spans),
-		servers: aggregate_servers(&servers),
-	})
+	Ok(Analytics::new(
+		PlaytimeStats::from_spans(&spans),
+		aggregate_servers(&servers),
+	))
 }
 
 #[cfg(test)]
@@ -343,7 +446,7 @@ mod tests {
 	fn empty_has_no_personas() {
 		let stats = PlaytimeStats::from_spans(&[]);
 		assert_eq!(stats.total_secs, 0);
-		assert!(stats.personas.is_empty());
+		assert!(personas_for(&stats, &[]).is_empty());
 		assert_eq!(stats.peak_hour, None);
 	}
 
@@ -489,9 +592,64 @@ mod tests {
 
 	#[test]
 	fn gamer_needs_five_hour_average() {
-		let spans = vec![span("2026-01-01T12:00:00+00:00", "2026-01-01T18:00:00+00:00")];
-		let stats = PlaytimeStats::from_spans(&spans);
+		let spans = vec![local_span("2026-01-01 12:00:00", "2026-01-01 18:00:00")];
+		let stats = PlaytimeStats::from_spans_on(&spans, day("2026-01-01"));
 		assert_eq!(stats.active_days, 1);
-		assert!(stats.personas.contains(&Persona::Gamer));
+		assert!(personas_for(&stats, &[]).contains(&Persona::Gamer));
+	}
+
+	fn stat_server(address: &str, total_secs: i64) -> ServerStat {
+		ServerStat {
+			address: address.into(),
+			port: None,
+			joins: 1,
+			total_secs,
+			last_played: None,
+			is_ip: false,
+		}
+	}
+
+	#[test]
+	fn loyalty_needs_somewhere_else_to_have_been() {
+		let spans = vec![local_span("2026-01-01 12:00:00", "2026-01-01 18:00:00")];
+		let stats = PlaytimeStats::from_spans_on(&spans, day("2026-01-01"));
+
+		let only_one = [stat_server("a.example.com", 3600)];
+		assert!(
+			!personas_for(&stats, &only_one).contains(&Persona::Loyalist),
+			"a single server is loyalty to nothing"
+		);
+
+		let favourite = [
+			stat_server("a.example.com", 9000),
+			stat_server("b.example.com", 1000),
+		];
+		assert!(personas_for(&stats, &favourite).contains(&Persona::Loyalist));
+	}
+
+	#[test]
+	fn an_overnight_session_still_reads_as_a_night_owl() {
+		let spans = vec![local_span("2026-01-01 22:00:00", "2026-01-02 06:00:00")];
+		let stats = PlaytimeStats::from_spans_on(&spans, day("2026-01-02"));
+
+		assert!(personas_for(&stats, &[]).contains(&Persona::NightOwl));
+		assert!(personas_for(&stats, &[]).contains(&Persona::Marathoner));
+	}
+
+	#[test]
+	fn no_more_personas_than_fit() {
+		let mut spans = Vec::new();
+		for day_of in 1..=20 {
+			spans.push(local_span(
+				&format!("2026-01-{day_of:02} 22:00:00"),
+				&format!("2026-01-{:02} 08:00:00", day_of + 1),
+			));
+		}
+		let stats = PlaytimeStats::from_spans_on(&spans, day("2026-01-21"));
+		let servers: Vec<ServerStat> = (0..12)
+			.map(|i| stat_server(&format!("s{i}.example.com"), 3600))
+			.collect();
+
+		assert_eq!(personas_for(&stats, &servers).len(), MAX_PERSONAS);
 	}
 }

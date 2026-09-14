@@ -108,18 +108,39 @@ fn stat_tile(icon: IconType, caption: &str, value: String) -> Element {
         .into_element()
 }
 
+const PERSONAS_PER_ROW: usize = 3;
+
 pub(super) fn personas_row(personas: &[Persona]) -> Element {
-    let mut row = rect().horizontal().width(Size::fill()).spacing(16.);
-    for persona in personas {
-        row = row.child(persona_card(*persona));
+    let mut grid = rect().vertical().width(Size::fill()).spacing(16.);
+    for chunk in personas.chunks(PERSONAS_PER_ROW) {
+        let mut row = rect()
+            .horizontal()
+            .content(Content::Flex)
+            .width(Size::fill())
+            .spacing(16.);
+        for persona in chunk {
+            row = row.child(persona_card(*persona));
+        }
+        for _ in chunk.len()..PERSONAS_PER_ROW {
+            row = row.child(rect().width(Size::flex(1.0)));
+        }
+        grid = grid.child(row);
     }
-    row.into_element()
+    grid.into_element()
 }
 
 fn persona_icon(persona: Persona) -> IconType {
     match persona {
+        Persona::Veteran => IconType::ClipboardCheck,
+        Persona::Marathoner => IconType::Maximize01,
+        Persona::Regular => IconType::CheckCircle,
+        Persona::Loyalist => IconType::Key01,
+        Persona::Explorer => IconType::Globe01,
         Persona::NightOwl => IconType::ClockRewind,
+        Persona::EarlyBird => IconType::Bell01,
+        Persona::WeekendWarrior => IconType::Calendar,
         Persona::Gamer => IconType::Rocket02,
+        Persona::Sprinter => IconType::Play,
     }
 }
 

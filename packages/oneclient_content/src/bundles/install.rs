@@ -226,10 +226,20 @@ pub async fn heal_bundle_activity(
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
 
+    let live_packages: std::collections::HashSet<&str> = tracked
+        .iter()
+        .filter(|row| row.enabled != 0)
+        .filter_map(|row| row.package_id.as_deref())
+        .collect();
+
     for row in tracked.iter().filter(|row| row.enabled == 0) {
         let (Some(bundle_name), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
             continue;
         };
+
+        if live_packages.contains(package_id.as_str()) {
+            continue;
+        }
         let Some(is_hidden) = hidden
             .get(&(bundle_name.as_str(), package_id.clone()))
             .copied()
@@ -582,21 +592,6 @@ pub async fn set_artifact_enabled_to(
     }
 
     Ok(live)
-}
-
-/// Writes the override alongside the flag
-/// without it the losing bundle copy looks disabled-by-nobody and
-/// heal_bundle_activity re-enables it every launch
-#[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn reconcile_duplicate_activity(
-    cluster_id: i64,
-    ctx: &ContentCtx,
-) -> ContentResult<()> {
-    for hash in crate::packages::reconcile_duplicate_activity(cluster_id, ctx).await? {
-        on_user_disable_artifact(cluster_id, &hash, ctx).await?;
-    }
-
-    Ok(())
 }
 
 // which clusters have to record what the user just did

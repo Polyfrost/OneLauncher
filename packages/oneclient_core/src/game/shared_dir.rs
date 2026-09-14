@@ -136,7 +136,7 @@ pub async fn materialize_content(
 
     import_manual_content_with(services, cluster, game_dir, mods_in_cluster).await;
 
-    if let Err(err) = oneclient_content::bundles::reconcile_duplicate_activity(
+    if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
         cluster.id,
         &services.content(),
     )

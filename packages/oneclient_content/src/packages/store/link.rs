@@ -109,20 +109,38 @@ async fn materialized_root(
 		.map(|dir| (dir, manifest::MANIFEST_NAME))
 }
 
+async fn session_owns(cluster: &ClusterRow) -> bool {
+	let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name) else {
+		return false;
+	};
+
+	manifest::load(&game_dir, manifest::MANIFEST_NAME)
+		.await
+		.is_some_and(|session| session.cluster_id == cluster.id)
+}
+
 #[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
 pub async fn try_unlink_materialized(
 	cluster: &ClusterRow,
 	content_type: ContentType,
 	file_name: &str,
-) -> bool {
+) -> LiveSync {
+	if !content_type.reloads_in_game() && session_owns(cluster).await {
+		tracing::debug!(
+			file = file_name,
+			"file will be moved at next launch due to an active session"
+		);
+		return LiveSync::Deferred;
+	}
+
 	let Some((root, manifest_name)) = materialized_root(cluster, content_type).await else {
-		return false;
+		return LiveSync::Deferred;
 	};
 
 	let _guard = manifest::lock().await;
 
 	let Some(mut loaded) = manifest::load(&root, manifest_name).await else {
-		return false;
+		return LiveSync::Skipped;
 	};
 
 	let relative = manifest::entry_path(content_type.folder_name(), file_name);
@@ -133,7 +151,7 @@ pub async fn try_unlink_materialized(
 	};
 
 	if !ours {
-		return false;
+		return LiveSync::Skipped;
 	}
 
 	let path = root.join(&relative);
@@ -143,13 +161,13 @@ pub async fn try_unlink_materialized(
 			error = %err,
 			"could not drop package from the game folder now; it goes at the next launch"
 		);
-		return false;
+		return LiveSync::Deferred;
 	}
 
 	loaded.entries.retain(|entry| entry.path != relative);
 	manifest::save(&root, manifest_name, &loaded).await;
 
-	true
+	LiveSync::Applied
 }
 
 #[tracing::instrument(level = "debug", skip(cluster, artifact), fields(cluster_id = cluster.id, hash = %artifact.hash))]

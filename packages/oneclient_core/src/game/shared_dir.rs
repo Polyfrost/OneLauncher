@@ -69,6 +69,7 @@ pub async fn materialize_content(
         unwind_cluster_mods(cluster, &cluster_dir).await;
     }
 
+    adopt_into_global(&cluster_dir, &global_root).await;
     adopt_into_global(game_dir, &global_root).await;
     ensure_global_links(game_dir, &global_root).await;
 
@@ -268,13 +269,13 @@ fn without_global_entries(mut manifest: MaterializedManifest) -> MaterializedMan
 }
 
 // moves a cluster's own pack folders into the shared one before [`ensure_global_links`] replaces them with links
-async fn adopt_into_global(game_dir: &Path, global_root: &Path) {
-    if game_dir == global_root {
+async fn adopt_into_global(own_root: &Path, global_root: &Path) {
+    if own_root == global_root {
         return;
     }
 
     for content_type in GLOBAL_TYPES {
-        let own = game_dir.join(content_type.folder_name());
+        let own = own_root.join(content_type.folder_name());
         let shared = global_root.join(content_type.folder_name());
 
         match polyio::symlink_metadata(&own).await {

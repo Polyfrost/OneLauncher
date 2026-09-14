@@ -20,7 +20,7 @@ use oneclient_events::GroupedProgressChild;
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
 use crate::packages::dependencies::pick_version;
-use crate::packages::store::{PackageStore, evict_if_unused, try_unlink_materialized};
+use crate::packages::store::{LiveSync, PackageStore, evict_if_unused, try_unlink_materialized};
 use crate::packages::types::LinkedArtifactInfo;
 
 /// Matches the bundle installer's fan-out
@@ -459,8 +459,11 @@ async fn unlink_superseded(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> Con
 
 	artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
-	if let (Some(content_type), Some(link)) = (content_type, link) {
-		try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
+	if let (Some(content_type), Some(link)) = (content_type, link)
+		&& try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await
+			== LiveSync::Deferred
+	{
+		return Ok(());
 	}
 
 	if let Err(err) = evict_if_unused(hash, ctx).await {

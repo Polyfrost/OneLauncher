@@ -749,13 +749,19 @@ pub async fn remove_artifact_from_cluster(
     artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
     // Best-effort folder cleanup failure here is not an error
-    if let (Some(content_type), Some(link)) = (target, link) {
-        try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
-    }
+    let deferred = match (target, link) {
+        (Some(content_type), Some(link)) => {
+            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await
+                == LiveSync::Deferred
+        }
+        _ => false,
+    };
 
     // The package actually lives in the cache
     // `evict_if_unused` drops it only once no other cluster still needs it
-    if let Err(err) = evict_if_unused(hash, ctx).await {
+    if !deferred
+        && let Err(err) = evict_if_unused(hash, ctx).await
+    {
         tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
     }
 

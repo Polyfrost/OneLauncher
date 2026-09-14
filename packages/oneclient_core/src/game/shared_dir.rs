@@ -97,7 +97,7 @@ pub async fn materialize_content(
         let ours = ours_in_folder(ContentType::Mod, &linked, previous.as_ref());
 
         tracing::info!(cluster_id = cluster.id, "moving mods out of the shared game directory");
-        stash_content_files(&from, &into, &ours).await;
+        stash_content_files(&from, &into, ContentType::Mod, &ours).await;
     }
 
     if mods_in_cluster {
@@ -184,7 +184,7 @@ pub async fn materialize_content(
             polyio::create_dir_all(&dir).await.ok();
 
             let ours = ours_in_folder(*content_type, &linked, previous.as_ref());
-            stash_content_files(&dir, &stash, &ours).await;
+            stash_content_files(&dir, &stash, *content_type, &ours).await;
             ensure_note(&dir, *content_type).await;
             restore_stashed(&stash, &dir, *content_type, &ours).await;
         }
@@ -556,7 +556,7 @@ pub async fn dematerialize_content(
         polyio::create_dir_all(&dir).await.ok();
 
         let ours = ours_in_folder(*content_type, &linked, current.as_ref());
-        stash_content_files(&dir, &stash, &ours).await;
+        stash_content_files(&dir, &stash, *content_type, &ours).await;
         sweep_staging_files(&dir).await;
         ensure_note(&dir, *content_type).await;
     }
@@ -1035,7 +1035,12 @@ async fn ensure_links_note(dir: &Path) {
     .ok();
 }
 
-async fn stash_content_files(dir: &Path, stash: &Path, ours: &HashSet<String>) {
+async fn stash_content_files(
+    dir: &Path,
+    stash: &Path,
+    content_type: ContentType,
+    ours: &HashSet<String>,
+) {
     let Ok(mut entries) = polyio::read_dir(dir).await else {
         return;
     };
@@ -1064,6 +1069,15 @@ async fn stash_content_files(dir: &Path, stash: &Path, ours: &HashSet<String>) {
 
         if ours.contains(&name) {
             remove_dir_or_file(&path, file_type).await;
+            continue;
+        }
+
+        if file_type.is_file() && has_content_extension(content_type, &name) {
+            tracing::debug!(
+                file = %name,
+                dir = %dir.display(),
+                "leaving unrecognised content where it is rather than stashing it"
+            );
             continue;
         }
 
@@ -1365,7 +1379,6 @@ mod tests {
         assert_eq!(body.lines().count(), 1);
     }
 
-
     use super::*;
 
     fn names(names: &[&str]) -> HashSet<String> {
@@ -1403,7 +1416,7 @@ mod tests {
             .await
             .unwrap();
 
-        stash_content_files(&shared, &stash, &ours).await;
+        stash_content_files(&shared, &stash, ContentType::Shader, &ours).await;
         assert!(!shared.join("bsl.zip").exists(), "managed pack left behind");
         assert!(!shared.join("bsl.zip.txt").exists(), "sidecar left behind");
         assert_eq!(
@@ -1438,7 +1451,7 @@ mod tests {
             .await
             .unwrap();
 
-        stash_content_files(&shared, &stash, &HashSet::new()).await;
+        stash_content_files(&shared, &stash, ContentType::Shader, &HashSet::new()).await;
         assert!(!shared.join("Loose").exists());
         assert!(stash.join("Loose/shaders/final.fsh").exists());
 
@@ -1446,7 +1459,7 @@ mod tests {
         assert!(shared.join("Loose/shaders/final.fsh").exists());
 
         // Only the link goes never the stashed original
-        stash_content_files(&shared, &stash, &HashSet::new()).await;
+        stash_content_files(&shared, &stash, ContentType::Shader, &HashSet::new()).await;
         assert!(!shared.join("Loose").exists());
         assert!(stash.join("Loose/shaders/final.fsh").exists());
 
@@ -1463,7 +1476,7 @@ mod tests {
             .await
             .unwrap();
 
-        stash_content_files(&shared, &stash, &HashSet::new()).await;
+        stash_content_files(&shared, &stash, ContentType::Mod, &HashSet::new()).await;
         assert!(shared.join(EMPTY_NOTE_NAME).exists());
         assert!(!stash.join(EMPTY_NOTE_NAME).exists());
 
@@ -1565,7 +1578,6 @@ mod tests {
 
         std::fs::remove_dir_all(root.path()).ok();
     }
-
     /// Pinned because the halves are easy to swap `stash` reads the game dir
     /// and writes the cluster `restore` the reverse and both take two
     /// same-typed `&Path`s a swap would quietly delete a user's files
@@ -1596,9 +1608,9 @@ mod tests {
 
         let before = dir_entries(&stash).await;
 
-        stash_content_files(&shared, &stash, &ours).await;
+        stash_content_files(&shared, &stash, ContentType::Mod, &ours).await;
         restore_stashed(&stash, &shared, ContentType::Mod, &ours).await;
-        stash_content_files(&shared, &stash, &ours).await;
+        stash_content_files(&shared, &stash, ContentType::Mod, &ours).await;
         restore_stashed(&stash, &shared, ContentType::Mod, &ours).await;
 
         let after = dir_entries(&stash).await;

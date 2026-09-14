@@ -103,6 +103,7 @@ fn entry_from_item(
         author: cached
             .map(|cached| cached.author.clone())
             .unwrap_or_default(),
+        version: None,
         description: cached
             .map(|cached| cached.summary.clone())
             .unwrap_or_default(),

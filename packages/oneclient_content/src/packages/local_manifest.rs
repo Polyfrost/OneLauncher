@@ -14,11 +14,17 @@ const LEGACY_FORGE: &str = "mcmod.info";
 
 const MANIFESTS: [&str; 5] = [FABRIC, QUILT, NEOFORGE, FORGE, LEGACY_FORGE];
 
+const MANIFEST_MF: &str = "META-INF/MANIFEST.MF";
+const IMPLEMENTATION_VERSION: &str = "Implementation-Version:";
+const JAR_VERSION_PLACEHOLDER: &str = "${file.jarVersion}";
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct JarManifest {
 	pub name: Option<String>,
+	pub version: Option<String>,
 	pub description: Option<String>,
 	pub authors: Vec<String>,
+	pub homepage: Option<String>,
 	pub icon_entry: Option<String>,
 }
 
@@ -26,8 +32,10 @@ impl JarManifest {
 	#[must_use]
 	pub fn is_empty(&self) -> bool {
 		self.name.is_none()
+			&& self.version.is_none()
 			&& self.description.is_none()
 			&& self.authors.is_empty()
+			&& self.homepage.is_none()
 			&& self.icon_entry.is_none()
 	}
 
@@ -40,11 +48,17 @@ impl JarManifest {
 		if self.name.is_none() {
 			self.name = other.name;
 		}
+		if self.version.is_none() {
+			self.version = other.version;
+		}
 		if self.description.is_none() {
 			self.description = other.description;
 		}
 		if self.authors.is_empty() {
 			self.authors = other.authors;
+		}
+		if self.homepage.is_none() {
+			self.homepage = other.homepage;
 		}
 		if self.icon_entry.is_none() {
 			self.icon_entry = other.icon_entry;
@@ -54,7 +68,11 @@ impl JarManifest {
 
 #[tracing::instrument(level = "debug", fields(jar = %jar.display()))]
 pub async fn read_jar_manifest(jar: &Path) -> JarManifest {
-	let entries = match polyio::read_zip_file_entries(jar, |name| MANIFESTS.contains(&name)).await {
+	let entries = match polyio::read_zip_file_entries(jar, |name| {
+		MANIFESTS.contains(&name) || name == MANIFEST_MF
+	})
+	.await
+	{
 		Ok(entries) => entries,
 		Err(err) => {
 			tracing::debug!("could not read {}: {err}", jar.display());
@@ -84,7 +102,36 @@ pub async fn read_jar_manifest(jar: &Path) -> JarManifest {
 		}
 	}
 
+	if let Some(version) = out.version.take() {
+		let jar_manifest = entries
+			.iter()
+			.find(|(name, _)| name == MANIFEST_MF)
+			.and_then(|(_, bytes)| std::str::from_utf8(bytes).ok());
+
+		out.version = resolve_version(version, jar_manifest);
+	}
+
 	out
+}
+
+#[must_use]
+fn resolve_version(version: String, jar_manifest: Option<&str>) -> Option<String> {
+	let resolved = if version.contains(JAR_VERSION_PLACEHOLDER) {
+		let implementation = jar_manifest.and_then(implementation_version)?;
+		version.replace(JAR_VERSION_PLACEHOLDER, &implementation)
+	} else {
+		version
+	};
+
+	(!resolved.contains("${")).then_some(resolved)
+}
+
+#[must_use]
+fn implementation_version(jar_manifest: &str) -> Option<String> {
+	jar_manifest
+		.lines()
+		.find_map(|line| line.strip_prefix(IMPLEMENTATION_VERSION))
+		.and_then(|value| clean(Some(value.to_string())))
 }
 
 #[tracing::instrument(level = "debug", fields(jar = %jar.display()))]
@@ -103,9 +150,11 @@ pub fn parse_fabric(text: &str) -> Option<JarManifest> {
 	#[derive(Deserialize)]
 	struct FabricMod {
 		name: Option<String>,
+		version: Option<String>,
 		description: Option<String>,
 		#[serde(default)]
 		authors: Vec<serde_json::Value>,
+		contact: Option<Contact>,
 		icon: Option<Icon>,
 	}
 
@@ -113,8 +162,10 @@ pub fn parse_fabric(text: &str) -> Option<JarManifest> {
 
 	Some(JarManifest {
 		name: clean(parsed.name),
+		version: clean(parsed.version),
 		description: clean_description(parsed.description),
 		authors: people(parsed.authors),
+		homepage: parsed.contact.and_then(Contact::link),
 		icon_entry: parsed.icon.and_then(Icon::path).and_then(entry_path),
 	})
 }
@@ -128,6 +179,7 @@ pub fn parse_quilt(text: &str) -> Option<JarManifest> {
 
 	#[derive(Deserialize)]
 	struct QuiltLoader {
+		version: Option<String>,
 		metadata: Option<QuiltMetadata>,
 	}
 
@@ -137,20 +189,24 @@ pub fn parse_quilt(text: &str) -> Option<JarManifest> {
 		description: Option<String>,
 		#[serde(default)]
 		contributors: BTreeMap<String, serde_json::Value>,
+		contact: Option<Contact>,
 		icon: Option<Icon>,
 	}
 
 	let parsed: QuiltMod = serde_json::from_str(text).ok()?;
+	let version = clean(parsed.quilt_loader.version);
 	let metadata = parsed.quilt_loader.metadata?;
 
 	Some(JarManifest {
 		name: clean(metadata.name),
+		version,
 		description: clean_description(metadata.description),
 		authors: metadata
 			.contributors
 			.into_keys()
 			.filter_map(|name| clean(Some(name)))
 			.collect(),
+		homepage: metadata.contact.and_then(Contact::link),
 		icon_entry: metadata.icon.and_then(Icon::path).and_then(entry_path),
 	})
 }
@@ -170,9 +226,12 @@ pub fn parse_forge(text: &str) -> Option<JarManifest> {
 	struct ForgeMod {
 		#[serde(rename = "displayName")]
 		display_name: Option<String>,
+		version: Option<String>,
 		description: Option<String>,
 		authors: Option<StringOrList>,
 		credits: Option<StringOrList>,
+		#[serde(rename = "displayURL")]
+		display_url: Option<String>,
 		#[serde(rename = "logoFile")]
 		logo_file: Option<String>,
 	}
@@ -182,12 +241,14 @@ pub fn parse_forge(text: &str) -> Option<JarManifest> {
 
 	Some(JarManifest {
 		name: clean(first.display_name),
+		version: clean(first.version),
 		description: clean_description(first.description),
 		authors: first
 			.authors
 			.or(first.credits)
 			.map(StringOrList::into_people)
 			.unwrap_or_default(),
+		homepage: clean(first.display_url),
 		icon_entry: first.logo_file.or(parsed.logo_file).and_then(entry_path),
 	})
 }
@@ -207,10 +268,12 @@ pub fn parse_legacy_forge(text: &str) -> Option<JarManifest> {
 	#[derive(Deserialize)]
 	struct LegacyMod {
 		name: Option<String>,
+		version: Option<String>,
 		description: Option<String>,
 		#[serde(rename = "authorList", default)]
 		author_list: Vec<String>,
 		credits: Option<String>,
+		url: Option<String>,
 		#[serde(rename = "logoFile")]
 		logo_file: Option<String>,
 	}
@@ -228,14 +291,28 @@ pub fn parse_legacy_forge(text: &str) -> Option<JarManifest> {
 
 	Some(JarManifest {
 		name: clean(first.name),
+		version: clean(first.version),
 		description: clean_description(first.description),
 		authors: if authors.is_empty() {
 			clean(first.credits).into_iter().collect()
 		} else {
 			authors
 		},
+		homepage: clean(first.url),
 		icon_entry: first.logo_file.and_then(entry_path),
 	})
+}
+
+#[derive(Deserialize)]
+struct Contact {
+	homepage: Option<String>,
+	sources: Option<String>,
+}
+
+impl Contact {
+	fn link(self) -> Option<String> {
+		clean(self.homepage).or_else(|| clean(self.sources))
+	}
 }
 
 #[derive(Deserialize)]
@@ -488,6 +565,7 @@ credits="Thanks to everyone"
 			description: Some("From forge".into()),
 			authors: vec!["Someone".into()],
 			icon_entry: Some("logo.png".into()),
+			..JarManifest::default()
 		});
 
 		assert_eq!(fabric.name.as_deref(), Some("Fabric Name"));
@@ -514,6 +592,84 @@ credits="Thanks to everyone"
 			"the ellipsis is the extra one"
 		);
 		assert!(cut.ends_with('…'));
+	}
+
+	#[test]
+	fn fabric_reads_version_and_contact() {
+		let parsed = parse_fabric(
+			r#"{
+				"id": "sodium",
+				"version": "mc1.21.1-0.6.0",
+				"contact": {"homepage": "https://modrinth.com/mod/sodium", "sources": "https://github.com/x"}
+			}"#,
+		)
+		.expect("valid fabric manifest");
+
+		assert_eq!(parsed.version.as_deref(), Some("mc1.21.1-0.6.0"));
+		assert_eq!(
+			parsed.homepage.as_deref(),
+			Some("https://modrinth.com/mod/sodium")
+		);
+	}
+
+	#[test]
+	fn fabric_contact_falls_back_to_sources() {
+		let parsed = parse_fabric(r#"{"id": "x", "contact": {"sources": "https://github.com/x"}}"#)
+			.expect("valid fabric manifest");
+
+		assert_eq!(parsed.homepage.as_deref(), Some("https://github.com/x"));
+	}
+
+	#[test]
+	fn forge_reads_version_and_display_url() {
+		let parsed = parse_forge(
+			r#"
+[[mods]]
+modId="x"
+version="1.0.0"
+displayName="X"
+displayURL="https://example.invalid/x"
+"#,
+		)
+		.expect("valid forge manifest");
+
+		assert_eq!(parsed.version.as_deref(), Some("1.0.0"));
+		assert_eq!(parsed.homepage.as_deref(), Some("https://example.invalid/x"));
+	}
+
+	#[test]
+	fn quilt_reads_loader_version() {
+		let parsed = parse_quilt(
+			r#"{"quilt_loader": {"id": "x", "version": "2.1.0", "metadata": {"name": "X"}}}"#,
+		)
+		.expect("valid quilt manifest");
+
+		assert_eq!(parsed.version.as_deref(), Some("2.1.0"));
+	}
+
+	#[test]
+	fn jar_version_placeholder_resolves_from_the_jar_manifest() {
+		let mf = "Manifest-Version: 1.0\r\nImplementation-Version: 4.2.1\r\n";
+
+		assert_eq!(
+			resolve_version("${file.jarVersion}".into(), Some(mf)).as_deref(),
+			Some("4.2.1")
+		);
+		assert_eq!(
+			resolve_version("1.20.1-${file.jarVersion}".into(), Some(mf)).as_deref(),
+			Some("1.20.1-4.2.1")
+		);
+	}
+
+	#[test]
+	fn an_unresolvable_placeholder_is_no_version() {
+		assert_eq!(resolve_version("${file.jarVersion}".into(), None), None);
+		assert_eq!(
+			resolve_version("${file.jarVersion}".into(), Some("Manifest-Version: 1.0")),
+			None
+		);
+		assert_eq!(resolve_version("${mod_version}".into(), None), None);
+		assert_eq!(resolve_version("1.0.0".into(), None).as_deref(), Some("1.0.0"));
 	}
 
 	#[test]

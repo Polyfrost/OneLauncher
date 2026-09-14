@@ -91,10 +91,17 @@ struct Candidate {
 fn browser_installed(
 	linked: &[LinkedArtifactInfo],
 	bundle_hashes: &HashSet<String>,
+	bundle_projects: &HashSet<String>,
 ) -> Vec<Candidate> {
 	linked
 		.iter()
+		.filter(|info| info.enabled)
 		.filter(|info| !bundle_hashes.contains(&info.hash))
+		.filter(|info| {
+			info.project_id
+				.as_ref()
+				.is_none_or(|id| !bundle_projects.contains(id))
+		})
 		.filter_map(|info| {
 			let provider = info.provider?;
 			if provider == ProviderId::Local {
@@ -126,13 +133,12 @@ pub async fn check_browser_package_updates(
 	let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
 	let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
 
-	let bundle_hashes: HashSet<String> = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
-		.await?
-		.into_iter()
-		.map(|row| row.hash)
-		.collect();
+	let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+	let bundle_projects: HashSet<String> =
+		tracked.iter().filter_map(|row| row.package_id.clone()).collect();
+	let bundle_hashes: HashSet<String> = tracked.into_iter().map(|row| row.hash).collect();
 
-	let candidates = browser_installed(&linked, &bundle_hashes);
+	let candidates = browser_installed(&linked, &bundle_hashes, &bundle_projects);
 	if candidates.is_empty() {
 		return Ok(BrowserUpdateCheck {
 			cluster_id,
@@ -506,7 +512,7 @@ mod tests {
 		let bundles: HashSet<String> = ["a".to_string()].into_iter().collect();
 
 		assert!(
-			browser_installed(&linked, &bundles).is_empty(),
+			browser_installed(&linked, &bundles, &HashSet::new()).is_empty(),
 			"a bundle-tracked artifact must stay out of the browser update flow"
 		);
 	}
@@ -520,7 +526,7 @@ mod tests {
 			Some("v1"),
 		)];
 
-		let found = browser_installed(&linked, &HashSet::new());
+		let found = browser_installed(&linked, &HashSet::new(), &HashSet::new());
 		assert_eq!(found.len(), 1);
 		assert_eq!(found[0].project_id, "sodium");
 		assert_eq!(found[0].version_id, "v1");
@@ -534,7 +540,7 @@ mod tests {
 		];
 
 		assert!(
-			browser_installed(&linked, &HashSet::new()).is_empty(),
+			browser_installed(&linked, &HashSet::new(), &HashSet::new()).is_empty(),
 			"a file with no provider release has no version to compare"
 		);
 	}
@@ -544,7 +550,7 @@ mod tests {
 		let linked = vec![linked("a", Some(ProviderId::Modrinth), Some("sodium"), None)];
 
 		assert!(
-			browser_installed(&linked, &HashSet::new()).is_empty(),
+			browser_installed(&linked, &HashSet::new(), &HashSet::new()).is_empty(),
 			"without an installed version id there is nothing to compare against"
 		);
 	}
@@ -612,16 +618,15 @@ mod tests {
 		let mut info = linked("a", Some(ProviderId::Modrinth), Some("sodium"), Some("v1"));
 		info.published_at = Some("2026-02-01T00:00:00Z".into());
 
-		let found = browser_installed(&[info], &HashSet::new());
+		let found = browser_installed(&[info], &HashSet::new(), &HashSet::new());
 		assert_eq!(found[0].published_at, Some(at("2026-02-01T00:00:00Z")));
 	}
-
 	#[test]
 	fn an_unparseable_publish_date_leaves_the_candidate_undated() {
 		let mut info = linked("a", Some(ProviderId::Modrinth), Some("sodium"), Some("v1"));
 		info.published_at = Some("not a date".into());
 
-		let found = browser_installed(&[info], &HashSet::new());
+		let found = browser_installed(&[info], &HashSet::new(), &HashSet::new());
 		assert_eq!(found[0].published_at, None);
 	}
 }

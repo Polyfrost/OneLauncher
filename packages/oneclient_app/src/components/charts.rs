@@ -386,14 +386,13 @@ impl Component for BarChart {
             label_row = label_row.child(
                 rect()
                     .width(Size::flex(1.0))
+                    .horizontal()
                     .main_align(Alignment::Center)
                     .child(
                         label()
                             .text(if shown { text.clone() } else { String::new() })
                             .font_size(10.)
                             .max_lines(1)
-                            .width(Size::fill())
-                            .text_align(TextAlign::Center)
                             .color(colors::fg_secondary()),
                     ),
             );
@@ -460,7 +459,7 @@ fn label_stride(labels: &[String], plot_width: f32, gap: f32) -> usize {
         .unwrap_or(0)
         .max(1);
     // ~6.2px per char at font_size 10
-    let slot_px = max_chars as f32 * 6.2 + gap.max(8.0) + 8.0;
+    let slot_px = max_chars as f32 * 6.2 + gap.max(8.0) + 12.0;
     let max_labels = (plot_width / slot_px).floor().max(1.0) as usize;
 
     if n <= max_labels {

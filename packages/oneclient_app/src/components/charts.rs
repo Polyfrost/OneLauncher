@@ -352,13 +352,9 @@ impl Component for BarChart {
         for (i, &v) in self.values.iter().enumerate() {
             let frac = if max > 0 { v as f32 / max as f32 } else { 0.0 };
             let h = if v > 0 { (frac * height).max(4.0) } else { 0.0 };
-            let is_active = Some(i) == focus;
-            let color = if is_active {
-                colors::brand()
-            } else if active.is_some() {
-                colors::component_bg_hover().with_a(150)
-            } else {
-                colors::component_bg_hover()
+            let color = match active {
+                Some(a) if a != i => colors::component_bg_hover(),
+                _ => colors::brand(),
             };
 
             bars = bars.child(

@@ -10,6 +10,9 @@ const MC_VERSION: &str = "1.21.1";
 const PROJECT_ID: &str = "sodium";
 const VERSION_ID: &str = "v1";
 const HASH: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const SHARED_BUNDLE: &str = "Shared Bundle";
+const FABRIC_API_HASH: &str = "dddddddddddddddddddddddddddddddddddddddd";
+const HIDDEN_DEP_HASH: &str = "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
 fn managed_file(enabled: bool) -> BundleFile {
     BundleFile {
@@ -434,5 +437,362 @@ async fn tracked_bundle_that_never_synced_is_not_removed() {
         check.removals_available.is_empty(),
         "an absent catalog is not a delisting and must not take content down: {:?}",
         check.removals_available
+    );
+}
+
+fn resource_pack_file() -> BundleFile {
+    BundleFile {
+        enabled: true,
+        hidden: false,
+        path: "resourcepacks/looks.zip".to_string(),
+        size: 1,
+        kind: BundleFileKind::Managed {
+            provider: ProviderId::Modrinth,
+            project_id: "looks".to_string(),
+            version_id: "v1".to_string(),
+            sha1: "cccccccccccccccccccccccccccccccccccccccc".to_string(),
+        },
+    }
+}
+
+#[tokio::test]
+async fn disabling_every_mod_stops_new_mods_while_a_resource_pack_stays_on() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        "looks",
+        OverrideType::Enabled,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    let added: Vec<String> = check
+        .additions_available
+        .iter()
+        .map(|a| a.new_file.kind.package_id())
+        .collect();
+
+    assert!(
+        !added.iter().any(|id| id == "newcomer"),
+        "mods were switched off for this bundle so a new mod must not arrive: {added:?}"
+    );
+    assert!(
+        added.iter().any(|id| id == "looks"),
+        "the resource pack side of the bundle is still live: {added:?}"
+    );
+    assert!(
+        check
+            .optional_available
+            .iter()
+            .any(|o| o.package_id == "newcomer"),
+        "the new mod is still offered so the user can take it if they want it"
+    );
+}
+
+fn fabric_api_file() -> BundleFile {
+    BundleFile {
+        enabled: true,
+        hidden: false,
+        path: "mods/fabric-api.jar".to_string(),
+        size: 1,
+        kind: BundleFileKind::Managed {
+            provider: ProviderId::Modrinth,
+            project_id: "fabric-api".to_string(),
+            version_id: "v1".to_string(),
+            sha1: FABRIC_API_HASH.to_string(),
+        },
+    }
+}
+
+fn named_manifest(name: &str, files: Vec<BundleFile>) -> BundleManifest {
+    let mut m = manifest(files);
+    m.name = name.to_string();
+    m
+}
+
+async fn install_fabric_api(state: &LauncherState, cluster_id: i64) {
+    artifact_dao::insert_artifact(
+        &state.services.db,
+        FABRIC_API_HASH,
+        ContentType::Mod as i64,
+        "artifacts/fabric-api.jar",
+        "fabric-api.jar",
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(
+        &state.services.db,
+        cluster_id,
+        FABRIC_API_HASH,
+        "fabric-api.jar",
+    )
+    .await
+    .unwrap();
+    artifact_dao::upsert_provider_release(
+        &state.services.db,
+        ProviderId::Modrinth as i64,
+        "fabric-api",
+        "v1",
+        FABRIC_API_HASH,
+        "Fabric API",
+        "1.0.0",
+        None,
+        MC_VERSION,
+        "fabric",
+    )
+    .await
+    .unwrap();
+    bundle_dao::track_bundle_artifact(
+        &state.services.db,
+        cluster_id,
+        FABRIC_API_HASH,
+        SHARED_BUNDLE,
+        "v1",
+        "fabric-api",
+    )
+    .await
+    .unwrap();
+}
+
+#[tokio::test]
+async fn a_mod_every_bundle_ships_does_not_keep_a_disabled_bundle_taking_new_mods() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest(
+            BUNDLE,
+            vec![managed_file(true), newly_shipped_file(), fabric_api_file()],
+        ),
+    )
+    .await
+    .unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest(SHARED_BUNDLE, vec![fabric_api_file()]),
+    )
+    .await
+    .unwrap();
+
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    install_fabric_api(&state, cluster_id).await;
+
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    let added: Vec<String> = check
+        .additions_available
+        .iter()
+        .map(|a| a.new_file.kind.package_id())
+        .collect();
+
+    assert!(
+        !added.iter().any(|id| id == "newcomer"),
+        "a mod shared with another bundle must not hold this bundle open: {added:?}"
+    );
+}
+
+fn hidden_dependency_file() -> BundleFile {
+    BundleFile {
+        enabled: true,
+        hidden: true,
+        path: "mods/sodium-extra-lib.jar".to_string(),
+        size: 1,
+        kind: BundleFileKind::Managed {
+            provider: ProviderId::Modrinth,
+            project_id: "sodium-extra-lib".to_string(),
+            version_id: "v1".to_string(),
+            sha1: HIDDEN_DEP_HASH.to_string(),
+        },
+    }
+}
+
+#[tokio::test]
+async fn a_hidden_dependency_only_this_bundle_ships_does_not_hold_it_open() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            hidden_dependency_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    artifact_dao::insert_artifact(
+        &state.services.db,
+        HIDDEN_DEP_HASH,
+        ContentType::Mod as i64,
+        "artifacts/sodium-extra-lib.jar",
+        "sodium-extra-lib.jar",
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(
+        &state.services.db,
+        cluster_id,
+        HIDDEN_DEP_HASH,
+        "sodium-extra-lib.jar",
+    )
+    .await
+    .unwrap();
+    artifact_dao::upsert_provider_release(
+        &state.services.db,
+        ProviderId::Modrinth as i64,
+        "sodium-extra-lib",
+        "v1",
+        HIDDEN_DEP_HASH,
+        "Sodium Extra Lib",
+        "1.0.0",
+        None,
+        MC_VERSION,
+        "fabric",
+    )
+    .await
+    .unwrap();
+    bundle_dao::track_bundle_artifact(
+        &state.services.db,
+        cluster_id,
+        HIDDEN_DEP_HASH,
+        BUNDLE,
+        "v1",
+        "sodium-extra-lib",
+    )
+    .await
+    .unwrap();
+
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    let added: Vec<String> = check
+        .additions_available
+        .iter()
+        .map(|a| a.new_file.kind.package_id())
+        .collect();
+
+    assert!(
+        !added.iter().any(|id| id == "newcomer"),
+        "a dependency the user was never shown must not read as wanting the bundle: {added:?}"
+    );
+}
+
+#[tokio::test]
+async fn an_unrelated_catalog_bundle_sharing_a_mod_does_not_undo_the_opt_out() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest(
+            BUNDLE,
+            vec![managed_file(true), newly_shipped_file(), resource_pack_file()],
+        ),
+    )
+    .await
+    .unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest("Unrelated Bundle", vec![managed_file(true)]),
+    )
+    .await
+    .unwrap();
+
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        "looks",
+        OverrideType::Enabled,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &state.services.content())
+        .await
+        .unwrap();
+
+    let added: Vec<String> = check
+        .additions_available
+        .iter()
+        .map(|a| a.new_file.kind.package_id())
+        .collect();
+
+    assert!(
+        !added.iter().any(|id| id == "newcomer"),
+        "a bundle the user never installed must not speak for this one: {added:?}"
     );
 }

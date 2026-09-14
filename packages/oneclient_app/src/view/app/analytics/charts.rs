@@ -88,6 +88,8 @@ enum Range {
     Quarter,
 }
 
+const COMPACT_CARD_WIDTH_PX: f32 = 480.;
+
 impl Range {
     fn days(self) -> usize {
         match self {
@@ -111,17 +113,28 @@ impl DailyChart {
 
 impl Component for DailyChart {
     fn render(&self) -> impl IntoElement {
-        let range = use_state(|| Range::TwoWeeks);
+        let mut range = use_state(|| Range::TwoWeeks);
         let mut offset = use_state(|| 0usize);
+        let card_width = use_state(|| 0f32);
+
+        let measured = *card_width.read();
+        let compact = measured > 0. && measured < COMPACT_CARD_WIDTH_PX;
 
         let series = continuous_series(&self.daily);
         if series.is_empty() {
-            return chart_card(
-                "Daily playtime",
-                "No sessions recorded yet".to_string(),
-                None,
-                rect().height(Size::px(120.)).into_element(),
+            return measured_card(
+                card_width,
+                chart_card(
+                    "Daily playtime",
+                    "No sessions recorded yet".to_string(),
+                    None,
+                    rect().height(Size::px(120.)).into_element(),
+                ),
             );
+        }
+
+        if compact && *range.read() == Range::Quarter {
+            *range.write() = Range::Month;
         }
 
         let window = range.read().days();
@@ -149,6 +162,14 @@ impl Component for DailyChart {
             _ => format_duration_hm(win_total),
         };
 
+        let mut control = SegmentedControl::new(range)
+            .height(30.)
+            .segment(Segment::new(Range::TwoWeeks).label("2W"))
+            .segment(Segment::new(Range::Month).label("1M"));
+        if !compact {
+            control = control.segment(Segment::new(Range::Quarter).label("3M"));
+        }
+
         let can_older = off < max_offset;
         let can_newer = off > 0;
         let nav = rect()
@@ -165,26 +186,35 @@ impl Component for DailyChart {
                     *offset.write() = off - 1;
                 }
             }))
-            .child(
-                SegmentedControl::new(range)
-                    .height(30.)
-                    .segment(Segment::new(Range::TwoWeeks).label("2W"))
-                    .segment(Segment::new(Range::Month).label("1M"))
-                    .segment(Segment::new(Range::Quarter).label("3M"))
-                    .into_element(),
-            )
+            .child(control.into_element())
             .into_element();
 
-        chart_card(
-            "Daily playtime",
-            subtitle,
-            Some(nav),
-            BarChart::new(values, labels)
-                .unit(ValueUnit::Duration)
-                .gap(3.)
-                .into_element(),
+        measured_card(
+            card_width,
+            chart_card(
+                "Daily playtime",
+                subtitle,
+                Some(nav),
+                BarChart::new(values, labels)
+                    .unit(ValueUnit::Duration)
+                    .gap(3.)
+                    .into_element(),
+            ),
         )
     }
+}
+
+fn measured_card(mut width: State<f32>, card: Element) -> Element {
+    rect()
+        .width(Size::fill())
+        .on_sized(move |event: Event<SizedEventData>| {
+            let next = event.data().area.width();
+            if (*width.peek() - next).abs() > 0.5 {
+                width.set(next);
+            }
+        })
+        .child(card)
+        .into_element()
 }
 
 fn continuous_series(daily: &[DayPlaytime]) -> Vec<(NaiveDate, i64)> {

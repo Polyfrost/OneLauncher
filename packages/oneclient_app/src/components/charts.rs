@@ -264,6 +264,7 @@ fn slice_at(values: &[i64], x: f32, y: f32, size: f32) -> Option<usize> {
 pub struct BarChart {
     values: Vec<i64>,
     labels: Vec<String>,
+    readout_labels: Option<Vec<String>>,
     highlight: Option<usize>,
     unit: ValueUnit,
     height: f32,
@@ -275,11 +276,17 @@ impl BarChart {
         Self {
             values,
             labels,
+            readout_labels: None,
             highlight: None,
             unit: ValueUnit::Duration,
             height: DEFAULT_HEIGHT,
             gap: 4.,
         }
+    }
+
+    pub fn readout_labels(mut self, labels: Vec<String>) -> Self {
+        self.readout_labels = Some(labels);
+        self
     }
 
     pub fn highlight(mut self, highlight: Option<usize>) -> Self {
@@ -304,7 +311,9 @@ impl BarChart {
     }
 
     fn readout_name(&self, i: usize) -> String {
-        self.labels
+        self.readout_labels
+            .as_ref()
+            .unwrap_or(&self.labels)
             .get(i)
             .cloned()
             .filter(|s| !s.is_empty())

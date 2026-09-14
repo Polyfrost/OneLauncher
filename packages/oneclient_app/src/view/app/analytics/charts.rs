@@ -42,7 +42,7 @@ impl Component for WhenChart {
 
         let control = SegmentedControl::new(mode)
             .height(30.)
-            .segment(Segment::new(WhenMode::Weekday).label("Day"))
+            .segment(Segment::new(WhenMode::Weekday).label("Weekday"))
             .segment(Segment::new(WhenMode::Hour).label("Hour"))
             .into_element();
 
@@ -50,11 +50,14 @@ impl Component for WhenChart {
             WhenMode::Weekday => {
                 let day = self
                     .peak_weekday
-                    .map(|i| WEEKDAY_LABELS[i].to_string())
+                    .map(|i| WEEKDAY_FULL[i].to_string())
                     .unwrap_or_else(|| "—".to_string());
                 (
-                    format!("Most active on {day}"),
+                    format!("Every {day} you have played, added up"),
                     BarChart::new(self.per_weekday.clone(), weekday_labels())
+                        .readout_labels(
+                            WEEKDAY_FULL.iter().map(|d| format!("All {d}s")).collect(),
+                        )
                         .highlight(self.peak_weekday)
                         .unit(ValueUnit::Duration)
                         .gap(6.)
@@ -67,8 +70,13 @@ impl Component for WhenChart {
                     .map(format_hour)
                     .unwrap_or_else(|| "—".to_string());
                 (
-                    format!("Peak around {hour}"),
+                    format!("Every day's {hour} hour, added up"),
                     BarChart::new(self.per_hour.clone(), (0..24).map(format_hour).collect())
+                        .readout_labels(
+                            (0..24)
+                                .map(|h| format!("All {} hours", format_hour(h)))
+                                .collect(),
+                        )
                         .highlight(self.peak_hour)
                         .unit(ValueUnit::Duration)
                         .gap(3.)
@@ -77,7 +85,7 @@ impl Component for WhenChart {
             }
         };
 
-        chart_card("When you play", subtitle, Some(control), chart)
+        chart_card("When you play (all time)", subtitle, Some(control), chart)
     }
 }
 
@@ -252,6 +260,16 @@ pub(super) fn distribution_card(session_secs: &[i64], force: bool) -> Option<Ele
             .into_element(),
     ))
 }
+
+const WEEKDAY_FULL: [&str; 7] = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+];
 
 fn weekday_labels() -> Vec<String> {
     WEEKDAY_LABELS.iter().map(|s| (*s).to_string()).collect()

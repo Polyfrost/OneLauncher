@@ -1,4 +1,5 @@
 use futures_util::StreamExt;
+use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
@@ -202,12 +203,54 @@ pub(crate) fn disable_was_deliberate(suppression: Option<OverrideType>) -> bool 
     }
 }
 
+const DUPLICATE_DISABLE_REPAIR: &str = "repair-hidden-duplicate-disables";
+
+async fn clear_reconciler_disables(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let id = format!("{DUPLICATE_DISABLE_REPAIR}:{cluster_id}");
+    if migration_dao::is_applied(&ctx.db, &id).await? {
+        return Ok(());
+    }
+
+    let hidden: std::collections::HashSet<String> = archives
+        .iter()
+        .flat_map(|archive| &archive.manifest.files)
+        .filter(|file| file.hidden)
+        .map(|file| file.kind.package_id())
+        .collect();
+
+    if hidden.is_empty() {
+        return Ok(());
+    }
+
+    let mut cleared = 0u64;
+    for package_id in &hidden {
+        cleared += bundle_dao::clear_disabled_overrides(&ctx.db, cluster_id, package_id).await?;
+    }
+
+    if cleared > 0 {
+        tracing::info!(
+            cluster_id,
+            cleared,
+            "cleared disabled overrides on hidden bundle files that no user was ever shown"
+        );
+    }
+
+    migration_dao::mark_applied(&ctx.db, &id).await?;
+    Ok(())
+}
+
 #[tracing::instrument(level = "debug", skip(archives, ctx))]
 pub async fn heal_bundle_activity(
     cluster_id: i64,
     archives: &[BundleArchive],
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    clear_reconciler_disables(cluster_id, archives, ctx).await?;
+
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     if tracked.iter().all(|row| row.enabled != 0) {
         return Ok(());
@@ -226,10 +269,10 @@ pub async fn heal_bundle_activity(
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
 
-    let live_packages: std::collections::HashSet<&str> = tracked
+    let mut live_packages: std::collections::HashSet<String> = tracked
         .iter()
         .filter(|row| row.enabled != 0)
-        .filter_map(|row| row.package_id.as_deref())
+        .filter_map(|row| row.package_id.clone())
         .collect();
 
     for row in tracked.iter().filter(|row| row.enabled == 0) {
@@ -237,7 +280,7 @@ pub async fn heal_bundle_activity(
             continue;
         };
 
-        if live_packages.contains(package_id.as_str()) {
+        if live_packages.contains(package_id) {
             continue;
         }
         let Some(is_hidden) = hidden
@@ -271,6 +314,8 @@ pub async fn heal_bundle_activity(
             tracing::warn!(hash = %row.hash, error = %err, "failed to re-enable bundle content");
             continue;
         }
+
+        live_packages.insert(package_id.clone());
     }
 
     Ok(())

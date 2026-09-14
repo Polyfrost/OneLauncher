@@ -436,5 +436,3 @@ async fn tracked_bundle_that_never_synced_is_not_removed() {
         check.removals_available
     );
 }
-
-const OLD_HASH: &str = "cccccccccccccccccccccccccccccccccccccccc";

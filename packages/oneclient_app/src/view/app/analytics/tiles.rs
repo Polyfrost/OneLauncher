@@ -5,110 +5,183 @@ use oneclient_core::game::{Analytics, Persona};
 use crate::components::{Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::utils::format_duration;
+use crate::utils::{format_duration, plural};
 
 use super::card;
 
-pub(super) fn tiles_row(analytics: &Analytics, force_all: bool) -> Element {
+pub(super) fn tiles_row(analytics: &Analytics, _force_all: bool) -> Element {
     let stats = &analytics.playtime;
     let avg_session = if stats.session_count > 0 {
         stats.total_secs / stats.session_count as i64
     } else {
         0
     };
-    let total_joins: i64 = analytics.servers.iter().map(|s| s.joins).sum();
 
-    let mut tiles = vec![
-        stat_tile(
+    let lead = rect()
+        .horizontal()
+        .content(Content::Flex)
+        .width(Size::fill())
+        .height(Size::px(LEAD_H))
+        .spacing(TILE_GAP)
+        .child(rect().width(Size::flex(2.0)).child(hero_tile(
             IconType::ClockRewind,
             "Total playtime",
             format_duration(stats.total_secs),
-        ),
-        stat_tile(IconType::Play, "Sessions", stats.session_count.to_string()),
-        stat_tile(
+            format!(
+                "over {} session{}",
+                stats.session_count,
+                plural(stats.session_count as i64)
+            ),
+        )))
+        .child(stat_tile(
+            IconType::Play,
+            "Sessions",
+            stats.session_count.to_string(),
+        ))
+        .child(stat_tile(
             IconType::Sliders04,
             "Avg / session",
             format_duration(avg_session),
-        ),
-        stat_tile(
+        ));
+
+    let rest = rect()
+        .horizontal()
+        .content(Content::Flex)
+        .width(Size::fill())
+        .height(Size::px(TILE_H))
+        .spacing(TILE_GAP)
+        .child(stat_tile(
             IconType::Maximize01,
             "Longest session",
             format_duration(stats.longest_session_secs),
-        ),
-        stat_tile(
+        ))
+        .child(stat_tile(
             IconType::Rocket02,
             "Day streak",
-            stats.current_streak.to_string(),
-        ),
-        stat_tile(
+            streak_value(stats.current_streak),
+        ))
+        .child(stat_tile(
             IconType::CheckCircle,
             "Best streak",
-            stats.longest_streak.to_string(),
-        ),
-        stat_tile(
+            streak_value(stats.longest_streak),
+        ))
+        .child(stat_tile(
             IconType::Calendar,
             "Days played",
             stats.active_days.to_string(),
-        ),
-    ];
-    if force_all || !analytics.servers.is_empty() {
-        tiles.push(stat_tile(
-            IconType::Globe01,
-            "Server joins",
-            format!("{total_joins}"),
         ));
-    }
 
-    tile_grid(tiles)
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(TILE_GAP)
+        .child(lead)
+        .child(rest)
+        .into_element()
 }
 
-const TILES_PER_ROW: usize = 4;
+const TILE_GAP: f32 = 14.;
+const LEAD_H: f32 = 128.;
+const TILE_H: f32 = 104.;
 
-fn tile_grid(tiles: Vec<Element>) -> Element {
-    let mut grid = rect().vertical().width(Size::fill()).spacing(16.);
-    for chunk in tiles.chunks(TILES_PER_ROW) {
-        let mut row = rect()
-            .horizontal()
-            .content(Content::Flex)
-            .width(Size::fill())
-            .spacing(16.)
-            .children(chunk.to_vec());
-        for _ in chunk.len()..TILES_PER_ROW {
-            row = row.child(rect().width(Size::flex(1.0)));
-        }
-        grid = grid.child(row);
-    }
-    grid.into_element()
+const PERSONAS_PER_ROW: usize = 3;
+
+fn streak_value(days: usize) -> String {
+    format!("{days}d")
 }
 
-fn stat_tile(icon: IconType, caption: &str, value: String) -> Element {
+fn icon_chip(icon: IconType, size: f32, tint: Color) -> Element {
+    rect()
+        .width(Size::px(size))
+        .height(Size::px(size))
+        .corner_radius(CornerRadius::new_all(size * 0.5))
+        .background(tint.with_a(38))
+        .center()
+        .child(Icon::new(icon).size(size * 0.52).color(tint))
+        .into_element()
+}
+
+fn hero_tile(icon: IconType, caption: &str, value: String, note: String) -> Element {
     card()
-        .width(Size::flex(1.0))
-        .spacing(10.)
+        .width(Size::fill())
+        .height(Size::fill())
+        .spacing(12.)
+        .background(colors::brand().with_a(18))
+        .border(border_all_color(1., colors::brand().with_a(90)))
         .child(
             rect()
                 .horizontal()
                 .cross_align(Alignment::Center)
-                .spacing(8.)
-                .child(Icon::new(icon).size(16.).color(colors::fg_secondary()))
+                .spacing(10.)
+                .child(icon_chip(icon, 30., colors::brand()))
                 .child(
                     label()
                         .text(caption.to_string())
-                        .font_size(12.)
+                        .font_size(13.)
+                        .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_secondary()),
                 ),
         )
         .child(
-            label()
-                .text(value)
-                .font_size(26.)
-                .font_weight(FontWeight::BOLD)
-                .color(colors::fg_primary()),
+            rect()
+                .horizontal()
+                .cross_align(Alignment::End)
+                .spacing(8.)
+                .child(
+                    label()
+                        .text(value)
+                        .font_size(38.)
+                        .font_weight(FontWeight::BOLD)
+                        .max_lines(1)
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    rect().margin(Gaps::new(0., 0., 7., 0.)).child(
+                        label()
+                            .text(note)
+                            .font_size(12.)
+                            .max_lines(1)
+                            .color(colors::fg_secondary()),
+                    ),
+                ),
         )
         .into_element()
 }
 
-const PERSONAS_PER_ROW: usize = 3;
+fn stat_tile(icon: IconType, caption: &str, value: String) -> Element {
+    rect()
+        .width(Size::flex(1.0))
+        .child(
+            card()
+                .width(Size::fill())
+                .height(Size::fill())
+                .spacing(10.)
+                .child(
+                    rect()
+                        .horizontal()
+                        .cross_align(Alignment::Center)
+                        .spacing(8.)
+                        .child(icon_chip(icon, 24., colors::fg_secondary()))
+                        .child(
+                            label()
+                                .text(caption.to_string())
+                                .font_size(12.)
+                                .max_lines(1)
+                                .width(Size::fill())
+                                .color(colors::fg_secondary()),
+                        ),
+                )
+                .child(
+                    label()
+                        .text(value)
+                        .font_size(24.)
+                        .font_weight(FontWeight::BOLD)
+                        .max_lines(1)
+                        .color(colors::fg_primary()),
+                ),
+        )
+        .into_element()
+}
 
 pub(super) fn personas_row(personas: &[Persona]) -> Element {
     let mut grid = rect().vertical().width(Size::fill()).spacing(16.);

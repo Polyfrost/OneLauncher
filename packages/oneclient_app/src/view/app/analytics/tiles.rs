@@ -236,12 +236,16 @@ fn persona_badge(persona: Persona) -> Element {
     rect()
         .horizontal()
         .cross_align(Alignment::Center)
-        .spacing(9.)
-        .padding(Gaps::new_symmetric(7., 12.))
-        .corner_radius(CornerRadius::new_all(22.))
-        .background(colors::brand().with_a(20))
-        .border(border_all_color(1., colors::brand().with_a(110)))
-        .child(icon_chip(persona_icon(persona), 24., colors::brand()))
+        .spacing(7.)
+        .padding(Gaps::new_symmetric(6., 11.))
+        .corner_radius(CornerRadius::new_all(8.))
+        .background(colors::component_bg())
+        .border(border_all_color(1., colors::component_border()))
+        .child(
+            Icon::new(persona_icon(persona))
+                .size(13.)
+                .color(colors::brand()),
+        )
         .child(
             label()
                 .text(persona.title().to_string())
@@ -262,12 +266,12 @@ fn persona_badge(persona: Persona) -> Element {
 
 fn persona_icon(persona: Persona) -> IconType {
     match persona {
-        Persona::Veteran => IconType::ClipboardCheck,
+        Persona::Veteran => IconType::ClockRewind,
         Persona::Marathoner => IconType::Maximize01,
         Persona::Regular => IconType::CheckCircle,
         Persona::Loyalist => IconType::Key01,
         Persona::Explorer => IconType::Globe01,
-        Persona::NightOwl => IconType::ClockRewind,
+        Persona::NightOwl => IconType::Eye,
         Persona::EarlyBird => IconType::Bell01,
         Persona::WeekendWarrior => IconType::Calendar,
         Persona::Gamer => IconType::Rocket02,

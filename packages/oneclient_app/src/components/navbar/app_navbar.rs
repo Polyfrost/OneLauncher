@@ -245,12 +245,8 @@ impl Component for NavbarRight {
             notif_dispatch.toggle_notification_center();
         };
 
-        let open_account_switcher = move |_| {
-            dispatch.toggle_account_switcher();
-        };
-
-        let open_settings = |_| {
-            let _ = RouterContext::get().push(Route::SettingsLauncher {});
+        let open_control_center = move |_| {
+            dispatch.toggle_control_center();
         };
 
         rect()
@@ -266,13 +262,8 @@ impl Component for NavbarRight {
             )
             .child(
                 super::navbar_button()
-                    .child(Icon::new(IconType::Settings02).size(20.))
-                    .on_press(open_settings),
-            )
-            .child(
-                super::navbar_button()
                     .padding(0.0)
-                    .on_press(open_account_switcher)
+                    .on_press(open_control_center)
                     .child(
                         Avatar::new(account_uuid)
                             .width(Size::px(24.))

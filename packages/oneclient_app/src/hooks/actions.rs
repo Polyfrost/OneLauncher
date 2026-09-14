@@ -846,6 +846,12 @@ impl Actions {
         });
     }
 
+    pub fn proceed_package_updates(&self, chosen: Vec<oneclient_core::BrowserPackageUpdate>) {
+        self.with_engine(move |state| {
+            state.notifications.proceed_package_updates(chosen)
+        });
+    }
+
     pub fn close_package_updates(&self) {
         self.with_engine(|state| state.notifications.close_package_updates());
     }
@@ -1536,7 +1542,10 @@ impl Actions {
                 else {
                     return;
                 };
-                self.prompt_package_updates(group).await;
+                let chosen = self.prompt_package_updates(group).await;
+                if !chosen.is_empty() {
+                    self.apply_updates_for_launch(state, &chosen).await;
+                }
             }
         }
     }
@@ -1619,6 +1628,8 @@ impl Actions {
                 .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
         });
 
+        super::invalidate_cluster_queries().await;
+
         if applied > 0 {
             super::invalidate_cluster_queries().await;
         }
@@ -1664,7 +1675,10 @@ impl Actions {
         let _ = wait.await;
     }
 
-    async fn prompt_package_updates(&self, group: PackageUpdateGroup) {
+    async fn prompt_package_updates(
+        &self,
+        group: PackageUpdateGroup,
+    ) -> Vec<oneclient_core::BrowserPackageUpdate> {
         let (done, wait) = tokio::sync::oneshot::channel();
 
         self.with_engine(move |state| {
@@ -1672,71 +1686,7 @@ impl Actions {
             state.center_open = false;
         });
 
-        let _ = wait.await;
-    }
-
-    pub fn apply_package_update(&self, update: oneclient_core::BrowserPackageUpdate) {
-        let actions = self.clone();
-        spawn_forever(async move {
-            let Ok(state) = launcher::state() else { return };
-            let events = state.services.events.clone();
-
-            let session = oneclient_events::GroupedProgressSession::start(
-                &events,
-                format!("Updating {}", update.display_name),
-            );
-            let child = session.child(
-                update.display_name.clone(),
-                1,
-                oneclient_events::TaskCategory::Packages,
-            );
-
-            let result = oneclient_core::apply_browser_package_update(
-                &update,
-                Some(&child),
-                &state.services.content(),
-            )
-            .await;
-
-            child.finish();
-            let session_id = session.detach();
-
-            let spec = match &result {
-                Ok(_) => NotificationSpec {
-                    title: "Updated".to_string(),
-                    body: format!(
-                        "{} is now on {}",
-                        update.display_name, update.latest_version_name
-                    ),
-                    level: Level::Info,
-                    icon: Some(IconType::DownloadCloud02),
-                    progress: None,
-                    actions: Vec::new(),
-                },
-                Err(err) => NotificationSpec {
-                    title: "Update failed".to_string(),
-                    body: err.to_string(),
-                    level: Level::Error,
-                    icon: None,
-                    progress: None,
-                    actions: Vec::new(),
-                },
-            };
-
-            actions.with_engine(|app| {
-                app.notifications
-                    .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
-            });
-
-            // A failed update stays in the list so the user can retry
-            if result.is_ok() {
-                actions.with_engine(|app| {
-                    app.notifications
-                        .resolve_package_update(update.cluster_id, &update.hash);
-                });
-                super::invalidate_cluster_queries().await;
-            }
-        });
+        wait.await.unwrap_or_default()
     }
 
     /// The package stays marked out of date only the modal stops asking and

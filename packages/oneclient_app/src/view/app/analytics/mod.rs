@@ -5,7 +5,7 @@ use oneclient_core::game::{Analytics, DayPlaytime, PlaytimeStats};
 
 use crate::components::{Icon, IconType};
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{border_all_color, columns_for};
 
 mod charts;
 mod servers;
@@ -146,26 +146,47 @@ fn empty_analytics() -> Analytics {
     }
 }
 
+const CHART_GAP: f32 = 16.;
+const CHART_MIN_W: f32 = 420.;
+
 fn charts_grid(cards: Vec<Element>) -> Element {
-    let mut grid = rect().vertical().width(Size::fill()).spacing(24.);
-    for pair in cards.chunks(2) {
-        if pair.len() == 1 {
-            grid = grid.child(rect().width(Size::fill()).child(pair[0].clone()));
-            continue;
+    ChartsGrid { cards }.into_element()
+}
+
+#[derive(PartialEq)]
+struct ChartsGrid {
+    cards: Vec<Element>,
+}
+
+impl Component for ChartsGrid {
+    fn render(&self) -> impl IntoElement {
+        let mut width = use_state(|| 0f32);
+        let cols = columns_for(*width.read(), CHART_MIN_W, 2, CHART_GAP);
+
+        let mut grid = rect().vertical().width(Size::fill()).spacing(24.);
+        for chunk in self.cards.chunks(cols) {
+            let mut row = rect()
+                .horizontal()
+                .content(Content::Flex)
+                .width(Size::fill())
+                .cross_align(Alignment::Start)
+                .spacing(CHART_GAP);
+            for card in chunk {
+                row = row.child(rect().width(Size::flex(1.0)).child(card.clone()));
+            }
+            for _ in chunk.len()..cols {
+                row = row.child(rect().width(Size::flex(1.0)));
+            }
+            grid = grid.child(row);
         }
 
-        let mut row = rect()
-            .horizontal()
-            .content(Content::Flex)
-            .width(Size::fill())
-            .cross_align(Alignment::Start)
-            .spacing(16.);
-        for card in pair {
-            row = row.child(rect().width(Size::flex(1.0)).child(card.clone()));
-        }
-        grid = grid.child(row);
+        grid.on_sized(move |e: Event<SizedEventData>| {
+            let w = e.area.width();
+            if (w - *width.peek()).abs() > 0.5 {
+                width.set(w);
+            }
+        })
     }
-    grid.into_element()
 }
 
 pub(super) fn chart_card(

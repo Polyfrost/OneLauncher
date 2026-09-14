@@ -1,83 +1,131 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
-use chrono::{Local, NaiveDate};
+use chrono::{Datelike, Local, Months, NaiveDate};
 use freya::prelude::*;
 
 use oneclient_core::game::{DayPlaytime, PlaytimeStats, WEEKDAY_LABELS};
 
-use crate::components::{BarChart, IconType, Segment, SegmentedControl, ValueUnit};
-use crate::utils::{format_day, format_duration_hm, format_hour, parse_day};
+use crate::components::{
+    BarChart, DateRange, DateRangePicker, IconType, Segment, SegmentedControl, ValueUnit,
+};
+use crate::utils::{format_day, format_duration, format_hour, parse_day};
 
 use super::{chart_card, nav_button};
 
 #[derive(Clone, Copy, PartialEq)]
-enum WhenMode {
-    Weekday,
+enum PlaytimeMode {
     Hour,
+    Day,
+    Month,
 }
 
 #[derive(PartialEq)]
-pub(super) struct WhenChart {
+pub(super) struct PlaytimeChart {
     per_weekday: Vec<i64>,
     per_hour: Vec<i64>,
     peak_weekday: Option<usize>,
     peak_hour: Option<usize>,
+    daily: Vec<DayPlaytime>,
 }
 
-impl WhenChart {
+impl PlaytimeChart {
     pub(super) fn from_stats(stats: &PlaytimeStats) -> Self {
         Self {
             per_weekday: stats.per_weekday.to_vec(),
             per_hour: stats.per_hour.to_vec(),
             peak_weekday: stats.peak_weekday,
             peak_hour: stats.peak_hour,
+            daily: stats.daily.clone(),
         }
     }
 }
 
-impl Component for WhenChart {
+impl Component for PlaytimeChart {
     fn render(&self) -> impl IntoElement {
-        let mode = use_state(|| WhenMode::Weekday);
+        let mode = use_state(|| PlaytimeMode::Day);
         let m = *mode.read();
 
         let control = SegmentedControl::new(mode)
             .height(30.)
-            .segment(Segment::new(WhenMode::Weekday).label("Day"))
-            .segment(Segment::new(WhenMode::Hour).label("Hour"))
+            .segment(Segment::new(PlaytimeMode::Hour).label("Hour"))
+            .segment(Segment::new(PlaytimeMode::Day).label("Day"))
+            .segment(Segment::new(PlaytimeMode::Month).label("Month"))
             .into_element();
 
-        let (subtitle, chart) = match m {
-            WhenMode::Weekday => {
-                let day = self
-                    .peak_weekday
-                    .map(|i| WEEKDAY_LABELS[i].to_string())
-                    .unwrap_or_else(|| "—".to_string());
-                (
-                    format!("Most active on {day}"),
-                    BarChart::new(self.per_weekday.clone(), weekday_labels())
-                        .highlight(self.peak_weekday)
-                        .unit(ValueUnit::Duration)
-                        .gap(6.)
-                        .into_element(),
-                )
-            }
-            WhenMode::Hour => {
+        let (title, subtitle, chart) = match m {
+            PlaytimeMode::Hour => {
                 let hour = self
                     .peak_hour
                     .map(format_hour)
                     .unwrap_or_else(|| "—".to_string());
                 (
-                    format!("Peak around {hour}"),
+                    "Playtime by hour",
+                    format!("Every day's {hour} hour, added up"),
                     BarChart::new(self.per_hour.clone(), (0..24).map(format_hour).collect())
+                        .readout_labels(
+                            (0..24)
+                                .map(|h| format!("All {} hours", format_hour(h)))
+                                .collect(),
+                        )
                         .highlight(self.peak_hour)
                         .unit(ValueUnit::Duration)
                         .gap(3.)
                         .into_element(),
                 )
             }
+            PlaytimeMode::Day => {
+                let day = self
+                    .peak_weekday
+                    .map(|i| WEEKDAY_FULL[i].to_string())
+                    .unwrap_or_else(|| "—".to_string());
+                (
+                    "Playtime by day",
+                    format!("Every {day} you have played, added up"),
+                    BarChart::new(self.per_weekday.clone(), weekday_labels())
+                        .readout_labels(
+                            WEEKDAY_FULL.iter().map(|d| format!("All {d}s")).collect(),
+                        )
+                        .highlight(self.peak_weekday)
+                        .unit(ValueUnit::Duration)
+                        .gap(6.)
+                        .into_element(),
+                )
+            }
+            PlaytimeMode::Month => {
+                let months = monthly_series(&self.daily);
+                let values: Vec<i64> = months.iter().map(|(_, s)| *s).collect();
+                let labels: Vec<String> = months
+                    .iter()
+                    .map(|(m, _)| MONTH_ABBR[m.month0() as usize].to_string())
+                    .collect();
+                let readout: Vec<String> = months
+                    .iter()
+                    .map(|(m, _)| format!("{} {}", MONTH_ABBR[m.month0() as usize], m.year()))
+                    .collect();
+                let best = values
+                    .iter()
+                    .enumerate()
+                    .max_by_key(|(_, v)| **v)
+                    .filter(|(_, v)| **v > 0)
+                    .map(|(i, _)| i);
+                let subtitle = match best {
+                    Some(i) => format!("Best month so far: {}", readout[i]),
+                    None => "No sessions recorded yet".to_string(),
+                };
+                (
+                    "Playtime by month",
+                    subtitle,
+                    BarChart::new(values, labels)
+                        .readout_labels(readout)
+                        .highlight(best)
+                        .unit(ValueUnit::Duration)
+                        .gap(4.)
+                        .into_element(),
+                )
+            }
         };
 
-        chart_card("When you play", subtitle, Some(control), chart)
+        chart_card(title, subtitle, Some(control), chart)
     }
 }
 
@@ -113,25 +161,36 @@ impl Component for DailyChart {
     fn render(&self) -> impl IntoElement {
         let range = use_state(|| Range::TwoWeeks);
         let mut offset = use_state(|| 0usize);
+        let custom = use_state(|| Option::<DateRange>::None);
 
         let series = continuous_series(&self.daily);
-        if series.is_empty() {
+        let (Some((first_day, _)), Some((last_day, _))) = (series.first(), series.last()) else {
             return chart_card(
                 "Daily playtime",
                 "No sessions recorded yet".to_string(),
                 None,
                 rect().height(Size::px(120.)).into_element(),
             );
-        }
+        };
+        let (first_day, last_day) = (*first_day, *last_day);
 
-        let window = range.read().days();
         let total = series.len();
-        let max_offset = total.saturating_sub(1) / window;
-        let off = (*offset.read()).min(max_offset);
+        let picked = *custom.read();
 
-        let end = total.saturating_sub(off * window);
-        let start = end.saturating_sub(window);
-        let slice = &series[start..end];
+        let (start, end) = match picked {
+            Some((from, to)) => (
+                day_index(first_day, from).min(total),
+                (day_index(first_day, to) + 1).min(total),
+            ),
+            None => {
+                let window = range.read().days();
+                let max_offset = total.saturating_sub(1) / window;
+                let off = (*offset.read()).min(max_offset);
+                let end = total.saturating_sub(off * window);
+                (end.saturating_sub(window), end)
+            }
+        };
+        let slice = &series[start.min(end)..end];
 
         let values: Vec<i64> = slice.iter().map(|(_, s)| *s).collect();
         let labels: Vec<String> = slice.iter().map(|(d, _)| format_day(*d)).collect();
@@ -141,16 +200,21 @@ impl Component for DailyChart {
             (Some((a, _)), Some((b, _))) => {
                 format!(
                     "{} · {} – {}",
-                    format_duration_hm(win_total),
+                    format_duration(win_total),
                     format_day(*a),
                     format_day(*b)
                 )
             }
-            _ => format_duration_hm(win_total),
+            _ => format_duration(win_total),
         };
 
-        let can_older = off < max_offset;
-        let can_newer = off > 0;
+        let paging = picked.is_none();
+        let window = range.read().days();
+        let max_offset = total.saturating_sub(1) / window;
+        let off = (*offset.read()).min(max_offset);
+        let can_older = paging && off < max_offset;
+        let can_newer = paging && off > 0;
+
         let nav = rect()
             .horizontal()
             .cross_align(Alignment::Center)
@@ -168,11 +232,13 @@ impl Component for DailyChart {
             .child(
                 SegmentedControl::new(range)
                     .height(30.)
+                    .disabled(!paging)
                     .segment(Segment::new(Range::TwoWeeks).label("2W"))
                     .segment(Segment::new(Range::Month).label("1M"))
                     .segment(Segment::new(Range::Quarter).label("3M"))
                     .into_element(),
             )
+            .child(DateRangePicker::new(custom, (first_day, last_day)).height(30.))
             .into_element();
 
         chart_card(
@@ -185,6 +251,10 @@ impl Component for DailyChart {
                 .into_element(),
         )
     }
+}
+
+fn day_index(first: NaiveDate, day: NaiveDate) -> usize {
+    (day - first).num_days().max(0) as usize
 }
 
 fn continuous_series(daily: &[DayPlaytime]) -> Vec<(NaiveDate, i64)> {
@@ -210,6 +280,41 @@ fn continuous_series(daily: &[DayPlaytime]) -> Vec<(NaiveDate, i64)> {
     }
     out
 }
+
+fn monthly_series(daily: &[DayPlaytime]) -> Vec<(NaiveDate, i64)> {
+    let mut totals: BTreeMap<NaiveDate, i64> = BTreeMap::new();
+    for day in daily {
+        let Some(date) = parse_day(&day.date) else {
+            continue;
+        };
+        let Some(month) = date.with_day(1) else {
+            continue;
+        };
+        *totals.entry(month).or_insert(0) += day.secs;
+    }
+
+    let (Some(first), Some(last)) = (
+        totals.keys().min().copied(),
+        totals.keys().max().copied(),
+    ) else {
+        return Vec::new();
+    };
+
+    let mut out = Vec::new();
+    let mut cur = first;
+    while cur <= last {
+        out.push((cur, totals.get(&cur).copied().unwrap_or(0)));
+        cur = match cur.checked_add_months(Months::new(1)) {
+            Some(next) => next,
+            None => break,
+        };
+    }
+    out
+}
+
+const MONTH_ABBR: [&str; 12] = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
 
 pub(super) fn distribution_card(session_secs: &[i64], force: bool) -> Option<Element> {
     if session_secs.len() < 2 && !force {
@@ -252,6 +357,16 @@ pub(super) fn distribution_card(session_secs: &[i64], force: bool) -> Option<Ele
             .into_element(),
     ))
 }
+
+const WEEKDAY_FULL: [&str; 7] = [
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+    "Sunday",
+];
 
 fn weekday_labels() -> Vec<String> {
     WEEKDAY_LABELS.iter().map(|s| (*s).to_string()).collect()

@@ -11,7 +11,7 @@ use crate::{
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
     transfer::TransferStats,
-    utils::{format_duration_hms, format_size},
+    utils::{format_durations, format_size},
 };
 
 #[derive(PartialEq)]
@@ -445,7 +445,7 @@ fn transfer_footer(stats: TransferStats) -> Element {
     let speed = format!("{}/s", format_size(stats.speed_bps as u64));
     let eta = stats
         .eta_secs
-        .map(|secs| format!("{} left", format_duration_hms(secs as i64)));
+        .map(|secs| format!("{} left", format_durations(secs as i64)));
 
     rect()
         .horizontal()

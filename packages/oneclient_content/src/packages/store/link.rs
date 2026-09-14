@@ -87,20 +87,21 @@ pub async fn remove_entry(path: &Path) -> ContentResult<()> {
 	Ok(())
 }
 
-fn materialized_root(
+async fn materialized_root(
 	cluster: &ClusterRow,
 	content_type: ContentType,
-) -> Option<(std::path::PathBuf, &'static str)> {
+) -> Option<(PathBuf, &'static str)> {
 	if content_type.is_global() {
 		return paths::shared_minecraft_dir()
 			.ok()
 			.map(|dir| (dir, manifest::GLOBAL_MANIFEST_NAME));
 	}
 
-	if content_type == ContentType::Mod {
-		return paths::cluster_dir(&cluster.folder_name)
-			.ok()
-			.map(|dir| (dir, manifest::MODS_MANIFEST_NAME));
+	if content_type == ContentType::Mod
+		&& let Ok(dir) = paths::cluster_dir(&cluster.folder_name)
+		&& manifest::mods_live_in_cluster(&dir).await
+	{
+		return Some((dir, manifest::MODS_MANIFEST_NAME));
 	}
 
 	paths::cluster_game_dir(&cluster.folder_name)
@@ -114,7 +115,7 @@ pub async fn try_unlink_materialized(
 	content_type: ContentType,
 	file_name: &str,
 ) -> bool {
-	let Some((root, manifest_name)) = materialized_root(cluster, content_type) else {
+	let Some((root, manifest_name)) = materialized_root(cluster, content_type).await else {
 		return false;
 	};
 
@@ -165,7 +166,7 @@ pub async fn try_link_materialized(
 		return LiveSync::Skipped;
 	}
 
-	let Some((root, manifest_name)) = materialized_root(cluster, content_type) else {
+	let Some((root, manifest_name)) = materialized_root(cluster, content_type).await else {
 		return LiveSync::Deferred;
 	};
 

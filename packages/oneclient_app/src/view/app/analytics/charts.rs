@@ -5,7 +5,9 @@ use freya::prelude::*;
 
 use oneclient_core::game::{DayPlaytime, PlaytimeStats, WEEKDAY_LABELS};
 
-use crate::components::{BarChart, IconType, Segment, SegmentedControl, ValueUnit};
+use crate::components::{
+    BarChart, DateRange, DateRangePicker, IconType, Segment, SegmentedControl, ValueUnit,
+};
 use crate::utils::{format_day, format_duration, format_hour, parse_day};
 
 use super::{chart_card, nav_button};
@@ -121,25 +123,36 @@ impl Component for DailyChart {
     fn render(&self) -> impl IntoElement {
         let range = use_state(|| Range::TwoWeeks);
         let mut offset = use_state(|| 0usize);
+        let custom = use_state(|| Option::<DateRange>::None);
 
         let series = continuous_series(&self.daily);
-        if series.is_empty() {
+        let (Some((first_day, _)), Some((last_day, _))) = (series.first(), series.last()) else {
             return chart_card(
                 "Daily playtime",
                 "No sessions recorded yet".to_string(),
                 None,
                 rect().height(Size::px(120.)).into_element(),
             );
-        }
+        };
+        let (first_day, last_day) = (*first_day, *last_day);
 
-        let window = range.read().days();
         let total = series.len();
-        let max_offset = total.saturating_sub(1) / window;
-        let off = (*offset.read()).min(max_offset);
+        let picked = *custom.read();
 
-        let end = total.saturating_sub(off * window);
-        let start = end.saturating_sub(window);
-        let slice = &series[start..end];
+        let (start, end) = match picked {
+            Some((from, to)) => (
+                day_index(first_day, from).min(total),
+                (day_index(first_day, to) + 1).min(total),
+            ),
+            None => {
+                let window = range.read().days();
+                let max_offset = total.saturating_sub(1) / window;
+                let off = (*offset.read()).min(max_offset);
+                let end = total.saturating_sub(off * window);
+                (end.saturating_sub(window), end)
+            }
+        };
+        let slice = &series[start.min(end)..end];
 
         let values: Vec<i64> = slice.iter().map(|(_, s)| *s).collect();
         let labels: Vec<String> = slice.iter().map(|(d, _)| format_day(*d)).collect();
@@ -157,8 +170,13 @@ impl Component for DailyChart {
             _ => format_duration(win_total),
         };
 
-        let can_older = off < max_offset;
-        let can_newer = off > 0;
+        let paging = picked.is_none();
+        let window = range.read().days();
+        let max_offset = total.saturating_sub(1) / window;
+        let off = (*offset.read()).min(max_offset);
+        let can_older = paging && off < max_offset;
+        let can_newer = paging && off > 0;
+
         let nav = rect()
             .horizontal()
             .cross_align(Alignment::Center)
@@ -176,11 +194,13 @@ impl Component for DailyChart {
             .child(
                 SegmentedControl::new(range)
                     .height(30.)
+                    .disabled(!paging)
                     .segment(Segment::new(Range::TwoWeeks).label("2W"))
                     .segment(Segment::new(Range::Month).label("1M"))
                     .segment(Segment::new(Range::Quarter).label("3M"))
                     .into_element(),
             )
+            .child(DateRangePicker::new(custom, (first_day, last_day)).height(30.))
             .into_element();
 
         chart_card(
@@ -193,6 +213,10 @@ impl Component for DailyChart {
                 .into_element(),
         )
     }
+}
+
+fn day_index(first: NaiveDate, day: NaiveDate) -> usize {
+    (day - first).num_days().max(0) as usize
 }
 
 fn continuous_series(daily: &[DayPlaytime]) -> Vec<(NaiveDate, i64)> {

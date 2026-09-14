@@ -31,10 +31,9 @@ fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
         root = root.child(personas_row(&stats.personas));
     }
 
-    let mut charts: Vec<Element> = vec![
-        WhenChart::from_stats(stats).into_element(),
-        DailyChart::new(stats.daily.clone()).into_element(),
-    ];
+    root = root.child(DailyChart::new(stats.daily.clone()));
+
+    let mut charts: Vec<Element> = vec![WhenChart::from_stats(stats).into_element()];
     if let Some(dist) = distribution_card(&stats.session_secs, force_all) {
         charts.push(dist);
     }

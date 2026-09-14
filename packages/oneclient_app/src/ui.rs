@@ -92,6 +92,29 @@ pub fn relative_time(created_at: Instant) -> String {
     }
 }
 
+/// Gap the clamped menu keeps from the window edges
+pub const EDGE_MARGIN: f32 = 8.;
+
+/// `root_size` is physical while the press position is logical, so it has to be
+/// scaled down before the two are compared
+pub fn clamp_to_window(x: f32, y: f32, width: f32, height: f32) -> (f32, f32) {
+    let platform = Platform::get();
+    let scale = *platform.scale_factor.peek() as f32;
+    if scale <= 0. {
+        return (x, y);
+    }
+
+    let window = *platform.root_size.peek();
+    let clamp = |pos: f32, len: f32, limit: f32| {
+        pos.clamp(EDGE_MARGIN, (limit - len - EDGE_MARGIN).max(EDGE_MARGIN))
+    };
+
+    (
+        clamp(x, width, window.width / scale),
+        clamp(y, height, window.height / scale),
+    )
+}
+
 /// Returns the `Rect` not an `Element` so callers can inset or round it
 pub fn divider() -> Rect {
     rect()

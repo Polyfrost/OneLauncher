@@ -214,3 +214,14 @@ impl ImageFallbackExt for ImageViewer {
         self.error_renderer(move |_: String| placeholder.clone())
     }
 }
+
+pub fn window_logical_size() -> Size2D {
+    let platform = Platform::get();
+    let scale = *platform.scale_factor.peek() as f32;
+    let size = *platform.root_size.peek();
+    if scale <= 0. {
+        return size;
+    }
+
+    Size2D::new(size.width / scale, size.height / scale)
+}

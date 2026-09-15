@@ -103,27 +103,29 @@ impl MetadataStore {
         let mut save_file = false;
         let mut metadata = Self::default();
 
-        if let Ok(bytes) = polyio::read(&path).await {
-            if let Ok(inner) = serde_json::from_slice::<MetadataInner>(&bytes) {
+        match polyio::read_json::<MetadataInner>(&path).await {
+            Ok(inner) => {
                 metadata.inner = inner;
 
                 if metadata.refetch_errored(ctx).await > 0 {
                     save_file = true;
                 }
-            } else {
+            }
+            Err(err) => {
+                if path.exists() {
+                    tracing::warn!(
+                        path = %path.display(),
+                        "cached metadata manifest is unusable, refetching: {err}"
+                    );
+                }
+
                 metadata.fetch_all(ctx).await;
                 save_file = true;
             }
-        } else {
-            metadata.fetch_all(ctx).await;
-            save_file = true;
         }
 
         if save_file {
-            if let Some(parent) = path.parent() {
-                polyio::create_dir_all(parent).await?;
-            }
-            polyio::write(&path, &serde_json::to_vec(&metadata.inner)?).await?;
+            polyio::write_json_atomic(&path, &metadata.inner).await?;
         }
 
         *self = metadata;

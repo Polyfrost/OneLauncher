@@ -724,22 +724,60 @@ pub async fn download_version_info(
         .join(&version_id)
         .join(format!("{version_id}.json"));
 
-    let result = if path.exists() && !force {
-        let data = polyio::read(&path).await?;
-        serde_json::from_slice(&data)?
-    } else {
-        tracing::debug!(
-            version_id = %version_id,
-            "downloading Minecraft version metadata"
-        );
+    if path.exists() && !force {
+        match polyio::read_json::<VersionInfo>(&path).await {
+            Ok(cached) => return Ok(cached),
+            Err(err) => {
+                tracing::warn!(
+                    path = %path.display(),
+                    "cached version metadata is unusable, redownloading: {err}"
+                );
+            }
+        }
+    }
 
-        let version_url = version.url.parse().map_err(McError::Url)?;
+    tracing::debug!(
+        version_id = %version_id,
+        "downloading Minecraft version metadata"
+    );
+
+    let version_url = version.url.parse().map_err(McError::Url)?;
+    let requester = ctx.net.clone();
+    let mut info: VersionInfo = match progress {
+        Some(progress) => {
+            progress
+                .run_child(
+                    format!("Version metadata ({version_id})"),
+                    1,
+                    TaskCategory::Metadata,
+                    |child| {
+                    let requester = requester.clone();
+                    async move {
+                        child.set_progress(0, Some(1));
+                        let result = requester
+                            .send_json(Method::GET, version_url, None, &[])
+                            .await
+                            .map_err(McError::from)?;
+                        child.set_progress(1, Some(1));
+                        Ok::<VersionInfo, McError>(result)
+                    }
+                })
+                .await?
+        }
+        None => requester
+            .send_json(Method::GET, version_url, None, &[])
+            .await
+            .map_err(McError::from)?,
+    };
+
+    if let Some(loader) = loader {
+        let loader_url = loader.url.parse().map_err(McError::Url)?;
         let requester = ctx.net.clone();
-        let mut info: VersionInfo = match progress {
+        let partial: interfrost::api::modded::PartialVersionInfo = match progress {
             Some(progress) => {
                 progress
                     .run_child(
-                        format!("Version metadata ({version_id})"),
+                        format!("Loader metadata ({version_id})"),
                         1,
                         TaskCategory::Metadata,
                         |child| {
@@ -747,76 +785,39 @@ pub async fn download_version_info(
                         async move {
                             child.set_progress(0, Some(1));
                             let result = requester
-                                .send_json(Method::GET, version_url, None, &[])
+                                .send_json(Method::GET, loader_url, None, &[])
                                 .await
                                 .map_err(McError::from)?;
                             child.set_progress(1, Some(1));
-                            Ok::<VersionInfo, McError>(result)
+                            Ok::<interfrost::api::modded::PartialVersionInfo, McError>(
+                                result,
+                            )
                         }
                     })
                     .await?
             }
             None => requester
-                .send_json(Method::GET, version_url, None, &[])
+                .send_json(Method::GET, loader_url, None, &[])
                 .await
                 .map_err(McError::from)?,
         };
 
-        if let Some(loader) = loader {
-            let loader_url = loader.url.parse().map_err(McError::Url)?;
-            let requester = ctx.net.clone();
-            let partial: interfrost::api::modded::PartialVersionInfo = match progress {
-                Some(progress) => {
-                    progress
-                        .run_child(
-                            format!("Loader metadata ({version_id})"),
-                            1,
-                            TaskCategory::Metadata,
-                            |child| {
-                            let requester = requester.clone();
-                            async move {
-                                child.set_progress(0, Some(1));
-                                let result = requester
-                                    .send_json(Method::GET, loader_url, None, &[])
-                                    .await
-                                    .map_err(McError::from)?;
-                                child.set_progress(1, Some(1));
-                                Ok::<interfrost::api::modded::PartialVersionInfo, McError>(
-                                    result,
-                                )
-                            }
-                        })
-                        .await?
-                }
-                None => requester
-                    .send_json(Method::GET, loader_url, None, &[])
-                    .await
-                    .map_err(McError::from)?,
-            };
-
-            let legacy_args = info.minecraft_arguments.clone();
-            info = interfrost::api::modded::merge_partial_version(partial, info);
-            if info.minecraft_arguments.is_none() {
-                info.minecraft_arguments = legacy_args;
-            }
-
-            for lib in &mut info.libraries {
-                lib.name = lib.name.replace("${interpulse.gameVersion}", &version.id);
-            }
+        let legacy_args = info.minecraft_arguments.clone();
+        info = interfrost::api::modded::merge_partial_version(partial, info);
+        if info.minecraft_arguments.is_none() {
+            info.minecraft_arguments = legacy_args;
         }
 
-        info.id.clone_from(&version_id);
-
-        if let Some(parent) = path.parent() {
-            polyio::create_dir_all(parent).await?;
+        for lib in &mut info.libraries {
+            lib.name = lib.name.replace("${interpulse.gameVersion}", &version.id);
         }
+    }
 
-        polyio::write(&path, &serde_json::to_vec(&info)?).await?;
+    info.id.clone_from(&version_id);
 
-        info
-    };
+    polyio::write_json_atomic(&path, &info).await?;
 
-    Ok(result)
+    Ok(info)
 }
 
 #[tracing::instrument(skip_all, level = "debug")]

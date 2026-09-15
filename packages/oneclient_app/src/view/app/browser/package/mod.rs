@@ -1,7 +1,7 @@
 use freya::prelude::*;
 use oneclient_content::packages::{ContentType, ProviderId};
 
-use crate::components::ScrollArea;
+use crate::components::{BundledInstallWarning, PendingBundledInstall, ScrollArea};
 use crate::hooks::{
     bundles_with_status_items, cluster_content_items, content_type_for_slug, project_detail,
     use_browser_compat, use_bundles_with_status, use_cluster_content, use_dispatch,
@@ -114,6 +114,7 @@ impl Component for BrowserPackage {
         let compatible_only = use_browser_compat();
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
+        let bundled_warning = use_state(|| None::<PendingBundledInstall>);
 
         let cluster = use_cluster(cluster_id);
         let compat = *compatible_only.read();
@@ -154,7 +155,7 @@ impl Component for BrowserPackage {
         let project = project_detail(&project_query);
         let versions = version_list(&versions_query);
         let total_versions = versions_total(&versions_query);
-        let latest_version = versions.first().map(|v| v.version_id.clone());
+        let latest = versions.first().cloned();
 
         let gallery = project
             .as_ref()
@@ -173,10 +174,12 @@ impl Component for BrowserPackage {
                 versions_page,
                 provider,
                 project.id.clone(),
+                project.name.clone(),
                 cluster_id,
                 dispatch.clone(),
                 installed.clone(),
                 installing,
+                bundled_warning,
             )
             .into_element(),
             (Some(_), _) => gallery_panel(gallery).into_element(),
@@ -190,13 +193,14 @@ impl Component for BrowserPackage {
             .content(Content::Flex)
             .child(sidebar(
                 project,
-                latest_version,
+                latest,
                 provider,
                 cluster_id,
                 dispatch,
                 confirm,
                 installed,
                 installing,
+                bundled_warning,
             ))
             .child(
                 rect()
@@ -211,16 +215,24 @@ impl Component for BrowserPackage {
         rect()
             .width(Size::fill())
             .height(Size::fill())
-            .overflow(Overflow::Clip)
-            .padding(Gaps::new(0., 40., 40., 40.))
             .child(
-                ScrollArea::new()
+                rect()
                     .width(Size::fill())
                     .height(Size::fill())
-                    .reset_key(current as u64)
-                    .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.))
-                    .children([row]),
+                    .overflow(Overflow::Clip)
+                    .padding(Gaps::new(0., 40., 40., 40.))
+                    .child(
+                        ScrollArea::new()
+                            .width(Size::fill())
+                            .height(Size::fill())
+                            .reset_key(current as u64)
+                            .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.))
+                            .children([row]),
+                    ),
             )
+            .child(BundledInstallWarning {
+                pending: bundled_warning,
+            })
             .into_element()
     }
 }

@@ -5,7 +5,10 @@ use oneclient_content::packages::markdown::normalize_markdown;
 use oneclient_content::packages::types::{PackageBody, ProjectDetail, ReleaseType, VersionSummary};
 
 use crate::Actions;
-use crate::components::{Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl};
+use crate::components::{
+    Button, Icon, IconType, Markdown, MarkdownStyle, PendingBundledInstall, Segment,
+    SegmentedControl,
+};
 use crate::hooks::VERSIONS_PAGE_SIZE;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -107,10 +110,12 @@ pub(super) fn versions_panel(
     versions_page: State<usize>,
     provider: ProviderId,
     project_id: String,
+    project_name: String,
     cluster_id: i64,
     dispatch: Actions,
     installed: Option<Installed>,
     installing: bool,
+    warn: State<Option<PendingBundledInstall>>,
 ) -> impl IntoElement {
     let current = *versions_page.read();
     let total_pages = total_versions.div_ceil(VERSIONS_PAGE_SIZE).max(1);
@@ -140,6 +145,18 @@ pub(super) fn versions_panel(
                 let duplicated = installed
                     .as_ref()
                     .is_some_and(|installed| installed.is_duplicated());
+                let pending = installed
+                    .as_ref()
+                    .filter(|installed| installed.conflicts_with_bundle(&v.version_id))
+                    .map(|installed| PendingBundledInstall {
+                        cluster_id,
+                        provider,
+                        project_id: project_id.clone(),
+                        version_id: v.version_id.clone(),
+                        project_name: project_name.clone(),
+                        version_label: v.version_number.clone(),
+                        bundled_version: installed.bundled_version_label(),
+                    });
                 version_row(
                     v,
                     provider,
@@ -149,6 +166,8 @@ pub(super) fn versions_panel(
                     tag,
                     duplicated,
                     installing,
+                    pending,
+                    warn,
                 )
                 .into_element()
             }))
@@ -224,6 +243,8 @@ fn version_row(
     // Saying which version is live only tells the user anything when there are several
     duplicated: bool,
     installing: bool,
+    pending: Option<PendingBundledInstall>,
+    warn: State<Option<PendingBundledInstall>>,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
     let mut chips: Vec<String> = v.loaders.iter().map(|l| l.to_string()).collect();
@@ -291,6 +312,8 @@ fn version_row(
             cluster_id,
             dispatch,
             installing,
+            pending,
+            warn,
         ))
 }
 
@@ -305,19 +328,22 @@ fn version_button(
     cluster_id: i64,
     dispatch: Actions,
     busy: bool,
+    pending: Option<PendingBundledInstall>,
+    mut warn: State<Option<PendingBundledInstall>>,
 ) -> impl IntoElement {
     let Some(installed) = installed else {
         return Button::new()
             .secondary()
             .small()
             .enabled(!busy)
-            .on_press(move |_| {
-                dispatch.install_package(
+            .on_press(move |_| match &pending {
+                Some(pending) => warn.set(Some(pending.clone())),
+                None => dispatch.install_package(
                     cluster_id,
                     provider,
                     project_id.clone(),
                     version_id.clone(),
-                );
+                ),
             })
             .text("Install");
     };

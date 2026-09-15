@@ -141,6 +141,7 @@ fn cluster_settings_button(cluster_id: i64) -> impl IntoElement {
     Button::new()
         .ghost()
         .icon()
+        .tooltip("Cluster settings")
         .on_press(move |_| {
             let _ = RouterContext::get().push(Route::ClusterOverview { cluster_id });
         })

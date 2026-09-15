@@ -147,6 +147,28 @@ pub async fn materialize_content(
         tracing::warn!(cluster_id = cluster.id, %err, "failed to resolve duplicate package versions");
     }
 
+    match oneclient_content::packages::disable_foreign_game_versions(
+        cluster.id,
+        &cluster.mc_version,
+        &services.content(),
+    )
+    .await
+    {
+        Ok(disabled) if !disabled.is_empty() => {
+            let names = removal_summary(&disabled);
+            let body = if disabled.len() == 1 {
+                format!("{names} is built for a different Minecraft version, so it has been switched off in {}.", cluster.name)
+            } else {
+                format!("{names} are built for a different Minecraft version, so they have been switched off in {}.", cluster.name)
+            };
+            services.events.notify("Incompatible mods switched off").body(body).send();
+        }
+        Ok(_) => {}
+        Err(err) => {
+            tracing::warn!(cluster_id = cluster.id, %err, "failed to switch off mods built for another game version");
+        }
+    }
+
     let (mods, rest): (Vec<Desired>, Vec<Desired>) = desired_mods(services, cluster)
         .await?
         .into_iter()

@@ -43,6 +43,7 @@ impl InstallSource {
 #[derive(Clone, PartialEq)]
 pub(crate) struct InstalledVersion {
     pub version_id: String,
+    pub display_version: Option<String>,
     /// The artifact to remove
     /// `None` when a bundle names this version but nothing is linked
     pub hash: Option<String>,
@@ -56,6 +57,7 @@ pub(crate) struct InstalledVersion {
 pub(crate) struct Installed {
     /// A bundle claiming the project wins over a hand-installed copy
     pub source: InstallSource,
+    pub bundled_version: Option<String>,
     pub versions: Vec<InstalledVersion>,
 }
 
@@ -66,6 +68,21 @@ impl Installed {
 
     pub fn find_version(&self, version_id: &str) -> Option<&InstalledVersion> {
         self.versions.iter().find(|v| v.version_id == version_id)
+    }
+
+    pub fn bundled_version_label(&self) -> Option<String> {
+        let version_id = self.bundled_version.as_ref()?;
+
+        Some(
+            self.find_version(version_id)
+                .and_then(|version| version.display_version.clone())
+                .unwrap_or_else(|| version_id.clone()),
+        )
+    }
+
+    pub fn conflicts_with_bundle(&self, version_id: &str) -> bool {
+        self.source == InstallSource::Bundled
+            && self.bundled_version.as_deref() != Some(version_id)
     }
 
     /// Counts linked artifacts only a bundle pin the cluster never downloaded is not a second copy
@@ -89,12 +106,14 @@ pub(crate) fn installed_map(
         // Created even without a recorded version the package is in the cluster it just cannot be tied to a version row
         let installed = map.entry((provider, project_id)).or_insert(Installed {
             source: InstallSource::Manual,
+            bundled_version: None,
             versions: Vec::new(),
         });
 
         if let Some(version_id) = item.version_id {
             installed.versions.push(InstalledVersion {
                 version_id,
+                display_version: item.display_version,
                 hash: Some(item.hash),
                 enabled: item.enabled,
                 source: InstallSource::Manual,
@@ -116,6 +135,7 @@ pub(crate) fn installed_map(
                 match map.get_mut(&(*provider, project_id.clone())) {
                     Some(installed) => {
                         installed.source = InstallSource::Bundled;
+                        installed.bundled_version = Some(version_id.clone());
                         if let Some(version) = installed
                             .versions
                             .iter_mut()
@@ -129,8 +149,10 @@ pub(crate) fn installed_map(
                             (*provider, project_id.clone()),
                             Installed {
                                 source: InstallSource::Bundled,
+                                bundled_version: Some(version_id.clone()),
                                 versions: vec![InstalledVersion {
                                     version_id: version_id.clone(),
+                                    display_version: None,
                                     hash: None,
                                     enabled: false,
                                     source: InstallSource::Bundled,
@@ -400,6 +422,18 @@ mod tests {
         }
     }
 
+    fn versioned(
+        project_id: &str,
+        version_id: &str,
+        hash: &str,
+        display_version: &str,
+    ) -> LinkedArtifactInfo {
+        LinkedArtifactInfo {
+            display_version: Some(display_version.to_string()),
+            ..linked(project_id, Some(version_id), hash)
+        }
+    }
+
     fn managed(project_id: &str, version_id: &str) -> BundleFile {
         BundleFile {
             enabled: true,
@@ -502,6 +536,48 @@ mod tests {
             "a pin the cluster never downloaded is not installed"
         );
         assert_eq!(sodium.versions.len(), 1);
+    }
+
+    #[test]
+    fn only_the_version_the_bundle_pinned_is_free_of_conflict() {
+        let map = installed_map(
+            vec![linked("sodium", Some("v1"), "hash-1")],
+            &bundles(vec![managed("sodium", "v1")]),
+        );
+
+        let sodium = entry(&map, "sodium");
+        assert!(!sodium.conflicts_with_bundle("v1"));
+        assert!(sodium.conflicts_with_bundle("v2"));
+    }
+
+    #[test]
+    fn a_hand_installed_project_never_conflicts_with_a_bundle() {
+        let map = installed_map(vec![linked("sodium", Some("v1"), "hash-1")], &[]);
+
+        assert!(!entry(&map, "sodium").conflicts_with_bundle("v2"));
+    }
+
+    #[test]
+    fn the_pinned_version_is_labelled_by_its_version_number() {
+        let map = installed_map(
+            vec![versioned("sodium", "v1", "hash-1", "0.5.8")],
+            &bundles(vec![managed("sodium", "v1")]),
+        );
+
+        assert_eq!(
+            entry(&map, "sodium").bundled_version_label(),
+            Some("0.5.8".to_string())
+        );
+    }
+
+    #[test]
+    fn a_pin_with_nothing_linked_falls_back_to_the_raw_id() {
+        let map = installed_map(Vec::new(), &bundles(vec![managed("sodium", "v1")]));
+
+        assert_eq!(
+            entry(&map, "sodium").bundled_version_label(),
+            Some("v1".to_string())
+        );
     }
 
     #[test]

@@ -1,6 +1,7 @@
 mod account_switcher;
 mod active_cluster_panel;
 mod avatar;
+mod bundled_install_warning;
 mod button;
 mod charts;
 mod checkbox;
@@ -49,6 +50,7 @@ pub mod upload_mclogs;
 pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use avatar::Avatar;
+pub use bundled_install_warning::{BundledInstallWarning, PendingBundledInstall};
 pub use button::{Button, ButtonSize, ButtonVariant, link_button, open_folder_button};
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
 pub use checkbox::checkbox_labeled;

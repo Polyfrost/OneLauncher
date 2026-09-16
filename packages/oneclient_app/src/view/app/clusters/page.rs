@@ -22,6 +22,8 @@ const MIN_CARD_WIDTH_PX: f32 = 280.;
 const SIDEBAR_WIDTH_PX: f32 = 300.;
 const CARD_HEIGHT_PX: f32 = 146.;
 const PLACEHOLDER_VERSION_INFO: &str = "Placeholder version info";
+const ART_MAX_HEIGHT_PX: f32 = 140.;
+const ART_MIN_SIDEBAR_PX: f32 = 260.;
 
 #[derive(PartialEq)]
 pub struct Clusters;
@@ -196,6 +198,7 @@ struct DetailSidebar {
 
 impl Component for DetailSidebar {
     fn render(&self) -> impl IntoElement {
+        let mut sidebar_height = use_state(|| 0f32);
         let active_id = use_active_cluster_id();
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
@@ -224,6 +227,8 @@ impl Component for DetailSidebar {
             .map(|m| m.tags.clone())
             .unwrap_or_default();
 
+        let art_height = art_height_for(*sidebar_height.read());
+
         rect()
             .width(Size::px(SIDEBAR_WIDTH_PX))
             .min_width(Size::px(SIDEBAR_WIDTH_PX))
@@ -231,13 +236,29 @@ impl Component for DetailSidebar {
             .vertical()
             .spacing(8.)
             .padding(8.)
+            .content(Content::Flex)
             .corner_radius(CornerRadius::new_all(12.))
             .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .overflow(Overflow::Clip)
-            .child(rect().width(Size::fill()).max_height(Size::px(140.)).child(
-                ClusterLandscapeArt::for_version(self.line.major, version_value, loader_value, false),
-            ))
+            .on_sized(move |event: Event<SizedEventData>| {
+                let height = event.data().area.height();
+                if (*sidebar_height.peek() - height).abs() > 0.5 {
+                    *sidebar_height.write() = height;
+                }
+            })
+            .maybe_child(art_height.map(|max| {
+                rect()
+                    .width(Size::fill())
+                    .max_height(Size::px(max))
+                    .child(ClusterLandscapeArt::for_version(
+                        self.line.major,
+                        version_value,
+                        loader_value,
+                        false,
+                    ))
+                    .into_element()
+            }))
             .child(
                 rect()
                     .vertical()
@@ -251,20 +272,27 @@ impl Component for DetailSidebar {
                             .vertical()
                             .width(Size::fill())
                             .height(Size::flex(1.0))
+                            .content(Content::Flex)
                             .spacing(4.)
                             .child(
-                                label()
-                                    .text(heading)
-                                    .font_size(24.)
-                                    .font_weight(FontWeight::SEMI_BOLD)
-                                    .color(colors::fg_primary()),
-                            )
-                            .maybe_child(tags_row(&tags))
-                            .child(
-                                label()
-                                    .text(description)
-                                    .font_size(12.)
-                                    .color(colors::fg_secondary()),
+                                ScrollArea::new()
+                                    .width(Size::fill())
+                                    .height(Size::flex(1.0))
+                                    .spacing(4.)
+                                    .child(
+                                        label()
+                                            .text(heading)
+                                            .font_size(24.)
+                                            .font_weight(FontWeight::SEMI_BOLD)
+                                            .color(colors::fg_primary()),
+                                    )
+                                    .children(tags_row(&tags))
+                                    .child(
+                                        label()
+                                            .text(description)
+                                            .font_size(12.)
+                                            .color(colors::fg_secondary()),
+                                    ),
                             )
                             .children(version_rows(self.line, &keys, version_value, self.selected_version))
                             .children(loader_rows(&loaders, loader_value, self.selected_loader)),
@@ -286,6 +314,16 @@ impl Component for DetailSidebar {
             )
             .into_element()
     }
+}
+
+fn art_height_for(sidebar_height: f32) -> Option<f32> {
+    if sidebar_height <= 0. {
+        return Some(ART_MAX_HEIGHT_PX);
+    }
+    if sidebar_height < ART_MIN_SIDEBAR_PX {
+        return None;
+    }
+    Some((sidebar_height * 0.32).min(ART_MAX_HEIGHT_PX))
 }
 
 fn tags_row(tags: &[String]) -> Option<Element> {

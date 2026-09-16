@@ -245,22 +245,28 @@ pub fn format_memory_gb(mb: u32) -> String {
     }
 }
 
-/// `7384` -> `2h 3m` `540` -> `9m` `0` -> `0m`
-pub fn format_duration_hm(secs: i64) -> String {
+/// `45` -> `45s` `540` -> `9m` `7200` -> `2h` `7384` -> `2h 3m` `180000` -> `2d 2h`
+pub fn format_duration(secs: i64) -> String {
     if secs <= 0 {
         return "0m".to_string();
     }
-    let hours = secs / 3600;
+
+    let days = secs / 86_400;
+    let hours = (secs % 86_400) / 3600;
     let minutes = (secs % 3600) / 60;
-    if hours > 0 {
-        format!("{hours}h {minutes}m")
-    } else {
-        format!("{minutes}m")
+
+    match (days, hours, minutes) {
+        (0, 0, 0) => format!("{secs}s"),
+        (0, 0, m) => format!("{m}m"),
+        (0, h, 0) => format!("{h}h"),
+        (0, h, m) => format!("{h}h {m}m"),
+        (d, 0, _) => format!("{d}d"),
+        (d, h, _) => format!("{d}d {h}h"),
     }
 }
 
 /// `3723` -> `1h 2m` `83` -> `1m 23s` `45` -> `45s`
-pub fn format_duration_hms(secs: i64) -> String {
+pub fn format_durations(secs: i64) -> String {
     if secs <= 0 {
         return "0s".to_string();
     }
@@ -464,6 +470,17 @@ mod tests {
     fn memory_labels_drop_the_decimal_when_whole() {
         assert_eq!(format_memory_gb(8192), "8 GB");
         assert_eq!(format_memory_gb(1536), "1.5 GB");
+    }
+
+    #[test]
+    fn durations_never_show_a_zero_unit() {
+        assert_eq!(format_duration(45), "45s");
+        assert_eq!(format_duration(540), "9m");
+        assert_eq!(format_duration(7200), "2h");
+        assert_eq!(format_duration(7384), "2h 3m");
+        assert_eq!(format_duration(180_000), "2d 2h");
+        assert_eq!(format_duration(172_800), "2d");
+        assert_eq!(format_duration(0), "0m");
     }
 
     #[test]

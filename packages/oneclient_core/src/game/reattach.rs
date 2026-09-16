@@ -92,10 +92,16 @@ async fn classify(
 		return None;
 	};
 
-	let alive = session
-		.pid
-		.and_then(|pid| u32::try_from(pid).ok())
-		.filter(|pid| is_process_alive(*pid, session.pid_started_at.map(|t| t as u64)));
+	let alive = match (session.pid, session.pid_started_at) {
+		(Some(pid), Some(pid_started_at)) => u32::try_from(pid)
+			.ok()
+			.filter(|pid| is_process_alive(*pid, Some(pid_started_at as u64))),
+		(Some(pid), None) => {
+			tracing::debug!(cluster_id, pid, "session has no process start time; not re-adopting");
+			None
+		}
+		(None, _) => None,
+	};
 
 	Some((cluster, session, started_at, alive))
 }
@@ -227,14 +233,16 @@ async fn reconcile(
 
 	let now = Utc::now().max(started_at);
 
+	let plausible = |at: DateTime<Utc>| (started_at..=now).contains(&at).then_some(at);
+
 	// Prefer the log's own timestamps over mtime mtime only helps when nothing
 	// in the log carries a time
 	let ended_at = replay
 		.stopped_at
-		.or(replay.last_activity)
-		.or_else(|| log.as_ref().and_then(|log| log.modified))
-		.unwrap_or(started_at)
-		.clamp(started_at, now);
+		.and_then(plausible)
+		.or_else(|| replay.last_activity.and_then(plausible))
+		.or_else(|| log.as_ref().and_then(|log| log.modified).and_then(plausible))
+		.unwrap_or(started_at);
 
 	tracing::info!(
 		cluster_id,

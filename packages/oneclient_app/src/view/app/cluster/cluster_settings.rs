@@ -69,6 +69,7 @@ impl Component for ClusterSettings {
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::fill())
+                    .scrollbar_gutter(true)
                     .spacing(4.)
                     .child(section_header("GAME"))
                     .child(
@@ -184,6 +185,11 @@ fn reset_button(overridden: bool, on_reset: EventHandler<()>) -> impl IntoElemen
         .small()
         .ghost()
         .icon()
+        .tooltip(if overridden {
+            "Reset to the global setting"
+        } else {
+            "Already using the global setting"
+        })
         .corner_radius(CornerRadius::new_all(7.))
         .maybe(overridden, |el| el.on_press(move |_| on_reset.call(())))
         .enabled(overridden)

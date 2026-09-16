@@ -92,6 +92,29 @@ pub fn relative_time(created_at: Instant) -> String {
     }
 }
 
+/// Gap the clamped menu keeps from the window edges
+pub const EDGE_MARGIN: f32 = 8.;
+
+/// `root_size` is physical while the press position is logical, so it has to be
+/// scaled down before the two are compared
+pub fn clamp_to_window(x: f32, y: f32, width: f32, height: f32) -> (f32, f32) {
+    let platform = Platform::get();
+    let scale = *platform.scale_factor.peek() as f32;
+    if scale <= 0. {
+        return (x, y);
+    }
+
+    let window = *platform.root_size.peek();
+    let clamp = |pos: f32, len: f32, limit: f32| {
+        pos.clamp(EDGE_MARGIN, (limit - len - EDGE_MARGIN).max(EDGE_MARGIN))
+    };
+
+    (
+        clamp(x, width, window.width / scale),
+        clamp(y, height, window.height / scale),
+    )
+}
+
 /// Returns the `Rect` not an `Element` so callers can inset or round it
 pub fn divider() -> Rect {
     rect()
@@ -112,6 +135,23 @@ pub fn centered_note(text: &str) -> Element {
                 .color(theme::colors::fg_secondary()),
         )
         .into_element()
+}
+
+pub fn grid_columns_for_width(width: f32, max_col: f32, gap: f32) -> usize {
+    if width <= 0. {
+        return 1;
+    }
+
+    (((width + gap) / (max_col + gap)).ceil() as usize).max(1)
+}
+
+pub fn columns_for(width: f32, min_cell: f32, max: usize, gap: f32) -> usize {
+    let max = max.max(1);
+    if width <= 0. {
+        return max;
+    }
+
+    (((width + gap) / (min_cell + gap)).floor() as usize).clamp(1, max)
 }
 
 /// Short final rows are padded with empty flex cells so tiles keep the column width
@@ -182,4 +222,15 @@ impl ImageFallbackExt for ImageViewer {
         let placeholder = placeholder.into_element();
         self.error_renderer(move |_: String| placeholder.clone())
     }
+}
+
+pub fn window_logical_size() -> Size2D {
+    let platform = Platform::get();
+    let scale = *platform.scale_factor.peek() as f32;
+    let size = *platform.root_size.peek();
+    if scale <= 0. {
+        return size;
+    }
+
+    Size2D::new(size.width / scale, size.height / scale)
 }

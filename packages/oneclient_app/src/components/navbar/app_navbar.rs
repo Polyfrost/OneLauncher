@@ -311,14 +311,43 @@ impl Component for NavbarRight {
                     .tooltip("Control Center")
                     .padding(0.0)
                     .on_press(open_control_center)
-                    .child(
-                        Avatar::new(account_uuid)
-                            .width(Size::px(24.))
-                            .height(Size::px(24.)),
-                    ),
+                    .child(avatar_with_gear(account_uuid)),
             )
             .child(super::window_controls())
     }
+}
+
+fn avatar_with_gear(uuid: String) -> impl IntoElement {
+    rect()
+        .width(Size::px(28.))
+        .height(Size::px(28.))
+        .center()
+        .child(
+            Avatar::new(uuid)
+                .width(Size::px(28.))
+                .height(Size::px(28.)),
+        )
+        .child(
+            rect()
+                .position(Position::new_absolute().bottom(-2.).right(-2.))
+                .width(Size::px(14.))
+                .height(Size::px(14.))
+                .corner_radius(CornerRadius::from(7.))
+                .background(theme::colors::page_elevated())
+                .border(
+                    Border::new()
+                        .fill(theme::colors::component_border())
+                        .width(1.)
+                        .alignment(BorderAlignment::Inner),
+                )
+                .layer(Layer::Relative(3))
+                .center()
+                .child(
+                    Icon::new(IconType::Settings02)
+                        .size(10.)
+                        .color(theme::colors::fg_secondary()),
+                ),
+        )
 }
 
 fn notification_bell(unread: usize) -> impl IntoElement {

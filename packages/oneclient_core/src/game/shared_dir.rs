@@ -135,7 +135,7 @@ pub async fn materialize_content(
         }
     }
 
-    import_manual_content_with(services, cluster, game_dir, mods_in_cluster).await;
+    import_manual_content_with(services, cluster, game_dir, mods_in_cluster, true).await;
 
     if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
         cluster.id,
@@ -168,6 +168,14 @@ pub async fn materialize_content(
             tracing::warn!(cluster_id = cluster.id, %err, "failed to switch off mods built for another game version");
         }
     }
+
+    let active_mods_dir = if mods_in_cluster {
+        cluster_dir.as_path()
+    } else {
+        game_dir
+    }
+    .join(ContentType::Mod.folder_name());
+    clear_disabled_mod_files(services, cluster, &active_mods_dir).await;
 
     let (mods, rest): (Vec<Desired>, Vec<Desired>) = desired_mods(services, cluster)
         .await?
@@ -673,6 +681,53 @@ async fn prune_previous(
     }
 }
 
+#[tracing::instrument(skip(services, cluster), fields(cluster_id = cluster.id), level = "debug")]
+async fn clear_disabled_mod_files(services: &LauncherServices, cluster: &Cluster, mods_dir: &Path) {
+    let linked = match PackageStore::list_linked_artifacts(cluster.id, &services.content()).await {
+        Ok(linked) => linked,
+        Err(err) => {
+            tracing::warn!(error = %err, "cannot list links; leaving the mods folder alone");
+            return;
+        }
+    };
+
+    for name in disabled_mod_names(&linked) {
+        let path = mods_dir.join(&name);
+        if polyio::symlink_metadata(&path).await.is_err() {
+            continue;
+        }
+
+        match remove_entry(&path).await {
+            Ok(()) => tracing::info!(file = %name, "cleared a switched-off mod from the folder"),
+            Err(err) => {
+                tracing::warn!(file = %name, error = %err, "failed to clear a switched-off mod")
+            }
+        }
+    }
+}
+
+fn disabled_mod_names(
+    linked: &[oneclient_content::packages::LinkedArtifactInfo],
+) -> HashSet<String> {
+    let mods = || {
+        linked
+            .iter()
+            .filter(|link| link.content_type == ContentType::Mod)
+    };
+
+    let live: HashSet<&str> = mods()
+        .filter(|link| link.enabled)
+        .map(|link| link.cluster_file_name.as_str())
+        .collect();
+
+    mods()
+        .filter(|link| !link.enabled)
+        .map(|link| link.cluster_file_name.as_str())
+        .filter(|name| !live.contains(name))
+        .map(str::to_owned)
+        .collect()
+}
+
 /// Names in one folder that are the launcher's not the user's what we
 /// materialized last plus what the database tracks (covering files just
 /// adopted by [`import_manual_content`])
@@ -712,7 +767,7 @@ pub async fn import_manual_content(
         Err(_) => false,
     };
 
-    import_manual_content_with(services, cluster, game_dir, mods_in_cluster).await;
+    import_manual_content_with(services, cluster, game_dir, mods_in_cluster, false).await;
 }
 
 async fn import_manual_content_with(
@@ -720,6 +775,7 @@ async fn import_manual_content_with(
     cluster: &Cluster,
     game_dir: &Path,
     mods_in_cluster: bool,
+    discard_originals: bool,
 ) {
     let linked = match PackageStore::list_linked_artifacts(cluster.id, &services.content()).await {
         Ok(linked) => linked,
@@ -761,6 +817,7 @@ async fn import_manual_content_with(
         ContentType::Mod,
         &names_linked_here(&linked, ContentType::Mod),
         mods_manifest,
+        discard_originals,
     )
     .await;
 
@@ -788,6 +845,7 @@ async fn import_manual_content_with(
             content_type,
             &known,
             global_manifest.as_ref(),
+            discard_originals,
         )
         .await;
     }
@@ -811,6 +869,7 @@ async fn import_from_dir(
     content_type: ContentType,
     known: &HashSet<String>,
     manifest: Option<&MaterializedManifest>,
+    discard_originals: bool,
 ) {
     let Ok(mut entries) = polyio::read_dir(dir).await else {
         return;
@@ -855,8 +914,11 @@ async fn import_from_dir(
         match PackageStore::import_local_file(&path, content_type, cluster.id, &services.content())
             .await
         {
-            Ok(_) => {
-                tracing::debug!(file = name, "registered manually-added content")
+            Ok(row) => {
+                tracing::debug!(file = name, "registered manually-added content");
+                if discard_originals {
+                    discard_adopted_original(&row, &path, name).await;
+                }
             }
             Err(err) => tracing::warn!(
                 file = name,
@@ -864,6 +926,24 @@ async fn import_from_dir(
                 "failed to register manually-added content"
             ),
         }
+    }
+}
+
+async fn discard_adopted_original(
+    row: &oneclient_db::models::ArtifactRow,
+    path: &Path,
+    name: &str,
+) {
+    match artifact_absolute_path(&row.path) {
+        Ok(cached) if polyio::try_exists(&cached).await.unwrap_or(false) => {}
+        _ => {
+            tracing::warn!(file = name, "adopted content is not in the cache; leaving the original");
+            return;
+        }
+    }
+
+    if let Err(err) = polyio::remove_file(path).await {
+        tracing::warn!(file = name, error = %err, "failed to clear the adopted original");
     }
 }
 
@@ -1403,6 +1483,54 @@ mod tests {
     }
 
     use super::*;
+
+    fn link(file_name: &str, enabled: bool) -> oneclient_content::packages::LinkedArtifactInfo {
+        oneclient_content::packages::LinkedArtifactInfo {
+            hash: format!("{file_name}-hash"),
+            cluster_file_name: file_name.into(),
+            enabled,
+            content_type: ContentType::Mod,
+            file_name: file_name.into(),
+            project_id: None,
+            version_id: None,
+            display_name: None,
+            display_version: None,
+            provider: None,
+            published_at: None,
+            seen_status: oneclient_db::models::SeenStatus::Seen,
+        }
+    }
+
+    #[test]
+    fn a_switched_off_jar_goes_unless_a_live_copy_shares_its_name() {
+        let names = disabled_mod_names(&[
+            link("NBTac-FABRIC-26.2-2.0.1.jar", true),
+            link("NBTac-FABRIC-26.1-1.3.15.jar", false),
+            link("shared.jar", true),
+            link("shared.jar", false),
+        ]);
+
+        assert!(
+            names.contains("NBTac-FABRIC-26.1-1.3.15.jar"),
+            "the jar the old stash stranded has to go"
+        );
+        assert!(
+            !names.contains("NBTac-FABRIC-26.2-2.0.1.jar"),
+            "a mod that is on is never cleared"
+        );
+        assert!(
+            !names.contains("shared.jar"),
+            "a name another copy still has switched on must survive"
+        );
+    }
+
+    #[test]
+    fn other_content_types_are_left_to_their_own_folders() {
+        let mut pack = link("pack.zip", false);
+        pack.content_type = ContentType::ResourcePack;
+
+        assert!(disabled_mod_names(&[pack]).is_empty());
+    }
 
     fn names(names: &[&str]) -> HashSet<String> {
         names.iter().map(|n| (*n).to_string()).collect()

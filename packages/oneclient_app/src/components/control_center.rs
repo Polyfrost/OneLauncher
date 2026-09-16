@@ -388,6 +388,7 @@ impl Component for QuickTile {
             .padding(Gaps::new_symmetric(0., 12.))
             .corner_radius(CornerRadius::new_all(10.))
             .background(background)
+            .maybe(!enabled, |el| el.opacity(0.45))
             .maybe(!on || !enabled, |el| {
                 el.border(
                     Border::new()

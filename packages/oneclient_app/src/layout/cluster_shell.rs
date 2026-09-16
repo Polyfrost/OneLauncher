@@ -274,6 +274,7 @@ fn cluster_header(
                         Button::new()
                             .danger()
                             .icon()
+                            .tooltip("Stop game")
                             .on_press(move |_| kill_dispatch.kill_cluster(cluster_id))
                             .child(Icon::new(IconType::Square).size(16.)),
                     )

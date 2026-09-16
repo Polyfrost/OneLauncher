@@ -296,6 +296,7 @@ impl Component for FilterButton {
                 Button::new()
                     .secondary()
                     .icon()
+                    .tooltip("Sort and filter")
                     .width(Size::px(FILTER_BTN_W))
                     .height(Size::px(34.))
                     .on_press(move |e: Event<PressEventData>| {

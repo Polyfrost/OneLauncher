@@ -2,6 +2,7 @@ use super::*;
 
 use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::router::RouterContext;
+use freya::text_edit::Clipboard;
 use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
@@ -137,6 +138,7 @@ pub(super) fn toolbar_bar(
     grid_columns: State<u8>,
     cluster_id: i64,
     package_type: &'static str,
+    export: Option<ModListExport>,
 ) -> impl IntoElement {
     let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
@@ -200,6 +202,7 @@ pub(super) fn toolbar_bar(
                 .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
                 .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid)),
         )
+        .maybe_child(export.map(|export| CopyListButton { export }.into_element()))
         .child(
             Button::new()
                 .primary()
@@ -210,6 +213,50 @@ pub(super) fn toolbar_bar(
                 .text("Add Content"),
         )
         .into_element()
+}
+
+#[derive(PartialEq)]
+struct CopyListButton {
+    export: ModListExport,
+}
+
+impl Component for CopyListButton {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let text = self.export.text.clone();
+        let count = self.export.count;
+
+        Button::new()
+            .secondary()
+            .icon()
+            .width(Size::px(FILTER_BTN_W))
+            .height(Size::px(34.))
+            .on_press(move |_| {
+                if let Err(err) = Clipboard::set(text.clone()) {
+                    tracing::warn!("clipboard copy failed: {err:?}");
+                    dispatch
+                        .notify("Copy failed")
+                        .body("Could not copy your mods to the clipboard.")
+                        .error()
+                        .send();
+                } else {
+                    dispatch
+                        .notify("Copied to clipboard")
+                        .body(format!(
+                            "{count} mod{} copied to your clipboard.",
+                            utils::plural(count as i64)
+                        ))
+                        .info()
+                        .icon(IconType::ClipboardCheck)
+                        .send();
+                }
+            })
+            .child(
+                Icon::new(IconType::Copy01)
+                    .size(16.)
+                    .color(colors::fg_secondary()),
+            )
+    }
 }
 
 pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {

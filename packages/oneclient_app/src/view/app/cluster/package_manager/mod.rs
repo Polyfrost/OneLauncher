@@ -230,14 +230,13 @@ fn make_row(
         .map(|p| p.author.clone())
         .filter(|s| !s.is_empty())
         .unwrap_or_default();
+    let version = installed_info
+        .and_then(|i| i.display_version.clone())
+        .filter(|v| !v.is_empty());
     let description = m
         .map(|p| p.summary.clone())
         .filter(|s| !s.is_empty())
-        .or_else(|| {
-            installed_info
-                .and_then(|i| i.display_version.clone())
-                .map(|v| format!("Version {v}"))
-        })
+        .or_else(|| version.as_ref().map(|v| format!("Version {v}")))
         .unwrap_or_default();
 
     PackageEntry {
@@ -247,6 +246,7 @@ fn make_row(
         name,
         file_name,
         author,
+        version,
         description,
         icon_url: m.and_then(|p| p.icon_url.clone()),
         size,
@@ -261,6 +261,69 @@ fn make_row(
             .map(|i| i.seen_status)
             .unwrap_or_default(),
     }
+}
+
+const BUNDLED_MARKER: &str = "(bundled)";
+
+#[derive(Clone, PartialEq)]
+struct ModListExport {
+    text: String,
+    count: usize,
+}
+
+fn package_url(item: &PackageEntry) -> Option<String> {
+    match item.provider {
+        ProviderId::Modrinth => Some(format!(
+            "https://modrinth.com/{}/{}",
+            ContentType::Mod.modrinth_type(),
+            item.package_id
+        )),
+        ProviderId::CurseForge => Some(format!(
+            "https://www.curseforge.com/projects/{}",
+            item.package_id
+        )),
+        ProviderId::Local => None,
+    }
+}
+
+fn export_line(item: &PackageEntry) -> String {
+    let version = item
+        .version
+        .clone()
+        .filter(|version| !version.is_empty())
+        .map(|version| {
+            if item.in_bundle() {
+                format!("{version} {BUNDLED_MARKER}")
+            } else {
+                version
+            }
+        })
+        .or_else(|| item.bundle_name.clone())
+        .filter(|version| !version.is_empty());
+
+    let mut segments = vec![item.name.clone()];
+    segments.extend(package_url(item));
+    segments.extend(version);
+    if !item.author.is_empty() {
+        segments.push(format!("by {}", item.author));
+    }
+    segments.push(if item.enabled { "enabled" } else { "disabled" }.to_string());
+
+    format!("- {}", segments.join(" | "))
+}
+
+fn mod_list_export(items: &[PackageEntry], hidden: HiddenFilter) -> Option<ModListExport> {
+    let mut rows: Vec<&PackageEntry> = items.iter().filter(|p| hidden.keep(p)).collect();
+    rows.sort_by_key(|p| p.name.to_lowercase());
+
+    (!rows.is_empty()).then(|| ModListExport {
+        text: rows
+            .iter()
+            .map(|row| export_line(row))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        count: rows.len(),
+    })
 }
 
 #[derive(Clone)]
@@ -478,6 +541,9 @@ impl Component for PackageManager {
                 grid_columns,
                 cluster_id,
                 package_type,
+                (content_type == ContentType::Mod)
+                    .then(|| mod_list_export(&items, hidden))
+                    .flatten(),
             ))
             .maybe_child(
                 content_type

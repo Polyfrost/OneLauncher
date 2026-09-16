@@ -308,6 +308,7 @@ impl Component for NavbarRight {
             )
             .child(
                 super::navbar_button()
+					.overflow(Overflow::None)
                     .tooltip("Control Center")
                     .padding(0.0)
                     .on_press(open_control_center)
@@ -329,9 +330,9 @@ fn avatar_with_gear(uuid: String) -> impl IntoElement {
         )
         .child(
             rect()
-                .position(Position::new_absolute().bottom(-2.).right(-2.))
-                .width(Size::px(14.))
-                .height(Size::px(14.))
+                .position(Position::new_absolute().bottom(-7.).right(-7.))
+                .width(Size::px(16.))
+                .height(Size::px(16.))
                 .corner_radius(CornerRadius::from(7.))
                 .background(theme::colors::page_elevated())
                 .border(
@@ -344,7 +345,7 @@ fn avatar_with_gear(uuid: String) -> impl IntoElement {
                 .center()
                 .child(
                     Icon::new(IconType::Settings02)
-                        .size(10.)
+                        .size(12.)
                         .color(theme::colors::fg_secondary()),
                 ),
         )

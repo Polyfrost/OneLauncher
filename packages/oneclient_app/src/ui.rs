@@ -137,11 +137,20 @@ pub fn centered_note(text: &str) -> Element {
         .into_element()
 }
 
+pub fn grid_columns_for_width(width: f32, max_col: f32, gap: f32) -> usize {
+    if width <= 0. {
+        return 1;
+    }
+
+    (((width + gap) / (max_col + gap)).ceil() as usize).max(1)
+}
+
 pub fn columns_for(width: f32, min_cell: f32, max: usize, gap: f32) -> usize {
     let max = max.max(1);
     if width <= 0. {
         return max;
     }
+
     (((width + gap) / (min_cell + gap)).floor() as usize).clamp(1, max)
 }
 

@@ -241,15 +241,15 @@ impl Component for DailyChart {
             .child(DateRangePicker::new(custom, (first_day, last_day)).height(30.))
             .into_element();
 
-        chart_card(
-            "Daily playtime",
-            subtitle,
-            Some(nav),
-            BarChart::new(values, labels)
-                .unit(ValueUnit::Duration)
-                .gap(3.)
-                .into_element(),
-        )
+		chart_card(
+			"Daily playtime",
+			subtitle,
+			Some(nav),
+			BarChart::new(values, labels)
+				.unit(ValueUnit::Duration)
+				.gap(3.)
+				.into_element(),
+		)
     }
 }
 

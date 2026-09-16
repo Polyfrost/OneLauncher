@@ -794,6 +794,7 @@ impl Actions {
                     state.bundles.as_ref(),
                     &content,
                     Some(&session),
+                    None,
                 )
                 .await
                 {
@@ -1219,6 +1220,7 @@ impl Actions {
                 cluster_id,
                 state.bundles.as_ref(),
                 &state.services.content(),
+                None,
             )
             .await
             {
@@ -1235,7 +1237,9 @@ impl Actions {
                 }
             };
 
-            actions.record_bundle_checks([cluster_id]);
+            if result.settled() {
+                actions.record_bundle_checks([cluster_id]);
+            }
 
             super::invalidate_cluster_queries().await;
             if let Some(spec) =
@@ -1361,7 +1365,18 @@ impl Actions {
             if synced
                 && let Ok(clusters) = state.clusters.list().await
             {
-                actions.record_bundle_checks(clusters.iter().map(|cluster| cluster.id));
+                let unsettled: std::collections::HashSet<i64> = changed
+                    .iter()
+                    .filter(|(_, result)| !result.settled())
+                    .map(|(cluster_id, _)| *cluster_id)
+                    .collect();
+
+                actions.record_bundle_checks(
+                    clusters
+                        .iter()
+                        .map(|cluster| cluster.id)
+                        .filter(|cluster_id| !unsettled.contains(cluster_id)),
+                );
             }
 
             actions
@@ -1441,23 +1456,14 @@ impl Actions {
             return;
         }
 
-        let applied = match tokio::time::timeout(
-            BUNDLE_APPLY_BUDGET,
-            oneclient_core::apply_bundle_updates(cluster_id, state.bundles.as_ref(), &content),
+        let result = match oneclient_core::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &content,
+            Some(Instant::now() + BUNDLE_APPLY_BUDGET),
         )
         .await
         {
-            Ok(applied) => applied,
-            Err(_elapsed) => {
-                tracing::warn!(
-                    cluster_id,
-                    "bundle updates exceeded their launch budget, launching anyway"
-                );
-                return;
-            }
-        };
-
-        let result = match applied {
             Ok(result) => result,
             Err(err) => {
                 tracing::warn!(
@@ -1469,7 +1475,14 @@ impl Actions {
             }
         };
 
-        if synced {
+        if result.stopped_early {
+            tracing::warn!(
+                cluster_id,
+                "bundle updates ran out of their launch budget; the rest go at the next launch"
+            );
+        }
+
+        if synced && result.settled() {
             self.record_bundle_checks([cluster_id]);
         }
 

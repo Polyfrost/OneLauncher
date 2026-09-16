@@ -69,6 +69,7 @@ impl Component for ClusterSettings {
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::fill())
+                    .scrollbar_gutter(true)
                     .spacing(4.)
                     .child(section_header("GAME"))
                     .child(

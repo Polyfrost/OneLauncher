@@ -280,12 +280,8 @@ impl Component for NavbarRight {
             notif_dispatch.toggle_notification_center();
         };
 
-        let open_account_switcher = move |_| {
-            dispatch.toggle_account_switcher();
-        };
-
-        let open_settings = |_| {
-            let _ = RouterContext::get().push(Route::SettingsLauncher {});
+        let open_control_center = move |_| {
+            dispatch.toggle_control_center();
         };
 
         let open_stats = |_| {
@@ -312,23 +308,47 @@ impl Component for NavbarRight {
             )
             .child(
                 super::navbar_button()
-                    .tooltip("Settings")
-                    .child(Icon::new(IconType::Settings02).size(20.))
-                    .on_press(open_settings),
-            )
-            .child(
-                super::navbar_button()
+					.overflow(Overflow::None)
+                    .tooltip("Control Center")
                     .padding(0.0)
-                    .tooltip("Switch account")
-                    .on_press(open_account_switcher)
-                    .child(
-                        Avatar::new(account_uuid)
-                            .width(Size::px(24.))
-                            .height(Size::px(24.)),
-                    ),
+                    .on_press(open_control_center)
+                    .child(avatar_with_gear(account_uuid)),
             )
             .child(super::window_controls())
     }
+}
+
+fn avatar_with_gear(uuid: String) -> impl IntoElement {
+    rect()
+        .width(Size::px(28.))
+        .height(Size::px(28.))
+        .center()
+        .child(
+            Avatar::new(uuid)
+                .width(Size::px(28.))
+                .height(Size::px(28.)),
+        )
+        .child(
+            rect()
+                .position(Position::new_absolute().bottom(-7.).right(-7.))
+                .width(Size::px(16.))
+                .height(Size::px(16.))
+                .corner_radius(CornerRadius::from(7.))
+                .background(theme::colors::page_elevated())
+                .border(
+                    Border::new()
+                        .fill(theme::colors::component_border())
+                        .width(1.)
+                        .alignment(BorderAlignment::Inner),
+                )
+                .layer(Layer::Relative(3))
+                .center()
+                .child(
+                    Icon::new(IconType::Settings02)
+                        .size(12.)
+                        .color(theme::colors::fg_secondary()),
+                ),
+        )
 }
 
 fn notification_bell(unread: usize) -> impl IntoElement {

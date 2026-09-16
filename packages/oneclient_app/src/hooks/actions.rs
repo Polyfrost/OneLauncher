@@ -255,6 +255,16 @@ impl Actions {
         });
     }
 
+    pub fn edit_settings(&self, edit: impl FnOnce(&mut LauncherSettings)) {
+        let Some(updated) = self.mutate_settings(edit) else {
+            return;
+        };
+        if let Ok(state) = launcher::state() {
+            state.discord.set_enabled(updated.discord_enabled);
+        }
+        self.persist(updated);
+    }
+
     pub fn set_settings(&self, settings: LauncherSettings) {
         let Some(updated) = self.mutate_settings(|s| *s = settings) else {
             return;
@@ -634,11 +644,40 @@ impl Actions {
             .account_switcher_open = !open;
     }
 
+    pub fn open_account_switcher(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::AccountSwitcher)
+            .account_switcher_open = true;
+    }
+
     pub fn close_account_switcher(&self) {
         self.station
             .clone()
             .write_channel(AppChannel::AccountSwitcher)
             .account_switcher_open = false;
+    }
+
+    pub fn toggle_control_center(&self) {
+        let open = self.station.peek().control_center_open;
+        self.station
+            .clone()
+            .write_channel(AppChannel::ControlCenter)
+            .control_center_open = !open;
+    }
+
+    pub fn open_control_center(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::ControlCenter)
+            .control_center_open = true;
+    }
+
+    pub fn close_control_center(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::ControlCenter)
+            .control_center_open = false;
     }
 
     pub fn close_notification_center(&self) {

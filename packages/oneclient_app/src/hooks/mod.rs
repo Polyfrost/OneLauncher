@@ -116,6 +116,10 @@ pub fn use_account_switcher_open() -> bool {
         .account_switcher_open
 }
 
+pub fn use_control_center_open() -> bool {
+    use_radio(AppChannel::ControlCenter).read().control_center_open
+}
+
 pub fn use_game_snapshot() -> GameState {
     use_radio(AppChannel::Game).read().game.clone()
 }

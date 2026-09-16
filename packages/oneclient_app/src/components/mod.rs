@@ -1,4 +1,5 @@
 mod account_switcher;
+mod control_center;
 mod active_cluster_panel;
 mod avatar;
 mod button;
@@ -47,6 +48,7 @@ mod version_card;
 pub mod upload_mclogs;
 
 pub use account_switcher::AccountSwitcher;
+pub use control_center::ControlCenter;
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use avatar::Avatar;
 pub use button::{Button, ButtonSize, ButtonVariant, link_button, open_folder_button};

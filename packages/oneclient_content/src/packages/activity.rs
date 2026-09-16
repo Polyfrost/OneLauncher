@@ -10,7 +10,6 @@ use oneclient_db::dao::artifact as artifact_dao;
 
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
-use crate::packages::dependencies::supports_game_version;
 use crate::packages::store::PackageStore;
 use crate::packages::types::LinkedArtifactInfo;
 
@@ -163,7 +162,17 @@ fn built_for_another_game_version(stated: &[String], mc_version: &str) -> bool {
     !stated.is_empty()
         && !stated.iter().any(|versions| {
             let built_for: Vec<String> = serde_json::from_str(versions).unwrap_or_default();
-            supports_game_version(&built_for, mc_version)
+            covers_game_version(&built_for, mc_version)
+        })
+}
+
+fn covers_game_version(stated: &[String], mc_version: &str) -> bool {
+    stated.is_empty()
+        || stated.iter().any(|version| {
+            version == mc_version
+                || mc_version
+                    .strip_prefix(version.as_str())
+                    .is_some_and(|rest| rest.starts_with('.'))
         })
 }
 
@@ -268,7 +277,14 @@ mod tests {
             foreign(&["[\"1.21.11\"]"]),
             "the jars the old stash dragged in have to go"
         );
-        assert!(foreign(&["[\"26.1\"]"]), "a prefix is not a match");
+        assert!(
+            !foreign(&["[\"26.1\"]"]),
+            "a build for the release this cluster was migrated from stays"
+        );
+        assert!(
+            foreign(&["[\"1.21.1\"]"]),
+            "a shorter version that is not a component prefix is still foreign"
+        );
     }
 
     #[test]

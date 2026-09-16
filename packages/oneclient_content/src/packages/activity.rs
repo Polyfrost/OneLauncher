@@ -2,11 +2,12 @@
 //! of one package are legal rows
 //! the newest stays enabled the rest are switched off rather than unlinked
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
+use oneclient_db::dao::cluster_bundle as bundle_dao;
 
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
@@ -102,12 +103,19 @@ pub async fn disable_foreign_game_versions(
     }
 
     let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+
+    // bundle installs skip the compatibility check so launch must trust them too
+    let from_bundle: HashSet<String> = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
+        .await?
+        .into_iter()
+        .map(|row| row.hash)
+        .collect();
+
     let mut switched_off = Vec::new();
 
-    for info in linked
-        .iter()
-        .filter(|info| info.enabled && info.content_type == ContentType::Mod)
-    {
+    for info in linked.iter().filter(|info| {
+        info.enabled && info.content_type == ContentType::Mod && !from_bundle.contains(&info.hash)
+    }) {
         match switch_off_if_foreign(cluster_id, info, mc_version, ctx).await {
             Ok(true) => switched_off.push(
                 info.display_name

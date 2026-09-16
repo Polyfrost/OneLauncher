@@ -27,7 +27,7 @@ pub fn uses_cluster_mods_folder(
     loader_version: Option<&str>,
     custom_args: &str,
 ) -> bool {
-    if loader != GameLoader::Fabric {
+    if !matches!(loader, GameLoader::Fabric | GameLoader::Ornithe) {
         return false;
     }
 
@@ -77,6 +77,11 @@ mod tests {
             Some("0.16.5"),
             ""
         ));
+        assert!(uses_cluster_mods_folder(
+            GameLoader::Ornithe,
+            Some("0.16.5"),
+            ""
+        ));
         assert!(!uses_cluster_mods_folder(
             GameLoader::Fabric,
             Some("0.11.0"),
@@ -90,7 +95,6 @@ mod tests {
             GameLoader::Forge,
             GameLoader::NeoForge,
             GameLoader::Quilt,
-            GameLoader::Ornithe,
         ] {
             assert!(!uses_cluster_mods_folder(loader, Some("0.16.5"), ""));
         }

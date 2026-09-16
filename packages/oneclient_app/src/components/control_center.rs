@@ -135,8 +135,8 @@ impl Component for AccountHeader {
         };
         let subtitle = match (account.as_ref(), unusable) {
             (_, true) => "Microsoft Account required",
-            (Some(account), false) if account.is_microsoft() => "Microsoft account · Active",
-            (Some(_), false) => "Offline account · Active",
+            (Some(account), false) if account.is_microsoft() => "Microsoft account",
+            (Some(_), false) => "Offline account",
             (None, false) if loading => "Checking accounts",
             (None, false) => "No account selected",
         };

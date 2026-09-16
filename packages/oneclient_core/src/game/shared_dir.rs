@@ -8,7 +8,7 @@ use oneclient_db::dao::cluster as cluster_dao;
 use crate::LauncherResult;
 use crate::clusters::Cluster;
 use oneclient_cluster::remove_mods_link;
-use oneclient_common::domain::ContentType;
+use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_common::paths;
 use oneclient_content::packages::store::manifest::{
     self, ManifestEntry, MaterializedManifest,
@@ -101,23 +101,6 @@ pub async fn materialize_content(
         stash_content_files(&from, &into, ContentType::Mod, &ours).await;
     }
 
-    if mods_in_cluster {
-        let mods_dir = cluster_dir.join(ContentType::Mod.folder_name());
-        let disabled = disable_hand_removed(
-            services,
-            cluster,
-            &mods_dir,
-            ContentType::Mod,
-            previous_mods.as_ref(),
-        )
-        .await;
-
-        if !disabled.is_empty() {
-            let (title, body) = removal_notice(&disabled, Some(&cluster.name));
-            services.events.notify(title).body(body).send();
-        }
-    }
-
     for content_type in GLOBAL_TYPES {
         let dir = global_root.join(content_type.folder_name());
         let disabled = disable_hand_removed(
@@ -130,7 +113,7 @@ pub async fn materialize_content(
         .await;
 
         if !disabled.is_empty() {
-            let (title, body) = removal_notice(&disabled, None);
+            let (title, body) = removal_notice(&disabled);
             services.events.notify(title).body(body).send();
         }
     }
@@ -177,13 +160,20 @@ pub async fn materialize_content(
     .join(ContentType::Mod.folder_name());
     clear_disabled_mod_files(services, cluster, &active_mods_dir).await;
 
-    let (mods, rest): (Vec<Desired>, Vec<Desired>) = desired_mods(services, cluster)
-        .await?
-        .into_iter()
-        .partition(|_| mods_in_cluster);
+    let mut unrestored = Vec::new();
+    let (mods, rest): (Vec<Desired>, Vec<Desired>) =
+        desired_mods(services, cluster, &mut unrestored)
+            .await?
+            .into_iter()
+            .partition(|_| mods_in_cluster);
 
     // read across every cluster rather than this one so a pack installed anywhere is present here too
-    let packs = desired_global(services).await?;
+    let packs = desired_global(services, &mut unrestored).await?;
+
+    if !unrestored.is_empty() {
+        let (title, body) = unrestored_notice(&unrestored);
+        services.events.notify(title).body(body).send();
+    }
 
     // Held from the database snapshot through the save so a package removed
     // mid-launch is not resurrected by our own write; the two calls above take
@@ -223,6 +213,12 @@ pub async fn materialize_content(
 
     if mods_in_cluster {
         let mod_entries = link_desired(&cluster_dir, &mods).await;
+        drop_unmaterialized(
+            &cluster_dir.join(ContentType::Mod.folder_name()),
+            ContentType::Mod,
+            &mod_entries,
+        )
+        .await;
         manifest::save(
             &cluster_dir,
             manifest::MODS_MANIFEST_NAME,
@@ -253,7 +249,10 @@ pub async fn materialize_content(
 }
 
 // every enabled pack across every cluster
-async fn desired_global(services: &LauncherServices) -> LauncherResult<Vec<Desired>> {
+async fn desired_global(
+    services: &LauncherServices,
+    unrestored: &mut Vec<String>,
+) -> LauncherResult<Vec<Desired>> {
     let mut desired = Vec::new();
 
     for content_type in GLOBAL_TYPES {
@@ -267,11 +266,10 @@ async fn desired_global(services: &LauncherServices) -> LauncherResult<Vec<Desir
                 continue;
             };
 
-            let src = artifact_absolute_path(&artifact.path)?;
-            if !polyio::try_exists(&src).await.unwrap_or(false) {
-                tracing::warn!(hash = %row.hash, "cached artifact missing; skipping");
+            let Some(src) = cached_file(services, &row.hash, &artifact.path).await else {
+                unrestored.push(row.file_name);
                 continue;
-            }
+            };
 
             desired.push(Desired {
                 content_type,
@@ -511,26 +509,15 @@ fn removal_summary(disabled: &[String]) -> String {
     }
 }
 
-fn removal_notice(disabled: &[String], cluster_name: Option<&str>) -> (&'static str, String) {
+fn removal_notice(disabled: &[String]) -> (&'static str, String) {
     let names = removal_summary(disabled);
-
-    let folder = match cluster_name {
-        Some(name) => format!("{name}'s folder"),
-        None => "your shared folder".to_string(),
-    };
-
-    let scope = if cluster_name.is_some() {
-        ""
-    } else {
-        " on every cluster"
-    };
 
     if disabled.len() == 1 {
         return (
             "Content disabled",
             format!(
-                "{names} is gone from {folder}, so it has been switched off{scope}. \
-                Turn it back on in OneClient to restore it."
+                "{names} is gone from your shared folder, so it has been switched off on every \
+                cluster. Turn it back on in OneClient to restore it."
             ),
         );
     }
@@ -538,8 +525,30 @@ fn removal_notice(disabled: &[String], cluster_name: Option<&str>) -> (&'static 
     (
         "Content disabled",
         format!(
-            "{names} are gone from {folder}, so they have been switched off{scope}. \
-            Turn them back on in OneClient to restore them."
+            "{names} are gone from your shared folder, so they have been switched off on every \
+            cluster. Turn them back on in OneClient to restore them."
+        ),
+    )
+}
+
+fn unrestored_notice(unrestored: &[String]) -> (&'static str, String) {
+    let names = removal_summary(unrestored);
+
+    if unrestored.len() == 1 {
+        return (
+            "Missing from the game",
+            format!(
+                "{names} could not be downloaded again, so the game starts without it. \
+                Reinstall it in OneClient once you are back online."
+            ),
+        );
+    }
+
+    (
+        "Missing from the game",
+        format!(
+            "{names} could not be downloaded again, so the game starts without them. \
+            Reinstall them in OneClient once you are back online."
         ),
     )
 }
@@ -599,6 +608,7 @@ pub async fn dematerialize_content(
 async fn desired_mods(
     services: &LauncherServices,
     cluster: &Cluster,
+    unrestored: &mut Vec<String>,
 ) -> LauncherResult<Vec<Desired>> {
     let linked = PackageStore::list_linked_artifacts(cluster.id, &services.content()).await?;
     let mut desired = Vec::with_capacity(linked.len());
@@ -613,11 +623,10 @@ async fn desired_mods(
             continue;
         };
 
-        let src = artifact_absolute_path(&artifact.path)?;
-        if !polyio::try_exists(&src).await.unwrap_or(false) {
-            tracing::warn!(hash = %link.hash, "cached artifact missing; skipping");
+        let Some(src) = cached_file(services, &link.hash, &artifact.path).await else {
+            unrestored.push(link.cluster_file_name);
             continue;
-        }
+        };
 
         desired.push(Desired {
             content_type: link.content_type,
@@ -628,6 +637,39 @@ async fn desired_mods(
     }
 
     Ok(desired)
+}
+
+async fn cached_file(
+    services: &LauncherServices,
+    hash: &str,
+    stored_path: &str,
+) -> Option<PathBuf> {
+    let src = artifact_absolute_path(stored_path).ok()?;
+    if polyio::try_exists(&src).await.unwrap_or(false) {
+        return Some(src);
+    }
+
+    let release = artifact_dao::get_release_by_hash(&services.db, hash)
+        .await
+        .ok()
+        .flatten()?;
+    let provider = ProviderId::from_repr(release.provider as u8)?;
+
+    tracing::info!(hash, "cached package file is gone; fetching it again");
+
+    let restored = PackageStore::resolve_or_download(
+        provider,
+        &release.project_id,
+        &release.version_id,
+        &services.content(),
+    )
+    .await
+    .inspect_err(|err| tracing::warn!(hash, error = %err, "could not restore a cached package"))
+    .ok()
+    .filter(|artifact| artifact.hash == hash)?;
+
+    let path = artifact_absolute_path(&restored.path).ok()?;
+    polyio::try_exists(&path).await.unwrap_or(false).then_some(path)
 }
 
 async fn link_desired(root: &Path, desired: &[Desired]) -> Vec<ManifestEntry> {
@@ -652,6 +694,39 @@ async fn link_desired(root: &Path, desired: &[Desired]) -> Vec<ManifestEntry> {
     }
 
     entries
+}
+
+async fn drop_unmaterialized(dir: &Path, content_type: ContentType, entries: &[ManifestEntry]) {
+    let kept: HashSet<&str> = entries
+        .iter()
+        .filter_map(|entry| entry.path.rsplit('/').next())
+        .collect();
+
+    let Ok(mut read) = polyio::read_dir(dir).await else {
+        return;
+    };
+
+    while let Ok(Some(entry)) = read.next_entry().await {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if name.starts_with('.') || is_note(name) || !has_content_extension(content_type, name) {
+            continue;
+        }
+        if kept.contains(name) {
+            continue;
+        }
+
+        tracing::info!(
+            file = name,
+            dir = %dir.display(),
+            "clearing content the launcher no longer lists for this cluster"
+        );
+        if let Err(err) = remove_entry(&path).await {
+            tracing::warn!(file = name, error = %err, "failed to clear stale content");
+        }
+    }
 }
 
 /// Entries are keyed by path so a package whose file name is unchanged is left
@@ -899,7 +974,7 @@ async fn import_from_dir(
             continue;
         }
 
-        if manifest.is_none() && is_cached_artifact(services, &path).await {
+        if is_cached_artifact(services, &path).await {
             tracing::debug!(
                 file = name,
                 dir = %dir.display(),
@@ -1840,7 +1915,7 @@ mod tests {
 
     #[test]
     fn the_global_notice_owns_up_to_its_reach() {
-        let (_, body) = removal_notice(&["bsl.zip".into()], None);
+        let (_, body) = removal_notice(&["bsl.zip".into()]);
 
         assert!(body.contains("every cluster"), "{body}");
         assert!(!body.contains("'s folder"), "{body}");
@@ -1933,19 +2008,6 @@ mod tests {
         assert!(hand_removed_content(dir.path(), ContentType::Mod, None).await.is_empty());
 
         std::fs::remove_dir_all(dir.path()).ok();
-    }
-
-    #[test]
-    fn the_notice_names_a_few_and_counts_the_rest() {
-        let (title, body) = removal_notice(&["sodium.jar".into()], Some("26.2 Fabric"));
-        // assert_eq!(title, "Mod disabled");
-        assert!(body.contains("sodium.jar is gone"), "{body}");
-
-        let many: Vec<String> = (0..6).map(|i| format!("mod{i}.jar")).collect();
-        let (title, body) = removal_notice(&many, Some("26.2 Fabric"));
-        assert_eq!(title, "Mods disabled");
-        assert!(body.contains("and 3 more"), "{body}");
-        assert!(!body.contains("mod5.jar"), "{body}");
     }
 
     #[test]

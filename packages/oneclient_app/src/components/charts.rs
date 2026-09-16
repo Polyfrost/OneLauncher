@@ -2,7 +2,7 @@ use freya::engine::prelude::{Paint, PaintStyle, PathBuilder, SkColor, SkRect};
 use freya::prelude::*;
 
 use crate::theme::colors;
-use crate::utils::format_duration_hm;
+use crate::utils::format_duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ValueUnit {
@@ -13,7 +13,7 @@ pub enum ValueUnit {
 impl ValueUnit {
     pub fn format(self, value: i64) -> String {
         match self {
-            ValueUnit::Duration => format_duration_hm(value),
+            ValueUnit::Duration => format_duration(value),
             ValueUnit::Count => format!("{value}×"),
         }
     }
@@ -264,6 +264,7 @@ fn slice_at(values: &[i64], x: f32, y: f32, size: f32) -> Option<usize> {
 pub struct BarChart {
     values: Vec<i64>,
     labels: Vec<String>,
+    readout_labels: Option<Vec<String>>,
     highlight: Option<usize>,
     unit: ValueUnit,
     height: f32,
@@ -275,11 +276,17 @@ impl BarChart {
         Self {
             values,
             labels,
+            readout_labels: None,
             highlight: None,
             unit: ValueUnit::Duration,
             height: DEFAULT_HEIGHT,
             gap: 4.,
         }
+    }
+
+    pub fn readout_labels(mut self, labels: Vec<String>) -> Self {
+        self.readout_labels = Some(labels);
+        self
     }
 
     pub fn highlight(mut self, highlight: Option<usize>) -> Self {
@@ -304,7 +311,9 @@ impl BarChart {
     }
 
     fn readout_name(&self, i: usize) -> String {
-        self.labels
+        self.readout_labels
+            .as_ref()
+            .unwrap_or(&self.labels)
             .get(i)
             .cloned()
             .filter(|s| !s.is_empty())
@@ -343,13 +352,9 @@ impl Component for BarChart {
         for (i, &v) in self.values.iter().enumerate() {
             let frac = if max > 0 { v as f32 / max as f32 } else { 0.0 };
             let h = if v > 0 { (frac * height).max(4.0) } else { 0.0 };
-            let is_active = Some(i) == focus;
-            let color = if is_active {
-                colors::brand()
-            } else if active.is_some() {
-                colors::component_bg_hover().with_a(150)
-            } else {
-                colors::component_bg_hover()
+            let color = match active {
+                Some(a) if a != i => colors::component_bg_hover(),
+                _ => colors::brand(),
             };
 
             bars = bars.child(
@@ -381,14 +386,13 @@ impl Component for BarChart {
             label_row = label_row.child(
                 rect()
                     .width(Size::flex(1.0))
+                    .horizontal()
                     .main_align(Alignment::Center)
                     .child(
                         label()
                             .text(if shown { text.clone() } else { String::new() })
                             .font_size(10.)
                             .max_lines(1)
-                            .width(Size::fill())
-                            .text_align(TextAlign::Center)
                             .color(colors::fg_secondary()),
                     ),
             );
@@ -455,7 +459,7 @@ fn label_stride(labels: &[String], plot_width: f32, gap: f32) -> usize {
         .unwrap_or(0)
         .max(1);
     // ~6.2px per char at font_size 10
-    let slot_px = max_chars as f32 * 6.2 + gap.max(8.0) + 8.0;
+    let slot_px = max_chars as f32 * 6.2 + gap.max(8.0) + 12.0;
     let max_labels = (plot_width / slot_px).floor().max(1.0) as usize;
 
     if n <= max_labels {
@@ -487,7 +491,7 @@ fn gridlines(height: f32) -> Element {
 
 fn y_axis(max: i64, unit: ValueUnit, height: f32) -> Element {
     let fmt = |v: i64| match unit {
-        ValueUnit::Duration => format_duration_hm(v),
+        ValueUnit::Duration => format_duration(v),
         ValueUnit::Count => v.to_string(),
     };
 

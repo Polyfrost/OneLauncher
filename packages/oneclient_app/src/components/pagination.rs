@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use crate::components::{Button, Icon, IconType};
+use crate::components::{Button, Icon, IconType, TooltipPlacement};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -52,13 +52,18 @@ impl Component for Pagination {
         let current = *page.read();
         let last = total_pages.saturating_sub(1);
 
-        let icon_btn = move |target: usize, available: bool, icon: IconType| {
+        let icon_btn = move |target: usize,
+                             available: bool,
+                             icon: IconType,
+                             tooltip: &'static str| {
             let mut page = page;
             let enabled = available && interactive;
             Button::new()
                 .secondary()
                 .icon()
                 .enabled(enabled)
+                .tooltip(tooltip)
+                .tooltip_placement(TooltipPlacement::Top)
                 .on_press(move |_| page.set(target))
                 .child(Icon::new(icon).size(14.).color(if enabled {
                     colors::fg_primary()
@@ -130,11 +135,17 @@ impl Component for Pagination {
             .main_align(Alignment::Center)
             .cross_align(Alignment::Center)
             .spacing(6.)
-            .child(icon_btn(0, current > 0, IconType::ChevronsLeft))
+            .child(icon_btn(
+                0,
+                current > 0,
+                IconType::ChevronsLeft,
+                "First page",
+            ))
             .child(icon_btn(
                 current.saturating_sub(1),
                 current > 0,
                 IconType::ArrowLeft,
+                "Previous page",
             ));
 
         if start > 0 {
@@ -155,7 +166,17 @@ impl Component for Pagination {
             row = row.child(num_btn(last));
         }
 
-        row.child(icon_btn(current + 1, current < last, IconType::ArrowRight))
-            .child(icon_btn(last, current < last, IconType::ChevronsRight))
+        row.child(icon_btn(
+            current + 1,
+            current < last,
+            IconType::ArrowRight,
+            "Next page",
+        ))
+        .child(icon_btn(
+            last,
+            current < last,
+            IconType::ChevronsRight,
+            "Last page",
+        ))
     }
 }

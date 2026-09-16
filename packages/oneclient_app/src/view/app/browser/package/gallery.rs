@@ -332,6 +332,7 @@ fn header_row(
             Button::new()
                 .ghost()
                 .icon()
+                .tooltip("Close")
                 .on_press(on_close)
                 .child(Icon::new(IconType::XClose).size(18.)),
         )

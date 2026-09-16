@@ -300,22 +300,26 @@ impl Component for NavbarRight {
             .spacing(8.)
             .child(
                 super::navbar_button()
+                    .tooltip("Stats")
                     .child(Icon::new(IconType::LineChartUp01).size(20.))
                     .on_press(open_stats),
             )
             .child(
                 super::navbar_button()
+                    .tooltip("Notifications")
                     .child(notification_bell(unread))
                     .on_press(open_notifications),
             )
             .child(
                 super::navbar_button()
+                    .tooltip("Settings")
                     .child(Icon::new(IconType::Settings02).size(20.))
                     .on_press(open_settings),
             )
             .child(
                 super::navbar_button()
                     .padding(0.0)
+                    .tooltip("Switch account")
                     .on_press(open_account_switcher)
                     .child(
                         Avatar::new(account_uuid)

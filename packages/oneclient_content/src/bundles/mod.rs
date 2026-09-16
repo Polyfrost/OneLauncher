@@ -16,7 +16,6 @@ pub use install::{
     install_cluster_bundles, install_enabled_bundle_files, install_package_from_bundle,
     list_cluster_bundle_overrides,
     on_user_disable_artifact, on_user_enable_artifact, on_user_remove_artifact,
-    reconcile_duplicate_activity,
     remove_artifact_from_cluster, set_artifact_enabled_to, set_bundle_package_enabled,
     set_bundle_package_opt_in,
     set_bundle_package_override, set_bundle_package_overrides,

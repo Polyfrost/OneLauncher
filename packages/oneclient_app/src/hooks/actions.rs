@@ -794,6 +794,7 @@ impl Actions {
                     state.bundles.as_ref(),
                     &content,
                     Some(&session),
+                    None,
                 )
                 .await
                 {
@@ -843,6 +844,12 @@ impl Actions {
             }
 
             actions.close_optional_mods();
+        });
+    }
+
+    pub fn proceed_package_updates(&self, chosen: Vec<oneclient_core::BrowserPackageUpdate>) {
+        self.with_engine(move |state| {
+            state.notifications.proceed_package_updates(chosen)
         });
     }
 
@@ -1083,7 +1090,7 @@ impl Actions {
             if install.result.is_ok() {
                 // Before the refresh below so the version list never renders
                 // the moment where both copies read as active
-                if let Err(err) = oneclient_content::bundles::reconcile_duplicate_activity(
+                if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
                     cluster_id,
                     &state.services.content(),
                 )
@@ -1213,6 +1220,7 @@ impl Actions {
                 cluster_id,
                 state.bundles.as_ref(),
                 &state.services.content(),
+                None,
             )
             .await
             {
@@ -1229,7 +1237,9 @@ impl Actions {
                 }
             };
 
-            actions.record_bundle_checks([cluster_id]);
+            if result.settled() {
+                actions.record_bundle_checks([cluster_id]);
+            }
 
             super::invalidate_cluster_queries().await;
             if let Some(spec) =
@@ -1355,7 +1365,18 @@ impl Actions {
             if synced
                 && let Ok(clusters) = state.clusters.list().await
             {
-                actions.record_bundle_checks(clusters.iter().map(|cluster| cluster.id));
+                let unsettled: std::collections::HashSet<i64> = changed
+                    .iter()
+                    .filter(|(_, result)| !result.settled())
+                    .map(|(cluster_id, _)| *cluster_id)
+                    .collect();
+
+                actions.record_bundle_checks(
+                    clusters
+                        .iter()
+                        .map(|cluster| cluster.id)
+                        .filter(|cluster_id| !unsettled.contains(cluster_id)),
+                );
             }
 
             actions
@@ -1435,23 +1456,14 @@ impl Actions {
             return;
         }
 
-        let applied = match tokio::time::timeout(
-            BUNDLE_APPLY_BUDGET,
-            oneclient_core::apply_bundle_updates(cluster_id, state.bundles.as_ref(), &content),
+        let result = match oneclient_core::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &content,
+            Some(Instant::now() + BUNDLE_APPLY_BUDGET),
         )
         .await
         {
-            Ok(applied) => applied,
-            Err(_elapsed) => {
-                tracing::warn!(
-                    cluster_id,
-                    "bundle updates exceeded their launch budget, launching anyway"
-                );
-                return;
-            }
-        };
-
-        let result = match applied {
             Ok(result) => result,
             Err(err) => {
                 tracing::warn!(
@@ -1463,7 +1475,14 @@ impl Actions {
             }
         };
 
-        if synced {
+        if result.stopped_early {
+            tracing::warn!(
+                cluster_id,
+                "bundle updates ran out of their launch budget; the rest go at the next launch"
+            );
+        }
+
+        if synced && result.settled() {
             self.record_bundle_checks([cluster_id]);
         }
 
@@ -1536,7 +1555,10 @@ impl Actions {
                 else {
                     return;
                 };
-                self.prompt_package_updates(group).await;
+                let chosen = self.prompt_package_updates(group).await;
+                if !chosen.is_empty() {
+                    self.apply_updates_for_launch(state, &chosen).await;
+                }
             }
         }
     }
@@ -1619,6 +1641,8 @@ impl Actions {
                 .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
         });
 
+        super::invalidate_cluster_queries().await;
+
         if applied > 0 {
             super::invalidate_cluster_queries().await;
         }
@@ -1664,7 +1688,10 @@ impl Actions {
         let _ = wait.await;
     }
 
-    async fn prompt_package_updates(&self, group: PackageUpdateGroup) {
+    async fn prompt_package_updates(
+        &self,
+        group: PackageUpdateGroup,
+    ) -> Vec<oneclient_core::BrowserPackageUpdate> {
         let (done, wait) = tokio::sync::oneshot::channel();
 
         self.with_engine(move |state| {
@@ -1672,71 +1699,7 @@ impl Actions {
             state.center_open = false;
         });
 
-        let _ = wait.await;
-    }
-
-    pub fn apply_package_update(&self, update: oneclient_core::BrowserPackageUpdate) {
-        let actions = self.clone();
-        spawn_forever(async move {
-            let Ok(state) = launcher::state() else { return };
-            let events = state.services.events.clone();
-
-            let session = oneclient_events::GroupedProgressSession::start(
-                &events,
-                format!("Updating {}", update.display_name),
-            );
-            let child = session.child(
-                update.display_name.clone(),
-                1,
-                oneclient_events::TaskCategory::Packages,
-            );
-
-            let result = oneclient_core::apply_browser_package_update(
-                &update,
-                Some(&child),
-                &state.services.content(),
-            )
-            .await;
-
-            child.finish();
-            let session_id = session.detach();
-
-            let spec = match &result {
-                Ok(_) => NotificationSpec {
-                    title: "Updated".to_string(),
-                    body: format!(
-                        "{} is now on {}",
-                        update.display_name, update.latest_version_name
-                    ),
-                    level: Level::Info,
-                    icon: Some(IconType::DownloadCloud02),
-                    progress: None,
-                    actions: Vec::new(),
-                },
-                Err(err) => NotificationSpec {
-                    title: "Update failed".to_string(),
-                    body: err.to_string(),
-                    level: Level::Error,
-                    icon: None,
-                    progress: None,
-                    actions: Vec::new(),
-                },
-            };
-
-            actions.with_engine(|app| {
-                app.notifications
-                    .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
-            });
-
-            // A failed update stays in the list so the user can retry
-            if result.is_ok() {
-                actions.with_engine(|app| {
-                    app.notifications
-                        .resolve_package_update(update.cluster_id, &update.hash);
-                });
-                super::invalidate_cluster_queries().await;
-            }
-        });
+        wait.await.unwrap_or_default()
     }
 
     /// The package stays marked out of date only the modal stops asking and

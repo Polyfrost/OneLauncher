@@ -247,15 +247,14 @@ fn content(
                                     }
 
                                     let answers = choices.read();
+                                    let mut chosen = Vec::new();
                                     for update in &all {
                                         match answers
                                             .get(&row_key(update))
                                             .copied()
                                             .unwrap_or_default()
                                         {
-                                            RowChoice::Update => {
-                                                proceed_dispatch.apply_package_update(update.clone());
-                                            }
+                                            RowChoice::Update => chosen.push(update.clone()),
                                             RowChoice::Skip => {}
                                             RowChoice::SkipVersion => proceed_dispatch
                                                 .skip_package_update(
@@ -264,7 +263,7 @@ fn content(
                                                 ),
                                         }
                                     }
-                                    proceed_dispatch.close_package_updates();
+                                    proceed_dispatch.proceed_package_updates(chosen);
                                 })
                                 .child(Icon::new(IconType::DownloadCloud02).size(15.))
                                 .text("Proceed"),

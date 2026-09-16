@@ -523,6 +523,7 @@ impl Component for AccountRow {
                 Button::new()
                     .ghost()
                     .icon()
+                    .tooltip("Refresh this account")
                     .on_press(move |e: Event<PressEventData>| {
                         e.stop_propagation();
                         if *refreshing.peek() {
@@ -548,7 +549,12 @@ impl Component for AccountRow {
                     .into_element()
             }))
             .child(
-                Button::new().ghost().icon().enabled(false).child(
+                Button::new()
+                    .ghost()
+                    .icon()
+                    .enabled(false)
+                    .tooltip("Edit")
+                    .child(
                     Icon::new(IconType::Pencil01)
                         .size(18.)
                         .color(colors::fg_secondary()),
@@ -558,6 +564,7 @@ impl Component for AccountRow {
                 Button::new()
                     .ghost()
                     .icon()
+                    .tooltip("Remove account")
                     .on_press(move |e: Event<PressEventData>| {
                         e.stop_propagation();
                         remove.mutate(RemoveAccountKeys { id });

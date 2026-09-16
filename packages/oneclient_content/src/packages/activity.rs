@@ -4,7 +4,9 @@
 
 use std::collections::HashMap;
 
-use oneclient_common::domain::ProviderId;
+use oneclient_common::domain::{ContentType, ProviderId};
+use oneclient_db::dao::applied_migration as migration_dao;
+use oneclient_db::dao::artifact as artifact_dao;
 
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
@@ -89,6 +91,91 @@ fn group_duplicates(
     by_project.into_iter().collect()
 }
 
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn disable_foreign_game_versions(
+    cluster_id: i64,
+    mc_version: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<String>> {
+    if mc_version.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+    let mut switched_off = Vec::new();
+
+    for info in linked
+        .iter()
+        .filter(|info| info.enabled && info.content_type == ContentType::Mod)
+    {
+        match switch_off_if_foreign(cluster_id, info, mc_version, ctx).await {
+            Ok(true) => switched_off.push(
+                info.display_name
+                    .clone()
+                    .unwrap_or_else(|| info.file_name.clone()),
+            ),
+            Ok(false) => {}
+            Err(err) => tracing::warn!(
+                cluster_id,
+                hash = %info.hash,
+                %err,
+                "could not switch off a mod built for another game version"
+            ),
+        }
+    }
+
+    Ok(switched_off)
+}
+
+const FOREIGN_VERSION_REPAIR: &str = "disable-foreign-game-version";
+
+async fn switch_off_if_foreign(
+    cluster_id: i64,
+    info: &LinkedArtifactInfo,
+    mc_version: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<bool> {
+    let repair_id = format!("{FOREIGN_VERSION_REPAIR}:{cluster_id}:{mc_version}:{}", info.hash);
+    if migration_dao::is_applied(&ctx.db, &repair_id).await? {
+        return Ok(false);
+    }
+
+    let stated = artifact_dao::list_release_game_versions(&ctx.db, &info.hash).await?;
+    if !built_for_another_game_version(&stated, mc_version) {
+        return Ok(false);
+    }
+
+    tracing::info!(
+        cluster_id,
+        hash = %info.hash,
+        built_for = ?stated,
+        "switching off a mod built for another game version"
+    );
+
+    PackageStore::set_artifact_enabled_to(cluster_id, &info.hash, false, ctx).await?;
+    migration_dao::mark_applied(&ctx.db, &repair_id).await?;
+
+    Ok(true)
+}
+
+fn built_for_another_game_version(stated: &[String], mc_version: &str) -> bool {
+    !stated.is_empty()
+        && !stated.iter().any(|versions| {
+            let built_for: Vec<String> = serde_json::from_str(versions).unwrap_or_default();
+            covers_game_version(&built_for, mc_version)
+        })
+}
+
+fn covers_game_version(stated: &[String], mc_version: &str) -> bool {
+    stated.is_empty()
+        || stated.iter().any(|version| {
+            version == mc_version
+                || mc_version
+                    .strip_prefix(version.as_str())
+                    .is_some_and(|rest| rest.starts_with('.'))
+        })
+}
+
 /// `published_at` is RFC 3339 so string order matches time order
 /// undated copies lose to dated ones and an all-undated group still picks one
 fn newest<'a>(copies: impl IntoIterator<Item = &'a Copy>) -> Option<String> {
@@ -163,6 +250,41 @@ mod tests {
         let picked = newest(&copies(&[("a", false, None), ("b", false, None)]));
 
         assert!(picked.is_some(), "a group with no dates must not go unresolved");
+    }
+
+    #[test]
+    fn only_a_stated_mismatch_switches_a_mod_off() {
+        let foreign = |rows: &[&str]| {
+            built_for_another_game_version(
+                &rows.iter().map(|r| (*r).to_string()).collect::<Vec<_>>(),
+                "26.1.2",
+            )
+        };
+
+        assert!(!foreign(&[]), "a jar no provider ever described is left alone");
+        assert!(!foreign(&["[]"]), "an empty list is the provider saying nothing");
+        assert!(!foreign(&["[\"1.21.11"]), "a list that will not parse says nothing");
+        assert!(!foreign(&["[\"26.1.2\"]"]));
+        assert!(
+            !foreign(&["[\"1.21.11\",\"26.1.2\"]"]),
+            "a multi-version build stays"
+        );
+        assert!(
+            !foreign(&["[\"1.21.11\"]", "[\"26.1.2\"]"]),
+            "one release row out of two is enough to keep it"
+        );
+        assert!(
+            foreign(&["[\"1.21.11\"]"]),
+            "the jars the old stash dragged in have to go"
+        );
+        assert!(
+            !foreign(&["[\"26.1\"]"]),
+            "a build for the release this cluster was migrated from stays"
+        );
+        assert!(
+            foreign(&["[\"1.21.1\"]"]),
+            "a shorter version that is not a component prefix is still foreign"
+        );
     }
 
     #[test]

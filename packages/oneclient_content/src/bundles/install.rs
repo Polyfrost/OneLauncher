@@ -1,4 +1,5 @@
 use futures_util::StreamExt;
+use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
@@ -202,12 +203,54 @@ pub(crate) fn disable_was_deliberate(suppression: Option<OverrideType>) -> bool 
     }
 }
 
+const DUPLICATE_DISABLE_REPAIR: &str = "repair-hidden-duplicate-disables";
+
+async fn clear_reconciler_disables(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let id = format!("{DUPLICATE_DISABLE_REPAIR}:{cluster_id}");
+    if migration_dao::is_applied(&ctx.db, &id).await? {
+        return Ok(());
+    }
+
+    let hidden: std::collections::HashSet<String> = archives
+        .iter()
+        .flat_map(|archive| &archive.manifest.files)
+        .filter(|file| file.hidden)
+        .map(|file| file.kind.package_id())
+        .collect();
+
+    if hidden.is_empty() {
+        return Ok(());
+    }
+
+    let mut cleared = 0u64;
+    for package_id in &hidden {
+        cleared += bundle_dao::clear_disabled_overrides(&ctx.db, cluster_id, package_id).await?;
+    }
+
+    if cleared > 0 {
+        tracing::info!(
+            cluster_id,
+            cleared,
+            "cleared disabled overrides on hidden bundle files that no user was ever shown"
+        );
+    }
+
+    migration_dao::mark_applied(&ctx.db, &id).await?;
+    Ok(())
+}
+
 #[tracing::instrument(level = "debug", skip(archives, ctx))]
 pub async fn heal_bundle_activity(
     cluster_id: i64,
     archives: &[BundleArchive],
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    clear_reconciler_disables(cluster_id, archives, ctx).await?;
+
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     if tracked.iter().all(|row| row.enabled != 0) {
         return Ok(());
@@ -226,10 +269,20 @@ pub async fn heal_bundle_activity(
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
 
+    let mut live_packages: std::collections::HashSet<String> = tracked
+        .iter()
+        .filter(|row| row.enabled != 0)
+        .filter_map(|row| row.package_id.clone())
+        .collect();
+
     for row in tracked.iter().filter(|row| row.enabled == 0) {
         let (Some(bundle_name), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
             continue;
         };
+
+        if live_packages.contains(package_id) {
+            continue;
+        }
         let Some(is_hidden) = hidden
             .get(&(bundle_name.as_str(), package_id.clone()))
             .copied()
@@ -261,6 +314,8 @@ pub async fn heal_bundle_activity(
             tracing::warn!(hash = %row.hash, error = %err, "failed to re-enable bundle content");
             continue;
         }
+
+        live_packages.insert(package_id.clone());
     }
 
     Ok(())
@@ -584,21 +639,6 @@ pub async fn set_artifact_enabled_to(
     Ok(live)
 }
 
-/// Writes the override alongside the flag
-/// without it the losing bundle copy looks disabled-by-nobody and
-/// heal_bundle_activity re-enables it every launch
-#[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn reconcile_duplicate_activity(
-    cluster_id: i64,
-    ctx: &ContentCtx,
-) -> ContentResult<()> {
-    for hash in crate::packages::reconcile_duplicate_activity(cluster_id, ctx).await? {
-        on_user_disable_artifact(cluster_id, &hash, ctx).await?;
-    }
-
-    Ok(())
-}
-
 // which clusters have to record what the user just did
 async fn override_scope(
     cluster_id: i64,
@@ -709,13 +749,19 @@ pub async fn remove_artifact_from_cluster(
     artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
     // Best-effort folder cleanup failure here is not an error
-    if let (Some(content_type), Some(link)) = (target, link) {
-        try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
-    }
+    let deferred = match (target, link) {
+        (Some(content_type), Some(link)) => {
+            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await
+                == LiveSync::Deferred
+        }
+        _ => false,
+    };
 
     // The package actually lives in the cache
     // `evict_if_unused` drops it only once no other cluster still needs it
-    if let Err(err) = evict_if_unused(hash, ctx).await {
+    if !deferred
+        && let Err(err) = evict_if_unused(hash, ctx).await
+    {
         tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
     }
 

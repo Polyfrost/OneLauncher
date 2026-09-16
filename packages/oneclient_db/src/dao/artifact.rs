@@ -234,6 +234,19 @@ pub async fn get_release_by_hash(
 	.await
 }
 
+pub async fn list_release_game_versions(
+	pool: &SqlitePool,
+	hash: &str,
+) -> Result<Vec<String>, sqlx::Error> {
+	let rows: Vec<(String,)> =
+		sqlx::query_as("SELECT mc_versions FROM provider_releases WHERE hash = ?")
+			.bind(hash)
+			.fetch_all(pool)
+			.await?;
+
+	Ok(rows.into_iter().map(|(versions,)| versions).collect())
+}
+
 pub async fn link_cluster_artifact(
 	pool: &SqlitePool,
 	cluster_id: i64,

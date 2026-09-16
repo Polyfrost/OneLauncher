@@ -365,6 +365,7 @@ impl Component for FilterButton {
                 Button::new()
                     .secondary()
                     .icon()
+                    .tooltip("Sort and filter")
                     .width(Size::px(FILTER_BTN_W))
                     .height(Size::px(34.))
                     .on_press(move |e: Event<PressEventData>| {
@@ -688,6 +689,7 @@ impl Component for ContentBox {
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::fill())
+                    .scrollbar_gutter(true)
                     .lazy(count, CARD_H, CARD_SPACING, move |i| {
                         let item = items[i].clone();
                         let key = item.package_id.clone();
@@ -701,6 +703,7 @@ impl Component for ContentBox {
             CardLayout::Grid => ScrollArea::new()
                 .width(Size::fill())
                 .height(Size::fill())
+                .scrollbar_gutter(true)
                 .content(move |ctx: ScrollAreaCtx| {
                     grid_content(&items, package_type, cluster_id, ctx).into_element()
                 })

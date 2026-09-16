@@ -136,8 +136,6 @@ enum Range {
     Quarter,
 }
 
-const COMPACT_CARD_WIDTH_PX: f32 = 480.;
-
 impl Range {
     fn days(self) -> usize {
         match self {
@@ -161,7 +159,7 @@ impl DailyChart {
 
 impl Component for DailyChart {
     fn render(&self) -> impl IntoElement {
-        let mut range = use_state(|| Range::TwoWeeks);
+        let range = use_state(|| Range::TwoWeeks);
         let mut offset = use_state(|| 0usize);
         let custom = use_state(|| Option::<DateRange>::None);
 
@@ -243,18 +241,15 @@ impl Component for DailyChart {
             .child(DateRangePicker::new(custom, (first_day, last_day)).height(30.))
             .into_element();
 
-        measured_card(
-            card_width,
-            chart_card(
-                "Daily playtime",
-                subtitle,
-                Some(nav),
-                BarChart::new(values, labels)
-                    .unit(ValueUnit::Duration)
-                    .gap(3.)
-                    .into_element(),
-            ),
-        )
+		chart_card(
+			"Daily playtime",
+			subtitle,
+			Some(nav),
+			BarChart::new(values, labels)
+				.unit(ValueUnit::Duration)
+				.gap(3.)
+				.into_element(),
+		)
     }
 }
 

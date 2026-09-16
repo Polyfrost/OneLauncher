@@ -16,7 +16,8 @@ pub use link::{
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 
 use oneclient_db::dao::{
-    artifact as artifact_dao, cluster as cluster_dao, package_metadata as meta_dao,
+    artifact as artifact_dao, cluster as cluster_dao, cluster_bundle as bundle_dao,
+    package_metadata as meta_dao,
 };
 use oneclient_db::models::{ArtifactRow, ClusterRow, SeenStatus};
 
@@ -121,6 +122,9 @@ impl PackageStore {
 
         let enabled = Self::link_artifact(&artifact, &cluster, None, ctx).await?;
 
+        Self::replace_other_versions(cluster_id, provider_id, &project.id, &artifact.hash, ctx)
+            .await?;
+
         let live = if enabled {
             link::try_link_materialized(&cluster, &artifact, &artifact.file_name).await
         } else {
@@ -128,6 +132,80 @@ impl PackageStore {
         };
 
         Ok((artifact, live))
+    }
+
+    /// Bundle-owned copies are stepped over
+    /// unlinking one here would have the next bundle sync put it straight back
+    #[tracing::instrument(level = "debug", skip(ctx))]
+    pub async fn replace_other_versions(
+        cluster_id: i64,
+        provider: ProviderId,
+        project_id: &str,
+        keep_hash: &str,
+        ctx: &ContentCtx,
+    ) -> ContentResult<()> {
+        let others = artifact_dao::list_cluster_artifacts_for_project(
+            &ctx.db,
+            cluster_id,
+            provider as i64,
+            project_id,
+            keep_hash,
+        )
+        .await?;
+
+        for link in others {
+            if bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, &link.hash)
+                .await?
+                .is_some()
+            {
+                tracing::debug!(
+                    hash = %link.hash,
+                    "leaving a bundle-owned version of the project in place"
+                );
+                continue;
+            }
+
+            tracing::info!(
+                cluster_id,
+                project_id,
+                hash = %link.hash,
+                "dropping a superseded version of the project"
+            );
+            Self::unlink_superseded(cluster_id, &link.hash, ctx).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Not `bundles::remove_artifact_from_cluster`
+    /// `packages` must not depend on `bundles` and its override reconciliation
+    /// does not apply here
+    #[tracing::instrument(level = "debug", skip(ctx))]
+    async fn unlink_superseded(
+        cluster_id: i64,
+        hash: &str,
+        ctx: &ContentCtx,
+    ) -> ContentResult<()> {
+        let cluster = Self::get_cluster(cluster_id, ctx).await?;
+        let content_type = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+            .await?
+            .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
+        let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+
+        artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+
+        if let (Some(content_type), Some(link)) = (content_type, link)
+            && link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await
+                == LiveSync::Deferred
+        {
+            return Ok(());
+        }
+
+        if let Err(err) = gc::evict_if_unused(hash, ctx).await {
+            tracing::warn!(hash, error = %err, "failed to evict the superseded artifact");
+        }
+
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(artifact, cluster, ctx))]

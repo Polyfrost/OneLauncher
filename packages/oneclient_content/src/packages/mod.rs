@@ -18,7 +18,7 @@ pub use metadata_cache::{
     CachedPackageMeta, cached_project_detail, fetch_package_meta, get_version_cached,
     read_cached_package_meta,
 };
-pub use activity::reconcile_duplicate_activity;
+pub use activity::{disable_foreign_game_versions, reconcile_duplicate_activity};
 pub use dependencies::{
     DependencyResolution, ResolvedDependency, resolve_required, resolves_dependencies,
 };

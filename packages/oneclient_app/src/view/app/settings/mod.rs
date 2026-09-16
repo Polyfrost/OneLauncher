@@ -24,10 +24,8 @@ pub use minecraft::SettingsMinecraft;
 pub use storage::SettingsStorage;
 
 use crate::{
-    components::{Button, Icon, IconType, OverlayPopup},
-    hooks::ResetNotice,
+    components::{Button, Icon, IconType},
     theme::colors,
-    ui::border_all_color,
 };
 
 pub fn settings_page() -> Rect {
@@ -107,131 +105,67 @@ fn settings_row_inner(
         .into_element()
 }
 
-pub fn take_notice(mut announce: State<bool>, notice: ResetNotice) -> Option<ResetNotice> {
-    if !*announce.peek() {
-        return None;
-    }
-    announce.set(false);
-    Some(notice)
+#[derive(PartialEq)]
+struct ResetButton<T: Clone + PartialEq + 'static> {
+    values: Vec<(State<T>, T)>,
 }
 
-const RESET_BLOCKED: &str =
-    "Minecraft is running. Close the game before resetting these options.";
+impl<T: Clone + PartialEq + 'static> Component for ResetButton<T> {
+    fn render(&self) -> impl IntoElement {
+        let at_default = self
+            .values
+            .iter()
+            .all(|(value, default)| *value.read() == *default);
 
-pub fn reset_row(
-    mut confirming: State<bool>,
-    blocked: bool,
-    description: &'static str,
-    summary: &'static str,
-    on_reset: EventHandler<()>,
-) -> Element {
-    let row = if blocked {
-        settings_row_disabled(
-            IconType::RefreshCw01,
-            "Reset to defaults",
-            RESET_BLOCKED,
-            Button::new().danger().small().disabled(true).text("Reset"),
-        )
-        .into_element()
-    } else {
-        settings_row(
-            IconType::RefreshCw01,
-            "Reset to defaults",
-            description,
-            Button::new()
-                .danger()
-                .small()
-                .on_press(move |_| confirming.set(true))
-                .text("Reset"),
-        )
-        .into_element()
-    };
+        let values = self.values.clone();
 
-    let mut section = rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(4.)
-        .child(section_header("RESET"))
-        .child(row);
-
-    if blocked {
-        if *confirming.peek() {
-            confirming.set(false);
-        }
-    } else if *confirming.read() {
-        section = section.child(confirm_reset(confirming, summary, on_reset));
+        Button::new()
+            .ghost()
+            .icon()
+            .disabled(at_default)
+            .alt(if at_default {
+                "Already at the default"
+            } else {
+                "Reset to default"
+            })
+            .on_press(move |_| {
+                for (value, default) in &values {
+                    let mut value = *value;
+                    value.set(default.clone());
+                }
+            })
+            .child(
+                Icon::new(IconType::RefreshCcw02)
+                    .size(14.)
+                    .color(colors::fg_secondary()),
+            )
     }
-
-    section.into_element()
 }
 
-fn confirm_reset(
-    mut confirming: State<bool>,
-    summary: &'static str,
-    on_reset: EventHandler<()>,
-) -> Element {
-    let card = rect()
-        .vertical()
-        .width(Size::px(440.))
-        .max_width(Size::window_percent(90.))
-        .spacing(14.)
-        .padding(Gaps::new_all(20.))
-        .corner_radius(CornerRadius::new_all(14.))
-        .background(colors::page_elevated())
-        .border(border_all_color(1., colors::component_border()))
-        .child(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(10.)
-                .child(Icon::new(IconType::RefreshCw01).size(20.))
-                .child(
-                    label()
-                        .text("Reset to defaults?")
-                        .font_size(16.)
-                        .font_weight(FontWeight::SEMI_BOLD)
-                        .color(colors::fg_primary()),
-                ),
-        )
-        .child(
-            label()
-                .text(summary)
-                .font_size(12.)
-                .max_lines(8)
-                .width(Size::fill())
-                .color(colors::fg_secondary()),
-        )
-        .child(
-            rect()
-                .horizontal()
-                .width(Size::fill())
-                .main_align(Alignment::End)
-                .spacing(8.)
-                .child(
-                    Button::new()
-                        .secondary()
-                        .on_press(move |_| confirming.set(false))
-                        .text("Cancel"),
-                )
-                .child(
-                    Button::new()
-                        .danger()
-                        .on_press(move |_| {
-                            on_reset.call(());
-                            confirming.set(false);
-                        })
-                        .text("Reset"),
-                ),
-        );
-
-    OverlayPopup::new()
-        .on_close(move |_| confirming.set(false))
-        .child(
-            rect()
-                .width(Size::window_percent(100.))
-                .height(Size::window_percent(100.))
-                .center()
-                .child(card),
-        )
+fn with_reset<T: Clone + PartialEq + 'static>(
+    control: impl IntoElement,
+    values: Vec<(State<T>, T)>,
+) -> impl IntoElement {
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(8.)
+        .child(control)
+        .child(ResetButton { values })
         .into_element()
+}
+
+pub fn resettable<T: Clone + PartialEq + 'static>(
+    control: impl IntoElement,
+    value: State<T>,
+    default: T,
+) -> impl IntoElement {
+    with_reset(control, vec![(value, default)])
+}
+
+pub fn resettable_all<T: Clone + PartialEq + 'static>(
+    control: impl IntoElement,
+    values: Vec<(State<T>, T)>,
+) -> impl IntoElement {
+    with_reset(control, values)
 }

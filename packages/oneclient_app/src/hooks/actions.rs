@@ -96,12 +96,6 @@ pub enum PumpSignal {
     ResumeToasts,
 }
 
-#[derive(Clone, Copy)]
-pub struct ResetNotice {
-    pub title: &'static str,
-    pub body: &'static str,
-}
-
 #[derive(Clone)]
 pub struct Actions {
     station: RadioStation<AppState, AppChannel>,
@@ -254,11 +248,7 @@ impl Actions {
         self.mutate_settings(edit);
     }
 
-    pub fn edit_settings_notifying(
-        &self,
-        notice: Option<ResetNotice>,
-        edit: impl FnOnce(&mut LauncherSettings),
-    ) {
+    pub fn edit_settings(&self, edit: impl FnOnce(&mut LauncherSettings)) {
         let Some(updated) = self.mutate_settings(edit) else {
             return;
         };
@@ -269,39 +259,10 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
-            match save_settings_and_apply(&state.services, &updated).await {
-                Ok(()) => {
-                    if let Some(notice) = notice {
-                        actions.announce_reset(notice);
-                    }
-                }
-                Err(err) => match notice {
-                    Some(notice) => actions.announce_reset_failed(notice, &err.to_string()),
-                    None => actions.set_settings_error(Some(err.to_string())),
-                },
+            if let Err(err) = save_settings_and_apply(&state.services, &updated).await {
+                actions.set_settings_error(Some(err.to_string()));
             }
         });
-    }
-
-    fn announce_reset(&self, notice: ResetNotice) {
-        self.notify(notice.title)
-            .body(notice.body)
-            .icon(IconType::RefreshCw01)
-            .send();
-    }
-
-    fn announce_reset_failed(&self, notice: ResetNotice, err: &str) {
-        self.set_settings_error(Some(err.to_string()));
-        self.notify(notice.title)
-            .body(format!(
-                "Reset, but saving failed: {err}. The change is lost when OneClient restarts."
-            ))
-            .error()
-            .send();
-    }
-
-    pub fn edit_settings(&self, edit: impl FnOnce(&mut LauncherSettings)) {
-        self.edit_settings_notifying(None, edit);
     }
 
     /// Not persisted the next real save carries the seen versions along
@@ -397,14 +358,6 @@ impl Actions {
     }
 
     pub fn update_global_profile(&self, update: ProfileUpdate) {
-        self.update_global_profile_notifying(update, None);
-    }
-
-    pub fn update_global_profile_notifying(
-        &self,
-        update: ProfileUpdate,
-        notice: Option<ResetNotice>,
-    ) {
         let actions = self.clone();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
@@ -412,16 +365,10 @@ impl Actions {
             update.apply(&mut global);
             if let Err(err) = save_global_profile(&state.settings, global).await {
                 tracing::error!("failed to update the global profile: {err:#}");
-                if let Some(notice) = notice {
-                    actions.announce_reset_failed(notice, &err.to_string());
-                }
                 return;
             }
             actions.mutate_settings(|_| {});
             super::invalidate_profile_queries().await;
-            if let Some(notice) = notice {
-                actions.announce_reset(notice);
-            }
         });
     }
 

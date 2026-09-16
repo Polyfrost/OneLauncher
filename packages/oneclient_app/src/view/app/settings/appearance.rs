@@ -3,15 +3,10 @@ use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
 use crate::components::{Icon, IconType, toggle};
-use crate::hooks::{ResetNotice, use_dispatch, use_game_active, use_settings_snapshot};
+use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::view::app::settings::{reset_row, settings_row, settings_row_disabled, take_notice};
-
-const RESET_NOTICE: ResetNotice = ResetNotice {
-    title: "Appearance reset",
-    body: "The parallax background and animations are back on.",
-};
+use crate::view::app::settings::{resettable, settings_row, settings_row_disabled};
 
 #[derive(Clone, Copy)]
 struct ThemePreview {
@@ -55,23 +50,23 @@ pub struct SettingsAppearance;
 
 impl Component for SettingsAppearance {
     fn render(&self) -> impl IntoElement {
-        let mut selected_theme = use_state(|| 0usize);
+        let selected_theme = use_state(|| 0usize);
 
         let settings = use_settings_snapshot().settings;
+        let defaults = LauncherSettings::default();
         let dispatch = use_dispatch();
 
-        let mut dynamic_bg = use_state({
+        let dynamic_bg = use_state({
             let v = settings.dynamic_background_enabled;
             move || v
         });
 
-        let mut animations_on = use_state({
+        let animations_on = use_state({
             let v = settings.animations_enabled;
             move || v
         });
 
         let mut first = use_state(|| true);
-        let mut announce = use_state(|| false);
         {
             let dispatch = dispatch.clone();
             use_side_effect(move || {
@@ -81,22 +76,12 @@ impl Component for SettingsAppearance {
                     first.set(false);
                     return;
                 }
-                dispatch.edit_settings_notifying(take_notice(announce, RESET_NOTICE), |settings| {
+                dispatch.edit_settings(|settings| {
                     settings.dynamic_background_enabled = parallax;
                     settings.animations_enabled = animations;
                 });
             });
         }
-
-        let game_active = use_game_active();
-        let confirming_reset = use_state(|| false);
-        let reset = move |()| {
-            let defaults = LauncherSettings::default();
-            announce.set(true);
-            selected_theme.set(0);
-            dynamic_bg.set(defaults.dynamic_background_enabled);
-            animations_on.set(defaults.animations_enabled);
-        };
 
         settings_page()
             .child(theme_section(selected_theme))
@@ -108,8 +93,11 @@ impl Component for SettingsAppearance {
                     .padding(Gaps::new(8., 0., 0., 0.))
                     .child(accent_color_row())
                     .child(custom_theme_row())
-                    .child(dynamic_background_row(dynamic_bg))
-                    .child(animations_row(animations_on)),
+                    .child(dynamic_background_row(
+                        dynamic_bg,
+                        defaults.dynamic_background_enabled,
+                    ))
+                    .child(animations_row(animations_on, defaults.animations_enabled)),
             )
             .child(
                 rect().padding(Gaps::new(8., 0., 0., 0.)).child(
@@ -119,13 +107,6 @@ impl Component for SettingsAppearance {
                         .color(colors::fg_primary()),
                 ),
             )
-            .child(reset_row(
-                confirming_reset,
-                game_active,
-                "Put the options on this page back to their defaults.",
-                "The parallax background and animations go back on.",
-                reset.into(),
-            ))
             .into_element()
     }
 }
@@ -272,20 +253,20 @@ fn custom_theme_row() -> impl IntoElement {
     )
 }
 
-fn dynamic_background_row(enabled: State<bool>) -> impl IntoElement {
+fn dynamic_background_row(enabled: State<bool>, default: bool) -> impl IntoElement {
     settings_row(
         IconType::Eye,
         "Parallax background",
         "Make the home screen background drift with your cursor. Turning it off keeps the background but disables the motion.",
-        toggle(enabled),
+        resettable(toggle(enabled), enabled, default),
     )
 }
 
-fn animations_row(animations_on: State<bool>) -> impl IntoElement {
+fn animations_row(animations_on: State<bool>, default: bool) -> impl IntoElement {
     settings_row(
         IconType::Play,
         "Animations",
         "Disable all launcher animations and transitions.",
-        toggle(animations_on),
+        resettable(toggle(animations_on), animations_on, default),
     )
 }

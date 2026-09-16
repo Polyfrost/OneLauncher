@@ -6,22 +6,15 @@ use oneclient_core::relocate::RelocationPlan;
 use oneclient_core::settings::{LauncherSettings, data_dir};
 use oneclient_core::storage::format_bytes;
 
-use super::{reset_row, section_header, settings_page, settings_row, take_notice};
+use super::{resettable, section_header, settings_page, settings_row};
 use crate::Route;
 use crate::components::{Button, Icon, IconType, OverlayPopup, open_folder_button, toggle};
 use crate::hooks::{
-    Actions, DiscardLeftoversKeys, ResetNotice, mutation_error, mutation_is_running, try_leftovers,
-    use_discard_leftovers, use_dispatch, use_game_active, use_launcher, use_leftovers,
-    use_settings_snapshot,
+    Actions, DiscardLeftoversKeys, mutation_error, mutation_is_running, try_leftovers,
+    use_discard_leftovers, use_dispatch, use_launcher, use_leftovers, use_settings_snapshot,
 };
 use crate::theme::colors;
 use crate::ui::{border_all_color, note, path_block};
-
-const RESET_NOTICE: ResetNotice = ResetNotice {
-    title: "Launcher settings reset",
-    body: "Discord RPC, crash reporting and the window size are back to their defaults. \
-           Restart OneClient to finish applying them.",
-};
 
 #[derive(PartialEq)]
 pub struct SettingsLauncher;
@@ -29,25 +22,25 @@ pub struct SettingsLauncher;
 impl Component for SettingsLauncher {
     fn render(&self) -> impl IntoElement {
         let settings = use_settings_snapshot().settings;
+        let defaults = LauncherSettings::default();
         let dispatch = use_dispatch();
 
-        let mut discord_rpc = use_state({
+        let discord_rpc = use_state({
             let v = settings.discord_enabled;
             move || v
         });
 
-        let mut crash_reporting = use_state({
+        let crash_reporting = use_state({
             let v = settings.crash_reporting;
             move || v
         });
 
-        let mut start_maximized = use_state({
+        let start_maximized = use_state({
             let v = settings.start_maximized;
             move || v
         });
 
         let mut first = use_state(|| true);
-        let mut announce = use_state(|| false);
         {
             let dispatch = dispatch.clone();
             use_side_effect(move || {
@@ -58,23 +51,13 @@ impl Component for SettingsLauncher {
                     first.set(false);
                     return;
                 }
-                dispatch.edit_settings_notifying(take_notice(announce, RESET_NOTICE), |settings| {
+                dispatch.edit_settings(|settings| {
                     settings.discord_enabled = discord;
                     settings.crash_reporting = crash;
                     settings.start_maximized = maximized;
                 });
             });
         }
-
-        let game_active = use_game_active();
-        let confirming_reset = use_state(|| false);
-        let reset = move |()| {
-            let defaults = LauncherSettings::default();
-            announce.set(true);
-            discord_rpc.set(defaults.discord_enabled);
-            crash_reporting.set(defaults.crash_reporting);
-            start_maximized.set(defaults.start_maximized);
-        };
 
         // The only way back for someone who declined during onboarding
         let consent_summary = if settings.declined_tos {
@@ -96,19 +79,27 @@ impl Component for SettingsLauncher {
                 IconType::Link03,
                 "Discord RPC",
                 "Enable Discord Rich Presence.",
-                toggle(discord_rpc),
+                resettable(toggle(discord_rpc), discord_rpc, defaults.discord_enabled),
             ))
             .child(settings_row(
                 IconType::AlertTriangle,
                 "Crash Reporting",
                 "Send anonymous crash and error reports to help fix bugs. Applies on restart.",
-                toggle(crash_reporting),
+                resettable(
+                    toggle(crash_reporting),
+                    crash_reporting,
+                    defaults.crash_reporting,
+                ),
             ))
             .child(settings_row(
                 IconType::Maximize01,
                 "Start Maximized",
                 "Open the launcher window maximized. Applies on restart.",
-                toggle(start_maximized),
+                resettable(
+                    toggle(start_maximized),
+                    start_maximized,
+                    defaults.start_maximized,
+                ),
             ))
             .child(settings_row(
                 IconType::File02,
@@ -118,17 +109,6 @@ impl Component for SettingsLauncher {
             ))
             .child(section_header("FOLDERS AND FILES"))
             .child(DataFolder.into_element())
-            .child(reset_row(
-                confirming_reset,
-                game_active,
-                "Put the options on this page back to their defaults. Your launcher folder \
-                 and your answer to the terms are left alone.",
-                "Discord RPC, Crash Reporting and Start Maximized go back to their defaults. \
-                 Your Launcher Folder stays where it is, and your answer to the Terms & \
-                 Privacy notice is not changed. Crash reporting and the window size take \
-                 effect the next time OneClient starts.",
-                reset.into(),
-            ))
             .into_element()
     }
 }

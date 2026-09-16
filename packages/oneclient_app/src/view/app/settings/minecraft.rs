@@ -12,15 +12,9 @@ use super::settings_page;
 use crate::components::{
     Dropdown, Icon, IconType, TextInput, memory_field, toggle, validate_number,
 };
-use crate::hooks::{ResetNotice, use_dispatch, use_game_active, use_settings_snapshot};
+use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
-use crate::view::app::settings::{reset_row, section_header, settings_row, take_notice};
-
-const RESET_NOTICE: ResetNotice = ResetNotice {
-    title: "Minecraft settings reset",
-    body: "Window, memory, arguments, commands and the browser update mode are back to \
-           their defaults. Your Java installations are untouched.",
-};
+use crate::view::app::settings::{resettable, resettable_all, section_header, settings_row};
 
 #[derive(PartialEq)]
 pub struct SettingsMinecraft;
@@ -29,58 +23,59 @@ impl Component for SettingsMinecraft {
     fn render(&self) -> impl IntoElement {
         let settings = use_settings_snapshot().settings;
         let profile = settings.global_game_settings.clone();
+        let defaults = GameSettingsProfile::default_global_profile();
         let dispatch = use_dispatch();
 
-        let mut fullscreen = use_state({
+        let fullscreen = use_state({
             let v = profile.force_fullscreen.unwrap_or(false);
             move || v
         });
-        let mut width = use_state({
+        let width = use_state({
             let v = profile
                 .resolution
                 .map(|r| r.width.to_string())
                 .unwrap_or_default();
             move || v
         });
-        let mut height = use_state({
+        let height = use_state({
             let v = profile
                 .resolution
                 .map(|r| r.height.to_string())
                 .unwrap_or_default();
             move || v
         });
-        let mut memory = use_state({
+        let memory = use_state({
             let v = profile.mem_max.map(|m| m.to_string()).unwrap_or_default();
             move || v
         });
-        let mut jvm_args = use_state({
+        let jvm_args = use_state({
             let v = profile.launch_args.clone().unwrap_or_default();
             move || v
         });
-        let mut pre_launch_command = use_state({
+        let pre_launch_command = use_state({
             let v = profile.hook_pre.clone().unwrap_or_default();
             move || v
         });
-        let mut wrapper_command = use_state({
+        let wrapper_command = use_state({
             let v = profile.hook_wrapper.clone().unwrap_or_default();
             move || v
         });
-        let mut post_exit_command = use_state({
+        let post_exit_command = use_state({
             let v = profile.hook_post.clone().unwrap_or_default();
             move || v
         });
-        let mut update_mode = use_state({
+        let update_mode = use_state({
             let v = profile.browser_update_mode.unwrap_or_default();
             move || v
         });
 
         #[cfg(windows)]
-        let mut discrete_gpu = use_state({
+        let discrete_gpu = use_state({
             let v = settings.use_discrete_gpu;
             move || v
         });
         #[cfg(target_os = "linux")]
-        let mut discrete_gpu = use_state({
+        let discrete_gpu = use_state({
             let v = profile
                 .os_extra
                 .as_ref()
@@ -90,7 +85,6 @@ impl Component for SettingsMinecraft {
         });
 
         let mut first = use_state(|| true);
-        let mut announce = use_state(|| false);
         {
             let dispatch = dispatch.clone();
             use_side_effect(move || {
@@ -117,46 +111,14 @@ impl Component for SettingsMinecraft {
                 #[cfg(target_os = "linux")]
                 let update = with_discrete_gpu(update, gpu);
 
-                dispatch.update_global_profile_notifying(
-                    update,
-                    take_notice(announce, RESET_NOTICE),
-                );
+                dispatch.update_global_profile(update);
             });
         }
 
-        let game_active = use_game_active();
-        let confirming_reset = use_state(|| false);
-        let reset = move |()| {
-            let defaults = GameSettingsProfile::default_global_profile();
-            announce.set(true);
-            fullscreen.set(defaults.force_fullscreen.unwrap_or(false));
-            width.set(
-                defaults
-                    .resolution
-                    .map(|r| r.width.to_string())
-                    .unwrap_or_default(),
-            );
-            height.set(
-                defaults
-                    .resolution
-                    .map(|r| r.height.to_string())
-                    .unwrap_or_default(),
-            );
-            memory.set(defaults.mem_max.map(|m| m.to_string()).unwrap_or_default());
-            jvm_args.set(defaults.launch_args.clone().unwrap_or_default());
-            pre_launch_command.set(defaults.hook_pre.clone().unwrap_or_default());
-            wrapper_command.set(defaults.hook_wrapper.clone().unwrap_or_default());
-            post_exit_command.set(defaults.hook_post.clone().unwrap_or_default());
-            update_mode.set(defaults.browser_update_mode.unwrap_or_default());
-            #[cfg(windows)]
-            discrete_gpu.set(LauncherSettings::default().use_discrete_gpu);
-            #[cfg(target_os = "linux")]
-            discrete_gpu.set(
-                SettingsOsExtra::default()
-                    .use_discrete_gpu
-                    .unwrap_or(false),
-            );
-        };
+        #[cfg(windows)]
+        let discrete_gpu_default = LauncherSettings::default().use_discrete_gpu;
+        #[cfg(target_os = "linux")]
+        let discrete_gpu_default = SettingsOsExtra::default().use_discrete_gpu.unwrap_or(false);
 
         let page = settings_page()
             .child(section_header("GAME"))
@@ -164,59 +126,105 @@ impl Component for SettingsMinecraft {
                 IconType::Maximize01,
                 "Force Fullscreen",
                 "Force Minecraft to start in fullscreen mode.",
-                toggle(fullscreen),
+                resettable(
+                    toggle(fullscreen),
+                    fullscreen,
+                    defaults.force_fullscreen.unwrap_or(false),
+                ),
             ))
             .child(settings_row(
                 IconType::LayoutTop,
                 "Resolution",
                 "The game window resolution in pixels.",
-                resolution_field(width, height),
+                resettable_all(
+                    resolution_field(width, height),
+                    vec![
+                        (
+                            width,
+                            defaults
+                                .resolution
+                                .map(|r| r.width.to_string())
+                                .unwrap_or_default(),
+                        ),
+                        (
+                            height,
+                            defaults
+                                .resolution
+                                .map(|r| r.height.to_string())
+                                .unwrap_or_default(),
+                        ),
+                    ],
+                ),
             ))
             .child(settings_row(
                 IconType::Database01,
                 "Memory",
                 "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
-                memory_field(memory),
+                resettable(
+                    memory_field(memory),
+                    memory,
+                    defaults.mem_max.map(|m| m.to_string()).unwrap_or_default(),
+                ),
             ))
             .child(settings_row(
                 IconType::Terminal,
                 "JVM Arguments",
                 "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",
-                TextInput::new(jvm_args)
-                    .placeholder("-XX:+UseG1GC")
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(jvm_args)
+                        .placeholder("-XX:+UseG1GC")
+                        .width(Size::px(220.)),
+                    jvm_args,
+                    defaults.launch_args.clone().unwrap_or_default(),
+                ),
             ))
             .child(section_header("CONTENT"))
             .child(settings_row(
                 IconType::RefreshCw01,
                 "Browser Package Updates",
                 "What to do when content you installed from the browser has a newer version. Packs from bundles are not affected.",
-                update_mode_field(update_mode),
+                resettable(
+                    update_mode_field(update_mode),
+                    update_mode,
+                    defaults.browser_update_mode.unwrap_or_default(),
+                ),
             ))
             .child(section_header("PROCESS"))
             .child(settings_row(
                 IconType::FilePlus02,
                 "Pre-Launch Command",
                 "Command to run before launching the game.",
-                TextInput::new(pre_launch_command)
-                    .placeholder("echo 'Game started'")
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(pre_launch_command)
+                        .placeholder("echo 'Game started'")
+                        .width(Size::px(220.)),
+                    pre_launch_command,
+                    defaults.hook_pre.clone().unwrap_or_default(),
+                ),
             ))
             .child(settings_row(
                 IconType::ParagraphWrap,
                 "Wrapper Command",
                 "Command to run when launching the game.",
-                TextInput::new(wrapper_command)
-                    .placeholder("gamescope")
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(wrapper_command)
+                        .placeholder("gamescope")
+                        .width(Size::px(220.)),
+                    wrapper_command,
+                    defaults.hook_wrapper.clone().unwrap_or_default(),
+                ),
             ))
             .child(settings_row(
                 IconType::FileX02,
                 "Post-Exit Command",
                 "Command to run after exiting the game.",
-                TextInput::new(post_exit_command)
-                    .placeholder("echo 'Game exited'")
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(post_exit_command)
+                        .placeholder("echo 'Game exited'")
+                        .width(Size::px(220.)),
+                    post_exit_command,
+                    defaults.hook_post.clone().unwrap_or_default(),
+                ),
             ));
 
         #[cfg(windows)]
@@ -224,7 +232,7 @@ impl Component for SettingsMinecraft {
             IconType::Rocket02,
             "Prefer Dedicated GPU",
             "Ask Windows to run Java on the high-performance GPU.",
-            toggle(discrete_gpu),
+            resettable(toggle(discrete_gpu), discrete_gpu, discrete_gpu_default),
         ));
 
         #[cfg(target_os = "linux")]
@@ -234,20 +242,10 @@ impl Component for SettingsMinecraft {
                 IconType::Rocket02,
                 "Use Discrete GPU",
                 "Render the game on the dedicated graphics card. Does nothing on a machine with only one GPU, and draws noticeably more power on a laptop.",
-                toggle(discrete_gpu),
+                resettable(toggle(discrete_gpu), discrete_gpu, discrete_gpu_default),
             ));
 
-        page.child(reset_row(
-            confirming_reset,
-            game_active,
-            "Put the options on this page back to their defaults.",
-            "Force Fullscreen, Resolution, Memory, JVM Arguments, the three process commands, \
-             Browser Package Updates and the GPU preference all go back to their defaults. This \
-             is the global profile only: your Java installations, and any cluster that overrides \
-             these values, are left alone.",
-            reset.into(),
-        ))
-        .into_element()
+        page.into_element()
     }
 }
 

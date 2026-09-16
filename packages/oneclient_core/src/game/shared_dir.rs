@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::fs::FileType;
 use std::path::{Path, PathBuf};
 
+use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 
@@ -116,6 +117,11 @@ pub async fn materialize_content(
             let (title, body) = removal_notice(&disabled);
             services.events.notify(title).body(body).send();
         }
+    }
+
+    if mods_in_cluster {
+        clear_unlinked_mods_once(services, cluster, &cluster_dir.join(ContentType::Mod.folder_name()))
+            .await;
     }
 
     import_manual_content_with(services, cluster, game_dir, mods_in_cluster, true).await;
@@ -694,6 +700,62 @@ async fn link_desired(root: &Path, desired: &[Desired]) -> Vec<ManifestEntry> {
     }
 
     entries
+}
+
+const UNLINKED_MODS_REPAIR: &str = "clear-unlinked-mods";
+
+#[tracing::instrument(skip(services, cluster), fields(cluster_id = cluster.id), level = "debug")]
+async fn clear_unlinked_mods_once(services: &LauncherServices, cluster: &Cluster, mods_dir: &Path) {
+    let id = format!("{UNLINKED_MODS_REPAIR}:{}", cluster.id);
+    match migration_dao::is_applied(&services.db, &id).await {
+        Ok(true) => return,
+        Ok(false) => {}
+        Err(err) => {
+            tracing::warn!(error = %err, "cannot read the repair log; leaving the mods folder alone");
+            return;
+        }
+    }
+
+    let linked = match PackageStore::list_linked_artifacts(cluster.id, &services.content()).await {
+        Ok(linked) => linked,
+        Err(err) => {
+            tracing::warn!(error = %err, "cannot list links; leaving the mods folder alone");
+            return;
+        }
+    };
+
+    let ours = names_linked_here(&linked, ContentType::Mod);
+    let Ok(mut entries) = polyio::read_dir(mods_dir).await else {
+        mark_repair_applied(services, &id).await;
+        return;
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if name.starts_with('.')
+            || is_note(name)
+            || !has_content_extension(ContentType::Mod, name)
+            || ours.contains(name)
+        {
+            continue;
+        }
+
+        tracing::info!(file = name, "clearing a mod this cluster never linked");
+        if let Err(err) = remove_entry(&path).await {
+            tracing::warn!(file = name, error = %err, "failed to clear an unlinked mod");
+        }
+    }
+
+    mark_repair_applied(services, &id).await;
+}
+
+async fn mark_repair_applied(services: &LauncherServices, id: &str) {
+    if let Err(err) = migration_dao::mark_applied(&services.db, id).await {
+        tracing::warn!(repair = id, error = %err, "failed to record a one-time repair");
+    }
 }
 
 async fn drop_unmaterialized(dir: &Path, content_type: ContentType, entries: &[ManifestEntry]) {

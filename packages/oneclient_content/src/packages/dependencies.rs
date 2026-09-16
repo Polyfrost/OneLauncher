@@ -194,8 +194,17 @@ fn choose_version(
 }
 
 #[must_use]
+pub(crate) fn base_game_version(version: &str) -> &str {
+	version
+		.split_once('-')
+		.filter(|(base, _)| base.contains('.'))
+		.map_or(version, |(base, _)| base)
+}
+
+#[must_use]
 pub(crate) fn supports_game_version(game_versions: &[String], mc_version: &str) -> bool {
-	game_versions.is_empty() || game_versions.iter().any(|v| v == mc_version)
+	let wanted = base_game_version(mc_version);
+	game_versions.is_empty() || game_versions.iter().any(|v| base_game_version(v) == wanted)
 }
 
 fn fits_cluster(version: &VersionSummary, cluster: &ClusterRow, loader: GameLoader) -> bool {
@@ -229,6 +238,34 @@ mod tests {
 	use chrono::{TimeZone, Utc};
 
 	use super::*;
+
+	#[test]
+	fn a_version_is_offered_only_for_the_game_version_it_names() {
+		let offered = |stated: &[&str], mc_version: &str| {
+			supports_game_version(
+				&stated.iter().map(|v| (*v).to_string()).collect::<Vec<_>>(),
+				mc_version,
+			)
+		};
+
+		assert!(offered(&[], "26.3"), "an undescribed version is offered");
+		assert!(offered(&["26.3"], "26.3"));
+		assert!(
+			offered(&["26.3-rc-1"], "26.3"),
+			"a pre-release tag names the same game version"
+		);
+		assert!(offered(&["26.3"], "26.3-snapshot-10"));
+		assert!(
+			!offered(&["26.1"], "26.1.2"),
+			"strict where the launch-time check is lenient: #830 stopped 26.1 \
+			 builds being offered to a 26.1.2 cluster"
+		);
+		assert!(!offered(&["1.21.11"], "26.1.2"));
+		assert!(
+			!offered(&["rd-132211"], "rd-160052"),
+			"pre-classic names the build after the dash, so there is no tag to strip"
+		);
+	}
 
 	fn summary(
 		version_id: &str,

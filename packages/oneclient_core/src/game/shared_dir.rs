@@ -139,6 +139,7 @@ pub async fn materialize_content(
     match oneclient_content::packages::disable_foreign_game_versions(
         cluster.id,
         &cluster.mc_version,
+        cluster.mc_loader as i64,
         &services.content(),
     )
     .await

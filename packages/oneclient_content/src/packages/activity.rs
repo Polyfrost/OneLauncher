@@ -7,10 +7,12 @@ use std::collections::{HashMap, HashSet};
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
+use oneclient_db::dao::bundle as bundle_catalog_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
+use crate::packages::dependencies::base_game_version;
 use crate::packages::store::PackageStore;
 use crate::packages::types::LinkedArtifactInfo;
 
@@ -96,6 +98,7 @@ fn group_duplicates(
 pub async fn disable_foreign_game_versions(
     cluster_id: i64,
     mc_version: &str,
+    mc_loader: i64,
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<String>> {
     if mc_version.is_empty() {
@@ -105,9 +108,21 @@ pub async fn disable_foreign_game_versions(
     let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
 
     // bundle installs skip the compatibility check so launch must trust them too
+    let live_bundles: HashSet<String> =
+        bundle_catalog_dao::list_visible_for_version_loader(&ctx.db, mc_version, mc_loader)
+            .await?
+            .into_iter()
+            .filter_map(|row| row.name)
+            .collect();
+
     let from_bundle: HashSet<String> = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
         .await?
         .into_iter()
+        .filter(|row| {
+            row.bundle_name
+                .as_deref()
+                .is_some_and(|name| live_bundles.contains(name))
+        })
         .map(|row| row.hash)
         .collect();
 
@@ -175,11 +190,13 @@ fn built_for_another_game_version(stated: &[String], mc_version: &str) -> bool {
 }
 
 fn covers_game_version(stated: &[String], mc_version: &str) -> bool {
+    let wanted = base_game_version(mc_version);
     stated.is_empty()
         || stated.iter().any(|version| {
-            version == mc_version
-                || mc_version
-                    .strip_prefix(version.as_str())
+            let built_for = base_game_version(version);
+            built_for == wanted
+                || wanted
+                    .strip_prefix(built_for)
                     .is_some_and(|rest| rest.starts_with('.'))
         })
 }
@@ -292,6 +309,34 @@ mod tests {
         assert!(
             foreign(&["[\"1.21.1\"]"]),
             "a shorter version that is not a component prefix is still foreign"
+        );
+    }
+
+    #[test]
+    fn a_pre_release_tag_is_the_same_game_version() {
+        let foreign = |rows: &[&str], mc_version: &str| {
+            built_for_another_game_version(
+                &rows.iter().map(|r| (*r).to_string()).collect::<Vec<_>>(),
+                mc_version,
+            )
+        };
+
+        assert!(
+            !foreign(&["[\"26.3-rc-1\"]"], "26.3"),
+            "a jar built against the release candidate runs on the release"
+        );
+        assert!(!foreign(&["[\"26.3-snapshot-7\",\"26.3-pre-2\"]"], "26.3"));
+        assert!(
+            !foreign(&["[\"26.3\"]"], "26.3-snapshot-10"),
+            "and a snapshot cluster keeps the release build"
+        );
+        assert!(
+            !foreign(&["[\"26.3-rc-1\"]"], "26.3.1"),
+            "the component prefix still applies once the tag is off"
+        );
+        assert!(
+            foreign(&["[\"26.2-rc-1\"]"], "26.3"),
+            "stripping the tag must not blur two game versions together"
         );
     }
 

@@ -103,6 +103,7 @@ pub enum IconType {
     Copy01,
     Curseforge,
     Database01,
+    Discord,
     DotsGrid,
     DotsVertical,
     Download01,

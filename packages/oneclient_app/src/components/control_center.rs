@@ -296,7 +296,7 @@ impl Component for QuickSettings {
             .content(Content::Flex)
             .spacing(8.)
             .child(
-                QuickTile::new(IconType::Eye, "Discord RPC", discord_on)
+                QuickTile::new(IconType::Discord, "Discord RPC", discord_on)
                     .on_press(toggle_discord),
             )
             .child(QuickTile::new(IconType::Moon01, "Close on launch", false).disabled())

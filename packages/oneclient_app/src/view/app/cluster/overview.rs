@@ -39,6 +39,7 @@ impl Component for ClusterOverview {
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::fill())
+                    .scrollbar_gutter(true)
                     .child(
                         rect()
                             .vertical()

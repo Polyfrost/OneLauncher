@@ -2,9 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
 use oneclient_common::search::{MatchScore, SearchQuery};
-use oneclient_content::packages::{
-    CachedPackageMeta, ContentType, JarManifest, PackageStore, ProviderId,
-};
+use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
 use oneclient_db::models::OverrideType;
 
@@ -265,9 +263,13 @@ fn make_row(
     }
 }
 
-const EXPORT_ROW_FORMAT: &str =
-    "- {name}[ | {url}][ | {version|bundle}][ | by {authors}][ | {status}]";
 const BUNDLED_MARKER: &str = "(bundled)";
+
+#[derive(Clone, PartialEq)]
+struct ModListExport {
+    text: String,
+    count: usize,
+}
 
 fn package_url(item: &PackageEntry) -> Option<String> {
     match item.provider {
@@ -284,120 +286,44 @@ fn package_url(item: &PackageEntry) -> Option<String> {
     }
 }
 
-fn fill_placeholders(segment: &str, fields: &[(&str, &str)]) -> (String, bool) {
-    let mut out = String::new();
-    let mut missing = false;
-    let mut rest = segment;
-
-    while let Some(start) = rest.find('{') {
-        let Some(len) = rest[start..].find('}') else {
-            break;
-        };
-        let end = start + len;
-        out.push_str(&rest[..start]);
-
-        let mut value = None;
-        let mut known = false;
-        for name in rest[start + 1..end].split('|') {
-            if let Some((_, found)) = fields.iter().find(|(field, _)| *field == name) {
-                known = true;
-                if !found.is_empty() {
-                    value = Some(*found);
-                    break;
-                }
+fn export_line(item: &PackageEntry) -> String {
+    let version = item
+        .version
+        .clone()
+        .filter(|version| !version.is_empty())
+        .map(|version| {
+            if item.in_bundle() {
+                format!("{version} {BUNDLED_MARKER}")
+            } else {
+                version
             }
-        }
-
-        match value {
-            Some(found) => out.push_str(found),
-            None if known => missing = true,
-            None => out.push_str(&rest[start..=end]),
-        }
-
-        rest = &rest[end + 1..];
-    }
-
-    out.push_str(rest);
-    (out, missing)
-}
-
-fn render_export_row(format: &str, fields: &[(&str, &str)]) -> String {
-    let mut out = String::new();
-    let mut rest = format;
-
-    while let Some(start) = rest.find('[') {
-        let Some(len) = rest[start..].find(']') else {
-            break;
-        };
-        let end = start + len;
-        out.push_str(&fill_placeholders(&rest[..start], fields).0);
-        if let (group, false) = fill_placeholders(&rest[start + 1..end], fields) {
-            out.push_str(&group);
-        }
-        rest = &rest[end + 1..];
-    }
-
-    out.push_str(&fill_placeholders(rest, fields).0);
-    out.trim().to_string()
-}
-
-fn export_line(item: &PackageEntry, manifest: Option<&JarManifest>) -> String {
-    let authors = manifest
-        .map(JarManifest::author_line)
-        .filter(|line| !line.is_empty())
-        .unwrap_or_else(|| item.author.clone());
-    let url = package_url(item)
-        .or_else(|| manifest.and_then(|found| found.homepage.clone()))
-        .unwrap_or_default();
-    let version = manifest
-        .and_then(|found| found.version.clone())
-        .or_else(|| item.version.clone())
-        .unwrap_or_default();
-    let version = if version.is_empty() || !item.in_bundle() {
-        version
-    } else {
-        format!("{version} {BUNDLED_MARKER}")
-    };
-
-    render_export_row(
-        EXPORT_ROW_FORMAT,
-        &[
-            ("name", &item.name),
-            ("url", &url),
-            ("version", &version),
-            ("bundle", item.bundle_name.as_deref().unwrap_or_default()),
-            ("authors", &authors),
-            ("status", if item.enabled { "enabled" } else { "disabled" }),
-        ],
-    )
-}
-
-fn export_rows(items: &[PackageEntry], hidden: HiddenFilter) -> Vec<PackageEntry> {
-    let mut rows: Vec<PackageEntry> = items.iter().filter(|p| hidden.keep(p)).cloned().collect();
-    rows.sort_by_key(|p| p.name.to_lowercase());
-    rows
-}
-
-pub(super) async fn build_export(cluster_id: i64, rows: Vec<PackageEntry>) -> Option<String> {
-    let state = crate::launcher::state().ok()?;
-    let ctx = state.services.content();
-    let manifests = tokio::spawn(async move {
-        PackageStore::read_cluster_jar_manifests(cluster_id, ContentType::Mod, &ctx).await
-    })
-    .await
-    .inspect_err(|err| tracing::warn!("reading jar manifests failed: {err}"))
-    .ok()?;
-
-    let text = rows
-        .iter()
-        .map(|row| {
-            let manifest = row.hash.as_deref().and_then(|hash| manifests.get(hash));
-            export_line(row, manifest)
         })
-        .collect::<Vec<_>>()
-        .join("\n");
+        .or_else(|| item.bundle_name.clone())
+        .filter(|version| !version.is_empty());
 
-    (!text.is_empty()).then_some(text)
+    let mut segments = vec![item.name.clone()];
+    segments.extend(package_url(item));
+    segments.extend(version);
+    if !item.author.is_empty() {
+        segments.push(format!("by {}", item.author));
+    }
+    segments.push(if item.enabled { "enabled" } else { "disabled" }.to_string());
+
+    format!("- {}", segments.join(" | "))
+}
+
+fn mod_list_export(items: &[PackageEntry], hidden: HiddenFilter) -> Option<ModListExport> {
+    let mut rows: Vec<&PackageEntry> = items.iter().filter(|p| hidden.keep(p)).collect();
+    rows.sort_by_key(|p| p.name.to_lowercase());
+
+    (!rows.is_empty()).then(|| ModListExport {
+        text: rows
+            .iter()
+            .map(|row| export_line(row))
+            .collect::<Vec<_>>()
+            .join("\n"),
+        count: rows.len(),
+    })
 }
 
 #[derive(Clone)]
@@ -616,8 +542,8 @@ impl Component for PackageManager {
                 cluster_id,
                 package_type,
                 (content_type == ContentType::Mod)
-                    .then(|| export_rows(&items, hidden))
-                    .filter(|rows| !rows.is_empty()),
+                    .then(|| mod_list_export(&items, hidden))
+                    .flatten(),
             ))
             .maybe_child(
                 content_type

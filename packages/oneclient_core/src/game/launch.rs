@@ -5,6 +5,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use interfrost::api::minecraft::ArgumentType;
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 use crate::ClusterStage;
@@ -329,7 +330,13 @@ async fn start(
     )?;
     arguments::append_profile_game_arguments(&mut mc_args, profile.force_fullscreen, None);
 
-    run_hook(profile.hook_pre.as_deref(), &cwd).await;
+    if let Some(reason) = run_hook(profile.hook_pre.as_deref(), &cwd).await {
+        events
+            .notify("Pre-launch command failed")
+            .body(reason)
+            .error()
+            .send();
+    }
 
     tracing::info!(
         cluster_id,
@@ -341,7 +348,7 @@ async fn start(
     );
     tracing::debug!(cluster_id, ?jvm_args, main_class = %version_info.main_class, "jvm arguments");
 
-    let mut command = base_command(&profile, &java.absolute_path);
+    let (mut command, wrapper) = base_command(&profile, &java.absolute_path);
 
 	if profile.use_discrete_gpu() {
         crate::game::gpu::prefer_discrete(&mut command, &java.absolute_path).await;
@@ -384,9 +391,10 @@ async fn start(
     command.stdin(Stdio::null());
     detach(&mut command);
 
-    let mut child = command
-        .spawn()
-        .map_err(|err| GameError::Spawn(err.to_string()))?;
+    let mut child = command.spawn().map_err(|err| match &wrapper {
+        Some(program) => GameError::wrapper_spawn(program, &err),
+        None => GameError::Spawn(err.to_string()),
+    })?;
     let pid = child.id();
 
     stage(LaunchStage::Running);
@@ -563,7 +571,15 @@ pub(crate) async fn finalize_session(
         recorder.finish_at(&end.ended_at.to_rfc3339(), code).await;
     }
 
-    run_hook(post_hook, cwd).await;
+    if let Some(reason) = run_hook(post_hook, cwd).await {
+        state
+            .services
+            .events
+            .notify("Post-exit command failed")
+            .body(reason)
+            .error()
+            .send();
+    }
 
     if dedicated {
         // The folder stays materialized so it remains a real Minecraft directory
@@ -664,21 +680,25 @@ pub async fn offer_repair(
     }
 }
 
-fn base_command(profile: &GameSettingsProfile, java_path: &str) -> Command {
-    if let Some(wrapper) = profile
+fn base_command(profile: &GameSettingsProfile, java_path: &str) -> (Command, Option<String>) {
+    let Some(wrapper) = profile
         .hook_wrapper
         .as_deref()
         .map(str::trim)
         .filter(|hook| !hook.is_empty())
-    {
-        let mut split = wrapper.split_whitespace();
-        let mut command = Command::new(split.next().unwrap_or("sh"));
-        command.args(split);
-        command.arg(java_path);
-        command
-    } else {
-        Command::new(java_path)
-    }
+    else {
+        return (Command::new(java_path), None);
+    };
+
+    let mut split = wrapper.split_whitespace();
+    let Some(program) = split.next() else {
+        return (Command::new(java_path), None);
+    };
+
+    let mut command = Command::new(program);
+    command.args(split);
+    command.arg(java_path);
+    (command, Some(program.to_string()))
 }
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
@@ -694,10 +714,8 @@ fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
 }
 
 #[tracing::instrument(skip(cwd), fields(hook), level = "debug")]
-async fn run_hook(hook: Option<&str>, cwd: &Path) {
-    let Some(hook) = hook.map(str::trim).filter(|h| !h.is_empty()) else {
-        return;
-    };
+async fn run_hook(hook: Option<&str>, cwd: &Path) -> Option<String> {
+    let hook = hook.map(str::trim).filter(|h| !h.is_empty())?;
 
     #[cfg(windows)]
     let mut command = {
@@ -713,8 +731,81 @@ async fn run_hook(hook: Option<&str>, cwd: &Path) {
     };
 
     command.current_dir(cwd);
+    command.stderr(Stdio::piped());
+    command.stdin(Stdio::null());
     oneclient_common::process::no_window(command.as_std_mut());
-    if let Err(err) = command.status().await {
-        tracing::warn!("hook '{hook}' failed: {err}");
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            tracing::warn!("hook '{hook}' could not start: {err}");
+            return Some(format!("The command shell could not be started: {err}"));
+        }
+    };
+
+    let collector = child.stderr.take().map(|mut pipe| {
+        tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf).await;
+            buf
+        })
+    });
+
+    let status = match child.wait().await {
+        Ok(status) => status,
+        Err(err) => {
+            if let Some(collector) = collector {
+                collector.abort();
+            }
+            tracing::warn!("hook '{hook}' could not be waited on: {err}");
+            return Some(format!("The command could not be waited on: {err}"));
+        }
+    };
+
+    if status.success() {
+        if let Some(collector) = collector {
+            collector.abort();
+        }
+        return None;
     }
+
+    let detail = match collector {
+        Some(mut collector) => {
+            match tokio::time::timeout(Duration::from_millis(200), &mut collector).await {
+                Ok(Ok(buf)) => stderr_detail(&buf),
+                _ => {
+                    collector.abort();
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+
+    let message = match (detail, status.code()) {
+        (Some(detail), _) => detail,
+        (None, Some(code)) => format!("The command exited with code {code}"),
+        (None, None) => "The command was stopped before it finished".to_string(),
+    };
+
+    tracing::warn!("hook '{hook}' failed: {message}");
+    Some(message)
+}
+
+fn stderr_detail(bytes: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(bytes);
+    let line = text
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
+
+    const MAX: usize = 300;
+    if line.chars().count() <= MAX {
+        return Some(line.to_string());
+    }
+
+    let mut clipped: String = line.chars().take(MAX).collect();
+    clipped.push('…');
+    Some(clipped)
 }

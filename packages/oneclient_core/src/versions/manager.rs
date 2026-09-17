@@ -4,11 +4,14 @@ use tokio::sync::RwLock;
 use oneclient_common::paths;
 use oneclient_net::{EtagPolicy, fetch_cached};
 use crate::state::LauncherServices;
-use crate::versions::manifest::{RemoteMigration, VersionMetadata, VersionsManifest};
+use crate::versions::manifest::{
+    ReleaseTarget, RemoteMigration, VersionMetadata, VersionsManifest, added_release_targets,
+};
 use crate::LauncherResult;
 
 pub struct VersionsManager {
     manifest: RwLock<VersionsManifest>,
+    added: std::sync::Mutex<Vec<ReleaseTarget>>,
 }
 
 impl VersionsManager {
@@ -16,6 +19,7 @@ impl VersionsManager {
     pub fn new() -> Self {
         Self {
             manifest: RwLock::new(VersionsManifest::default()),
+            added: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -29,6 +33,7 @@ impl VersionsManager {
 
         Self {
             manifest: RwLock::new(manifest),
+            added: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -50,7 +55,20 @@ impl VersionsManager {
             tracing::debug!("skipping versions sync; no remote or cached manifest available");
             return Ok(false);
         };
-        *self.manifest.write().await = manifest;
+        let mut current = self.manifest.write().await;
+        let added = added_release_targets(&current, &manifest);
+        *current = manifest;
+        drop(current);
+
+        if !added.is_empty() {
+            tracing::info!(added = ?added, "versions manifest gained new versions");
+            let mut pending = self.added.lock().unwrap();
+            for target in added {
+                if !pending.contains(&target) {
+                    pending.push(target);
+                }
+            }
+        }
         Ok(changed)
     }
 
@@ -60,6 +78,10 @@ impl VersionsManager {
 
     pub async fn migrations(&self) -> Vec<RemoteMigration> {
         self.manifest.read().await.migrations.clone()
+    }
+
+    pub fn take_added_versions(&self) -> Vec<ReleaseTarget> {
+        std::mem::take(&mut *self.added.lock().unwrap())
     }
 
     #[tracing::instrument(level = "debug", skip(services))]

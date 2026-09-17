@@ -78,6 +78,11 @@ impl Component for Debug {
                     ))
                     .child(divider())
                     .child(section(
+                        "Release Migration",
+                        vec![ReleaseMigrationSimulator.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
                         "Launcher Auto Update",
                         vec![LauncherUpdateSimulator.into_element()],
                     ))
@@ -577,6 +582,104 @@ fn send_cluster_update(dispatch: &crate::Actions, summaries: Vec<ClusterUpdateSu
 
     // No continuation the real prompt is raised by a launch, which waits on one
     dispatch.open_optional_mods(optional, None);
+}
+
+#[derive(PartialEq)]
+struct ReleaseMigrationSimulator;
+
+fn newest_first(clusters: &mut [oneclient_core::clusters::Cluster]) {
+    clusters.sort_by_key(|cluster| {
+        std::cmp::Reverse(
+            oneclient_common::version::parse_mc_version(&cluster.mc_version)
+                .map(|parsed| (parsed.major, parsed.minor.unwrap_or(0), parsed.patch.unwrap_or(0))),
+        )
+    });
+}
+
+impl Component for ReleaseMigrationSimulator {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let clusters_query = use_clusters();
+        let mut target = use_state(|| None::<i64>);
+
+        let mut clusters = settled_or_loading(&clusters_query).unwrap_or_default();
+        newest_first(&mut clusters);
+
+        let selected = target
+            .read()
+            .and_then(|id| clusters.iter().find(|cluster| cluster.id == id))
+            .or_else(|| clusters.first())
+            .cloned();
+
+        let ids: Vec<i64> = clusters.iter().map(|cluster| cluster.id).collect();
+        let options: Vec<String> = clusters.iter().map(|cluster| cluster.name.clone()).collect();
+        let selected_name = selected
+            .as_ref()
+            .map(|cluster| cluster.name.clone())
+            .unwrap_or_else(|| "No clusters".to_string());
+        let selected_id = selected.as_ref().map(|cluster| cluster.id);
+
+        let simulate = dispatch.clone();
+        let queue = dispatch.clone();
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                label()
+                    .text("\"Simulate\" opens the real migration modal with the chosen cluster as the new release and the real compatibility check against every other cluster with the same loader; closing it changes nothing. \"Queue as New Version\" adds the chosen version to the pending list exactly as a new manifest entry would, then runs the startup check, so the real one-time flow can be tested.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(12.)
+                    .child(
+                        label()
+                            .text("Target")
+                            .font_size(13.)
+                            .color(colors::fg_secondary()),
+                    )
+                    .child(
+                        Dropdown::new(selected_name, options)
+                            .width(Size::px(220.))
+                            .height(Size::px(32.))
+                            .on_select(move |index: usize| {
+                                if let Some(id) = ids.get(index) {
+                                    target.set(Some(*id));
+                                }
+                            }),
+                    )
+                    .child(
+                        Button::new()
+                            .primary()
+                            .enabled(selected_id.is_some())
+                            .child(Icon::new(IconType::RefreshCw01).size(16.))
+                            .text("Simulate Release Migration")
+                            .on_press(move |_| {
+                                if let Some(id) = selected_id {
+                                    simulate.simulate_release_migration(id);
+                                }
+                            }),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .enabled(selected_id.is_some())
+                            .text("Queue as New Version")
+                            .on_press(move |_| {
+                                if let Some(id) = selected_id {
+                                    queue.queue_release_migration(id);
+                                }
+                            }),
+                    ),
+            )
+            .into_element()
+    }
 }
 
 #[derive(PartialEq)]

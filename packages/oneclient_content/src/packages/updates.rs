@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use chrono::{DateTime, Utc};
 use futures_util::StreamExt;
 
-use oneclient_common::domain::ProviderId;
+use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::browser_package_update as update_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
@@ -77,18 +77,19 @@ impl BrowserUpdateCheck {
 	}
 }
 
-struct Candidate {
-	hash: String,
-	provider: ProviderId,
-	project_id: String,
-	version_id: String,
-	display_name: String,
-	display_version: String,
-	published_at: Option<DateTime<Utc>>,
+pub(crate) struct Candidate {
+	pub(crate) hash: String,
+	pub(crate) provider: ProviderId,
+	pub(crate) content_type: ContentType,
+	pub(crate) project_id: String,
+	pub(crate) version_id: String,
+	pub(crate) display_name: String,
+	pub(crate) display_version: String,
+	pub(crate) published_at: Option<DateTime<Utc>>,
 }
 
 /// A missing bundle tracking row is the marker for "the user added this themselves"
-fn browser_installed(
+pub(crate) fn browser_installed(
 	linked: &[LinkedArtifactInfo],
 	bundle_hashes: &HashSet<String>,
 	bundle_projects: &HashSet<String>,
@@ -110,6 +111,7 @@ fn browser_installed(
 			Some(Candidate {
 				hash: info.hash.clone(),
 				provider,
+				content_type: info.content_type,
 				project_id: info.project_id.clone()?,
 				version_id: info.version_id.clone()?,
 				display_name: info
@@ -349,7 +351,7 @@ pub async fn apply_browser_package_update(
 		.await?
 		.map(|link| link.enabled != 0);
 
-	install_new_dependencies(update, &project, &version, ctx).await;
+	install_new_dependencies(update.provider, update.cluster_id, &project, &version, ctx).await;
 
 	// Compatibility is not re-checked
 	// a provider disagreeing at install time would strand the user on a build
@@ -392,9 +394,10 @@ pub async fn apply_browser_package_update(
 	Ok(installed.hash)
 }
 
-#[tracing::instrument(level = "debug", skip(update, project, version, ctx), fields(cluster_id = update.cluster_id))]
-async fn install_new_dependencies(
-	update: &BrowserPackageUpdate,
+#[tracing::instrument(level = "debug", skip(project, version, ctx))]
+pub(crate) async fn install_new_dependencies(
+	provider: ProviderId,
+	cluster_id: i64,
 	project: &crate::packages::types::ProjectDetail,
 	version: &crate::packages::types::VersionDetail,
 	ctx: &ContentCtx,
@@ -403,7 +406,7 @@ async fn install_new_dependencies(
 		return;
 	}
 
-	let resolution = match resolve_required(update.provider, version, update.cluster_id, ctx).await {
+	let resolution = match resolve_required(provider, version, cluster_id, ctx).await {
 		Ok(resolution) => resolution,
 		Err(err) => {
 			tracing::warn!(%err, "dependency resolution failed, updating the package alone");
@@ -417,10 +420,10 @@ async fn install_new_dependencies(
 
 	for dependency in &resolution.install {
 		match PackageStore::install_to_cluster(
-			update.provider,
+			provider,
 			&dependency.project,
 			&dependency.version,
-			update.cluster_id,
+			cluster_id,
 			true,
 			false,
 			None,
@@ -435,7 +438,7 @@ async fn install_new_dependencies(
 				);
 				if let Err(err) = artifact_dao::set_seen_status(
 					&ctx.db,
-					update.cluster_id,
+					cluster_id,
 					&artifact.hash,
 					SeenStatus::New,
 				)
@@ -456,7 +459,6 @@ async fn install_new_dependencies(
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use oneclient_common::domain::ContentType;
 
 	fn at(raw: &str) -> DateTime<Utc> {
 		parse_published(raw).expect("test dates are rfc 3339")

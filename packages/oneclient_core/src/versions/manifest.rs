@@ -68,6 +68,65 @@ pub struct MigrationTarget {
     pub mc_version: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseTarget {
+    pub mc_version: String,
+    pub loader: GameLoader,
+}
+
+impl ReleaseTarget {
+    #[must_use]
+    pub fn key(&self) -> String {
+        format!("{}:{}", self.mc_version, self.loader.modrinth_name())
+    }
+
+    #[must_use]
+    pub fn from_key(key: &str) -> Option<Self> {
+        let (mc_version, loader) = key.rsplit_once(':')?;
+        if mc_version.is_empty() {
+            return None;
+        }
+        Some(Self {
+            mc_version: mc_version.to_string(),
+            loader: GameLoader::from_str(loader).ok()?,
+        })
+    }
+}
+
+fn release_targets(manifest: &VersionsManifest) -> Vec<ReleaseTarget> {
+    manifest
+        .clusters
+        .iter()
+        .flat_map(|cluster| {
+            cluster.entries.iter().filter_map(move |entry| {
+                Some(ReleaseTarget {
+                    mc_version: format_mc_version(
+                        cluster.major_version,
+                        entry.minor_version,
+                        entry.patch_version,
+                    ),
+                    loader: GameLoader::from_str(entry.loader.as_deref()?).ok()?,
+                })
+            })
+        })
+        .collect()
+}
+
+#[must_use]
+pub fn added_release_targets(previous: &VersionsManifest, next: &VersionsManifest) -> Vec<ReleaseTarget> {
+    if previous.clusters.is_empty() {
+        return Vec::new();
+    }
+    let known = release_targets(previous);
+    let mut added: Vec<ReleaseTarget> = Vec::new();
+    for target in release_targets(next) {
+        if !known.contains(&target) && !added.contains(&target) {
+            added.push(target);
+        }
+    }
+    added
+}
+
 /// Returns the input unchanged when no rule matches
 /// Multi-hop chains are
 /// followed the loop is bounded by rule count so cyclic rules can't spin forever
@@ -185,6 +244,52 @@ mod tests {
         let manifest: VersionsManifest =
             serde_json::from_str(r#"{"clusters": []}"#).expect("should parse");
         assert!(manifest.migrations.is_empty());
+    }
+
+    fn versions(entries: &str) -> VersionsManifest {
+        serde_json::from_str(&format!(r#"{{"clusters":[{{"major_version":26,"entries":[{entries}]}}]}}"#))
+            .expect("should parse")
+    }
+
+    #[test]
+    fn a_version_missing_from_the_previous_manifest_is_added() {
+        let previous = versions(r#"{"minor_version":2,"loader":"fabric"}"#);
+        let next = versions(
+            r#"{"minor_version":2,"loader":"fabric"},{"minor_version":3,"loader":"fabric"}"#,
+        );
+        assert_eq!(
+            added_release_targets(&previous, &next),
+            vec![ReleaseTarget { mc_version: "26.3".into(), loader: GameLoader::Fabric }]
+        );
+    }
+
+    #[test]
+    fn nothing_is_added_without_a_previous_manifest() {
+        let next = versions(r#"{"minor_version":3,"loader":"fabric"}"#);
+        assert!(
+            added_release_targets(&VersionsManifest::default(), &next).is_empty(),
+            "a fresh install has no cached manifest and must not see every version as new"
+        );
+    }
+
+    #[test]
+    fn a_new_loader_for_a_known_version_is_added() {
+        let previous = versions(r#"{"minor_version":3,"loader":"fabric"}"#);
+        let next = versions(
+            r#"{"minor_version":3,"loader":"fabric"},{"minor_version":3,"loader":"neoforge"}"#,
+        );
+        assert_eq!(
+            added_release_targets(&previous, &next),
+            vec![ReleaseTarget { mc_version: "26.3".into(), loader: GameLoader::NeoForge }]
+        );
+    }
+
+    #[test]
+    fn release_target_keys_round_trip() {
+        let target = ReleaseTarget { mc_version: "1.8.9".into(), loader: GameLoader::Fabric };
+        assert_eq!(target.key(), "1.8.9:fabric");
+        assert_eq!(ReleaseTarget::from_key("1.8.9:fabric"), Some(target));
+        assert_eq!(ReleaseTarget::from_key("garbage"), None);
     }
 
     #[test]

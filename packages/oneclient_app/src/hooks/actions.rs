@@ -3,6 +3,8 @@
 //! Always `spawn_forever` never `spawn` Freya's `spawn` cancels the task when
 //! the calling component unmounts this work is app-scoped not component-scoped
 
+mod release_migration;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -255,6 +257,10 @@ impl Actions {
         });
     }
 
+    pub fn refresh_settings_from_core(&self) {
+        self.mutate_settings(|_| {});
+    }
+
     pub fn edit_settings(&self, edit: impl FnOnce(&mut LauncherSettings)) {
         let Some(updated) = self.mutate_settings(edit) else {
             return;
@@ -266,7 +272,11 @@ impl Actions {
     }
 
     pub fn set_settings(&self, settings: LauncherSettings) {
-        let Some(updated) = self.mutate_settings(|s| *s = settings) else {
+        let Some(updated) = self.mutate_settings(|s| {
+            let pending = std::mem::take(&mut s.pending_release_migrations);
+            *s = settings;
+            s.pending_release_migrations = pending;
+        }) else {
             return;
         };
         if let Ok(state) = launcher::state() {

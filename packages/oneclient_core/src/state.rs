@@ -147,6 +147,9 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
 			if let Err(err) = versions_res {
 				tracing::error!("versions manifest sync failed: {err:#}");
 			}
+			if let Err(err) = crate::clusters::record_new_versions(&background).await {
+				tracing::warn!("could not record new versions for migration: {err:#}");
+			}
 			if let Err(err) = bundles_res {
 				tracing::error!("bundle catalog sync failed: {err:#}");
 			}

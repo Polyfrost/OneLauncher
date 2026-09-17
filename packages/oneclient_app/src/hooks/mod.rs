@@ -69,8 +69,8 @@ pub use queries::{
 
 use crate::notifications::NotificationSnapshot;
 use crate::state::{
-    AppChannel, GameState, InstallState, LauncherInit, LoginProgress, RelocationState,
-    SettingsState, StorageScanProgress,
+    AppChannel, GameState, InstallState, LauncherInit, LoginProgress, ReleaseMigrationPrompt,
+    RelocationState, SettingsState, StorageScanProgress,
 };
 use freya::prelude::*;
 use freya::radio::use_radio;
@@ -88,6 +88,13 @@ pub fn use_dispatch() -> Actions {
 /// not re-render a component reading only `data_dir`
 pub fn use_launcher() -> LauncherInit {
     use_radio(AppChannel::Launcher).read().launcher.clone()
+}
+
+pub fn use_release_migration() -> Option<ReleaseMigrationPrompt> {
+    use_radio(AppChannel::ReleaseMigration)
+        .read()
+        .release_migration
+        .clone()
 }
 
 pub fn use_relocation() -> RelocationState {

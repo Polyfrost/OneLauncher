@@ -111,7 +111,7 @@ fn dependency_label(dep: &VersionDependency) -> String {
 		.unwrap_or_else(|| "unknown".to_string())
 }
 
-async fn resolve_one(
+pub(crate) async fn resolve_one(
 	provider: &dyn PackageProvider,
 	dep: &VersionDependency,
 	cluster: &ClusterRow,

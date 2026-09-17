@@ -71,5 +71,6 @@ pub use state::LauncherServices;
 pub use state::LauncherState;
 pub use state::run_startup_tasks;
 pub use versions::{
-    RemoteMigration, VersionMetadata, VersionsManager, VersionsManifest, resolve_migration_chain,
+    ReleaseTarget, RemoteMigration, VersionMetadata, VersionsManager, VersionsManifest,
+    resolve_migration_chain,
 };

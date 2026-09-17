@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use freya::radio::RadioChannel;
 use oneclient_common::domain::ProviderId;
+use oneclient_content::packages::release_migration::ReleaseMigrationPlan;
+use oneclient_core::clusters::Cluster;
 use oneclient_core::relocate::{RelocationOutcome, RelocationPlan};
 use oneclient_core::settings::LauncherSettings;
 use oneclient_events::LaunchStage;
@@ -26,6 +28,7 @@ pub enum AppChannel {
     StorageScan,
     Relocation,
     PendingLaunch,
+    ReleaseMigration,
 }
 
 impl RadioChannel<AppState> for AppChannel {}
@@ -49,6 +52,37 @@ pub struct AppState {
     pub storage_scan: Option<StorageScanProgress>,
     pub relocation: RelocationState,
     pub pending_launch: Option<String>,
+    pub release_migration: Option<ReleaseMigrationPrompt>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ReleasePlanState {
+    Loading,
+    Ready(ReleaseMigrationPlan),
+    Failed,
+}
+
+#[derive(Clone, Debug)]
+pub struct ReleaseMigrationPrompt {
+    pub key: String,
+    pub target: Cluster,
+    pub java_major: Option<u32>,
+    pub sources: Vec<Cluster>,
+    pub selected: i64,
+    pub plans: HashMap<i64, ReleasePlanState>,
+    pub simulated: bool,
+}
+
+impl ReleaseMigrationPrompt {
+    #[must_use]
+    pub fn source(&self) -> Option<&Cluster> {
+        self.sources.iter().find(|cluster| cluster.id == self.selected)
+    }
+
+    #[must_use]
+    pub fn plan(&self) -> Option<&ReleasePlanState> {
+        self.plans.get(&self.selected)
+    }
 }
 
 /// A move of the data folder owns the whole window while it runs: the router

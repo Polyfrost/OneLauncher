@@ -37,4 +37,28 @@ pub enum GameError {
 
     #[error("failed to spawn the game process: {0}")]
     Spawn(String),
+
+    #[error(
+        "the wrapper command '{program}' could not be started: {reason}. Check the Wrapper Command setting."
+    )]
+    WrapperSpawn { program: String, reason: String },
+}
+
+impl GameError {
+    pub(crate) fn wrapper_spawn(program: &str, err: &std::io::Error) -> Self {
+        let reason = match err.kind() {
+            std::io::ErrorKind::NotFound => {
+                "it is not installed, or its folder is not on PATH".to_string()
+            }
+            std::io::ErrorKind::PermissionDenied => {
+                "it is not executable, or permission was denied".to_string()
+            }
+            _ => err.to_string(),
+        };
+
+        Self::WrapperSpawn {
+            program: program.to_string(),
+            reason,
+        }
+    }
 }

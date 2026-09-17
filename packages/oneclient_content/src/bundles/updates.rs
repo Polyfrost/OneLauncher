@@ -902,34 +902,6 @@ pub async fn get_bundles_with_update_status(
     Ok(results)
 }
 
-#[tracing::instrument(level = "debug", skip_all)]
-pub async fn apply_bundle_updates_for_all_clusters(
-    bundles: &BundlesManager,
-    ctx: &ContentCtx,
-    session: Option<&oneclient_events::GroupedProgressSession>,
-) -> ContentResult<Vec<(i64, ApplyBundleUpdatesResult)>> {
-    let mut changed = Vec::new();
-    for cluster in cluster_dao::list_all(&ctx.db).await? {
-        match apply_bundle_updates_with(cluster.id, bundles, ctx, session, None).await {
-            Ok(result) => {
-                if !result.updates_applied.is_empty()
-                    || !result.additions_applied.is_empty()
-                    || !result.removals_applied.is_empty()
-                    || !result.optional_available.is_empty()
-                {
-                    changed.push((cluster.id, result));
-                }
-            }
-            Err(err) => tracing::warn!(
-                cluster_id = cluster.id,
-                error = %err,
-                "bundle update apply failed for cluster"
-            ),
-        }
-    }
-    Ok(changed)
-}
-
 fn bundle_package_key(
     bundle_pkg: &BundleTrackedArtifactRow,
     linked: &HashMap<String, &LinkedArtifactInfo>,

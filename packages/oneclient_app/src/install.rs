@@ -165,6 +165,7 @@ pub async fn cluster_update_notification(
             label: "View changes".to_string(),
             kind: NotificationActionKind::OpenClusterUpdate(vec![summary]),
         }],
+        toast_only: false,
     })
 }
 
@@ -219,6 +220,7 @@ pub async fn combined_cluster_update_spec(
             label: "View changes".to_string(),
             kind: NotificationActionKind::OpenClusterUpdate(summaries),
         }],
+        toast_only: false,
     })
 }
 

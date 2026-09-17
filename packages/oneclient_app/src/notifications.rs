@@ -117,6 +117,10 @@ pub struct InboxEntry {
     pub tasks: Vec<TaskView>,
     /// Bytes/sec and seconds remaining for grouped downloads
     pub transfer: Option<TransferStats>,
+    /// Toast-only notices still render as a toast but are never kept in the
+    /// notification center: they are dropped from the inbox when dismissed or
+    /// when their toast expires
+    pub toast_only: bool,
 }
 
 /// One aggregate row per [`TaskCategory`] (all libraries collapse into one "Libraries" row)
@@ -138,6 +142,7 @@ pub struct NotificationSpec {
     pub icon: Option<IconType>,
     pub progress: Option<(u64, u64)>,
     pub actions: Vec<NotificationAction>,
+    pub toast_only: bool,
 }
 
 impl InboxEntry {
@@ -540,7 +545,7 @@ impl NotificationState {
         }
         let has_progress = entry.is_some_and(|e| e.progress.is_some());
         self.active_toasts.remove(pos);
-        if !has_progress {
+        if !has_progress || entry.is_some_and(|e| e.toast_only) {
             self.forget_entry(inbox, entry_id);
         }
     }
@@ -551,9 +556,16 @@ impl NotificationState {
             .retain(|toast| toast.toast_id != toast_id);
     }
 
-    pub fn expire_toast(&mut self, _inbox: &[InboxEntry], entry_id: u64) {
+    pub fn expire_toast(&mut self, inbox: &mut Vec<InboxEntry>, entry_id: u64) {
         self.active_toasts
             .retain(|toast| toast.entry_id != entry_id);
+        if inbox
+            .iter()
+            .find(|e| e.id == entry_id)
+            .is_some_and(|e| e.toast_only)
+        {
+            self.forget_entry(inbox, entry_id);
+        }
     }
 
     pub fn mark_read(&mut self, inbox: &mut [InboxEntry], entry_id: u64) {
@@ -605,6 +617,7 @@ impl NotificationState {
                 actions: Vec::new(),
                 tasks: Vec::new(),
                 transfer: None,
+                toast_only: false,
             },
         );
         id
@@ -618,6 +631,7 @@ impl NotificationState {
             icon,
             progress,
             actions,
+            toast_only,
         } = spec;
 
         let is_loading = progress.is_some_and(|(current, total)| total == 0 || current < total);
@@ -639,6 +653,7 @@ impl NotificationState {
                 actions,
                 tasks: Vec::new(),
                 transfer: None,
+                toast_only,
             },
         );
 
@@ -895,6 +910,7 @@ impl NotificationState {
             icon,
             progress: _,
             actions,
+            toast_only: _,
         } = spec;
 
         match entry_id.and_then(|id| inbox.iter_mut().find(|e| e.id == id)) {
@@ -924,6 +940,7 @@ impl NotificationState {
                         icon,
                         progress: None,
                         actions,
+                        toast_only: false,
                     },
                 );
             }
@@ -1070,5 +1087,63 @@ mod package_update_tests {
 
         assert!(wait.try_recv().is_err());
         assert!(state.package_updates.is_some());
+    }
+
+    fn spec(title: &str) -> NotificationSpec {
+        NotificationSpec {
+            title: title.to_string(),
+            body: String::new(),
+            level: Level::Info,
+            icon: None,
+            progress: None,
+            actions: Vec::new(),
+            toast_only: false,
+        }
+    }
+
+    fn toast_only(title: &str) -> NotificationSpec {
+        NotificationSpec {
+            toast_only: true,
+            ..spec(title)
+        }
+    }
+
+    #[test]
+    fn a_normal_notice_survives_its_toast_expiring() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        let id = state.push_custom(&mut inbox, spec("kept"));
+        state.expire_toast(&mut inbox, id);
+
+        assert!(inbox.iter().any(|e| e.id == id), "the inbox entry must stay");
+    }
+
+    #[test]
+    fn a_toast_only_notice_is_dropped_when_its_toast_expires() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        let id = state.push_custom(&mut inbox, toast_only("gone"));
+        state.expire_toast(&mut inbox, id);
+
+        assert!(
+            inbox.iter().all(|e| e.id != id),
+            "a toast-only notice must not linger in the inbox"
+        );
+    }
+
+    #[test]
+    fn a_toast_only_notice_is_dropped_when_its_toast_is_dismissed() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        let id = state.push_custom(&mut inbox, toast_only("gone"));
+        state.dismiss_toast(&mut inbox, id);
+
+        assert!(
+            inbox.iter().all(|e| e.id != id),
+            "a toast-only notice must not linger in the inbox"
+        );
     }
 }

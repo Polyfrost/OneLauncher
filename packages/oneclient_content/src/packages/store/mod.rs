@@ -571,7 +571,7 @@ async fn already_described(row: &ArtifactRow, ctx: &ContentCtx) -> bool {
 
 /// Written exactly as a download would have so the row joins the update flow
 /// rather than sitting outside it
-async fn record_release(
+pub(crate) async fn record_release(
     provider: ProviderId,
     version: &VersionDetail,
     hash: &str,

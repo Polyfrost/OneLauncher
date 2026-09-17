@@ -1383,49 +1383,14 @@ impl Actions {
 
         spawn_forever(async move {
 
-            let synced = match state.bundles.sync(&state.services.content()).await {
-                Ok(_) => true,
-                Err(err) => {
-                    tracing::error!("bundle catalog sync failed: {err:#}");
-                    false
-                }
-            };
+            if let Err(err) = state.bundles.sync(&state.services.content()).await {
+                tracing::error!("bundle catalog sync failed: {err:#}");
+            }
             if let Err(err) = oneclient_core::clusters::apply_remote_migrations(&state).await {
                 tracing::error!("cluster migrations failed: {err:#}");
             }
             if let Err(err) = oneclient_core::clusters::ensure_from_bundles(&state).await {
                 tracing::error!("bundle cluster provisioning failed: {err:#}");
-            }
-
-            // One grouped session for the batch so all downloads surface as a
-            // single notification `detach` lets it be converted in place
-            let session = oneclient_events::GroupedProgressSession::start(
-                &state.services.events,
-                "Updating mods",
-            );
-            let changed = oneclient_content::bundles::sync_all_cluster_bundles(
-                state.bundles.as_ref(),
-                &state.services.content(),
-                Some(&session),
-            )
-            .await;
-            let session_id = session.detach();
-
-            if synced
-                && let Ok(clusters) = state.clusters.list().await
-            {
-                let unsettled: std::collections::HashSet<i64> = changed
-                    .iter()
-                    .filter(|(_, result)| !result.settled())
-                    .map(|(cluster_id, _)| *cluster_id)
-                    .collect();
-
-                actions.record_bundle_checks(
-                    clusters
-                        .iter()
-                        .map(|cluster| cluster.id)
-                        .filter(|cluster_id| !unsettled.contains(cluster_id)),
-                );
             }
 
             actions
@@ -1435,12 +1400,6 @@ impl Actions {
                 .launcher
                 .syncing_bundles = false;
             super::invalidate_cluster_queries().await;
-
-            let spec = crate::install::combined_cluster_update_spec(&changed, &state.services).await;
-            actions.with_engine(|app| {
-                app.notifications
-                    .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
-            });
         });
     }
 
@@ -1460,8 +1419,6 @@ impl Actions {
             tracing::debug!(cluster_id, "bundle update check skipped, no bundle content");
             return;
         }
-
-        let mode = self.cluster_update_mode(state, cluster_id).await;
 
         self.station
             .clone()
@@ -1496,15 +1453,8 @@ impl Actions {
             .launcher
             .syncing_bundles = false;
 
-        // No prompt for bundles the package manager's markers carry them instead
-        if !matches!(mode, PackageUpdateMode::Automatic) {
-            tracing::debug!(cluster_id, "bundle updates left for the user to apply");
-            if synced {
-                self.record_bundle_checks([cluster_id]);
-            }
-            return;
-        }
-
+        // Bundle content is forced, so the update mode never gates it and the
+        // modal never lists it
         let result = match oneclient_core::apply_bundle_updates(
             cluster_id,
             state.bundles.as_ref(),
@@ -1543,12 +1493,6 @@ impl Actions {
         }
 
         super::invalidate_cluster_queries().await;
-
-        if let Some(spec) =
-            crate::install::cluster_update_notification(cluster_id, &result, &state.services).await
-        {
-            self.push_notification(spec);
-        }
     }
 
     /// The check runs and the cache is written whatever the mode says keeping

@@ -48,10 +48,10 @@ impl GameError {
     pub(crate) fn wrapper_spawn(program: &str, err: &std::io::Error) -> Self {
         let reason = match err.kind() {
             std::io::ErrorKind::NotFound => {
-                "it is not installed, or its folder is not on PATH".to_string()
+                "command not found".to_string()
             }
             std::io::ErrorKind::PermissionDenied => {
-                "it is not executable, or permission was denied".to_string()
+                "insufficient permissions or file is not an executable".to_string()
             }
             _ => err.to_string(),
         };

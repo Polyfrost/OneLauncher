@@ -13,7 +13,8 @@ use oneclient_db::dao::cluster_bundle as bundle_dao;
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::dependencies::base_game_version;
-use crate::packages::store::PackageStore;
+use crate::packages::FileIdentity;
+use crate::packages::store::{PackageStore, record_release};
 use crate::packages::types::LinkedArtifactInfo;
 
 struct Copy {
@@ -126,11 +127,18 @@ pub async fn disable_foreign_game_versions(
         .map(|row| row.hash)
         .collect();
 
+    let candidates: Vec<&LinkedArtifactInfo> = linked
+        .iter()
+        .filter(|info| {
+            info.enabled && info.content_type == ContentType::Mod && !from_bundle.contains(&info.hash)
+        })
+        .collect();
+
+    refresh_stated_game_versions(cluster_id, &candidates, mc_version, ctx).await;
+
     let mut switched_off = Vec::new();
 
-    for info in linked.iter().filter(|info| {
-        info.enabled && info.content_type == ContentType::Mod && !from_bundle.contains(&info.hash)
-    }) {
+    for info in candidates {
         match switch_off_if_foreign(cluster_id, info, mc_version, ctx).await {
             Ok(true) => switched_off.push(
                 info.display_name
@@ -152,13 +160,64 @@ pub async fn disable_foreign_game_versions(
 
 const FOREIGN_VERSION_REPAIR: &str = "disable-foreign-game-version";
 
+fn foreign_repair_id(cluster_id: i64, mc_version: &str, hash: &str) -> String {
+    format!("{FOREIGN_VERSION_REPAIR}:{cluster_id}:{mc_version}:{hash}")
+}
+
+async fn refresh_stated_game_versions(
+    cluster_id: i64,
+    candidates: &[&LinkedArtifactInfo],
+    mc_version: &str,
+    ctx: &ContentCtx,
+) {
+    let mut stale = Vec::new();
+
+    for info in candidates {
+        match migration_dao::is_applied(&ctx.db, &foreign_repair_id(cluster_id, mc_version, &info.hash)).await {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(err) => {
+                tracing::debug!(hash = %info.hash, %err, "could not read the repair marker");
+                continue;
+            }
+        }
+
+        match artifact_dao::list_release_game_versions(&ctx.db, &info.hash).await {
+            Ok(stated) if built_for_another_game_version(&stated, mc_version) => {
+                stale.push(FileIdentity::from_sha1(&info.hash));
+            }
+            Ok(_) => {}
+            Err(err) => tracing::debug!(hash = %info.hash, %err, "could not read the stated game versions"),
+        }
+    }
+
+    if stale.is_empty() {
+        return;
+    }
+
+    let found = match ctx.providers.lookup_versions(&stale, ctx).await {
+        Ok(found) => found,
+        // Offline or the provider is down, so the stored rows are all there is
+        Err(err) => {
+            tracing::debug!(%err, "could not refresh the stated game versions");
+            return;
+        }
+    };
+
+    for (sha1, (provider, version)) in found {
+        if let Err(err) = record_release(provider, &version, &sha1, ctx).await {
+            tracing::debug!(hash = %sha1, %err, "could not store the refreshed game versions");
+        }
+    }
+}
+
 async fn switch_off_if_foreign(
     cluster_id: i64,
     info: &LinkedArtifactInfo,
     mc_version: &str,
     ctx: &ContentCtx,
 ) -> ContentResult<bool> {
-    let repair_id = format!("{FOREIGN_VERSION_REPAIR}:{cluster_id}:{mc_version}:{}", info.hash);
+    let repair_id = foreign_repair_id(cluster_id, mc_version, &info.hash);
     if migration_dao::is_applied(&ctx.db, &repair_id).await? {
         return Ok(false);
     }

@@ -23,19 +23,6 @@ impl Component for SettingsJava {
         let mut show_manager = use_state(|| false);
         let pending_remove = use_state(|| None::<PendingRemove>);
 
-        fn invalidate_runtimes(dispatch: Actions) {
-            spawn(async move {
-                invalidate_java_queries().await;
-                dispatch
-                    .notify("Java runtimes refreshed")
-                    .body("The installed runtime list is up to date")
-                    .info()
-                    .send();
-            });
-        }
-
-        let refresh_dispatch = dispatch.clone();
-
         let mut shell = settings_page()
             .child(section_header("ADD RUNTIME"))
             .child(AddRow { show_manager }.into_element())
@@ -73,8 +60,9 @@ impl Component for AddRow {
         let dispatch = use_dispatch();
         let mut show_manager = self.show_manager;
 
+        let pick_dispatch = dispatch.clone();
         let pick = move |_| {
-            let dispatch = dispatch.clone();
+            let dispatch = pick_dispatch.clone();
             spawn(async move {
                 if let Some(handle) = rfd::AsyncFileDialog::new()
                     .set_title("Select a Java installation folder")
@@ -83,6 +71,19 @@ impl Component for AddRow {
                 {
                     dispatch.add_custom_java_runtime(handle.path().to_path_buf());
                 }
+            });
+        };
+
+        let refresh_dispatch = dispatch;
+        let refresh = move |_| {
+            let dispatch = refresh_dispatch.clone();
+            spawn(async move {
+                invalidate_java_queries().await;
+                dispatch
+                    .notify("Java runtimes refreshed")
+                    .body("The installed runtime list is up to date")
+                    .info()
+                    .send();
             });
         };
 
@@ -103,6 +104,13 @@ impl Component for AddRow {
                     .on_press(pick)
                     .child(Icon::new(IconType::Folder).size(14.))
                     .text("Add from folder"),
+            )
+            .child(
+                Button::new()
+                    .secondary()
+                    .on_press(refresh)
+                    .child(Icon::new(IconType::RefreshCcw02).size(14.))
+                    .text("Refresh"),
             )
     }
 }

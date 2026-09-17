@@ -33,7 +33,7 @@ impl Component for RootLayout {
         // Elsewhere the window is borderless and squared when maximized
         // No reactive maximized signal exists so root_size changes stand in as the trigger
         #[cfg(not(target_os = "macos"))]
-        let corner = {
+        let _corner = {
             let root_size = Platform::get().root_size;
             // Seeded because the query below only answers after the window is visible
             // which would round the corners of the first frames of a maximized launch

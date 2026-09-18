@@ -15,7 +15,7 @@ use crate::notifications::{
     OptionalModsGroup,
 };
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{self, colors};
 use crate::ui::border_all_color;
 
 type SqlResult = Option<Result<ConsoleQueryResult, String>>;
@@ -1094,24 +1094,36 @@ impl Component for SqlConsole {
             .width(Size::fill())
             .spacing(10.)
             .child(
+                TextInput::new(query)
+                    .multiline(true)
+                    .placeholder("SELECT * FROM …")
+                    .font_family(theme::MONO_FONT)
+                    .width(Size::fill())
+                    .height(Size::px(140.))
+                    .on_submit(move |_| run_sql(query, result, running)),
+            )
+            .child(
                 rect()
                     .horizontal()
                     .width(Size::fill())
                     .cross_align(Alignment::Center)
                     .spacing(12.)
                     .child(
-                        rect().width(Size::flex(1.0)).child(
-                            TextInput::new(query)
-                                .placeholder("SELECT * FROM …")
-                                .on_submit(move |_| run_sql(query, result, running)),
-                        ),
-                    )
-                    .child(
                         Button::new()
                             .primary()
                             .child(Icon::new(IconType::Terminal).size(16.))
                             .text(if *running.read() { "Running…" } else { "Run" })
                             .on_press(move |_| run_sql(query, result, running)),
+                    )
+                    .child(
+                        label()
+                            .text(if cfg!(target_os = "macos") {
+                                "⌘ Enter"
+                            } else {
+                                "Ctrl+Enter"
+                            })
+                            .font_size(12.)
+                            .color(colors::fg_secondary()),
                     ),
             )
             .child(sql_result(&result.read()))

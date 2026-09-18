@@ -627,6 +627,7 @@ impl Component for TextRow {
 
         let control = TextInput::new(text)
             .placeholder(placeholder)
+            .expandable(true)
             .width(Size::px(220.));
 
         settings_row(

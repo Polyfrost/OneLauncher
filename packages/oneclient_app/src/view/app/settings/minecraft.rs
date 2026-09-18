@@ -108,6 +108,7 @@ impl Component for SettingsMinecraft {
                 "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",
                 TextInput::new(jvm_args)
                     .placeholder("-XX:+UseG1GC")
+                    .expandable(true)
                     .width(Size::px(220.)),
             ))
             .child(section_header("CONTENT"))
@@ -127,6 +128,7 @@ impl Component for SettingsMinecraft {
                 "Command to run before launching the game.",
                 TextInput::new(pre_launch_command)
                     .placeholder("echo 'Game started'")
+                    .expandable(true)
                     .width(Size::px(220.)),
             ))
             .child(settings_row(
@@ -135,6 +137,7 @@ impl Component for SettingsMinecraft {
                 "Command to run when launching the game.",
                 TextInput::new(wrapper_command)
                     .placeholder("gamescope")
+                    .expandable(true)
                     .width(Size::px(220.)),
             ))
             .child(settings_row(
@@ -143,6 +146,7 @@ impl Component for SettingsMinecraft {
                 "Command to run after exiting the game.",
                 TextInput::new(post_exit_command)
                     .placeholder("echo 'Game exited'")
+                    .expandable(true)
                     .width(Size::px(220.)),
             ));
 

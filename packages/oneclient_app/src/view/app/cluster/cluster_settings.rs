@@ -12,9 +12,11 @@ use crate::components::{
 };
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
-    try_game_profile, use_cluster_mutation, use_dispatch, use_game_profile, use_java_runtimes,
-    use_loader_versions, use_settings_snapshot,
+    settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
+    use_game_profile, use_game_snapshot, use_java_runtimes, use_loader_versions,
+    use_release_migration_checking, use_settings_snapshot,
 };
+use oneclient_core::clusters::rank_migration_sources;
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
@@ -142,6 +144,7 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .child(MigrateFromRow { cluster_id }.into_element())
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element()),
             )
@@ -752,6 +755,91 @@ impl Component for BrowserUpdateModeRow {
             "Browser Package Updates",
             "What to do when content installed from the browser has a newer version. Bundle content is not affected.",
             override_cell(control, overridden, on_reset),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct MigrateFromRow {
+    cluster_id: i64,
+}
+
+impl Component for MigrateFromRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+        let checking = use_release_migration_checking(cluster_id);
+        let running = use_game_snapshot().is_running(cluster_id);
+        let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
+        let mut picked = use_state(|| None::<i64>);
+
+        let sources = clusters
+            .iter()
+            .find(|cluster| cluster.id == cluster_id)
+            .map(|target| rank_migration_sources(target, &clusters))
+            .unwrap_or_default();
+
+        let selected = picked
+            .read()
+            .and_then(|id| sources.iter().find(|source| source.id == id))
+            .or_else(|| sources.first())
+            .cloned();
+        let selected_id = selected.as_ref().map(|source| source.id);
+
+        let mut button = Button::new()
+            .secondary()
+            .enabled(selected_id.is_some() && !checking && !running)
+            .on_press(move |_| {
+                if let Some(source_id) = selected_id {
+                    dispatch.open_manual_migration(cluster_id, source_id);
+                }
+            });
+        button = if checking {
+            button
+                .child(Icon::new(IconType::Loading02).size(14.))
+                .text("Checking…")
+        } else {
+            button
+                .child(Icon::new(IconType::Copy01).size(14.))
+                .text("Migrate...")
+        };
+        if running {
+            button = button.tooltip("Close the game before migrating");
+        }
+
+        let picker: Element = if sources.is_empty() {
+            label()
+                .text("No other clusters with this loader")
+                .font_size(12.)
+                .color(colors::fg_secondary())
+                .into_element()
+        } else {
+            let ids: Vec<i64> = sources.iter().map(|source| source.id).collect();
+            let names: Vec<String> = sources.iter().map(|source| source.name.clone()).collect();
+            Dropdown::new(
+                selected.map(|source| source.name).unwrap_or_default(),
+                names,
+            )
+            .width(Size::px(180.))
+            .height(Size::px(34.))
+            .on_select(move |index: usize| {
+                if let Some(id) = ids.get(index) {
+                    picked.set(Some(*id));
+                }
+            })
+            .into_element()
+        };
+
+        settings_row(
+            IconType::Copy01,
+            "Migrate",
+            "Bring mods, resource packs and shaders you installed in another cluster. Compatible versions are downloaded; the other cluster is left as it is.",
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .child(picker)
+                .child(button)
         )
     }
 }

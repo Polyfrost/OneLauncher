@@ -29,6 +29,7 @@ mod notifications;
 mod overlay_popup;
 mod package_row;
 mod package_update_popup;
+mod release_migration_popup;
 mod pagination;
 mod player_model;
 mod progress_track;
@@ -81,6 +82,7 @@ pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, ove
 pub use package_row::{CardLayout, PackageEntry, PackageRow, provider_badge};
 pub(crate) use package_row::{CARD_GRID_H, GRID_GAP, GRID_MIN_W, grid_card, package_icon};
 pub use package_update_popup::PackageUpdatePopup;
+pub use release_migration_popup::ReleaseMigrationPopup;
 pub use pagination::Pagination;
 pub use player_model::PlayerModel;
 pub use progress_track::progress_track;

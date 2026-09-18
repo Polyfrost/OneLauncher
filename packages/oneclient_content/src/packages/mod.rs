@@ -5,6 +5,7 @@ pub mod local_manifest;
 pub mod metadata_cache;
 pub mod modpack;
 pub mod provider;
+pub mod release_migration;
 pub mod store;
 pub mod types;
 pub mod updates;

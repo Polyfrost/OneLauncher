@@ -10,9 +10,10 @@ use super::http::fetch_json;
 use crate::error::ContentResult;
 use oneclient_common::constants::{CURSEFORGE_API_URL, CURSEFORGE_GAME_ID};
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
+use crate::packages::dependencies::base_game_version;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
-    DependencyKind, GalleryImage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary,
+    DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary,
     ReleaseType, SearchFilters, VersionDependency, VersionDetail, VersionFile, VersionLookup,
     VersionSummary,
 };
@@ -301,6 +302,122 @@ impl PackageProvider for CurseForgeProvider {
 
         Ok(out)
     }
+
+    #[tracing::instrument(level = "debug", skip(self, packages, ctx))]
+    async fn latest_for_game_version(
+        &self,
+        packages: &[InstalledPackage],
+        mc_version: &str,
+        loader: GameLoader,
+        ctx: &ContentCtx,
+    ) -> ContentResult<HashMap<String, VersionDetail>> {
+        let mod_ids: Vec<u32> = packages
+            .iter()
+            .filter_map(|package| package.project_id.parse().ok())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        if mod_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let response: CfData<Vec<CfModFiles>> = fetch_json(
+            &ctx.net,
+            Method::POST,
+            &api_url("/mods"),
+            Some(serde_json::json!({ "modIds": mod_ids })),
+        )
+        .await?;
+        let indexes: HashMap<String, Vec<CfFileIndex>> = response
+            .data
+            .into_iter()
+            .map(|entry| (entry.id.to_string(), entry.latest_files_indexes))
+            .collect();
+
+        let mut picks: Vec<(String, u32)> = Vec::new();
+        for package in packages {
+            let Some(files) = indexes.get(&package.project_id) else {
+                continue;
+            };
+            if let Some(file_id) = pick_file_index(files, package.content_type, mc_version, loader) {
+                picks.push((package.hash.clone(), file_id));
+            }
+        }
+        if picks.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let file_ids: Vec<String> = picks
+            .iter()
+            .map(|(_, file_id)| file_id.to_string())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        let versions: HashMap<String, VersionDetail> = self
+            .get_versions(&file_ids, ctx)
+            .await?
+            .into_iter()
+            .map(|version| (version.version_id.clone(), version))
+            .collect();
+
+        Ok(picks
+            .into_iter()
+            .filter_map(|(hash, file_id)| {
+                versions
+                    .get(&file_id.to_string())
+                    .map(|version| (hash, version.clone()))
+            })
+            .collect())
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CfModFiles {
+    id: u32,
+    #[serde(default)]
+    latest_files_indexes: Vec<CfFileIndex>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CfFileIndex {
+    game_version: String,
+    file_id: u32,
+    release_type: u8,
+    #[serde(default)]
+    mod_loader: Option<u8>,
+}
+
+fn pick_file_index(
+    files: &[CfFileIndex],
+    content_type: ContentType,
+    mc_version: &str,
+    loader: GameLoader,
+) -> Option<u32> {
+    let wanted = base_game_version(mc_version);
+    let loader_fits = |index: &CfFileIndex| {
+        if content_type != ContentType::Mod || !loader.is_modded() {
+            return true;
+        }
+        index
+            .mod_loader
+            .and_then(|raw| cf_loader_to_game(CfLoader::from(raw)))
+            .is_some_and(|other| loader.compatible_with(other))
+    };
+
+    let fitting: Vec<&CfFileIndex> = files
+        .iter()
+        .filter(|index| base_game_version(&index.game_version) == wanted)
+        .filter(|index| loader_fits(index))
+        .collect();
+
+    fitting
+        .iter()
+        .filter(|index| index.release_type == 1)
+        .map(|index| index.file_id)
+        .max()
+        .or_else(|| fitting.iter().map(|index| index.file_id).max())
 }
 
 #[derive(Deserialize)]

@@ -10,8 +10,8 @@ pub use registry::PackageProviderRegistry;
 use oneclient_common::domain::ProviderId;
 use crate::packages::file_identity::FileIdentity;
 use super::types::{
-    Page, ProjectDetail, ProjectSummary, SearchFilters, VersionDetail, VersionLookup,
-    VersionSummary,
+    InstalledPackage, Page, ProjectDetail, ProjectSummary, SearchFilters, VersionDetail,
+    VersionLookup, VersionSummary,
 };
 use crate::error::ContentResult;
 use crate::ctx::ContentCtx;
@@ -77,6 +77,14 @@ pub trait PackageProvider: Send + Sync {
         identities: &[FileIdentity],
         ctx: &ContentCtx,
     ) -> ContentResult<VersionLookup>;
+
+    async fn latest_for_game_version(
+        &self,
+        packages: &[InstalledPackage],
+        mc_version: &str,
+        loader: oneclient_common::domain::GameLoader,
+        ctx: &ContentCtx,
+    ) -> ContentResult<std::collections::HashMap<String, VersionDetail>>;
 
     async fn list_categories(
         &self,

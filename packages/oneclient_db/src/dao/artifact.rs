@@ -315,6 +315,16 @@ pub async fn is_cluster_linked(
 	Ok(row.is_some())
 }
 
+pub async fn list_clusters_linking(pool: &SqlitePool, hash: &str) -> Result<Vec<i64>, sqlx::Error> {
+	let rows: Vec<(i64,)> =
+		sqlx::query_as("SELECT DISTINCT cluster_id FROM cluster_artifacts WHERE hash = ?")
+			.bind(hash)
+			.fetch_all(pool)
+			.await?;
+
+	Ok(rows.into_iter().map(|(cluster_id,)| cluster_id).collect())
+}
+
 pub async fn unlink_cluster_artifact(
 	pool: &SqlitePool,
 	cluster_id: i64,

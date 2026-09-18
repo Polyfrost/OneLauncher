@@ -794,6 +794,39 @@ pub async fn remove_artifact_from_cluster(
     Ok(())
 }
 
+async fn is_shared_artifact(hash: &str, ctx: &ContentCtx) -> ContentResult<bool> {
+    Ok(artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+        .await?
+        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8))
+        .is_some_and(ContentType::is_global))
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn clusters_sharing_artifact(hash: &str, ctx: &ContentCtx) -> ContentResult<Option<usize>> {
+    if !is_shared_artifact(hash, ctx).await? {
+        return Ok(None);
+    }
+
+    Ok(Some(artifact_dao::list_clusters_linking(&ctx.db, hash).await?.len()))
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn delete_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
+    if !is_shared_artifact(hash, ctx).await? {
+        return remove_artifact_from_cluster(cluster_id, hash, true, ctx).await;
+    }
+
+    let mut first_error = None;
+    for linked_cluster in artifact_dao::list_clusters_linking(&ctx.db, hash).await? {
+        if let Err(err) = remove_artifact_from_cluster(linked_cluster, hash, true, ctx).await {
+            tracing::warn!(cluster_id = linked_cluster, hash, error = %err, "failed to delete shared package from a cluster");
+            first_error.get_or_insert(err);
+        }
+    }
+
+    first_error.map_or(Ok(()), Err)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

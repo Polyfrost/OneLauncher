@@ -6,7 +6,7 @@ use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_common::version::parse_mc_version;
 use oneclient_content::packages::release_migration::{
     ReleaseMigrationDependency, ReleaseMigrationPackage, ReleaseMigrationPlan, ReleaseMigrationSkip,
-    SkipReason,
+    SkipReason, WAITLIST_DAYS,
 };
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 use oneclient_core::clusters::Cluster;
@@ -112,6 +112,7 @@ impl Component for ReleaseMigrationPopup {
             if settled && !*checked.peek() {
                 checked.set(true);
                 check_dispatch.check_release_migration();
+                check_dispatch.process_release_waitlist();
             }
         });
 
@@ -726,6 +727,16 @@ fn package_list(
         ));
 
         if open {
+            scroll = scroll.child(
+                label()
+                    .text(format!(
+                        "Added automatically when a {mc_version} build appears (up to {WAITLIST_DAYS} days)"
+                    ))
+                    .font_size(12.)
+                    .max_lines(1)
+                    .margin(Gaps::new(0., 12., 6., 12.))
+                    .color(colors::fg_secondary()),
+            );
             for skip in skipped {
                 let cached = meta.get(&(skip.provider, skip.project_id.clone()));
                 scroll = scroll.child(

@@ -7,7 +7,9 @@ use tokio::sync::OnceCell;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::models::{ClusterRow, SeenStatus};
+use oneclient_db::dao::release_migration_waitlist as waitlist_dao;
+use chrono::Utc;
+use oneclient_db::models::{ClusterRow, ReleaseMigrationWaitlistRow, SeenStatus};
 use oneclient_events::GroupedProgressChild;
 
 use crate::bundles::{BundlesManager, enabled_bundle_projects};
@@ -49,6 +51,7 @@ pub enum SkipReason {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseMigrationSkip {
+	pub source_hash: String,
 	pub provider: ProviderId,
 	pub project_id: String,
 	pub content_type: ContentType,
@@ -333,7 +336,6 @@ async fn plan_release_migration_cached(
 	ctx: &ContentCtx,
 ) -> ContentResult<ReleaseMigrationPlan> {
 	let target = PackageStore::get_cluster(target_cluster_id, ctx).await?;
-	let loader = GameLoader::from_repr(target.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
 	let present = target_projects(target_cluster_id, bundles, ctx).await?;
 
 	let candidates: Vec<Candidate> = migratable_candidates(source_cluster_id, ctx)
@@ -342,11 +344,44 @@ async fn plan_release_migration_cached(
 		.filter(|candidate| !present.contains(&candidate.project_id))
 		.collect();
 
+	let evaluation = evaluate_candidates(candidates, &target, &present, cache, ctx).await;
+
 	let mut plan = ReleaseMigrationPlan {
 		source_cluster_id,
 		target_cluster_id,
-		..Default::default()
+		packages: evaluation.packages,
+		dependencies: evaluation.dependencies,
+		unavailable: evaluation.unavailable,
+		unreachable: evaluation.unreachable,
 	};
+
+	plan.packages
+		.sort_by_key(|package| package.display_name.to_lowercase());
+	plan.dependencies
+		.sort_by_key(|dependency| dependency.project.name.to_lowercase());
+	plan.unavailable
+		.sort_by_key(|skip| skip.display_name.to_lowercase());
+
+	Ok(plan)
+}
+
+#[derive(Default)]
+struct Evaluation {
+	packages: Vec<ReleaseMigrationPackage>,
+	dependencies: Vec<ReleaseMigrationDependency>,
+	unavailable: Vec<ReleaseMigrationSkip>,
+	unreachable: bool,
+}
+
+async fn evaluate_candidates(
+	candidates: Vec<Candidate>,
+	target: &ClusterRow,
+	present: &HashSet<String>,
+	cache: &DependencyCache,
+	ctx: &ContentCtx,
+) -> Evaluation {
+	let loader = GameLoader::from_repr(target.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
+	let mut evaluation = Evaluation::default();
 
 	let mut by_provider: HashMap<ProviderId, Vec<Candidate>> = HashMap::new();
 	for candidate in candidates {
@@ -378,12 +413,13 @@ async fn plan_release_migration_cached(
 			Ok(found) => found,
 			Err(err) if err.is_transient() => {
 				tracing::warn!(provider = ?provider_id, error = %err, "release migration check could not reach the provider");
-				plan.unreachable = true;
+				evaluation.unreachable = true;
 				continue;
 			}
 			Err(err) => {
 				tracing::warn!(provider = ?provider_id, error = %err, "release migration check failed for the provider");
-				plan.unavailable.extend(candidates.into_iter().map(|candidate| ReleaseMigrationSkip {
+				evaluation.unavailable.extend(candidates.into_iter().map(|candidate| ReleaseMigrationSkip {
+					source_hash: candidate.hash,
 					provider: provider_id,
 					project_id: candidate.project_id,
 					content_type: candidate.content_type,
@@ -413,7 +449,8 @@ async fn plan_release_migration_cached(
 					},
 					version.clone(),
 				)),
-				None => plan.unavailable.push(ReleaseMigrationSkip {
+				None => evaluation.unavailable.push(ReleaseMigrationSkip {
+					source_hash: candidate.hash,
 					provider: provider_id,
 					project_id: candidate.project_id,
 					content_type: candidate.content_type,
@@ -424,13 +461,11 @@ async fn plan_release_migration_cached(
 		}
 	}
 
-	if plan.unreachable {
-		return Ok(plan);
+	if evaluation.unreachable {
+		return evaluation;
 	}
 
 	let resolved_packages = futures_util::stream::iter(offered.into_iter().map(|(package, version)| {
-		let target = &target;
-		let present = &present;
 		async move {
 			let resolved = if resolves_dependencies(package.content_type) {
 				cache
@@ -451,13 +486,14 @@ async fn plan_release_migration_cached(
 		let resolved = match resolved {
 			Ok(resolved) => resolved,
 			Err(Unreachable) => {
-				plan.unreachable = true;
-				return Ok(plan);
+				evaluation.unreachable = true;
+				return evaluation;
 			}
 		};
 
 		let Some(resolved) = resolved else {
-			plan.unavailable.push(ReleaseMigrationSkip {
+			evaluation.unavailable.push(ReleaseMigrationSkip {
+				source_hash: package.source_hash,
 				provider: package.provider,
 				project_id: package.project_id,
 				content_type: package.content_type,
@@ -482,10 +518,10 @@ async fn plan_release_migration_cached(
 			}
 		}
 
-		plan.packages.push(package);
+		evaluation.packages.push(package);
 	}
 
-	let libraries: HashSet<String> = plan
+	let libraries: HashSet<String> = evaluation
 		.packages
 		.iter()
 		.filter(|package| {
@@ -496,23 +532,226 @@ async fn plan_release_migration_cached(
 		.map(|package| package.source_hash.clone())
 		.collect();
 
-	plan.packages
+	evaluation
+		.packages
 		.retain(|package| !libraries.contains(&package.source_hash));
 	for dependency in &mut dependencies {
 		dependency.required_by.retain(|hash| !libraries.contains(hash));
 	}
 	dependencies.retain(|dependency| !dependency.required_by.is_empty());
 
-	plan.dependencies = dependencies;
+	evaluation.dependencies = dependencies;
+	evaluation
+}
 
-	plan.packages
-		.sort_by_key(|package| package.display_name.to_lowercase());
-	plan.dependencies
-		.sort_by_key(|dependency| dependency.project.name.to_lowercase());
-	plan.unavailable
-		.sort_by_key(|skip| skip.display_name.to_lowercase());
+pub const WAITLIST_DAYS: i64 = 30;
 
-	Ok(plan)
+#[tracing::instrument(level = "debug", skip(skips, ctx))]
+pub async fn add_to_waitlist(
+	target_cluster_id: i64,
+	skips: &[ReleaseMigrationSkip],
+	ctx: &ContentCtx,
+) -> ContentResult<()> {
+	let now = Utc::now();
+	let added_at = now.to_rfc3339();
+	let expires_at = (now + chrono::Duration::days(WAITLIST_DAYS)).to_rfc3339();
+
+	for skip in skips {
+		waitlist_dao::upsert(
+			&ctx.db,
+			target_cluster_id,
+			skip.provider as i64,
+			&skip.project_id,
+			skip.content_type as i64,
+			&skip.source_hash,
+			&skip.display_name,
+			&added_at,
+			&expires_at,
+		)
+		.await?;
+	}
+
+	Ok(())
+}
+
+#[derive(Debug, Clone)]
+pub struct WaitlistInstall {
+	pub cluster_id: i64,
+	pub cluster_name: String,
+	pub mc_version: String,
+	pub names: Vec<String>,
+}
+
+#[tracing::instrument(level = "debug", skip(bundles, is_running, ctx))]
+pub async fn process_waitlist(
+	bundles: &BundlesManager,
+	is_running: impl Fn(i64) -> bool,
+	ctx: &ContentCtx,
+) -> ContentResult<Vec<WaitlistInstall>> {
+	let expired = waitlist_dao::delete_expired(&ctx.db, &Utc::now().to_rfc3339()).await?;
+	if expired > 0 {
+		tracing::info!(expired, "dropped expired release migration waitlist entries");
+	}
+
+	let mut by_cluster: std::collections::BTreeMap<i64, Vec<ReleaseMigrationWaitlistRow>> =
+		std::collections::BTreeMap::new();
+	let rows = waitlist_dao::list_all(&ctx.db).await?;
+	tracing::info!(
+		entries = rows.len(),
+		expired,
+		"checking the release migration waitlist for new builds"
+	);
+	for row in rows {
+		by_cluster.entry(row.target_cluster_id).or_default().push(row);
+	}
+
+	let cache = DependencyCache::new();
+	let mut installs = Vec::new();
+
+	for (cluster_id, rows) in by_cluster {
+		if is_running(cluster_id) {
+			tracing::info!(
+				cluster_id,
+				waiting = rows.len(),
+				"skipping the waitlist check for a running cluster"
+			);
+			continue;
+		}
+		let target = PackageStore::get_cluster(cluster_id, ctx).await?;
+		let present = target_projects(cluster_id, bundles, ctx).await?;
+
+		let mut candidates = Vec::new();
+		for row in rows {
+			if present.contains(&row.project_id) {
+				tracing::info!(
+					cluster_id,
+					package = %row.display_name,
+					"waitlisted package is already in the cluster, dropping it"
+				);
+				waitlist_dao::delete(&ctx.db, cluster_id, row.provider, &row.project_id).await?;
+				continue;
+			}
+			let (Some(provider), Some(content_type)) = (
+				ProviderId::from_repr(row.provider as u8),
+				ContentType::from_repr(row.content_type as u8),
+			) else {
+				waitlist_dao::delete(&ctx.db, cluster_id, row.provider, &row.project_id).await?;
+				continue;
+			};
+			candidates.push(Candidate {
+				hash: row.source_hash,
+				provider,
+				content_type,
+				project_id: row.project_id,
+				version_id: String::new(),
+				display_name: row.display_name,
+				display_version: String::new(),
+				published_at: None,
+			});
+		}
+		if candidates.is_empty() {
+			continue;
+		}
+
+		let waitlisted: HashSet<(ProviderId, String)> = candidates
+			.iter()
+			.map(|candidate| (candidate.provider, candidate.project_id.clone()))
+			.collect();
+
+		let checking: Vec<String> = candidates
+			.iter()
+			.map(|candidate| candidate.display_name.clone())
+			.collect();
+		tracing::info!(
+			cluster_id,
+			cluster = %target.name,
+			mc_version = %target.mc_version,
+			packages = ?checking,
+			"checking waitlisted packages for {} builds",
+			target.mc_version
+		);
+
+		let evaluation = evaluate_candidates(candidates, &target, &present, &cache, ctx).await;
+		if evaluation.unreachable {
+			tracing::warn!(
+				cluster_id,
+				"a provider could not be reached, keeping the waitlist for the next launch"
+			);
+			break;
+		}
+
+		tracing::info!(
+			cluster_id,
+			mc_version = %target.mc_version,
+			available = ?evaluation
+				.packages
+				.iter()
+				.map(|package| format!("{} {}", package.display_name, package.version_name))
+				.collect::<Vec<_>>(),
+			dependencies = ?evaluation
+				.dependencies
+				.iter()
+				.map(|dependency| dependency.project.name.clone())
+				.collect::<Vec<_>>(),
+			still_waiting = ?evaluation
+				.unavailable
+				.iter()
+				.map(|skip| format!("{} ({:?})", skip.display_name, skip.reason))
+				.collect::<Vec<_>>(),
+			"waitlist check finished for {} builds",
+			target.mc_version
+		);
+
+		let mut names = Vec::new();
+		let mut blocked: HashSet<String> = HashSet::new();
+
+		for dependency in &evaluation.dependencies {
+			match apply_release_migration_dependency(cluster_id, dependency, None, ctx).await {
+				Ok(_) => {
+					if waitlisted.contains(&(dependency.provider, dependency.project.id.clone())) {
+						waitlist_dao::delete(&ctx.db, cluster_id, dependency.provider as i64, &dependency.project.id)
+							.await?;
+						names.push(dependency.project.name.clone());
+					}
+				}
+				Err(err) => {
+					tracing::warn!(dependency = %dependency.project.name, %err, "waitlisted package dependency failed to install");
+					blocked.extend(dependency.required_by.iter().cloned());
+				}
+			}
+		}
+
+		for package in &evaluation.packages {
+			if blocked.contains(&package.source_hash) {
+				continue;
+			}
+			match apply_release_migration_package(cluster_id, package, None, ctx).await {
+				Ok(_) => {
+					waitlist_dao::delete(&ctx.db, cluster_id, package.provider as i64, &package.project_id).await?;
+					names.push(package.display_name.clone());
+				}
+				Err(err) => tracing::warn!(package = %package.display_name, %err, "waitlisted package failed to install"),
+			}
+		}
+
+		if !names.is_empty() {
+			tracing::info!(
+				cluster_id,
+				cluster = %target.name,
+				installed = ?names,
+				"installed waitlisted packages that gained a {} build",
+				target.mc_version
+			);
+			installs.push(WaitlistInstall {
+				cluster_id,
+				cluster_name: target.name.clone(),
+				mc_version: target.mc_version.clone(),
+				names,
+			});
+		}
+	}
+
+	Ok(installs)
 }
 
 #[tracing::instrument(level = "debug", skip(dependency, child, ctx), fields(project_id = %dependency.project.id))]

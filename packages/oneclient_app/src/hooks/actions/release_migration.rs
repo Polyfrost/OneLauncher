@@ -4,8 +4,9 @@ use freya::prelude::spawn_forever;
 use std::collections::HashSet;
 
 use oneclient_content::packages::release_migration::{
-    ReleaseMigrationPackage, ReleaseMigrationPlan, apply_release_migration_dependency,
-    apply_release_migration_package, plan_release_migration, plan_release_migrations,
+    ReleaseMigrationPackage, ReleaseMigrationPlan, add_to_waitlist,
+    apply_release_migration_dependency, apply_release_migration_package, plan_release_migration,
+    plan_release_migrations, process_waitlist,
 };
 use oneclient_core::ReleaseTarget;
 use oneclient_core::clusters::{
@@ -325,6 +326,48 @@ impl Actions {
         });
     }
 
+    pub fn process_release_waitlist(&self) {
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let content = state.services.content();
+
+            let installs = match process_waitlist(
+                state.bundles.as_ref(),
+                |cluster_id| oneclient_core::game::is_running(&state, cluster_id),
+                &content,
+            )
+            .await
+            {
+                Ok(installs) => installs,
+                Err(err) => {
+                    tracing::warn!(error = %err, "release migration waitlist check failed");
+                    return;
+                }
+            };
+
+            if installs.is_empty() {
+                return;
+            }
+
+            for install in &installs {
+                let verb = if install.names.len() == 1 { "supports" } else { "support" };
+                actions
+                    .notify(format!("New {} builds added", install.mc_version))
+                    .body(format!(
+                        "{} now {verb} {} and {} added to {}.",
+                        install.names.join(", "),
+                        install.mc_version,
+                        if install.names.len() == 1 { "was" } else { "were" },
+                        install.cluster_name
+                    ))
+                    .send();
+            }
+
+            super::super::invalidate_cluster_queries().await;
+        });
+    }
+
     pub fn dismiss_release_migration(&self) {
         let mut key = None;
         self.write_release_migration(|prompt| {
@@ -354,14 +397,16 @@ impl Actions {
             .iter()
             .map(|package| package.source_hash.clone())
             .collect();
-        let dependencies: Vec<_> = match prompt.plans.get(&prompt.selected) {
-            Some(ReleasePlanState::Ready(plan)) => plan
-                .dependencies
-                .iter()
-                .filter(|dependency| dependency.is_needed_by(&chosen))
-                .cloned()
-                .collect(),
-            _ => Vec::new(),
+        let (dependencies, unavailable): (Vec<_>, Vec<_>) = match prompt.plans.get(&prompt.selected) {
+            Some(ReleasePlanState::Ready(plan)) => (
+                plan.dependencies
+                    .iter()
+                    .filter(|dependency| dependency.is_needed_by(&chosen))
+                    .cloned()
+                    .collect(),
+                plan.unavailable.clone(),
+            ),
+            _ => (Vec::new(), Vec::new()),
         };
 
         let actions = self.clone();
@@ -414,6 +459,10 @@ impl Actions {
                     ),
                 }
                 child.finish();
+            }
+
+            if let Err(err) = add_to_waitlist(target.id, &unavailable, &content).await {
+                tracing::warn!(error = %err, "could not add packages without a build to the migration waitlist");
             }
 
             let failed = total - migrated;

@@ -214,6 +214,13 @@ impl GameState {
         self.stage(cluster_id).is_some_and(LaunchStage::is_busy)
     }
 
+    pub fn running_clusters(&self) -> impl Iterator<Item = i64> + '_ {
+        self.stages
+            .iter()
+            .filter(|(_, stage)| **stage == LaunchStage::Running)
+            .map(|(id, _)| *id)
+    }
+
     #[must_use]
     pub fn is_running(&self, cluster_id: i64) -> bool {
         self.stage(cluster_id) == Some(LaunchStage::Running)

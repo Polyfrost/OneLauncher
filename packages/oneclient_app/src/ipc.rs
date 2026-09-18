@@ -1,6 +1,8 @@
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufReader};
+use tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender, unbounded_channel};
 
 use crate::cli::Cli;
 
@@ -12,6 +14,10 @@ const REPLY_OK: &str = "OK";
 pub enum IpcCommand {
     Launch(String),
     Focus,
+    Close,
+    Logs,
+    Stop,
+    Quit,
 }
 
 pub enum Claim {
@@ -25,6 +31,10 @@ impl IpcCommand {
         match self {
             Self::Launch(folder) => format!("LAUNCH {folder}"),
             Self::Focus => "FOCUS".to_string(),
+            Self::Close => "CLOSE".to_string(),
+            Self::Logs => "LOGS".to_string(),
+            Self::Stop => "STOP".to_string(),
+            Self::Quit => "QUIT".to_string(),
         }
     }
 
@@ -34,7 +44,14 @@ impl IpcCommand {
             let folder = folder.trim();
             return (!folder.is_empty()).then(|| Self::Launch(folder.to_string()));
         }
-        (line == "FOCUS").then_some(Self::Focus)
+        match line {
+            "FOCUS" => Some(Self::Focus),
+            "CLOSE" => Some(Self::Close),
+            "LOGS" => Some(Self::Logs),
+            "STOP" => Some(Self::Stop),
+            "QUIT" => Some(Self::Quit),
+            _ => None,
+        }
     }
 }
 
@@ -68,15 +85,31 @@ async fn forward(request: &IpcCommand) -> bool {
     imp::send(&request.encode()).await
 }
 
-/// The accept loop runs off the caller's thread so a stalled client cannot hold
-/// up the next shortcut launch; `on_command` still runs here
-pub async fn serve(listener: Listener, on_command: impl Fn(IpcCommand)) {
-    let (commands, mut incoming) = tokio::sync::mpsc::unbounded_channel();
-    tokio::spawn(imp::serve(listener, commands));
+static QUEUE: OnceLock<UnboundedSender<IpcCommand>> = OnceLock::new();
+static INBOX: Mutex<Option<UnboundedReceiver<IpcCommand>>> = Mutex::new(None);
 
-    while let Some(command) = incoming.recv().await {
-        on_command(command);
-    }
+fn queue() -> &'static UnboundedSender<IpcCommand> {
+    QUEUE.get_or_init(|| {
+        let (commands, incoming) = unbounded_channel();
+        *INBOX.lock().unwrap() = Some(incoming);
+        commands
+    })
+}
+
+pub fn send(command: IpcCommand) {
+    let _ = queue().send(command);
+}
+
+/// The accept loop runs off the UI thread so a stalled client cannot hold up
+/// the next shortcut launch
+pub fn listen(listener: Listener) {
+    tokio::spawn(imp::serve(listener, queue().clone()));
+}
+
+#[must_use]
+pub fn take_inbox() -> Option<UnboundedReceiver<IpcCommand>> {
+    queue();
+    INBOX.lock().unwrap().take()
 }
 
 enum BindError {
@@ -87,7 +120,7 @@ enum BindError {
     Io(std::io::Error),
 }
 
-async fn handle<S>(stream: S, commands: &tokio::sync::mpsc::UnboundedSender<IpcCommand>)
+async fn handle<S>(stream: S, commands: &UnboundedSender<IpcCommand>)
 where
     S: AsyncRead + AsyncWrite + Unpin,
 {
@@ -315,7 +348,7 @@ mod tests {
         assert_eq!(IpcCommand::decode(""), None);
         assert_eq!(IpcCommand::decode("LAUNCH"), None);
         assert_eq!(IpcCommand::decode("LAUNCH   "), None);
-        assert_eq!(IpcCommand::decode("QUIT"), None);
+        assert_eq!(IpcCommand::decode("RESTART"), None);
     }
 
     #[test]

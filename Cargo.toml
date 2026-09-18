@@ -142,7 +142,7 @@ syn = {version = "=2.0.117"}
 thiserror = {version = "=2.0.18"}
 
 # ui
-freya = {git = "https://github.com/marc2332/freya", branch = "fix/skip-basic-render-driver", features = ["engine", "winit", "router", "remote-asset", "sdk", "query", "radio", "titlebar"]}
+freya = {git = "https://github.com/marc2332/freya", branch = "fix/skip-basic-render-driver", features = ["engine", "winit", "router", "remote-asset", "sdk", "query", "radio", "titlebar", "tray"]}
 freya-core = {git = "https://github.com/marc2332/freya", branch = "fix/skip-basic-render-driver"}
 freya-testing = {git = "https://github.com/marc2332/freya", branch = "fix/skip-basic-render-driver"}
 freya-skia-safe = "=0.100.0" # required for the SKSL player renderer

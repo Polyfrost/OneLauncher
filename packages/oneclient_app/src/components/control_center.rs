@@ -283,8 +283,11 @@ impl Component for QuickSettings {
         let dispatch = use_dispatch();
 
         let discord_on = settings.discord_enabled;
-        let toggle_discord = move |_| {
-            dispatch.edit_settings(|s| s.discord_enabled = !s.discord_enabled);
+        let toggle_discord = {
+            let dispatch = dispatch.clone();
+            move |_| {
+                dispatch.edit_settings(|s| s.discord_enabled = !s.discord_enabled);
+            }
         };
 
         rect()
@@ -296,7 +299,6 @@ impl Component for QuickSettings {
                 QuickTile::new(IconType::Discord, "Discord RPC", discord_on)
                     .on_press(toggle_discord),
             )
-            .child(QuickTile::new(IconType::Moon01, "Close on launch", false).disabled())
     }
 }
 
@@ -326,11 +328,6 @@ impl QuickTile {
             enabled: true,
             on_press: None,
         }
-    }
-
-    fn disabled(mut self) -> Self {
-        self.enabled = false;
-        self
     }
 
     fn on_press(mut self, on_press: impl Into<EventHandler<Event<PressEventData>>>) -> Self {

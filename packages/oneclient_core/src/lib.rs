@@ -65,6 +65,7 @@ pub use settings::ProfileUpdate;
 pub use state::LauncherServices;
 pub use state::LauncherState;
 pub use state::run_startup_tasks;
+pub use state::shutdown;
 pub use tos::{TermsDocument, fetch_terms};
 pub use verify::{ClusterVerifyReport, verify_cluster_files};
 pub use versions::{

@@ -184,3 +184,9 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
             .signal(oneclient_events::Signal::SyncComplete);
     });
 }
+
+pub async fn shutdown(state: &LauncherState) {
+    tracing::info!("shutting the launcher down");
+    state.discord.shutdown();
+    state.services.db.close().await;
+}

@@ -572,6 +572,40 @@ pub async fn list_cluster_bundle_overrides(
         .collect())
 }
 
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
+pub async fn enabled_bundle_projects(
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<std::collections::HashSet<String>> {
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
+        ContentError::InvalidData {
+            reason: format!("unknown loader {}", cluster.mc_loader),
+        }
+    })?;
+
+    let archives = bundles
+        .archives_for(ctx, &cluster.mc_version, loader)
+        .await?;
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+
+    let mut projects = std::collections::HashSet::new();
+    for archive in &archives {
+        let bundle_name = &archive.manifest.name;
+        for file in &archive.manifest.files {
+            let BundleFileKind::Managed { project_id, .. } = &file.kind else {
+                continue;
+            };
+            if effective_enabled(file, find_override(&overrides, bundle_name, project_id)) {
+                projects.insert(project_id.clone());
+            }
+        }
+    }
+
+    Ok(projects)
+}
+
 #[tracing::instrument(skip(bundles, progress, ctx))]
 pub async fn install_cluster_bundles(
     cluster_id: i64,

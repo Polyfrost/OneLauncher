@@ -46,9 +46,13 @@ enum SourcePlans {
     Unreachable,
 }
 
-async fn plan_sources(offer: &ReleaseMigrationOffer, content: &oneclient_content::ContentCtx) -> SourcePlans {
+async fn plan_sources(
+    offer: &ReleaseMigrationOffer,
+    bundles: &oneclient_content::bundles::BundlesManager,
+    content: &oneclient_content::ContentCtx,
+) -> SourcePlans {
     let ids: Vec<i64> = offer.sources.iter().map(|source| source.id).collect();
-    let mut checked: HashMap<i64, SourcePlan> = plan_release_migrations(&ids, offer.target.id, content)
+    let mut checked: HashMap<i64, SourcePlan> = plan_release_migrations(&ids, offer.target.id, bundles, content)
         .await
         .into_iter()
         .map(|(source_id, plan)| (source_id, classify(plan)))
@@ -140,7 +144,7 @@ impl Actions {
                     }
                 };
 
-                let (sources, plans) = match plan_sources(&offer, &content).await {
+                let (sources, plans) = match plan_sources(&offer, state.bundles.as_ref(), &content).await {
                     SourcePlans::Ready { sources, plans } => (sources, plans),
                     SourcePlans::Nothing => {
                         finished.push(key);
@@ -189,7 +193,13 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
-            let result = plan_release_migration(source_id, target_id, &state.services.content()).await;
+            let result = plan_release_migration(
+                source_id,
+                target_id,
+                state.bundles.as_ref(),
+                &state.services.content(),
+            )
+            .await;
             let next = match result {
                 Ok(plan) if !plan.unreachable => ReleasePlanState::Ready(plan),
                 Ok(_) => ReleasePlanState::Failed,
@@ -251,7 +261,7 @@ impl Actions {
                 }
             };
 
-            let (sources, plans) = match plan_sources(&offer, &state.services.content()).await {
+            let (sources, plans) = match plan_sources(&offer, state.bundles.as_ref(), &state.services.content()).await {
                 SourcePlans::Ready { sources, plans } => (sources, plans),
                 SourcePlans::Nothing => {
                     actions

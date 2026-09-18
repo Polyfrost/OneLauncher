@@ -10,6 +10,7 @@ use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::{ClusterRow, SeenStatus};
 use oneclient_events::GroupedProgressChild;
 
+use crate::bundles::{BundlesManager, enabled_bundle_projects};
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::dependencies::{ResolvedDependency, resolve_one, resolves_dependencies, supports_game_version};
@@ -126,7 +127,11 @@ pub async fn has_migratable_packages(cluster_id: i64, ctx: &ContentCtx) -> Conte
 	Ok(!migratable_candidates(cluster_id, ctx).await?.is_empty())
 }
 
-async fn target_projects(target_cluster_id: i64, ctx: &ContentCtx) -> ContentResult<HashSet<String>> {
+async fn target_projects(
+	target_cluster_id: i64,
+	bundles: &BundlesManager,
+	ctx: &ContentCtx,
+) -> ContentResult<HashSet<String>> {
 	let mut projects: HashSet<String> = PackageStore::list_linked_artifacts(target_cluster_id, ctx)
 		.await?
 		.into_iter()
@@ -138,6 +143,14 @@ async fn target_projects(target_cluster_id: i64, ctx: &ContentCtx) -> ContentRes
 			.into_iter()
 			.filter_map(|row| row.package_id),
 	);
+	match enabled_bundle_projects(target_cluster_id, bundles, ctx).await {
+		Ok(from_bundles) => projects.extend(from_bundles),
+		Err(err) => tracing::warn!(
+			target_cluster_id,
+			error = %err,
+			"could not read the target's bundles, treating only installed packages as present"
+		),
+	}
 	Ok(projects)
 }
 
@@ -266,10 +279,11 @@ impl DependencyCache {
 	}
 }
 
-#[tracing::instrument(level = "debug", skip(source_cluster_ids, ctx))]
+#[tracing::instrument(level = "debug", skip(source_cluster_ids, bundles, ctx))]
 pub async fn plan_release_migrations(
 	source_cluster_ids: &[i64],
 	target_cluster_id: i64,
+	bundles: &BundlesManager,
 	ctx: &ContentCtx,
 ) -> Vec<(i64, ContentResult<ReleaseMigrationPlan>)> {
 	let cache = DependencyCache::new();
@@ -277,8 +291,14 @@ pub async fn plan_release_migrations(
 	futures_util::stream::iter(source_cluster_ids.iter().copied().map(|source_cluster_id| {
 		let cache = &cache;
 		async move {
-			let plan =
-				plan_release_migration_cached(source_cluster_id, target_cluster_id, cache, ctx).await;
+			let plan = plan_release_migration_cached(
+				source_cluster_id,
+				target_cluster_id,
+				cache,
+				bundles,
+				ctx,
+			)
+			.await;
 			(source_cluster_id, plan)
 		}
 	}))
@@ -287,31 +307,34 @@ pub async fn plan_release_migrations(
 	.await
 }
 
-#[tracing::instrument(level = "debug", skip(ctx))]
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
 pub async fn plan_release_migration(
 	source_cluster_id: i64,
 	target_cluster_id: i64,
+	bundles: &BundlesManager,
 	ctx: &ContentCtx,
 ) -> ContentResult<ReleaseMigrationPlan> {
 	plan_release_migration_cached(
 		source_cluster_id,
 		target_cluster_id,
 		&DependencyCache::new(),
+		bundles,
 		ctx,
 	)
 	.await
 }
 
-#[tracing::instrument(level = "debug", skip(cache, ctx))]
+#[tracing::instrument(level = "debug", skip(cache, bundles, ctx))]
 async fn plan_release_migration_cached(
 	source_cluster_id: i64,
 	target_cluster_id: i64,
 	cache: &DependencyCache,
+	bundles: &BundlesManager,
 	ctx: &ContentCtx,
 ) -> ContentResult<ReleaseMigrationPlan> {
 	let target = PackageStore::get_cluster(target_cluster_id, ctx).await?;
 	let loader = GameLoader::from_repr(target.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
-	let present = target_projects(target_cluster_id, ctx).await?;
+	let present = target_projects(target_cluster_id, bundles, ctx).await?;
 
 	let candidates: Vec<Candidate> = migratable_candidates(source_cluster_id, ctx)
 		.await?

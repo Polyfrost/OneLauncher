@@ -943,6 +943,7 @@ impl Actions {
                 icon: None,
                 progress: None,
                 actions: Vec::new(),
+                toast_only: false,
             },
         }
     }
@@ -1116,6 +1117,7 @@ impl Actions {
                     icon: Some(IconType::Download01),
                     progress: None,
                     actions: Vec::new(),
+                    toast_only: false,
                 },
                 Err(err) => NotificationSpec {
                     title: "Install failed".to_string(),
@@ -1124,6 +1126,7 @@ impl Actions {
                     icon: None,
                     progress: None,
                     actions: Vec::new(),
+                    toast_only: false,
                 },
             };
 
@@ -1619,6 +1622,7 @@ impl Actions {
             icon: Some(IconType::DownloadCloud02),
             progress: None,
             actions: Vec::new(),
+            toast_only: false,
         });
 
         self.with_engine(|app| {
@@ -1689,6 +1693,72 @@ impl Actions {
         });
 
         wait.await.unwrap_or_default()
+    }
+
+    pub fn apply_package_update(&self, update: oneclient_core::BrowserPackageUpdate) {
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let events = state.services.events.clone();
+
+            let session = oneclient_events::GroupedProgressSession::start(
+                &events,
+                format!("Updating {}", update.display_name),
+            );
+            let child = session.child(
+                update.display_name.clone(),
+                1,
+                oneclient_events::TaskCategory::Packages,
+            );
+
+            let result = oneclient_core::apply_browser_package_update(
+                &update,
+                Some(&child),
+                &state.services.content(),
+            )
+            .await;
+
+            child.finish();
+            let session_id = session.detach();
+
+            let spec = match &result {
+                Ok(_) => NotificationSpec {
+                    title: "Updated".to_string(),
+                    body: format!(
+                        "{} is now on {}",
+                        update.display_name, update.latest_version_name
+                    ),
+                    level: Level::Info,
+                    icon: Some(IconType::DownloadCloud02),
+                    progress: None,
+                    actions: Vec::new(),
+                    toast_only: false,
+                },
+                Err(err) => NotificationSpec {
+                    title: "Update failed".to_string(),
+                    body: err.to_string(),
+                    level: Level::Error,
+                    icon: None,
+                    progress: None,
+                    actions: Vec::new(),
+                    toast_only: false,
+                },
+            };
+
+            actions.with_engine(|app| {
+                app.notifications
+                    .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
+            });
+
+            // A failed update stays in the list so the user can retry
+            if result.is_ok() {
+                actions.with_engine(|app| {
+                    app.notifications
+                        .resolve_package_update(update.cluster_id, &update.hash);
+                });
+                super::invalidate_cluster_queries().await;
+            }
+        });
     }
 
     /// The package stays marked out of date only the modal stops asking and
@@ -1898,6 +1968,13 @@ impl NotificationBuilder {
 
     pub fn actions(mut self, actions: impl IntoIterator<Item = NotificationAction>) -> Self {
         self.spec.actions = actions.into_iter().collect();
+        self
+    }
+
+    /// Marks the notice as ephemeral: it shows as a toast but never sticks
+    /// around in the notification center
+    pub fn toast_only(mut self) -> Self {
+        self.spec.toast_only = true;
         self
     }
 

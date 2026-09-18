@@ -48,9 +48,13 @@ impl Component for NotificationPanel {
 
         let progress = intro.read().value();
 
-        let entries = inbox.len();
         let mut rows: Vec<Element> = Vec::new();
-        if entries == 0 {
+        // Toast-only notices are ephemeral: never surface them in the center
+        let visible: Vec<InboxEntry> = inbox
+            .into_iter()
+            .filter(|entry| !entry.toast_only)
+            .collect();
+        if visible.is_empty() {
             rows.push(
                 label()
                     .text("No notifications")
@@ -59,8 +63,8 @@ impl Component for NotificationPanel {
                     .into_element(),
             );
         } else {
-            let last = entries - 1;
-            for (i, entry) in inbox.into_iter().enumerate() {
+            let last = visible.len() - 1;
+            for (i, entry) in visible.into_iter().enumerate() {
                 let id = entry.id;
                 rows.push(NotifEntryRow::new(entry, i != last).key(id).into_element());
             }

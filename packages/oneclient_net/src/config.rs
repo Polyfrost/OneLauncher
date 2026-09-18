@@ -45,13 +45,30 @@ impl NetConfig {
         self
     }
 
-    #[must_use]
-    pub fn modrinth_headers(&self) -> Vec<(String, String)> {
-        match &self.modrinth_api_key {
-            Some(token) => vec![("Authorization".to_string(), token.clone())],
-            None => Vec::new(),
-        }
-    }
+	#[must_use]
+	pub fn modrinth_headers(&self) -> Vec<(String, String)> {
+		match &self.modrinth_api_key {
+			Some(token) => vec![("Authorization".to_string(), token.clone())],
+			None => Vec::new(),
+		}
+	}
+
+	/// Whether `url` targets a host the user explicitly configured as the
+	/// custom API endpoint or meta URL base.
+	#[must_use]
+	pub fn allows_host(&self, url: &reqwest::Url) -> bool {
+		let Some(host) = url.host_str() else {
+			return false;
+		};
+		let port = url.port_or_known_default();
+
+		[self.metadata_api_url.as_str(), self.meta_url_base.as_str()]
+			.into_iter()
+			.filter_map(|base| base.parse::<reqwest::Url>().ok())
+			.any(|base| {
+				base.host_str() == Some(host) && base.port_or_known_default() == port
+			})
+	}
 }
 
 fn non_empty(value: Option<&str>) -> Option<String> {
@@ -95,11 +112,49 @@ mod tests {
             None,
         );
 
-        assert_eq!(config.curseforge_api_key, "key");
+        assert_eq!(config.curseforge_api_key, "key"); 
         assert_eq!(
-            config.modrinth_headers(),
-            vec![("Authorization".to_string(), "token".to_string())]
+          config.modrinth_headers(),
+          vec![("Authorization".to_string(), "token".to_string())]
         );
         assert_eq!(config.metadata_api_url, "https://a");
+	  }
+
+    fn parsed(url: &str) -> reqwest::Url {
+        url.parse().unwrap()
+    }
+
+    #[test]
+    fn allows_host_matches_a_configured_local_endpoint() {
+        let config = NetConfig::default().with_overrides(None, None, None, Some("http://localhost:8000"));
+
+        assert!(config.allows_host(&parsed("http://localhost:8000/icon.png")));
+        assert!(config.allows_host(&parsed("http://localhost:8000/")));
+    }
+
+    #[test]
+    fn allows_host_requires_the_same_port() {
+        let config = NetConfig::default().with_overrides(None, None, None, Some("http://localhost:8000"));
+
+        assert!(
+            !config.allows_host(&parsed("http://localhost:9090/icon.png")),
+            "a different port must not be treated as the configured endpoint"
+        );
+    }
+
+    #[test]
+    fn allows_host_ignores_hosts_that_were_not_configured() {
+        let config = NetConfig::default().with_overrides(None, None, Some("http://localhost:8000"), None);
+
+        assert!(config.allows_host(&parsed("http://localhost:8000/icon.png")));
+        assert!(!config.allows_host(&parsed("http://127.0.0.1:8000/icon.png")));
+        assert!(!config.allows_host(&parsed("http://example.com/icon.png")));
+    }
+
+    #[test]
+    fn allows_host_is_false_when_no_custom_endpoint_is_set() {
+        let config = NetConfig::default();
+
+        assert!(!config.allows_host(&parsed("http://localhost:8000/icon.png")));
     }
 }

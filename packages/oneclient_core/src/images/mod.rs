@@ -191,7 +191,10 @@ async fn download(net: &RequestClient, url: &str) -> LauncherResult<Bytes> {
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(refused(url, "unsupported scheme"));
     }
-    if !is_public_host(&parsed) {
+    // SSRF guard: refuse non-public hosts unless the user deliberately
+    // configured that host as the custom API endpoint / meta URL base,
+    // which is what makes `localhost` dev backends reachable
+    if !is_public_host(&parsed) && !net.config().allows_host(&parsed) {
         return Err(refused(url, "host is not public"));
     }
 

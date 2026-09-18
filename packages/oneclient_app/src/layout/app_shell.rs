@@ -218,6 +218,7 @@ fn copy_error_button(message: &str, dispatch: crate::Actions) -> impl IntoElemen
                     .notify("Copy failed")
                     .body("Could not copy the error to the clipboard.")
                     .error()
+                    .toast_only()
                     .send();
             } else {
                 dispatch
@@ -225,6 +226,7 @@ fn copy_error_button(message: &str, dispatch: crate::Actions) -> impl IntoElemen
                     .body("Error message copied to your clipboard.")
                     .info()
                     .icon(IconType::ClipboardCheck)
+                    .toast_only()
                     .send();
             }
         })

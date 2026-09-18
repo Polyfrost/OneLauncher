@@ -758,6 +758,7 @@ impl Component for SidebarInfo {
                     .notify("Copy failed")
                     .body("Could not copy system information to the clipboard.")
                     .error()
+                    .toast_only()
                     .send();
             } else {
                 dispatch
@@ -765,6 +766,7 @@ impl Component for SidebarInfo {
                     .body("System information copied to your clipboard.")
                     .info()
                     .icon(IconType::ClipboardCheck)
+                    .toast_only()
                     .send();
             }
         };

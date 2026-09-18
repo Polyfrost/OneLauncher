@@ -44,12 +44,21 @@ fn is_migration_destination(target: &ReleaseTarget, rules: &[RemoteMigration]) -
 #[tracing::instrument(skip(state))]
 pub async fn record_new_versions(state: &LauncherState) -> LauncherResult<()> {
     let rules = state.versions.migrations().await;
-    let added: Vec<ReleaseTarget> = state
-        .versions
-        .take_added_versions()
-        .into_iter()
-        .filter(|target| !is_migration_destination(target, &rules))
-        .collect();
+    let mut added: Vec<ReleaseTarget> = Vec::new();
+    for target in state.versions.take_added_versions() {
+        if is_migration_destination(&target, &rules) {
+            continue;
+        }
+        if !state.versions.shows_initial_migration(&target).await {
+            tracing::info!(
+                mc_version = %target.mc_version,
+                loader = %target.loader,
+                "new version opts out of the initial migration offer"
+            );
+            continue;
+        }
+        added.push(target);
+    }
     if added.is_empty() {
         return Ok(());
     }

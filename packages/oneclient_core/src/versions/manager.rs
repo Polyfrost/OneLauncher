@@ -80,6 +80,10 @@ impl VersionsManager {
         self.manifest.read().await.migrations.clone()
     }
 
+    pub async fn shows_initial_migration(&self, target: &ReleaseTarget) -> bool {
+        self.manifest.read().await.shows_initial_migration(target)
+    }
+
     pub fn take_added_versions(&self) -> Vec<ReleaseTarget> {
         std::mem::take(&mut *self.added.lock().unwrap())
     }

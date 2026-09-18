@@ -133,6 +133,12 @@ impl Actions {
                     continue;
                 };
 
+                if !state.versions.shows_initial_migration(&release).await {
+                    tracing::info!(key, "pending version opts out of the initial migration offer, dropping it");
+                    finished.push(key);
+                    continue;
+                }
+
                 let offer = match release_migration_offer(&state, &release).await {
                     Ok(OfferLookup::Offer(offer)) => offer,
                     Ok(OfferLookup::NoSources) => {

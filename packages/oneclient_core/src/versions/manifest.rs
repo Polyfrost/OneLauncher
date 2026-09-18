@@ -48,6 +48,14 @@ pub struct RemoteEntry {
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub predownload: Option<bool>,
+    #[serde(default)]
+    pub flags: EntryFlags,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryFlags {
+    #[serde(default)]
+    pub show_initial_migration: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -110,6 +118,25 @@ fn release_targets(manifest: &VersionsManifest) -> Vec<ReleaseTarget> {
             })
         })
         .collect()
+}
+
+impl VersionsManifest {
+    #[must_use]
+    pub fn shows_initial_migration(&self, target: &ReleaseTarget) -> bool {
+        self.clusters
+            .iter()
+            .flat_map(|cluster| cluster.entries.iter().map(move |entry| (cluster.major_version, entry)))
+            .find(|(major, entry)| {
+                format_mc_version(*major, entry.minor_version, entry.patch_version) == target.mc_version
+                    && entry
+                        .loader
+                        .as_deref()
+                        .and_then(|loader| GameLoader::from_str(loader).ok())
+                        == Some(target.loader)
+            })
+            .and_then(|(_, entry)| entry.flags.show_initial_migration)
+            .unwrap_or(true)
+    }
 }
 
 #[must_use]
@@ -282,6 +309,36 @@ mod tests {
             added_release_targets(&previous, &next),
             vec![ReleaseTarget { mc_version: "26.3".into(), loader: GameLoader::NeoForge }]
         );
+    }
+
+    #[test]
+    fn show_initial_migration_reads_the_entry_flag() {
+        let manifest: VersionsManifest = serde_json::from_str(
+            r#"{"clusters":[{"major_version":8,"entries":[
+                {"minor_version":9,"loader":"ornithe","flags":{"show_initial_migration":false}}
+            ]},{"major_version":26,"entries":[
+                {"minor_version":3,"loader":"fabric"},
+                {"minor_version":4,"loader":"fabric","flags":{}}
+            ]}]}"#,
+        )
+        .expect("should parse");
+
+        let target = |mc_version: &str, loader| ReleaseTarget { mc_version: mc_version.into(), loader };
+        assert!(!manifest.shows_initial_migration(&target("1.8.9", GameLoader::Ornithe)));
+        assert!(manifest.shows_initial_migration(&target("26.3", GameLoader::Fabric)), "no flags means show");
+        assert!(manifest.shows_initial_migration(&target("26.4", GameLoader::Fabric)), "an empty flags object means show");
+        assert!(manifest.shows_initial_migration(&target("1.8.9", GameLoader::Fabric)), "the flag belongs to its own loader");
+    }
+
+    #[test]
+    fn unknown_flags_are_ignored() {
+        let manifest: VersionsManifest = serde_json::from_str(
+            r#"{"clusters":[{"major_version":26,"entries":[
+                {"minor_version":3,"loader":"fabric","flags":{"something_new":true}}
+            ]}]}"#,
+        )
+        .expect("an unknown flag must not break parsing");
+        assert_eq!(manifest.clusters[0].entries[0].flags.show_initial_migration, None);
     }
 
     #[test]

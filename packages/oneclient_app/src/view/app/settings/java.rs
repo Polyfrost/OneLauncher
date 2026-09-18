@@ -6,6 +6,7 @@ use oneclient_java::{JavaRuntime, JavaVendor, is_launcher_managed};
 use super::settings_page;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
+use crate::invalidate_java_queries;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::section_header;
@@ -86,6 +87,7 @@ impl Component for AddRow {
                     .notify("Java runtimes refreshed")
                     .body("The installed runtime list is up to date")
                     .info()
+					.toast_only()
                     .send();
             });
         };

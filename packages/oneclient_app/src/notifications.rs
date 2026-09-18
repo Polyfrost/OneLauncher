@@ -456,7 +456,10 @@ impl NotificationState {
     }
 
     pub fn unread_count(inbox: &[InboxEntry]) -> usize {
-        inbox.iter().filter(|entry| !entry.read).count()
+        inbox
+            .iter()
+            .filter(|entry| !entry.read && !entry.toast_only)
+            .count()
     }
 
     /// Deliberately does not snapshot this runs tens of thousands of times per download

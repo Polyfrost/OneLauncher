@@ -3,7 +3,7 @@ use freya::prelude::*;
 use crate::components::ScrollArea;
 use crate::hooks::{try_global_analytics, use_global_analytics};
 use crate::theme::colors;
-use crate::ui::{centered_note};
+use crate::ui::centered_note;
 use crate::view::app::{analytics_body, analytics_placeholder};
 
 #[derive(PartialEq)]

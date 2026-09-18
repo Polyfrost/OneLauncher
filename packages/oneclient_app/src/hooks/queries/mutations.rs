@@ -23,12 +23,36 @@ async fn timed(step: &'static str, fut: impl std::future::Future<Output = ()>) {
 
 pub async fn invalidate_cluster_queries() {
     let started = std::time::Instant::now();
-    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::invalidate_all()).await;
-    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::invalidate_all()).await;
-    timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::invalidate_all()).await;
-    timed("clusters", QueriesStorage::<ListClustersQuery>::invalidate_all()).await;
-    timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::invalidate_all()).await;
-    timed("package_updates", QueriesStorage::<PackageUpdatesQuery>::invalidate_all()).await;
+    timed(
+        "cluster_content",
+        QueriesStorage::<ClusterContentQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundle_overrides",
+        QueriesStorage::<BundleOverridesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundles_with_status",
+        QueriesStorage::<BundlesWithStatusQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "clusters",
+        QueriesStorage::<ListClustersQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundle_updates",
+        QueriesStorage::<BundleUpdatesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "package_updates",
+        QueriesStorage::<PackageUpdatesQuery>::invalidate_all(),
+    )
+    .await;
     tracing::debug!(
         target: "oneclient_app::perf",
         ms = started.elapsed().as_millis() as u64,
@@ -47,10 +71,26 @@ pub async fn invalidate_cluster_content_queries() {
 /// The bundle queries do move a toggle writes a bundle override and both read
 /// those back
 async fn invalidate_enabled_flag_queries() {
-    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::invalidate_all()).await;
-    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::invalidate_all()).await;
-    timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::invalidate_all()).await;
-    timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::invalidate_all()).await;
+    timed(
+        "cluster_content",
+        QueriesStorage::<ClusterContentQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundle_overrides",
+        QueriesStorage::<BundleOverridesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundles_with_status",
+        QueriesStorage::<BundlesWithStatusQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundle_updates",
+        QueriesStorage::<BundleUpdatesQuery>::invalidate_all(),
+    )
+    .await;
 }
 
 pub async fn invalidate_profile_queries() {
@@ -195,7 +235,13 @@ impl MutationCapability for ClusterMutation {
         if let Err(err) = result
             && let Ok(state) = crate::launcher::state()
         {
-            state.services.events.notify("Action failed").body(err).error().send();
+            state
+                .services
+                .events
+                .notify("Action failed")
+                .body(err)
+                .error()
+                .send();
         }
         if matches!(keys, ClusterAction::SetArtifactEnabled { .. }) {
             invalidate_enabled_flag_queries().await;

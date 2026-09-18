@@ -70,7 +70,11 @@ impl Component for ProcessLogs {
     }
 }
 
-fn filter_lines(lines: &Arc<Vec<Arc<str>>>, search: &str, level: LevelFilter) -> Arc<Vec<Arc<str>>> {
+fn filter_lines(
+    lines: &Arc<Vec<Arc<str>>>,
+    search: &str,
+    level: LevelFilter,
+) -> Arc<Vec<Arc<str>>> {
     let needle = (!search.trim().is_empty()).then(|| search.to_lowercase());
     let wanted = level.to_level();
 

@@ -336,9 +336,7 @@ pub fn viewer_header(
                 )
                 .into_element(),
         )
-        .child(
-            UploadToMclogs::new(has_log, confirm)
-        );
+        .child(UploadToMclogs::new(has_log, confirm));
 
     rect()
         .vertical()

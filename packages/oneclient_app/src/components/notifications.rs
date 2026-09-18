@@ -5,12 +5,12 @@ use freya::{
 use oneclient_events::Level;
 
 use crate::{
-    ui::{divider, relative_time},
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
     hooks::{use_dispatch, use_notifications_snapshot},
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
     transfer::TransferStats,
+    ui::{divider, relative_time},
     utils::{format_durations, format_size},
 };
 
@@ -212,7 +212,9 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
                     let now = !*expanded.peek();
                     expanded.set(now);
                 })
-                .child(ChevronToggle { expanded: is_expanded })
+                .child(ChevronToggle {
+                    expanded: is_expanded,
+                })
                 .child(
                     label()
                         .text(if is_expanded {
@@ -525,4 +527,3 @@ fn level_color(level: &Level) -> Color {
         Level::Error => colors::danger(),
     }
 }
-

@@ -7,12 +7,12 @@ use oneclient_db::models::ClusterRow;
 use serde::Deserialize;
 use uuid::Uuid;
 
-use oneclient_common::domain::ContentType;
+use crate::ctx::ContentCtx;
+use crate::error::ContentResult;
 use crate::packages::error::PackageError;
 use crate::packages::store::{self, PackageStore};
 use crate::packages::types::ExternalFile;
-use crate::ctx::ContentCtx;
-use crate::error::ContentResult;
+use oneclient_common::domain::ContentType;
 
 pub struct MrpackInstaller;
 
@@ -75,12 +75,8 @@ impl MrpackInstaller {
         let progress_id = Uuid::new_v4();
 
         for (index, entry) in manifest.files.into_iter().enumerate() {
-            ctx.events.progress(
-                progress_id,
-                "Installing Modpack Files",
-                index as u64,
-                total,
-            );
+            ctx.events
+                .progress(progress_id, "Installing Modpack Files", index as u64, total);
 
             let content_type = content_type_from_path(&entry.path);
             let hash = entry.hashes.sha1.to_ascii_lowercase();
@@ -92,15 +88,8 @@ impl MrpackInstaller {
 
             let path_str = entry.path.clone();
 
-            if let Err(err) = install_mrpack_file(
-                entry,
-                content_type,
-                hash,
-                file_name,
-                &cluster,
-                ctx,
-            )
-            .await
+            if let Err(err) =
+                install_mrpack_file(entry, content_type, hash, file_name, &cluster, ctx).await
             {
                 failed += 1;
                 tracing::warn!(path = %path_str, error = %err, "modpack file install failed");
@@ -151,9 +140,7 @@ async fn install_mrpack_file(
     cluster: &ClusterRow,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
-    if let Some(row) =
-        oneclient_db::dao::artifact::get_artifact_by_hash(&ctx.db, &hash).await?
-    {
+    if let Some(row) = oneclient_db::dao::artifact::get_artifact_by_hash(&ctx.db, &hash).await? {
         let path = store::artifact_absolute_path(&row.path)?;
         if path.exists() {
             PackageStore::link_artifact(&row, cluster, Some(&file_name), ctx).await?;
@@ -161,22 +148,12 @@ async fn install_mrpack_file(
         }
     }
 
-    if let Some((provider_id, version)) =
-        ctx.providers.lookup_version(&hash, ctx).await?
-    {
+    if let Some((provider_id, version)) = ctx.providers.lookup_version(&hash, ctx).await? {
         let provider = ctx.providers.get(provider_id)?;
-        let project = provider
-            .get_project(&version.project_id, ctx)
-            .await?;
-        let artifact = PackageStore::download_and_cache(
-            provider_id,
-            &project,
-            &version,
-            false,
-            None,
-            ctx,
-        )
-        .await?;
+        let project = provider.get_project(&version.project_id, ctx).await?;
+        let artifact =
+            PackageStore::download_and_cache(provider_id, &project, &version, false, None, ctx)
+                .await?;
         PackageStore::link_artifact(&artifact, cluster, Some(&file_name), ctx).await?;
         return Ok(());
     }

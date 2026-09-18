@@ -1,8 +1,8 @@
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
-use oneclient_core::settings::GameSettingsProfile;
 use oneclient_cluster::profiles::{
     get_profile_or_default, list_named_profiles, resolve_cluster_profile,
 };
+use oneclient_core::settings::GameSettingsProfile;
 use oneclient_db::models::ClusterId;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -110,11 +110,15 @@ impl QueryCapability for ClusterSettingsQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let cluster_id = keys.cluster_id;
         let state = crate::launcher::state().map_err(|e| e.to_string())?;
-        let cluster = state.clusters.get(cluster_id)
+        let cluster = state
+            .clusters
+            .get(cluster_id)
             .await
             .map_err(|e| e.to_string())?;
         let global = state.settings.read().global_game_settings.clone();
-        state.clusters.resolve_settings(&global, &cluster)
+        state
+            .clusters
+            .resolve_settings(&global, &cluster)
             .await
             .map_err(|e| e.to_string())
     }

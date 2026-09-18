@@ -56,7 +56,7 @@ pub struct Button {
     tooltip: Option<Box<str>>,
     tooltip_placement: TooltipPlacement,
     on_press: Option<EventHandler<Event<PressEventData>>>,
-	overflow: Overflow,
+    overflow: Overflow,
 
     elements: Vec<Element>,
     key: DiffKey,
@@ -118,7 +118,7 @@ impl Button {
             tooltip_placement: TooltipPlacement::default(),
             on_press: None,
             elements: Vec::new(),
-			overflow: Overflow::Clip,
+            overflow: Overflow::Clip,
             key: DiffKey::None,
             cursor_icon: CursorIcon::Pointer,
         }
@@ -158,10 +158,10 @@ impl Button {
         self
     }
 
-	pub fn overflow(mut self, overflow: Overflow) -> Self {
-		self.overflow = overflow;
-		self
-	}
+    pub fn overflow(mut self, overflow: Overflow) -> Self {
+        self.overflow = overflow;
+        self
+    }
 
     pub fn font_size(mut self, font_size: impl Into<f32>) -> Self {
         self.text_style.font_size = Some(font_size.into().into());

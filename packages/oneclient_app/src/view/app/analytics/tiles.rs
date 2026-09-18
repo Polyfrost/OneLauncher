@@ -278,4 +278,3 @@ fn persona_icon(persona: Persona) -> IconType {
         Persona::Sprinter => IconType::Play,
     }
 }
-

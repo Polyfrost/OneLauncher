@@ -8,17 +8,15 @@ use oneclient_db::dao::cluster as cluster_dao;
 
 use crate::LauncherResult;
 use crate::clusters::Cluster;
+use crate::state::LauncherServices;
 use oneclient_cluster::remove_mods_link;
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_common::paths;
-use oneclient_content::packages::store::manifest::{
-    self, ManifestEntry, MaterializedManifest,
-};
+use oneclient_content::packages::PackageStore;
+use oneclient_content::packages::store::manifest::{self, ManifestEntry, MaterializedManifest};
 use oneclient_content::packages::store::{
     artifact_absolute_path, link_or_copy, remove_entry, sweep_staging_files,
 };
-use oneclient_content::packages::PackageStore;
-use crate::state::LauncherServices;
 
 const REDIRECTED_DIRS: [&str; 2] = ["logs", "crash-reports"];
 
@@ -98,7 +96,10 @@ pub async fn materialize_content(
         let into = cluster_dir.join(ContentType::Mod.folder_name());
         let ours = ours_in_folder(ContentType::Mod, &linked, previous.as_ref());
 
-        tracing::info!(cluster_id = cluster.id, "moving mods out of the shared game directory");
+        tracing::info!(
+            cluster_id = cluster.id,
+            "moving mods out of the shared game directory"
+        );
         stash_content_files(&from, &into, ContentType::Mod, &ours).await;
     }
 
@@ -120,17 +121,19 @@ pub async fn materialize_content(
     }
 
     if mods_in_cluster {
-        clear_unlinked_mods_once(services, cluster, &cluster_dir.join(ContentType::Mod.folder_name()))
-            .await;
+        clear_unlinked_mods_once(
+            services,
+            cluster,
+            &cluster_dir.join(ContentType::Mod.folder_name()),
+        )
+        .await;
     }
 
     import_manual_content_with(services, cluster, game_dir, mods_in_cluster, true).await;
 
-    if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
-        cluster.id,
-        &services.content(),
-    )
-    .await
+    if let Err(err) =
+        oneclient_content::packages::reconcile_duplicate_activity(cluster.id, &services.content())
+            .await
     {
         // Not worth blocking a launch the duplicates were already there
         tracing::warn!(cluster_id = cluster.id, %err, "failed to resolve duplicate package versions");
@@ -147,11 +150,21 @@ pub async fn materialize_content(
         Ok(disabled) if !disabled.is_empty() => {
             let names = removal_summary(&disabled);
             let body = if disabled.len() == 1 {
-                format!("{names} is built for a different Minecraft version, so it has been switched off in {}.", cluster.name)
+                format!(
+                    "{names} is built for a different Minecraft version, so it has been switched off in {}.",
+                    cluster.name
+                )
             } else {
-                format!("{names} are built for a different Minecraft version, so they have been switched off in {}.", cluster.name)
+                format!(
+                    "{names} are built for a different Minecraft version, so they have been switched off in {}.",
+                    cluster.name
+                )
             };
-            services.events.notify("Incompatible mods switched off").body(body).send();
+            services
+                .events
+                .notify("Incompatible mods switched off")
+                .body(body)
+                .send();
         }
         Ok(_) => {}
         Err(err) => {
@@ -187,7 +200,11 @@ pub async fn materialize_content(
     // it themselves so it cannot be taken any earlier
     let _manifest = manifest::lock().await;
 
-    let mods_root = if mods_in_cluster { &cluster_dir } else { game_dir };
+    let mods_root = if mods_in_cluster {
+        &cluster_dir
+    } else {
+        game_dir
+    };
     for content_type in SWAP_TYPES {
         sweep_staging_files(&mods_root.join(content_type.folder_name())).await;
     }
@@ -268,7 +285,8 @@ async fn desired_global(
                 continue;
             }
 
-            let Some(artifact) = artifact_dao::get_artifact_by_hash(&services.db, &row.hash).await?
+            let Some(artifact) =
+                artifact_dao::get_artifact_by_hash(&services.db, &row.hash).await?
             else {
                 continue;
             };
@@ -676,7 +694,10 @@ async fn cached_file(
     .filter(|artifact| artifact.hash == hash)?;
 
     let path = artifact_absolute_path(&restored.path).ok()?;
-    polyio::try_exists(&path).await.unwrap_or(false).then_some(path)
+    polyio::try_exists(&path)
+        .await
+        .unwrap_or(false)
+        .then_some(path)
 }
 
 async fn link_desired(root: &Path, desired: &[Desired]) -> Vec<ManifestEntry> {
@@ -966,15 +987,14 @@ async fn import_manual_content_with(
 
     for content_type in GLOBAL_TYPES {
         let dir = global_root.join(content_type.folder_name());
-        let known = match artifact_dao::list_global_artifacts(&services.db, content_type as i64)
-            .await
-        {
-            Ok(rows) => rows.into_iter().map(|row| row.file_name).collect(),
-            Err(err) => {
-                tracing::warn!(error = %err, "cannot list global content; skipping its import");
-                continue;
-            }
-        };
+        let known =
+            match artifact_dao::list_global_artifacts(&services.db, content_type as i64).await {
+                Ok(rows) => rows.into_iter().map(|row| row.file_name).collect(),
+                Err(err) => {
+                    tracing::warn!(error = %err, "cannot list global content; skipping its import");
+                    continue;
+                }
+            };
 
         import_from_dir(
             services,
@@ -1075,7 +1095,10 @@ async fn discard_adopted_original(
     match artifact_absolute_path(&row.path) {
         Ok(cached) if polyio::try_exists(&cached).await.unwrap_or(false) => {}
         _ => {
-            tracing::warn!(file = name, "adopted content is not in the cache; leaving the original");
+            tracing::warn!(
+                file = name,
+                "adopted content is not in the cache; leaving the original"
+            );
             return;
         }
     }
@@ -1610,7 +1633,11 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert!(lines[0].starts_with("[prefix]/home/alex/"));
         assert!(lines[1].starts_with("[prefix]/var/home/alex/"));
-        assert!(lines.iter().all(|line| line.ends_with(std::path::MAIN_SEPARATOR)));
+        assert!(
+            lines
+                .iter()
+                .all(|line| line.ends_with(std::path::MAIN_SEPARATOR))
+        );
     }
 
     #[test]
@@ -1709,13 +1736,17 @@ mod tests {
         assert!(!shared.join("bsl.zip").exists(), "managed pack left behind");
         assert!(!shared.join("bsl.zip.txt").exists(), "sidecar left behind");
         assert_eq!(
-            polyio::read_to_string(stash.join("bsl.zip.txt")).await.unwrap(),
+            polyio::read_to_string(stash.join("bsl.zip.txt"))
+                .await
+                .unwrap(),
             "BLOOM=off"
         );
 
         restore_stashed(&stash, &shared, ContentType::Shader, &ours).await;
         assert_eq!(
-            polyio::read_to_string(shared.join("bsl.zip.txt")).await.unwrap(),
+            polyio::read_to_string(shared.join("bsl.zip.txt"))
+                .await
+                .unwrap(),
             "BLOOM=off"
         );
 
@@ -1723,7 +1754,9 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            polyio::read_to_string(shared.join("bsl.zip.txt")).await.unwrap(),
+            polyio::read_to_string(shared.join("bsl.zip.txt"))
+                .await
+                .unwrap(),
             "BLOOM=on"
         );
 
@@ -1735,10 +1768,15 @@ mod tests {
         let root = polyio::testing::ScratchDir::new("unpacked");
         let shared = root.join("shared").join("shaderpacks");
         let stash = root.join("cluster").join("shaderpacks");
-        polyio::create_dir_all(shared.join("Loose/shaders")).await.unwrap();
-        polyio::write(shared.join("Loose/shaders/final.fsh"), b"void main".as_slice())
+        polyio::create_dir_all(shared.join("Loose/shaders"))
             .await
             .unwrap();
+        polyio::write(
+            shared.join("Loose/shaders/final.fsh"),
+            b"void main".as_slice(),
+        )
+        .await
+        .unwrap();
 
         stash_content_files(&shared, &stash, ContentType::Shader, &HashSet::new()).await;
         assert!(!shared.join("Loose").exists());
@@ -1809,7 +1847,12 @@ mod tests {
         let jar = game_dir.join("mods").join("theirs.jar");
         polyio::write(&jar, b"jar".as_slice()).await.unwrap();
 
-        prune_previous(game_dir, Some(&manifest_of(1, &["mods/theirs.jar"])), &HashSet::new()).await;
+        prune_previous(
+            game_dir,
+            Some(&manifest_of(1, &["mods/theirs.jar"])),
+            &HashSet::new(),
+        )
+        .await;
 
         assert!(polyio::symlink_metadata(&jar).await.is_err());
 
@@ -1827,9 +1870,17 @@ mod tests {
         let mine = game_dir.join("mods").join("handmade.jar");
         polyio::write(&mine, b"jar".as_slice()).await.unwrap();
 
-        prune_previous(game_dir, Some(&manifest_of(1, &["mods/ours.jar"])), &HashSet::new()).await;
+        prune_previous(
+            game_dir,
+            Some(&manifest_of(1, &["mods/ours.jar"])),
+            &HashSet::new(),
+        )
+        .await;
 
-        assert!(mine.exists(), "a file we never materialized is not ours to delete");
+        assert!(
+            mine.exists(),
+            "a file we never materialized is not ours to delete"
+        );
 
         std::fs::remove_dir_all(root.path()).ok();
     }
@@ -1863,7 +1914,10 @@ mod tests {
             stash.join("removed.jar").exists(),
             "and it must not be silently deleted either"
         );
-        assert!(shared.join("options.txt").exists(), "sidecars still restore");
+        assert!(
+            shared.join("options.txt").exists(),
+            "sidecars still restore"
+        );
 
         std::fs::remove_dir_all(root.path()).ok();
     }
@@ -1884,7 +1938,9 @@ mod tests {
         polyio::write(stash.join("leftover.jar"), b"jar".as_slice())
             .await
             .unwrap();
-        polyio::create_dir_all(stash.join("unpacked")).await.unwrap();
+        polyio::create_dir_all(stash.join("unpacked"))
+            .await
+            .unwrap();
         polyio::write(stash.join("unpacked").join("inner.txt"), b"x".as_slice())
             .await
             .unwrap();
@@ -1989,7 +2045,9 @@ mod tests {
         polyio::create_dir_all(root.path()).await.unwrap();
 
         for file in present {
-            polyio::write(root.join(file), b"jar".as_slice()).await.unwrap();
+            polyio::write(root.join(file), b"jar".as_slice())
+                .await
+                .unwrap();
         }
 
         root
@@ -2038,7 +2096,11 @@ mod tests {
         let manifest = mods_manifest(&["a.jar", "b.jar"]);
         let missing = Path::new("definitely-not-a-directory-ю");
 
-        assert!(hand_removed_content(missing, ContentType::Mod, Some(&manifest)).await.is_empty());
+        assert!(
+            hand_removed_content(missing, ContentType::Mod, Some(&manifest))
+                .await
+                .is_empty()
+        );
     }
 
     #[tokio::test]
@@ -2047,7 +2109,9 @@ mod tests {
         let manifest = mods_manifest(&["a.jar", "b.jar", "c.jar", "d.jar"]);
 
         assert!(
-            hand_removed_content(dir.path(), ContentType::Mod, Some(&manifest)).await.is_empty(),
+            hand_removed_content(dir.path(), ContentType::Mod, Some(&manifest))
+                .await
+                .is_empty(),
             "an empty folder where everything was is not four deliberate deletions"
         );
 
@@ -2059,7 +2123,12 @@ mod tests {
         let dir = mods_scratch("small_clear", &[]).await;
         let manifest = mods_manifest(&["a.jar", "b.jar"]);
 
-        assert_eq!(hand_removed_content(dir.path(), ContentType::Mod, Some(&manifest)).await.len(), 2);
+        assert_eq!(
+            hand_removed_content(dir.path(), ContentType::Mod, Some(&manifest))
+                .await
+                .len(),
+            2
+        );
 
         std::fs::remove_dir_all(dir.path()).ok();
     }
@@ -2068,7 +2137,11 @@ mod tests {
     async fn a_first_launch_concludes_nothing() {
         let dir = mods_scratch("no_manifest", &[]).await;
 
-        assert!(hand_removed_content(dir.path(), ContentType::Mod, None).await.is_empty());
+        assert!(
+            hand_removed_content(dir.path(), ContentType::Mod, None)
+                .await
+                .is_empty()
+        );
 
         std::fs::remove_dir_all(dir.path()).ok();
     }

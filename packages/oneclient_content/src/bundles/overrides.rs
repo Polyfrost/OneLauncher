@@ -5,8 +5,8 @@ use oneclient_db::models::ClusterRow;
 use serde::{Deserialize, Serialize};
 
 use crate::error::ContentResult;
-use polyio::{sha1_bytes, sha1_file};
 use oneclient_events::EventBus;
+use polyio::{sha1_bytes, sha1_file};
 
 const ALWAYS_UPDATE_GLOBS: &[&str] = &["config/fabric_loader_dependencies.json"];
 
@@ -187,11 +187,7 @@ async fn current_sha1(path: &Path) -> Option<String> {
     }
 }
 
-fn notify_conflicts(
-    events: Option<&EventBus>,
-    bundle_name: &str,
-    conflicts: &[String],
-) {
+fn notify_conflicts(events: Option<&EventBus>, bundle_name: &str, conflicts: &[String]) {
     let Some(events) = events else {
         return;
     };
@@ -482,9 +478,7 @@ mod tests {
     async fn bootstrap_pre_existing_edit_is_never_overwritten() {
         let root = polyio::testing::ScratchDir::new("bootstrap");
 
-        polyio::create_dir_all(root.join("config"))
-            .await
-            .unwrap();
+        polyio::create_dir_all(root.join("config")).await.unwrap();
         polyio::write(root.join("config/a.toml"), b"pre-existing")
             .await
             .unwrap();

@@ -274,7 +274,10 @@ impl Walker {
                 } else {
                     std::mem::take(&mut self.image_alt)
                 };
-                self.place(Inline::Image { url, alt }, |url, alt| Block::Image { url, alt });
+                self.place(Inline::Image { url, alt }, |url, alt| Block::Image {
+                    url,
+                    alt,
+                });
             }
             TagEnd::Link => {
                 self.in_link = false;
@@ -488,18 +491,27 @@ mod tests {
 
     #[test]
     fn inline_html_keeps_the_text_it_wrapped() {
-        assert_eq!(paragraph_text(&blocks("a <b>bold</b> word")[0]), "a bold word");
+        assert_eq!(
+            paragraph_text(&blocks("a <b>bold</b> word")[0]),
+            "a bold word"
+        );
     }
 
     #[test]
     fn block_html_keeps_its_text() {
-        assert_eq!(paragraph_text(&blocks("<div>\nhello\n</div>")[0]).trim(), "hello");
+        assert_eq!(
+            paragraph_text(&blocks("<div>\nhello\n</div>")[0]).trim(),
+            "hello"
+        );
     }
 
     #[test]
     fn images_arrive_as_paragraph_content() {
         assert_eq!(paragraph_text(&blocks("![alt](a.png)")[0]), "[img:alt]");
-        assert_eq!(paragraph_text(&blocks("see ![alt](a.png) here")[0]), "see [img:alt] here");
+        assert_eq!(
+            paragraph_text(&blocks("see ![alt](a.png) here")[0]),
+            "see [img:alt] here"
+        );
     }
 
     #[test]
@@ -530,7 +542,8 @@ mod tests {
 
     #[test]
     fn tables_split_head_from_body() {
-        let Block::Table { headers, rows } = &blocks("| a | b |\n| - | - |\n| 1 | 2 |\n| 3 | 4 |")[0]
+        let Block::Table { headers, rows } =
+            &blocks("| a | b |\n| - | - |\n| 1 | 2 |\n| 3 | 4 |")[0]
         else {
             panic!("expected a table");
         };

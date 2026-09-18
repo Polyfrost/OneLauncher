@@ -10,8 +10,8 @@ use oneclient_app::ipc::{self, Claim};
 use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, StartMaximizedState, cli, constants,
-    events, platform, router, theme, use_provide_actions, use_provide_link_confirm,
-    use_provide_start_maximized, microsoft_java,
+    events, microsoft_java, platform, router, theme, use_provide_actions, use_provide_link_confirm,
+    use_provide_start_maximized,
 };
 use std::cell::Cell;
 use tokio::runtime::Builder;
@@ -196,39 +196,40 @@ fn main() {
         boot_launch: Cell::new(cli.launch),
         ipc: Cell::new(ipc),
     })
-        .with_title(constants::WINDOW_TITLE)
-        .with_app_id(constants::WINDOW_APP_ID)
-        .with_icon(LaunchConfig::window_icon(include_bytes!(
-            "../icons/128x128.png"
-        )))
-        .with_size(1200., 800.)
-        .with_min_size(800., 600.)
-        .with_transparency(false)
-        .with_background(Color::TRANSPARENT)
-        // A half-copied data folder is unrecoverable, so the window refuses to
-        // close while one is being moved; the move screen says as much
-        .with_on_close(|_, _| {
-            if oneclient_core::relocate::in_progress() {
-                tracing::warn!("close request ignored, the data folder is still being moved");
-                CloseDecision::KeepOpen
-            } else {
-                CloseDecision::Close
-            }
-        });
+    .with_title(constants::WINDOW_TITLE)
+    .with_app_id(constants::WINDOW_APP_ID)
+    .with_icon(LaunchConfig::window_icon(include_bytes!(
+        "../icons/128x128.png"
+    )))
+    .with_size(1200., 800.)
+    .with_min_size(800., 600.)
+    .with_transparency(false)
+    .with_background(Color::TRANSPARENT)
+    // A half-copied data folder is unrecoverable, so the window refuses to
+    // close while one is being moved; the move screen says as much
+    .with_on_close(|_, _| {
+        if oneclient_core::relocate::in_progress() {
+            tracing::warn!("close request ignored, the data folder is still being moved");
+            CloseDecision::KeepOpen
+        } else {
+            CloseDecision::Close
+        }
+    });
 
     #[cfg(target_os = "macos")]
-    let window_config = window_config
-        .with_decorations(true)
-        .with_window_attributes(move |attrs, _| {
-            use freya::winit::platform::macos::WindowAttributesExtMacOS;
-            attrs
-                .with_title_hidden(true)
-                .with_titlebar_transparent(true)
-                .with_titlebar_buttons_hidden(true)
-                .with_fullsize_content_view(true)
-				.with_has_shadow(true)
-                .with_maximized(start_maximized)
-        });
+    let window_config =
+        window_config
+            .with_decorations(true)
+            .with_window_attributes(move |attrs, _| {
+                use freya::winit::platform::macos::WindowAttributesExtMacOS;
+                attrs
+                    .with_title_hidden(true)
+                    .with_titlebar_transparent(true)
+                    .with_titlebar_buttons_hidden(true)
+                    .with_fullsize_content_view(true)
+                    .with_has_shadow(true)
+                    .with_maximized(start_maximized)
+            });
 
     #[cfg(not(target_os = "macos"))]
     let window_config = window_config

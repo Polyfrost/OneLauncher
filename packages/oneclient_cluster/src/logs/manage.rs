@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
-use crate::error::ClusterResult;
 use crate::cluster::Cluster;
+use crate::error::ClusterResult;
 use oneclient_common::paths;
 
 use super::parse::parse_level;

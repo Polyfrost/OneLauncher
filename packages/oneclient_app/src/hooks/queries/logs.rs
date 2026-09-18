@@ -1,8 +1,8 @@
 use std::path::PathBuf;
 
 use freya::query::{
-    Mutation, MutationCapability, QueriesStorage, Query, QueryCapability,
-    UseMutation, UseQuery, use_mutation, use_query,
+    Mutation, MutationCapability, QueriesStorage, Query, QueryCapability, UseMutation, UseQuery,
+    use_mutation, use_query,
 };
 use oneclient_core::{
     LauncherError, LogFileInfo, LogLevel, LogLine, MclogsUploadResponse, ReadOptions,

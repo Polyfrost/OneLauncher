@@ -4,14 +4,14 @@ use std::time::{Duration, Instant};
 use freya::animation::*;
 use freya::prelude::*;
 use freya::router::RouterContext;
-use oneclient_events::{
-    EventBus, GroupedProgressEvent, GroupedProgressSession, ProgressEvent, TaskCategory,
-};
 use oneclient_core::{
     BundleArchive, BundleFile, Cluster, ImportTarget, MigrationSource, SentryExclusion,
     VersionMetadata,
 };
 use oneclient_db::models::OverrideType;
+use oneclient_events::{
+    EventBus, GroupedProgressEvent, GroupedProgressSession, ProgressEvent, TaskCategory,
+};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -502,12 +502,7 @@ fn build_plans(
             let kept = kept_package_ids(cb.cluster.id, &cb.archives, selected);
             let mut overrides = Vec::new();
             for archive in &cb.archives {
-                overrides.extend(archive_overrides(
-                    cb.cluster.id,
-                    archive,
-                    selected,
-                    &kept,
-                ));
+                overrides.extend(archive_overrides(cb.cluster.id, archive, selected, &kept));
             }
             ClusterPlan {
                 cluster_id: cb.cluster.id,
@@ -693,7 +688,9 @@ fn run_install_batch(plans: Vec<ClusterPlan>, predownload: bool, handles: Instal
                 apply_grouped(&mut local, event);
             }
             while let Ok(notification) = notif_rx.try_recv() {
-                if let oneclient_events::Event::Progress(ProgressEvent::Grouped(event)) = notification {
+                if let oneclient_events::Event::Progress(ProgressEvent::Grouped(event)) =
+                    notification
+                {
                     apply_grouped(&mut local, event);
                 }
             }
@@ -799,15 +796,18 @@ async fn install_one(
             "Saving your package choices...".to_string(),
         ));
     }
-    oneclient_core::set_bundle_package_overrides(plan.cluster_id, &plan.overrides, &state.services.content())
-        .await?;
+    oneclient_core::set_bundle_package_overrides(
+        plan.cluster_id,
+        &plan.overrides,
+        &state.services.content(),
+    )
+    .await?;
 
     if !predownload {
         return Ok(());
     }
 
-    let session =
-        GroupedProgressSession::start(events, format!("Downloading {}", plan.mc_version));
+    let session = GroupedProgressSession::start(events, format!("Downloading {}", plan.mc_version));
 
     let _ = ui_tx.send(InstallUiEvent::Activity(format!(
         "Installing mods & content for {}...",

@@ -1,8 +1,8 @@
 #![recursion_limit = "256"]
-use oneclient_core::clusters::CreateClusterOptions;
-use oneclient_core::dev;
 use oneclient_common::domain::GameLoader;
 use oneclient_core::LauncherResult;
+use oneclient_core::clusters::CreateClusterOptions;
+use oneclient_core::dev;
 
 #[tokio::main]
 async fn main() -> LauncherResult<()> {
@@ -19,24 +19,29 @@ async fn main() -> LauncherResult<()> {
 
     let global = state.settings.read().global_game_settings.clone();
 
-    let cluster = state.clusters.create(
-        &global,
-        CreateClusterOptions {
-            name: format!("download-{mc_version}"),
-            mc_version: mc_version.to_string(),
-            mc_loader: loader,
-            mc_loader_version: loader_version.map(str::to_string),
-            mem_max: None,
-        },
-    )
-    .await?;
+    let cluster = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions {
+                name: format!("download-{mc_version}"),
+                mc_version: mc_version.to_string(),
+                mc_loader: loader,
+                mc_loader_version: loader_version.map(str::to_string),
+                mem_max: None,
+            },
+        )
+        .await?;
 
     println!(
         "Preparing cluster {} ({} {:?})...",
         cluster.name, cluster.mc_version, cluster.mc_loader
     );
 
-    let ready = oneclient_core::clusters::prepare_cluster_locked(&state, cluster.id, false, true, true, None).await?;
+    let ready = oneclient_core::clusters::prepare_cluster_locked(
+        &state, cluster.id, false, true, true, None,
+    )
+    .await?;
     println!("Cluster ready at {}", ready.dir()?.display());
 
     Ok(())

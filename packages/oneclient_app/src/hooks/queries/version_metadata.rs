@@ -1,6 +1,6 @@
 use oneclient_common::VersionKey;
-use oneclient_core::VersionMetadata;
 use oneclient_common::domain::GameLoader;
+use oneclient_core::VersionMetadata;
 
 use super::use_versions;
 

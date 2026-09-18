@@ -4,15 +4,15 @@ use sqlx::FromRow;
 /// be attached to a file the cluster no longer has
 #[derive(Debug, Clone, FromRow)]
 pub struct BrowserPackageUpdateRow {
-	pub cluster_id: i64,
-	pub hash: String,
-	pub provider: i64,
-	pub project_id: String,
-	pub installed_version_id: String,
-	pub installed_version_name: String,
-	pub latest_version_id: String,
-	pub latest_version_name: String,
-	pub display_name: String,
-	pub checked_at: String,
-	pub skipped: i64,
+    pub cluster_id: i64,
+    pub hash: String,
+    pub provider: i64,
+    pub project_id: String,
+    pub installed_version_id: String,
+    pub installed_version_name: String,
+    pub latest_version_id: String,
+    pub latest_version_name: String,
+    pub display_name: String,
+    pub checked_at: String,
+    pub skipped: i64,
 }

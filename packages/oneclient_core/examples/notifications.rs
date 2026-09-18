@@ -1,5 +1,4 @@
-
-use oneclient_events::{GroupedProgressSession, EventBus};
+use oneclient_events::{EventBus, GroupedProgressSession};
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -9,7 +8,11 @@ async fn main() {
     let events = EventBus::new(tx);
 
     events.notify("Welcome").body("Launcher started").send();
-    events.notify("Heads up").body("Example error notification").error().send();
+    events
+        .notify("Heads up")
+        .body("Example error notification")
+        .error()
+        .send();
 
     let download = Uuid::new_v4();
     for current in (0..=100).step_by(25) {

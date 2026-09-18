@@ -30,206 +30,206 @@ fn retry_delay(attempt: u32) -> std::time::Duration {
 
 /// Returns `false` when the file is missing or unreadable
 pub async fn matches_on_disk(path: &Path, expected_sha1: &str) -> bool {
-	if !path.is_file() {
-		return false;
-	}
+    if !path.is_file() {
+        return false;
+    }
 
-	match polyio::sha1_file(path).await {
-		Ok(actual) => normalize_hash(&actual) == normalize_hash(expected_sha1),
-		Err(err) => {
-			tracing::debug!("could not hash {}: {err}", path.display());
-			false
-		}
-	}
+    match polyio::sha1_file(path).await {
+        Ok(actual) => normalize_hash(&actual) == normalize_hash(expected_sha1),
+        Err(err) => {
+            tracing::debug!("could not hash {}: {err}", path.display());
+            false
+        }
+    }
 }
 
 /// `dest` is only created once the hash matches so a failed attempt leaves
 /// nothing behind for a later `exists()` check to trip over
 #[tracing::instrument(level = "debug", skip(client, events, notify), fields(%url))]
 pub async fn download_verified(
-	client: &RequestClient,
-	events: &EventBus,
-	url: &str,
-	dest: &Path,
-	expected: Option<&Checksum>,
-	expected_size: u64,
-	notify: Option<ResponseNotifyOptions>,
+    client: &RequestClient,
+    events: &EventBus,
+    url: &str,
+    dest: &Path,
+    expected: Option<&Checksum>,
+    expected_size: u64,
+    notify: Option<ResponseNotifyOptions>,
 ) -> Result<(), RequestError> {
-	// Callers fanning out over thousands of files pre-create the tree so this
-	// stat avoids a blocking-pool round trip per file
-	if let Some(parent) = dest.parent()
-		&& !parent.is_dir()
-	{
-		polyio::create_dir_all(parent).await?;
-	}
+    // Callers fanning out over thousands of files pre-create the tree so this
+    // stat avoids a blocking-pool round trip per file
+    if let Some(parent) = dest.parent()
+        && !parent.is_dir()
+    {
+        polyio::create_dir_all(parent).await?;
+    }
 
-	// Needs a fixed id up front or each retry opens a new UI entry
-	let notify = notify.map(ResponseNotifyOptions::pinned);
+    // Needs a fixed id up front or each retry opens a new UI entry
+    let notify = notify.map(ResponseNotifyOptions::pinned);
 
-	let mut attempt = 1;
-	loop {
-		match download_attempt(
-			client,
-			events,
-			url,
-			dest,
-			expected,
-			expected_size,
-			notify.as_ref(),
-		)
-		.await
-		{
-			Ok(()) => break,
-			Err(err) if attempt < MAX_DOWNLOAD_ATTEMPTS && worth_retrying(&err) => {
-				tracing::warn!(
-					attempt,
-					%url,
-					"download failed, retrying: {err}"
-				);
-				tokio::time::sleep(retry_delay(attempt)).await;
-				attempt += 1;
-			}
-			Err(err) => return Err(err),
-		}
-	}
+    let mut attempt = 1;
+    loop {
+        match download_attempt(
+            client,
+            events,
+            url,
+            dest,
+            expected,
+            expected_size,
+            notify.as_ref(),
+        )
+        .await
+        {
+            Ok(()) => break,
+            Err(err) if attempt < MAX_DOWNLOAD_ATTEMPTS && worth_retrying(&err) => {
+                tracing::warn!(
+                    attempt,
+                    %url,
+                    "download failed, retrying: {err}"
+                );
+                tokio::time::sleep(retry_delay(attempt)).await;
+                attempt += 1;
+            }
+            Err(err) => return Err(err),
+        }
+    }
 
-	if let Some(child) = notify.as_ref().and_then(ResponseNotifyOptions::child) {
-		child.finish();
-	}
+    if let Some(child) = notify.as_ref().and_then(ResponseNotifyOptions::child) {
+        child.finish();
+    }
 
-	Ok(())
+    Ok(())
 }
 
 /// The progress child is shared across attempts and reports absolute byte
 /// counts so a restarted attempt rewinds its bar rather than double-counting
 #[allow(clippy::too_many_arguments)]
 async fn download_attempt(
-	client: &RequestClient,
-	events: &EventBus,
-	url: &str,
-	dest: &Path,
-	expected: Option<&Checksum>,
-	expected_size: u64,
-	notify: Option<&ResponseNotifyOptions>,
+    client: &RequestClient,
+    events: &EventBus,
+    url: &str,
+    dest: &Path,
+    expected: Option<&Checksum>,
+    expected_size: u64,
+    notify: Option<&ResponseNotifyOptions>,
 ) -> Result<(), RequestError> {
-	let child = notify.and_then(ResponseNotifyOptions::child);
-	if let Some(child) = child {
-		child.set_phase(TaskPhase::Downloading);
-	}
+    let child = notify.and_then(ResponseNotifyOptions::child);
+    if let Some(child) = child {
+        child.set_phase(TaskPhase::Downloading);
+    }
 
-	let request = reqwest::Request::new(Method::GET, url.parse()?);
-	let response = client.send(request).await?;
+    let request = reqwest::Request::new(Method::GET, url.parse()?);
+    let response = client.send(request).await?;
 
-	// Without this an error body is written to disk under the requested file's name
-	let status = response.status();
-	if !status.is_success() {
-		let bytes = response.bytes().await?;
-		return Err(RequestError::HttpStatus {
-			status: status.as_u16(),
-			url: url.to_string(),
-			snippet: crate::error::body_snippet(&bytes),
-		});
-	}
+    // Without this an error body is written to disk under the requested file's name
+    let status = response.status();
+    if !status.is_success() {
+        let bytes = response.bytes().await?;
+        return Err(RequestError::HttpStatus {
+            status: status.as_u16(),
+            url: url.to_string(),
+            snippet: crate::error::body_snippet(&bytes),
+        });
+    }
 
-	// Prefer the manifest size Content-Length is absent for compressed or chunked bodies
-	let declared = if expected_size > 0 {
-		Some(expected_size)
-	} else {
-		response.content_length()
-	};
-	let total = declared.unwrap_or(0).max(1);
+    // Prefer the manifest size Content-Length is absent for compressed or chunked bodies
+    let declared = if expected_size > 0 {
+        Some(expected_size)
+    } else {
+        response.content_length()
+    };
+    let total = declared.unwrap_or(0).max(1);
 
-	let options = ResponseOptions {
-		notify: notify.cloned(),
-	};
-	let stream = response.stream(options, events).await?;
+    let options = ResponseOptions {
+        notify: notify.cloned(),
+    };
+    let stream = response.stream(options, events).await?;
 
-	let mut hasher = expected.map(|expected| ChecksumStream::new(expected.algorithm));
-	let mut received = 0u64;
-	{
-		let stream = futures_lite::StreamExt::map(stream, |item| {
-			if let Ok(chunk) = &item {
-				received += chunk.len() as u64;
-				if let Some(hasher) = hasher.as_mut() {
-					hasher.update(chunk);
-				}
-			}
-			item
-		});
-		let stream = std::pin::pin!(stream);
-		// Writes to a scratch sibling and renames so `dest` is never truncated
-		polyio::write_stream(dest, stream, Some(total)).await?;
-	}
+    let mut hasher = expected.map(|expected| ChecksumStream::new(expected.algorithm));
+    let mut received = 0u64;
+    {
+        let stream = futures_lite::StreamExt::map(stream, |item| {
+            if let Ok(chunk) = &item {
+                received += chunk.len() as u64;
+                if let Some(hasher) = hasher.as_mut() {
+                    hasher.update(chunk);
+                }
+            }
+            item
+        });
+        let stream = std::pin::pin!(stream);
+        // Writes to a scratch sibling and renames so `dest` is never truncated
+        polyio::write_stream(dest, stream, Some(total)).await?;
+    }
 
-	if let (Some(expected), Some(hasher)) = (expected, hasher) {
-		if let Some(child) = child {
-			child.set_phase(TaskPhase::Verifying);
-		}
+    if let (Some(expected), Some(hasher)) = (expected, hasher) {
+        if let Some(child) = child {
+            child.set_phase(TaskPhase::Verifying);
+        }
 
-		let actual = hasher.finish();
-		if !expected.matches(&actual) {
-			// Remove it rather than leave it for the next `exists()` check
-			let _ = polyio::remove_file(dest).await;
-			return Err(RequestError::HashMismatch {
-				source_desc: dest.display().to_string(),
-				expected: format!("{} {}", expected.algorithm.name(), expected.hex),
-				actual,
-			});
-		}
-	} else if let Some(declared) = declared
-		&& received != declared
-	{
-		// With no hash the byte count is the only evidence the transfer finished
-		let _ = polyio::remove_file(dest).await;
-		return Err(RequestError::IncompleteBody {
-			source_desc: dest.display().to_string(),
-			expected: declared,
-			actual: received,
-		});
-	}
+        let actual = hasher.finish();
+        if !expected.matches(&actual) {
+            // Remove it rather than leave it for the next `exists()` check
+            let _ = polyio::remove_file(dest).await;
+            return Err(RequestError::HashMismatch {
+                source_desc: dest.display().to_string(),
+                expected: format!("{} {}", expected.algorithm.name(), expected.hex),
+                actual,
+            });
+        }
+    } else if let Some(declared) = declared
+        && received != declared
+    {
+        // With no hash the byte count is the only evidence the transfer finished
+        let _ = polyio::remove_file(dest).await;
+        return Err(RequestError::IncompleteBody {
+            source_desc: dest.display().to_string(),
+            expected: declared,
+            actual: received,
+        });
+    }
 
-	Ok(())
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip(client, events, progress), fields(%url))]
 pub async fn fetch_verified(
-	client: &RequestClient,
-	events: &EventBus,
-	url: &str,
-	expected_sha1: &str,
-	progress: Option<GroupedProgressChild>,
+    client: &RequestClient,
+    events: &EventBus,
+    url: &str,
+    expected_sha1: &str,
+    progress: Option<GroupedProgressChild>,
 ) -> Result<Vec<u8>, RequestError> {
-	let request = reqwest::Request::new(Method::GET, url.parse()?);
-	let response = client.send(request).await?;
+    let request = reqwest::Request::new(Method::GET, url.parse()?);
+    let response = client.send(request).await?;
 
-	let options = ResponseOptions {
-		notify: progress.clone().map(ResponseNotifyOptions::grouped),
-	};
-	let stream = response.stream(options, events).await?;
+    let options = ResponseOptions {
+        notify: progress.clone().map(ResponseNotifyOptions::grouped),
+    };
+    let stream = response.stream(options, events).await?;
 
-	use futures_util::StreamExt;
-	let mut stream = std::pin::pin!(stream);
-	let mut bytes = Vec::new();
-	while let Some(chunk) = stream.next().await {
-		bytes.extend_from_slice(&chunk?);
-	}
+    use futures_util::StreamExt;
+    let mut stream = std::pin::pin!(stream);
+    let mut bytes = Vec::new();
+    while let Some(chunk) = stream.next().await {
+        bytes.extend_from_slice(&chunk?);
+    }
 
-	if let Some(child) = &progress {
-		child.set_phase(TaskPhase::Verifying);
-	}
+    if let Some(child) = &progress {
+        child.set_phase(TaskPhase::Verifying);
+    }
 
-	let actual = polyio::sha1_bytes(&bytes);
-	if normalize_hash(&actual) != normalize_hash(expected_sha1) {
-		return Err(RequestError::HashMismatch {
-			source_desc: url.to_string(),
-			expected: expected_sha1.to_string(),
-			actual,
-		});
-	}
+    let actual = polyio::sha1_bytes(&bytes);
+    if normalize_hash(&actual) != normalize_hash(expected_sha1) {
+        return Err(RequestError::HashMismatch {
+            source_desc: url.to_string(),
+            expected: expected_sha1.to_string(),
+            actual,
+        });
+    }
 
-	if let Some(child) = progress {
-		child.finish();
-	}
+    if let Some(child) = progress {
+        child.finish();
+    }
 
-	Ok(bytes)
+    Ok(bytes)
 }

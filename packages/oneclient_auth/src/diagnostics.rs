@@ -4,7 +4,7 @@
 use oneclient_net::{NetworkFailure, classify_network_failure};
 use reqwest::StatusCode;
 
-use super::error::{friendly_xbox_error, MinecraftAuthError, MinecraftAuthStep};
+use super::error::{MinecraftAuthError, MinecraftAuthStep, friendly_xbox_error};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AuthErrorGuidance {
@@ -298,7 +298,9 @@ fn xerr(code: u64) -> MinecraftAuthError {
     MinecraftAuthError::XboxError {
         step: MinecraftAuthStep::XstsAuthorize,
         error_code: code,
-        message: friendly_xbox_error(code).unwrap_or("Xbox rejected sign-in.").to_string(),
+        message: friendly_xbox_error(code)
+            .unwrap_or("Xbox rejected sign-in.")
+            .to_string(),
         redirect: None,
     }
 }

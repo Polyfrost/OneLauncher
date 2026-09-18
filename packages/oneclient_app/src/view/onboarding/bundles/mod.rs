@@ -1,12 +1,15 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
-use oneclient_core::clusters::Cluster;
 use oneclient_content::packages::ProviderId;
+use oneclient_core::clusters::Cluster;
 use oneclient_core::{BundleArchive, BundleFile, BundleFileKind};
 
 use crate::components::ScrollArea;
-use crate::hooks::{ClusterBundles, onboarding_bundles_items, package_meta_batch, query_error, query_is_loading, use_onboarding_bundles, use_onboarding_selection, use_package_meta_batch};
+use crate::hooks::{
+    ClusterBundles, onboarding_bundles_items, package_meta_batch, query_error, query_is_loading,
+    use_onboarding_bundles, use_onboarding_selection, use_package_meta_batch,
+};
 
 type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
 use crate::routes::Route;
@@ -341,55 +344,50 @@ fn opt_in_card(
     let yes_ids = all_ids.clone();
     let no_bundle = bundle.clone();
 
-    let mut card = rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(10.)
-        .child(
-            label()
-                .text(format!("Do you want to install {name} mods?"))
-                .font_size(15.)
-                .font_weight(FontWeight::SEMI_BOLD)
-                .color(colors::fg_primary()),
-        );
+    let mut card = rect().vertical().width(Size::fill()).spacing(10.).child(
+        label()
+            .text(format!("Do you want to install {name} mods?"))
+            .font_size(15.)
+            .font_weight(FontWeight::SEMI_BOLD)
+            .color(colors::fg_primary()),
+    );
 
-    card = card
-        .child(
-            rect()
-                .horizontal()
-                .width(Size::fill())
-                .spacing(8.)
-                .content(Content::Flex)
-                .child(
-                    rect()
-                        .width(Size::flex(1.0))
-                        .height(Size::px(ANSWER_H))
-                        .child(choice_row_sized(
-                            "Yes",
-                            &format!("{} mods", yes_bundle.mod_count()),
-                            wanted,
-                            Size::fill(),
-                            move |()| {
-                                if wanted {
-                                    return;
-                                }
-                                set_bundle_versions(selected, user_touched, &yes_bundle, &yes_ids)
-                            },
-                        )),
-                )
-                .child(
-                    rect()
-                        .width(Size::flex(1.0))
-                        .height(Size::px(ANSWER_H))
-                        .child(choice_row_sized(
-                            "No",
-                            "",
-                            !wanted,
-                            Size::fill(),
-                            move |()| set_bundle_versions(selected, user_touched, &no_bundle, &[]),
-                        )),
-                ),
-        );
+    card = card.child(
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .spacing(8.)
+            .content(Content::Flex)
+            .child(
+                rect()
+                    .width(Size::flex(1.0))
+                    .height(Size::px(ANSWER_H))
+                    .child(choice_row_sized(
+                        "Yes",
+                        &format!("{} mods", yes_bundle.mod_count()),
+                        wanted,
+                        Size::fill(),
+                        move |()| {
+                            if wanted {
+                                return;
+                            }
+                            set_bundle_versions(selected, user_touched, &yes_bundle, &yes_ids)
+                        },
+                    )),
+            )
+            .child(
+                rect()
+                    .width(Size::flex(1.0))
+                    .height(Size::px(ANSWER_H))
+                    .child(choice_row_sized(
+                        "No",
+                        "",
+                        !wanted,
+                        Size::fill(),
+                        move |()| set_bundle_versions(selected, user_touched, &no_bundle, &[]),
+                    )),
+            ),
+    );
 
     if wanted && name.eq_ignore_ascii_case(FPS_WARNING_BUNDLE) {
         card = card.child(fps_warning_banner());

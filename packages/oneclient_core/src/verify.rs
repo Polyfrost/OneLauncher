@@ -1,18 +1,18 @@
 use std::sync::Arc;
 
+use oneclient_common::paths;
 use oneclient_content::packages::PackageStore;
 use oneclient_content::packages::store::artifact_absolute_path;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_events::{GroupedProgressSession, TaskCategory, TaskPhase};
-use oneclient_common::paths;
 use polyio::{normalize_hash, sha1_file};
 
+use crate::LauncherResult;
 use crate::clusters::prepare::prepare_cluster_locked;
 use crate::game::{
     download_version_info, get_loader_version, resolve_minecraft_version, verify_game_files,
 };
 use crate::state::LauncherState;
-use crate::LauncherResult;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ClusterVerifyReport {
@@ -215,8 +215,8 @@ async fn verify_cluster_content(
     for (index, link) in linked.iter().enumerate() {
         child.set_progress(index as u64, Some(linked.len() as u64));
 
-        let Some(artifact) = artifact_dao::get_artifact_by_hash(&state.services.db, &link.hash)
-            .await?
+        let Some(artifact) =
+            artifact_dao::get_artifact_by_hash(&state.services.db, &link.hash).await?
         else {
             continue;
         };
@@ -284,7 +284,9 @@ async fn repair_content(
 
     let outcome = async {
         let provider = content.providers.get(provider_id)?;
-        let version = provider.get_version(project_id, version_id, &content).await?;
+        let version = provider
+            .get_version(project_id, version_id, &content)
+            .await?;
 
         // The cluster is pinned to one exact file by hash another file from the
         // same version would silently change what is installed

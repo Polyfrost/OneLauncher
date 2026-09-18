@@ -40,7 +40,9 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
 
     tracing::debug!("running command: {} {}", program, args.join(" "));
 
-    let output = command.output().await
+    let output = command
+        .output()
+        .await
         .map_err(|e| JavaError::RuntimeCheckError {
             source: e,
             path: absolute_path.clone(),
@@ -65,7 +67,9 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
             "java probe did not report java.version; stderr: {}",
             stderr.trim()
         );
-        return Err(JavaError::InvalidJavaPath { path: absolute_path });
+        return Err(JavaError::InvalidJavaPath {
+            path: absolute_path,
+        });
     };
 
     // Minecraft needs AWT a headless image launches fine and then dies mid-game
@@ -77,7 +81,9 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
             links = probe_flag(&info, "java.awt.link"),
             "java installation has no usable java.awt support"
         );
-        return Err(JavaError::MissingAwtSupport { path: absolute_path });
+        return Err(JavaError::MissingAwtSupport {
+            path: absolute_path,
+        });
     }
 
     Ok(JavaCheckInfo {
@@ -95,12 +101,11 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
 }
 
 fn has_usable_awt(info: &HashMap<String, String>) -> bool {
-	if !probe_flag(info, "java.awt.link") {
-		tracing::warn!("java.awt.link returned false. ignoring")
-	}
+    if !probe_flag(info, "java.awt.link") {
+        tracing::warn!("java.awt.link returned false. ignoring")
+    }
 
-    probe_flag(info, "java.awt")
-        && probe_flag(info, "java.awt.natives")
+    probe_flag(info, "java.awt") && probe_flag(info, "java.awt.natives")
 }
 
 fn probe_flag(info: &HashMap<String, String>, key: &str) -> bool {

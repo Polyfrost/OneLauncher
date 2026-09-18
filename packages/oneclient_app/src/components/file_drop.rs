@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use freya::animation::{AnimNum, Ease, Function, OnCreation, use_animation};
 use freya::prelude::*;
 use freya::router::use_route;
-use oneclient_core::clusters::Cluster;
 use oneclient_content::packages::ContentType;
+use oneclient_core::clusters::Cluster;
 use oneclient_db::models::ClusterId;
 
 use crate::Route;

@@ -74,10 +74,7 @@ pub fn use_content_meta(
         }
     }
 
-    let local = use_package_meta_batch(
-        ProviderId::Local,
-        local_project_ids(content, content_type),
-    );
+    let local = use_package_meta_batch(ProviderId::Local, local_project_ids(content, content_type));
     for (hash, meta) in package_meta_batch(&local) {
         out.insert((ProviderId::Local, hash), meta);
     }
@@ -257,9 +254,7 @@ fn make_row(
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
         hidden,
-        seen_status: installed_info
-            .map(|i| i.seen_status)
-            .unwrap_or_default(),
+        seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
     }
 }
 
@@ -405,7 +400,10 @@ impl Component for PackageManager {
                 .await
                 {
                     Ok(cleared) if cleared > 0 => {
-                        tracing::debug!(cleared, "retired package badges after the list was viewed");
+                        tracing::debug!(
+                            cleared,
+                            "retired package badges after the list was viewed"
+                        );
                     }
                     Ok(_) => {}
                     Err(err) => tracing::warn!(%err, "failed to retire package badges"),

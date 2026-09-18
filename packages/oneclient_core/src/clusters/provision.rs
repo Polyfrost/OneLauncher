@@ -2,10 +2,10 @@ use std::str::FromStr;
 
 use oneclient_db::dao::{bundle as bundle_dao, cluster as cluster_dao};
 
-use oneclient_common::domain::GameLoader;
-use crate::state::LauncherState;
-use oneclient_common::version::format_mc_version;
 use crate::LauncherResult;
+use crate::state::LauncherState;
+use oneclient_common::domain::GameLoader;
+use oneclient_common::version::format_mc_version;
 
 use oneclient_cluster::Cluster;
 use oneclient_cluster::CreateClusterOptions;
@@ -45,7 +45,7 @@ pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cl
                 &global,
                 CreateClusterOptions::new(name, mc_version.clone(), loader),
             )
-        .await
+            .await
         {
             Ok(Some(cluster)) => {
                 tracing::info!(
@@ -73,7 +73,10 @@ pub async fn ensure_from_bundles(state: &LauncherState) -> LauncherResult<Vec<Cl
 
 #[tracing::instrument(skip(state))]
 pub async fn ensure_from_versions(state: &LauncherState) -> LauncherResult<Vec<Cluster>> {
-    let metadata = state.versions.metadata(&state.services.requester.config().meta_url_base).await;
+    let metadata = state
+        .versions
+        .metadata(&state.services.requester.config().meta_url_base)
+        .await;
     let mut created = Vec::new();
 
     for entry in metadata {
@@ -110,7 +113,7 @@ pub async fn ensure_from_versions(state: &LauncherState) -> LauncherResult<Vec<C
                 &global,
                 CreateClusterOptions::new(name, mc_version.clone(), loader),
             )
-        .await
+            .await
         {
             Ok(Some(cluster)) => {
                 tracing::info!(

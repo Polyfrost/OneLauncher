@@ -38,7 +38,11 @@ pub fn create(request: &ShortcutRequest) -> Result<PathBuf> {
     std::fs::create_dir_all(&request.dir)
         .with_context(|| format!("couldn't open {}", request.dir.display()))?;
 
-    let path = unique_path(&request.dir, &file_stem(&request.cluster_name), imp::EXTENSION)?;
+    let path = unique_path(
+        &request.dir,
+        &file_stem(&request.cluster_name),
+        imp::EXTENSION,
+    )?;
     imp::write(request, &exe, &path)
         .with_context(|| format!("couldn't write {}", path.display()))?;
 

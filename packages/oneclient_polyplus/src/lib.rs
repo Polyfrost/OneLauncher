@@ -234,10 +234,7 @@ where
     Ok(())
 }
 
-async fn login(
-    client: &reqwest::Client,
-    account: &MinecraftAccount,
-) -> Result<String, PlusError> {
+async fn login(client: &reqwest::Client, account: &MinecraftAccount) -> Result<String, PlusError> {
     if plus_blocked() {
         return Err(PlusError::ConsentRequired);
     }
@@ -355,9 +352,12 @@ mod tests {
 
         let pumped = tokio::time::timeout(
             Duration::from_secs(10),
-            pump(&mut websocket, Duration::from_millis(50), Uuid::nil(), || async {
-                false
-            }),
+            pump(
+                &mut websocket,
+                Duration::from_millis(50),
+                Uuid::nil(),
+                || async { false },
+            ),
         )
         .await
         .expect("pump should return once the server closes the socket");

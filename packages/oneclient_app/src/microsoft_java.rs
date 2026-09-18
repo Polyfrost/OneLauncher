@@ -2,13 +2,13 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use freya::prelude::spawn_forever;
-use tokio::sync::mpsc::UnboundedSender;
 use oneclient_common::Patch;
 use oneclient_core::settings::store::save_settings_and_apply;
 use oneclient_core::{LauncherState, ProfileUpdate};
 use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt, Signal};
 use oneclient_java::{JavaRuntime, JavaVendor};
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::hooks::Actions;
 use crate::launcher;
@@ -59,7 +59,10 @@ async fn auto_install(refresh: UnboundedSender<()>) {
             return;
         }
         Err(err) => {
-            tracing::warn!(cluster_id, "could not read the cluster's Java version: {err:#}");
+            tracing::warn!(
+                cluster_id,
+                "could not read the cluster's Java version: {err:#}"
+            );
             return;
         }
     };
@@ -113,7 +116,10 @@ pub async fn offer_for_pinned_cluster(actions: &Actions, cluster_id: ClusterId) 
             return;
         }
         Err(err) => {
-            tracing::warn!(cluster_id, "could not read the cluster's Java version: {err:#}");
+            tracing::warn!(
+                cluster_id,
+                "could not read the cluster's Java version: {err:#}"
+            );
             return;
         }
     };

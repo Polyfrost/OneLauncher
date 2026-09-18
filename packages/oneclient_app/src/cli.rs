@@ -47,8 +47,14 @@ mod tests {
 
     #[test]
     fn both_spellings_carry_the_folder() {
-        assert_eq!(parse(&["--launch", "fabric-1-20"]).launch.as_deref(), Some("fabric-1-20"));
-        assert_eq!(parse(&["--launch=fabric-1-20"]).launch.as_deref(), Some("fabric-1-20"));
+        assert_eq!(
+            parse(&["--launch", "fabric-1-20"]).launch.as_deref(),
+            Some("fabric-1-20")
+        );
+        assert_eq!(
+            parse(&["--launch=fabric-1-20"]).launch.as_deref(),
+            Some("fabric-1-20")
+        );
     }
 
     #[test]
@@ -68,7 +74,12 @@ mod tests {
 
     #[test]
     fn unknown_flags_are_ignored_not_fatal() {
-        assert_eq!(parse(&["--verbose", "--launch", "x", "leftover"]).launch.as_deref(), Some("x"));
+        assert_eq!(
+            parse(&["--verbose", "--launch", "x", "leftover"])
+                .launch
+                .as_deref(),
+            Some("x")
+        );
     }
 
     #[test]

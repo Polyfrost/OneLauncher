@@ -155,7 +155,10 @@ mod imp {
     }
 
     pub async fn bind() -> Result<Listener, BindError> {
-        match ServerOptions::new().first_pipe_instance(true).create(ENDPOINT) {
+        match ServerOptions::new()
+            .first_pipe_instance(true)
+            .create(ENDPOINT)
+        {
             Ok(server) => Ok(Listener { server }),
             Err(err) if err.raw_os_error() == Some(ERROR_ACCESS_DENIED) => Err(BindError::Taken),
             Err(err) => Err(BindError::Io(err)),
@@ -244,7 +247,10 @@ mod imp {
         let listener = UnixListener::bind(path)?;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
 
-        Ok(Listener { listener, path: path.to_path_buf() })
+        Ok(Listener {
+            listener,
+            path: path.to_path_buf(),
+        })
     }
 
     pub async fn send(request: &str) -> bool {
@@ -284,7 +290,10 @@ mod tests {
 
     #[test]
     fn focus_survives_the_wire() {
-        assert_eq!(IpcCommand::decode(&IpcCommand::Focus.encode()), Some(IpcCommand::Focus));
+        assert_eq!(
+            IpcCommand::decode(&IpcCommand::Focus.encode()),
+            Some(IpcCommand::Focus)
+        );
     }
 
     #[test]
@@ -313,7 +322,9 @@ mod tests {
     fn a_bare_start_asks_only_for_the_window() {
         assert_eq!(request_for(&Cli::default()), IpcCommand::Focus);
         assert_eq!(
-            request_for(&Cli { launch: Some("pack".into()) }),
+            request_for(&Cli {
+                launch: Some("pack".into())
+            }),
             IpcCommand::Launch("pack".into()),
         );
     }

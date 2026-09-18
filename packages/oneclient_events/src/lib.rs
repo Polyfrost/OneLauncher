@@ -13,9 +13,11 @@ pub mod prompt;
 pub use bus::{EventBus, EventReceiver, NotificationBuilder};
 pub use error::{EventError, EventResult};
 pub use event::{
-	Event, GameEvent, LaunchStage, Level, Message, Notification, ProgressEvent, Signal,
+    Event, GameEvent, LaunchStage, Level, Message, Notification, ProgressEvent, Signal,
 };
 pub use progress::{
-	GroupedProgressChild, GroupedProgressEvent, GroupedProgressSession, TaskCategory, TaskPhase,
+    GroupedProgressChild, GroupedProgressEvent, GroupedProgressSession, TaskCategory, TaskPhase,
 };
-pub use prompt::{Answer, Choice, ChoiceInput, ChoiceStyle, Chosen, InputValue, Prompt, PromptRequest};
+pub use prompt::{
+    Answer, Choice, ChoiceInput, ChoiceStyle, Chosen, InputValue, Prompt, PromptRequest,
+};

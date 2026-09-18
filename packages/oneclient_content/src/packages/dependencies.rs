@@ -8,7 +8,7 @@ use crate::error::ContentResult;
 use crate::packages::provider::PackageProvider;
 use crate::packages::store::PackageStore;
 use crate::packages::types::{
-	DependencyKind, ProjectDetail, ReleaseType, VersionDependency, VersionDetail, VersionSummary,
+    DependencyKind, ProjectDetail, ReleaseType, VersionDependency, VersionDetail, VersionSummary,
 };
 
 /// Caps the transitive walk so a provider serving a cycle can't spin forever
@@ -18,357 +18,419 @@ const VERSION_WINDOW: usize = 50;
 
 #[derive(Debug, Clone)]
 pub struct ResolvedDependency {
-	pub project: ProjectDetail,
-	pub version: VersionDetail,
+    pub project: ProjectDetail,
+    pub version: VersionDetail,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct DependencyResolution {
-	/// Ordered breadth-first from the root
-	/// already-present ones are filtered out
-	pub install: Vec<ResolvedDependency>,
-	pub unresolved: Vec<String>,
+    /// Ordered breadth-first from the root
+    /// already-present ones are filtered out
+    pub install: Vec<ResolvedDependency>,
+    pub unresolved: Vec<String>,
 }
 
 impl DependencyResolution {
-	pub fn is_empty(&self) -> bool {
-		self.install.is_empty() && self.unresolved.is_empty()
-	}
+    pub fn is_empty(&self) -> bool {
+        self.install.is_empty() && self.unresolved.is_empty()
+    }
 }
 
 #[tracing::instrument(level = "debug", skip(root, ctx), fields(project_id = %root.project_id, version_id = %root.version_id))]
 pub async fn resolve_required(
-	provider_id: ProviderId,
-	root: &VersionDetail,
-	cluster_id: i64,
-	ctx: &ContentCtx,
+    provider_id: ProviderId,
+    root: &VersionDetail,
+    cluster_id: i64,
+    ctx: &ContentCtx,
 ) -> ContentResult<DependencyResolution> {
-	let mut resolution = DependencyResolution::default();
-	if !root.dependencies.iter().any(is_required) {
-		return Ok(resolution);
-	}
+    let mut resolution = DependencyResolution::default();
+    if !root.dependencies.iter().any(is_required) {
+        return Ok(resolution);
+    }
 
-	let provider = ctx.providers.get(provider_id)?;
-	let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let provider = ctx.providers.get(provider_id)?;
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
 
-	// Seeded with installed projects and the root against refetches and self-referencing graphs
-	let mut seen = installed_project_ids(provider_id, cluster_id, ctx).await?;
-	seen.insert(root.project_id.clone());
+    // Seeded with installed projects and the root against refetches and self-referencing graphs
+    let mut seen = installed_project_ids(provider_id, cluster_id, ctx).await?;
+    seen.insert(root.project_id.clone());
 
-	let mut queue: VecDeque<(VersionDependency, usize)> = root
-		.dependencies
-		.iter()
-		.filter(|dep| is_required(dep))
-		.map(|dep| (dep.clone(), 1))
-		.collect();
+    let mut queue: VecDeque<(VersionDependency, usize)> = root
+        .dependencies
+        .iter()
+        .filter(|dep| is_required(dep))
+        .map(|dep| (dep.clone(), 1))
+        .collect();
 
-	while let Some((dep, depth)) = queue.pop_front() {
-		if let Some(project_id) = &dep.project_id
-			&& seen.contains(project_id)
-		{
-			continue;
-		}
+    while let Some((dep, depth)) = queue.pop_front() {
+        if let Some(project_id) = &dep.project_id
+            && seen.contains(project_id)
+        {
+            continue;
+        }
 
-		let resolved = match resolve_one(provider, &dep, &cluster, ctx).await {
-			Ok(Some(resolved)) => resolved,
-			Ok(None) => {
-				tracing::warn!(?dep, "no compatible version for dependency");
-				resolution.unresolved.push(dependency_label(&dep));
-				continue;
-			}
-			Err(err) => {
-				tracing::warn!(?dep, %err, "failed to resolve dependency");
-				resolution.unresolved.push(dependency_label(&dep));
-				continue;
-			}
-		};
+        let resolved = match resolve_one(provider, &dep, &cluster, ctx).await {
+            Ok(Some(resolved)) => resolved,
+            Ok(None) => {
+                tracing::warn!(?dep, "no compatible version for dependency");
+                resolution.unresolved.push(dependency_label(&dep));
+                continue;
+            }
+            Err(err) => {
+                tracing::warn!(?dep, %err, "failed to resolve dependency");
+                resolution.unresolved.push(dependency_label(&dep));
+                continue;
+            }
+        };
 
-		// A version-pinned dependency only reveals its project once fetched so dedupe again here
-		if !seen.insert(resolved.version.project_id.clone()) {
-			continue;
-		}
+        // A version-pinned dependency only reveals its project once fetched so dedupe again here
+        if !seen.insert(resolved.version.project_id.clone()) {
+            continue;
+        }
 
-		if depth < MAX_DEPTH {
-			for next in resolved.version.dependencies.iter().filter(|d| is_required(d)) {
-				queue.push_back((next.clone(), depth + 1));
-			}
-		}
+        if depth < MAX_DEPTH {
+            for next in resolved
+                .version
+                .dependencies
+                .iter()
+                .filter(|d| is_required(d))
+            {
+                queue.push_back((next.clone(), depth + 1));
+            }
+        }
 
-		resolution.install.push(resolved);
-	}
+        resolution.install.push(resolved);
+    }
 
-	Ok(resolution)
+    Ok(resolution)
 }
 
 fn is_required(dep: &VersionDependency) -> bool {
-	dep.kind == DependencyKind::Required
+    dep.kind == DependencyKind::Required
 }
 
 fn dependency_label(dep: &VersionDependency) -> String {
-	dep.project_id
-		.clone()
-		.or_else(|| dep.version_id.clone())
-		.unwrap_or_else(|| "unknown".to_string())
+    dep.project_id
+        .clone()
+        .or_else(|| dep.version_id.clone())
+        .unwrap_or_else(|| "unknown".to_string())
 }
 
 async fn resolve_one(
-	provider: &dyn PackageProvider,
-	dep: &VersionDependency,
-	cluster: &ClusterRow,
-	ctx: &ContentCtx,
+    provider: &dyn PackageProvider,
+    dep: &VersionDependency,
+    cluster: &ClusterRow,
+    ctx: &ContentCtx,
 ) -> ContentResult<Option<ResolvedDependency>> {
-	// A pinned version wins even when newer exists
-	// providers ignore the project id once the version id is known
-	let version = match &dep.version_id {
-		Some(version_id) => {
-			provider
-				.get_version(
-					dep.project_id.as_deref().unwrap_or_default(),
-					version_id,
-					ctx,
-				)
-				.await?
-		}
-		None => {
-			let Some(project_id) = dep.project_id.as_deref() else {
-				return Ok(None);
-			};
-			let Some(pick) = pick_version(provider, project_id, cluster, ctx).await? else {
-				return Ok(None);
-			};
-			provider.get_version(project_id, &pick.version_id, ctx).await?
-		}
-	};
+    // A pinned version wins even when newer exists
+    // providers ignore the project id once the version id is known
+    let version = match &dep.version_id {
+        Some(version_id) => {
+            provider
+                .get_version(
+                    dep.project_id.as_deref().unwrap_or_default(),
+                    version_id,
+                    ctx,
+                )
+                .await?
+        }
+        None => {
+            let Some(project_id) = dep.project_id.as_deref() else {
+                return Ok(None);
+            };
+            let Some(pick) = pick_version(provider, project_id, cluster, ctx).await? else {
+                return Ok(None);
+            };
+            provider
+                .get_version(project_id, &pick.version_id, ctx)
+                .await?
+        }
+    };
 
-	let project = provider.get_project(&version.project_id, ctx).await?;
-	Ok(Some(ResolvedDependency { project, version }))
+    let project = provider.get_project(&version.project_id, ctx).await?;
+    Ok(Some(ResolvedDependency { project, version }))
 }
 
 /// Falls back to the newest prerelease when no release fits the cluster
 pub(crate) async fn pick_version(
-	provider: &dyn PackageProvider,
-	project_id: &str,
-	cluster: &ClusterRow,
-	ctx: &ContentCtx,
+    provider: &dyn PackageProvider,
+    project_id: &str,
+    cluster: &ClusterRow,
+    ctx: &ContentCtx,
 ) -> ContentResult<Option<VersionSummary>> {
-	let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
-	let loader_filter = loader.is_modded().then_some(loader);
+    let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
+    let loader_filter = loader.is_modded().then_some(loader);
 
-	let mut candidates = provider
-		.list_versions(
-			project_id,
-			Some(&cluster.mc_version),
-			loader_filter,
-			0,
-			VERSION_WINDOW,
-			ctx,
-		)
-		.await?
-		.items;
+    let mut candidates = provider
+        .list_versions(
+            project_id,
+            Some(&cluster.mc_version),
+            loader_filter,
+            0,
+            VERSION_WINDOW,
+            ctx,
+        )
+        .await?
+        .items;
 
-	// Resource packs shaders and datapacks declare no loader so a loader-filtered query is empty
-	if candidates.is_empty() && loader_filter.is_some() {
-		candidates = provider
-			.list_versions(project_id, Some(&cluster.mc_version), None, 0, VERSION_WINDOW, ctx)
-			.await?
-			.items;
-	}
+    // Resource packs shaders and datapacks declare no loader so a loader-filtered query is empty
+    if candidates.is_empty() && loader_filter.is_some() {
+        candidates = provider
+            .list_versions(
+                project_id,
+                Some(&cluster.mc_version),
+                None,
+                0,
+                VERSION_WINDOW,
+                ctx,
+            )
+            .await?
+            .items;
+    }
 
-	Ok(choose_version(candidates, cluster, loader))
+    Ok(choose_version(candidates, cluster, loader))
 }
 
 fn choose_version(
-	mut candidates: Vec<VersionSummary>,
-	cluster: &ClusterRow,
-	loader: GameLoader,
+    mut candidates: Vec<VersionSummary>,
+    cluster: &ClusterRow,
+    loader: GameLoader,
 ) -> Option<VersionSummary> {
-	candidates.retain(|version| fits_cluster(version, cluster, loader));
-	// Neither provider promises an order so sort rather than trust the page
-	candidates.sort_by_key(|version| std::cmp::Reverse(version.published));
+    candidates.retain(|version| fits_cluster(version, cluster, loader));
+    // Neither provider promises an order so sort rather than trust the page
+    candidates.sort_by_key(|version| std::cmp::Reverse(version.published));
 
-	candidates
-		.iter()
-		.find(|version| matches!(version.release_type, ReleaseType::Release))
-		.or_else(|| candidates.first())
-		.cloned()
+    candidates
+        .iter()
+        .find(|version| matches!(version.release_type, ReleaseType::Release))
+        .or_else(|| candidates.first())
+        .cloned()
 }
 
 #[must_use]
 pub(crate) fn base_game_version(version: &str) -> &str {
-	version
-		.split_once('-')
-		.filter(|(base, _)| base.contains('.'))
-		.map_or(version, |(base, _)| base)
+    version
+        .split_once('-')
+        .filter(|(base, _)| base.contains('.'))
+        .map_or(version, |(base, _)| base)
 }
 
 #[must_use]
 pub(crate) fn supports_game_version(game_versions: &[String], mc_version: &str) -> bool {
-	let wanted = base_game_version(mc_version);
-	game_versions.is_empty() || game_versions.iter().any(|v| base_game_version(v) == wanted)
+    let wanted = base_game_version(mc_version);
+    game_versions.is_empty() || game_versions.iter().any(|v| base_game_version(v) == wanted)
 }
 
 fn fits_cluster(version: &VersionSummary, cluster: &ClusterRow, loader: GameLoader) -> bool {
-	if !supports_game_version(&version.game_versions, &cluster.mc_version) {
-		return false;
-	}
+    if !supports_game_version(&version.game_versions, &cluster.mc_version) {
+        return false;
+    }
 
-	version.loaders.is_empty() || version.loaders.iter().any(|l| loader.compatible_with(*l))
+    version.loaders.is_empty() || version.loaders.iter().any(|l| loader.compatible_with(*l))
 }
 
 async fn installed_project_ids(
-	provider_id: ProviderId,
-	cluster_id: i64,
-	ctx: &ContentCtx,
+    provider_id: ProviderId,
+    cluster_id: i64,
+    ctx: &ContentCtx,
 ) -> ContentResult<HashSet<String>> {
-	Ok(PackageStore::list_linked_artifacts(cluster_id, ctx)
-		.await?
-		.into_iter()
-		.filter(|linked| linked.provider == Some(provider_id))
-		.filter_map(|linked| linked.project_id)
-		.collect())
+    Ok(PackageStore::list_linked_artifacts(cluster_id, ctx)
+        .await?
+        .into_iter()
+        .filter(|linked| linked.provider == Some(provider_id))
+        .filter_map(|linked| linked.project_id)
+        .collect())
 }
 
 /// False for modpacks they bring their own file list
 pub fn resolves_dependencies(content_type: ContentType) -> bool {
-	!matches!(content_type, ContentType::Modpack)
+    !matches!(content_type, ContentType::Modpack)
 }
 
 #[cfg(test)]
 mod tests {
-	use chrono::{TimeZone, Utc};
+    use chrono::{TimeZone, Utc};
 
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn a_version_is_offered_only_for_the_game_version_it_names() {
-		let offered = |stated: &[&str], mc_version: &str| {
-			supports_game_version(
-				&stated.iter().map(|v| (*v).to_string()).collect::<Vec<_>>(),
-				mc_version,
-			)
-		};
+    #[test]
+    fn a_version_is_offered_only_for_the_game_version_it_names() {
+        let offered = |stated: &[&str], mc_version: &str| {
+            supports_game_version(
+                &stated.iter().map(|v| (*v).to_string()).collect::<Vec<_>>(),
+                mc_version,
+            )
+        };
 
-		assert!(offered(&[], "26.3"), "an undescribed version is offered");
-		assert!(offered(&["26.3"], "26.3"));
-		assert!(
-			offered(&["26.3-rc-1"], "26.3"),
-			"a pre-release tag names the same game version"
-		);
-		assert!(offered(&["26.3"], "26.3-snapshot-10"));
-		assert!(
-			!offered(&["26.1"], "26.1.2"),
-			"strict where the launch-time check is lenient: #830 stopped 26.1 \
+        assert!(offered(&[], "26.3"), "an undescribed version is offered");
+        assert!(offered(&["26.3"], "26.3"));
+        assert!(
+            offered(&["26.3-rc-1"], "26.3"),
+            "a pre-release tag names the same game version"
+        );
+        assert!(offered(&["26.3"], "26.3-snapshot-10"));
+        assert!(
+            !offered(&["26.1"], "26.1.2"),
+            "strict where the launch-time check is lenient: #830 stopped 26.1 \
 			 builds being offered to a 26.1.2 cluster"
-		);
-		assert!(!offered(&["1.21.11"], "26.1.2"));
-		assert!(
-			!offered(&["rd-132211"], "rd-160052"),
-			"pre-classic names the build after the dash, so there is no tag to strip"
-		);
-	}
+        );
+        assert!(!offered(&["1.21.11"], "26.1.2"));
+        assert!(
+            !offered(&["rd-132211"], "rd-160052"),
+            "pre-classic names the build after the dash, so there is no tag to strip"
+        );
+    }
 
-	fn summary(
-		version_id: &str,
-		release_type: ReleaseType,
-		day: u32,
-		loaders: Vec<GameLoader>,
-		game_versions: Vec<&str>,
-	) -> VersionSummary {
-		VersionSummary {
-			version_id: version_id.into(),
-			project_id: "p".into(),
-			name: version_id.into(),
-			version_number: version_id.into(),
-			published: Utc.with_ymd_and_hms(2025, 1, day, 0, 0, 0).unwrap(),
-			release_type,
-			game_versions: game_versions.into_iter().map(Into::into).collect(),
-			loaders,
-			downloads: 0,
-			file_size: 0,
-		}
-	}
+    fn summary(
+        version_id: &str,
+        release_type: ReleaseType,
+        day: u32,
+        loaders: Vec<GameLoader>,
+        game_versions: Vec<&str>,
+    ) -> VersionSummary {
+        VersionSummary {
+            version_id: version_id.into(),
+            project_id: "p".into(),
+            name: version_id.into(),
+            version_number: version_id.into(),
+            published: Utc.with_ymd_and_hms(2025, 1, day, 0, 0, 0).unwrap(),
+            release_type,
+            game_versions: game_versions.into_iter().map(Into::into).collect(),
+            loaders,
+            downloads: 0,
+            file_size: 0,
+        }
+    }
 
-	fn cluster(loader: GameLoader, mc_version: &str) -> ClusterRow {
-		ClusterRow {
-			id: 1,
-			name: "c".into(),
-			folder_name: "c".into(),
-			setting_profile_name: None,
-			mc_version: mc_version.into(),
-			mc_loader: loader as i64,
-			stage: 0,
-			mc_loader_version: None,
-			created_at: None,
-			last_played: None,
-			overall_played: None,
-			linked_modpack_hash: None,
-		}
-	}
+    fn cluster(loader: GameLoader, mc_version: &str) -> ClusterRow {
+        ClusterRow {
+            id: 1,
+            name: "c".into(),
+            folder_name: "c".into(),
+            setting_profile_name: None,
+            mc_version: mc_version.into(),
+            mc_loader: loader as i64,
+            stage: 0,
+            mc_loader_version: None,
+            created_at: None,
+            last_played: None,
+            overall_played: None,
+            linked_modpack_hash: None,
+        }
+    }
 
-	#[test]
-	fn prefers_the_newest_release_over_a_newer_prerelease() {
-		let cluster = cluster(GameLoader::Fabric, "1.21.4");
-		let candidates = vec![
-			summary("old", ReleaseType::Release, 1, vec![GameLoader::Fabric], vec!["1.21.4"]),
-			summary("beta", ReleaseType::Beta, 3, vec![GameLoader::Fabric], vec!["1.21.4"]),
-			summary("new", ReleaseType::Release, 2, vec![GameLoader::Fabric], vec!["1.21.4"]),
-		];
+    #[test]
+    fn prefers_the_newest_release_over_a_newer_prerelease() {
+        let cluster = cluster(GameLoader::Fabric, "1.21.4");
+        let candidates = vec![
+            summary(
+                "old",
+                ReleaseType::Release,
+                1,
+                vec![GameLoader::Fabric],
+                vec!["1.21.4"],
+            ),
+            summary(
+                "beta",
+                ReleaseType::Beta,
+                3,
+                vec![GameLoader::Fabric],
+                vec!["1.21.4"],
+            ),
+            summary(
+                "new",
+                ReleaseType::Release,
+                2,
+                vec![GameLoader::Fabric],
+                vec!["1.21.4"],
+            ),
+        ];
 
-		let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
-		assert_eq!(pick.unwrap().version_id, "new");
-	}
+        let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
+        assert_eq!(pick.unwrap().version_id, "new");
+    }
 
-	#[test]
-	fn falls_back_to_a_prerelease_when_no_release_fits() {
-		let cluster = cluster(GameLoader::Fabric, "1.21.4");
-		let candidates = vec![
-			summary("alpha", ReleaseType::Alpha, 1, vec![GameLoader::Fabric], vec!["1.21.4"]),
-			summary("beta", ReleaseType::Beta, 2, vec![GameLoader::Fabric], vec!["1.21.4"]),
-		];
+    #[test]
+    fn falls_back_to_a_prerelease_when_no_release_fits() {
+        let cluster = cluster(GameLoader::Fabric, "1.21.4");
+        let candidates = vec![
+            summary(
+                "alpha",
+                ReleaseType::Alpha,
+                1,
+                vec![GameLoader::Fabric],
+                vec!["1.21.4"],
+            ),
+            summary(
+                "beta",
+                ReleaseType::Beta,
+                2,
+                vec![GameLoader::Fabric],
+                vec!["1.21.4"],
+            ),
+        ];
 
-		let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
-		assert_eq!(pick.unwrap().version_id, "beta");
-	}
+        let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
+        assert_eq!(pick.unwrap().version_id, "beta");
+    }
 
-	#[test]
-	fn drops_versions_the_store_would_reject() {
-		let cluster = cluster(GameLoader::Fabric, "1.21.4");
-		let candidates = vec![
-			summary("forge", ReleaseType::Release, 3, vec![GameLoader::Forge], vec!["1.21.4"]),
-			summary("old-mc", ReleaseType::Release, 2, vec![GameLoader::Fabric], vec!["1.20.1"]),
-			summary("fits", ReleaseType::Release, 1, vec![GameLoader::Fabric], vec!["1.21.4"]),
-		];
+    #[test]
+    fn drops_versions_the_store_would_reject() {
+        let cluster = cluster(GameLoader::Fabric, "1.21.4");
+        let candidates = vec![
+            summary(
+                "forge",
+                ReleaseType::Release,
+                3,
+                vec![GameLoader::Forge],
+                vec!["1.21.4"],
+            ),
+            summary(
+                "old-mc",
+                ReleaseType::Release,
+                2,
+                vec![GameLoader::Fabric],
+                vec!["1.20.1"],
+            ),
+            summary(
+                "fits",
+                ReleaseType::Release,
+                1,
+                vec![GameLoader::Fabric],
+                vec!["1.21.4"],
+            ),
+        ];
 
-		let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
-		assert_eq!(pick.unwrap().version_id, "fits");
-	}
+        let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
+        assert_eq!(pick.unwrap().version_id, "fits");
+    }
 
-	#[test]
-	fn keeps_loaderless_content_for_a_modded_cluster() {
-		let cluster = cluster(GameLoader::Fabric, "1.21.4");
-		let candidates = vec![summary(
-			"pack",
-			ReleaseType::Release,
-			1,
-			Vec::new(),
-			vec!["1.21.4"],
-		)];
+    #[test]
+    fn keeps_loaderless_content_for_a_modded_cluster() {
+        let cluster = cluster(GameLoader::Fabric, "1.21.4");
+        let candidates = vec![summary(
+            "pack",
+            ReleaseType::Release,
+            1,
+            Vec::new(),
+            vec!["1.21.4"],
+        )];
 
-		let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
-		assert_eq!(pick.unwrap().version_id, "pack");
-	}
+        let pick = choose_version(candidates, &cluster, GameLoader::Fabric);
+        assert_eq!(pick.unwrap().version_id, "pack");
+    }
 
-	#[test]
-	fn no_compatible_version_resolves_to_nothing() {
-		let cluster = cluster(GameLoader::Fabric, "1.21.4");
-		let candidates = vec![summary(
-			"forge",
-			ReleaseType::Release,
-			1,
-			vec![GameLoader::Forge],
-			vec!["1.21.4"],
-		)];
+    #[test]
+    fn no_compatible_version_resolves_to_nothing() {
+        let cluster = cluster(GameLoader::Fabric, "1.21.4");
+        let candidates = vec![summary(
+            "forge",
+            ReleaseType::Release,
+            1,
+            vec![GameLoader::Forge],
+            vec!["1.21.4"],
+        )];
 
-		assert!(choose_version(candidates, &cluster, GameLoader::Fabric).is_none());
-	}
+        assert!(choose_version(candidates, &cluster, GameLoader::Fabric).is_none());
+    }
 }

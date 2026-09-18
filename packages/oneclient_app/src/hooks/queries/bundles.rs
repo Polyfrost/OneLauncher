@@ -33,7 +33,11 @@ impl QueryCapability for OnboardingBundlesQuery {
         for cluster in clusters {
             let archives = state
                 .bundles
-                .archives_for(&state.services.content(), &cluster.mc_version, cluster.mc_loader)
+                .archives_for(
+                    &state.services.content(),
+                    &cluster.mc_version,
+                    cluster.mc_loader,
+                )
                 .await
                 .unwrap_or_default();
             out.push(ClusterBundles { cluster, archives });
@@ -70,14 +74,12 @@ impl QueryCapability for BundlesWithStatusQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
         let state = crate::launcher::state()?;
-        Ok(
-            get_bundles_with_update_status(
-                self.cluster_id,
-                state.bundles.as_ref(),
-                &state.services.content(),
-            )
-            .await?,
+        Ok(get_bundles_with_update_status(
+            self.cluster_id,
+            state.bundles.as_ref(),
+            &state.services.content(),
         )
+        .await?)
     }
 }
 
@@ -112,7 +114,8 @@ impl QueryCapability for BundleOverridesQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
         let state = crate::launcher::state()?;
-        let rows = list_cluster_bundle_overrides(self.cluster_id, &state.services.content()).await?;
+        let rows =
+            list_cluster_bundle_overrides(self.cluster_id, &state.services.content()).await?;
         Ok(rows
             .into_iter()
             .map(|(bundle, pkg, ty)| ((bundle, pkg), ty))

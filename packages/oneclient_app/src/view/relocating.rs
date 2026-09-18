@@ -46,7 +46,11 @@ fn copying(plan: &RelocationPlan, copied: u64, total: u64) -> Element {
     let total = if total > 0 { total } else { plan.bytes }.max(1);
 
     screen()
-        .child(heading(IconType::FolderDownload, "Moving your data folder", colors::fg_primary()))
+        .child(heading(
+            IconType::FolderDownload,
+            "Moving your data folder",
+            colors::fg_primary(),
+        ))
         .child(path_block("From", &plan.from))
         .child(path_block("To", &plan.to))
         .child(progress_track(
@@ -90,7 +94,11 @@ fn moved(outcome: &RelocationOutcome, actions: Actions) -> Element {
     }
 
     screen()
-        .child(heading(IconType::FolderCheck, "Game data moved", colors::brand()))
+        .child(heading(
+            IconType::FolderCheck,
+            "Game data moved",
+            colors::brand(),
+        ))
         .child(note(body, colors::brand()))
         .child(
             label()
@@ -103,26 +111,28 @@ fn moved(outcome: &RelocationOutcome, actions: Actions) -> Element {
                 .color(colors::fg_secondary()),
         )
         .child(
-            buttons()
-                .child(back_button(actions))
-                .child(
-                    Button::new()
-                        .primary()
-                        .on_press(|_| {
-                            let platform = Platform::get();
-                            Platform::get().with_window(Platform::window_id(), move |window| {
-                                platform.close_window(window.id());
-                            });
-                        })
-                        .text("Quit OneClient"),
-                ),
+            buttons().child(back_button(actions)).child(
+                Button::new()
+                    .primary()
+                    .on_press(|_| {
+                        let platform = Platform::get();
+                        Platform::get().with_window(Platform::window_id(), move |window| {
+                            platform.close_window(window.id());
+                        });
+                    })
+                    .text("Quit OneClient"),
+            ),
         )
         .into_element()
 }
 
 fn failed(message: String, actions: Actions) -> Element {
     screen()
-        .child(heading(IconType::AlertTriangle, "The move didn't finish", colors::danger()))
+        .child(heading(
+            IconType::AlertTriangle,
+            "The move didn't finish",
+            colors::danger(),
+        ))
         .child(note(message, colors::danger()))
         .child(
             label()

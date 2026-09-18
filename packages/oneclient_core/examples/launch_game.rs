@@ -1,9 +1,9 @@
 #![recursion_limit = "256"]
 
+use oneclient_common::domain::GameLoader;
 use oneclient_core::LauncherResult;
 use oneclient_core::clusters::CreateClusterOptions;
 use oneclient_core::dev;
-use oneclient_common::domain::GameLoader;
 
 #[tokio::main]
 async fn main() -> LauncherResult<()> {
@@ -17,16 +17,24 @@ async fn main() -> LauncherResult<()> {
         .and_then(|s| s.parse().ok())
         .unwrap_or(GameLoader::Vanilla);
 
-    let account = state.auth.add_offline_account("Example".to_string()).await?;
-    println!("Using offline account {} ({})", account.username, account.id);
+    let account = state
+        .auth
+        .add_offline_account("Example".to_string())
+        .await?;
+    println!(
+        "Using offline account {} ({})",
+        account.username, account.id
+    );
 
     let global = state.settings.read().global_game_settings.clone();
 
-    let cluster = state.clusters.create(
-        &global,
-        CreateClusterOptions::new(format!("launch-{mc_version}"), mc_version, loader),
-    )
-    .await?;
+    let cluster = state
+        .clusters
+        .create(
+            &global,
+            CreateClusterOptions::new(format!("launch-{mc_version}"), mc_version, loader),
+        )
+        .await?;
 
     println!("Launching {} ({mc_version} {loader:?})...", cluster.name);
     let game = oneclient_core::launch_cluster(&state, cluster.id, &account, true).await?;

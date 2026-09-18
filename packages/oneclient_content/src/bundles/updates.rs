@@ -4,14 +4,13 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
 use oneclient_db::dao::artifact as artifact_dao;
-use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::bundle as bundle_catalog_dao;
+use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::dao::cluster_optional_mod as optional_dao;
 use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{
-    BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType,
-    SeenStatus,
+    BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType, SeenStatus,
 };
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -29,11 +28,11 @@ use crate::bundles::types::{
     BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate, BundleUpdateCheckResult,
     BundleWithUpdateStatus, FileUpdateStatus, external_bundle_key, managed_bundle_key,
 };
-use oneclient_common::domain::{GameLoader, ProviderId};
-use crate::packages::store::PackageStore;
-use crate::packages::types::LinkedArtifactInfo;
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
+use crate::packages::store::PackageStore;
+use crate::packages::types::LinkedArtifactInfo;
+use oneclient_common::domain::{GameLoader, ProviderId};
 
 static CLUSTER_UPDATE_LOCKS: OnceLock<Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>> = OnceLock::new();
 
@@ -421,11 +420,10 @@ pub async fn apply_bundle_updates(
     ctx: &ContentCtx,
     deadline: Option<Instant>,
 ) -> ContentResult<ApplyBundleUpdatesResult> {
-    let session = oneclient_events::GroupedProgressSession::start(
-        &ctx.events,
-        "Updating bundle content",
-    );
-    let result = apply_bundle_updates_with(cluster_id, bundles, ctx, Some(&session), deadline).await;
+    let session =
+        oneclient_events::GroupedProgressSession::start(&ctx.events, "Updating bundle content");
+    let result =
+        apply_bundle_updates_with(cluster_id, bundles, ctx, Some(&session), deadline).await;
     session.finish();
     result
 }
@@ -493,7 +491,12 @@ pub async fn apply_bundle_updates_with(
             .updates_available
             .iter()
             .map(|u| u.new_file.size.max(1))
-            .chain(check.additions_available.iter().map(|a| a.new_file.size.max(1)))
+            .chain(
+                check
+                    .additions_available
+                    .iter()
+                    .map(|a| a.new_file.size.max(1)),
+            )
             .sum();
         s.expect(oneclient_events::TaskCategory::Packages, count, bytes);
     }
@@ -608,10 +611,7 @@ pub async fn apply_bundle_updates_with(
     {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
-        if let Ok(archives) = bundles
-            .archives_for(ctx, &cluster.mc_version, loader)
-            .await
-        {
+        if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
             for archive in archives {
                 if let Err(err) = overrides::sync_bundle_overrides(
                     &archive.bundle.path,
@@ -732,7 +732,8 @@ async fn reconcile_update(
     set_artifact_enabled_to(update.cluster_id, hash, enabled, ctx).await?;
 
     if hash != update.installed_hash {
-        artifact_dao::set_seen_status(&ctx.db, update.cluster_id, hash, SeenStatus::Updated).await?;
+        artifact_dao::set_seen_status(&ctx.db, update.cluster_id, hash, SeenStatus::Updated)
+            .await?;
         remove_artifact_from_cluster(update.cluster_id, &update.installed_hash, false, ctx).await?;
     }
 

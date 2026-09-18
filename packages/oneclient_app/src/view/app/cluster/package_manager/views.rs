@@ -170,19 +170,11 @@ pub(super) fn toolbar_bar(
         } else {
             Size::flex(1.0)
         })
-        .height(if stacked {
-            Size::fill()
-        } else {
-            Size::auto()
-        })
+        .height(if stacked { Size::fill() } else { Size::auto() })
         .child(
             TabBar::new()
                 .width(Size::auto())
-                .height(if stacked {
-                    Size::fill()
-                } else {
-                    Size::auto()
-                })
+                .height(if stacked { Size::fill() } else { Size::auto() })
                 .spacing(20.)
                 .font_size(12.)
                 .tabs(tab_items),

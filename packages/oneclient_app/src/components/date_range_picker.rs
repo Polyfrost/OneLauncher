@@ -270,8 +270,7 @@ fn month_grid(
                 outside: day.month0() != shown.month0(),
                 enabled: (min..=max).contains(&day),
                 in_range: selected.is_some_and(|(a, b)| (a..=b).contains(&day)),
-                edge: selected.is_some_and(|(a, b)| day == a || day == b)
-                    || pending == Some(day),
+                edge: selected.is_some_and(|(a, b)| day == a || day == b) || pending == Some(day),
                 pick: pick.clone(),
             });
         }
@@ -349,7 +348,11 @@ impl<F: FnMut(NaiveDate) + Clone + 'static> Component for DayCell<F> {
     }
 }
 
-fn footer(has_range: bool, pending: Option<NaiveDate>, mut clear: impl FnMut() + 'static) -> Element {
+fn footer(
+    has_range: bool,
+    pending: Option<NaiveDate>,
+    mut clear: impl FnMut() + 'static,
+) -> Element {
     let hint = match pending {
         Some(day) => format!("From {} — pick an end date", format_day(day)),
         None => "Click a start date, then an end date".to_string(),

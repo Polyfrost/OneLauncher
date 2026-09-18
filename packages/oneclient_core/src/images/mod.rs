@@ -5,11 +5,11 @@ use bytes::Bytes;
 use reqwest::Method;
 use tokio::sync::Mutex;
 
-use polyio::sha1_bytes;
-use oneclient_net::RequestError;
+use crate::{LauncherError, LauncherResult};
 use oneclient_common::paths;
 use oneclient_net::RequestClient;
-use crate::{LauncherError, LauncherResult};
+use oneclient_net::RequestError;
+use polyio::sha1_bytes;
 
 pub const DEFAULT_IMAGE_EDGE: u32 = 1200;
 
@@ -172,7 +172,9 @@ fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
     let mut out = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut out);
     if resized.color().has_alpha() {
-        resized.write_to(&mut cursor, image::ImageFormat::Png).ok()?;
+        resized
+            .write_to(&mut cursor, image::ImageFormat::Png)
+            .ok()?;
     } else {
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, 85)
             .encode_image(&resized)

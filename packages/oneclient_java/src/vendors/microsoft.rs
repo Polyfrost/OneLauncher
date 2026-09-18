@@ -37,9 +37,7 @@ impl JavaRuntimeProvider for MicrosoftRuntimeProvider {
         net: &RequestClient,
     ) -> JavaResult<Vec<JavaPackage>> {
         let Some(arch) = MICROSOFT_ARCH else {
-            tracing::debug!(
-                "Microsoft publishes no build for this architecture; listing nothing"
-            );
+            tracing::debug!("Microsoft publishes no build for this architecture; listing nothing");
             return Ok(Vec::new());
         };
 
@@ -157,9 +155,7 @@ fn parse_checksum_file(body: &str, major: u32) -> Option<MicrosoftBuild> {
 /// Splitting the whole filename the way the other vendors split their version
 /// strings would fold the `64` of `x64` into the version
 fn version_from_filename(filename: &str) -> Option<Vec<u32>> {
-    let (version, _) = filename
-        .strip_prefix("microsoft-jdk-")?
-        .split_once('-')?;
+    let (version, _) = filename.strip_prefix("microsoft-jdk-")?.split_once('-')?;
 
     let parts: Vec<u32> = version
         .split('.')
@@ -216,8 +212,7 @@ const MICROSOFT_EXT: (&str, PackageArchive) = (
 mod tests {
     use super::*;
 
-    const LINE: &str =
-        "bf27a5d6298c736af8daf5b8c883098e83291446e5766118d8a5ea6a2617195d  microsoft-jdk-21.0.12-windows-x64.zip";
+    const LINE: &str = "bf27a5d6298c736af8daf5b8c883098e83291446e5766118d8a5ea6a2617195d  microsoft-jdk-21.0.12-windows-x64.zip";
 
     #[test]
     fn only_kits_are_ever_requested() {

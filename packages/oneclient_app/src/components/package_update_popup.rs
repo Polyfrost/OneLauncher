@@ -8,7 +8,9 @@ use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 use oneclient_core::{BrowserPackageUpdate, ProfileUpdate};
 use oneclient_db::models::ClusterId;
 
-use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea, checkbox_labeled};
+use crate::components::{
+    Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea, checkbox_labeled,
+};
 use crate::hooks::{
     package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch,
 };
@@ -210,9 +212,7 @@ fn content(
                         .main_align(Alignment::Start)
                         .cross_align(Alignment::Center)
                         .spacing(6.)
-                        .child(
-                            checkbox_labeled(dont_show_again, "Don't show again?")
-                        )
+                        .child(checkbox_labeled(dont_show_again, "Don't show again?")),
                 )
                 .child(
                     rect()
@@ -267,7 +267,7 @@ fn content(
                                 })
                                 .child(Icon::new(IconType::DownloadCloud02).size(15.))
                                 .text("Proceed"),
-                        )
+                        ),
                 ),
         )
 }

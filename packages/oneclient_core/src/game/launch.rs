@@ -9,21 +9,21 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 use crate::ClusterStage;
-use oneclient_auth::MinecraftAccount;
+use crate::LauncherResult;
 use crate::clusters::Cluster;
-use oneclient_discord::Presence;
+use crate::game::GameError;
 use crate::game::session::SessionRecorder;
 use crate::game::tail::spawn_log_tail;
-use crate::game::GameError;
-use oneclient_mc::{
-    self as arguments, download_minecraft, download_version_info, get_loader_version,
-    game_files_missing, resolve_minecraft_version,
-};
-use oneclient_events::{GroupedProgressSession, LaunchStage};
 use crate::settings::GameSettingsProfile;
 use crate::state::LauncherState;
-use crate::LauncherResult;
+use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
+use oneclient_discord::Presence;
+use oneclient_events::{GroupedProgressSession, LaunchStage};
+use oneclient_mc::{
+    self as arguments, download_minecraft, download_version_info, game_files_missing,
+    get_loader_version, resolve_minecraft_version,
+};
 
 pub fn is_running(state: &LauncherState, cluster_id: i64) -> bool {
     state.games.is_running(cluster_id)
@@ -46,7 +46,10 @@ pub async fn launch_cluster(
 
     let parallel = state.settings.read().allow_parallel_running_clusters;
     if !parallel && state.games.is_active(cluster_id) {
-        tracing::warn!(cluster_id, "cluster already launching or running; refusing launch");
+        tracing::warn!(
+            cluster_id,
+            "cluster already launching or running; refusing launch"
+        );
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
 
@@ -197,8 +200,10 @@ async fn start(
         "resolved launch metadata"
     );
 
-    let java = if let Some(runtime) =
-        state.java.runtime_for_profile(profile.java_path.as_deref()).await?
+    let java = if let Some(runtime) = state
+        .java
+        .runtime_for_profile(profile.java_path.as_deref())
+        .await?
     {
         runtime
     } else {
@@ -208,13 +213,19 @@ async fn start(
             .map(|v| v.major_version)
             .ok_or(GameError::MissingJavaVersion)?;
 
-        state.java.prepare(major, search_for_java, false, None).await?
+        state
+            .java
+            .prepare(major, search_for_java, false, None)
+            .await?
     };
 
     match game_files_missing(&version_info, &java.os_arch, updated) {
         Ok(true) => {
             tracing::info!(cluster_id, "missing game files; repairing");
-            let _ = state.clusters.set_stage(cluster_id, ClusterStage::Repairing).await;
+            let _ = state
+                .clusters
+                .set_stage(cluster_id, ClusterStage::Repairing)
+                .await;
             stage(LaunchStage::Downloading);
             if let Err(err) = download_minecraft(
                 &state.services.mc(),
@@ -230,7 +241,10 @@ async fn start(
                 stage(LaunchStage::Exited);
                 return Err(err.into());
             }
-            let _ = state.clusters.set_stage(cluster_id, ClusterStage::Ready).await;
+            let _ = state
+                .clusters
+                .set_stage(cluster_id, ClusterStage::Ready)
+                .await;
         }
         Ok(false) => {}
         Err(err @ oneclient_mc::McError::NoNativesForPlatform { .. }) => {
@@ -255,11 +269,8 @@ async fn start(
     let custom_args = profile.launch_args.clone().unwrap_or_default();
     let loader_version_id = loader_version.as_ref().map(|lv| lv.id.as_str());
 
-    let mods_in_cluster = crate::game::uses_cluster_mods_folder(
-        cluster.mc_loader,
-        loader_version_id,
-        &custom_args,
-    );
+    let mods_in_cluster =
+        crate::game::uses_cluster_mods_folder(cluster.mc_loader, loader_version_id, &custom_args);
 
     if let Err(err) =
         crate::game::materialize_content(&state.services, &cluster, &cwd, mods_in_cluster).await
@@ -296,7 +307,9 @@ async fn start(
         &libraries,
         &classpaths,
         &version_name,
-        profile.mem_max.unwrap_or_else(oneclient_common::default_mem_max),
+        profile
+            .mem_max
+            .unwrap_or_else(oneclient_common::default_mem_max),
         profile.launch_args.clone().unwrap_or_default(),
         &java.os_arch,
         java.major,
@@ -350,13 +363,13 @@ async fn start(
 
     let (mut command, wrapper) = base_command(&profile, &java.absolute_path);
 
-	if profile.use_discrete_gpu() {
+    if profile.use_discrete_gpu() {
         crate::game::gpu::prefer_discrete(&mut command, &java.absolute_path).await;
     }
 
-	apply_env(&mut command, &profile);
+    apply_env(&mut command, &profile);
 
-	command
+    command
         .args(jvm_args)
         .arg(&version_info.main_class)
         .args(mc_args)
@@ -407,7 +420,9 @@ async fn start(
     let recorder = SessionRecorder::start(
         state,
         cluster_id,
-        profile.mem_max.unwrap_or_else(oneclient_common::default_mem_max),
+        profile
+            .mem_max
+            .unwrap_or_else(oneclient_common::default_mem_max),
         &java,
     )
     .await;
@@ -599,15 +614,23 @@ pub(crate) async fn finalize_session(
         Exit::Observed { success: true, .. } => state
             .services
             .events
-            .notify("Game closed").body(format!("{name} exited")).send(),
+            .notify("Game closed")
+            .body(format!("{name} exited"))
+            .send(),
         Exit::Observed { display, .. } => state
             .services
             .events
-            .notify("Game crashed").body(format!("{name} exited with {display}")).error().send(),
+            .notify("Game crashed")
+            .body(format!("{name} exited with {display}"))
+            .error()
+            .send(),
         Exit::Failed(err) => state
             .services
             .events
-            .notify("Game error").body(format!("{name}: {err}")).error().send(),
+            .notify("Game error")
+            .body(format!("{name}: {err}"))
+            .error()
+            .send(),
         // Nothing was watching so there is no crash to report
         Exit::Inferred => {}
     }

@@ -111,10 +111,7 @@ impl CredentialsStore {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%account.id))]
-    pub async fn commit_refreshed_account(
-        &mut self,
-        account: MinecraftAccount,
-    ) -> AuthResult<()> {
+    pub async fn commit_refreshed_account(&mut self, account: MinecraftAccount) -> AuthResult<()> {
         self.users.insert(account.id, account);
         self.save().await?;
         tracing::debug!("stored refreshed Microsoft account");

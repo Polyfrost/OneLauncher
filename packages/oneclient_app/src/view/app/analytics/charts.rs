@@ -82,9 +82,7 @@ impl Component for PlaytimeChart {
                     "Playtime by day",
                     format!("Every {day} you have played, added up"),
                     BarChart::new(self.per_weekday.clone(), weekday_labels())
-                        .readout_labels(
-                            WEEKDAY_FULL.iter().map(|d| format!("All {d}s")).collect(),
-                        )
+                        .readout_labels(WEEKDAY_FULL.iter().map(|d| format!("All {d}s")).collect())
                         .highlight(self.peak_weekday)
                         .unit(ValueUnit::Duration)
                         .gap(6.)
@@ -241,15 +239,15 @@ impl Component for DailyChart {
             .child(DateRangePicker::new(custom, (first_day, last_day)).height(30.))
             .into_element();
 
-		chart_card(
-			"Daily playtime",
-			subtitle,
-			Some(nav),
-			BarChart::new(values, labels)
-				.unit(ValueUnit::Duration)
-				.gap(3.)
-				.into_element(),
-		)
+        chart_card(
+            "Daily playtime",
+            subtitle,
+            Some(nav),
+            BarChart::new(values, labels)
+                .unit(ValueUnit::Duration)
+                .gap(3.)
+                .into_element(),
+        )
     }
 }
 
@@ -293,10 +291,8 @@ fn monthly_series(daily: &[DayPlaytime]) -> Vec<(NaiveDate, i64)> {
         *totals.entry(month).or_insert(0) += day.secs;
     }
 
-    let (Some(first), Some(last)) = (
-        totals.keys().min().copied(),
-        totals.keys().max().copied(),
-    ) else {
+    let (Some(first), Some(last)) = (totals.keys().min().copied(), totals.keys().max().copied())
+    else {
         return Vec::new();
     };
 

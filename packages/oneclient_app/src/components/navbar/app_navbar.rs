@@ -139,12 +139,7 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             target: NavTarget::Route(Route::Clusters {}),
             nav_label: "Versions",
         })
-        .child(NavLink {
-            active: false,
-            target: NavTarget::External("https://store.polyfrost.org"),
-            nav_label: "Cosmetics",
-        })
-        .child(NavLink {
+		.child(NavLink {
             active: matches!(
                 route,
                 Route::Browser {
@@ -154,6 +149,11 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             ),
             target: NavTarget::Route(browse_target),
             nav_label: "Browse",
+        })
+        .child(NavLink {
+            active: false,
+            target: NavTarget::External("https://store.polyfrost.org"),
+            nav_label: "Cosmetics",
         })
 }
 

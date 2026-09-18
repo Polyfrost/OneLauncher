@@ -53,6 +53,14 @@ pub struct AppState {
     pub relocation: RelocationState,
     pub pending_launch: Option<String>,
     pub release_migration: Option<ReleaseMigrationPrompt>,
+    pub release_migration_checking: HashSet<i64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PromptOrigin {
+    NewRelease,
+    Manual,
+    Simulated,
 }
 
 #[derive(Clone, Debug)]
@@ -70,7 +78,7 @@ pub struct ReleaseMigrationPrompt {
     pub sources: Vec<Cluster>,
     pub selected: i64,
     pub plans: HashMap<i64, ReleasePlanState>,
-    pub simulated: bool,
+    pub origin: PromptOrigin,
 }
 
 impl ReleaseMigrationPrompt {

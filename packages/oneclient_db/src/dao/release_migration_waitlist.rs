@@ -13,20 +13,22 @@ pub async fn upsert(
 	display_name: &str,
 	added_at: &str,
 	expires_at: &str,
+	enabled: bool,
 ) -> Result<(), sqlx::Error> {
 	sqlx::query(
 		r"
 		INSERT INTO release_migration_waitlist (
 			target_cluster_id, provider, project_id, content_type,
-			source_hash, display_name, added_at, expires_at
+			source_hash, display_name, added_at, expires_at, enabled
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(target_cluster_id, provider, project_id) DO UPDATE SET
 			content_type = excluded.content_type,
 			source_hash = excluded.source_hash,
 			display_name = excluded.display_name,
 			added_at = excluded.added_at,
-			expires_at = excluded.expires_at
+			expires_at = excluded.expires_at,
+			enabled = excluded.enabled
 		",
 	)
 	.bind(target_cluster_id)
@@ -37,6 +39,7 @@ pub async fn upsert(
 	.bind(display_name)
 	.bind(added_at)
 	.bind(expires_at)
+	.bind(i64::from(enabled))
 	.execute(pool)
 	.await?;
 	Ok(())
@@ -47,7 +50,7 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<ReleaseMigrationWaitlistR
 		r"
 		SELECT
 			target_cluster_id, provider, project_id, content_type,
-			source_hash, display_name, added_at, expires_at
+			source_hash, display_name, added_at, expires_at, enabled
 		FROM release_migration_waitlist
 		",
 	)

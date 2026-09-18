@@ -90,6 +90,13 @@ pub fn use_launcher() -> LauncherInit {
     use_radio(AppChannel::Launcher).read().launcher.clone()
 }
 
+pub fn use_release_migration_checking(cluster_id: i64) -> bool {
+    use_radio(AppChannel::ReleaseMigration)
+        .read()
+        .release_migration_checking
+        .contains(&cluster_id)
+}
+
 pub fn use_release_migration() -> Option<ReleaseMigrationPrompt> {
     use_radio(AppChannel::ReleaseMigration)
         .read()

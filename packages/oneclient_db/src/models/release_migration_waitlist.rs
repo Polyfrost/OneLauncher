@@ -10,4 +10,5 @@ pub struct ReleaseMigrationWaitlistRow {
 	pub display_name: String,
 	pub added_at: String,
 	pub expires_at: String,
+	pub enabled: i64,
 }

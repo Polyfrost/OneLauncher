@@ -83,19 +83,80 @@ pub async fn release_migration_offer(
     else {
         return Ok(OfferLookup::MissingCluster);
     };
+
+    offer_for(target, &clusters, &content).await
+}
+
+#[tracing::instrument(skip(state))]
+pub async fn manual_migration_offer(
+    state: &LauncherState,
+    target_cluster_id: i64,
+    source_cluster_id: i64,
+) -> LauncherResult<OfferLookup> {
+    let clusters = state.clusters.list().await?;
+    let content = state.services.content();
+
+    let (Some(target), Some(source)) = (
+        clusters.iter().find(|cluster| cluster.id == target_cluster_id),
+        clusters.iter().find(|cluster| cluster.id == source_cluster_id),
+    ) else {
+        return Ok(OfferLookup::MissingCluster);
+    };
+
+    if source.id == target.id
+        || source.mc_loader != target.mc_loader
+        || !has_migratable_packages(source.id, &content).await?
+    {
+        return Ok(OfferLookup::NoSources);
+    }
+
+    Ok(OfferLookup::Offer(ReleaseMigrationOffer {
+        release: ReleaseTarget {
+            mc_version: target.mc_version.clone(),
+            loader: target.mc_loader,
+        },
+        target: target.clone(),
+        sources: vec![source.clone()],
+    }))
+}
+
+#[must_use]
+pub fn rank_migration_sources(target: &Cluster, clusters: &[Cluster]) -> Vec<Cluster> {
+    let target_order = version_order(&target.mc_version);
+    let mut sources: Vec<Cluster> = clusters
+        .iter()
+        .filter(|cluster| cluster.id != target.id && cluster.mc_loader == target.mc_loader)
+        .cloned()
+        .collect();
+    sources.sort_by_key(|cluster| {
+        (
+            target_order
+                .zip(version_order(&cluster.mc_version))
+                .map(|(target, source)| source_rank(target, source)),
+            Reverse(cluster.last_played),
+        )
+    });
+    sources
+}
+
+async fn offer_for(
+    target: &Cluster,
+    clusters: &[Cluster],
+    content: &oneclient_content::ContentCtx,
+) -> LauncherResult<OfferLookup> {
     let Some(target_order) = version_order(&target.mc_version) else {
         return Ok(OfferLookup::NoSources);
     };
 
     let mut sources = Vec::new();
-    for cluster in &clusters {
-        if cluster.id == target.id || cluster.mc_loader != release.loader {
+    for cluster in clusters {
+        if cluster.id == target.id || cluster.mc_loader != target.mc_loader {
             continue;
         }
         if !version_order(&cluster.mc_version).is_some_and(|order| order != target_order) {
             continue;
         }
-        if has_migratable_packages(cluster.id, &content).await? {
+        if has_migratable_packages(cluster.id, content).await? {
             sources.push(cluster.clone());
         }
     }
@@ -112,7 +173,10 @@ pub async fn release_migration_offer(
     });
 
     Ok(OfferLookup::Offer(ReleaseMigrationOffer {
-        release: release.clone(),
+        release: ReleaseTarget {
+            mc_version: target.mc_version.clone(),
+            loader: target.mc_loader,
+        },
         target: target.clone(),
         sources,
     }))
@@ -159,6 +223,14 @@ mod tests {
         assert!(is_migration_destination(&moved, &rules));
         assert!(!is_migration_destination(&released, &rules));
         assert!(!is_migration_destination(&other_loader, &rules));
+    }
+
+    #[test]
+    fn a_same_version_source_comes_before_older_ones() {
+        let target = version_order("26.2").unwrap();
+        let mut sources = vec!["26.1.2", "26.2", "1.21.11"];
+        sources.sort_by_key(|v| source_rank(target, version_order(v).unwrap()));
+        assert_eq!(sources, vec!["26.2", "26.1.2", "1.21.11"]);
     }
 
     #[test]

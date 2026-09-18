@@ -10,7 +10,8 @@ use oneclient_content::packages::release_migration::{
 };
 use oneclient_core::ReleaseTarget;
 use oneclient_core::clusters::{
-    Cluster, OfferLookup, ReleaseMigrationOffer, record_new_versions, release_migration_offer,
+    Cluster, OfferLookup, ReleaseMigrationOffer, manual_migration_offer, record_new_versions,
+    release_migration_offer,
 };
 use oneclient_events::Level;
 
@@ -18,7 +19,7 @@ use super::Actions;
 use crate::components::IconType;
 use crate::launcher;
 use crate::notifications::NotificationSpec;
-use crate::state::{AppChannel, ReleaseMigrationPrompt, ReleasePlanState};
+use crate::state::{AppChannel, PromptOrigin, ReleaseMigrationPrompt, ReleasePlanState};
 
 enum SourcePlan {
     Offer(ReleaseMigrationPlan),
@@ -169,7 +170,7 @@ impl Actions {
                         sources,
                         selected,
                         plans,
-                        simulated: false,
+                        origin: PromptOrigin::NewRelease,
                     });
                 });
                 return;
@@ -244,10 +245,9 @@ impl Actions {
                 Ok(OfferLookup::NoSources | OfferLookup::MissingCluster) => {
                     actions
                         .notify("Nothing to migrate")
-                        .body(format!(
-                            "No other {} cluster than {} has mods, resource packs or shaders installed from the browser.",
-                            target.mc_loader, target.name
-                        ))
+                        .body(
+                            "All found packages were migrated"
+                        )
                         .level(Level::Error)
                         .send();
                     return;
@@ -267,10 +267,9 @@ impl Actions {
                 SourcePlans::Nothing => {
                     actions
                         .notify("Nothing to migrate")
-                        .body(format!(
-                            "No {} cluster has a package with a {} version.",
-                            target.mc_loader, target.mc_version
-                        ))
+                        .body(
+                            "All found packages were migrated"
+                        )
                         .level(Level::Error)
                         .send();
                     return;
@@ -299,8 +298,101 @@ impl Actions {
                     sources,
                     selected,
                     plans,
-                    simulated: true,
+                    origin: PromptOrigin::Simulated,
                 });
+            });
+        });
+    }
+
+    fn set_release_migration_checking(&self, cluster_id: i64, checking: bool) {
+        let mut guard = self
+            .station
+            .clone()
+            .write_channel(AppChannel::ReleaseMigration);
+        if checking {
+            guard.release_migration_checking.insert(cluster_id);
+        } else {
+            guard.release_migration_checking.remove(&cluster_id);
+        }
+    }
+
+    pub fn open_manual_migration(&self, target_cluster_id: i64, source_cluster_id: i64) {
+        self.set_release_migration_checking(target_cluster_id, true);
+        let actions = self.clone();
+        spawn_forever(async move {
+            actions
+                .run_manual_migration(target_cluster_id, source_cluster_id)
+                .await;
+            actions.set_release_migration_checking(target_cluster_id, false);
+        });
+    }
+
+    async fn run_manual_migration(&self, target_cluster_id: i64, source_cluster_id: i64) {
+        let Ok(state) = launcher::state() else { return };
+
+        let source = state
+            .clusters
+            .get(source_cluster_id)
+            .await
+            .map(|cluster| cluster.name)
+            .unwrap_or_else(|_| "that cluster".to_string());
+        let nothing = |target: &Cluster| {
+            self.notify("Nothing to migrate")
+                .body(
+                    "No packages to migrate"
+                )
+                .send();
+        };
+
+        let offer = match manual_migration_offer(&state, target_cluster_id, source_cluster_id).await {
+            Ok(OfferLookup::Offer(offer)) => offer,
+            Ok(OfferLookup::NoSources) => {
+                if let Ok(target) = state.clusters.get(target_cluster_id).await {
+                    nothing(&target);
+                }
+                return;
+            }
+            Ok(OfferLookup::MissingCluster) => return,
+            Err(err) => {
+                tracing::warn!(error = %err, target_cluster_id, "manual migration lookup failed");
+                self.notify("Couldn't check for packages to migrate")
+                    .body(err.to_string())
+                    .level(Level::Error)
+                    .send();
+                return;
+            }
+        };
+
+        let (sources, plans) = match plan_sources(&offer, state.bundles.as_ref(), &state.services.content()).await {
+            SourcePlans::Ready { sources, plans } => (sources, plans),
+            SourcePlans::Nothing => {
+                nothing(&offer.target);
+                return;
+            }
+            SourcePlans::Unreachable => {
+                self.notify("Couldn't check for packages to migrate")
+                    .body("Couldn't reach Modrinth or CurseForge. Check your connection and try again.")
+                    .level(Level::Error)
+                    .send();
+                return;
+            }
+        };
+
+        let java_major = oneclient_core::required_java_major(&state, offer.target.id)
+            .await
+            .ok()
+            .flatten();
+
+        let selected = sources[0].id;
+        self.write_release_migration(move |prompt| {
+            *prompt = Some(ReleaseMigrationPrompt {
+                key: offer.release.key(),
+                target: offer.target,
+                java_major,
+                sources,
+                selected,
+                plans,
+                origin: PromptOrigin::Manual,
             });
         });
     }
@@ -373,7 +465,7 @@ impl Actions {
         self.write_release_migration(|prompt| {
             key = prompt
                 .take()
-                .filter(|prompt| !prompt.simulated)
+                .filter(|prompt| prompt.origin == PromptOrigin::NewRelease)
                 .map(|prompt| prompt.key);
         });
         if let Some(key) = key {
@@ -385,7 +477,7 @@ impl Actions {
         let mut taken = None;
         self.write_release_migration(|prompt| taken = prompt.take());
         let Some(prompt) = taken else { return };
-        if !prompt.simulated {
+        if prompt.origin != PromptOrigin::Simulated {
             self.remove_pending_release_migrations(vec![prompt.key.clone()]);
         }
 
@@ -402,7 +494,7 @@ impl Actions {
                 plan.dependencies
                     .iter()
                     .filter(|dependency| dependency.is_needed_by(&chosen))
-                    .cloned()
+                    .map(|dependency| (dependency.clone(), dependency.enabled_for(&packages)))
                     .collect(),
                 plan.unavailable.clone(),
             ),
@@ -427,13 +519,13 @@ impl Actions {
             );
 
             let mut migrated = 0usize;
-            for dependency in &dependencies {
+            for (dependency, enabled) in &dependencies {
                 let child = session.child(
                     dependency.project.name.clone(),
                     1,
                     oneclient_events::TaskCategory::Packages,
                 );
-                match apply_release_migration_dependency(target.id, dependency, Some(&child), &content).await {
+                match apply_release_migration_dependency(target.id, dependency, *enabled, Some(&child), &content).await {
                     Ok(_) => migrated += 1,
                     Err(err) => tracing::warn!(
                         dependency = %dependency.project.name,

@@ -17,7 +17,7 @@ use crate::hooks::{
     use_launcher, use_notifications_snapshot, use_package_meta_batch, use_release_migration,
 };
 use crate::routes::Route;
-use crate::state::{ReleaseMigrationPrompt, ReleasePlanState};
+use crate::state::{PromptOrigin, ReleaseMigrationPrompt, ReleasePlanState};
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
@@ -222,7 +222,7 @@ fn art_panel(
         DynamicArt::for_version(parsed.major, parsed.key(), Some(target.mc_loader))
     });
 
-    let badge = "NEW RELEASE";
+    let badge = (prompt.origin != PromptOrigin::Manual).then_some("NEW RELEASE");
 
     let mut runtime = Vec::new();
     if target.mc_loader != GameLoader::Vanilla {
@@ -263,8 +263,8 @@ fn art_panel(
                         .stop((Color::from_af32rgb(0.85, 13, 17, 21), 58.))
                         .stop((Color::from_af32rgb(0.98, 13, 17, 21), 100.)),
                 )
-                .child(
-                    rect()
+                .child(match badge {
+                    Some(badge) => rect()
                         .padding(Gaps::new_symmetric(4., 8.))
                         .corner_radius(CornerRadius::new_all(5.))
                         .background(colors::brand())
@@ -275,8 +275,10 @@ fn art_panel(
                                 .font_weight(FontWeight::BOLD)
                                 .letter_spacing(0.4)
                                 .color(Color::WHITE),
-                        ),
-                )
+                        )
+                        .into_element(),
+                    None => rect().into_element(),
+                })
                 .child(
                     rect()
                         .vertical()
@@ -445,7 +447,7 @@ fn content_panel(
                         .cross_align(Alignment::Center)
                         .child(
                             label()
-                                .text("Migrate your enabled packages")
+                                .text("Migrate your packages")
                                 .font_size(21.)
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .width(Size::flex(1.))
@@ -1047,7 +1049,7 @@ fn footer(
     let count = chosen.len();
 
     let summary = format!(
-        "{count} of {total} enabled packages selected · {} to copy",
+        "{count} of {total} packages selected · {} to copy",
         format_size(bytes)
     );
 
@@ -1185,7 +1187,11 @@ impl Component for MigrationRow {
                     )
                     .child(
                         label()
-                            .text(format!("{provider} · {}", self.package.version_name))
+                            .text(if self.package.enabled {
+                                format!("{provider} · {}", self.package.version_name)
+                            } else {
+                                format!("{provider} · {} · Disabled", self.package.version_name)
+                            })
                             .font_size(12.)
                             .max_lines(1)
                             .width(Size::fill())

@@ -86,6 +86,7 @@ pub(crate) struct Candidate {
 	pub(crate) display_name: String,
 	pub(crate) display_version: String,
 	pub(crate) published_at: Option<DateTime<Utc>>,
+	pub(crate) enabled: bool,
 }
 
 /// A missing bundle tracking row is the marker for "the user added this themselves"
@@ -94,9 +95,19 @@ pub(crate) fn browser_installed(
 	bundle_hashes: &HashSet<String>,
 	bundle_projects: &HashSet<String>,
 ) -> Vec<Candidate> {
+	browser_installed_any(linked, bundle_hashes, bundle_projects)
+		.into_iter()
+		.filter(|candidate| candidate.enabled)
+		.collect()
+}
+
+pub(crate) fn browser_installed_any(
+	linked: &[LinkedArtifactInfo],
+	bundle_hashes: &HashSet<String>,
+	bundle_projects: &HashSet<String>,
+) -> Vec<Candidate> {
 	linked
 		.iter()
-		.filter(|info| info.enabled)
 		.filter(|info| !bundle_hashes.contains(&info.hash))
 		.filter(|info| {
 			info.project_id
@@ -120,6 +131,7 @@ pub(crate) fn browser_installed(
 					.unwrap_or_else(|| info.file_name.clone()),
 				display_version: info.display_version.clone().unwrap_or_default(),
 				published_at: info.published_at.as_deref().and_then(parse_published),
+				enabled: info.enabled,
 			})
 		})
 		.collect()

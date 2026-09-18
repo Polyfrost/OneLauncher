@@ -20,7 +20,7 @@ use crate::packages::store::PackageStore;
 use crate::packages::types::{
 	DependencyKind, InstalledPackage, ProjectDetail, VersionDependency, VersionDetail,
 };
-use crate::packages::updates::{Candidate, browser_installed};
+use crate::packages::updates::{Candidate, browser_installed_any};
 
 pub const MIGRATED_CONTENT_TYPES: [ContentType; 3] =
 	[ContentType::Mod, ContentType::ResourcePack, ContentType::Shader];
@@ -33,6 +33,7 @@ const DEPENDENCY_CONCURRENCY: usize = 6;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseMigrationPackage {
 	pub source_hash: String,
+	pub enabled: bool,
 	pub provider: ProviderId,
 	pub project_id: String,
 	pub content_type: ContentType,
@@ -52,6 +53,7 @@ pub enum SkipReason {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ReleaseMigrationSkip {
 	pub source_hash: String,
+	pub enabled: bool,
 	pub provider: ProviderId,
 	pub project_id: String,
 	pub content_type: ContentType,
@@ -81,6 +83,13 @@ impl ReleaseMigrationDependency {
 	#[must_use]
 	pub fn is_needed_by(&self, selected_hashes: &HashSet<String>) -> bool {
 		self.required_by.iter().any(|hash| selected_hashes.contains(hash))
+	}
+
+	#[must_use]
+	pub fn enabled_for(&self, packages: &[ReleaseMigrationPackage]) -> bool {
+		packages
+			.iter()
+			.any(|package| package.enabled && self.required_by.contains(&package.source_hash))
 	}
 }
 
@@ -119,7 +128,7 @@ async fn migratable_candidates(cluster_id: i64, ctx: &ContentCtx) -> ContentResu
 		tracked.iter().filter_map(|row| row.package_id.clone()).collect();
 	let bundle_hashes: HashSet<String> = tracked.into_iter().map(|row| row.hash).collect();
 
-	Ok(browser_installed(&linked, &bundle_hashes, &bundle_projects)
+	Ok(browser_installed_any(&linked, &bundle_hashes, &bundle_projects)
 		.into_iter()
 		.filter(|candidate| MIGRATED_CONTENT_TYPES.contains(&candidate.content_type))
 		.collect())
@@ -420,6 +429,7 @@ async fn evaluate_candidates(
 				tracing::warn!(provider = ?provider_id, error = %err, "release migration check failed for the provider");
 				evaluation.unavailable.extend(candidates.into_iter().map(|candidate| ReleaseMigrationSkip {
 					source_hash: candidate.hash,
+					enabled: candidate.enabled,
 					provider: provider_id,
 					project_id: candidate.project_id,
 					content_type: candidate.content_type,
@@ -439,6 +449,7 @@ async fn evaluate_candidates(
 				Some(version) => offered.push((
 					ReleaseMigrationPackage {
 						source_hash: candidate.hash,
+						enabled: candidate.enabled,
 						provider: provider_id,
 						project_id: candidate.project_id,
 						content_type: candidate.content_type,
@@ -451,6 +462,7 @@ async fn evaluate_candidates(
 				)),
 				None => evaluation.unavailable.push(ReleaseMigrationSkip {
 					source_hash: candidate.hash,
+					enabled: candidate.enabled,
 					provider: provider_id,
 					project_id: candidate.project_id,
 					content_type: candidate.content_type,
@@ -494,6 +506,7 @@ async fn evaluate_candidates(
 		let Some(resolved) = resolved else {
 			evaluation.unavailable.push(ReleaseMigrationSkip {
 				source_hash: package.source_hash,
+				enabled: package.enabled,
 				provider: package.provider,
 				project_id: package.project_id,
 				content_type: package.content_type,
@@ -567,6 +580,7 @@ pub async fn add_to_waitlist(
 			&skip.display_name,
 			&added_at,
 			&expires_at,
+			skip.enabled,
 		)
 		.await?;
 	}
@@ -647,6 +661,7 @@ pub async fn process_waitlist(
 				display_name: row.display_name,
 				display_version: String::new(),
 				published_at: None,
+				enabled: row.enabled != 0,
 			});
 		}
 		if candidates.is_empty() {
@@ -706,7 +721,8 @@ pub async fn process_waitlist(
 		let mut blocked: HashSet<String> = HashSet::new();
 
 		for dependency in &evaluation.dependencies {
-			match apply_release_migration_dependency(cluster_id, dependency, None, ctx).await {
+			let enabled = dependency.enabled_for(&evaluation.packages);
+			match apply_release_migration_dependency(cluster_id, dependency, enabled, None, ctx).await {
 				Ok(_) => {
 					if waitlisted.contains(&(dependency.provider, dependency.project.id.clone())) {
 						waitlist_dao::delete(&ctx.db, cluster_id, dependency.provider as i64, &dependency.project.id)
@@ -734,6 +750,7 @@ pub async fn process_waitlist(
 			}
 		}
 
+
 		if !names.is_empty() {
 			tracing::info!(
 				cluster_id,
@@ -758,6 +775,7 @@ pub async fn process_waitlist(
 pub async fn apply_release_migration_dependency(
 	target_cluster_id: i64,
 	dependency: &ReleaseMigrationDependency,
+	enabled: bool,
 	child: Option<&GroupedProgressChild>,
 	ctx: &ContentCtx,
 ) -> ContentResult<String> {
@@ -775,6 +793,10 @@ pub async fn apply_release_migration_dependency(
 
 	artifact_dao::set_seen_status(&ctx.db, target_cluster_id, &installed.hash, SeenStatus::New)
 		.await?;
+
+	if !enabled {
+		PackageStore::set_artifact_enabled_to(target_cluster_id, &installed.hash, false, ctx).await?;
+	}
 
 	Ok(installed.hash)
 }
@@ -806,6 +828,10 @@ pub async fn apply_release_migration_package(
 
 	artifact_dao::set_seen_status(&ctx.db, target_cluster_id, &installed.hash, SeenStatus::New)
 		.await?;
+
+	if !package.enabled {
+		PackageStore::set_artifact_enabled_to(target_cluster_id, &installed.hash, false, ctx).await?;
+	}
 
 	Ok(installed.hash)
 }

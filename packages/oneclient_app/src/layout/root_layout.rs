@@ -9,7 +9,7 @@ use crate::components::{
 #[cfg(not(target_os = "macos"))]
 use crate::hooks::use_start_maximized;
 use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
-use crate::layout::{HomeArtPrefetch, PendingLaunchDriver};
+use crate::layout::{HomeArtPrefetch, PendingLaunchDriver, use_ipc_commands};
 use crate::motion::AnimationClockDriver;
 use crate::routes::Route;
 use crate::theme;
@@ -25,6 +25,7 @@ impl Component for RootLayout {
         use_provide_splash(SplashState { active, home_ready });
         use_provide_overlay_claims();
         use_provide_tooltips();
+        use_ipc_commands();
 
         rect()
             .width(Size::fill())

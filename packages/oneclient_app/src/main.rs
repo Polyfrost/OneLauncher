@@ -20,7 +20,6 @@ struct OneClientApp {
     needs_location: bool,
     start_maximized: bool,
     boot_launch: Cell<Option<String>>,
-    ipc: Cell<Option<ipc::Listener>>,
 }
 
 impl App for OneClientApp {
@@ -37,7 +36,6 @@ impl App for OneClientApp {
         });
 
         let boot_launch = self.boot_launch.take();
-        let ipc_listener = self.ipc.take();
 
         let actions = use_hook(move || {
             let (signals_tx, signals_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -74,17 +72,6 @@ impl App for OneClientApp {
 
             if let Some(folder) = boot_launch {
                 actions.request_launch_by_folder(folder);
-            }
-
-            if let Some(listener) = ipc_listener {
-                let served = actions.clone();
-                spawn_forever(ipc::serve(listener, move |command| match command {
-                    ipc::IpcCommand::Launch(folder) => {
-                        platform::focus_window();
-                        served.request_launch_by_folder(folder);
-                    }
-                    ipc::IpcCommand::Focus => platform::focus_window(),
-                }));
             }
 
             actions
@@ -131,14 +118,11 @@ fn main() {
     let needs_location = never_set_up && !has_database && !was_damaged;
 
     let mut unprotected = None;
-    let ipc = match rt.block_on(ipc::claim(&cli)) {
+    match rt.block_on(ipc::claim(&cli)) {
         Claim::Forwarded => return,
-        Claim::Primary(listener) => Some(listener),
-        Claim::Solo(reason) => {
-            unprotected = Some(reason);
-            None
-        }
-    };
+        Claim::Primary(listener) => ipc::listen(listener),
+        Claim::Solo(reason) => unprotected = Some(reason),
+    }
 
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));
 
@@ -189,12 +173,12 @@ fn main() {
     oneclient_app::platform::macos::loop_memory_collector();
 
     let start_maximized = settings.start_maximized;
+    let show_tray_icon = settings.show_tray_icon;
 
     let window_config = WindowConfig::new_app(OneClientApp {
         needs_location,
         start_maximized,
         boot_launch: Cell::new(cli.launch),
-        ipc: Cell::new(ipc),
     })
     .with_title(constants::WINDOW_TITLE)
     .with_app_id(constants::WINDOW_APP_ID)
@@ -210,10 +194,10 @@ fn main() {
     .with_on_close(|_, _| {
         if oneclient_core::relocate::in_progress() {
             tracing::warn!("close request ignored, the data folder is still being moved");
-            CloseDecision::KeepOpen
         } else {
-            CloseDecision::Close
+            ipc::send(ipc::IpcCommand::Close);
         }
+        CloseDecision::KeepOpen
     });
 
     #[cfg(target_os = "macos")]
@@ -245,6 +229,10 @@ fn main() {
                 .unwrap_or(96 * 1024 * 1024),
         )
         .with_default_font(theme::DEFAULT_FONT);
+
+    if show_tray_icon {
+        launch_config = launch_config.with_tray(platform::tray::build, platform::tray::handle);
+    }
 
     for (font, bytes) in theme::load_fonts() {
         launch_config = launch_config.with_font(font, bytes);

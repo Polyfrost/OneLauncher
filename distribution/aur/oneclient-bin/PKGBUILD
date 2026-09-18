@@ -18,6 +18,8 @@ depends=(
   'wayland'
   'dbus'
   'gtk3'
+  'libayatana-appindicator'
+  'xdotool'
 )
 provides=('oneclient')
 conflicts=('oneclient')

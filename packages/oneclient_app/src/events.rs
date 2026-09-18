@@ -30,6 +30,8 @@ impl EventPump {
         // Hovering any toast pauses every toast including ones arriving while hovering
         let mut paused = false;
         let mut game_flush: Option<tokio::time::Instant> = None;
+        let mut launched: HashSet<i64> = HashSet::new();
+        let mut playing: Option<i64> = None;
 
         loop {
             let next_deadline = armed
@@ -96,6 +98,10 @@ impl EventPump {
                     if folded.saw_game_log && game_flush.is_none() {
                         game_flush = Some(tokio::time::Instant::now() + GAME_LOG_FLUSH);
                     }
+                    if folded.saw_stage {
+                        launched.extend(&folded.launched);
+                        playing = crate::platform::follow_game(&self.station, &launched, playing);
+                    }
                 }
 
                 signal = self.signals.recv() => {
@@ -139,6 +145,10 @@ impl EventPump {
                     folded.clusters = true;
                 }
                 Event::Game(GameEvent::Stage { cluster_id, stage }) => {
+                    folded.saw_stage = true;
+                    if stage.is_busy() {
+                        folded.launched.push(cluster_id);
+                    }
                     stages.push((cluster_id, stage));
                 }
                 Event::Game(GameEvent::Log { cluster_id, line }) => {
@@ -148,7 +158,10 @@ impl EventPump {
                 Event::Game(GameEvent::Failed {
                     cluster_id,
                     message,
-                }) => failed = Some((cluster_id, message)),
+                }) => {
+                    folded.saw_stage = true;
+                    failed = Some((cluster_id, message));
+                }
                 Event::Progress(ProgressEvent::Update {
                     id,
                     ref label,
@@ -249,6 +262,8 @@ impl EventPump {
 struct Folded {
     touched_engine: bool,
     saw_game_log: bool,
+    saw_stage: bool,
+    launched: Vec<i64>,
     clusters: bool,
     java: bool,
 }

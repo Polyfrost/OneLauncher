@@ -1,9 +1,11 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
-use oneclient_core::SeenStatus;
+use oneclient_core::{SeenStatus, clusters_sharing_artifact};
 
-use crate::components::{Icon, IconType, toggle_controlled};
+use crate::components::{
+    ContextMenu, Icon, IconType, SharedPackageDeleteDialog, toggle_controlled,
+};
 use crate::hooks::{ClusterAction, loaded_image, use_cached_image, use_cluster_mutation};
 use crate::routes::Route;
 use crate::theme::colors;
@@ -119,6 +121,8 @@ impl Component for PackageRow {
         let layout = self.layout;
         let cluster = use_cluster_mutation();
         let remove_hover = use_state(|| false);
+        let mut menu = use_state(|| None::<(f32, f32)>);
+        let mut confirm_shared = use_state(|| None::<(String, usize)>);
 
         let icon_size = match layout {
             CardLayout::List => 44.,
@@ -153,17 +157,66 @@ impl Component for PackageRow {
             .into()
         };
 
-        match layout {
+        let row_scope = current_scope_id();
+        let request_delete = move |hash: String| {
+            spawn_in_scope(
+                async move {
+                    let shared = match crate::launcher::state() {
+                        Ok(state) => {
+                            clusters_sharing_artifact(&hash, &state.services.content())
+                                .await
+                                .unwrap_or_else(|err| {
+                                    tracing::warn!(%err, "could not check whether this package is shared");
+                                    None
+                                })
+                        }
+                        Err(_) => None,
+                    };
+                    match shared {
+                        Some(clusters) => confirm_shared.set(Some((hash, clusters))),
+                        None => cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash }),
+                    }
+                },
+                row_scope,
+            );
+        };
+
+        let delete_hash = item.hash.clone().filter(|_| !item.in_bundle());
+        let menu_overlay = delete_hash.clone().and_then(|hash| {
+            (*menu.read()).map(|(x, y)| {
+                ContextMenu::new(x, y)
+                    .title(item.name.clone())
+                    .on_close(move |_| menu.set(None))
+                    .danger_action(IconType::Trash01, "Delete", move |()| {
+                        request_delete(hash.clone());
+                    })
+                    .into_element()
+            })
+        });
+
+        let shared_dialog = confirm_shared.read().clone().map(|(hash, clusters)| {
+            SharedPackageDeleteDialog::new(
+                item.name.clone(),
+                clusters,
+                move |()| confirm_shared.set(None),
+                move |()| {
+                    cluster.mutate(ClusterAction::RemoveArtifact {
+                        cluster_id,
+                        hash: hash.clone(),
+                    });
+                    confirm_shared.set(None);
+                },
+            )
+            .into_element()
+        });
+
+        let card = match layout {
             CardLayout::List => {
-                let removable = !item.in_bundle();
-                let can_remove = removable && item.installed;
-                let rm_hash = item.hash.clone();
+                let can_remove = delete_hash.is_some();
+                let rm_hash = delete_hash.clone();
                 let on_remove = move || {
                     if let Some(h) = &rm_hash {
-                        cluster.mutate(ClusterAction::RemoveArtifact {
-                            cluster_id,
-                            hash: h.clone(),
-                        });
+                        request_delete(h.clone());
                     }
                 };
                 list_card(
@@ -178,7 +231,24 @@ impl Component for PackageRow {
                 )
             }
             CardLayout::Grid => grid_card(&item, package_type, cluster_id, icon, on_toggle, true),
-        }
+        };
+
+        rect()
+            .width(Size::fill())
+            .maybe(layout == CardLayout::Grid, |el| el.height(Size::fill()))
+            .maybe(delete_hash.is_some(), |el| {
+                el.on_secondary_down(move |e: Event<PressEventData>| {
+                    if let PressEventData::Mouse(m) = e.data() {
+                        menu.set(Some((
+                            m.global_location.x as f32,
+                            m.global_location.y as f32,
+                        )));
+                    }
+                })
+            })
+            .child(card)
+            .maybe_child(menu_overlay)
+            .maybe_child(shared_dialog)
     }
 }
 

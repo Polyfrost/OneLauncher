@@ -124,7 +124,7 @@ impl MutationCapability for ClusterMutation {
                     }
                 }),
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
-                oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, true, content).await
+                oneclient_core::delete_artifact(*cluster_id, hash, content).await
             }
             ClusterAction::RemoveBundlePackageFromDisk { cluster_id, hash } => {
                 oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, false, content).await

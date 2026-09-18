@@ -91,6 +91,11 @@ impl ReleaseMigrationPrompt {
     pub fn plan(&self) -> Option<&ReleasePlanState> {
         self.plans.get(&self.selected)
     }
+
+    #[must_use]
+    pub fn is_cross_loader(&self) -> bool {
+        self.source().is_some_and(|source| source.mc_loader != self.target.mc_loader)
+    }
 }
 
 /// A move of the data folder owns the whole window while it runs: the router

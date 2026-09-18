@@ -34,6 +34,11 @@ fn source_rank(target: (u32, u32, u32), source: (u32, u32, u32)) -> (bool, Rever
     (source > target, Reverse(source))
 }
 
+#[must_use]
+pub fn can_migrate_manually(source: GameLoader, target: GameLoader) -> bool {
+    source == target || (source == GameLoader::Fabric && target == GameLoader::Ornithe)
+}
+
 fn is_migration_destination(target: &ReleaseTarget, rules: &[RemoteMigration]) -> bool {
     rules.iter().any(|rule| {
         rule.to.mc_version == target.mc_version
@@ -113,7 +118,7 @@ pub async fn manual_migration_offer(
     };
 
     if source.id == target.id
-        || source.mc_loader != target.mc_loader
+        || !can_migrate_manually(source.mc_loader, target.mc_loader)
         || !has_migratable_packages(source.id, &content).await?
     {
         return Ok(OfferLookup::NoSources);
@@ -134,11 +139,12 @@ pub fn rank_migration_sources(target: &Cluster, clusters: &[Cluster]) -> Vec<Clu
     let target_order = version_order(&target.mc_version);
     let mut sources: Vec<Cluster> = clusters
         .iter()
-        .filter(|cluster| cluster.id != target.id && cluster.mc_loader == target.mc_loader)
+        .filter(|cluster| cluster.id != target.id && can_migrate_manually(cluster.mc_loader, target.mc_loader))
         .cloned()
         .collect();
     sources.sort_by_key(|cluster| {
         (
+            cluster.mc_loader != target.mc_loader,
             target_order
                 .zip(version_order(&cluster.mc_version))
                 .map(|(target, source)| source_rank(target, source)),
@@ -240,6 +246,14 @@ mod tests {
         let mut sources = vec!["26.1.2", "26.2", "1.21.11"];
         sources.sort_by_key(|v| source_rank(target, version_order(v).unwrap()));
         assert_eq!(sources, vec!["26.2", "26.1.2", "1.21.11"]);
+    }
+
+    #[test]
+    fn fabric_sources_can_fill_an_ornithe_cluster_manually() {
+        assert!(can_migrate_manually(GameLoader::Fabric, GameLoader::Ornithe));
+        assert!(can_migrate_manually(GameLoader::Fabric, GameLoader::Fabric));
+        assert!(!can_migrate_manually(GameLoader::Ornithe, GameLoader::Fabric));
+        assert!(!can_migrate_manually(GameLoader::Forge, GameLoader::Ornithe));
     }
 
     #[test]

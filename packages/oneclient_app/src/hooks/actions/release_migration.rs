@@ -506,6 +506,7 @@ impl Actions {
             ),
             _ => (Vec::new(), Vec::new()),
         };
+        let waitlisted = !prompt.is_cross_loader();
 
         let actions = self.clone();
         spawn_forever(async move {
@@ -559,7 +560,13 @@ impl Actions {
                 child.finish();
             }
 
-            if let Err(err) = add_to_waitlist(target.id, &unavailable, &content).await {
+            if !waitlisted {
+                tracing::info!(
+                    target_cluster_id = target.id,
+                    skipped = unavailable.len(),
+                    "cross-loader migration, not adding packages without a build to the waitlist"
+                );
+            } else if let Err(err) = add_to_waitlist(target.id, &unavailable, &content).await {
                 tracing::warn!(error = %err, "could not add packages without a build to the migration waitlist");
             }
 

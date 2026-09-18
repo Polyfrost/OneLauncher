@@ -717,7 +717,9 @@ fn package_list(
     }
 
     if !skipped.is_empty() {
-        let mc_version = &prompt.target.mc_version;
+        let cross_loader = prompt.is_cross_loader();
+        let build = build_label(prompt);
+        let mc_version = &build;
         let open = *wont_open.read();
         scroll = scroll.child(section_header(
             IconType::AlertCircle,
@@ -729,16 +731,18 @@ fn package_list(
         ));
 
         if open {
-            scroll = scroll.child(
-                label()
-                    .text(format!(
-                        "Added automatically when a {mc_version} build appears (up to {WAITLIST_DAYS} days)"
-                    ))
-                    .font_size(12.)
-                    .max_lines(1)
-                    .margin(Gaps::new(0., 12., 6., 12.))
-                    .color(colors::fg_secondary()),
-            );
+            if !cross_loader {
+                scroll = scroll.child(
+                    label()
+                        .text(format!(
+                            "Added automatically when a {mc_version} build appears (up to {WAITLIST_DAYS} days)"
+                        ))
+                        .font_size(12.)
+                        .max_lines(1)
+                        .margin(Gaps::new(0., 12., 6., 12.))
+                        .color(colors::fg_secondary()),
+                );
+            }
             for skip in skipped {
                 let cached = meta.get(&(skip.provider, skip.project_id.clone()));
                 scroll = scroll.child(
@@ -771,6 +775,17 @@ fn selected_hashes(plan: &ReleaseMigrationPlan, excluded: &HashSet<SelectionKey>
         .filter(|package| !excluded.contains(&selection_key(package, plan.source_cluster_id)))
         .map(|package| package.source_hash.clone())
         .collect()
+}
+
+fn build_label(prompt: &ReleaseMigrationPrompt) -> String {
+    let mc_version = &prompt.target.mc_version;
+    if !prompt.is_cross_loader() {
+        return mc_version.clone();
+    }
+    match prompt.target.mc_loader {
+        GameLoader::Ornithe => format!("Ornithe {mc_version}"),
+        loader => format!("{loader} {mc_version}"),
+    }
 }
 
 fn reason_text(reason: SkipReason, mc_version: &str) -> String {

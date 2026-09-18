@@ -44,8 +44,7 @@ pub fn write_string(subkey: &str, name: Option<&str>, value: &str) -> Result<()>
     let bytes = unsafe { std::slice::from_raw_parts(wide.as_ptr().cast::<u8>(), wide.len() * 2) };
 
     let name = name.map(HSTRING::from);
-    let status =
-        unsafe { RegSetValueExW(key, name_ptr(name.as_ref()), None, REG_SZ, Some(bytes)) };
+    let status = unsafe { RegSetValueExW(key, name_ptr(name.as_ref()), None, REG_SZ, Some(bytes)) };
     close(key);
 
     check(status, "writing the registry value")

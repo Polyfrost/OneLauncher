@@ -72,7 +72,10 @@ mod tests {
     #[test]
     fn a_folder_survives_the_round_trip() {
         let folder = "26.1.2 Fabric";
-        assert_eq!(parse_launch_url(&launch_url(folder)).as_deref(), Some(folder));
+        assert_eq!(
+            parse_launch_url(&launch_url(folder)).as_deref(),
+            Some(folder)
+        );
     }
 
     #[test]

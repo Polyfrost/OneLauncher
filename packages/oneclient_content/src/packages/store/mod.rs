@@ -23,15 +23,17 @@ use oneclient_db::models::{ArtifactRow, ClusterRow, SeenStatus};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 // `paths` alone is this module's own cache-path helpers
-use oneclient_common::paths as common_paths;
 use super::error::PackageError;
 use super::file_identity::FileIdentity;
+use super::types::{
+    CachedArtifact, LinkedArtifactInfo, ProjectDetail, ProviderReleaseInfo, VersionDetail,
+};
 use super::{local_manifest, metadata_cache};
-use super::types::{CachedArtifact, ProjectDetail, ProviderReleaseInfo, VersionDetail, LinkedArtifactInfo};
-use polyio::{normalize_hash, sha1_file};
-use oneclient_events::GroupedProgressChild;
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
+use oneclient_common::paths as common_paths;
+use oneclient_events::GroupedProgressChild;
+use polyio::{normalize_hash, sha1_file};
 use std::path::{Path, PathBuf};
 
 pub struct PackageStore;
@@ -46,10 +48,7 @@ pub struct LocalImportReport {
 
 impl PackageStore {
     #[tracing::instrument(level = "debug", skip(ctx))]
-    pub async fn get_cluster(
-        cluster_id: i64,
-        ctx: &ContentCtx,
-    ) -> ContentResult<ClusterRow> {
+    pub async fn get_cluster(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<ClusterRow> {
         cluster_dao::get_by_id(&ctx.db, cluster_id)
             .await?
             .ok_or(PackageError::ClusterNotFound(cluster_id).into())
@@ -91,7 +90,7 @@ impl PackageStore {
         .await
     }
 
-	#[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     #[tracing::instrument(skip(project, version, child, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
     pub async fn install_to_cluster(
         provider_id: ProviderId,
@@ -110,15 +109,9 @@ impl PackageStore {
             ensure_compatible(project, version, &cluster)?;
         }
 
-        let artifact = Self::download_and_cache(
-            provider_id,
-            project,
-            version,
-            force_download,
-            child,
-            ctx,
-        )
-        .await?;
+        let artifact =
+            Self::download_and_cache(provider_id, project, version, force_download, child, ctx)
+                .await?;
 
         let enabled = Self::link_artifact(&artifact, &cluster, None, ctx).await?;
 
@@ -181,11 +174,7 @@ impl PackageStore {
     /// `packages` must not depend on `bundles` and its override reconciliation
     /// does not apply here
     #[tracing::instrument(level = "debug", skip(ctx))]
-    async fn unlink_superseded(
-        cluster_id: i64,
-        hash: &str,
-        ctx: &ContentCtx,
-    ) -> ContentResult<()> {
+    async fn unlink_superseded(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
         let content_type = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
             .await?
@@ -340,9 +329,11 @@ impl PackageStore {
             .await?
             .ok_or(PackageError::ArtifactMissing(hash.to_string()))?;
 
-        let content_type = ContentType::from_repr(artifact.content_type as u8)
-            .ok_or_else(|| ContentError::InvalidData {
-                reason: format!("unknown content type {}", artifact.content_type),
+        let content_type =
+            ContentType::from_repr(artifact.content_type as u8).ok_or_else(|| {
+                ContentError::InvalidData {
+                    reason: format!("unknown content type {}", artifact.content_type),
+                }
             })?;
 
         let enabled = target.unwrap_or(link.enabled == 0);
@@ -437,9 +428,7 @@ impl PackageStore {
     ) -> ContentResult<ArtifactRow> {
         let provider = ctx.providers.get(provider_id)?;
 
-        let version = provider
-            .get_version(project_id, version_id, ctx)
-            .await?;
+        let version = provider.get_version(project_id, version_id, ctx).await?;
 
         let project = provider.get_project(project_id, ctx).await?;
 
@@ -571,7 +560,7 @@ async fn already_described(row: &ArtifactRow, ctx: &ContentCtx) -> bool {
 
 /// Written exactly as a download would have so the row joins the update flow
 /// rather than sitting outside it
-async fn record_release(
+pub(crate) async fn record_release(
     provider: ProviderId,
     version: &VersionDetail,
     hash: &str,
@@ -657,10 +646,7 @@ async fn store_local_icon(hash: &str, jar: &std::path::Path, entry: &str) -> Opt
 }
 
 #[tracing::instrument(level = "debug", skip(row, ctx), fields(hash = %row.hash))]
-async fn row_to_cached(
-    row: ArtifactRow,
-    ctx: &ContentCtx,
-) -> ContentResult<CachedArtifact> {
+async fn row_to_cached(row: ArtifactRow, ctx: &ContentCtx) -> ContentResult<CachedArtifact> {
     let path = artifact_absolute_path(&row.path)?;
     let release = artifact_dao::get_release_by_hash(&ctx.db, &row.hash)
         .await?

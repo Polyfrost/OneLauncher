@@ -28,7 +28,10 @@ makedepends=(
 )
 provides=('oneclient')
 conflicts=('oneclient-bin')
-options=('!lto', '!debug')
+options=(
+  '!lto'
+  '!debug'
+)
 source=("$pkgname-$pkgver.tar.gz::${url}/archive/refs/tags/oneclient-${pkgver}.tar.gz")
 sha256sums=('SKIP')
 

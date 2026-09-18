@@ -169,61 +169,6 @@ pub async fn cluster_update_notification(
     })
 }
 
-/// All clusters share one "View changes" action so the notification keeps exactly two buttons
-pub async fn combined_cluster_update_spec(
-    changed: &[(i64, oneclient_core::ApplyBundleUpdatesResult)],
-    services: &oneclient_core::LauncherServices,
-) -> Option<NotificationSpec> {
-    let mut summaries = Vec::new();
-    let mut total_changes = 0usize;
-
-    for (cluster_id, result) in changed {
-        if let Some(summary) = cluster_update_summary(*cluster_id, result, services).await {
-            total_changes += summary.total();
-            summaries.push(summary);
-        }
-    }
-
-    if summaries.is_empty() {
-        return None;
-    }
-
-    let cluster_count = summaries.len();
-    let (title, body) = if total_changes == 0 {
-        let offers: usize = summaries.iter().map(|s| s.optional.len()).sum();
-        (
-            "Optional mods available",
-            format!(
-                "{offers} optional mod{} across {cluster_count} cluster{}",
-                if offers == 1 { "" } else { "s" },
-                if cluster_count == 1 { "" } else { "s" }
-            ),
-        )
-    } else {
-        (
-            "Mods updated",
-            format!(
-                "{total_changes} package{} updated across {cluster_count} cluster{}",
-                if total_changes == 1 { "" } else { "s" },
-                if cluster_count == 1 { "" } else { "s" }
-            ),
-        )
-    };
-
-    Some(NotificationSpec {
-        title: title.to_string(),
-        body,
-        level: Level::Info,
-        icon: Some(IconType::DownloadCloud02),
-        progress: None,
-        actions: vec![NotificationAction {
-            label: "View changes".to_string(),
-            kind: NotificationActionKind::OpenClusterUpdate(summaries),
-        }],
-        toast_only: false,
-    })
-}
-
 pub async fn pending_optional_group(
     cluster_id: i64,
     pending: &[oneclient_core::PendingOptionalMod],

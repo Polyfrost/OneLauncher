@@ -195,8 +195,7 @@ impl ElementExt for ScaledImageElement {
         let image = &self.image_handle.image;
         let natural = Size2D::new(image.width() as f32, image.height() as f32);
 
-        let available =
-            (*context.area_size - context.torin_node.margin.into()).max(Size2D::zero());
+        let available = (*context.area_size - context.torin_node.margin.into()).max(Size2D::zero());
 
         let ratio = (available.width / natural.width).min(1.);
         let ratio = if ratio.is_finite() && ratio > 0. {
@@ -256,8 +255,8 @@ impl ElementExt for ScaledImageElement {
 
 #[cfg(test)]
 mod tests {
-    use freya::prelude::Bytes;
     use freya::engine::prelude::AlphaType;
+    use freya::prelude::Bytes;
     use freya_testing::prelude::*;
 
     use super::*;

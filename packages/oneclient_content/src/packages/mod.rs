@@ -13,23 +13,23 @@ mod file_identity;
 pub mod markdown;
 
 // Re-exported so `oneclient_core::packages::ContentType` keeps working
-pub use oneclient_common::domain::{ContentType, GameLoader, HashAlgorithm, ProviderId};
-pub use metadata_cache::{
-    CachedPackageMeta, cached_project_detail, fetch_package_meta, get_version_cached,
-    read_cached_package_meta,
-};
 pub use activity::{disable_foreign_game_versions, reconcile_duplicate_activity};
 pub use dependencies::{
     DependencyResolution, ResolvedDependency, resolve_required, resolves_dependencies,
 };
-pub use file_identity::{curseforge_fingerprint, FileIdentity};
-pub use local_manifest::{JarManifest, read_jar_icon, read_jar_manifest};
 pub use error::{PackageError, PackageResult};
+pub use file_identity::{FileIdentity, curseforge_fingerprint};
+pub use local_manifest::{JarManifest, read_jar_icon, read_jar_manifest};
+pub use metadata_cache::{
+    CachedPackageMeta, cached_project_detail, fetch_package_meta, get_version_cached,
+    read_cached_package_meta,
+};
+pub use oneclient_common::domain::{ContentType, GameLoader, HashAlgorithm, ProviderId};
 pub use provider::{PackageProvider, PackageProviderRegistry};
 pub use store::{LiveSync, LocalImportReport, PackageStore};
 pub use types::*;
 pub use updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
-    cached_browser_package_updates, check_browser_package_updates,
-    refresh_browser_package_updates, skip_browser_package_update,
+    cached_browser_package_updates, check_browser_package_updates, refresh_browser_package_updates,
+    skip_browser_package_update,
 };

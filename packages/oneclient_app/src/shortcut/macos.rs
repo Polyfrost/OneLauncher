@@ -79,7 +79,10 @@ mod tests {
 
     #[test]
     fn a_bare_binary_has_no_bundle() {
-        assert_eq!(bundle_root(&PathBuf::from("/usr/local/bin/oneclient_app")), None);
+        assert_eq!(
+            bundle_root(&PathBuf::from("/usr/local/bin/oneclient_app")),
+            None
+        );
         assert_eq!(
             bundle_root(&PathBuf::from("/tmp/target/debug/oneclient_app")),
             None,

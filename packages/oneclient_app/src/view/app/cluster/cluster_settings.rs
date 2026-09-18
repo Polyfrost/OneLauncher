@@ -1,10 +1,8 @@
 use freya::prelude::*;
 use oneclient_common::Patch;
-use oneclient_java::JavaRuntime;
 use oneclient_common::domain::GameLoader;
-use oneclient_core::settings::{
-    GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution,
-};
+use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
+use oneclient_java::JavaRuntime;
 
 use crate::components::{
     Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle,
@@ -309,7 +307,11 @@ impl Component for VerifyFilesRow {
             .secondary()
             .enabled(!running)
             .maybe(!running, |el| el.on_press(on_press))
-            .text(if running { "Verifying..." } else { "Verify Files" });
+            .text(if running {
+                "Verifying..."
+            } else {
+                "Verify Files"
+            });
 
         settings_row(
             IconType::ClipboardCheck,

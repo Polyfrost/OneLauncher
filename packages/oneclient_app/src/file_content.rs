@@ -104,7 +104,10 @@ pub fn bundle_slug(folder: &str) -> String {
 pub fn info_plist(name: &str, executable: &str, folder: &str, icon: Option<&str>) -> String {
     let display = xml_escape(&single_line(name));
     let icon_entry = icon.map_or_else(String::new, |icon| {
-        format!("\t<key>CFBundleIconFile</key>\n\t<string>{}</string>\n", xml_escape(icon))
+        format!(
+            "\t<key>CFBundleIconFile</key>\n\t<string>{}</string>\n",
+            xml_escape(icon)
+        )
     });
 
     format!(

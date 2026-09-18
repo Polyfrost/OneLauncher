@@ -22,7 +22,8 @@ impl QueryCapability for ClusterContentQuery {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let all = PackageStore::list_linked_artifacts(self.cluster_id, &state.services.content()).await?;
+        let all =
+            PackageStore::list_linked_artifacts(self.cluster_id, &state.services.content()).await?;
         Ok(all
             .into_iter()
             .filter(|item| item.content_type == self.content_type)

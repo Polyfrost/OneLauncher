@@ -243,7 +243,10 @@ impl RequestClient {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn send_as<T: DeserializeOwned>(&self, request: impl Into<HttpRequest>) -> Result<T, RequestError> {
+    pub async fn send_as<T: DeserializeOwned>(
+        &self,
+        request: impl Into<HttpRequest>,
+    ) -> Result<T, RequestError> {
         let res = self.send(request).await?;
         let status = res.status();
         let url = res.url().to_string();
@@ -344,8 +347,10 @@ mod tests {
     #[test]
     fn does_not_override_explicit_key() {
         let mut req = request("https://api.curseforge.com/v1/mods");
-        req.headers_mut()
-            .insert("x-api-key", reqwest::header::HeaderValue::from_static("mine"));
+        req.headers_mut().insert(
+            "x-api-key",
+            reqwest::header::HeaderValue::from_static("mine"),
+        );
         apply_curseforge_auth(&mut req, oneclient_common::constants::CURSEFORGE_API_KEY).unwrap();
         assert_eq!(req.headers()["x-api-key"], "mine");
     }

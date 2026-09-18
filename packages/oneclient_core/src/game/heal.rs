@@ -140,7 +140,11 @@ fn worth_probing(path: &Path) -> bool {
     !path
         .extension()
         .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| NEVER_PROBED.iter().any(|skip| ext.eq_ignore_ascii_case(skip)))
+        .is_some_and(|ext| {
+            NEVER_PROBED
+                .iter()
+                .any(|skip| ext.eq_ignore_ascii_case(skip))
+        })
 }
 
 fn is_zeroed(path: &Path) -> bool {

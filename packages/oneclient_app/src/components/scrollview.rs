@@ -11,11 +11,11 @@ pub(crate) fn normalize_wheel_delta(delta: f64, scale_factor: f64) -> f32 {
         return 0.0;
     }
 
-	const FREYA_LINE_SPEED: f64 = 53.0;
-	const FREYA_PIXEL_SPEED: f64 = 2.0;
-	const LINE_DELTA_TOLERANCE: f64 = 1e-6;
-	const LINE_SCROLL: f64 = 53.0;
-	const PIXEL_SCROLL: f64 = 1.0;
+    const FREYA_LINE_SPEED: f64 = 53.0;
+    const FREYA_PIXEL_SPEED: f64 = 2.0;
+    const LINE_DELTA_TOLERANCE: f64 = 1e-6;
+    const LINE_SCROLL: f64 = 53.0;
+    const PIXEL_SCROLL: f64 = 1.0;
 
     let lines = (delta / FREYA_LINE_SPEED).round();
     if lines != 0.0 && (delta - lines * FREYA_LINE_SPEED).abs() <= LINE_DELTA_TOLERANCE {

@@ -2,6 +2,7 @@ use freya::prelude::*;
 use oneclient_content::packages::{ContentType, ProviderId};
 
 use crate::components::ScrollArea;
+use crate::hooks::use_cluster;
 use crate::hooks::{
     bundles_with_status_items, cluster_content_items, content_type_for_slug, project_detail,
     use_browser_compat, use_bundles_with_status, use_cluster_content, use_dispatch,
@@ -10,7 +11,6 @@ use crate::hooks::{
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::hooks::use_cluster;
 
 use super::{
     Installed, InstalledVersion, PackageBanner, Thumbnail, activity_badge, installed_badge,

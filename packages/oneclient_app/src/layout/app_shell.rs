@@ -77,7 +77,7 @@ impl Component for AppShell {
             .on_global_file_hover_cancelled(move |_| drop_hovering.set(false))
             .on_file_drop(move |e: Event<FileEventData>| {
                 drop_hovering.set(false);
-				drop_pending.write().extend_from_slice(&e.file_paths);
+                drop_pending.write().extend_from_slice(&e.file_paths);
             })
             .child(AppNavbar)
             .child(AppHomeBackground)

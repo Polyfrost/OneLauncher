@@ -117,7 +117,10 @@ fn report_already_open(
         (None, true) => format!("{} is open already.", cluster.name),
         (None, false) => format!("{} is on its way up.", cluster.name),
         (Some(other), true) => {
-            format!("{other} is open. Close it before launching {}.", cluster.name)
+            format!(
+                "{other} is open. Close it before launching {}.",
+                cluster.name
+            )
         }
         (Some(other), false) => format!(
             "{other} is on its way up. Wait for it before launching {}.",

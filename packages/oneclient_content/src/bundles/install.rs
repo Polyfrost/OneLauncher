@@ -6,17 +6,17 @@ use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterRow;
 use oneclient_db::models::OverrideType;
 
-use crate::error::ContentError;
-use crate::error::ContentResult;
 use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
-use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
-use oneclient_common::domain::{ContentType, GameLoader};
+use crate::ctx::ContentCtx;
+use crate::error::ContentError;
+use crate::error::ContentResult;
 use crate::packages::store::{LiveSync, PackageStore, evict_if_unused, try_unlink_materialized};
 use crate::packages::types::ExternalFile;
-use crate::ctx::ContentCtx;
+use oneclient_common::domain::{ContentType, GameLoader};
+use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 
 fn is_base62(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric())
@@ -100,15 +100,11 @@ pub async fn install_package_from_bundle(
             .await;
 
             let version = if is_base62(version_id) {
-                crate::packages::get_version_cached(ctx, *provider, project_id, version_id)
-                    .await?
-            } else if let Ok(Some((_, version))) =
-                ctx.providers.lookup_version(sha1, ctx).await
-            {
+                crate::packages::get_version_cached(ctx, *provider, project_id, version_id).await?
+            } else if let Ok(Some((_, version))) = ctx.providers.lookup_version(sha1, ctx).await {
                 version
             } else {
-                crate::packages::get_version_cached(ctx, *provider, project_id, version_id)
-                    .await?
+                crate::packages::get_version_cached(ctx, *provider, project_id, version_id).await?
             };
 
             let (artifact, _) = PackageStore::install_to_cluster(
@@ -378,7 +374,11 @@ pub async fn install_enabled_bundle_files(
 
     if let Some(p) = progress {
         let reserved_bytes: u64 = to_install.iter().map(|f| f.size.max(1)).sum();
-        p.expect(TaskCategory::Packages, to_install.len() as u64, reserved_bytes);
+        p.expect(
+            TaskCategory::Packages,
+            to_install.len() as u64,
+            reserved_bytes,
+        );
     }
 
     let bundle_name = &bundle_name;
@@ -640,11 +640,7 @@ pub async fn set_artifact_enabled_to(
 }
 
 // which clusters have to record what the user just did
-async fn override_scope(
-    cluster_id: i64,
-    hash: &str,
-    ctx: &ContentCtx,
-) -> ContentResult<Vec<i64>> {
+async fn override_scope(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<Vec<i64>> {
     let global = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
         .await?
         .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8))
@@ -688,9 +684,10 @@ pub async fn on_user_enable_artifact(
 ) -> ContentResult<()> {
     for id in override_scope(cluster_id, hash, ctx).await? {
         if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, id, hash).await?
-            && let Some(package_id) = tracked.package_id {
-                clear_suppressing_overrides(id, &package_id, ctx).await?;
-            }
+            && let Some(package_id) = tracked.package_id
+        {
+            clear_suppressing_overrides(id, &package_id, ctx).await?;
+        }
     }
 
     Ok(())
@@ -703,8 +700,7 @@ async fn handle_user_artifact_action(
     ctx: &ContentCtx,
     override_type: OverrideType,
 ) -> ContentResult<()> {
-    let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?
-    else {
+    let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await? else {
         return Ok(());
     };
 
@@ -759,37 +755,32 @@ pub async fn remove_artifact_from_cluster(
 
     // The package actually lives in the cache
     // `evict_if_unused` drops it only once no other cluster still needs it
-    if !deferred
-        && let Err(err) = evict_if_unused(hash, ctx).await
-    {
+    if !deferred && let Err(err) = evict_if_unused(hash, ctx).await {
         tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
     }
 
     if let Some(tracked) = bundle_data
         && let (Some(bundle_name), Some(package_id)) =
             (tracked.bundle_name.clone(), tracked.package_id.clone())
-        {
-            if record_override {
-                bundle_dao::save_override(
-                    &ctx.db,
-                    cluster_id,
-                    &bundle_name,
-                    &package_id,
-                    OverrideType::Removed,
-                )
-                .await?;
-            } else {
-                let replacement_exists = bundle_dao::has_bundle_mapping_for_package(
-                    &ctx.db,
-                    cluster_id,
-                    &package_id,
-                )
-                .await?;
-                if !replacement_exists {
-                    clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
-                }
+    {
+        if record_override {
+            bundle_dao::save_override(
+                &ctx.db,
+                cluster_id,
+                &bundle_name,
+                &package_id,
+                OverrideType::Removed,
+            )
+            .await?;
+        } else {
+            let replacement_exists =
+                bundle_dao::has_bundle_mapping_for_package(&ctx.db, cluster_id, &package_id)
+                    .await?;
+            if !replacement_exists {
+                clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
             }
         }
+    }
 
     Ok(())
 }
@@ -824,7 +815,10 @@ mod tests {
 
     #[test]
     fn suppressing_overrides_win_over_enabled_manifest() {
-        assert!(!effective_enabled(&file(true), Some(OverrideType::Disabled)));
+        assert!(!effective_enabled(
+            &file(true),
+            Some(OverrideType::Disabled)
+        ));
         assert!(!effective_enabled(&file(true), Some(OverrideType::Removed)));
     }
 

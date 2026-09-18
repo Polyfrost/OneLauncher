@@ -6,7 +6,6 @@ use oneclient_java::{JavaRuntime, JavaVendor, is_launcher_managed};
 use super::settings_page;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
-use crate::invalidate_java_queries;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::section_header;
@@ -43,7 +42,11 @@ impl Component for SettingsJava {
 
         let pending = pending_remove.read().clone();
         if let Some(target) = pending {
-            shell = shell.child(confirm_remove_modal(removing_dispatch, pending_remove, target))
+            shell = shell.child(confirm_remove_modal(
+                removing_dispatch,
+                pending_remove,
+                target,
+            ))
         }
 
         shell.into_element()
@@ -149,7 +152,7 @@ fn runtimes_table(
             RuntimeRow {
                 runtime,
                 last: idx + 1 == count,
-                pending_remove
+                pending_remove,
             }
             .into_element(),
         );
@@ -199,7 +202,7 @@ fn table_header() -> impl IntoElement {
 struct RuntimeRow {
     runtime: JavaRuntime,
     last: bool,
-    pending_remove: State<Option<PendingRemove>>
+    pending_remove: State<Option<PendingRemove>>,
 }
 
 impl Component for RuntimeRow {
@@ -311,7 +314,7 @@ fn confirm_remove_modal(
         Button::new().primary().text("Remove from list")
     };
 
-     OverlayPopup::new()
+    OverlayPopup::new()
         .on_close(move |()| pending.set(None))
         .child(
             rect()
@@ -367,7 +370,7 @@ fn confirm_remove_modal(
                                     pending.set(None);
                                 })),
                         ),
-                )
+                ),
         )
         .into_element()
 }

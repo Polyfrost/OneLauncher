@@ -18,7 +18,10 @@ impl OverlayClaims {
 
     fn release(&self) {
         let held = self.0.get();
-        debug_assert!(held > 0, "overlay claim released without a matching acquire");
+        debug_assert!(
+            held > 0,
+            "overlay claim released without a matching acquire"
+        );
         self.0.set(held.saturating_sub(1));
     }
 }

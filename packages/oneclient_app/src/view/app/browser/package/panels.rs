@@ -5,7 +5,9 @@ use oneclient_content::packages::markdown::normalize_markdown;
 use oneclient_content::packages::types::{PackageBody, ProjectDetail, ReleaseType, VersionSummary};
 
 use crate::Actions;
-use crate::components::{Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl};
+use crate::components::{
+    Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl,
+};
 use crate::hooks::VERSIONS_PAGE_SIZE;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -283,14 +285,7 @@ fn version_row(
                 .map(|installed| activity_badge(installed.enabled).into_element()),
         )
         .child(version_button(
-            installed,
-            v.name,
-            provider,
-            project_id,
-            version_id,
-            cluster_id,
-            dispatch,
-            installing,
+            installed, v.name, provider, project_id, version_id, cluster_id, dispatch, installing,
         ))
 }
 
@@ -323,7 +318,11 @@ fn version_button(
     };
 
     let Some(hash) = installed.hash else {
-        return Button::new().secondary().small().enabled(false).text("Install");
+        return Button::new()
+            .secondary()
+            .small()
+            .enabled(false)
+            .text("Install");
     };
 
     Button::new()

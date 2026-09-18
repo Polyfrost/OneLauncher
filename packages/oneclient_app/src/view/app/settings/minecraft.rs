@@ -1,15 +1,15 @@
 use freya::prelude::*;
 use oneclient_common::Patch;
-use oneclient_core::settings::{PackageUpdateMode, ProfileUpdate, Resolution};
 #[cfg(any(target_os = "linux", windows))]
 use oneclient_core::settings::SettingsOsExtra;
+use oneclient_core::settings::{PackageUpdateMode, ProfileUpdate, Resolution};
 
 use super::settings_page;
+#[cfg(any(target_os = "linux", windows))]
+use crate::components::toggle_controlled;
 use crate::components::{
     Dropdown, Icon, IconType, TextInput, memory_field, toggle, validate_number,
 };
-#[cfg(any(target_os = "linux", windows))]
-use crate::components::toggle_controlled;
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
@@ -219,10 +219,7 @@ fn build_update(
 }
 
 /// Dispatched separately from [`build_update`] which debounces keystrokes a dropdown has no intermediate states
-fn update_mode_field(
-    selected: PackageUpdateMode,
-    dispatch: crate::Actions,
-) -> impl IntoElement {
+fn update_mode_field(selected: PackageUpdateMode, dispatch: crate::Actions) -> impl IntoElement {
     let options: Vec<String> = PackageUpdateMode::ALL
         .iter()
         .map(|mode| mode.label().to_string())
@@ -276,4 +273,3 @@ fn resolution_field(width: State<String>, height: State<String>) -> impl IntoEle
         )
         .into_element()
 }
-

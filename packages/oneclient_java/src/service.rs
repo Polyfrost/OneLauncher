@@ -27,290 +27,291 @@ pub const PROBE_VERSION: u32 = 1;
 const _: () = assert!(PROBE_VERSION > 0);
 
 enum JavaPromptAnswer {
-	Download,
-	PickFolder,
+    Download,
+    PickFolder,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvailableJava {
-	pub major: u32,
-	pub package: JavaPackage,
+    pub major: u32,
+    pub package: JavaPackage,
 }
 
 pub struct JavaService {
-	store: Arc<dyn JavaStore>,
-	net: RequestClient,
-	events: EventBus,
+    store: Arc<dyn JavaStore>,
+    net: RequestClient,
+    events: EventBus,
 }
 
 impl JavaService {
-	#[must_use]
-	pub fn new(store: Arc<dyn JavaStore>, net: RequestClient, events: EventBus) -> Self {
-		Self { store, net, events }
-	}
+    #[must_use]
+    pub fn new(store: Arc<dyn JavaStore>, net: RequestClient, events: EventBus) -> Self {
+        Self { store, net, events }
+    }
 
-	#[must_use]
-	pub fn net(&self) -> &RequestClient {
-		&self.net
-	}
+    #[must_use]
+    pub fn net(&self) -> &RequestClient {
+        &self.net
+    }
 
-	#[must_use]
-	pub fn events(&self) -> &EventBus {
-		&self.events
-	}
+    #[must_use]
+    pub fn events(&self) -> &EventBus {
+        &self.events
+    }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn list_runtimes(&self) -> JavaResult<Vec<JavaRuntime>> {
-		Ok(self.store.list().await?)
-	}
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn list_runtimes(&self) -> JavaResult<Vec<JavaRuntime>> {
+        Ok(self.store.list().await?)
+    }
 
-	/// Checks if file wasn't deleted manually
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn has_vendor_runtime(
-		&self,
-		vendor: &JavaVendor,
-		major: Option<u32>,
-	) -> JavaResult<bool> {
-		Ok(self.list_runtimes().await?.iter().any(|runtime| {
-			&runtime.vendor == vendor
-				&& major.is_none_or(|major| runtime.major == major)
-				&& Path::new(&runtime.absolute_path).is_file()
-		}))
-	}
+    /// Checks if file wasn't deleted manually
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn has_vendor_runtime(
+        &self,
+        vendor: &JavaVendor,
+        major: Option<u32>,
+    ) -> JavaResult<bool> {
+        Ok(self.list_runtimes().await?.iter().any(|runtime| {
+            &runtime.vendor == vendor
+                && major.is_none_or(|major| runtime.major == major)
+                && Path::new(&runtime.absolute_path).is_file()
+        }))
+    }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn runtime_for_profile(
-		&self,
-		java_path: Option<&str>,
-	) -> JavaResult<Option<JavaRuntime>> {
-		let Some(path) = java_path else {
-			return Ok(None);
-		};
-		let Some(runtime) = self.store.get_by_path(path).await? else {
-			return Ok(None);
-		};
-		self.revalidate(runtime).await
-	}
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn runtime_for_profile(
+        &self,
+        java_path: Option<&str>,
+    ) -> JavaResult<Option<JavaRuntime>> {
+        let Some(path) = java_path else {
+            return Ok(None);
+        };
+        let Some(runtime) = self.store.get_by_path(path).await? else {
+            return Ok(None);
+        };
+        self.revalidate(runtime).await
+    }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	async fn revalidate(&self, runtime: JavaRuntime) -> JavaResult<Option<JavaRuntime>> {
-		if runtime.probe_version == PROBE_VERSION {
-			if Path::new(&runtime.absolute_path).is_file() {
-				return Ok(Some(runtime));
-			}
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn revalidate(&self, runtime: JavaRuntime) -> JavaResult<Option<JavaRuntime>> {
+        if runtime.probe_version == PROBE_VERSION {
+            if Path::new(&runtime.absolute_path).is_file() {
+                return Ok(Some(runtime));
+            }
 
-			tracing::warn!(
-				path = %runtime.absolute_path,
-				"forgetting recorded Java runtime: the executable is gone"
-			);
-			self.store.delete_by_path(&runtime.absolute_path).await?;
-			return Ok(None);
-		}
+            tracing::warn!(
+                path = %runtime.absolute_path,
+                "forgetting recorded Java runtime: the executable is gone"
+            );
+            self.store.delete_by_path(&runtime.absolute_path).await?;
+            return Ok(None);
+        }
 
-		match checker::check_java_runtime(runtime.absolute_path.clone()).await {
-			Ok(info) => Ok(Some(
-				self.persist(Path::new(&runtime.absolute_path), &info).await?,
-			)),
-			Err(err) if err.is_invalid_installation() => {
-				tracing::warn!(
-					path = %runtime.absolute_path,
-					"forgetting recorded Java runtime: {err}"
-				);
-				self.store.delete_by_path(&runtime.absolute_path).await?;
-				Ok(None)
-			}
-			Err(err) => {
-				tracing::warn!(
-					path = %runtime.absolute_path,
-					"could not re-probe recorded Java runtime, trusting the record: {err}"
-				);
-				Ok(Some(runtime))
-			}
-		}
-	}
+        match checker::check_java_runtime(runtime.absolute_path.clone()).await {
+            Ok(info) => Ok(Some(
+                self.persist(Path::new(&runtime.absolute_path), &info)
+                    .await?,
+            )),
+            Err(err) if err.is_invalid_installation() => {
+                tracing::warn!(
+                    path = %runtime.absolute_path,
+                    "forgetting recorded Java runtime: {err}"
+                );
+                self.store.delete_by_path(&runtime.absolute_path).await?;
+                Ok(None)
+            }
+            Err(err) => {
+                tracing::warn!(
+                    path = %runtime.absolute_path,
+                    "could not re-probe recorded Java runtime, trusting the record: {err}"
+                );
+                Ok(Some(runtime))
+            }
+        }
+    }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn available_versions(&self, vendor: &JavaVendor) -> JavaResult<Vec<AvailableJava>> {
-		let Some(provider) = provider_for_vendor(vendor) else {
-			return Ok(Vec::new());
-		};
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn available_versions(&self, vendor: &JavaVendor) -> JavaResult<Vec<AvailableJava>> {
+        let Some(provider) = provider_for_vendor(vendor) else {
+            return Ok(Vec::new());
+        };
 
-		let packages = provider.list_packages(None, &self.net).await?;
+        let packages = provider.list_packages(None, &self.net).await?;
 
-		let mut by_major = BTreeMap::<u32, JavaPackage>::new();
-		for package in packages {
-			let Some(&major) = package.java_version.first() else {
-				continue;
-			};
-			by_major.entry(major).or_insert(package);
-		}
+        let mut by_major = BTreeMap::<u32, JavaPackage>::new();
+        for package in packages {
+            let Some(&major) = package.java_version.first() else {
+                continue;
+            };
+            by_major.entry(major).or_insert(package);
+        }
 
-		let mut available: Vec<AvailableJava> = by_major
-			.into_iter()
-			.map(|(major, package)| AvailableJava { major, package })
-			.collect();
+        let mut available: Vec<AvailableJava> = by_major
+            .into_iter()
+            .map(|(major, package)| AvailableJava { major, package })
+            .collect();
 
-		available.sort_by_key(|entry| std::cmp::Reverse(entry.major));
-		Ok(available)
-	}
+        available.sort_by_key(|entry| std::cmp::Reverse(entry.major));
+        Ok(available)
+    }
 
-	/// `None` when the vendor publishes nothing for this major on this host
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn latest_package(
-		&self,
-		vendor: &JavaVendor,
-		major: u32,
-	) -> JavaResult<Option<JavaPackage>> {
-		let Some(provider) = provider_for_vendor(vendor) else {
-			return Ok(None);
-		};
+    /// `None` when the vendor publishes nothing for this major on this host
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn latest_package(
+        &self,
+        vendor: &JavaVendor,
+        major: u32,
+    ) -> JavaResult<Option<JavaPackage>> {
+        let Some(provider) = provider_for_vendor(vendor) else {
+            return Ok(None);
+        };
 
-		provider.latest_package_by_major(major, &self.net).await
-	}
+        provider.latest_package_by_major(major, &self.net).await
+    }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn rescan(&self) -> JavaResult<()> {
-		self.register_located(&crate::locate::locate_java().await?)
-			.await
-	}
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn rescan(&self) -> JavaResult<()> {
+        self.register_located(&crate::locate::locate_java().await?)
+            .await
+    }
 
-	#[tracing::instrument(skip(self))]
-	pub async fn add_custom_runtime(&self, folder: PathBuf) -> JavaResult<JavaRuntime> {
-		let executable = resolve_java_executable(&folder)?;
-		self.register_checked(&executable, None).await
-	}
+    #[tracing::instrument(skip(self))]
+    pub async fn add_custom_runtime(&self, folder: PathBuf) -> JavaResult<JavaRuntime> {
+        let executable = resolve_java_executable(&folder)?;
+        self.register_checked(&executable, None).await
+    }
 
-	#[tracing::instrument(skip(self))]
-	pub async fn remove_runtime(&self, absolute_path: &str) -> JavaResult<()> {
-		self.store.delete_by_path(absolute_path).await?;
+    #[tracing::instrument(skip(self))]
+    pub async fn remove_runtime(&self, absolute_path: &str) -> JavaResult<()> {
+        self.store.delete_by_path(absolute_path).await?;
 
-		crate::platform::forget_dedicated_gpu(Path::new(absolute_path)).await;
+        crate::platform::forget_dedicated_gpu(Path::new(absolute_path)).await;
 
-		let removed_files =
-			match crate::install::remove_installed_package(Path::new(absolute_path)).await {
-				Ok(removed) => removed,
-				Err(err) => {
-					tracing::warn!("could not remove the installed Java files: {err:#}");
-					false
-				}
-			};
+        let removed_files =
+            match crate::install::remove_installed_package(Path::new(absolute_path)).await {
+                Ok(removed) => removed,
+                Err(err) => {
+                    tracing::warn!("could not remove the installed Java files: {err:#}");
+                    false
+                }
+            };
 
-		tracing::info!(removed_files, "removed Java runtime");
-		Ok(())
-	}
+        tracing::info!(removed_files, "removed Java runtime");
+        Ok(())
+    }
 
-	/// A recorded JRE is kept only as a fallback so a system scan gets its
-	/// chance to turn up a JDK of the same major first
-	#[tracing::instrument(level = "debug", skip(self, progress))]
-	pub async fn prepare(
-		&self,
-		major: u32,
-		search_system: bool,
-		auto_install: bool,
-		progress: Option<&GroupedProgressSession>,
-	) -> JavaResult<JavaRuntime> {
-		let recorded = self.best_recorded_for_major(major).await?;
+    /// A recorded JRE is kept only as a fallback so a system scan gets its
+    /// chance to turn up a JDK of the same major first
+    #[tracing::instrument(level = "debug", skip(self, progress))]
+    pub async fn prepare(
+        &self,
+        major: u32,
+        search_system: bool,
+        auto_install: bool,
+        progress: Option<&GroupedProgressSession>,
+    ) -> JavaResult<JavaRuntime> {
+        let recorded = self.best_recorded_for_major(major).await?;
 
-		if let Some(runtime) = &recorded
-			&& runtime.is_jdk
-		{
-			return Ok(runtime.clone());
-		}
+        if let Some(runtime) = &recorded
+            && runtime.is_jdk
+        {
+            return Ok(runtime.clone());
+        }
 
-		if search_system {
-			let located = crate::locate::locate_java().await?;
-			self.register_located(&located).await?;
+        if search_system {
+            let located = crate::locate::locate_java().await?;
+            self.register_located(&located).await?;
 
-			// A located runtime only displaces a recorded one by being a JDK
-			if let Some((path, info)) = crate::locate::best_for_major(&located, major)
-				&& (info.is_jdk || recorded.is_none())
-			{
-				return self.persist(path, info).await;
-			}
-		}
+            // A located runtime only displaces a recorded one by being a JDK
+            if let Some((path, info)) = crate::locate::best_for_major(&located, major)
+                && (info.is_jdk || recorded.is_none())
+            {
+                return self.persist(path, info).await;
+            }
+        }
 
-		if let Some(runtime) = recorded {
-			return Ok(runtime);
-		}
+        if let Some(runtime) = recorded {
+            return Ok(runtime);
+        }
 
-		if auto_install {
-			return self.download_and_register(major, progress).await;
-		}
+        if auto_install {
+            return self.download_and_register(major, progress).await;
+        }
 
-		self.prompt_and_install(major, progress).await
-	}
+        self.prompt_and_install(major, progress).await
+    }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	async fn best_recorded_for_major(&self, major: u32) -> JavaResult<Option<JavaRuntime>> {
-		let preferred = vendors::default_vendor();
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn best_recorded_for_major(&self, major: u32) -> JavaResult<Option<JavaRuntime>> {
+        let preferred = vendors::default_vendor();
 
-		let mut candidates: Vec<JavaRuntime> = self
-			.list_runtimes()
-			.await?
-			.into_iter()
-			.filter(|runtime| runtime.major == major)
-			.collect();
+        let mut candidates: Vec<JavaRuntime> = self
+            .list_runtimes()
+            .await?
+            .into_iter()
+            .filter(|runtime| runtime.major == major)
+            .collect();
 
-		candidates.sort_by(|a, b| pick_order(b, &preferred).cmp(&pick_order(a, &preferred)));
+        candidates.sort_by_key(|a| std::cmp::Reverse(pick_order(a, &preferred)));
 
-		for candidate in candidates {
-			if let Some(valid) = self.revalidate(candidate).await? {
-				return Ok(Some(valid));
-			}
-		}
+        for candidate in candidates {
+            if let Some(valid) = self.revalidate(candidate).await? {
+                return Ok(Some(valid));
+            }
+        }
 
-		Ok(None)
-	}
+        Ok(None)
+    }
 
-	#[tracing::instrument(skip(self, progress))]
-	pub async fn install_runtime(
-		&self,
-		major: u32,
-		progress: Option<&GroupedProgressSession>,
-	) -> JavaResult<JavaRuntime> {
-		self.download_and_register(major, progress).await
-	}
+    #[tracing::instrument(skip(self, progress))]
+    pub async fn install_runtime(
+        &self,
+        major: u32,
+        progress: Option<&GroupedProgressSession>,
+    ) -> JavaResult<JavaRuntime> {
+        self.download_and_register(major, progress).await
+    }
 
-	#[tracing::instrument(skip(self))]
-	pub async fn install_runtime_from(
-		&self,
-		vendor: &JavaVendor,
-		major: u32,
-	) -> JavaResult<JavaRuntime> {
-		self.install_vendor_runtime(vendor, major, None).await
-	}
+    #[tracing::instrument(skip(self))]
+    pub async fn install_runtime_from(
+        &self,
+        vendor: &JavaVendor,
+        major: u32,
+    ) -> JavaResult<JavaRuntime> {
+        self.install_vendor_runtime(vendor, major, None).await
+    }
 
-	#[tracing::instrument(level = "debug", skip(self, progress))]
-	async fn install_vendor_runtime(
-		&self,
-		vendor: &JavaVendor,
-		major: u32,
-		progress: Option<&GroupedProgressSession>,
-	) -> JavaResult<JavaRuntime> {
-		let provider = provider_for_vendor(vendor).ok_or(JavaError::PackageNotFound { major })?;
-		let package = provider
-			.latest_package_by_major(major, &self.net)
-			.await?
-			.ok_or(JavaError::PackageNotFound { major })?;
+    #[tracing::instrument(level = "debug", skip(self, progress))]
+    async fn install_vendor_runtime(
+        &self,
+        vendor: &JavaVendor,
+        major: u32,
+        progress: Option<&GroupedProgressSession>,
+    ) -> JavaResult<JavaRuntime> {
+        let provider = provider_for_vendor(vendor).ok_or(JavaError::PackageNotFound { major })?;
+        let package = provider
+            .latest_package_by_major(major, &self.net)
+            .await?
+            .ok_or(JavaError::PackageNotFound { major })?;
 
-		let owned = progress.is_none().then(|| {
-			GroupedProgressSession::start(&self.events, format!("Installing Java {major}"))
-		});
-		let session = progress.or(owned.as_ref()).expect("session present");
+        let owned = progress.is_none().then(|| {
+            GroupedProgressSession::start(&self.events, format!("Installing Java {major}"))
+        });
+        let session = progress.or(owned.as_ref()).expect("session present");
 
-		let executable = provider
-			.install_package(&package, &self.net, &self.events, Some(session))
-			.await?;
+        let executable = provider
+            .install_package(&package, &self.net, &self.events, Some(session))
+            .await?;
 
-		self.register_checked(&executable, Some(major)).await
-	}
+        self.register_checked(&executable, Some(major)).await
+    }
 
-	async fn prompt_and_install(
-		&self,
-		major: u32,
-		progress: Option<&GroupedProgressSession>,
-	) -> JavaResult<JavaRuntime> {
-		let prompt = Prompt::new(
+    async fn prompt_and_install(
+        &self,
+        major: u32,
+        progress: Option<&GroupedProgressSession>,
+    ) -> JavaResult<JavaRuntime> {
+        let prompt = Prompt::new(
 			"Java required",
 			format!(
 				"No Java {major} runtime was found. Download it automatically, choose an existing installation folder, or cancel?"
@@ -327,249 +328,249 @@ impl JavaService {
 		)
 		.dismiss("Cancel");
 
-		let Some(chosen) = self.events.ask(prompt).await? else {
-			return Err(JavaError::Cancelled);
-		};
+        let Some(chosen) = self.events.ask(prompt).await? else {
+            return Err(JavaError::Cancelled);
+        };
 
-		match chosen.value {
-			JavaPromptAnswer::Download => match chosen.selection() {
-				Some(vendor) => {
-					let vendor = JavaVendor::from_str(vendor)
-						.unwrap_or_else(|_| JavaVendor::Other(vendor.to_string()));
-					self.install_vendor_runtime(&vendor, major, progress).await
-				}
-				None => self.download_and_register(major, progress).await,
-			},
-			JavaPromptAnswer::PickFolder => match chosen.folder() {
-				Some(folder) => {
-					let executable = resolve_java_executable(folder)?;
-					self.register_checked(&executable, Some(major)).await
-				}
-				None => Err(JavaError::Cancelled),
-			},
-		}
-	}
+        match chosen.value {
+            JavaPromptAnswer::Download => match chosen.selection() {
+                Some(vendor) => {
+                    let vendor = JavaVendor::from_str(vendor)
+                        .unwrap_or_else(|_| JavaVendor::Other(vendor.to_string()));
+                    self.install_vendor_runtime(&vendor, major, progress).await
+                }
+                None => self.download_and_register(major, progress).await,
+            },
+            JavaPromptAnswer::PickFolder => match chosen.folder() {
+                Some(folder) => {
+                    let executable = resolve_java_executable(folder)?;
+                    self.register_checked(&executable, Some(major)).await
+                }
+                None => Err(JavaError::Cancelled),
+            },
+        }
+    }
 
-	#[tracing::instrument(level = "debug", skip(self, progress))]
-	async fn download_and_register(
-		&self,
-		major: u32,
-		progress: Option<&GroupedProgressSession>,
-	) -> JavaResult<JavaRuntime> {
-		for provider in vendors::runtime_providers() {
-			let vendor = provider.vendor();
+    #[tracing::instrument(level = "debug", skip(self, progress))]
+    async fn download_and_register(
+        &self,
+        major: u32,
+        progress: Option<&GroupedProgressSession>,
+    ) -> JavaResult<JavaRuntime> {
+        for provider in vendors::runtime_providers() {
+            let vendor = provider.vendor();
 
-			let packages = provider.list_packages(Some(major), &self.net).await;
-			let package = match &packages {
-				Ok(packages) => match packages
-					.iter()
-					.find(|p| p.java_version.first() == Some(&major))
-					.or_else(|| packages.first())
-				{
-					Some(package) => package,
-					None => {
-						tracing::warn!(?vendor, major, "no packages found");
-						continue;
-					}
-				},
-				Err(err) => {
-					tracing::warn!(?vendor, major, "failed to query packages: {err}");
-					continue;
-				}
-			};
+            let packages = provider.list_packages(Some(major), &self.net).await;
+            let package = match &packages {
+                Ok(packages) => match packages
+                    .iter()
+                    .find(|p| p.java_version.first() == Some(&major))
+                    .or_else(|| packages.first())
+                {
+                    Some(package) => package,
+                    None => {
+                        tracing::warn!(?vendor, major, "no packages found");
+                        continue;
+                    }
+                },
+                Err(err) => {
+                    tracing::warn!(?vendor, major, "failed to query packages: {err}");
+                    continue;
+                }
+            };
 
-			tracing::info!(?vendor, major, "downloading Java runtime");
-			match provider
-				.install_package(package, &self.net, &self.events, progress)
-				.await
-			{
-				Ok(executable) => return self.register_checked(&executable, Some(major)).await,
-				Err(err) => tracing::warn!(?vendor, major, "install failed: {err}"),
-			}
-		}
+            tracing::info!(?vendor, major, "downloading Java runtime");
+            match provider
+                .install_package(package, &self.net, &self.events, progress)
+                .await
+            {
+                Ok(executable) => return self.register_checked(&executable, Some(major)).await,
+                Err(err) => tracing::warn!(?vendor, major, "install failed: {err}"),
+            }
+        }
 
-		Err(JavaError::PackageNotFound { major })
-	}
+        Err(JavaError::PackageNotFound { major })
+    }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	async fn register_checked(
-		&self,
-		executable: &Path,
-		expected_major: Option<u32>,
-	) -> JavaResult<JavaRuntime> {
-		let info = checker::check_java_runtime(executable.display().to_string()).await?;
-		let major = parse_major_version(&info.version)?;
+    #[tracing::instrument(level = "debug", skip(self))]
+    async fn register_checked(
+        &self,
+        executable: &Path,
+        expected_major: Option<u32>,
+    ) -> JavaResult<JavaRuntime> {
+        let info = checker::check_java_runtime(executable.display().to_string()).await?;
+        let major = parse_major_version(&info.version)?;
 
-		if let Some(expected) = expected_major
-			&& major != expected
-		{
-			return Err(JavaError::VersionMismatch {
-				expected,
-				found: major,
-			});
-		}
+        if let Some(expected) = expected_major
+            && major != expected
+        {
+            return Err(JavaError::VersionMismatch {
+                expected,
+                found: major,
+            });
+        }
 
-		self.persist(executable, &info).await
-	}
+        self.persist(executable, &info).await
+    }
 
-	/// Skips anything that fails to probe a broken JDK must not abort the scan
-	#[tracing::instrument(level = "debug", skip_all)]
-	async fn register_located(&self, located: &[(PathBuf, JavaCheckInfo)]) -> JavaResult<()> {
-		for (path, info) in located {
-			if let Err(err) = self.persist(path, info).await {
-				tracing::warn!(
-					path = %path.display(),
-					version = %info.version,
-					"skipping located Java runtime: {err}"
-				);
-			}
-		}
-		Ok(())
-	}
+    /// Skips anything that fails to probe a broken JDK must not abort the scan
+    #[tracing::instrument(level = "debug", skip_all)]
+    async fn register_located(&self, located: &[(PathBuf, JavaCheckInfo)]) -> JavaResult<()> {
+        for (path, info) in located {
+            if let Err(err) = self.persist(path, info).await {
+                tracing::warn!(
+                    path = %path.display(),
+                    version = %info.version,
+                    "skipping located Java runtime: {err}"
+                );
+            }
+        }
+        Ok(())
+    }
 
-	async fn persist(&self, executable: &Path, info: &JavaCheckInfo) -> JavaResult<JavaRuntime> {
-		let runtime = JavaRuntime {
-			absolute_path: executable.to_string_lossy().into_owned(),
-			major: parse_major_version(&info.version)?,
-			version: info.version.clone(),
-			vendor: JavaVendor::from_str(&info.vendor)
-				.unwrap_or_else(|_| JavaVendor::Other(info.vendor.clone())),
-			os_arch: info.os_arch.clone(),
-			is_jdk: info.is_jdk,
-			probe_version: PROBE_VERSION,
-		};
+    async fn persist(&self, executable: &Path, info: &JavaCheckInfo) -> JavaResult<JavaRuntime> {
+        let runtime = JavaRuntime {
+            absolute_path: executable.to_string_lossy().into_owned(),
+            major: parse_major_version(&info.version)?,
+            version: info.version.clone(),
+            vendor: JavaVendor::from_str(&info.vendor)
+                .unwrap_or_else(|_| JavaVendor::Other(info.vendor.clone())),
+            os_arch: info.os_arch.clone(),
+            is_jdk: info.is_jdk,
+            probe_version: PROBE_VERSION,
+        };
 
-		Ok(self.store.upsert(&runtime).await?)
-	}
+        Ok(self.store.upsert(&runtime).await?)
+    }
 }
 
 /// Ranked highest-first the default vendor beats every other, a kit beats a
 /// runtime of the same vendor, and only then does the newest build win
 fn pick_order(runtime: &JavaRuntime, preferred: &JavaVendor) -> (bool, bool, Vec<u32>) {
-	(
-		&runtime.vendor == preferred,
-		runtime.is_jdk,
-		version_key(&runtime.version),
-	)
+    (
+        &runtime.vendor == preferred,
+        runtime.is_jdk,
+        version_key(&runtime.version),
+    )
 }
 
 /// `21.0.9` sorts above `21.0.12` as text which is backwards so the components
 /// are compared as numbers Legacy `1.8.0_412` keeps its build as the last one
 fn version_key(version: &str) -> Vec<u32> {
-	version
-		.split(|c: char| !c.is_ascii_digit())
-		.filter_map(|part| part.parse().ok())
-		.collect()
+    version
+        .split(|c: char| !c.is_ascii_digit())
+        .filter_map(|part| part.parse().ok())
+        .collect()
 }
 
 fn provider_for_vendor(vendor: &JavaVendor) -> Option<Box<dyn vendors::JavaRuntimeProvider>> {
-	vendors::runtime_providers()
-		.into_iter()
-		.find(|provider| &provider.vendor() == vendor)
+    vendors::runtime_providers()
+        .into_iter()
+        .find(|provider| &provider.vendor() == vendor)
 }
 
 /// Java 8 and earlier report `1.8.0_412` where the major is the *second*
 /// component 9 and later report `21.0.3` where it is the first
 pub(crate) fn parse_major_version(version: &str) -> Result<u32, JavaError> {
-	if let Some(rest) = version.strip_prefix("1.") {
-		let digit = rest.chars().next().ok_or_else(|| JavaError::ParseVersion {
-			version: version.to_string(),
-		})?;
-		return digit.to_digit(10).ok_or_else(|| JavaError::ParseVersion {
-			version: version.to_string(),
-		});
-	}
+    if let Some(rest) = version.strip_prefix("1.") {
+        let digit = rest.chars().next().ok_or_else(|| JavaError::ParseVersion {
+            version: version.to_string(),
+        })?;
+        return digit.to_digit(10).ok_or_else(|| JavaError::ParseVersion {
+            version: version.to_string(),
+        });
+    }
 
-	let head = version.split('.').next().unwrap_or(version);
-	head.parse::<u32>().map_err(|_| JavaError::ParseVersion {
-		version: version.to_string(),
-	})
+    let head = version.split('.').next().unwrap_or(version);
+    head.parse::<u32>().map_err(|_| JavaError::ParseVersion {
+        version: version.to_string(),
+    })
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn legacy_versions_take_the_second_component() {
-		assert_eq!(parse_major_version("1.8.0_412").unwrap(), 8);
-		assert_eq!(parse_major_version("1.7.0").unwrap(), 7);
-	}
+    #[test]
+    fn legacy_versions_take_the_second_component() {
+        assert_eq!(parse_major_version("1.8.0_412").unwrap(), 8);
+        assert_eq!(parse_major_version("1.7.0").unwrap(), 7);
+    }
 
-	#[test]
-	fn modern_versions_take_the_first() {
-		assert_eq!(parse_major_version("21.0.3").unwrap(), 21);
-		assert_eq!(parse_major_version("17").unwrap(), 17);
-	}
+    #[test]
+    fn modern_versions_take_the_first() {
+        assert_eq!(parse_major_version("21.0.3").unwrap(), 21);
+        assert_eq!(parse_major_version("17").unwrap(), 17);
+    }
 
-	#[test]
-	fn garbage_is_rejected_rather_than_defaulted() {
-		assert!(parse_major_version("not-a-version").is_err());
-		assert!(parse_major_version("1.x").is_err());
-	}
+    #[test]
+    fn garbage_is_rejected_rather_than_defaulted() {
+        assert!(parse_major_version("not-a-version").is_err());
+        assert!(parse_major_version("1.x").is_err());
+    }
 
-	fn runtime(vendor: JavaVendor, version: &str, is_jdk: bool) -> JavaRuntime {
-		JavaRuntime {
-			absolute_path: format!("/java/{vendor}-{version}/bin/java"),
-			major: parse_major_version(version).unwrap(),
-			version: version.to_string(),
-			vendor,
-			os_arch: "x64".to_string(),
-			is_jdk,
-			probe_version: PROBE_VERSION,
-		}
-	}
+    fn runtime(vendor: JavaVendor, version: &str, is_jdk: bool) -> JavaRuntime {
+        JavaRuntime {
+            absolute_path: format!("/java/{vendor}-{version}/bin/java"),
+            major: parse_major_version(version).unwrap(),
+            version: version.to_string(),
+            vendor,
+            os_arch: "x64".to_string(),
+            is_jdk,
+            probe_version: PROBE_VERSION,
+        }
+    }
 
-	/// Highest first the same way `best_recorded_for_major` sorts
-	fn best(mut candidates: Vec<JavaRuntime>, preferred: &JavaVendor) -> JavaRuntime {
-		candidates.sort_by(|a, b| pick_order(b, preferred).cmp(&pick_order(a, preferred)));
-		candidates.remove(0)
-	}
+    /// Highest first the same way `best_recorded_for_major` sorts
+    fn best(mut candidates: Vec<JavaRuntime>, preferred: &JavaVendor) -> JavaRuntime {
+        candidates.sort_by_key(|a| std::cmp::Reverse(pick_order(a, preferred)));
+        candidates.remove(0)
+    }
 
-	#[test]
-	fn patch_numbers_are_compared_as_numbers_not_as_text() {
-		assert!(version_key("21.0.12") > version_key("21.0.9"));
-		assert_eq!(version_key("1.8.0_412"), vec![1, 8, 0, 412]);
-	}
+    #[test]
+    fn patch_numbers_are_compared_as_numbers_not_as_text() {
+        assert!(version_key("21.0.12") > version_key("21.0.9"));
+        assert_eq!(version_key("1.8.0_412"), vec![1, 8, 0, 412]);
+    }
 
-	#[test]
-	fn the_default_vendor_wins_even_against_a_newer_build() {
-		let picked = best(
-			vec![
-				runtime(JavaVendor::Zulu, "21.0.99", true),
-				runtime(JavaVendor::Microsoft, "21.0.1", true),
-			],
-			&JavaVendor::Microsoft,
-		);
+    #[test]
+    fn the_default_vendor_wins_even_against_a_newer_build() {
+        let picked = best(
+            vec![
+                runtime(JavaVendor::Zulu, "21.0.99", true),
+                runtime(JavaVendor::Microsoft, "21.0.1", true),
+            ],
+            &JavaVendor::Microsoft,
+        );
 
-		assert_eq!(picked.vendor, JavaVendor::Microsoft);
-	}
+        assert_eq!(picked.vendor, JavaVendor::Microsoft);
+    }
 
-	#[test]
-	fn a_kit_beats_a_runtime_of_the_same_vendor() {
-		let picked = best(
-			vec![
-				runtime(JavaVendor::Microsoft, "21.0.5", false),
-				runtime(JavaVendor::Microsoft, "21.0.2", true),
-			],
-			&JavaVendor::Microsoft,
-		);
+    #[test]
+    fn a_kit_beats_a_runtime_of_the_same_vendor() {
+        let picked = best(
+            vec![
+                runtime(JavaVendor::Microsoft, "21.0.5", false),
+                runtime(JavaVendor::Microsoft, "21.0.2", true),
+            ],
+            &JavaVendor::Microsoft,
+        );
 
-		assert!(picked.is_jdk);
-	}
+        assert!(picked.is_jdk);
+    }
 
-	/// Nothing from the preferred vendor means the ranking falls through to the
-	/// newest build rather than to whatever the store happened to return
-	#[test]
-	fn without_the_default_vendor_the_newest_build_wins() {
-		let picked = best(
-			vec![
-				runtime(JavaVendor::Zulu, "21.0.9", true),
-				runtime(JavaVendor::Adoptium, "21.0.12", true),
-			],
-			&JavaVendor::Microsoft,
-		);
+    /// Nothing from the preferred vendor means the ranking falls through to the
+    /// newest build rather than to whatever the store happened to return
+    #[test]
+    fn without_the_default_vendor_the_newest_build_wins() {
+        let picked = best(
+            vec![
+                runtime(JavaVendor::Zulu, "21.0.9", true),
+                runtime(JavaVendor::Adoptium, "21.0.12", true),
+            ],
+            &JavaVendor::Microsoft,
+        );
 
-		assert_eq!(picked.version, "21.0.12");
-	}
+        assert_eq!(picked.version, "21.0.12");
+    }
 }

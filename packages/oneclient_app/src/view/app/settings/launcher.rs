@@ -125,7 +125,11 @@ impl Component for DataFolder {
             .small()
             .disabled(checking_now)
             .on_press(move |_| browse(pending, error, checking))
-            .text(if checking_now { "Checking…" } else { "Change…" });
+            .text(if checking_now {
+                "Checking…"
+            } else {
+                "Change…"
+            });
 
         let mut buttons = Vec::new();
 

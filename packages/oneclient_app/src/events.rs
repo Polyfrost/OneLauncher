@@ -183,7 +183,10 @@ impl EventPump {
                 guard.game.stages.insert(cluster_id, stage);
                 if stage == LaunchStage::Checking {
                     guard.game.error = None;
-                    guard.game.logs.insert(cluster_id, std::sync::Arc::new(Vec::new()));
+                    guard
+                        .game
+                        .logs
+                        .insert(cluster_id, std::sync::Arc::new(Vec::new()));
                 }
             }
             for (cluster_id, line) in logs {
@@ -264,7 +267,9 @@ fn reconcile(
         .collect();
 
     for id in &want {
-        armed.entry(*id).or_insert_with(|| ToastTimer::armed(paused));
+        armed
+            .entry(*id)
+            .or_insert_with(|| ToastTimer::armed(paused));
     }
     armed.retain(|id, _| want.contains(id));
 }
@@ -358,10 +363,7 @@ pub async fn start_launcher(
     Ok(())
 }
 
-pub fn report_startup_failure(
-    station: &RadioStation<AppState, AppChannel>,
-    err: &anyhow::Error,
-) {
+pub fn report_startup_failure(station: &RadioStation<AppState, AppChannel>, err: &anyhow::Error) {
     let message = err.to_string();
     tracing::error!("launcher init failed: {err:#}");
 
@@ -379,7 +381,9 @@ pub fn report_startup_failure(
 
     let mut guard = station.write_channel(AppChannel::Notifications);
     let AppState {
-        notifications, inbox, ..
+        notifications,
+        inbox,
+        ..
     } = &mut **guard;
     notifications.dispatch(
         inbox,

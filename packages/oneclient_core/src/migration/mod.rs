@@ -44,7 +44,7 @@ pub struct SourceInstance {
     pub instance_id: i64,
     pub folder_name: String,
     pub mc_version: String,
-	/// Set for "migrated" clusters (e.g. 26.1 fabric -> 26.1.2 fabric)
+    /// Set for "migrated" clusters (e.g. 26.1 fabric -> 26.1.2 fabric)
     pub target_mc_version: Option<String>,
     pub mc_loader: GameLoader,
     /// Empty when the source has no category concept
@@ -62,7 +62,9 @@ pub struct MigrationDetection {
 impl SourceInstance {
     #[must_use]
     pub fn import_version(&self) -> &str {
-        self.target_mc_version.as_deref().unwrap_or(&self.mc_version)
+        self.target_mc_version
+            .as_deref()
+            .unwrap_or(&self.mc_version)
     }
 }
 

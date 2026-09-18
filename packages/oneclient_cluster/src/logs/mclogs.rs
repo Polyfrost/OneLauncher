@@ -2,8 +2,8 @@ use std::path::Path;
 
 use serde::Deserialize;
 
-use oneclient_net::RequestError;
 use crate::error::ClusterResult;
+use oneclient_net::RequestError;
 
 use super::manage::{ensure_allowed, read_file_string};
 use super::{LogsError, MclogsUploadResponse};
@@ -67,7 +67,10 @@ pub async fn upload_log_at(
         return Err(LogsError::Upload(reason).into());
     }
 
-    tracing::info!(url = parsed.url.as_deref().unwrap_or(""), "uploaded log to mclo.gs");
+    tracing::info!(
+        url = parsed.url.as_deref().unwrap_or(""),
+        "uploaded log to mclo.gs"
+    );
 
     Ok(MclogsUploadResponse {
         id: parsed.id.unwrap_or_default(),

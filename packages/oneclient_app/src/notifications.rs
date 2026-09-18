@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use oneclient_events::{
-    Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
-};
 use oneclient_content::packages::ProviderId;
 use oneclient_core::BrowserPackageUpdate;
 use oneclient_db::models::{ClusterId, OptionalModStatus};
+use oneclient_events::{
+    Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
+};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -80,9 +80,11 @@ impl OptionalModsGroup {
     }
 
     pub fn offers(&self) -> impl Iterator<Item = (ClusterId, OptionalModRef)> + '_ {
-        self.mods
-            .iter()
-            .filter_map(move |item| item.offer.clone().map(|reference| (self.cluster_id, reference)))
+        self.mods.iter().filter_map(move |item| {
+            item.offer
+                .clone()
+                .map(|reference| (self.cluster_id, reference))
+        })
     }
 }
 
@@ -279,8 +281,11 @@ impl GroupedTasks {
                 let done_count = self.done_count.get(&cat).copied().unwrap_or(0);
                 let reserved_units = self.reserved_units.get(&cat).copied().unwrap_or(0);
 
-                let live: Vec<&ChildRec> =
-                    self.children.values().filter(|c| c.category == cat).collect();
+                let live: Vec<&ChildRec> = self
+                    .children
+                    .values()
+                    .filter(|c| c.category == cat)
+                    .collect();
                 let live_current: u64 = live.iter().map(|c| c.current.min(c.total)).sum();
                 let live_total: u64 = live.iter().map(|c| c.total).sum();
 
@@ -476,7 +481,7 @@ impl NotificationState {
                 );
                 self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
             }
-            
+
             Event::Progress(ProgressEvent::Update { id, .. })
                 if id == oneclient_auth::MICROSOFT_LOGIN_PROGRESS => {}
             Event::Progress(ProgressEvent::Update { id, .. })
@@ -756,8 +761,7 @@ impl NotificationState {
             self.update_inbox_entry(inbox, entry_id, title, body, None, false);
             self.ensure_progress_toast(entry_id);
         } else {
-            let entry_id =
-                self.push_inbox(inbox, title, body, Level::Info, None, false);
+            let entry_id = self.push_inbox(inbox, title, body, Level::Info, None, false);
             self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
         }
     }
@@ -1034,7 +1038,10 @@ mod package_update_tests {
         );
 
         state.resolve_package_update(1, "b");
-        assert!(wait.try_recv().is_ok(), "the last answer releases the launch");
+        assert!(
+            wait.try_recv().is_ok(),
+            "the last answer releases the launch"
+        );
         assert!(state.package_updates.is_none());
     }
 
@@ -1059,7 +1066,10 @@ mod package_update_tests {
 
         state.open_package_updates(vec![group(&[])], Some(done));
 
-        assert!(wait.try_recv().is_ok(), "a modal that never opens cannot be answered");
+        assert!(
+            wait.try_recv().is_ok(),
+            "a modal that never opens cannot be answered"
+        );
         assert!(state.package_updates.is_none());
     }
 
@@ -1072,7 +1082,10 @@ mod package_update_tests {
         state.open_package_updates(vec![group(&["a"])], Some(first));
         state.open_package_updates(vec![group(&["b"])], Some(second));
 
-        assert!(first_wait.try_recv().is_ok(), "the replaced launch is let go");
+        assert!(
+            first_wait.try_recv().is_ok(),
+            "the replaced launch is let go"
+        );
         assert!(second_wait.try_recv().is_err(), "the new one still waits");
     }
 

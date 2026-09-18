@@ -59,13 +59,10 @@ impl JavaRuntimeProvider for CorrettoRuntimeProvider {
 
             // Prefer the versioned URL the `latest` redirect resolves at
             // download time and can move away from this index's checksum
-            let download_url = entry
-                .get("resource")
-                .and_then(Value::as_str)
-                .map_or_else(
-                    || latest_url(this_major, CORRETTO_EXT.0),
-                    |resource| format!("https://corretto.aws{resource}"),
-                );
+            let download_url = entry.get("resource").and_then(Value::as_str).map_or_else(
+                || latest_url(this_major, CORRETTO_EXT.0),
+                |resource| format!("https://corretto.aws{resource}"),
+            );
 
             let checksum = entry
                 .get("checksum_sha256")

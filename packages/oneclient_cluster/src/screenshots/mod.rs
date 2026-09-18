@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 use thiserror::Error;
 
 use crate::cluster::Cluster;
-use oneclient_common::paths;
 use crate::error::ClusterResult;
+use oneclient_common::paths;
 
 #[derive(Debug, Error)]
 pub enum ScreenshotsError {
@@ -33,8 +33,11 @@ fn is_image(name: &str) -> bool {
 }
 
 fn ensure_in_clusters(path: &Path) -> ClusterResult<PathBuf> {
-    polyio::ensure_under(path, [paths::clusters_dir()?, paths::shared_minecraft_dir()?])?
-        .ok_or_else(|| ScreenshotsError::InvalidPath(path.display().to_string()).into())
+    polyio::ensure_under(
+        path,
+        [paths::clusters_dir()?, paths::shared_minecraft_dir()?],
+    )?
+    .ok_or_else(|| ScreenshotsError::InvalidPath(path.display().to_string()).into())
 }
 
 #[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
@@ -105,7 +108,9 @@ fn thumbnail(raw: &[u8], max_edge: u32) -> Option<Bytes> {
 
     let mut out = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut out);
-    resized.write_to(&mut cursor, image::ImageFormat::Png).ok()?;
+    resized
+        .write_to(&mut cursor, image::ImageFormat::Png)
+        .ok()?;
     Some(Bytes::from(out))
 }
 

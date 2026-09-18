@@ -1,5 +1,5 @@
-use std::sync::{OnceLock, RwLock};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{OnceLock, RwLock};
 use std::time::Duration;
 
 use tokio::sync::{Notify, watch};
@@ -114,12 +114,7 @@ pub fn start(client: RequestClient) {
 }
 
 async fn reachable(client: &reqwest::Client, url: &str) -> bool {
-    client
-        .get(url)
-        .timeout(PROBE_TIMEOUT)
-        .send()
-        .await
-        .is_ok()
+    client.get(url).timeout(PROBE_TIMEOUT).send().await.is_ok()
 }
 
 pub async fn check_service_status(requester: &RequestClient) -> ServiceStatus {

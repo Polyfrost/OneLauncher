@@ -57,9 +57,9 @@ pub fn list(database_path: &Path) -> Vec<PathBuf> {
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| {
                     name.ends_with(".db")
-                        && name.strip_prefix(&prefix).is_some_and(|rest| {
-                            rest.starts_with(|c: char| c.is_ascii_digit())
-                        })
+                        && name
+                            .strip_prefix(&prefix)
+                            .is_some_and(|rest| rest.starts_with(|c: char| c.is_ascii_digit()))
                 })
         })
         .collect();
@@ -206,7 +206,10 @@ mod tests {
                 .fetch_optional(&kept)
                 .await
                 .expect("probe");
-        assert!(after.is_some(), "the replaced database must still be intact");
+        assert!(
+            after.is_some(),
+            "the replaced database must still be intact"
+        );
     }
 
     #[tokio::test]

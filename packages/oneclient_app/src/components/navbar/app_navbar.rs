@@ -125,10 +125,10 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
         })
         .cross_align(Alignment::Center)
         .spacing(if is_small {
-                NAV_LINK_SPACING_PX
-            } else {
-                NAV_LINK_SPACING_PX / 2.
-            })
+            NAV_LINK_SPACING_PX
+        } else {
+            NAV_LINK_SPACING_PX / 2.
+        })
         .child(NavLink {
             active: route == Route::Home {},
             target: NavTarget::Route(Route::Home {}),
@@ -308,7 +308,7 @@ impl Component for NavbarRight {
             )
             .child(
                 super::navbar_button()
-					.overflow(Overflow::None)
+                    .overflow(Overflow::None)
                     .tooltip("Control Center")
                     .padding(0.0)
                     .on_press(open_control_center)
@@ -323,11 +323,7 @@ fn avatar_with_gear(uuid: String) -> impl IntoElement {
         .width(Size::px(28.))
         .height(Size::px(28.))
         .center()
-        .child(
-            Avatar::new(uuid)
-                .width(Size::px(28.))
-                .height(Size::px(28.)),
-        )
+        .child(Avatar::new(uuid).width(Size::px(28.)).height(Size::px(28.)))
         .child(
             rect()
                 .position(Position::new_absolute().bottom(-7.).right(-7.))

@@ -6,19 +6,19 @@ pub const GLOBAL_PROFILE_NAME: &str = "Global";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GameSettingsProfile {
-	pub name: String,
-	pub java_path: Option<String>,
-	pub resolution: Option<Resolution>,
-	pub force_fullscreen: Option<bool>,
-	pub mem_max: Option<u32>,
-	pub launch_args: Option<String>,
-	pub launch_env: Option<String>,
-	pub hook_pre: Option<String>,
-	pub hook_wrapper: Option<String>,
-	pub hook_post: Option<String>,
-	pub os_extra: Option<SettingsOsExtra>,
-	/// Never applies to bundle content
-	pub browser_update_mode: Option<PackageUpdateMode>,
+    pub name: String,
+    pub java_path: Option<String>,
+    pub resolution: Option<Resolution>,
+    pub force_fullscreen: Option<bool>,
+    pub mem_max: Option<u32>,
+    pub launch_args: Option<String>,
+    pub launch_env: Option<String>,
+    pub hook_pre: Option<String>,
+    pub hook_wrapper: Option<String>,
+    pub hook_post: Option<String>,
+    pub os_extra: Option<SettingsOsExtra>,
+    /// Never applies to bundle content
+    pub browser_update_mode: Option<PackageUpdateMode>,
 }
 
 // `Resolution` lives in oneclient_common the launch-argument builder needs it
@@ -29,162 +29,162 @@ pub use oneclient_common::domain::PackageUpdateMode;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SettingsOsExtra {
-	#[cfg(target_os = "linux")]
-	pub enable_gamemode: Option<bool>,
-	#[cfg(any(target_os = "linux", windows))]
-	pub use_discrete_gpu: Option<bool>,
-	#[serde(flatten)]
-	pub unknown: serde_json::Map<String, serde_json::Value>,
+    #[cfg(target_os = "linux")]
+    pub enable_gamemode: Option<bool>,
+    #[cfg(any(target_os = "linux", windows))]
+    pub use_discrete_gpu: Option<bool>,
+    #[serde(flatten)]
+    pub unknown: serde_json::Map<String, serde_json::Value>,
 }
 
 impl Default for SettingsOsExtra {
-	fn default() -> Self {
-		Self {
-			#[cfg(target_os = "linux")]
-			enable_gamemode: Some(true),
-			#[cfg(any(target_os = "linux", windows))]
-			use_discrete_gpu: Some(true),
-			unknown: serde_json::Map::new(),
-		}
-	}
+    fn default() -> Self {
+        Self {
+            #[cfg(target_os = "linux")]
+            enable_gamemode: Some(true),
+            #[cfg(any(target_os = "linux", windows))]
+            use_discrete_gpu: Some(true),
+            unknown: serde_json::Map::new(),
+        }
+    }
 }
 
 impl GameSettingsProfile {
-	pub fn default_global_profile() -> Self {
-		Self {
-			name: GLOBAL_PROFILE_NAME.into(),
-			java_path: None,
-			resolution: None,
-			force_fullscreen: Some(false),
-			mem_max: Some(oneclient_common::default_mem_max()),
-			launch_args: None,
-			launch_env: None,
-			hook_pre: None,
-			hook_wrapper: None,
-			hook_post: None,
-			os_extra: Some(SettingsOsExtra::default()),
-			browser_update_mode: Some(PackageUpdateMode::default()),
-		}
-	}
+    pub fn default_global_profile() -> Self {
+        Self {
+            name: GLOBAL_PROFILE_NAME.into(),
+            java_path: None,
+            resolution: None,
+            force_fullscreen: Some(false),
+            mem_max: Some(oneclient_common::default_mem_max()),
+            launch_args: None,
+            launch_env: None,
+            hook_pre: None,
+            hook_wrapper: None,
+            hook_post: None,
+            os_extra: Some(SettingsOsExtra::default()),
+            browser_update_mode: Some(PackageUpdateMode::default()),
+        }
+    }
 
-	pub fn use_discrete_gpu(&self) -> bool {
-		cfg_select! {
-			any(target_os = "linux", target_os = "windows") => self
-				.os_extra
-				.as_ref()
-				.and_then(|extra| extra.use_discrete_gpu)
-				.unwrap_or(false),
-			_ => false
-		}
-	}
+    pub fn use_discrete_gpu(&self) -> bool {
+        cfg_select! {
+            any(target_os = "linux", target_os = "windows") => self
+                .os_extra
+                .as_ref()
+                .and_then(|extra| extra.use_discrete_gpu)
+                .unwrap_or(false),
+            _ => false
+        }
+    }
 
-	pub fn is_global(&self) -> bool {
-		self.name == GLOBAL_PROFILE_NAME
-	}
+    pub fn is_global(&self) -> bool {
+        self.name == GLOBAL_PROFILE_NAME
+    }
 
-	pub fn merge_global(&mut self, global: &Self) {
-		if self.java_path.is_none() {
-			self.java_path = global.java_path.clone();
-		}
-		if self.resolution.is_none() {
-			self.resolution = global.resolution;
-		}
-		if self.force_fullscreen.is_none() {
-			self.force_fullscreen = global.force_fullscreen;
-		}
-		if self.mem_max.is_none() {
-			self.mem_max = global.mem_max;
-		}
-		if self.launch_args.is_none() {
-			self.launch_args = global.launch_args.clone();
-		}
-		if self.launch_env.is_none() {
-			self.launch_env = global.launch_env.clone();
-		}
-		if self.hook_pre.is_none() {
-			self.hook_pre = global.hook_pre.clone();
-		}
-		if self.hook_wrapper.is_none() {
-			self.hook_wrapper = global.hook_wrapper.clone();
-		}
-		if self.hook_post.is_none() {
-			self.hook_post = global.hook_post.clone();
-		}
-		if self.os_extra.is_none() {
-			self.os_extra = global.os_extra.clone();
-		}
-		if self.browser_update_mode.is_none() {
-			self.browser_update_mode = global.browser_update_mode;
-		}
-	}
+    pub fn merge_global(&mut self, global: &Self) {
+        if self.java_path.is_none() {
+            self.java_path = global.java_path.clone();
+        }
+        if self.resolution.is_none() {
+            self.resolution = global.resolution;
+        }
+        if self.force_fullscreen.is_none() {
+            self.force_fullscreen = global.force_fullscreen;
+        }
+        if self.mem_max.is_none() {
+            self.mem_max = global.mem_max;
+        }
+        if self.launch_args.is_none() {
+            self.launch_args = global.launch_args.clone();
+        }
+        if self.launch_env.is_none() {
+            self.launch_env = global.launch_env.clone();
+        }
+        if self.hook_pre.is_none() {
+            self.hook_pre = global.hook_pre.clone();
+        }
+        if self.hook_wrapper.is_none() {
+            self.hook_wrapper = global.hook_wrapper.clone();
+        }
+        if self.hook_post.is_none() {
+            self.hook_post = global.hook_post.clone();
+        }
+        if self.os_extra.is_none() {
+            self.os_extra = global.os_extra.clone();
+        }
+        if self.browser_update_mode.is_none() {
+            self.browser_update_mode = global.browser_update_mode;
+        }
+    }
 
-	pub fn from_row(row: SettingProfileRow) -> crate::ClusterResult<Self> {
-		Ok(Self {
-			name: row.name,
-			java_path: row.java_path,
-			resolution: row
-				.resolution
-				.map(|json| serde_json::from_str(&json))
-				.transpose()?,
-			force_fullscreen: row.force_fullscreen.map(|v| v != 0),
-			mem_max: row.mem_max.map(|v| v as u32),
-			launch_args: row.launch_args,
-			launch_env: row.launch_env,
-			hook_pre: row.hook_pre,
-			hook_wrapper: row.hook_wrapper,
-			hook_post: row.hook_post,
-			os_extra: row
-				.os_extra
-				.map(|json| serde_json::from_str(&json))
-				.transpose()?,
-			// Unrecognised values inherit rather than error so a profile from a
-			// newer build cannot make the cluster unloadable
-			browser_update_mode: row
-				.browser_update_mode
-				.as_deref()
-				.and_then(PackageUpdateMode::parse),
-		})
-	}
+    pub fn from_row(row: SettingProfileRow) -> crate::ClusterResult<Self> {
+        Ok(Self {
+            name: row.name,
+            java_path: row.java_path,
+            resolution: row
+                .resolution
+                .map(|json| serde_json::from_str(&json))
+                .transpose()?,
+            force_fullscreen: row.force_fullscreen.map(|v| v != 0),
+            mem_max: row.mem_max.map(|v| v as u32),
+            launch_args: row.launch_args,
+            launch_env: row.launch_env,
+            hook_pre: row.hook_pre,
+            hook_wrapper: row.hook_wrapper,
+            hook_post: row.hook_post,
+            os_extra: row
+                .os_extra
+                .map(|json| serde_json::from_str(&json))
+                .transpose()?,
+            // Unrecognised values inherit rather than error so a profile from a
+            // newer build cannot make the cluster unloadable
+            browser_update_mode: row
+                .browser_update_mode
+                .as_deref()
+                .and_then(PackageUpdateMode::parse),
+        })
+    }
 
-	pub fn into_row(&self) -> crate::ClusterResult<SettingProfileRow> {
-		Ok(SettingProfileRow {
-			name: self.name.clone(),
-			java_path: self.java_path.clone(),
-			resolution: self
-				.resolution
-				.map(|res| serde_json::to_string(&res))
-				.transpose()?,
-			force_fullscreen: self.force_fullscreen.map(i64::from),
-			mem_max: self.mem_max.map(i64::from),
-			launch_args: self.launch_args.clone(),
-			launch_env: self.launch_env.clone(),
-			hook_pre: self.hook_pre.clone(),
-			hook_wrapper: self.hook_wrapper.clone(),
-			hook_post: self.hook_post.clone(),
-			os_extra: self
-				.os_extra
-				.as_ref()
-				.map(serde_json::to_string)
-				.transpose()?,
-			browser_update_mode: self
-				.browser_update_mode
-				.map(|mode| mode.as_str().to_string()),
-		})
-	}
+    pub fn into_row(&self) -> crate::ClusterResult<SettingProfileRow> {
+        Ok(SettingProfileRow {
+            name: self.name.clone(),
+            java_path: self.java_path.clone(),
+            resolution: self
+                .resolution
+                .map(|res| serde_json::to_string(&res))
+                .transpose()?,
+            force_fullscreen: self.force_fullscreen.map(i64::from),
+            mem_max: self.mem_max.map(i64::from),
+            launch_args: self.launch_args.clone(),
+            launch_env: self.launch_env.clone(),
+            hook_pre: self.hook_pre.clone(),
+            hook_wrapper: self.hook_wrapper.clone(),
+            hook_post: self.hook_post.clone(),
+            os_extra: self
+                .os_extra
+                .as_ref()
+                .map(serde_json::to_string)
+                .transpose()?,
+            browser_update_mode: self
+                .browser_update_mode
+                .map(|mode| mode.as_str().to_string()),
+        })
+    }
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+    use super::*;
 
-	#[test]
-	fn os_extra_keeps_the_keys_this_build_has_no_field_for() {
-		let stored = r#"{"enable_gamemode":true,"use_discrete_gpu":true,"some_other_os_flag":7}"#;
+    #[test]
+    fn os_extra_keeps_the_keys_this_build_has_no_field_for() {
+        let stored = r#"{"enable_gamemode":true,"use_discrete_gpu":true,"some_other_os_flag":7}"#;
 
-		let extra: SettingsOsExtra = serde_json::from_str(stored).unwrap();
-		let written = serde_json::to_value(&extra).unwrap();
-		let original: serde_json::Value = serde_json::from_str(stored).unwrap();
+        let extra: SettingsOsExtra = serde_json::from_str(stored).unwrap();
+        let written = serde_json::to_value(&extra).unwrap();
+        let original: serde_json::Value = serde_json::from_str(stored).unwrap();
 
-		assert_eq!(written, original);
-	}
+        assert_eq!(written, original);
+    }
 }

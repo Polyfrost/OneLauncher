@@ -139,17 +139,7 @@ pub enum HashAlgorithm {
 /// Applies only to browser-installed packages bundles have their own update flow
 /// The check always runs regardless of variant so "out of date" markers stay populated
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    Serialize,
-    Deserialize,
-    Default,
-    EnumIter,
-    StrumDisplay,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumIter, StrumDisplay,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum PackageUpdateMode {

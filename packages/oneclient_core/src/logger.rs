@@ -89,10 +89,7 @@ fn sentry_event_filter(metadata: &tracing::Metadata<'_>) -> sentry_tracing::Even
 }
 
 /// `None` when the target is one of ours, meaning the default filter decides
-fn dependency_filter(
-    level: tracing::Level,
-    target: &str,
-) -> Option<sentry_tracing::EventFilter> {
+fn dependency_filter(level: tracing::Level, target: &str) -> Option<sentry_tracing::EventFilter> {
     if is_app_target(target) {
         return None;
     }
@@ -217,7 +214,10 @@ pub fn init_filtered(filter: impl FnOnce() -> String) -> LauncherResult<()> {
         let logs_dir = oneclient_common::paths::logs_dir()?;
         std::fs::create_dir_all(&logs_dir)?;
 
-        let log_path = logs_dir.join(format!("{}.log", chrono::Local::now().to_rfc3339().replace(':', "-")));
+        let log_path = logs_dir.join(format!(
+            "{}.log",
+            chrono::Local::now().to_rfc3339().replace(':', "-")
+        ));
 
         let file = std::fs::OpenOptions::new()
             .create(true)

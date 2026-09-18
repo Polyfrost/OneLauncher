@@ -287,11 +287,19 @@ fn place(anchor: AnchorRect, placement: TooltipPlacement, size: Size2D) -> (f32,
     let (x, y) = match placement {
         TooltipPlacement::Top => (
             centered_x,
-            if fits_above || !fits_below { above } else { below },
+            if fits_above || !fits_below {
+                above
+            } else {
+                below
+            },
         ),
         TooltipPlacement::Bottom => (
             centered_x,
-            if fits_below || !fits_above { below } else { above },
+            if fits_below || !fits_above {
+                below
+            } else {
+                above
+            },
         ),
         TooltipPlacement::Left => (
             if fits_before || !fits_after {

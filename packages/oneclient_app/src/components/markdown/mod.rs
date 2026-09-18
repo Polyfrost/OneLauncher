@@ -115,4 +115,3 @@ impl Component for Markdown {
         self.key.clone().or(self.default_key())
     }
 }
-

@@ -7,12 +7,15 @@ use crate::hooks::LinkConfirmState;
 
 pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element {
     match block {
-        Block::Heading { level, spans } => {
-            render_spans(spans, style.heading_size(*level), style.color, style.color_code)
-                .font_weight(FontWeight::BOLD)
-                .key(key)
-                .into()
-        }
+        Block::Heading { level, spans } => render_spans(
+            spans,
+            style.heading_size(*level),
+            style.color,
+            style.color_code,
+        )
+        .font_weight(FontWeight::BOLD)
+        .key(key)
+        .into(),
         Block::Paragraph { content } => render_content(content, style.paragraph_size, style)
             .key(key)
             .into(),
@@ -53,7 +56,9 @@ pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element
                     .alignment(BorderAlignment::Inner),
             )
             .background(style.background_blockquote)
-            .child(render_content(content, style.paragraph_size, style).font_slant(FontSlant::Italic))
+            .child(
+                render_content(content, style.paragraph_size, style).font_slant(FontSlant::Italic),
+            )
             .into(),
         Block::Rule => rect()
             .key(key)
@@ -215,12 +220,7 @@ impl KeyExt for MarkdownLink {
 }
 
 impl MarkdownLink {
-    fn new(
-        url: String,
-        title: Option<String>,
-        content: Vec<Inline>,
-        style: MarkdownStyle,
-    ) -> Self {
+    fn new(url: String, title: Option<String>, content: Vec<Inline>, style: MarkdownStyle) -> Self {
         Self {
             url,
             title,
@@ -242,18 +242,24 @@ impl Component for MarkdownLink {
         let mut text = paragraph().font_size(self.style.paragraph_size);
         for item in &self.content {
             text = match item {
-                Inline::Span(span) => {
-                    text.span(styled_span(span, self.style.color_link, self.style.color_code))
-                }
+                Inline::Span(span) => text.span(styled_span(
+                    span,
+                    self.style.color_link,
+                    self.style.color_code,
+                )),
                 Inline::Image { url, alt } => {
                     text.child(MarkdownImage::new(url.clone(), alt.clone()))
                 }
-                Inline::Link { content, .. } => content.iter().fold(text, |text, item| match item {
-                    Inline::Span(span) => {
-                        text.span(styled_span(span, self.style.color_link, self.style.color_code))
-                    }
-                    _ => text,
-                }),
+                Inline::Link { content, .. } => {
+                    content.iter().fold(text, |text, item| match item {
+                        Inline::Span(span) => text.span(styled_span(
+                            span,
+                            self.style.color_link,
+                            self.style.color_code,
+                        )),
+                        _ => text,
+                    })
+                }
             };
         }
 

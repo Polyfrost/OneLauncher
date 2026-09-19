@@ -34,7 +34,7 @@ pub use queries::{
     UseDiscardLeftovers, UseLogAction, UseRefreshAccount, UseRemoveAccount, UseScreenshotAction,
     UseSetDefaultAccount, UseStorageAction, UseUploadLog, VERSIONS_PAGE_SIZE,
     accounts_have_microsoft, bundle_overrides_map, bundles_with_status_items, category_list,
-    changelog_error, changelog_groups, changelog_is_loading, cluster_content_items,
+    changelog_entries, changelog_error, changelog_is_loading, cluster_content_items,
     content_type_for_slug, has_migration_data, invalidate_cluster_content_queries,
     invalidate_cluster_queries, invalidate_java_queries, invalidate_leftovers_queries,
     invalidate_logs_queries, invalidate_profile_queries, invalidate_screenshots_queries,

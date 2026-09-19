@@ -73,6 +73,15 @@ and per-OS prerequisites.
 Once you have finished making your changes, create a pull request (PR) to submit them.
 
 - Fill out the template to help reviewers understand your changes and the purpose of your PR.
+- If your change is user-facing, add a change file with `knope document-change`, or create `.changeset/<anything>.md` by hand:
+  ```md
+  ---
+  default: patch
+  ---
+
+  # Fixed the thing players noticed
+  ```
+  Use `patch` for fixes, `minor` for features and `major` for breaking changes. The title becomes your line in the release notes.
 - If you are addressing an existing issue, don't forget to [link your PR to the issue].
 - Enable the checkbox to [allow maintainer edits] so that the branch can be updated for merging.
 - Once you submit your PR, a team member will review your proposal. They may ask questions or request additional information.

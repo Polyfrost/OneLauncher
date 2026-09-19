@@ -228,6 +228,8 @@ fn main() {
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(96 * 1024 * 1024),
         )
+		.with_plugin(freya::borderless::BorderlessPlugin::new())
+		.with_plugin(freya::performance::PerformanceOverlayPlugin::default())
         .with_default_font(theme::DEFAULT_FONT);
 
     if show_tray_icon {

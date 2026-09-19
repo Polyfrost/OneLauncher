@@ -2198,6 +2198,7 @@ dependencies = [
  "cfg-if",
  "freya-android",
  "freya-animation",
+ "freya-borderless-plugin",
  "freya-clipboard",
  "freya-components",
  "freya-core",
@@ -2234,6 +2235,17 @@ source = "git+https://github.com/marc2332/freya?tag=v0.5.0-rc.6#a30d8992cdf886ba
 dependencies = [
  "easer",
  "freya-core",
+]
+
+[[package]]
+name = "freya-borderless-plugin"
+version = "0.5.0-rc.6"
+source = "git+https://github.com/marc2332/freya?tag=v0.5.0-rc.6#a30d8992cdf886bab8553bbaa99cb68d43026f8e"
+dependencies = [
+ "freya-core",
+ "freya-engine",
+ "freya-winit",
+ "torin",
 ]
 
 [[package]]
@@ -2390,6 +2402,7 @@ version = "0.5.0-rc.6"
 source = "git+https://github.com/marc2332/freya?tag=v0.5.0-rc.6#a30d8992cdf886bab8553bbaa99cb68d43026f8e"
 dependencies = [
  "freya-core",
+ "tokio",
 ]
 
 [[package]]

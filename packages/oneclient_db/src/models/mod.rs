@@ -15,7 +15,7 @@ pub use artifact::{
 };
 pub use browser_package_update::BrowserPackageUpdateRow;
 pub use bundle::{BundleRow, NewBundle};
-pub use cluster::{ClusterId, ClusterPatch, ClusterRow, NewCluster};
+pub use cluster::{ClusterId, ClusterKind, ClusterPatch, ClusterRow, NewCluster};
 pub use cluster_bundle::{BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType};
 pub use cluster_optional_mod::{ClusterOptionalModRow, OptionalModStatus};
 pub use game_session::{

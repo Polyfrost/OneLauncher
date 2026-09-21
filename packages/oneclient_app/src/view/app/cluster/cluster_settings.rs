@@ -16,7 +16,8 @@ use crate::hooks::{
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
-use crate::view::app::settings::{section_header, settings_row};
+use crate::view::app::clusters::{DeleteInstanceModal, EditInstanceModal};
+use crate::view::app::settings::{section_header, settings_row, settings_row_disabled};
 
 use super::cluster_not_found;
 use crate::hooks::use_cluster;
@@ -62,6 +63,22 @@ impl Component for ClusterSettings {
         let versions = loader_versions(&versions_query);
         let runtimes = java_runtimes(&runtimes_query);
 
+        let instance_section: Vec<Element> = if cluster.user_created {
+            vec![
+                section_header("INSTANCE").into_element(),
+                InstanceRow {
+                    cluster_id,
+                    name: cluster.name.clone(),
+                    description: cluster.description.clone(),
+                    tags: cluster.tags.clone(),
+                    cover: cluster.cover_file(),
+                }
+                .into_element(),
+            ]
+        } else {
+            Vec::new()
+        };
+
         cluster_content()
             .child(
                 ScrollArea::new()
@@ -69,6 +86,7 @@ impl Component for ClusterSettings {
                     .height(Size::fill())
                     .scrollbar_gutter(true)
                     .spacing(4.)
+                    .children(instance_section)
                     .child(section_header("GAME"))
                     .child(
                         ToggleRow {
@@ -111,6 +129,7 @@ impl Component for ClusterSettings {
                         DedicatedDirRow {
                             cluster_id,
                             dedicated: cluster.uses_dedicated_dir(),
+                            locked: cluster.is_isolated(),
                         }
                         .into_element(),
                     )
@@ -261,6 +280,71 @@ impl Component for ToggleRow {
 }
 
 #[derive(PartialEq)]
+struct InstanceRow {
+    cluster_id: i64,
+    name: String,
+    description: Option<String>,
+    tags: Vec<String>,
+    cover: Option<std::path::PathBuf>,
+}
+
+impl Component for InstanceRow {
+    fn render(&self) -> impl IntoElement {
+        let mut editing = use_state(|| false);
+        let mut deleting = use_state(|| false);
+        let cluster_id = self.cluster_id;
+        let name = self.name.clone();
+        let edit_name = self.name.clone();
+        let edit_description = self.description.clone();
+        let edit_tags = self.tags.clone();
+        let edit_cover = self.cover.clone();
+
+        let buttons = rect()
+            .horizontal()
+            .spacing(8.)
+            .child(
+                Button::new()
+                    .small()
+                    .secondary()
+                    .on_press(move |_| editing.set(true))
+                    .text("Edit"),
+            )
+            .child(
+                Button::new()
+                    .small()
+                    .danger()
+                    .on_press(move |_| deleting.set(true))
+                    .text("Delete"),
+            );
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .child(settings_row(
+                IconType::Pencil01,
+                "Instance Details",
+                "Change this instance's name, description, tags and cover image, or remove it from your list.",
+                buttons,
+            ))
+            .maybe_child(editing.read().then(|| {
+                EditInstanceModal::new(
+                    cluster_id,
+                    edit_name.clone(),
+                    edit_description.clone(),
+                    edit_tags.clone(),
+                    edit_cover.clone(),
+                    move |()| editing.set(false),
+                )
+                .into_element()
+            }))
+            .maybe_child(deleting.read().then(|| {
+                DeleteInstanceModal::new(cluster_id, name.clone(), move |()| deleting.set(false))
+                    .into_element()
+            }))
+    }
+}
+
+#[derive(PartialEq)]
 struct ShortcutRow {
     cluster_id: i64,
 }
@@ -327,6 +411,7 @@ impl Component for VerifyFilesRow {
 struct DedicatedDirRow {
     cluster_id: i64,
     dedicated: bool,
+    locked: bool,
 }
 
 impl Component for DedicatedDirRow {
@@ -334,6 +419,16 @@ impl Component for DedicatedDirRow {
         let cluster_id = self.cluster_id;
         let dedicated = self.dedicated;
         let mutation = use_cluster_mutation();
+
+        if self.locked {
+            return settings_row_disabled(
+                IconType::Folder,
+                "Dedicated Directory",
+                "Vanilla and modded instances always run in their own folder, so their worlds, settings and packs stay separate.",
+                toggle_controlled(true, (|()| {}).into()),
+            )
+            .into_element();
+        }
 
         let on_toggle: EventHandler<()> = (move |()| {
             mutation.mutate(ClusterAction::SetDedicatedDir {
@@ -349,6 +444,7 @@ impl Component for DedicatedDirRow {
             "Run this cluster in its own .minecraft instead of the shared one.",
             toggle_controlled(dedicated, on_toggle),
         )
+        .into_element()
     }
 }
 

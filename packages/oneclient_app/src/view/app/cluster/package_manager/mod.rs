@@ -412,6 +412,8 @@ impl Component for PackageManager {
         });
 
         let session_live = use_game_snapshot().is_active(cluster_id);
+        let shares_content = crate::hooks::use_cluster(cluster_id)
+            .is_none_or(|cluster| cluster.shares_content(content_type));
         let active = use_state(|| 0usize);
 
         let search = use_state(String::new);
@@ -477,11 +479,13 @@ impl Component for PackageManager {
                 package_type,
                 toolbar_width,
             ))
-            .maybe_child(
-                content_type
-                    .is_global()
-                    .then(|| views::global_notice(noun_plural)),
-            )
+            .maybe_child(content_type.is_global().then(|| {
+                if shares_content {
+                    views::global_notice(noun_plural)
+                } else {
+                    views::instance_only_notice(noun_plural)
+                }
+            }))
             .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
             .child(ContentBox::new(
                 filtered,

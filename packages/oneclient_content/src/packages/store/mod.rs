@@ -351,7 +351,7 @@ impl PackageStore {
         )
         .await?;
 
-        if content_type.is_global() {
+        if link::shares_content(&cluster, content_type) {
             artifact_dao::set_enabled_for_hash(&ctx.db, hash, i64::from(enabled)).await?;
         }
 
@@ -763,6 +763,11 @@ mod tests {
             last_played: None,
             overall_played: None,
             linked_modpack_hash: None,
+            kind: 0,
+            user_created: 0,
+            description: None,
+            tags: "[]".into(),
+            cover_path: None,
         }
     }
 

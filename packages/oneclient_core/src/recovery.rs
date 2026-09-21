@@ -202,11 +202,28 @@ async fn adopt_cluster(
     folder_name: &str,
     report: &mut RecoveryReport,
 ) -> LauncherResult<()> {
-    let (name, mc_version, loader) = parse_folder_identity(folder_name);
+    let recorded = match oneclient_common::paths::cluster_dir(folder_name) {
+        Ok(dir) => oneclient_cluster::identity::read(&dir).await,
+        Err(_) => None,
+    };
+
+    let (name, mc_version, loader) = match &recorded {
+        Some(identity) => (
+            identity.name.clone(),
+            identity.mc_version.clone(),
+            identity.mc_loader,
+        ),
+        None => parse_folder_identity(folder_name),
+    };
 
     let global = state.settings.read().global_game_settings.clone();
     let profile =
-        create_profile_from_global(&state.services.db, &global, &name, None, None).await?;
+        create_profile_from_global(&state.services.db, &global, folder_name, None, None).await?;
+
+    let tags = recorded
+        .as_ref()
+        .and_then(|identity| serde_json::to_string(&identity.tags).ok())
+        .unwrap_or_else(|| "[]".to_string());
 
     let row = cluster_dao::insert(
         &state.services.db,
@@ -215,9 +232,24 @@ async fn adopt_cluster(
             folder_name,
             mc_version: &mc_version,
             mc_loader: loader as i64,
-            mc_loader_version: None,
+            mc_loader_version: recorded
+                .as_ref()
+                .and_then(|identity| identity.mc_loader_version.as_deref()),
             setting_profile_name: Some(&profile.name),
             stage: ClusterStage::NotReady as i64,
+            kind: recorded
+                .as_ref()
+                .map_or(0, |identity| identity.kind.as_i64()),
+            user_created: recorded
+                .as_ref()
+                .map_or(0, |identity| i64::from(identity.user_created)),
+            description: recorded
+                .as_ref()
+                .and_then(|identity| identity.description.as_deref()),
+            tags: &tags,
+            cover_path: recorded
+                .as_ref()
+                .and_then(|identity| identity.cover_path.as_deref()),
         },
     )
     .await?;
@@ -230,6 +262,10 @@ async fn adopt_cluster(
         loader = %loader,
         "adopted cluster folder from disk"
     );
+
+    if let Ok(cluster) = oneclient_cluster::Cluster::try_from_row(row.clone()) {
+        state.clusters.ensure_dedicated_marker(&cluster).await.ok();
+    }
 
     relink_cluster_files(state, row.id, folder_name, report).await?;
     Ok(())

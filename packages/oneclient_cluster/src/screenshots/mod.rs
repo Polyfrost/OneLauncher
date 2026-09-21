@@ -99,6 +99,14 @@ pub fn load_screenshot(path: &Path, max_edge: Option<u32>) -> ClusterResult<Byte
     Ok(bytes)
 }
 
+pub fn load_picked_image(path: &Path, max_edge: Option<u32>) -> ClusterResult<Bytes> {
+    let raw = std::fs::read(path).map_err(ScreenshotsError::Io)?;
+    Ok(match max_edge {
+        Some(edge) => thumbnail(&raw, edge).unwrap_or_else(|| Bytes::from(raw)),
+        None => Bytes::from(raw),
+    })
+}
+
 fn thumbnail(raw: &[u8], max_edge: u32) -> Option<Bytes> {
     let img = image::load_from_memory(raw).ok()?;
     if img.width().max(img.height()) <= max_edge {
@@ -122,5 +130,48 @@ pub fn delete_screenshot(path: &Path) -> ClusterResult<()> {
     match trash::delete(&path) {
         Ok(()) => Ok(()),
         Err(err) => Err(ScreenshotsError::Trash(err.to_string()).into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch_png(tag: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+
+        let unique = NEXT.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "oneclient-picked-{tag}-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cover.png");
+
+        let image = image::RgbImage::new(4, 3);
+        image.save(&path).unwrap();
+
+        path
+    }
+
+    #[test]
+    fn a_file_the_user_picked_outside_the_launcher_folders_still_loads() {
+        let path = scratch_png("outside");
+
+        let bytes = load_picked_image(&path, None).expect("a picked file reads");
+        assert!(!bytes.is_empty());
+
+        assert!(
+            load_screenshot(&path, None).is_err(),
+            "the screenshot loader must keep refusing paths outside the launcher folders"
+        );
+    }
+
+    #[test]
+    fn a_missing_picked_file_is_an_error_not_an_empty_image() {
+        let missing = std::env::temp_dir().join("oneclient-picked-missing-does-not-exist.png");
+
+        assert!(load_picked_image(&missing, None).is_err());
     }
 }

@@ -1458,6 +1458,62 @@ pub async fn get_game_versions(
     Ok(manifest.versions.clone())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GameVersionKind {
+    Release,
+    Snapshot,
+    Beta,
+    Alpha,
+}
+
+impl GameVersionKind {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Release => "Release",
+            Self::Snapshot => "Snapshot",
+            Self::Beta => "Beta",
+            Self::Alpha => "Alpha",
+        }
+    }
+
+    #[must_use]
+    pub const fn is_release(self) -> bool {
+        matches!(self, Self::Release)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameVersionInfo {
+    pub id: String,
+    pub kind: GameVersionKind,
+    pub released: chrono::DateTime<chrono::Utc>,
+}
+
+#[tracing::instrument(skip(metadata, ctx), level = "debug")]
+pub async fn get_version_ids(
+    metadata: &mut MetadataStore,
+    ctx: &McCtx,
+) -> McResult<Vec<GameVersionInfo>> {
+    use interfrost::api::minecraft::VersionType;
+
+    let manifest = metadata.get_vanilla_or_fetch(ctx).await?;
+    Ok(manifest
+        .versions
+        .iter()
+        .map(|version| GameVersionInfo {
+            id: version.id.clone(),
+            kind: match version.type_ {
+                VersionType::Release => GameVersionKind::Release,
+                VersionType::Snapshot => GameVersionKind::Snapshot,
+                VersionType::OldBeta => GameVersionKind::Beta,
+                VersionType::OldAlpha => GameVersionKind::Alpha,
+            },
+            released: version.release_time,
+        })
+        .collect())
+}
+
 #[tracing::instrument(skip(metadata, ctx), level = "debug")]
 pub async fn get_loaders_for_version(
     metadata: &mut MetadataStore,
@@ -1465,6 +1521,15 @@ pub async fn get_loaders_for_version(
     mc_version: &str,
 ) -> McResult<Vec<GameLoader>> {
     metadata.get_loaders_for_version(ctx, mc_version).await
+}
+
+#[tracing::instrument(skip(metadata, ctx), level = "debug")]
+pub async fn get_versions_for_loader(
+    metadata: &mut MetadataStore,
+    ctx: &McCtx,
+    loader: GameLoader,
+) -> McResult<Option<Vec<String>>> {
+    metadata.get_versions_for_loader(ctx, loader).await
 }
 
 #[must_use]

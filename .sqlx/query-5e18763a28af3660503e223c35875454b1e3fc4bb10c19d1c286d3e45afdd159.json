@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tINSERT INTO clusters (\n\t\t\tname, folder_name, mc_version, mc_loader, mc_loader_version,\n\t\t\tsetting_profile_name, stage, created_at\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?)\n\t\tRETURNING\n\t\t\tid, name, folder_name, setting_profile_name, mc_version, mc_loader,\n\t\t\tstage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash\n\t\t",
+  "query": "\n\t\tSELECT\n\t\t\tid, name, folder_name, setting_profile_name, mc_version, mc_loader,\n\t\t\tstage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,\n\t\t\tkind, user_created, description, tags, cover_path\n\t\tFROM clusters\n\t\tWHERE folder_name = ?\n\t\t",
   "describe": {
     "columns": [
       {
@@ -134,16 +134,71 @@
             "name": "linked_modpack_hash"
           }
         }
+      },
+      {
+        "name": "kind",
+        "ordinal": 12,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "user_created",
+        "ordinal": 13,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "user_created"
+          }
+        }
+      },
+      {
+        "name": "description",
+        "ordinal": 14,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "name": "tags",
+        "ordinal": 15,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "name": "cover_path",
+        "ordinal": 16,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "cover_path"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 8
+      "Right": 1
     },
     "nullable": [
       false,
       false,
       false,
-      false,
+      true,
       false,
       false,
       false,
@@ -151,8 +206,13 @@
       true,
       true,
       true,
+      true,
+      false,
+      false,
+      true,
+      false,
       true
     ]
   },
-  "hash": "0f4cedf6055f4ba6a5e6ef78304c5f9df31fc6de0f6aa3dc09c4341fcb19c871"
+  "hash": "5e18763a28af3660503e223c35875454b1e3fc4bb10c19d1c286d3e45afdd159"
 }

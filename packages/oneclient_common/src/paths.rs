@@ -121,6 +121,8 @@ pub fn shared_minecraft_dir() -> PathsResult<PathBuf> {
 /// Presence marks a cluster folder as its own game dir instead of the shared `.minecraft`
 pub const DEDICATED_MARKER: &str = ".dedicated_directory";
 
+pub const INSTANCE_FILE: &str = ".instance.json";
+
 pub fn cluster_dir(folder_name: &str) -> PathsResult<PathBuf> {
     Ok(clusters_dir()?.join(folder_name))
 }
@@ -195,8 +197,12 @@ pub fn versions_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join("metadata").join("versions"))
 }
 
+pub fn metadata_dir() -> PathsResult<PathBuf> {
+    Ok(data_dir()?.join("metadata"))
+}
+
 pub fn libraries_dir() -> PathsResult<PathBuf> {
-    Ok(data_dir()?.join("metadata").join("libraries"))
+    Ok(metadata_dir()?.join("libraries"))
 }
 
 pub fn natives_dir() -> PathsResult<PathBuf> {

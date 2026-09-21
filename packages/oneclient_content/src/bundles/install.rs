@@ -3,6 +3,7 @@ use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
+use oneclient_db::models::ClusterKind;
 use oneclient_db::models::ClusterRow;
 use oneclient_db::models::OverrideType;
 
@@ -580,6 +581,11 @@ pub async fn install_cluster_bundles(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if cluster.kind() != ClusterKind::OneClient {
+        tracing::debug!(cluster_id, "instance does not take bundle content");
+        return Ok(());
+    }
+
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),

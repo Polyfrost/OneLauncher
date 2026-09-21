@@ -226,7 +226,40 @@ pub fn minecraft_arguments(
         )?;
     }
 
+    drop_repeated_arguments(&mut parsed);
+
     Ok(parsed)
+}
+
+fn drop_repeated_arguments(args: &mut Vec<String>) {
+    let mut seen: HashSet<(String, Option<String>)> = HashSet::new();
+    let mut kept: Vec<String> = Vec::with_capacity(args.len());
+    let mut index = 0;
+
+    while index < args.len() {
+        let token = &args[index];
+        if !token.starts_with("--") {
+            kept.push(token.clone());
+            index += 1;
+            continue;
+        }
+
+        let value = args
+            .get(index + 1)
+            .filter(|next| !next.starts_with("--"))
+            .cloned();
+
+        if seen.insert((token.clone(), value.clone())) {
+            kept.push(token.clone());
+            if let Some(value) = &value {
+                kept.push(value.clone());
+            }
+        }
+
+        index += if value.is_some() { 2 } else { 1 };
+    }
+
+    *args = kept;
 }
 
 pub fn append_profile_game_arguments(
@@ -251,27 +284,56 @@ pub fn processor_arguments<T: AsRef<str>, S: std::hash::BuildHasher>(
     let mut parsed = Vec::new();
 
     for arg in args {
-        let a = &arg.as_ref()[1..arg.as_ref().len() - 1];
-        if arg.as_ref().starts_with('{') {
-            if let Some(entry) = data.get(a) {
-                parsed.push(if entry.client.starts_with('[') {
-                    get_library(
-                        libraries_path,
-                        &entry.client[1..entry.client.len() - 1],
-                        true,
-                    )?
-                } else {
-                    entry.client.clone()
-                });
-            }
-        } else if arg.as_ref().starts_with('[') {
-            parsed.push(get_library(libraries_path, a, true)?);
-        } else {
-            parsed.push(arg.as_ref().to_string());
+        let arg = arg.as_ref();
+
+        if let Some(coordinate) = arg.strip_prefix('[').and_then(|a| a.strip_suffix(']')) {
+            parsed.push(get_library(libraries_path, coordinate, true)?);
+            continue;
         }
+
+        parsed.push(expand_data_placeholders(libraries_path, arg, data)?);
     }
 
     Ok(parsed)
+}
+
+fn expand_data_placeholders<S: std::hash::BuildHasher>(
+    libraries_path: &Path,
+    arg: &str,
+    data: &HashMap<String, SidedDataEntry, S>,
+) -> McResult<String> {
+    let mut out = String::with_capacity(arg.len());
+    let mut rest = arg;
+
+    while let Some(open) = rest.find('{') {
+        let Some(close) = rest[open..].find('}').map(|at| open + at) else {
+            break;
+        };
+
+        out.push_str(&rest[..open]);
+        let key = &rest[open + 1..close];
+
+        match data.get(key) {
+            Some(entry) => {
+                match entry
+                    .client
+                    .strip_prefix('[')
+                    .and_then(|c| c.strip_suffix(']'))
+                {
+                    Some(coordinate) => {
+                        out.push_str(&get_library(libraries_path, coordinate, true)?);
+                    }
+                    None => out.push_str(&entry.client),
+                }
+            }
+            None => out.push_str(&rest[open..=close]),
+        }
+
+        rest = &rest[close + 1..];
+    }
+
+    out.push_str(rest);
+    Ok(out)
 }
 
 #[tracing::instrument(skip_all, level = "debug")]
@@ -532,8 +594,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        Library, ZGC_MIN_HEAP_MB, classpaths, is_collector_flag, java_arguments,
-        minecraft_arguments, performance_flags, split_custom_args,
+        HashMap, Library, Path, SidedDataEntry, ZGC_MIN_HEAP_MB, classpaths,
+        drop_repeated_arguments, is_collector_flag, java_arguments, minecraft_arguments,
+        performance_flags, processor_arguments, split_custom_args,
     };
     use oneclient_common::Resolution;
 
@@ -886,5 +949,102 @@ mod tests {
         assert_eq!(args.first().unwrap(), "--username");
         assert_eq!(args[1], "player");
         assert_eq!(args.last().unwrap(), "--fabric");
+    }
+
+    #[test]
+    fn a_loader_repeating_the_legacy_string_is_not_passed_twice() {
+        let loader_game: Vec<interfrost::api::minecraft::Argument> = serde_json::from_str(
+            r#"["--username", "${auth_player_name}", "--gameDir", "${game_directory}",
+                "--tweakClass", "net.minecraftforge.fml.common.launcher.FMLTweaker"]"#,
+        )
+        .unwrap();
+        let dir = std::env::temp_dir();
+
+        let args = minecraft_arguments(
+            false,
+            Some(&loader_game),
+            Some(
+                "--username ${auth_player_name} --gameDir ${game_directory}                  --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+            ),
+            "token",
+            "player",
+            uuid::Uuid::nil(),
+            "1.11",
+            "1.11",
+            &dir,
+            &dir,
+            interfrost::api::minecraft::VersionType::Release,
+            Resolution::default(),
+            "arm64",
+        )
+        .unwrap();
+
+        assert_eq!(args.iter().filter(|a| *a == "--gameDir").count(), 1);
+        assert_eq!(args.iter().filter(|a| *a == "--username").count(), 1);
+        assert_eq!(args.iter().filter(|a| *a == "--tweakClass").count(), 1);
+    }
+
+    #[test]
+    fn an_embedded_placeholder_keeps_its_surrounding_text() {
+        let mut data = HashMap::new();
+        data.insert(
+            "ROOT".to_string(),
+            SidedDataEntry {
+                client: "/meta".to_string(),
+                server: String::new(),
+            },
+        );
+        data.insert(
+            "BINPATCH".to_string(),
+            SidedDataEntry {
+                client: "/meta/libraries/patch.lzma".to_string(),
+                server: String::new(),
+            },
+        );
+
+        let args = [
+            "--task",
+            "PROCESS_MINECRAFT_JAR",
+            "--extract-libraries-to",
+            "{ROOT}/libraries/",
+            "--apply-patches",
+            "{BINPATCH}",
+        ];
+
+        let parsed = processor_arguments(Path::new("/libs"), &args, &data).unwrap();
+
+        assert_eq!(parsed.len(), args.len());
+        assert_eq!(parsed[3], "/meta/libraries/");
+        assert_eq!(parsed[4], "--apply-patches");
+        assert_eq!(parsed[5], "/meta/libraries/patch.lzma");
+    }
+
+    #[test]
+    fn an_unknown_placeholder_is_left_alone_rather_than_dropped() {
+        let data: HashMap<String, SidedDataEntry> = HashMap::new();
+        let args = ["--flag", "{NOPE}", "--after"];
+
+        let parsed = processor_arguments(Path::new("/libs"), &args, &data).unwrap();
+
+        assert_eq!(parsed, vec!["--flag", "{NOPE}", "--after"]);
+    }
+
+    #[test]
+    fn distinct_tweakers_both_survive() {
+        let mut args = vec![
+            "--tweakClass".to_string(),
+            "forge.FMLTweaker".to_string(),
+            "--tweakClass".to_string(),
+            "optifine.OptiFineTweaker".to_string(),
+            "--gameDir".to_string(),
+            "/games".to_string(),
+            "--gameDir".to_string(),
+            "/games".to_string(),
+        ];
+
+        drop_repeated_arguments(&mut args);
+
+        assert_eq!(args.iter().filter(|a| *a == "--tweakClass").count(), 2);
+        assert_eq!(args.iter().filter(|a| *a == "--gameDir").count(), 1);
     }
 }

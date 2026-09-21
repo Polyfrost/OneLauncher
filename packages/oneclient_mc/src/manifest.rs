@@ -225,6 +225,39 @@ impl MetadataStore {
 
         Ok(loaders)
     }
+
+    #[tracing::instrument(level = "debug", skip(self, ctx))]
+    pub async fn get_versions_for_loader(
+        &mut self,
+        ctx: &McCtx,
+        loader: GameLoader,
+    ) -> McResult<Option<Vec<String>>> {
+        if !self.initialized() {
+            self.initialize(ctx).await?;
+        }
+
+        if loader == GameLoader::Vanilla {
+            return Ok(None);
+        }
+
+        let Ok(manifest) = self.get_modded(loader) else {
+            return Ok(None);
+        };
+
+        let mut ids = Vec::with_capacity(manifest.game_versions.len());
+        for entry in &manifest.game_versions {
+            if entry.id.contains("${interpulse.gameVersion}")
+                || entry
+                    .id
+                    .contains(interfrost::api::modded::DUMMY_REPLACE_STRING)
+            {
+                return Ok(None);
+            }
+            ids.push(entry.id.clone());
+        }
+
+        Ok(Some(ids))
+    }
 }
 
 fn keep_fetched<T>(slot: &mut Option<T>, fetched: McResult<T>) {

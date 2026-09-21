@@ -8,7 +8,7 @@ use freya::elements::image::{AspectRatio, ImageCover, ImageHandle, image};
 use freya::engine::prelude::{SkData, SkImage};
 use freya::prelude::*;
 
-use crate::hooks::{settled_or_loading, use_local_image};
+use crate::hooks::{settled_or_loading, use_local_image, use_picked_image};
 use crate::theme::colors;
 
 #[derive(PartialEq)]
@@ -17,6 +17,7 @@ pub struct LocalImage {
     max_edge: u32,
     cover: bool,
     skeleton: bool,
+    picked: bool,
 }
 
 impl LocalImage {
@@ -26,7 +27,13 @@ impl LocalImage {
             max_edge,
             cover,
             skeleton: false,
+            picked: false,
         }
+    }
+
+    pub fn picked(mut self, picked: bool) -> Self {
+        self.picked = picked;
+        self
     }
 
     pub fn skeleton(mut self, skeleton: bool) -> Self {
@@ -37,9 +44,29 @@ impl LocalImage {
 
 impl Component for LocalImage {
     fn render(&self) -> impl IntoElement {
-        let query = use_local_image(self.path.clone(), self.max_edge);
+        let local = use_local_image(
+            if self.picked {
+                PathBuf::new()
+            } else {
+                self.path.clone()
+            },
+            self.max_edge,
+        );
+        let picked = use_picked_image(
+            if self.picked {
+                self.path.clone()
+            } else {
+                PathBuf::new()
+            },
+            self.max_edge,
+        );
 
-        let bytes: Option<Bytes> = settled_or_loading(&query);
+        let bytes: Option<Bytes> = if self.picked {
+            settled_or_loading(&picked)
+        } else {
+            settled_or_loading(&local)
+        }
+        .filter(|bytes: &Bytes| !bytes.is_empty());
 
         let mut cache = use_state(|| None::<(usize, ImageHandle)>);
         let holder = bytes.and_then(|bytes| {

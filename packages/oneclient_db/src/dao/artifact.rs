@@ -482,6 +482,11 @@ mod tests {
                 mc_loader_version: None,
                 setting_profile_name: None,
                 stage: 0,
+                kind: 0,
+                user_created: 0,
+                description: None,
+                tags: "[]",
+                cover_path: None,
             },
         )
         .await

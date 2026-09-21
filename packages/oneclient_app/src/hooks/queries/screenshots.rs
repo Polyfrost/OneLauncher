@@ -50,6 +50,10 @@ impl QueryCapability for LocalImageQuery {
     type Keys = LocalImageKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        if keys.path.as_os_str().is_empty() {
+            return Ok(Bytes::new());
+        }
+
         let path = keys.path.clone();
         let max_edge = (keys.max_edge != 0).then_some(keys.max_edge);
 
@@ -78,6 +82,50 @@ pub fn use_cluster_screenshots(cluster_id: i64) -> UseQuery<ClusterScreenshotsQu
     use_query(Query::new(
         ClusterScreenshotsKeys { cluster_id },
         ClusterScreenshotsQuery,
+    ))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PickedImageQuery;
+
+impl QueryCapability for PickedImageQuery {
+    type Ok = Bytes;
+    type Err = LauncherError;
+    type Keys = LocalImageKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        if keys.path.as_os_str().is_empty() {
+            return Ok(Bytes::new());
+        }
+
+        let path = keys.path.clone();
+        let max_edge = (keys.max_edge != 0).then_some(keys.max_edge);
+
+        let _permit = if max_edge.is_some() {
+            let sem = LOCAL_IMAGE_SEMAPHORE
+                .get_or_init(|| Arc::new(Semaphore::new(1)))
+                .clone();
+            Some(
+                sem.acquire_owned()
+                    .await
+                    .map_err(|_| LauncherError::Minecraft("local image semaphore closed".into()))?,
+            )
+        } else {
+            None
+        };
+
+        Ok(
+            tokio::task::spawn_blocking(move || oneclient_core::load_picked_image(&path, max_edge))
+                .await
+                .map_err(|e| LauncherError::Minecraft(e.to_string()))??,
+        )
+    }
+}
+
+pub fn use_picked_image(path: PathBuf, max_edge: u32) -> UseQuery<PickedImageQuery> {
+    use_query(Query::new(
+        LocalImageKeys { path, max_edge },
+        PickedImageQuery,
     ))
 }
 

@@ -1,6 +1,10 @@
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
+use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::LiveSync;
-use oneclient_db::models::ClusterId;
+use oneclient_core::BundleArchive;
+use oneclient_db::models::{ClusterId, ClusterKind, OverrideType};
+use std::collections::HashSet;
+use std::path::PathBuf;
 
 use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
 use super::cluster_content::ClusterContentQuery;
@@ -101,6 +105,36 @@ pub async fn invalidate_profile_queries() {
     QueriesStorage::<ListClustersQuery>::invalidate_all().await;
 }
 
+fn bundle_selection_overrides(
+    archives: &[BundleArchive],
+    selected: &[String],
+) -> Vec<(String, String, OverrideType)> {
+    let taken = |archive: &BundleArchive| selected.contains(&archive.manifest.name);
+
+    let mut kept: HashSet<String> = HashSet::new();
+    for archive in archives.iter().filter(|archive| taken(archive)) {
+        for file in archive.manifest.files.iter().filter(|file| file.enabled) {
+            kept.insert(file.kind.package_id());
+        }
+    }
+
+    let mut overrides = Vec::new();
+    for archive in archives.iter().filter(|archive| !taken(archive)) {
+        for file in archive.manifest.files.iter().filter(|file| file.enabled) {
+            let package_id = file.kind.package_id();
+            if kept.contains(&package_id) {
+                continue;
+            }
+            overrides.push((
+                archive.manifest.name.clone(),
+                package_id,
+                OverrideType::Removed,
+            ));
+        }
+    }
+    overrides
+}
+
 #[derive(Clone, PartialEq, Eq, Hash)]
 pub struct ClusterMutation;
 
@@ -133,6 +167,28 @@ pub enum ClusterAction {
         dedicated: bool,
     },
     VerifyFiles {
+        cluster_id: ClusterId,
+    },
+    CreateInstance {
+        kind: ClusterKind,
+        name: String,
+        mc_version: String,
+        mc_loader: GameLoader,
+        mc_loader_version: Option<String>,
+        description: Option<String>,
+        tags: Vec<String>,
+        cover_source: Option<PathBuf>,
+        bundles: Option<Vec<String>>,
+    },
+    UpdateInstance {
+        cluster_id: ClusterId,
+        name: String,
+        description: Option<String>,
+        tags: Vec<String>,
+        cover_source: Option<PathBuf>,
+        clear_cover: bool,
+    },
+    DeleteInstance {
         cluster_id: ClusterId,
     },
 }
@@ -219,6 +275,158 @@ impl MutationCapability for ClusterMutation {
                     Err(err) => Err(oneclient_content::ContentError::InvalidData {
                         reason: err.to_string(),
                     }),
+                }
+            }
+            ClusterAction::CreateInstance {
+                kind,
+                name,
+                mc_version,
+                mc_loader,
+                mc_loader_version,
+                description,
+                tags,
+                cover_source,
+                bundles,
+            } => {
+                let global = state.settings.read().global_game_settings.clone();
+                let mut options = oneclient_core::clusters::CreateClusterOptions::new(
+                    name.clone(),
+                    mc_version.clone(),
+                    *mc_loader,
+                )
+                .kind(*kind)
+                .user_created(true)
+                .tags(tags.clone());
+                options.mc_loader_version = mc_loader_version.clone();
+                options.description = description.clone();
+
+                match state.clusters.create(&global, options).await {
+                    Ok(cluster) => {
+                        services
+                            .events
+                            .signal(oneclient_events::Signal::ClustersChanged);
+
+                        if let Some(source) = cover_source {
+                            match state.clusters.set_cover_from_file(cluster.id, source).await {
+                                Ok(file_name) => {
+                                    let update = oneclient_core::clusters::ClusterUpdate {
+                                        cover_path: oneclient_common::Patch::Set(file_name),
+                                        ..Default::default()
+                                    };
+                                    if let Err(err) =
+                                        state.clusters.update(cluster.id, update).await
+                                    {
+                                        tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the instance cover");
+                                    }
+                                }
+                                Err(err) => {
+                                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to store the instance cover");
+                                }
+                            }
+                        }
+
+                        if cluster.uses_bundles() {
+                            if let Some(selected) = bundles {
+                                let archives = state
+                                    .bundles
+                                    .archives_for(content, &cluster.mc_version, cluster.mc_loader)
+                                    .await
+                                    .unwrap_or_default();
+                                let overrides = bundle_selection_overrides(&archives, selected);
+                                if let Err(err) = oneclient_core::set_bundle_package_overrides(
+                                    cluster.id, &overrides, content,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
+                                }
+                            }
+
+                            let session = oneclient_events::GroupedProgressSession::start(
+                                &services.events,
+                                format!("Setting up {}", cluster.name),
+                            );
+                            if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
+                                cluster.id,
+                                state.bundles.as_ref(),
+                                Some(&session),
+                                content,
+                            )
+                            .await
+                            {
+                                tracing::warn!(cluster_id = cluster.id, error = %err, "failed to install bundle content for the new instance");
+                            }
+                            session.finish();
+                        }
+                        Ok(())
+                    }
+                    Err(err) => Err(oneclient_content::ContentError::InvalidData {
+                        reason: err.to_string(),
+                    }),
+                }
+            }
+            ClusterAction::UpdateInstance {
+                cluster_id,
+                name,
+                description,
+                tags,
+                cover_source,
+                clear_cover,
+            } => {
+                let cover = if *clear_cover {
+                    state.clusters.clear_cover(*cluster_id).await.ok();
+                    oneclient_common::Patch::Clear
+                } else if let Some(source) = cover_source {
+                    match state.clusters.set_cover_from_file(*cluster_id, source).await {
+                        Ok(file_name) => oneclient_common::Patch::Set(file_name),
+                        Err(err) => {
+                            tracing::warn!(cluster_id, error = %err, "failed to store the instance cover");
+                            oneclient_common::Patch::Unchanged
+                        }
+                    }
+                } else {
+                    oneclient_common::Patch::Unchanged
+                };
+
+                let update = oneclient_core::clusters::ClusterUpdate {
+                    name: Some(name.clone()),
+                    description: match description {
+                        Some(text) => oneclient_common::Patch::Set(text.clone()),
+                        None => oneclient_common::Patch::Clear,
+                    },
+                    tags: Some(tags.clone()),
+                    cover_path: cover,
+                    ..Default::default()
+                };
+
+                state
+                    .clusters
+                    .update(*cluster_id, update)
+                    .await
+                    .map(|_| ())
+                    .map_err(|err| oneclient_content::ContentError::InvalidData {
+                        reason: err.to_string(),
+                    })
+            }
+            ClusterAction::DeleteInstance { cluster_id } => {
+                if state.games.is_active(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Close the game before deleting this instance.".to_string(),
+                    })
+                } else {
+                    let outcome = state
+                        .clusters
+                        .delete(*cluster_id, true)
+                        .await
+                        .map_err(|err| oneclient_content::ContentError::InvalidData {
+                            reason: err.to_string(),
+                        });
+                    if outcome.is_ok() {
+                        services
+                            .events
+                            .signal(oneclient_events::Signal::ClustersChanged);
+                    }
+                    outcome
                 }
             }
         };

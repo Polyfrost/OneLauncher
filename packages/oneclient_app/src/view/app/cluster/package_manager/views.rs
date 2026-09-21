@@ -295,6 +295,12 @@ pub(super) fn global_notice(noun_plural: &'static str) -> Element {
     ))
 }
 
+pub(super) fn instance_only_notice(noun_plural: &'static str) -> Element {
+    notice_bar(format!(
+        "These {noun_plural} belong to this instance alone. Adding one here does not touch your other instances."
+    ))
+}
+
 fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()

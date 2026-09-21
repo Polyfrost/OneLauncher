@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use oneclient_common::domain::GameLoader;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::{
     BundleArchive, BundleUpdateCheckResult, BundleWithUpdateStatus, LauncherError,
@@ -168,4 +169,45 @@ pub fn use_bundle_updates(cluster_id: ClusterId) -> UseQuery<BundleUpdatesQuery>
         BundleUpdatesKeys { cluster_id },
         BundleUpdatesQuery { cluster_id },
     ))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AvailableBundlesQuery;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AvailableBundlesKeys {
+    pub mc_version: String,
+    pub loader: GameLoader,
+}
+
+impl QueryCapability for AvailableBundlesQuery {
+    type Ok = Vec<BundleArchive>;
+    type Err = LauncherError;
+    type Keys = AvailableBundlesKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        if keys.mc_version.is_empty() {
+            return Ok(Vec::new());
+        }
+        let state = crate::launcher::state()?;
+        Ok(state
+            .bundles
+            .archives_for(&state.services.content(), &keys.mc_version, keys.loader)
+            .await
+            .unwrap_or_default())
+    }
+}
+
+pub fn use_available_bundles(
+    mc_version: String,
+    loader: GameLoader,
+) -> UseQuery<AvailableBundlesQuery> {
+    use_query(Query::new(
+        AvailableBundlesKeys { mc_version, loader },
+        AvailableBundlesQuery,
+    ))
+}
+
+pub fn available_bundles(query: &UseQuery<AvailableBundlesQuery>) -> Option<Vec<BundleArchive>> {
+    super::state::settled_or_loading(query)
 }

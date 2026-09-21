@@ -77,6 +77,24 @@ pub fn line_art_key(line: ReleaseLine, clusters: &[Cluster]) -> Option<VersionKe
     sole_version_key(clusters).or_else(|| line.art_key())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GridSelection {
+    Line(ReleaseLine),
+    Instance(i64),
+}
+
+pub fn split_clusters(clusters: &[Cluster]) -> (ClusterGroups, Vec<Cluster>) {
+    let (instances, provisioned): (Vec<Cluster>, Vec<Cluster>) = clusters
+        .iter()
+        .cloned()
+        .partition(|cluster| cluster.user_created);
+
+    (
+        group_clusters_by_release(&provisioned),
+        sort_clusters_for_home(instances),
+    )
+}
+
 pub fn group_clusters_by_release(clusters: &[Cluster]) -> ClusterGroups {
     let mut groups: ClusterGroups = BTreeMap::new();
 

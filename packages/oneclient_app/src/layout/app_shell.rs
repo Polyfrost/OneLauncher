@@ -17,6 +17,7 @@ use crate::layout::AnimatedAppOutlet;
 use crate::theme;
 use crate::use_settings_snapshot;
 use oneclient_core::clusters::Cluster;
+use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
 use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
@@ -274,6 +275,7 @@ fn home_cluster(clusters: &[Cluster], active: Option<ClusterId>) -> Option<&Clus
 fn home_art(cluster: Option<&Cluster>) -> DynamicArt {
     cluster
         .map_or_else(DynamicArt::fallback, DynamicArt::for_cluster)
+        .max_edge(BACKGROUND_IMAGE_EDGE)
         .preview_edge(ART_PREVIEW_EDGE)
 }
 

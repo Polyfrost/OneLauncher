@@ -13,6 +13,8 @@ use polyio::sha1_bytes;
 
 pub const DEFAULT_IMAGE_EDGE: u32 = 1200;
 
+pub const BACKGROUND_IMAGE_EDGE: u32 = 2560;
+
 /// Image urls come from untrusted remote descriptions, so cap what is fetched and decoded.
 const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 
@@ -135,6 +137,10 @@ static DECODE_LIMIT: std::sync::LazyLock<tokio::sync::Semaphore> =
     std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(2));
 
 async fn downscale_if_oversized(bytes: Bytes, max_edge: u32) -> Bytes {
+    if max_edge == 0 {
+        return bytes;
+    }
+
     let _permit = DECODE_LIMIT.acquire().await;
     let candidate = bytes.clone();
     match tokio::task::spawn_blocking(move || downscale(&candidate, max_edge)).await {

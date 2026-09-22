@@ -69,6 +69,7 @@ const UI_FLOOD_TARGETS: &[&str] = &[
     "freya_core::runner",
     "freya_core::tree",
     "freya_winit::renderer",
+	"freya::metrics",
     "ragnarok::executor",
     "ragnarok::nodes_state",
     "torin::torin",

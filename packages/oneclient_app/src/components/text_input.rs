@@ -12,7 +12,7 @@ const EXPANDED_HEIGHT: f32 = 180.;
 
 fn text_input(value: impl Into<Writable<String>>) -> Input {
     Input::new(value)
-        .inner_margin(Gaps::new_symmetric(GAP_VERT, GAP_HORI))
+        .padding(Gaps::new_symmetric(GAP_VERT, GAP_HORI))
         .corner_radius(CornerRadius::new_all(8.))
         .background(colors::component_bg())
         .focus_background(colors::component_bg_pressed())
@@ -282,7 +282,7 @@ impl Component for TextInput {
                     el = el.text_align(text_align);
 
                     if text_align == TextAlign::Center {
-                        el = el.inner_margin(Gaps::new_symmetric(GAP_VERT, 0.));
+                        el = el.padding(Gaps::new_symmetric(GAP_VERT, 0.));
                     }
 
                     el

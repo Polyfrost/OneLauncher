@@ -52,7 +52,7 @@ pub use bundles::{
     use_onboarding_bundles,
 };
 pub use changelog::{
-    changelog_error, changelog_groups, changelog_is_loading, latest_changelog_version,
+    changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,
     use_changelog,
 };
 pub use cluster_content::{cluster_content_items, use_cluster_content};

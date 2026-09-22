@@ -1,38 +1,30 @@
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
-use oneclient_core::{ChangelogGroup, LauncherError, fetch_changelog, parse_changelog};
-
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct ChangelogKeys {
-    pub meta_url_base: String,
-}
+use oneclient_core::{ChangelogEntry, LauncherError, fetch_changelog};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ChangelogQuery;
 
 impl QueryCapability for ChangelogQuery {
-    type Ok = Vec<ChangelogGroup>;
+    type Ok = Vec<ChangelogEntry>;
     type Err = LauncherError;
-    type Keys = ChangelogKeys;
+    type Keys = ();
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let markdown = fetch_changelog(&state.services.requester).await?;
-        Ok(parse_changelog(&markdown))
+        fetch_changelog(&state.services.requester).await
     }
 }
 
 pub fn use_changelog() -> UseQuery<ChangelogQuery> {
-    let meta_url_base = super::use_meta_url_key();
-
-    use_query(Query::new(ChangelogKeys { meta_url_base }, ChangelogQuery))
+    use_query(Query::new((), ChangelogQuery))
 }
 
-pub fn changelog_groups(query: &UseQuery<ChangelogQuery>) -> Option<Vec<ChangelogGroup>> {
+pub fn changelog_entries(query: &UseQuery<ChangelogQuery>) -> Option<Vec<ChangelogEntry>> {
     super::state::settled_or_loading(query)
 }
 
 pub fn latest_changelog_version(query: &UseQuery<ChangelogQuery>) -> Option<String> {
-    changelog_groups(query).and_then(|groups| groups.first().map(|group| group.version.clone()))
+    changelog_entries(query).and_then(|entries| entries.first().map(|entry| entry.version.clone()))
 }
 
 pub fn changelog_error(query: &UseQuery<ChangelogQuery>) -> Option<String> {

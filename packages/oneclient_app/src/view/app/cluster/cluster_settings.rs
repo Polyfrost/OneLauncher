@@ -60,7 +60,7 @@ impl Component for ClusterSettings {
             return cluster_content().child(centered_note(&note)).into_element();
         };
 
-        let versions = loader_versions(&versions_query);
+        let versions = loader_versions(&versions_query).to_vec();
         let runtimes = java_runtimes(&runtimes_query);
 
         let instance_section: Vec<Element> = if cluster.user_created {

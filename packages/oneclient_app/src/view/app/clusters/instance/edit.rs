@@ -2,13 +2,11 @@ use std::path::PathBuf;
 
 use freya::prelude::*;
 use oneclient_common::domain::GameLoader;
-use oneclient_common::parse_mc_version;
 use oneclient_core::clusters::ClusterKind;
 
 use super::details::{DetailsState, details_body};
-use super::rail::{Rail, facts_card, rail};
+use super::rail::{Rail, facts_card, rail, version_art};
 use super::shell::{Shell, shell};
-use crate::components::DynamicArt;
 use crate::hooks::{ClusterAction, use_cluster_mutation};
 
 #[derive(Clone, PartialEq)]
@@ -80,13 +78,7 @@ impl Component for EditInstanceModal {
             typed.clone()
         };
 
-        let parsed = parse_mc_version(&self.facts.mc_version);
-        let art = match parsed {
-            Some(parsed) => {
-                DynamicArt::for_version(parsed.major, parsed.key(), Some(self.facts.mc_loader))
-            }
-            None => DynamicArt::fallback(),
-        };
+        let art = version_art(Some(&self.facts.mc_version), Some(self.facts.mc_loader));
         let art = match &preview {
             Some((path, true)) => art.picked_cover(Some(path.clone())),
             Some((path, false)) => art.cover(Some(path.clone())),

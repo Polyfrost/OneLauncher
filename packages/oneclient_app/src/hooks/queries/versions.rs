@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
@@ -58,7 +58,7 @@ pub struct LoaderVersionsKeys {
 }
 
 impl QueryCapability for LoaderVersionsQuery {
-    type Ok = Vec<String>;
+    type Ok = Arc<[String]>;
     type Err = LauncherError;
     type Keys = LoaderVersionsKeys;
 
@@ -71,7 +71,8 @@ impl QueryCapability for LoaderVersionsQuery {
             &keys.mc_version,
             keys.loader,
         )
-        .await?)
+        .await?
+        .into())
     }
 }
 
@@ -85,8 +86,8 @@ pub fn use_loader_versions(
     ))
 }
 
-pub fn loader_versions(query: &UseQuery<LoaderVersionsQuery>) -> Vec<String> {
-    super::state::settled_or_loading(query).unwrap_or_default()
+pub fn loader_versions(query: &UseQuery<LoaderVersionsQuery>) -> Arc<[String]> {
+    super::state::settled_or_loading(query).unwrap_or_else(|| Arc::from([]))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -182,35 +183,59 @@ pub struct LoaderGameVersionsQuery;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct LoaderGameVersionsKeys {
     pub loader: GameLoader,
+    pub with_legacy: bool,
 }
 
+pub type LoaderVersionSet = Option<Arc<HashSet<String>>>;
+
 impl QueryCapability for LoaderGameVersionsQuery {
-    type Ok = Option<Vec<String>>;
+    type Ok = LoaderVersionSet;
     type Err = LauncherError;
     type Keys = LoaderGameVersionsKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let mut metadata = state.metadata.lock().await;
-        Ok(oneclient_core::get_versions_for_loader(
-            &mut metadata,
-            &state.services.mc(),
-            keys.loader,
-        )
-        .await?)
+        let keys = *keys;
+
+        tokio::spawn(async move {
+            let mc = state.services.mc();
+            let mut metadata = state.metadata.lock().await;
+
+            let Some(mut ids) =
+                oneclient_core::get_versions_for_loader(&mut metadata, &mc, keys.loader).await?
+            else {
+                return Ok(None);
+            };
+
+            if keys.with_legacy
+                && let Some(legacy) =
+                    oneclient_core::get_versions_for_loader(&mut metadata, &mc, GameLoader::Ornithe)
+                        .await?
+            {
+                ids.extend(legacy);
+            }
+
+            Ok(Some(Arc::new(ids.into_iter().collect::<HashSet<String>>())))
+        })
+        .await
+        .map_err(|err| LauncherError::Minecraft(err.to_string()))?
     }
 }
 
-pub fn use_loader_game_versions(loader: GameLoader) -> UseQuery<LoaderGameVersionsQuery> {
+pub fn use_loader_game_versions(
+    loader: GameLoader,
+    with_legacy: bool,
+) -> UseQuery<LoaderGameVersionsQuery> {
     use_query(Query::new(
-        LoaderGameVersionsKeys { loader },
+        LoaderGameVersionsKeys {
+            loader,
+            with_legacy,
+        },
         LoaderGameVersionsQuery,
     ))
 }
 
-pub fn loader_game_versions(
-    query: &UseQuery<LoaderGameVersionsQuery>,
-) -> Option<Option<Vec<String>>> {
+pub fn loader_game_versions(query: &UseQuery<LoaderGameVersionsQuery>) -> Option<LoaderVersionSet> {
     super::state::settled_or_loading(query)
 }
 

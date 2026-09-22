@@ -1,4 +1,6 @@
 use freya::prelude::*;
+use oneclient_common::domain::GameLoader;
+use oneclient_common::parse_mc_version;
 
 use super::shell::RAIL_WIDTH;
 use crate::components::{DynamicArt, Icon, IconType};
@@ -24,6 +26,13 @@ pub struct Rail {
     pub subtitle: String,
     pub card: Element,
     pub tags: Vec<String>,
+}
+
+pub fn version_art(version: Option<&str>, loader: Option<GameLoader>) -> DynamicArt {
+    match version.and_then(parse_mc_version) {
+        Some(parsed) => DynamicArt::for_version(parsed.major, parsed.key(), loader),
+        None => DynamicArt::fallback(),
+    }
 }
 
 pub fn steps_card(progress: String, rows: Vec<(&'static str, String, RowState)>) -> Element {

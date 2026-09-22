@@ -53,6 +53,15 @@ impl DetailsState {
         }
     }
 
+    pub fn effective_name(&self, suggested: &str) -> String {
+        let typed = self.typed_name();
+        if *self.name_touched.read() && !typed.is_empty() {
+            typed
+        } else {
+            suggested.to_string()
+        }
+    }
+
     pub fn typed_name(&self) -> String {
         self.name.read().trim().to_string()
     }

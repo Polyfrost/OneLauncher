@@ -3,9 +3,13 @@ use std::collections::HashMap;
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 use oneclient_core::{BundleArchive, BundleFile, BundleFileKind};
 
+mod cards;
+mod copy;
 mod create;
+mod data;
 mod details;
 mod edit;
+mod model;
 mod rail;
 mod shell;
 mod steps;

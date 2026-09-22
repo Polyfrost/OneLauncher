@@ -33,6 +33,7 @@ rust-embed.workspace = true
 
 tracing.workspace = true
 tracing-subscriber.workspace = true
+futures-util.workspace = true
 tokio.workspace = true
 uuid.workspace = true
 bytes.workspace = true

@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
 use oneclient_common::domain::GameLoader;
@@ -181,20 +182,21 @@ pub struct AvailableBundlesKeys {
 }
 
 impl QueryCapability for AvailableBundlesQuery {
-    type Ok = Vec<BundleArchive>;
+    type Ok = Arc<[BundleArchive]>;
     type Err = LauncherError;
     type Keys = AvailableBundlesKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         if keys.mc_version.is_empty() {
-            return Ok(Vec::new());
+            return Ok(Arc::from([]));
         }
         let state = crate::launcher::state()?;
         Ok(state
             .bundles
             .archives_for(&state.services.content(), &keys.mc_version, keys.loader)
             .await
-            .unwrap_or_default())
+            .unwrap_or_default()
+            .into())
     }
 }
 
@@ -208,6 +210,6 @@ pub fn use_available_bundles(
     ))
 }
 
-pub fn available_bundles(query: &UseQuery<AvailableBundlesQuery>) -> Option<Vec<BundleArchive>> {
+pub fn available_bundles(query: &UseQuery<AvailableBundlesQuery>) -> Option<Arc<[BundleArchive]>> {
     super::state::settled_or_loading(query)
 }

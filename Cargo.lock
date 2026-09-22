@@ -4873,6 +4873,7 @@ dependencies = [
  "freya-core",
  "freya-skia-safe",
  "freya-testing",
+ "futures-util",
  "image",
  "mimalloc",
  "notify",

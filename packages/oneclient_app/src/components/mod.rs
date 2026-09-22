@@ -1,5 +1,6 @@
 mod account_switcher;
 mod active_cluster_panel;
+mod asset_image;
 mod avatar;
 mod button;
 mod charts;
@@ -37,6 +38,7 @@ mod recents_row;
 mod screenshot_viewer;
 mod scrollview;
 mod segmented_control;
+mod spinner;
 mod splash_curtain;
 mod status_bar;
 mod tab_bar;
@@ -50,6 +52,7 @@ mod version_card;
 
 pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
+pub use asset_image::AssetImage;
 pub use avatar::Avatar;
 pub use button::{Button, ButtonSize, ButtonVariant, link_button, open_folder_button};
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
@@ -80,7 +83,9 @@ pub use navbar::{AppNavbar, OnboardingNavbar};
 pub use notifications::NotificationCenter;
 pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
-pub(crate) use package_row::{CARD_GRID_H, GRID_GAP, GRID_MIN_W, grid_card, package_icon};
+pub(crate) use package_row::{
+    CARD_GRID_H, GRID_GAP, GRID_MIN_W, filled_pill, grid_card, package_icon, pill,
+};
 pub use package_row::{CardLayout, PackageEntry, PackageRow, provider_badge};
 pub use package_update_popup::PackageUpdatePopup;
 pub use pagination::Pagination;
@@ -91,6 +96,7 @@ pub use screenshot_viewer::{ScreenshotViewer, screenshot_context_menu};
 pub(crate) use scrollview::corrected_scroll;
 pub use scrollview::{ScrollArea, ScrollAreaCtx};
 pub use segmented_control::{Segment, SegmentedControl};
+pub use spinner::centered_spinner;
 pub use splash_curtain::SplashCurtain;
 pub use status_bar::StatusBar;
 pub use tab_bar::{TabBar, TabItem};

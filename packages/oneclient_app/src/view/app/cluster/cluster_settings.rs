@@ -16,7 +16,7 @@ use crate::hooks::{
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
-use crate::view::app::clusters::{DeleteInstanceModal, EditInstanceModal};
+use crate::view::app::clusters::{DeleteInstanceModal, EditInstanceModal, InstanceFacts};
 use crate::view::app::settings::{section_header, settings_row, settings_row_disabled};
 
 use super::cluster_not_found;
@@ -67,11 +67,16 @@ impl Component for ClusterSettings {
             vec![
                 section_header("INSTANCE").into_element(),
                 InstanceRow {
-                    cluster_id,
-                    name: cluster.name.clone(),
-                    description: cluster.description.clone(),
-                    tags: cluster.tags.clone(),
-                    cover: cluster.cover_file(),
+                    facts: InstanceFacts {
+                        cluster_id,
+                        name: cluster.name.clone(),
+                        description: cluster.description.clone(),
+                        tags: cluster.tags.clone(),
+                        cover: cluster.cover_file(),
+                        mc_version: cluster.mc_version.clone(),
+                        mc_loader: cluster.mc_loader,
+                        kind: cluster.kind,
+                    },
                 }
                 .into_element(),
             ]
@@ -281,23 +286,16 @@ impl Component for ToggleRow {
 
 #[derive(PartialEq)]
 struct InstanceRow {
-    cluster_id: i64,
-    name: String,
-    description: Option<String>,
-    tags: Vec<String>,
-    cover: Option<std::path::PathBuf>,
+    facts: InstanceFacts,
 }
 
 impl Component for InstanceRow {
     fn render(&self) -> impl IntoElement {
         let mut editing = use_state(|| false);
         let mut deleting = use_state(|| false);
-        let cluster_id = self.cluster_id;
-        let name = self.name.clone();
-        let edit_name = self.name.clone();
-        let edit_description = self.description.clone();
-        let edit_tags = self.tags.clone();
-        let edit_cover = self.cover.clone();
+        let cluster_id = self.facts.cluster_id;
+        let name = self.facts.name.clone();
+        let facts = self.facts.clone();
 
         let buttons = rect()
             .horizontal()
@@ -327,14 +325,7 @@ impl Component for InstanceRow {
                 buttons,
             ))
             .maybe_child(editing.read().then(|| {
-                EditInstanceModal::new(
-                    cluster_id,
-                    edit_name.clone(),
-                    edit_description.clone(),
-                    edit_tags.clone(),
-                    edit_cover.clone(),
-                    move |()| editing.set(false),
-                )
+                EditInstanceModal::new(facts.clone(), move |()| editing.set(false))
                 .into_element()
             }))
             .maybe_child(deleting.read().then(|| {

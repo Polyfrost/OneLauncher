@@ -76,9 +76,13 @@ impl Component for ActiveClusterPanel {
         };
 
         let title = format!("{} {}", cluster.mc_version, cluster.mc_loader);
-        let subtitle = metadata
-            .map(|m| m.name)
-            .unwrap_or_else(|| cluster.name.clone());
+        let subtitle = if cluster.user_created {
+            cluster.name.clone()
+        } else {
+            metadata
+                .map(|m| m.name)
+                .unwrap_or_else(|| cluster.name.clone())
+        };
         let cluster_id = cluster.id;
 
         rect()

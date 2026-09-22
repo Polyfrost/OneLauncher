@@ -1,9 +1,9 @@
 use freya::prelude::*;
-use oneclient_common::parse_mc_version;
 
-use super::{Picks, RAIL_WIDTH, Step, TypeChoice, Wizard};
+use super::shell::RAIL_WIDTH;
 use crate::components::{DynamicArt, Icon, IconType};
 use crate::theme::colors;
+use crate::ui::border_all_color;
 
 const CARD_BG: Color = Color::from_argb(158, 11, 16, 19);
 const HAIRLINE: Color = Color::from_argb(31, 255, 255, 255);
@@ -11,63 +11,66 @@ const CHIP_BG: Color = Color::from_argb(26, 255, 255, 255);
 const SUB: Color = Color::from_argb(184, 213, 219, 255);
 const MUTED: Color = Color::from_argb(140, 213, 219, 255);
 
-fn art(picks: &Picks, cover: Option<std::path::PathBuf>) -> DynamicArt {
-    let parsed = picks.version.as_deref().and_then(parse_mc_version);
-    match parsed {
-        Some(parsed) => DynamicArt::for_version(parsed.major, parsed.key(), picks.loader),
-        None => DynamicArt::fallback(),
-    }
-    .picked_cover(cover)
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum RowState {
+    Done,
+    Current,
+    Pending,
 }
 
-fn step_value(picks: &Picks, step: Step, tags: usize) -> String {
-    match step {
-        Step::Type => match picks.choice {
-            Some(TypeChoice::OneClient) => "OneClient".to_string(),
-            Some(TypeChoice::Scratch) => "From scratch".to_string(),
-            None => String::new(),
-        },
-        Step::Loader => picks.loader_label(),
-        Step::Version => picks
-            .version
-            .clone()
-            .unwrap_or_else(|| "Not chosen".to_string()),
-        Step::Bundles => {
-            let taken = picks.taken_bundles().len();
-            if taken == 0 {
-                "None".to_string()
-            } else {
-                format!("{taken} selected")
-            }
-        }
-        Step::Customize => match tags {
-            0 => "Optional".to_string(),
-            1 => "1 tag".to_string(),
-            many => format!("{many} tags"),
-        },
-    }
+pub struct Rail {
+    pub art: DynamicArt,
+    pub title: String,
+    pub subtitle: String,
+    pub card: Element,
+    pub tags: Vec<String>,
 }
 
-fn step_row(picks: &Picks, position: usize, step: Step, tags: usize) -> Element {
-    let done = position < picks.index;
-    let now = position == picks.index;
+pub fn steps_card(progress: String, rows: Vec<(&'static str, String, RowState)>) -> Element {
+    card(
+        progress,
+        rows.into_iter()
+            .enumerate()
+            .map(|(index, (name, value, state))| step_row(index, name, &value, state))
+            .collect(),
+    )
+}
 
-    let dot_bg = if done {
-        colors::brand()
-    } else {
-        Color::TRANSPARENT
-    };
-    let dot_border = if done || now {
-        colors::brand()
-    } else {
-        HAIRLINE
-    };
+pub fn facts_card(heading: String, rows: Vec<(&'static str, String)>) -> Element {
+    card(
+        heading,
+        rows.into_iter()
+            .map(|(name, value)| fact_row(name, &value))
+            .collect(),
+    )
+}
 
-    let value = if done || now {
-        step_value(picks, step, tags)
-    } else {
-        String::new()
-    };
+fn card(heading: String, rows: Vec<Element>) -> Element {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(12.)
+        .child(
+            label()
+                .text(heading)
+                .font_size(11.)
+                .font_weight(FontWeight::MEDIUM)
+                .letter_spacing(1.6)
+                .color(SUB),
+        )
+        .child(
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(10.)
+                .children(rows),
+        )
+        .into_element()
+}
+
+fn step_row(index: usize, name: &'static str, value: &str, state: RowState) -> Element {
+    let done = state == RowState::Done;
+    let now = state == RowState::Current;
 
     rect()
         .horizontal()
@@ -81,8 +84,19 @@ fn step_row(picks: &Picks, position: usize, step: Step, tags: usize) -> Element 
                 .height(Size::px(20.))
                 .center()
                 .corner_radius(CornerRadius::new_all(6.))
-                .background(dot_bg)
-                .border(crate::ui::border_all_color(1., dot_border))
+                .background(if done {
+                    colors::brand()
+                } else {
+                    Color::TRANSPARENT
+                })
+                .border(border_all_color(
+                    1.,
+                    if done || now {
+                        colors::brand()
+                    } else {
+                        HAIRLINE
+                    },
+                ))
                 .child(if done {
                     Icon::new(IconType::Check)
                         .size(12.)
@@ -90,7 +104,7 @@ fn step_row(picks: &Picks, position: usize, step: Step, tags: usize) -> Element 
                         .into_element()
                 } else {
                     label()
-                        .text((position + 1).to_string())
+                        .text((index + 1).to_string())
                         .font_size(11.)
                         .font_weight(FontWeight::MEDIUM)
                         .color(if now { Color::WHITE } else { MUTED })
@@ -99,7 +113,7 @@ fn step_row(picks: &Picks, position: usize, step: Step, tags: usize) -> Element 
         )
         .child(
             label()
-                .text(step.label())
+                .text(name)
                 .width(Size::px(76.))
                 .font_size(12.)
                 .max_lines(1)
@@ -107,7 +121,7 @@ fn step_row(picks: &Picks, position: usize, step: Step, tags: usize) -> Element 
         )
         .child(
             label()
-                .text(value)
+                .text(value.to_string())
                 .width(Size::flex(1.0))
                 .font_size(13.)
                 .font_weight(FontWeight::MEDIUM)
@@ -118,34 +132,42 @@ fn step_row(picks: &Picks, position: usize, step: Step, tags: usize) -> Element 
         .into_element()
 }
 
-pub fn rail(wizard: Wizard, picks: &Picks) -> Element {
-    let cover = wizard.cover.read().clone();
-    let description = wizard.description.read().trim().to_string();
-    let tags = wizard.tags.read().clone();
+fn fact_row(name: &'static str, value: &str) -> Element {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(11.)
+        .child(
+            label()
+                .text(name)
+                .width(Size::px(76.))
+                .font_size(12.)
+                .max_lines(1)
+                .color(SUB),
+        )
+        .child(
+            label()
+                .text(value.to_string())
+                .width(Size::flex(1.0))
+                .font_size(13.)
+                .font_weight(FontWeight::MEDIUM)
+                .max_lines(1)
+                .text_align(TextAlign::Right)
+                .color(Color::WHITE),
+        )
+        .into_element()
+}
 
-    let title = if picks.name.trim().is_empty() {
-        "New instance".to_string()
-    } else {
-        picks.name.clone()
-    };
-
-    let subtitle = if description.is_empty() {
-        match picks.choice {
-            None => "Pick a type to get started".to_string(),
-            Some(TypeChoice::OneClient) => match &picks.version {
-                Some(version) => format!("OneClient · {version}"),
-                None => "OneClient".to_string(),
-            },
-            Some(TypeChoice::Scratch) => match &picks.version {
-                Some(version) => format!("{version} · {}", picks.loader_label()),
-                None => picks.loader_label(),
-            },
-        }
-    } else {
-        description
-    };
-
-    let show_tags = picks.step == Step::Customize && !tags.is_empty();
+pub fn rail(parts: Rail) -> Element {
+    let Rail {
+        art,
+        title,
+        subtitle,
+        card,
+        tags,
+    } = parts;
 
     rect()
         .width(Size::px(RAIL_WIDTH))
@@ -156,7 +178,7 @@ pub fn rail(wizard: Wizard, picks: &Picks) -> Element {
                 .width(Size::fill())
                 .height(Size::fill())
                 .position(Position::new_absolute())
-                .child(art(picks, cover)),
+                .child(art),
         )
         .child(
             rect()
@@ -206,21 +228,9 @@ pub fn rail(wizard: Wizard, picks: &Picks) -> Element {
                         .padding(Gaps::new_all(16.))
                         .corner_radius(CornerRadius::new_all(12.))
                         .background(CARD_BG)
-                        .border(crate::ui::border_all_color(1., HAIRLINE))
-                        .child(
-                            label()
-                                .text(format!("Step {} of {}", picks.index + 1, picks.steps.len()))
-                                .font_size(11.)
-                                .font_weight(FontWeight::MEDIUM)
-                                .letter_spacing(1.6)
-                                .color(SUB),
-                        )
-                        .child(rect().vertical().width(Size::fill()).spacing(10.).children(
-                            picks.steps.iter().enumerate().map(|(position, step)| {
-                                step_row(picks, position, *step, tags.len())
-                            }),
-                        ))
-                        .maybe_child(show_tags.then(|| {
+                        .border(border_all_color(1., HAIRLINE))
+                        .child(card)
+                        .maybe_child((!tags.is_empty()).then(|| {
                             rect()
                                 .vertical()
                                 .width(Size::fill())

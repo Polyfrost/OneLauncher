@@ -101,7 +101,7 @@ pub use storage::{
 pub use tos::{TermsQuery, terms_document, terms_error, terms_is_loading, use_terms};
 pub use version_metadata::{pick_version_metadata, use_version_metadata};
 pub use versions::{
-    JavaMajorsQuery, game_versions, java_majors, loader_game_versions, loader_versions,
-    use_game_versions, use_java_majors, use_loader_game_versions, use_loader_versions,
-    use_version_loaders, use_versions, version_loaders, versions_metadata,
+    GameVersion, JavaMajorsQuery, game_versions, java_majors, loader_game_versions,
+    loader_versions, use_game_versions, use_java_majors, use_loader_game_versions,
+    use_loader_versions, use_version_loaders, use_versions, version_loaders, versions_metadata,
 };

@@ -1,36 +1,40 @@
 use std::collections::{HashMap, HashSet};
-use std::path::PathBuf;
 
 use freya::prelude::*;
 use oneclient_common::domain::GameLoader;
+use oneclient_common::parse_mc_version;
 use oneclient_content::packages::ProviderId;
 use oneclient_core::clusters::ClusterKind;
-use oneclient_core::{BundleArchive, BundleFile, BundleFileKind, GameVersionKind};
+use std::sync::Arc;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
+use oneclient_core::{BundleArchive, GameVersionKind};
+
+use super::details::DetailsState;
+use super::rail::{Rail, RowState, rail, steps_card};
+use super::shell::{Shell, shell};
+use super::steps;
+use super::{file_provider, package_names};
+use crate::components::{DynamicArt, IconType};
 use crate::hooks::{
-    ClusterAction, available_bundles, game_versions, java_majors, loader_game_versions,
-    loader_versions, package_meta_batch, use_available_bundles, use_cluster_mutation,
-    use_game_versions, use_java_majors, use_loader_game_versions, use_loader_versions,
-    use_package_meta_batch, use_version_loaders, use_versions, version_loaders, versions_metadata,
+    ClusterAction, GameVersion, available_bundles, game_versions, java_majors,
+    loader_game_versions, loader_versions, package_meta_batch, query_error, use_available_bundles,
+    use_cluster_mutation, use_game_versions, use_java_majors, use_loader_game_versions,
+    use_loader_versions, use_package_meta_batch, use_version_loaders, use_versions,
+    version_loaders, versions_metadata,
 };
-use crate::theme::colors;
-use crate::ui::border_all_color;
 
-mod rail;
-mod steps;
-
-const DIALOG_WIDTH: f32 = 1020.;
-const DIALOG_HEIGHT: f32 = 660.;
-const RAIL_WIDTH: f32 = 368.;
-const PANE_PADDING: f32 = 24.;
-
-const FILTERS: [&str; 5] = ["Releases", "Snapshots", "Beta", "Alpha", "All versions"];
+pub(super) const FILTERS: [&str; 5] = ["Releases", "Snapshots", "Beta", "Alpha", "All versions"];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TypeChoice {
     OneClient,
     Scratch,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum LoaderMark {
+    Tinted(IconType),
+    Image(&'static str),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -43,13 +47,7 @@ pub enum LoaderChoice {
 }
 
 impl LoaderChoice {
-    const ALL: [Self; 5] = [
-        Self::Fabric,
-        Self::Forge,
-        Self::NeoForge,
-        Self::Quilt,
-        Self::Vanilla,
-    ];
+    pub(super) const MODDED: [Self; 4] = [Self::Fabric, Self::Forge, Self::NeoForge, Self::Quilt];
 
     fn primary(self) -> GameLoader {
         match self {
@@ -61,17 +59,37 @@ impl LoaderChoice {
         }
     }
 
-    fn name(self) -> &'static str {
+    pub(super) fn name(self) -> &'static str {
         match self {
             Self::Fabric => "Fabric",
             Self::Forge => "Forge",
             Self::NeoForge => "NeoForge",
             Self::Quilt => "Quilt",
-            Self::Vanilla => "No loader",
+            Self::Vanilla => "Vanilla",
         }
     }
 
-    fn blurb(self) -> &'static str {
+    pub(super) fn mark(self) -> Option<LoaderMark> {
+        match self {
+            Self::Fabric => Some(LoaderMark::Image("icons/fabric.png")),
+            Self::Forge => Some(LoaderMark::Image("icons/forge.png")),
+            Self::NeoForge => Some(LoaderMark::Image("icons/neo-forge.png")),
+            Self::Quilt => Some(LoaderMark::Tinted(IconType::Quilt)),
+            Self::Vanilla => Some(LoaderMark::Image("icons/vanilla.png")),
+        }
+    }
+
+    pub(super) fn short(self) -> &'static str {
+        match self {
+            Self::Fabric => "FA",
+            Self::Forge => "FO",
+            Self::NeoForge => "NF",
+            Self::Quilt => "QL",
+            Self::Vanilla => "MC",
+        }
+    }
+
+    pub(super) fn blurb(self) -> &'static str {
         match self {
             Self::Fabric => {
                 "Light and quick to start. The widest package selection on modern versions, and the legacy build covers 1.8.9 and older."
@@ -114,7 +132,7 @@ pub enum Step {
 }
 
 impl Step {
-    fn label(self) -> &'static str {
+    pub(super) fn label(self) -> &'static str {
         match self {
             Self::Type => "Type",
             Self::Loader => "Loader",
@@ -142,55 +160,108 @@ pub struct VersionRow {
     pub date: String,
 }
 
+#[derive(Clone)]
+pub enum VersionList {
+    Curated(Arc<[VersionRow]>),
+    Catalogue {
+        all: Arc<[GameVersion]>,
+        visible: Arc<[u32]>,
+    },
+}
+
+impl VersionList {
+    pub(super) fn len(&self) -> usize {
+        match self {
+            Self::Curated(rows) => rows.len(),
+            Self::Catalogue { visible, .. } => visible.len(),
+        }
+    }
+
+    pub(super) fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    pub(super) fn row(&self, index: usize) -> Option<VersionRow> {
+        match self {
+            Self::Curated(rows) => rows.get(index).map(|row| VersionRow {
+                id: row.id.clone(),
+                meta: row.meta.clone(),
+                badge: row.badge.clone(),
+                date: row.date.clone(),
+            }),
+            Self::Catalogue { all, visible } => {
+                let entry = all.get(*visible.get(index)? as usize)?;
+                Some(VersionRow {
+                    id: entry.id.clone(),
+                    meta: String::new(),
+                    badge: (!entry.kind.is_release()).then(|| entry.kind.label().to_string()),
+                    date: entry.released.clone(),
+                })
+            }
+        }
+    }
+
+    fn default_id(&self) -> Option<String> {
+        match self {
+            Self::Curated(rows) => rows.first().map(|row| row.id.clone()),
+            Self::Catalogue { all, visible } => {
+                let release = visible
+                    .iter()
+                    .map(|index| &all[*index as usize])
+                    .find(|entry| entry.kind.is_release());
+                release
+                    .or_else(|| visible.first().map(|index| &all[*index as usize]))
+                    .map(|entry| entry.id.clone())
+            }
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Wizard {
-    step: State<usize>,
-    choice: State<Option<TypeChoice>>,
-    version: State<Option<String>>,
-    filter: State<usize>,
-    query: State<String>,
-    loader: State<LoaderChoice>,
-    loader_version: State<Option<String>>,
-    declined: State<Option<HashSet<String>>>,
-    name: State<String>,
-    name_touched: State<bool>,
-    description: State<String>,
-    tags: State<Vec<String>>,
-    tag_draft: State<String>,
-    tag_open: State<bool>,
-    cover: State<Option<PathBuf>>,
+    pub(super) step: State<usize>,
+    pub(super) choice: State<Option<TypeChoice>>,
+    pub(super) version: State<Option<String>>,
+    pub(super) filter: State<usize>,
+    pub(super) query: State<String>,
+    pub(super) loader: State<LoaderChoice>,
+    pub(super) loader_version: State<Option<String>>,
+    pub(super) declined: State<Option<HashSet<String>>>,
+    pub(super) details: DetailsState,
 }
 
 pub struct Picks {
-    steps: Vec<Step>,
-    index: usize,
-    step: Step,
-    choice: Option<TypeChoice>,
-    kind: ClusterKind,
-    version: Option<String>,
-    loader: Option<GameLoader>,
-    loader_version: Option<String>,
-    loader_versions: Vec<String>,
-    versions: Vec<VersionRow>,
-    versions_loaded: bool,
-    archives: Vec<BundleArchive>,
-    bundles_loaded: bool,
-    package_names: HashMap<String, String>,
-    declined: HashSet<String>,
-    name: String,
-    suggested: String,
+    pub(super) steps: Vec<Step>,
+    pub(super) index: usize,
+    pub(super) step: Step,
+    pub(super) choice: Option<TypeChoice>,
+    pub(super) kind: ClusterKind,
+    pub(super) version: Option<String>,
+    pub(super) loader: Option<GameLoader>,
+    pub(super) loader_version: Option<String>,
+    pub(super) loader_versions: Vec<String>,
+    pub(super) versions: VersionList,
+    pub(super) versions_loaded: bool,
+    pub(super) versions_error: Option<String>,
+    pub(super) filter: usize,
+    pub(super) archives: Arc<[BundleArchive]>,
+    pub(super) bundles_loaded: bool,
+    pub(super) package_names: HashMap<String, String>,
+    pub(super) declined: HashSet<String>,
+    pub(super) name: String,
+    pub(super) suggested: String,
 }
 
 impl Picks {
-    fn loader_label(&self) -> String {
+    pub(super) fn loader_label(&self) -> String {
         match (self.loader, self.loader_version.as_deref()) {
-            (None | Some(GameLoader::Vanilla), _) => "No loader".to_string(),
+            (None | Some(GameLoader::Vanilla), _) => "Vanilla".to_string(),
             (Some(loader), Some(version)) => format!("{loader} {version}"),
             (Some(loader), None) => loader.to_string(),
         }
     }
 
-    fn taken_bundles(&self) -> Vec<String> {
+    pub(super) fn taken_bundles(&self) -> Vec<String> {
         self.archives
             .iter()
             .map(|archive| archive.manifest.name.clone())
@@ -283,52 +354,68 @@ fn resolve(w: Wizard) -> Picks {
     let java_query = use_java_majors(oneclient.iter().map(|(id, _)| id.clone()).collect());
     let java = java_majors(&java_query);
 
-    let versions: Vec<VersionRow> = if choice == Some(TypeChoice::OneClient) {
-        oneclient
-            .iter()
-            .filter(|(id, _)| needle.is_empty() || id.to_lowercase().contains(&needle))
-            .map(|(id, loader)| VersionRow {
-                badge: java.get(id).map(|major| format!("Java {major}")),
-                id: id.clone(),
-                meta: loader.to_string(),
-                date: String::new(),
-            })
-            .collect()
-    } else {
-        all.iter()
-            .filter(|info| matches_filter(info.kind, filter))
-            .filter(|info| match &allowed {
-                Some(Some(ids)) => ids.contains(&info.id),
+    let catalogue_entries = all.clone().unwrap_or_else(|| Arc::from([]));
+    let in_scope = |entry: &GameVersion| {
+        matches_filter(entry.kind, filter)
+            && match &allowed {
+                Some(Some(ids)) => ids.contains(&entry.id),
                 _ => true,
-            })
-            .filter(|info| needle.is_empty() || info.id.to_lowercase().contains(&needle))
-            .map(|info| VersionRow {
-                id: info.id.clone(),
-                meta: String::new(),
-                badge: (!info.kind.is_release()).then(|| info.kind.label().to_string()),
-                date: info.released.format("%d %b %Y").to_string(),
-            })
-            .collect()
+            }
+    };
+
+    let versions = if choice == Some(TypeChoice::OneClient) {
+        VersionList::Curated(
+            oneclient
+                .iter()
+                .filter(|(id, _)| needle.is_empty() || id.to_lowercase().contains(&needle))
+                .map(|(id, loader)| VersionRow {
+                    badge: java.get(id).map(|major| format!("Java {major}")),
+                    id: id.clone(),
+                    meta: loader.to_string(),
+                    date: String::new(),
+                })
+                .collect(),
+        )
+    } else {
+        let visible: Arc<[u32]> = catalogue_entries
+            .iter()
+            .enumerate()
+            .filter(|(_, entry)| in_scope(entry))
+            .filter(|(_, entry)| needle.is_empty() || entry.id.to_lowercase().contains(&needle))
+            .map(|(index, _)| index as u32)
+            .collect();
+
+        VersionList::Catalogue {
+            all: catalogue_entries.clone(),
+            visible,
+        }
+    };
+
+    let versions_error = if choice == Some(TypeChoice::OneClient) {
+        query_error(&oneclient_query)
+    } else {
+        query_error(&vanilla_query).or_else(|| query_error(&primary_query))
     };
 
     let versions_loaded = if choice == Some(TypeChoice::OneClient) {
         catalogue_loaded
     } else {
-        !all.is_empty() && allowed.is_some()
+        all.is_some() && allowed.is_some()
     };
 
-    let default_version = if choice == Some(TypeChoice::OneClient) {
-        versions.first()
-    } else {
-        versions
-            .iter()
-            .find(|row| row.badge.is_none())
-            .or_else(|| versions.first())
-    }
-    .map(|row| row.id.clone());
+    let still_in_scope = |chosen: &String| {
+        if choice == Some(TypeChoice::OneClient) {
+            oneclient.iter().any(|(id, _)| id == chosen)
+        } else {
+            catalogue_entries
+                .iter()
+                .any(|entry| &entry.id == chosen && in_scope(entry))
+        }
+    };
+
     let version = (w.version.read().clone())
-        .filter(|chosen| versions.iter().any(|row| &row.id == chosen))
-        .or(default_version);
+        .filter(still_in_scope)
+        .or_else(|| versions.default_id());
 
     let available = version_loaders(&use_version_loaders(version.clone().unwrap_or_default()));
     let loader = match choice {
@@ -377,11 +464,15 @@ fn resolve(w: Wizard) -> Picks {
     }
     let modrinth_query = use_package_meta_batch(ProviderId::Modrinth, modrinth_ids);
     let curseforge_query = use_package_meta_batch(ProviderId::CurseForge, curseforge_ids);
-    let names = package_names(
-        &archives,
-        &package_meta_batch(&modrinth_query),
-        &package_meta_batch(&curseforge_query),
-    );
+    let names = if step == Step::Bundles {
+        package_names(
+            &archives,
+            &package_meta_batch(&modrinth_query),
+            &package_meta_batch(&curseforge_query),
+        )
+    } else {
+        HashMap::new()
+    };
 
     let kind = match (choice, loader) {
         (Some(TypeChoice::OneClient) | None, _) => ClusterKind::OneClient,
@@ -399,8 +490,8 @@ fn resolve(w: Wizard) -> Picks {
         (None, _) => String::new(),
     };
 
-    let typed = w.name.read().trim().to_string();
-    let name = if *w.name_touched.read() && !typed.is_empty() {
+    let typed = w.details.typed_name();
+    let name = if *w.details.name_touched.read() && !typed.is_empty() {
         typed
     } else {
         suggested.clone()
@@ -418,10 +509,11 @@ fn resolve(w: Wizard) -> Picks {
         loader_versions: available_loader_versions,
         versions,
         versions_loaded,
+        versions_error,
+        filter,
         declined: w.declined.read().clone().unwrap_or_else(|| {
-            bundles
+            archives
                 .iter()
-                .flatten()
                 .filter(|archive| !archive.manifest.enabled)
                 .map(|archive| archive.manifest.name.clone())
                 .collect()
@@ -432,56 +524,6 @@ fn resolve(w: Wizard) -> Picks {
         name,
         suggested,
     }
-}
-
-pub fn file_provider(file: &BundleFile) -> ProviderId {
-    match &file.kind {
-        BundleFileKind::Managed { provider, .. } => *provider,
-        BundleFileKind::External(_) => ProviderId::Local,
-    }
-}
-
-pub fn tidy_file_name(raw: &str) -> String {
-    let stem = raw
-        .rsplit_once('.')
-        .filter(|(head, ext)| !head.is_empty() && ext.len() <= 8)
-        .map_or(raw, |(head, _)| head);
-
-    let bytes = stem.as_bytes();
-    let cut = bytes.iter().enumerate().position(|(index, byte)| {
-        matches!(byte, b'-' | b'_' | b'+') && bytes.get(index + 1).is_some_and(u8::is_ascii_digit)
-    });
-
-    match cut {
-        Some(0) | None => stem.to_string(),
-        Some(cut) => stem[..cut].to_string(),
-    }
-}
-
-fn package_names(
-    archives: &[BundleArchive],
-    modrinth: &HashMap<String, oneclient_content::packages::CachedPackageMeta>,
-    curseforge: &HashMap<String, oneclient_content::packages::CachedPackageMeta>,
-) -> HashMap<String, String> {
-    let mut names = HashMap::new();
-
-    for file in archives.iter().flat_map(|archive| &archive.manifest.files) {
-        let package_id = file.kind.package_id();
-        let meta = match file_provider(file) {
-            ProviderId::Modrinth => modrinth.get(&package_id),
-            ProviderId::CurseForge => curseforge.get(&package_id),
-            ProviderId::Local => None,
-        };
-
-        let name = meta
-            .map(|meta| meta.name.clone())
-            .filter(|name| !name.is_empty())
-            .unwrap_or_else(|| tidy_file_name(&file.display_name()));
-
-        names.insert(package_id, name);
-    }
-
-    names
 }
 
 fn heading(picks: &Picks) -> (&'static str, String) {
@@ -552,134 +594,9 @@ fn footer_note(picks: &Picks) -> String {
     }
 }
 
-fn header(picks: &Picks, on_close: EventHandler<()>) -> Element {
-    let (title, sub) = heading(picks);
-
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Start)
-        .spacing(16.)
-        .padding(Gaps::new(22., PANE_PADDING, 16., PANE_PADDING))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(5.)
-                .child(
-                    label()
-                        .text(format!("Step {} of {}", picks.index + 1, picks.steps.len()))
-                        .font_size(11.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .letter_spacing(1.6)
-                        .color(colors::fg_secondary()),
-                )
-                .child(
-                    label()
-                        .text(title)
-                        .font_size(20.)
-                        .font_weight(FontWeight::SEMI_BOLD)
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text(sub)
-                        .font_size(13.)
-                        .line_height(1.35)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(
-            Button::new()
-                .ghost()
-                .icon()
-                .alt("Close")
-                .on_press(move |_| on_close.call(()))
-                .child(Icon::new(IconType::XClose).size(16.)),
-        )
-        .into_element()
-}
-
-fn footer(
-    mut wizard: Wizard,
-    picks: &Picks,
-    on_cancel: EventHandler<()>,
-    on_create: EventHandler<()>,
-) -> Element {
-    let ready = picks.ready();
-    let last = picks.step == Step::Customize;
-    let first = picks.index == 0;
-    let index = picks.index;
-
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(20.)
-        .padding(Gaps::new(16., PANE_PADDING, 16., PANE_PADDING))
-        .border(
-            Border::new()
-                .fill(colors::component_border())
-                .width(BorderWidth {
-                    top: 1.,
-                    right: 0.,
-                    bottom: 0.,
-                    left: 0.,
-                }),
-        )
-        .child(
-            label()
-                .text(footer_note(picks))
-                .width(Size::flex(1.0))
-                .font_size(12.)
-                .line_height(1.35)
-                .max_lines(2)
-                .color(colors::fg_secondary()),
-        )
-        .child(
-            rect()
-                .horizontal()
-                .spacing(10.)
-                .cross_align(Alignment::Center)
-                .child(
-                    Button::new()
-                        .ghost()
-                        .on_press(move |_| {
-                            if first {
-                                on_cancel.call(());
-                            } else {
-                                wizard.step.set(index.saturating_sub(1));
-                            }
-                        })
-                        .text(if first { "Cancel" } else { "Back" }),
-                )
-                .child(
-                    Button::new()
-                        .primary()
-                        .enabled(ready)
-                        .on_press(move |_| {
-                            if !ready {
-                                return;
-                            }
-                            if last {
-                                on_create.call(());
-                            } else {
-                                wizard.query.set(String::new());
-                                wizard.step.set(index + 1);
-                            }
-                        })
-                        .text(if last { "Create instance" } else { "Next" }),
-                ),
-        )
-        .into_element()
-}
-
 fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
     let mc_version = picks.version.clone()?;
     let mc_loader = picks.loader?;
-    let description = wizard.description.read().trim().to_string();
 
     Some(ClusterAction::CreateInstance {
         kind: picks.kind,
@@ -687,11 +604,110 @@ fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
         mc_version,
         mc_loader,
         mc_loader_version: picks.loader_version.clone(),
-        description: (!description.is_empty()).then_some(description),
-        tags: wizard.tags.read().clone(),
-        cover_source: wizard.cover.read().clone(),
-        bundles: (picks.kind == ClusterKind::OneClient).then(|| picks.taken_bundles()),
+        description: wizard.details.description_value(),
+        tags: wizard.details.tags.read().clone(),
+        cover_source: wizard.details.cover.read().clone(),
+        bundles: (picks.kind == ClusterKind::OneClient && picks.bundles_loaded)
+            .then(|| picks.taken_bundles()),
     })
+}
+
+fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
+    let description = wizard.details.description.read().trim().to_string();
+    let tags = wizard.details.tags.read().clone();
+
+    let title = if picks.name.trim().is_empty() {
+        "New instance".to_string()
+    } else {
+        picks.name.clone()
+    };
+
+    let subtitle = if description.is_empty() {
+        match picks.choice {
+            None => "Pick a type to get started".to_string(),
+            Some(TypeChoice::OneClient) => match &picks.version {
+                Some(version) => format!("OneClient · {version}"),
+                None => "OneClient".to_string(),
+            },
+            Some(TypeChoice::Scratch) => match &picks.version {
+                Some(version) => format!("{version} · {}", picks.loader_label()),
+                None => picks.loader_label(),
+            },
+        }
+    } else {
+        description
+    };
+
+    let rows = picks
+        .steps
+        .iter()
+        .enumerate()
+        .map(|(index, step)| {
+            let state = if index < picks.index {
+                RowState::Done
+            } else if index == picks.index {
+                RowState::Current
+            } else {
+                RowState::Pending
+            };
+            let value = if state == RowState::Pending {
+                String::new()
+            } else {
+                step_value(wizard, picks, *step)
+            };
+            (step.label(), value, state)
+        })
+        .collect();
+
+    let parsed = picks.version.as_deref().and_then(parse_mc_version);
+    let art = match parsed {
+        Some(parsed) => DynamicArt::for_version(parsed.major, parsed.key(), picks.loader),
+        None => DynamicArt::fallback(),
+    }
+    .picked_cover(wizard.details.cover.read().clone());
+
+    rail(Rail {
+        art,
+        title,
+        subtitle,
+        card: steps_card(
+            format!("Step {} of {}", picks.index + 1, picks.steps.len()),
+            rows,
+        ),
+        tags: if picks.step == Step::Customize {
+            tags
+        } else {
+            Vec::new()
+        },
+    })
+}
+
+fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
+    match step {
+        Step::Type => match picks.choice {
+            Some(TypeChoice::OneClient) => "OneClient".to_string(),
+            Some(TypeChoice::Scratch) => "From scratch".to_string(),
+            None => String::new(),
+        },
+        Step::Loader => picks.loader_label(),
+        Step::Version => picks
+            .version
+            .clone()
+            .unwrap_or_else(|| "Not chosen".to_string()),
+        Step::Bundles => {
+            let taken = picks.taken_bundles().len();
+            if taken == 0 {
+                "None".to_string()
+            } else {
+                format!("{taken} selected")
+            }
+        }
+        Step::Customize => match wizard.details.tags.read().len() {
+            0 => "Optional".to_string(),
+            1 => "1 tag".to_string(),
+            many => format!("{many} tags"),
+        },
+    }
 }
 
 #[derive(PartialEq)]
@@ -719,107 +735,55 @@ impl Component for CreateInstanceModal {
             loader: use_state(|| LoaderChoice::Fabric),
             loader_version: use_state(|| None::<String>),
             declined: use_state(|| None::<HashSet<String>>),
-            name: use_state(String::new),
-            name_touched: use_state(|| false),
-            description: use_state(String::new),
-            tags: use_state(Vec::new),
-            tag_draft: use_state(String::new),
-            tag_open: use_state(|| false),
-            cover: use_state(|| None::<PathBuf>),
+            details: DetailsState::blank(),
         };
 
         let picks = resolve(wizard);
         let action = create_action(wizard, &picks);
+        let (title, subtitle) = heading(&picks);
 
-        let close_scrim = self.on_close.clone();
+        let first = picks.index == 0;
+        let last = picks.step == Step::Customize;
+        let index = picks.index;
+        let mut step = wizard.step;
+        let mut query = wizard.query;
+
         let close_x = self.on_close.clone();
         let close_cancel = self.on_close.clone();
         let close_created = self.on_close.clone();
 
-        OverlayPopup::new()
-            .on_close(move |()| close_scrim.call(()))
-            .child(
-                rect()
-                    .width(Size::window_percent(100.))
-                    .height(Size::window_percent(100.))
-                    .center()
-                    .child(
-                        rect()
-                            .horizontal()
-                            .width(Size::px(DIALOG_WIDTH))
-                            .height(Size::px(DIALOG_HEIGHT))
-                            .max_width(Size::window_percent(94.))
-                            .max_height(Size::window_percent(92.))
-                            .content(Content::Flex)
-                            .corner_radius(CornerRadius::new_all(16.))
-                            .overflow(Overflow::Clip)
-                            .background(colors::page_elevated())
-                            .border(border_all_color(1., colors::component_border()))
-                            .child(rail::rail(wizard, &picks))
-                            .child(
-                                rect()
-                                    .vertical()
-                                    .width(Size::flex(1.0))
-                                    .height(Size::fill())
-                                    .content(Content::Flex)
-                                    .child(header(&picks, (move |()| close_x.call(())).into()))
-                                    .child(
-                                        ScrollArea::new()
-                                            .width(Size::fill())
-                                            .height(Size::flex(1.0))
-                                            .padding(Gaps::new(0., PANE_PADDING, 8., PANE_PADDING))
-                                            .scrollbar_gutter(true)
-                                            .child(steps::body(wizard, &picks)),
-                                    )
-                                    .child(footer(
-                                        wizard,
-                                        &picks,
-                                        (move |()| close_cancel.call(())).into(),
-                                        (move |()| {
-                                            if let Some(action) = action.clone() {
-                                                mutation.mutate(action);
-                                                close_created.call(());
-                                            }
-                                        })
-                                        .into(),
-                                    )),
-                            ),
-                    ),
-            )
-            .into_element()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::tidy_file_name;
-
-    #[test]
-    fn a_versioned_jar_keeps_only_its_name() {
-        assert_eq!(
-            tidy_file_name("sodium-fabric-0.5.11+mc1.20.1.jar"),
-            "sodium-fabric"
-        );
-        assert_eq!(tidy_file_name("EvergreenHUD-3.0.0.jar"), "EvergreenHUD");
-        assert_eq!(tidy_file_name("Sodium-13.303x012"), "Sodium");
-    }
-
-    #[test]
-    fn a_name_without_a_version_survives_whole() {
-        assert_eq!(tidy_file_name("OneConfig.jar"), "OneConfig");
-        assert_eq!(tidy_file_name("PolyBlur"), "PolyBlur");
-    }
-
-    #[test]
-    fn a_leading_separator_is_not_a_version_cut() {
-        assert_eq!(tidy_file_name("-1abc"), "-1abc");
-    }
-
-    #[test]
-    fn a_dotted_name_is_not_mistaken_for_an_extension() {
-        assert_eq!(
-            tidy_file_name("com.example.longextension"),
-            "com.example.longextension"
-        );
+        shell(Shell {
+            rail: wizard_rail(wizard, &picks),
+            eyebrow: format!("Step {} of {}", picks.index + 1, picks.steps.len()),
+            title: title.to_string(),
+            subtitle,
+            body: steps::body(wizard, &picks),
+            scrolls_itself: picks.step == Step::Version,
+            note: footer_note(&picks),
+            secondary_label: if first { "Cancel" } else { "Back" }.to_string(),
+            primary_label: if last { "Create instance" } else { "Next" }.to_string(),
+            primary_enabled: picks.ready(),
+            on_close: (move |()| close_x.call(())).into(),
+            on_secondary: (move |()| {
+                if first {
+                    close_cancel.call(());
+                } else {
+                    step.set(index.saturating_sub(1));
+                }
+            })
+            .into(),
+            on_primary: (move |()| {
+                if last {
+                    if let Some(action) = action.clone() {
+                        mutation.mutate(action);
+                        close_created.call(());
+                    }
+                } else {
+                    query.set(String::new());
+                    step.set(index + 1);
+                }
+            })
+            .into(),
+        })
     }
 }

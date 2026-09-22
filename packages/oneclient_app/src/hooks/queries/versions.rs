@@ -1,8 +1,9 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
 use oneclient_common::domain::GameLoader;
-use oneclient_core::{GameVersionInfo, LauncherError, VersionMetadata};
+use oneclient_core::{GameVersionKind, LauncherError, VersionMetadata};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VersionsMetadataQuery;
@@ -94,15 +95,40 @@ pub struct GameVersionsQuery;
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct GameVersionsKeys;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GameVersion {
+    pub id: String,
+    pub kind: GameVersionKind,
+    pub released: String,
+}
+
 impl QueryCapability for GameVersionsQuery {
-    type Ok = Vec<GameVersionInfo>;
+    type Ok = Arc<[GameVersion]>;
     type Err = LauncherError;
     type Keys = GameVersionsKeys;
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let mut metadata = state.metadata.lock().await;
-        Ok(oneclient_core::get_version_ids(&mut metadata, &state.services.mc()).await?)
+
+        tokio::spawn(async move {
+            let raw = {
+                let mut metadata = state.metadata.lock().await;
+                oneclient_core::get_version_ids(&mut metadata, &state.services.mc()).await?
+            };
+
+            let prepared: Arc<[GameVersion]> = raw
+                .into_iter()
+                .map(|info| GameVersion {
+                    id: info.id,
+                    kind: info.kind,
+                    released: info.released.format("%d %b %Y").to_string(),
+                })
+                .collect();
+
+            Ok(prepared)
+        })
+        .await
+        .map_err(|err| LauncherError::Minecraft(err.to_string()))?
     }
 }
 
@@ -110,8 +136,8 @@ pub fn use_game_versions() -> UseQuery<GameVersionsQuery> {
     use_query(Query::new(GameVersionsKeys, GameVersionsQuery))
 }
 
-pub fn game_versions(query: &UseQuery<GameVersionsQuery>) -> Vec<GameVersionInfo> {
-    super::state::settled_or_loading(query).unwrap_or_default()
+pub fn game_versions(query: &UseQuery<GameVersionsQuery>) -> Option<Arc<[GameVersion]>> {
+    super::state::settled_or_loading(query)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -207,32 +233,47 @@ impl QueryCapability for JavaMajorsQuery {
         }
 
         let state = crate::launcher::state()?;
-        let mc = state.services.mc();
+        let wanted = keys.versions.clone();
 
-        let resolved = {
-            let mut metadata = state.metadata.lock().await;
-            let mut resolved = Vec::with_capacity(keys.versions.len());
-            for id in &keys.versions {
-                if let Ok((version, _, _)) =
-                    oneclient_core::game::resolve_minecraft_version(&mut metadata, &mc, id).await
-                {
-                    resolved.push((id.clone(), version));
+        tokio::spawn(async move {
+            let mc = state.services.mc();
+
+            let resolved = {
+                let mut metadata = state.metadata.lock().await;
+                let mut resolved = Vec::with_capacity(wanted.len());
+                for id in &wanted {
+                    if let Ok((version, _, _)) =
+                        oneclient_core::game::resolve_minecraft_version(&mut metadata, &mc, id)
+                            .await
+                    {
+                        resolved.push((id.clone(), version));
+                    }
                 }
-            }
-            resolved
-        };
+                resolved
+            };
 
-        let mut majors = HashMap::with_capacity(resolved.len());
-        for (id, version) in resolved {
-            if let Ok(info) =
-                oneclient_core::game::download_version_info(&mc, None, &version, None, false).await
-                && let Some(java) = info.java_version
-            {
-                majors.insert(id, java.major_version);
-            }
-        }
+            let lookups = resolved.into_iter().map(|(id, version)| {
+                let mc = mc.clone();
+                async move {
+                    let info = oneclient_core::game::download_version_info(
+                        &mc, None, &version, None, false,
+                    )
+                    .await
+                    .ok()?;
+                    Some((id, info.java_version?.major_version))
+                }
+            });
 
-        Ok(majors)
+            let majors = futures_util::future::join_all(lookups)
+                .await
+                .into_iter()
+                .flatten()
+                .collect();
+
+            Ok(majors)
+        })
+        .await
+        .map_err(|err| LauncherError::Minecraft(err.to_string()))?
     }
 }
 

@@ -5,7 +5,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use oneclient_core::clusters::Cluster;
-use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
 
 use crate::components::{ART_PREVIEW_EDGE, DynamicArt};
 use crate::hooks::use_settings_snapshot;
@@ -126,7 +125,6 @@ impl Component for LoadingBackdrop {
             Some(cluster) => DynamicArt::for_cluster(cluster),
             None => DynamicArt::fallback(),
         }
-        .max_edge(BACKGROUND_IMAGE_EDGE)
         .preview_edge(ART_PREVIEW_EDGE);
 
         let fade = use_animation_with_dependencies(&current, |conf, _| {

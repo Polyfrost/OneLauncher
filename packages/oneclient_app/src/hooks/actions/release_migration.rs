@@ -4,9 +4,13 @@ use freya::prelude::spawn_forever;
 use std::collections::HashSet;
 
 use oneclient_content::packages::release_migration::{
-    ReleaseMigrationPackage, ReleaseMigrationPlan, add_to_waitlist,
-    apply_release_migration_dependency, apply_release_migration_package, plan_release_migration,
-    plan_release_migrations, process_waitlist,
+    ReleaseMigrationDependency, ReleaseMigrationPackage, ReleaseMigrationPlan,
+    ReleaseMigrationSkip, SkipReason, add_to_waitlist, apply_release_migration_dependency,
+    apply_release_migration_package, plan_release_migration, plan_release_migrations,
+    process_waitlist,
+};
+use oneclient_content::packages::{
+    ContentType, GameLoader, PackageBody, ProjectDetail, ProviderId, VersionDetail, VersionFile,
 };
 use oneclient_core::ReleaseTarget;
 use oneclient_core::clusters::{
@@ -78,6 +82,116 @@ async fn plan_sources(
         SourcePlans::Nothing
     } else {
         SourcePlans::Ready { sources, plans }
+    }
+}
+
+fn fake_package(
+    name: &str,
+    project_id: &str,
+    content_type: ContentType,
+    enabled: bool,
+) -> ReleaseMigrationPackage {
+    ReleaseMigrationPackage {
+        source_hash: format!("fake-{project_id}"),
+        enabled,
+        provider: ProviderId::Modrinth,
+        project_id: project_id.to_string(),
+        content_type,
+        display_name: name.to_string(),
+        version_id: format!("fake-version-{project_id}"),
+        version_name: "1.0.0".to_string(),
+        size: 2_400_000,
+    }
+}
+
+fn fake_skip(name: &str, project_id: &str, reason: SkipReason) -> ReleaseMigrationSkip {
+    ReleaseMigrationSkip {
+        source_hash: format!("fake-{project_id}"),
+        enabled: true,
+        provider: ProviderId::Modrinth,
+        project_id: project_id.to_string(),
+        content_type: ContentType::Mod,
+        display_name: name.to_string(),
+        reason,
+    }
+}
+
+fn fake_dependency(
+    name: &str,
+    project_id: &str,
+    required_by: Vec<String>,
+) -> ReleaseMigrationDependency {
+    let now = chrono::Utc::now();
+    ReleaseMigrationDependency {
+        provider: ProviderId::Modrinth,
+        project: ProjectDetail {
+            id: project_id.to_string(),
+            slug: project_id.to_string(),
+            provider: ProviderId::Modrinth,
+            content_type: ContentType::Mod,
+            name: name.to_string(),
+            summary: "Simulated dependency".to_string(),
+            author: "nobody".to_string(),
+            members: Vec::new(),
+            gallery: Vec::new(),
+            body: PackageBody::Raw(String::new()),
+            license: None,
+            links: Vec::new(),
+            version_ids: Vec::new(),
+            game_versions: Vec::new(),
+            loaders: vec![GameLoader::Fabric],
+            icon_url: None,
+            created: now,
+            updated: now,
+            downloads: 0,
+        },
+        version: VersionDetail {
+            version_id: format!("fake-version-{project_id}"),
+            project_id: project_id.to_string(),
+            name: name.to_string(),
+            version_number: "1.0.0".to_string(),
+            changelog: None,
+            game_versions: Vec::new(),
+            loaders: vec![GameLoader::Fabric],
+            published: now,
+            downloads: 0,
+            files: vec![VersionFile {
+                sha1: format!("fake-{project_id}"),
+                url: String::new(),
+                file_name: format!("{project_id}.jar"),
+                primary: true,
+                size: 900_000,
+                fingerprint: None,
+            }],
+            dependencies: Vec::new(),
+        },
+        required_by,
+    }
+}
+
+fn fake_plan(source_cluster_id: i64, target_cluster_id: i64) -> ReleaseMigrationPlan {
+    let packages = vec![
+        fake_package("Sodium", "AANobbMI", ContentType::Mod, true),
+        fake_package("Just Enough Items (JEI)", "u6dRKJwZ", ContentType::Mod, true),
+        fake_package("Mod Menu", "mOgUt4GM", ContentType::Mod, false),
+        fake_package("Fresh Animations", "50dA9Sha", ContentType::ResourcePack, true),
+        fake_package("Complementary Shaders", "R6NEzAwj", ContentType::Shader, true),
+    ];
+
+    ReleaseMigrationPlan {
+        source_cluster_id,
+        target_cluster_id,
+        dependencies: vec![fake_dependency(
+            "Fabric API",
+            "P7dR8mSH",
+            vec!["fake-AANobbMI".to_string(), "fake-u6dRKJwZ".to_string()],
+        )],
+        unavailable: vec![
+            fake_skip("Iris Shaders", "YL57xq9U", SkipReason::NoCompatibleVersion),
+            fake_skip("Distant Horizons", "uCdwusMi", SkipReason::MissingDependency),
+        ],
+        packages,
+        unreachable: false,
     }
 }
 
@@ -220,6 +334,46 @@ impl Actions {
                 if let Some(prompt) = prompt.as_mut() {
                     prompt.plans.insert(source_id, next);
                 }
+            });
+        });
+    }
+
+    /// Debug only: opens the popup on a hand-built plan, so the UI can be
+    /// reviewed without a cluster that has migratable packages
+    pub fn simulate_fake_release_migration(&self, target_cluster_id: i64) {
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let Ok(clusters) = state.clusters.list().await else { return };
+            let Some(target) = clusters
+                .iter()
+                .find(|cluster| cluster.id == target_cluster_id)
+                .cloned()
+            else {
+                return;
+            };
+
+            let source = clusters
+                .into_iter()
+                .find(|cluster| cluster.id != target.id)
+                .unwrap_or_else(|| target.clone());
+            let selected = source.id;
+            let release = ReleaseTarget {
+                mc_version: target.mc_version.clone(),
+                loader: target.mc_loader,
+            };
+            let plan = fake_plan(selected, target.id);
+
+            actions.write_release_migration(move |prompt| {
+                *prompt = Some(ReleaseMigrationPrompt {
+                    key: release.key(),
+                    target,
+                    java_major: None,
+                    sources: vec![source],
+                    selected,
+                    plans: HashMap::from([(selected, ReleasePlanState::Ready(plan))]),
+                    origin: PromptOrigin::Simulated,
+                });
             });
         });
     }

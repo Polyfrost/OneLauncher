@@ -620,6 +620,7 @@ impl Component for ReleaseMigrationSimulator {
         let selected_id = selected.as_ref().map(|cluster| cluster.id);
 
         let simulate = dispatch.clone();
+        let fake = dispatch.clone();
         let queue = dispatch.clone();
 
         rect()
@@ -628,7 +629,7 @@ impl Component for ReleaseMigrationSimulator {
             .spacing(10.)
             .child(
                 label()
-                    .text("\"Simulate\" opens the real migration modal with the chosen cluster as the new release and the real compatibility check against every other cluster with the same loader; closing it changes nothing. \"Queue as New Version\" adds the chosen version to the pending list exactly as a new manifest entry would, then runs the startup check, so the real one-time flow can be tested.")
+                    .text("\"Simulate\" opens the real migration modal with the chosen cluster as the new release and the real compatibility check against every other cluster with the same loader; closing it changes nothing. \"Fake Plan\" skips the check and fills the same modal with made-up packages, so the UI can be reviewed when no cluster has anything to migrate. \"Queue as New Version\" adds the chosen version to the pending list exactly as a new manifest entry would, then runs the startup check, so the real one-time flow can be tested.")
                     .font_size(13.)
                     .color(colors::fg_secondary()),
             )
@@ -663,6 +664,17 @@ impl Component for ReleaseMigrationSimulator {
                             .on_press(move |_| {
                                 if let Some(id) = selected_id {
                                     simulate.simulate_release_migration(id);
+                                }
+                            }),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .enabled(selected_id.is_some())
+                            .text("Fake Plan")
+                            .on_press(move |_| {
+                                if let Some(id) = selected_id {
+                                    fake.simulate_fake_release_migration(id);
                                 }
                             }),
                     )

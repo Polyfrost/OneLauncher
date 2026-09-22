@@ -17,7 +17,7 @@ use crate::hooks::{
     use_launcher, use_notifications_snapshot, use_package_meta_batch, use_release_migration,
 };
 use crate::routes::Route;
-use crate::state::{PromptOrigin, ReleaseMigrationPrompt, ReleasePlanState};
+use crate::state::{ReleaseMigrationPrompt, ReleasePlanState};
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
@@ -222,8 +222,6 @@ fn art_panel(
         DynamicArt::for_version(parsed.major, parsed.key(), Some(target.mc_loader))
     });
 
-    let badge = (prompt.origin != PromptOrigin::Manual).then_some("NEW RELEASE");
-
     let mut runtime = Vec::new();
     if target.mc_loader != GameLoader::Vanilla {
         runtime.push(match target.mc_loader_version.as_deref() {
@@ -254,7 +252,7 @@ fn art_panel(
                 .width(Size::fill())
                 .height(Size::fill())
                 .padding(Gaps::new(24., 24., 24., 24.))
-                .main_align(Alignment::SpaceBetween)
+                .main_align(Alignment::End)
                 .layer(Layer::Relative(3))
                 .background(
                     LinearGradient::new()
@@ -263,22 +261,6 @@ fn art_panel(
                         .stop((Color::from_af32rgb(0.85, 13, 17, 21), 58.))
                         .stop((Color::from_af32rgb(0.98, 13, 17, 21), 100.)),
                 )
-                .child(match badge {
-                    Some(badge) => rect()
-                        .padding(Gaps::new_symmetric(4., 8.))
-                        .corner_radius(CornerRadius::new_all(5.))
-                        .background(colors::brand())
-                        .child(
-                            label()
-                                .text(badge)
-                                .font_size(10.)
-                                .font_weight(FontWeight::BOLD)
-                                .letter_spacing(0.4)
-                                .color(Color::WHITE),
-                        )
-                        .into_element(),
-                    None => rect().into_element(),
-                })
                 .child(
                     rect()
                         .vertical()
@@ -298,22 +280,15 @@ fn art_panel(
                                 .margin(Gaps::new(12., 0., 0., 0.))
                                 .color(colors::fg_primary())
                         }))
-                        .child(summary_card(prompt, plan, excluded)),
+                        .child(summary_card(plan, excluded)),
                 ),
         )
 }
 
 fn summary_card(
-    prompt: &ReleaseMigrationPrompt,
     plan: Option<&ReleaseMigrationPlan>,
     excluded: &HashSet<SelectionKey>,
 ) -> impl IntoElement {
-    let source_title = prompt
-        .source()
-        .map(cluster_title)
-        .unwrap_or_default()
-        .to_uppercase();
-
     let mut rows = rect().vertical().width(Size::fill()).spacing(12.);
     for tab in PackageTab::ALL {
         let value = plan.map_or_else(
@@ -364,16 +339,6 @@ fn summary_card(
         .corner_radius(CornerRadius::new_all(12.))
         .background(CARD_BG)
         .border(border_all_color(1., colors::component_border()))
-        .child(
-            label()
-                .text(format!("COMING ACROSS FROM {source_title}"))
-                .font_size(11.)
-                .font_weight(FontWeight::MEDIUM)
-                .letter_spacing(1.)
-                .max_lines(1)
-                .color(colors::fg_secondary()),
-        )
-        .child(rect().height(Size::px(14.)))
         .child(rows)
         .child(
             rect()

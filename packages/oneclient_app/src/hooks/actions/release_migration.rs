@@ -490,13 +490,7 @@ impl Actions {
     async fn run_manual_migration(&self, target_cluster_id: i64, source_cluster_id: i64) {
         let Ok(state) = launcher::state() else { return };
 
-        let source = state
-            .clusters
-            .get(source_cluster_id)
-            .await
-            .map(|cluster| cluster.name)
-            .unwrap_or_else(|_| "that cluster".to_string());
-        let nothing = |target: &Cluster| {
+        let nothing = || {
             self.notify("Nothing to migrate")
                 .body(
                     "No packages to migrate"
@@ -507,9 +501,7 @@ impl Actions {
         let offer = match manual_migration_offer(&state, target_cluster_id, source_cluster_id).await {
             Ok(OfferLookup::Offer(offer)) => offer,
             Ok(OfferLookup::NoSources) => {
-                if let Ok(target) = state.clusters.get(target_cluster_id).await {
-                    nothing(&target);
-                }
+                nothing();
                 return;
             }
             Ok(OfferLookup::MissingCluster) => return,
@@ -526,7 +518,7 @@ impl Actions {
         let (sources, plans) = match plan_sources(&offer, state.bundles.as_ref(), &state.services.content()).await {
             SourcePlans::Ready { sources, plans } => (sources, plans),
             SourcePlans::Nothing => {
-                nothing(&offer.target);
+                nothing();
                 return;
             }
             SourcePlans::Unreachable => {

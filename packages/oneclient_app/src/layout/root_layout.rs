@@ -28,12 +28,12 @@ impl Component for RootLayout {
 
         // macOS rounds the window natively so Freya must not round on top of it
         #[cfg(target_os = "macos")]
-        let corner = 0.;
+        let _corner = 0.;
 
         // Elsewhere the window is borderless and squared when maximized
         // No reactive maximized signal exists so root_size changes stand in as the trigger
         #[cfg(not(target_os = "macos"))]
-        let corner = {
+        let _corner = {
             let root_size = Platform::get().root_size;
             // Seeded because the query below only answers after the window is visible
             // which would round the corners of the first frames of a maximized launch
@@ -64,7 +64,7 @@ impl Component for RootLayout {
             .background(colors::page())
             .color(colors::fg_primary())
             .font_family(theme::DEFAULT_FONT)
-            //.corner_radius(CornerRadius::new_all(corner))
+            //.corner_radius(CornerRadius::new_all(_corner))
             .overflow(Overflow::Clip)
             .child(
                 rect()

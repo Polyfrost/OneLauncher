@@ -6,7 +6,6 @@ use oneclient_java::{JavaRuntime, JavaVendor, is_launcher_managed};
 use super::settings_page;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
-use crate::invalidate_java_queries;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::section_header;
@@ -22,19 +21,6 @@ impl Component for SettingsJava {
         let runtimes = java_runtimes(&runtimes_query);
         let mut show_manager = use_state(|| false);
         let pending_remove = use_state(|| None::<PendingRemove>);
-
-        fn invalidate_runtimes(dispatch: Actions) {
-            spawn(async move {
-                invalidate_java_queries().await;
-                dispatch
-                    .notify("Java runtimes refreshed")
-                    .body("The installed runtime list is up to date")
-                    .info()
-                    .send();
-            });
-        }
-
-        let refresh_dispatch = dispatch.clone();
 
         let mut shell = settings_page()
             .child(section_header("ADD RUNTIME"))

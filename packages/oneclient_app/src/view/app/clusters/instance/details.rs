@@ -7,8 +7,21 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 
 const CARD_RADIUS: f32 = 12.;
+const TAG_ROW_H: f32 = 28.;
 const PREVIEW_W: f32 = 132.;
 const PREVIEW_H: f32 = 74.;
+
+const PRESET_TAGS: [&str; 9] = [
+    "PVP",
+    "Performance",
+    "QoL",
+    "Skyblock",
+    "Bedwars",
+    "Test",
+    "Fun",
+    "Experimental",
+    "Shenanigans",
+];
 
 #[derive(Clone, Copy)]
 pub struct DetailsState {
@@ -120,24 +133,144 @@ pub fn details_body(
         .into_element()
 }
 
+fn add_tag(state: DetailsState, tag: &str) {
+    let mut all_tags = state.tags;
+
+    let tag = tag.trim();
+    if tag.is_empty() || already_taken(&all_tags.read(), tag) {
+        return;
+    }
+
+    let mut next = all_tags.read().clone();
+    next.push(tag.to_string());
+    all_tags.set(next);
+}
+
+fn already_taken(tags: &[String], candidate: &str) -> bool {
+    tags.iter()
+        .any(|tag| tag.eq_ignore_ascii_case(candidate.trim()))
+}
+
 fn commit_tag(state: DetailsState) {
     let mut tag_draft = state.tag_draft;
     let mut tag_open = state.tag_open;
-    let mut all_tags = state.tags;
 
-    let draft = tag_draft.read().trim().to_string();
-    if !draft.is_empty() {
-        let mut next = all_tags.read().clone();
-        if !next.iter().any(|tag| tag == &draft) {
-            next.push(draft);
-            all_tags.set(next);
-        }
-    }
+    let draft = tag_draft.read().clone();
+    add_tag(state, &draft);
     tag_draft.set(String::new());
     tag_open.set(false);
 }
 
 fn tag_field(state: DetailsState, tags: &[String], open: bool) -> Element {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .child(chosen_tags(state, tags, open))
+        .maybe_child(preset_tags(state, tags))
+        .into_element()
+}
+
+fn preset_tags(state: DetailsState, tags: &[String]) -> Option<Element> {
+    let free: Vec<&'static str> = PRESET_TAGS
+        .into_iter()
+        .filter(|preset| !already_taken(tags, preset))
+        .collect();
+
+    if free.is_empty() {
+        return None;
+    }
+
+    Some(
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(6.)
+            .child(
+                label()
+                    .text("Suggested")
+                    .font_size(11.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .content(Content::wrap_spacing(6.))
+                    .spacing(6.)
+                    .children(free.into_iter().map(|preset| {
+                        PresetChip {
+                            tags: state.tags,
+                            preset,
+                        }
+                        .into_element()
+                    })),
+            )
+            .into_element(),
+    )
+}
+
+#[derive(PartialEq)]
+struct PresetChip {
+    tags: State<Vec<String>>,
+    preset: &'static str,
+}
+
+impl Component for PresetChip {
+    fn render(&self) -> impl IntoElement {
+        let mut hovering = use_state(|| false);
+        let hovered = *hovering.read();
+
+        let mut tags = self.tags;
+        let preset = self.preset;
+
+        rect()
+            .key(preset)
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(6.)
+            .height(Size::px(26.))
+            .padding(Gaps::new_symmetric(0., 10.))
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(if hovered {
+                colors::component_bg_hover()
+            } else {
+                colors::component_bg()
+            })
+            .border(border_all_color(
+                1.,
+                if hovered {
+                    colors::component_border_hover()
+                } else {
+                    colors::component_border()
+                },
+            ))
+            .cursor(CursorIcon::Pointer)
+            .on_press(move |_| {
+                if !already_taken(&tags.read(), preset) {
+                    let mut next = tags.read().clone();
+                    next.push(preset.to_string());
+                    tags.set(next);
+                }
+            })
+            .on_pointer_enter(move |_| hovering.set(true))
+            .on_pointer_leave(move |_| hovering.set(false))
+            .child(
+                Icon::new(IconType::Plus)
+                    .size(9.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                label()
+                    .text(preset)
+                    .font_size(12.)
+                    .font_weight(FontWeight::MEDIUM)
+                    .color(colors::fg_secondary()),
+            )
+    }
+}
+
+fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
     let mut tag_draft = state.tag_draft;
     let mut tag_open = state.tag_open;
     let mut all_tags = state.tags;
@@ -154,7 +287,7 @@ fn tag_field(state: DetailsState, tags: &[String], open: bool) -> Element {
                 .horizontal()
                 .cross_align(Alignment::Center)
                 .spacing(8.)
-                .height(Size::px(28.))
+                .height(Size::px(TAG_ROW_H))
                 .padding(Gaps::new_symmetric(0., 10.))
                 .corner_radius(CornerRadius::new_all(8.))
                 .background(colors::brand())
@@ -184,11 +317,13 @@ fn tag_field(state: DetailsState, tags: &[String], open: bool) -> Element {
                 .cross_align(Alignment::Center)
                 .spacing(6.)
                 .child(
-                    rect().width(Size::px(150.)).child(
+                    rect().width(Size::px(132.)).child(
                         TextInput::new(tag_draft)
+                            .compact()
                             .placeholder("Add a tag")
                             .auto_focus(true)
                             .width(Size::fill())
+                            .height(Size::px(TAG_ROW_H))
                             .on_submit(move |_| commit_tag(state))
                             .into_element(),
                     ),
@@ -198,10 +333,10 @@ fn tag_field(state: DetailsState, tags: &[String], open: bool) -> Element {
                         .primary()
                         .icon()
                         .alt("Add this tag")
-                        .width(Size::px(28.))
-                        .height(Size::px(28.))
+                        .width(Size::px(TAG_ROW_H))
+                        .height(Size::px(TAG_ROW_H))
                         .on_press(move |_| commit_tag(state))
-                        .child(Icon::new(IconType::Check).size(14.)),
+                        .child(Icon::new(IconType::Check).size(13.)),
                 )
                 .into_element()
         } else {
@@ -209,8 +344,8 @@ fn tag_field(state: DetailsState, tags: &[String], open: bool) -> Element {
                 .secondary()
                 .icon()
                 .alt("Add a tag")
-                .width(Size::px(28.))
-                .height(Size::px(28.))
+                .width(Size::px(TAG_ROW_H))
+                .height(Size::px(TAG_ROW_H))
                 .on_press(move |_| {
                     tag_draft.set(String::new());
                     tag_open.set(true);

@@ -97,6 +97,13 @@ impl TextInput {
         self
     }
 
+    pub fn compact(mut self) -> Self {
+        self.input = self
+            .input
+            .inner_margin(Gaps::new_symmetric(GAP_VERT / 2., GAP_HORI / 1.5));
+        self.font_size(12.)
+    }
+
     pub fn multiline(mut self, multiline: bool) -> Self {
         self.input = self.input.multiline(multiline);
         self.multiline = multiline;
@@ -207,14 +214,13 @@ impl Component for TextInput {
         card.get_style().clone_from(&self.style);
 
         let mut input = self.input.clone();
-        if self.multiline {
-            if let Some(on_submit) = self.on_submit.clone() {
-                input =
-                    input.on_pre_key_down(submit_on_modifier_enter(self.value.clone(), on_submit));
-            }
-            if !matches!(self.layout.height, Size::Inner) {
-                input = input.height(Size::fill());
-            }
+        if self.multiline
+            && let Some(on_submit) = self.on_submit.clone()
+        {
+            input = input.on_pre_key_down(submit_on_modifier_enter(self.value.clone(), on_submit));
+        }
+        if !matches!(self.layout.height, Size::Inner) {
+            input = input.height(Size::fill());
         }
 
         let expanded_input = (self.expandable && expanded()).then(|| {

@@ -14,7 +14,7 @@ use crate::ui::border_all_color;
 
 use super::{
     Installed, InstalledVersion, PackageBanner, Thumbnail, activity_badge, installed_badge,
-    installed_badge_overlay, installed_map,
+    installed_map,
 };
 use crate::utils::abbreviate_number;
 
@@ -60,7 +60,7 @@ fn pill(text: String) -> impl IntoElement {
         .into_element()
 }
 
-fn pill_flow(items: &[String], per_row: usize, max: usize) -> impl IntoElement {
+fn pill_flow(items: &[String], max: usize) -> impl IntoElement {
     let shown: Vec<String> = items.iter().take(max).cloned().collect();
     let overflow = items.len().saturating_sub(shown.len());
     let mut all = shown;
@@ -69,15 +69,11 @@ fn pill_flow(items: &[String], per_row: usize, max: usize) -> impl IntoElement {
     }
 
     rect()
-        .vertical()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::wrap_spacing(4.))
         .spacing(4.)
-        .children(all.chunks(per_row.max(1)).map(|chunk| {
-            rect()
-                .horizontal()
-                .spacing(4.)
-                .children(chunk.iter().map(|t| pill(t.clone()).into_element()))
-                .into_element()
-        }))
+        .children(all.into_iter().map(|t| pill(t).into_element()))
         .into_element()
 }
 
@@ -92,7 +88,7 @@ fn pill_detail(key: &str, items: &[String]) -> Element {
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
-        .child(pill_flow(items, 4, 18))
+        .child(pill_flow(items, 18))
         .into_element()
 }
 

@@ -1,13 +1,16 @@
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 use crate::LauncherResult;
 use crate::state::LauncherServices;
+use crate::versions::arts::{ArtsManifest, VersionArts};
 use crate::versions::manifest::{RemoteMigration, VersionMetadata, VersionsManifest};
 use oneclient_common::paths;
 use oneclient_net::{EtagPolicy, fetch_cached};
 
 pub struct VersionsManager {
     manifest: RwLock<VersionsManifest>,
+    arts: RwLock<ArtsManifest>,
+    syncing: Mutex<()>,
 }
 
 impl VersionsManager {
@@ -15,6 +18,8 @@ impl VersionsManager {
     pub fn new() -> Self {
         Self {
             manifest: RwLock::new(VersionsManifest::default()),
+            arts: RwLock::new(ArtsManifest::default()),
+            syncing: Mutex::new(()),
         }
     }
 
@@ -22,12 +27,24 @@ impl VersionsManager {
     /// immediately instead of blocking on a request that usually 304s
     #[must_use]
     pub async fn from_cache() -> Self {
-        let manifest = Self::cached_manifest()
-            .await
-            .unwrap_or_else(VersionsManifest::default);
+        let (manifest, arts) = tokio::join!(Self::cached_manifest(), Self::cached_arts());
 
         Self {
-            manifest: RwLock::new(manifest),
+            manifest: RwLock::new(manifest.unwrap_or_default()),
+            arts: RwLock::new(arts.unwrap_or_default()),
+            syncing: Mutex::new(()),
+        }
+    }
+
+    async fn cached_arts() -> Option<ArtsManifest> {
+        let path = paths::caches_dir().ok()?.join("version-arts.json");
+        let bytes = polyio::read(&path).await.ok()?;
+        match serde_json::from_slice(&bytes) {
+            Ok(arts) => Some(arts),
+            Err(err) => {
+                tracing::warn!("cached version arts are unreadable: {err}");
+                None
+            }
         }
     }
 
@@ -45,16 +62,42 @@ impl VersionsManager {
 
     #[tracing::instrument(level = "debug", skip(self, services))]
     pub async fn sync(&self, services: &LauncherServices) -> LauncherResult<bool> {
-        let Some((manifest, changed)) = Self::fetch_manifest(services).await? else {
+        let _guard = self.syncing.lock().await;
+
+        let (manifest, arts) =
+            tokio::join!(Self::fetch_manifest(services), Self::fetch_arts(services));
+
+        let mut changed = false;
+
+        match arts {
+            Ok(Some((arts, arts_changed))) => {
+                *self.arts.write().await = arts;
+                changed |= arts_changed;
+            }
+            Ok(None) => {
+                tracing::debug!("skipping version arts sync; no remote or cached arts available");
+            }
+            Err(err) => tracing::warn!(
+                "version arts sync failed, art falls back to the bundled background: {err}"
+            ),
+        }
+
+        let Some((manifest, manifest_changed)) = manifest? else {
             tracing::debug!("skipping versions sync; no remote or cached manifest available");
-            return Ok(false);
+            return Ok(changed);
         };
         *self.manifest.write().await = manifest;
-        Ok(changed)
+
+        Ok(changed || manifest_changed)
     }
 
     pub async fn metadata(&self, meta_url_base: &str) -> Vec<VersionMetadata> {
         self.manifest.read().await.metadata(meta_url_base)
+    }
+
+    pub async fn arts(&self, meta_url_base: &str) -> VersionArts {
+        let arts = self.arts.read().await;
+        VersionArts::new(&arts, meta_url_base)
     }
 
     pub async fn migrations(&self) -> Vec<RemoteMigration> {
@@ -78,6 +121,25 @@ impl VersionsManager {
             EtagPolicy::CommitNow,
         )
         .await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some((fetched.json()?, fetched.changed)))
+    }
+
+    #[tracing::instrument(level = "debug", skip(services))]
+    async fn fetch_arts(
+        services: &LauncherServices,
+    ) -> LauncherResult<Option<(ArtsManifest, bool)>> {
+        let arts_path = paths::caches_dir()?.join("version-arts.json");
+        let url = format!(
+            "{}/oneclient/versions/arts.json",
+            services.requester.config().meta_url_base
+        );
+
+        let Some(fetched) =
+            fetch_cached(&services.requester, &url, &arts_path, EtagPolicy::CommitNow).await?
         else {
             return Ok(None);
         };

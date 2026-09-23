@@ -2,7 +2,10 @@ use oneclient_common::VersionKey;
 use oneclient_common::domain::GameLoader;
 use oneclient_core::VersionMetadata;
 
+use freya::query::QueriesStorage;
+
 use super::use_versions;
+use super::versions::{VersionArtsKeys, VersionArtsQuery, use_version_arts};
 
 pub fn pick_version_metadata(
     list: &[VersionMetadata],
@@ -57,6 +60,53 @@ pub fn use_version_metadata(
     pick_version_metadata(list, major, key, loader)
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct VersionArtCandidates {
+    pub minor: Option<String>,
+    pub fallback: Option<String>,
+}
+
+pub fn use_version_art(major: Option<u32>, key: Option<VersionKey>) -> VersionArtCandidates {
+    let arts_query = use_version_arts();
+    let reader = arts_query.read();
+    let state = reader.state();
+
+    let Some(arts) = state.ok() else {
+        return VersionArtCandidates::default();
+    };
+
+    VersionArtCandidates {
+        minor: arts.specific_art_url(major, key),
+        fallback: arts.fallback_art_url(major),
+    }
+}
+
+pub async fn refresh_version_art_gallery() {
+    QueriesStorage::<VersionArtsQuery>::invalidate_matching(VersionArtsKeys).await;
+}
+
+pub fn use_version_art_gallery() -> Vec<String> {
+    let arts_query = use_version_arts();
+    let reader = arts_query.read();
+    let state = reader.state();
+
+    state.ok().map(|arts| arts.gallery()).unwrap_or_default()
+}
+
+pub fn resolve_art_url(
+    curated: Option<&VersionMetadata>,
+    candidates: &VersionArtCandidates,
+) -> Option<String> {
+    let curated_minor = curated
+        .filter(|m| m.minor_version.is_some())
+        .and_then(|m| m.art_url.clone());
+
+    curated_minor
+        .or_else(|| candidates.minor.clone())
+        .or_else(|| curated.and_then(|m| m.art_url.clone()))
+        .or_else(|| candidates.fallback.clone())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -87,6 +137,62 @@ mod tests {
             entry(26, Some(1), None, Some("fabric"), "bare minor"),
             entry(26, Some(1), Some(2), Some("fabric"), "patched"),
         ]
+    }
+
+    fn candidates(minor: Option<&str>, fallback: Option<&str>) -> VersionArtCandidates {
+        VersionArtCandidates {
+            minor: minor.map(str::to_string),
+            fallback: fallback.map(str::to_string),
+        }
+    }
+
+    fn with_art(mut entry: VersionMetadata, art: &str) -> VersionMetadata {
+        entry.art_url = Some(art.to_string());
+        entry
+    }
+
+    #[test]
+    fn a_minor_specific_art_beats_the_curated_cluster_row() {
+        let cluster = with_art(entry(21, None, None, None, "major"), "trials");
+        let resolved = resolve_art_url(Some(&cluster), &candidates(Some("garden"), Some("trials")));
+        assert_eq!(resolved.as_deref(), Some("garden"));
+    }
+
+    #[test]
+    fn a_curated_entry_art_beats_the_arts_manifest() {
+        let curated = with_art(
+            entry(21, Some(10), None, Some("fabric"), "copper"),
+            "copper",
+        );
+        let resolved = resolve_art_url(Some(&curated), &candidates(Some("other"), Some("trials")));
+        assert_eq!(resolved.as_deref(), Some("copper"));
+    }
+
+    #[test]
+    fn the_cluster_row_still_wins_over_a_line_level_art() {
+        let cluster = with_art(entry(21, None, None, None, "major"), "trials");
+        let resolved = resolve_art_url(Some(&cluster), &candidates(None, Some("line")));
+        assert_eq!(resolved.as_deref(), Some("trials"));
+    }
+
+    #[test]
+    fn nothing_curated_falls_through_to_the_arts_manifest() {
+        assert_eq!(
+            resolve_art_url(None, &candidates(None, Some("dirt"))).as_deref(),
+            Some("dirt")
+        );
+        assert_eq!(
+            resolve_art_url(None, &candidates(Some("combat"), Some("dirt"))).as_deref(),
+            Some("combat")
+        );
+        assert_eq!(resolve_art_url(None, &candidates(None, None)), None);
+    }
+
+    #[test]
+    fn a_curated_row_without_art_does_not_shadow_the_manifest() {
+        let cluster = entry(21, None, None, None, "major");
+        let resolved = resolve_art_url(Some(&cluster), &candidates(None, Some("dirt")));
+        assert_eq!(resolved.as_deref(), Some("dirt"));
     }
 
     #[test]

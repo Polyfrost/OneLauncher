@@ -9,9 +9,12 @@ use crate::{LauncherError, LauncherResult};
 use oneclient_common::paths;
 use oneclient_net::RequestClient;
 use oneclient_net::RequestError;
+use oneclient_net::{EtagPolicy, fetch_cached};
 use polyio::sha1_bytes;
 
 pub const DEFAULT_IMAGE_EDGE: u32 = 1200;
+
+pub const PREVIEW_IMAGE_EDGE: u32 = 512;
 
 /// Image urls come from untrusted remote descriptions, so cap what is fetched and decoded.
 const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
@@ -35,6 +38,15 @@ impl MemoryCache {
         }
         self.order.push_back(key.to_string());
         Some(hit)
+    }
+
+    fn remove(&mut self, key: &str) {
+        if let Some(dropped) = self.entries.remove(key) {
+            self.bytes -= dropped.len();
+            if let Some(at) = self.order.iter().position(|k| k == key) {
+                self.order.remove(at);
+            }
+        }
     }
 
     fn insert(&mut self, key: String, value: Bytes) {
@@ -115,8 +127,125 @@ impl ImageCacheStore {
         Ok(bytes)
     }
 
+    #[tracing::instrument(level = "debug", skip(self, net))]
+    pub async fn prefetch(
+        &self,
+        net: &RequestClient,
+        url: &str,
+        edges: &[u32],
+    ) -> LauncherResult<()> {
+        let mut missing = Vec::new();
+        for edge in edges {
+            let path = Self::disk_path(url, *edge)?;
+            if !tokio::fs::try_exists(&path).await.unwrap_or(false) {
+                missing.push((*edge, path));
+            }
+        }
+
+        if missing.is_empty() {
+            return Ok(());
+        }
+
+        let raw = match paths::local_image_path(url) {
+            Some(source) => Bytes::from(polyio::read(&source).await?),
+            None => download(net, url).await?,
+        };
+
+        let edges: Vec<u32> = missing.iter().map(|(edge, _)| *edge).collect();
+        let sized = downscale_each_if_oversized(raw, edges).await;
+
+        for ((_, path), bytes) in missing.into_iter().zip(sized) {
+            if let Some(parent) = path.parent() {
+                polyio::create_dir_all(parent).await?;
+            }
+            if let Err(err) = polyio::write(&path, &bytes).await {
+                tracing::warn!("failed to persist prefetched image for {url}: {err}");
+            }
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, net))]
+    pub async fn refresh(
+        &self,
+        net: &RequestClient,
+        url: &str,
+        edges: &[u32],
+    ) -> LauncherResult<()> {
+        ensure_fetchable(net, url)?;
+
+        let source = Self::source_path(url)?;
+        if let Some(parent) = source.parent() {
+            polyio::create_dir_all(parent).await?;
+        }
+
+        let Some(fetched) = fetch_cached(net, url, &source, EtagPolicy::CommitNow).await? else {
+            return self.prefetch(net, url, edges).await;
+        };
+
+        if fetched.bytes.len() > MAX_IMAGE_BYTES {
+            return Err(refused(url, "body is too large"));
+        }
+
+        let mut stale = Vec::new();
+        for edge in edges {
+            let path = Self::disk_path(url, *edge)?;
+            if fetched.changed || !tokio::fs::try_exists(&path).await.unwrap_or(false) {
+                stale.push((*edge, path));
+            }
+        }
+
+        if stale.is_empty() {
+            return Ok(());
+        }
+
+        let raw = Bytes::from(fetched.bytes);
+        let edges: Vec<u32> = stale.iter().map(|(edge, _)| *edge).collect();
+        let sized = downscale_each_if_oversized(raw, edges).await;
+
+        for ((edge, path), bytes) in stale.into_iter().zip(sized) {
+            if let Some(parent) = path.parent() {
+                polyio::create_dir_all(parent).await?;
+            }
+            if let Err(err) = polyio::write(&path, &bytes).await {
+                tracing::warn!("failed to persist refreshed image for {url}: {err}");
+                continue;
+            }
+            self.memory.lock().await.remove(&Self::mem_key(url, edge));
+        }
+
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, net))]
+    pub async fn ensure_on_disk(
+        &self,
+        net: &RequestClient,
+        url: &str,
+        max_edge: u32,
+    ) -> LauncherResult<PathBuf> {
+        let path = Self::disk_path(url, max_edge)?;
+        if tokio::fs::try_exists(&path).await.unwrap_or(false) {
+            return Ok(path);
+        }
+
+        self.prefetch(net, url, &[max_edge]).await?;
+
+        if tokio::fs::try_exists(&path).await.unwrap_or(false) {
+            Ok(path)
+        } else {
+            Err(refused(url, "the image could not be cached on disk"))
+        }
+    }
+
     fn mem_key(url: &str, max_edge: u32) -> String {
         format!("{max_edge}|{url}")
+    }
+
+    fn source_path(url: &str) -> LauncherResult<PathBuf> {
+        let name = format!("{}.source", sha1_bytes(url.as_bytes()));
+        Ok(paths::images_cache_dir()?.join(name))
     }
 
     fn disk_path(url: &str, max_edge: u32) -> LauncherResult<PathBuf> {
@@ -148,7 +277,7 @@ async fn downscale_if_oversized(bytes: Bytes, max_edge: u32) -> Bytes {
 const MAX_DECODE_EDGE: u32 = 8192;
 const MAX_DECODE_ALLOC: u64 = 128 * 1024 * 1024;
 
-fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
+fn decode_limited(bytes: &[u8]) -> Option<image::DynamicImage> {
     let mut limits = image::Limits::default();
     limits.max_image_width = Some(MAX_DECODE_EDGE);
     limits.max_image_height = Some(MAX_DECODE_EDGE);
@@ -157,12 +286,15 @@ fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
     let mut reader = image::ImageReader::new(std::io::Cursor::new(bytes));
     reader.limits(limits);
 
-    let img = reader
+    reader
         .with_guessed_format()
         .ok()?
         .decode()
         .inspect_err(|err| tracing::warn!("refused to decode an image: {err}"))
-        .ok()?;
+        .ok()
+}
+
+fn encode_downscaled(img: &image::DynamicImage, max_edge: u32) -> Option<Bytes> {
     if img.width().max(img.height()) <= max_edge {
         return None;
     }
@@ -184,8 +316,38 @@ fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
     Some(Bytes::from(out))
 }
 
+fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
+    encode_downscaled(&decode_limited(bytes)?, max_edge)
+}
+
+fn downscale_each(bytes: &[u8], edges: &[u32]) -> Vec<Option<Bytes>> {
+    let Some(img) = decode_limited(bytes) else {
+        return vec![None; edges.len()];
+    };
+
+    edges
+        .iter()
+        .map(|edge| encode_downscaled(&img, *edge))
+        .collect()
+}
+
+async fn downscale_each_if_oversized(bytes: Bytes, edges: Vec<u32>) -> Vec<Bytes> {
+    let _permit = DECODE_LIMIT.acquire().await;
+    let candidate = bytes.clone();
+    let count = edges.len();
+
+    let resized = tokio::task::spawn_blocking(move || downscale_each(&candidate, &edges))
+        .await
+        .unwrap_or_else(|_| vec![None; count]);
+
+    resized
+        .into_iter()
+        .map(|smaller| smaller.unwrap_or_else(|| bytes.clone()))
+        .collect()
+}
+
 #[tracing::instrument(level = "debug", skip(net))]
-async fn download(net: &RequestClient, url: &str) -> LauncherResult<Bytes> {
+fn ensure_fetchable(net: &RequestClient, url: &str) -> LauncherResult<reqwest::Url> {
     let parsed: reqwest::Url = url.parse().map_err(RequestError::from)?;
 
     if !matches!(parsed.scheme(), "http" | "https") {
@@ -197,6 +359,12 @@ async fn download(net: &RequestClient, url: &str) -> LauncherResult<Bytes> {
     if !is_public_host(&parsed) && !net.config().allows_host(&parsed) {
         return Err(refused(url, "host is not public"));
     }
+
+    Ok(parsed)
+}
+
+async fn download(net: &RequestClient, url: &str) -> LauncherResult<Bytes> {
+    let parsed = ensure_fetchable(net, url)?;
 
     let request = reqwest::Request::new(Method::GET, parsed);
     let mut res = net.send(request).await?;

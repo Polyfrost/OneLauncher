@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
 use oneclient_common::domain::GameLoader;
-use oneclient_core::{GameVersionKind, LauncherError, VersionMetadata};
+use oneclient_core::{GameVersionKind, LauncherError, VersionArts, VersionMetadata};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VersionsMetadataQuery;
@@ -35,6 +35,40 @@ impl QueryCapability for VersionsMetadataQuery {
 
 pub fn use_versions() -> UseQuery<VersionsMetadataQuery> {
     use_query(Query::new(VersionsMetadataKeys, VersionsMetadataQuery))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct VersionArtsQuery;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct VersionArtsKeys;
+
+impl QueryCapability for VersionArtsQuery {
+    type Ok = Arc<VersionArts>;
+    type Err = LauncherError;
+    type Keys = VersionArtsKeys;
+
+    async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state()?;
+        let arts = state
+            .versions
+            .arts(&state.services.requester.config().meta_url_base)
+            .await;
+        if !arts.is_empty() {
+            return Ok(Arc::new(arts));
+        }
+        state.versions.sync(&state.services).await?;
+        Ok(Arc::new(
+            state
+                .versions
+                .arts(&state.services.requester.config().meta_url_base)
+                .await,
+        ))
+    }
+}
+
+pub fn use_version_arts() -> UseQuery<VersionArtsQuery> {
+    use_query(Query::new(VersionArtsKeys, VersionArtsQuery))
 }
 
 /// A failed fetch reads as an empty list rather than `None` so callers that

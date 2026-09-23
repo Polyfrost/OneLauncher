@@ -99,7 +99,10 @@ pub use storage::{
     use_discard_leftovers, use_leftovers, use_storage_action, use_storage_report,
 };
 pub use tos::{TermsQuery, terms_document, terms_error, terms_is_loading, use_terms};
-pub use version_metadata::{pick_version_metadata, use_version_metadata};
+pub use version_metadata::{
+    pick_version_metadata, refresh_version_art_gallery, resolve_art_url, use_version_art,
+    use_version_art_gallery, use_version_metadata,
+};
 pub use versions::{
     GameVersion, JavaMajorsQuery, LoaderVersionSet, game_versions, java_majors,
     loader_game_versions, loader_versions, use_game_versions, use_java_majors,

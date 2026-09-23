@@ -48,6 +48,7 @@ mod toggle;
 mod tooltip;
 mod update_prompt;
 pub mod upload_mclogs;
+mod version_art_gallery;
 mod version_card;
 
 pub use account_switcher::AccountSwitcher;
@@ -105,4 +106,5 @@ pub use toasts::Toasts;
 pub use toggle::{toggle, toggle_controlled};
 pub use tooltip::{TooltipHost, TooltipPlacement, use_provide_tooltips};
 pub use update_prompt::UpdatePromptOverlay;
+pub use version_art_gallery::{GALLERY_COVER_EDGE, VersionArtGallery};
 pub use version_card::VersionCard;

@@ -2,7 +2,10 @@ use std::path::PathBuf;
 
 use freya::prelude::*;
 
-use crate::components::{ART_PREVIEW_EDGE, Button, Icon, IconType, LocalImage, TextInput};
+use crate::components::{
+    ART_PREVIEW_EDGE, Button, GALLERY_COVER_EDGE, Icon, IconType, LocalImage, TextInput,
+    VersionArtGallery,
+};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -33,6 +36,9 @@ pub struct DetailsState {
     pub tag_open: State<bool>,
     pub cover: State<Option<PathBuf>>,
     pub cover_cleared: State<bool>,
+    pub gallery_open: State<bool>,
+    pub gallery_pending: State<Option<String>>,
+    pub gallery_error: State<Option<String>>,
 }
 
 impl DetailsState {
@@ -46,6 +52,9 @@ impl DetailsState {
             tag_open: use_state(|| false),
             cover: use_state(|| None::<PathBuf>),
             cover_cleared: use_state(|| false),
+            gallery_open: use_state(|| false),
+            gallery_pending: use_state(|| None::<String>),
+            gallery_error: use_state(|| None::<String>),
         }
     }
 
@@ -63,6 +72,9 @@ impl DetailsState {
             tag_open: use_state(|| false),
             cover: use_state(|| None::<PathBuf>),
             cover_cleared: use_state(|| false),
+            gallery_open: use_state(|| false),
+            gallery_pending: use_state(|| None::<String>),
+            gallery_error: use_state(|| None::<String>),
         }
     }
 
@@ -360,6 +372,10 @@ fn cover_field(state: DetailsState, preview: Option<(PathBuf, bool)>) -> Element
     let mut cover = state.cover;
     let mut cleared = state.cover_cleared;
 
+    let mut gallery_open = state.gallery_open;
+    let mut gallery_pending = state.gallery_pending;
+    let mut gallery_error = state.gallery_error;
+
     let pick = move |_| {
         spawn(async move {
             if let Some(handle) = rfd::AsyncFileDialog::new()
@@ -374,7 +390,59 @@ fn cover_field(state: DetailsState, preview: Option<(PathBuf, bool)>) -> Element
         });
     };
 
+    let pick_from_gallery = move |url: String| {
+        spawn(async move {
+            let mut failed = |message: &str| {
+                gallery_pending.set(None);
+                gallery_error.set(Some(message.to_string()));
+            };
+
+            let state = match crate::launcher::state() {
+                Ok(state) => state,
+                Err(err) => {
+                    tracing::warn!(error = %err, "cannot reach the launcher state to pick gallery art");
+                    failed("The launcher is still starting up. Try again in a moment.");
+                    return;
+                }
+            };
+
+            match state
+                .images
+                .ensure_on_disk(&state.services.requester, &url, GALLERY_COVER_EDGE)
+                .await
+            {
+                Ok(path) => {
+                    cover.set(Some(path));
+                    cleared.set(false);
+                    gallery_pending.set(None);
+                    gallery_error.set(None);
+                    gallery_open.set(false);
+                }
+                Err(err) => {
+                    tracing::warn!(error = %err, "failed to cache the chosen gallery art");
+                    failed("That artwork could not be downloaded. Check your connection.");
+                }
+            }
+        });
+    };
+
     let has_cover = preview.is_some();
+    let gallery = (*gallery_open.read()).then(|| {
+        rect()
+            .width(Size::px(0.))
+            .height(Size::px(0.))
+            .child(VersionArtGallery::new(
+                gallery_pending,
+                gallery_error,
+                pick_from_gallery,
+                move |()| {
+                    gallery_pending.set(None);
+                    gallery_error.set(None);
+                    gallery_open.set(false);
+                },
+            ))
+            .into_element()
+    });
 
     rect()
         .horizontal()
@@ -430,6 +498,13 @@ fn cover_field(state: DetailsState, preview: Option<(PathBuf, bool)>) -> Element
                                 .on_press(pick)
                                 .text("Choose file"),
                         )
+                        .child(
+                            Button::new()
+                                .secondary()
+                                .small()
+                                .on_press(move |_| gallery_open.set(true))
+                                .text("Browse gallery"),
+                        )
                         .maybe_child(has_cover.then(|| {
                             Button::new()
                                 .ghost()
@@ -443,6 +518,7 @@ fn cover_field(state: DetailsState, preview: Option<(PathBuf, bool)>) -> Element
                         })),
                 ),
         )
+        .maybe_child(gallery)
         .into_element()
 }
 

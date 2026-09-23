@@ -150,6 +150,11 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
             tracing::error!("bundle catalog sync failed: {err:#}");
         }
 
+        let art = Arc::clone(&background);
+        tokio::spawn(async move {
+            crate::versions::prefetch_version_art(&art).await;
+        });
+
         if recovery.did_recover()
             && let Err(err) = crate::recovery::restore_bundle_tracking(&background).await
         {

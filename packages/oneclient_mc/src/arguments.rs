@@ -464,7 +464,7 @@ pub fn classpaths(
     java_arch: &str,
     updated: bool,
 ) -> McResult<String> {
-    let mut chosen: HashMap<String, (Vec<u64>, &str)> = HashMap::new();
+    let mut chosen: HashMap<String, (ClasspathRank, &str)> = HashMap::new();
     for lib in libraries {
         if let Some(rules) = &lib.rules
             && !validate_rules(rules, java_arch, updated)
@@ -480,17 +480,20 @@ pub fn classpaths(
         }
 
         let (artifact, version) = split_artifact_version(&lib.name);
-        let ver_key = version_key(version);
-        match chosen.get(&artifact) {
-            Some((existing, existing_name)) if *existing >= ver_key => {
+        let bundled = is_legacy_asm_bundle(&artifact);
+        let slot = classpath_slot(artifact);
+        let rank = (!bundled, version_key(version));
+
+        match chosen.get(&slot) {
+            Some((existing, existing_name)) if *existing >= rank => {
                 tracing::debug!(
                     skipped = %lib.name,
                     kept = %existing_name,
-                    "classpath: dropping older duplicate library"
+                    "classpath: dropping superseded library"
                 );
             }
             _ => {
-                chosen.insert(artifact, (ver_key, &lib.name));
+                chosen.insert(slot, (rank, &lib.name));
             }
         }
     }
@@ -508,6 +511,25 @@ pub fn classpaths(
         .into_iter()
         .collect::<Vec<_>>()
         .join(constants::CLASSPATH_SEPARATOR))
+}
+
+type ClasspathRank = (bool, Vec<u64>);
+
+const ASM_SLOT: &str = "org.ow2.asm:asm";
+
+fn is_legacy_asm_bundle(artifact: &str) -> bool {
+    matches!(
+        artifact,
+        "org.ow2.asm:asm-all" | "org.ow2.asm:asm-debug-all" | "asm:asm-all" | "asm:asm-debug-all"
+    )
+}
+
+fn classpath_slot(artifact: String) -> String {
+    if is_legacy_asm_bundle(&artifact) {
+        return ASM_SLOT.to_string();
+    }
+
+    artifact
 }
 
 fn split_artifact_version(name: &str) -> (String, &str) {
@@ -538,14 +560,21 @@ pub fn get_classpath_library<T: AsRef<str>>(
     Ok(classpaths.join(constants::CLASSPATH_SEPARATOR))
 }
 
-pub fn get_library(libraries_path: &Path, library: &str, error_exist: bool) -> McResult<String> {
+pub fn get_library(libraries_path: &Path, library: &str, allow_missing: bool) -> McResult<String> {
     let mut path = libraries_path.to_path_buf();
     path.push(
         get_path_from_artifact(library).map_err(|_| McError::LibraryPath(library.to_string()))?,
     );
 
-    if !path.exists() && error_exist {
-        return Ok(path.display().to_string());
+    if !path.exists() {
+        if allow_missing {
+            return Ok(path.display().to_string());
+        }
+
+        return Err(McError::MissingLibrary {
+            library: library.to_string(),
+            path: path.display().to_string(),
+        });
     }
 
     Ok(polyio::canonicalize(&path)?.display().to_string())
@@ -595,8 +624,8 @@ where
 mod tests {
     use super::{
         HashMap, Library, Path, SidedDataEntry, ZGC_MIN_HEAP_MB, classpaths,
-        drop_repeated_arguments, is_collector_flag, java_arguments, minecraft_arguments,
-        performance_flags, processor_arguments, split_custom_args,
+        drop_repeated_arguments, get_library, is_collector_flag, java_arguments,
+        minecraft_arguments, performance_flags, processor_arguments, split_custom_args,
     };
     use oneclient_common::Resolution;
 
@@ -859,6 +888,135 @@ mod tests {
     #[test]
     fn a_java_7_runtime_is_left_untouched() {
         assert_eq!(flags(7, "amd64", 4096), vec!["-Xms512M"]);
+    }
+
+    fn install_jars(tag: &str, jars: &[&str]) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(tag);
+        for jar in jars {
+            let path = dir.join(jar);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"").unwrap();
+        }
+        let client = dir.join("client.jar");
+        std::fs::write(&client, b"").unwrap();
+        (dir, client)
+    }
+
+    #[test]
+    fn a_legacy_asm_bundle_loses_to_the_split_modules() {
+        let libraries: Vec<Library> = serde_json::from_str(
+            r#"[
+                { "name": "org.ow2.asm:asm-all:4.1" },
+                { "name": "org.ow2.asm:asm:9.10.1" },
+                { "name": "org.ow2.asm:asm-tree:9.10.1" },
+                { "name": "net.minecraft:launchwrapper:1.5" }
+            ]"#,
+        )
+        .unwrap();
+
+        let (dir, client) = install_jars(
+            "oneclient-classpath-asm-all",
+            &[
+                "org/ow2/asm/asm-all/4.1/asm-all-4.1.jar",
+                "org/ow2/asm/asm/9.10.1/asm-9.10.1.jar",
+                "org/ow2/asm/asm-tree/9.10.1/asm-tree-9.10.1.jar",
+                "net/minecraft/launchwrapper/1.5/launchwrapper-1.5.jar",
+            ],
+        );
+
+        let cp = classpaths(&dir, &libraries, &client, "x86", false).unwrap();
+
+        assert!(
+            !cp.contains("asm-all"),
+            "fabric aborts on two copies of org/objectweb/asm/ClassReader.class: {cp}"
+        );
+        assert!(cp.contains("asm-9.10.1.jar"), "{cp}");
+        assert!(cp.contains("asm-tree-9.10.1.jar"), "{cp}");
+        assert!(cp.contains("launchwrapper-1.5.jar"), "{cp}");
+    }
+
+    #[test]
+    fn a_legacy_asm_bundle_stays_when_nothing_supersedes_it() {
+        let libraries: Vec<Library> = serde_json::from_str(
+            r#"[
+                { "name": "org.ow2.asm:asm-all:4.1" },
+                { "name": "net.minecraft:launchwrapper:1.5" }
+            ]"#,
+        )
+        .unwrap();
+
+        let (dir, client) = install_jars(
+            "oneclient-classpath-asm-only",
+            &[
+                "org/ow2/asm/asm-all/4.1/asm-all-4.1.jar",
+                "net/minecraft/launchwrapper/1.5/launchwrapper-1.5.jar",
+            ],
+        );
+
+        let cp = classpaths(&dir, &libraries, &client, "x86", false).unwrap();
+
+        assert!(cp.contains("asm-all-4.1.jar"), "{cp}");
+    }
+
+    #[test]
+    fn a_newer_bundle_does_not_outrank_an_older_split_module() {
+        let libraries: Vec<Library> = serde_json::from_str(
+            r#"[
+                { "name": "org.ow2.asm:asm-debug-all:5.2" },
+                { "name": "org.ow2.asm:asm:5.0.3" }
+            ]"#,
+        )
+        .unwrap();
+
+        let (dir, client) = install_jars(
+            "oneclient-classpath-asm-debug",
+            &[
+                "org/ow2/asm/asm-debug-all/5.2/asm-debug-all-5.2.jar",
+                "org/ow2/asm/asm/5.0.3/asm-5.0.3.jar",
+            ],
+        );
+
+        let cp = classpaths(&dir, &libraries, &client, "x86", false).unwrap();
+
+        assert!(!cp.contains("asm-debug-all"), "{cp}");
+        assert!(cp.contains("asm-5.0.3.jar"), "{cp}");
+    }
+
+    #[test]
+    fn a_missing_classpath_jar_names_the_library_it_could_not_find() {
+        let libraries: Vec<Library> = serde_json::from_str(
+            r#"[
+                { "name": "net.fabricmc:fabric-loader:0.19.5" },
+                { "name": "net.fabricmc:intermediary:1.8.9" }
+            ]"#,
+        )
+        .unwrap();
+
+        let dir = std::env::temp_dir().join("oneclient-classpath-missing");
+        let present = dir.join("net/fabricmc/fabric-loader/0.19.5/fabric-loader-0.19.5.jar");
+        std::fs::create_dir_all(present.parent().unwrap()).unwrap();
+        std::fs::write(&present, b"").unwrap();
+        let client = dir.join("client.jar");
+        std::fs::write(&client, b"").unwrap();
+
+        let err = classpaths(&dir, &libraries, &client, "x86", false)
+            .expect_err("a jar that never downloaded must not reach the jvm as a silent gap");
+        let message = err.to_string();
+
+        assert!(
+            message.contains("net.fabricmc:intermediary:1.8.9"),
+            "{message}"
+        );
+        assert!(message.contains("intermediary-1.8.9.jar"), "{message}");
+    }
+
+    #[test]
+    fn a_tolerated_missing_library_keeps_its_expected_path() {
+        let dir = std::env::temp_dir().join("oneclient-library-tolerated");
+        let path = get_library(&dir, "net.fabricmc:intermediary:1.8.9", true)
+            .expect("allow_missing hands back the path it would have used");
+
+        assert!(path.ends_with("intermediary-1.8.9.jar"), "{path}");
     }
 
     #[test]

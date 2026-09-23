@@ -207,15 +207,7 @@ impl MetadataStore {
                 continue;
             };
 
-            let found = manifest.game_versions.iter().any(|entry| {
-                entry
-                    .id
-                    .replace("${interpulse.gameVersion}", mc_version)
-                    .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
-                    == mc_version
-            });
-
-            if found {
+            if manifest_supports_version(manifest, mc_version) {
                 loaders.push(*loader);
             }
         }
@@ -244,20 +236,57 @@ impl MetadataStore {
             return Ok(None);
         };
 
-        let mut ids = Vec::with_capacity(manifest.game_versions.len());
-        for entry in &manifest.game_versions {
-            if entry.id.contains("${interpulse.gameVersion}")
-                || entry
-                    .id
-                    .contains(interfrost::api::modded::DUMMY_REPLACE_STRING)
-            {
-                return Ok(None);
-            }
-            ids.push(entry.id.clone());
+        Ok(concrete_version_ids(manifest))
+    }
+}
+
+const LEGACY_DUMMY_REPLACE_STRING: &str = "${interpulse.gameVersion}";
+
+#[must_use]
+pub(crate) fn is_version_placeholder(entry_id: &str) -> bool {
+    entry_id.contains(LEGACY_DUMMY_REPLACE_STRING)
+        || entry_id.contains(interfrost::api::modded::DUMMY_REPLACE_STRING)
+}
+
+#[must_use]
+pub(crate) fn entry_matches_version(entry_id: &str, mc_version: &str) -> bool {
+    entry_id
+        .replace(LEGACY_DUMMY_REPLACE_STRING, mc_version)
+        .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
+        == mc_version
+}
+
+#[must_use]
+pub(crate) fn concrete_version_ids(manifest: &ModdedManifest) -> Option<Vec<String>> {
+    let mut ids = Vec::with_capacity(manifest.game_versions.len());
+
+    for entry in &manifest.game_versions {
+        if is_version_placeholder(&entry.id) {
+            continue;
+        }
+        ids.push(entry.id.clone());
+    }
+
+    (!ids.is_empty()).then_some(ids)
+}
+
+#[must_use]
+pub(crate) fn manifest_supports_version(manifest: &ModdedManifest, mc_version: &str) -> bool {
+    let mut saw_concrete = false;
+
+    for entry in &manifest.game_versions {
+        if is_version_placeholder(&entry.id) {
+            continue;
         }
 
-        Ok(Some(ids))
+        saw_concrete = true;
+
+        if entry.id == mc_version {
+            return true;
+        }
     }
+
+    !saw_concrete
 }
 
 fn keep_fetched<T>(slot: &mut Option<T>, fetched: McResult<T>) {
@@ -307,4 +336,54 @@ async fn fetch_manifest<T: DeserializeOwned>(ctx: &McCtx, loader: GameLoader) ->
         .send_json(Method::GET, parsed, None, &[])
         .await
         .map_err(McError::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ModdedManifest, concrete_version_ids, manifest_supports_version};
+
+    fn manifest(raw: &str) -> ModdedManifest {
+        serde_json::from_str(raw).unwrap()
+    }
+
+    fn fabric_shaped() -> ModdedManifest {
+        manifest(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/0.19.5.json", "stable": true }
+                ]},
+                { "id": "1.21.1", "stable": true, "loaders": [] },
+                { "id": "1.14", "stable": true, "loaders": [] }
+            ]}"#,
+        )
+    }
+
+    #[test]
+    fn the_concrete_entries_are_the_supported_set() {
+        let manifest = fabric_shaped();
+
+        assert!(manifest_supports_version(&manifest, "1.21.1"));
+        assert!(manifest_supports_version(&manifest, "1.14"));
+        assert!(!manifest_supports_version(&manifest, "1.8.9"));
+    }
+
+    #[test]
+    fn a_manifest_of_nothing_but_placeholders_covers_everything() {
+        let manifest = manifest(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [] }
+            ]}"#,
+        );
+
+        assert!(manifest_supports_version(&manifest, "1.8.9"));
+        assert_eq!(concrete_version_ids(&manifest), None);
+    }
+
+    #[test]
+    fn the_version_list_drops_the_placeholder_rather_than_going_unbounded() {
+        assert_eq!(
+            concrete_version_ids(&fabric_shaped()),
+            Some(vec!["1.21.1".to_string(), "1.14".to_string()])
+        );
+    }
 }

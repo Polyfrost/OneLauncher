@@ -12,7 +12,7 @@ use crate::rules::validate_rules;
 
 use crate::McCtx;
 use crate::error::{McError, McResult};
-use crate::manifest::MetadataStore;
+use crate::manifest::{MetadataStore, entry_matches_version, manifest_supports_version};
 use oneclient_common::domain::GameLoader;
 use oneclient_common::os_ext::OsExt;
 use oneclient_common::paths;
@@ -1306,12 +1306,12 @@ pub async fn get_loader_versions(
     }
 
     let manifest = metadata.get_modded_or_fetch(ctx, loader).await?;
+    if !manifest_supports_version(manifest, mc_version) {
+        return Ok(Vec::new());
+    }
+
     for entry in &manifest.game_versions {
-        let id = entry
-            .id
-            .replace("${interpulse.gameVersion}", mc_version)
-            .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version);
-        if id == mc_version {
+        if entry_matches_version(&entry.id, mc_version) && !entry.loaders.is_empty() {
             return Ok(entry.loaders.iter().map(|l| l.id.clone()).collect());
         }
     }
@@ -1323,15 +1323,14 @@ fn resolve_loader_from_manifest(
     mc_version: &str,
     loader_version: Option<&str>,
 ) -> (bool, Option<LoaderVersion>) {
+    if !manifest_supports_version(manifest, mc_version) {
+        return (false, None);
+    }
+
     let mut saw_matching_game_version = false;
 
     for entry in &manifest.game_versions {
-        if entry
-            .id
-            .replace("${interpulse.gameVersion}", mc_version)
-            .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
-            != mc_version
-        {
+        if !entry_matches_version(&entry.id, mc_version) {
             continue;
         }
 
@@ -1407,9 +1406,14 @@ pub async fn get_loader_version(
         }
     }
 
+    let no_matching_version = || McError::NoMatchingVersion {
+        loader,
+        version: mc_version.to_string(),
+    };
+
     if let Some(requested) = loader_version {
         if !saw_matching {
-            return Err(McError::NoMatchingVersion);
+            return Err(no_matching_version());
         }
         return Err(McError::RequestedLoaderVersionNotFound {
             requested: requested.to_string(),
@@ -1419,7 +1423,7 @@ pub async fn get_loader_version(
     if saw_matching {
         Err(McError::NoMatchingLoader)
     } else {
-        Err(McError::NoMatchingVersion)
+        Err(no_matching_version())
     }
 }
 
@@ -1619,6 +1623,51 @@ mod tests {
 
         let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.21", None);
         assert!(!saw && resolved.is_none());
+    }
+
+    #[test]
+    fn a_wildcard_only_supplies_loaders_for_versions_the_manifest_lists() {
+        let manifest = serde_json::from_str::<interfrost::api::modded::Manifest>(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/0.19.5.json", "stable": true },
+                    { "id": "0.19.4", "url": "https://meta.example/0.19.4.json", "stable": false }
+                ]},
+                { "id": "1.21.1", "stable": true, "loaders": [] },
+                { "id": "1.14", "stable": true, "loaders": [] }
+            ]}"#,
+        )
+        .unwrap();
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.21.1", None);
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.5");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.14", Some("0.19.4"));
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.4");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.8.9", None);
+        assert!(
+            !saw && resolved.is_none(),
+            "fabric publishes no intermediary below 1.14 so the wildcard must not claim 1.8.9"
+        );
+    }
+
+    #[test]
+    fn a_manifest_that_is_only_a_wildcard_still_covers_every_version() {
+        let manifest = serde_json::from_str::<interfrost::api::modded::Manifest>(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/0.19.5.json", "stable": true }
+                ]}
+            ]}"#,
+        )
+        .unwrap();
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.8.9", None);
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.5");
     }
 
     #[test]

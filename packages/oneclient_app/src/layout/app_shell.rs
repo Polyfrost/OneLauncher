@@ -575,7 +575,7 @@ half4 main(float2 fragCoord) {
 }
 "#;
 
-pub(crate) fn gradient_overlay_radial() -> impl IntoElement {
+fn gradient_overlay_radial() -> impl IntoElement {
     let effect = use_hook(|| {
         freya::engine::prelude::RuntimeEffect::make_for_shader(VIGNETTE_SPOTLIGHT_SHADER, None)
             .expect("Failed to compile vignette shader")

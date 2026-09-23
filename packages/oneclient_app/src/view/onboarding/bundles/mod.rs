@@ -17,8 +17,7 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::onboarding::{
     archive_selected, choice_row_sized, is_default_bundle, is_optional_file, onboarding_nav,
-    onboarding_slide, pkg_key, predownload_toggle_row, set_archive_selected, step_heading,
-    version_chip,
+    onboarding_slide, pkg_key, set_archive_selected, step_heading, version_chip,
 };
 
 mod row;
@@ -244,7 +243,6 @@ impl Component for OnboardingBundles {
         let selection = use_onboarding_selection();
         let selected = selection.selected;
         let user_touched = selection.user_touched;
-        let predownload = selection.predownload;
 
         let clusters = onboarding_bundles_items(&bundles_query).unwrap_or_default();
         let bundles_loaded = onboarding_bundles_items(&bundles_query).is_some();
@@ -318,8 +316,7 @@ impl Component for OnboardingBundles {
                                     .children(sections),
                             )
                             .maybe_child(nothing_to_ask.then(|| empty_hint(&catalog_msg))),
-                    )
-                    .child(predownload_toggle_row(predownload)),
+                    ),
             ))
             .child(onboarding_nav(
                 Some(Route::OnboardingAccount {}),

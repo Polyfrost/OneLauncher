@@ -1,10 +1,13 @@
 use freya::prelude::*;
+use freya::query::UseMutation;
 use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
 use oneclient_core::SeenStatus;
 
-use crate::components::{Icon, IconType, toggle_controlled};
-use crate::hooks::{ClusterAction, loaded_image, use_cached_image, use_cluster_mutation};
+use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
+use crate::hooks::{
+    ClusterAction, ClusterMutation, loaded_image, use_cached_image, use_cluster_mutation,
+};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
@@ -13,9 +16,9 @@ use crate::utils::format_size;
 pub(crate) const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 pub(crate) const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
 pub(crate) const CARD_H: f32 = 84.;
-pub(crate) const CARD_GRID_H: f32 = 148.;
-pub(crate) const GRID_GAP: f32 = 10.;
-pub(crate) const GRID_MIN_W: f32 = 260.;
+pub(crate) const CARD_GRID_H: f32 = 112.;
+pub(crate) const GRID_GAP: f32 = 12.;
+pub(crate) const GRID_MIN_W: f32 = 290.;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -40,6 +43,7 @@ pub struct PackageEntry {
     pub name: String,
     pub file_name: String,
     pub author: String,
+    pub version: Option<String>,
     pub description: String,
     pub icon_url: Option<String>,
     pub size: u64,
@@ -85,6 +89,7 @@ pub struct PackageRow {
     cluster_id: i64,
     package_type: &'static str,
     layout: CardLayout,
+    on_context: EventHandler<(f32, f32)>,
     key: DiffKey,
 }
 
@@ -95,12 +100,18 @@ impl PackageRow {
             cluster_id,
             package_type,
             layout: CardLayout::List,
+            on_context: (|_| {}).into(),
             key: DiffKey::None,
         }
     }
 
     pub fn layout(mut self, layout: CardLayout) -> Self {
         self.layout = layout;
+        self
+    }
+
+    pub fn on_context(mut self, on_context: impl Into<EventHandler<(f32, f32)>>) -> Self {
+        self.on_context = on_context.into();
         self
     }
 }
@@ -118,11 +129,11 @@ impl Component for PackageRow {
         let package_type = self.package_type;
         let layout = self.layout;
         let cluster = use_cluster_mutation();
-        let remove_hover = use_state(|| false);
+        let hovered = use_state(|| false);
 
         let icon_size = match layout {
             CardLayout::List => 44.,
-            CardLayout::Grid => 52.,
+            CardLayout::Grid => 40.,
         };
         let icon_query = use_cached_image(item.icon_url.clone(), 256);
         let icon = package_icon(&item, &icon_query, icon_size);
@@ -153,45 +164,92 @@ impl Component for PackageRow {
             .into()
         };
 
+        let on_context = has_menu(&item).then(|| self.on_context.clone());
+
         match layout {
             CardLayout::List => {
-                let removable = !item.in_bundle();
-                let can_remove = removable && item.installed;
-                let rm_hash = item.hash.clone();
-                let on_remove = move || {
-                    if let Some(h) = &rm_hash {
-                        cluster.mutate(ClusterAction::RemoveArtifact {
-                            cluster_id,
-                            hash: h.clone(),
-                        });
-                    }
-                };
-                list_card(
-                    &item,
-                    package_type,
-                    cluster_id,
-                    icon,
-                    on_toggle,
-                    can_remove,
-                    on_remove,
-                    remove_hover,
-                )
+                list_card(&item, package_type, cluster_id, icon, on_toggle, on_context)
             }
-            CardLayout::Grid => grid_card(&item, package_type, cluster_id, icon, on_toggle, true),
+            CardLayout::Grid => grid_card(
+                &item,
+                package_type,
+                cluster_id,
+                icon,
+                on_toggle,
+                true,
+                on_context,
+                hovered,
+            ),
         }
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+pub fn has_menu(item: &PackageEntry) -> bool {
+    item.is_remote() || item.hash.is_some()
+}
+
+pub fn package_context_menu(
+    x: f32,
+    y: f32,
+    item: &PackageEntry,
+    cluster_id: i64,
+    package_type: &'static str,
+    cluster: UseMutation<ClusterMutation>,
+) -> ContextMenu {
+    let mut menu = ContextMenu::new(x, y).title(item.name.clone());
+
+    if item.is_remote() {
+        let provider = item.provider;
+        let package_id = item.package_id.clone();
+        let package_type = package_type.to_string();
+        menu = menu.action(IconType::LinkExternal01, "View in browser", move |()| {
+            let _ = RouterContext::get().push(Route::BrowserPackage {
+                cluster_id,
+                package_type: package_type.clone(),
+                package_id: format!("{}:{}", provider as u8, package_id),
+            });
+        });
+    }
+
+    if let Some(hash) = item.hash.clone() {
+        menu = menu.action(IconType::Folder, "View in folder", move |()| {
+            reveal_in_store(hash.clone());
+        });
+    }
+
+    if item.installed && !item.in_bundle() {
+        let hash = item.hash.clone();
+        menu = menu
+            .separator()
+            .danger_action(IconType::Trash01, "Delete", move |()| {
+                if let Some(hash) = &hash {
+                    cluster.mutate(ClusterAction::RemoveArtifact {
+                        cluster_id,
+                        hash: hash.clone(),
+                    });
+                }
+            });
+    }
+
+    menu
+}
+
+fn on_secondary(handler: Option<EventHandler<(f32, f32)>>) -> impl FnMut(Event<PressEventData>) {
+    move |e: Event<PressEventData>| {
+        if let (Some(handler), PressEventData::Mouse(m)) = (handler.as_ref(), e.data()) {
+            e.stop_propagation();
+            handler.call((m.global_location.x as f32, m.global_location.y as f32));
+        }
+    }
+}
+
 fn list_card(
     item: &PackageEntry,
     package_type: &'static str,
     cluster_id: i64,
     icon: impl IntoElement,
     on_toggle: EventHandler<()>,
-    can_remove: bool,
-    on_remove: impl FnMut() + 'static,
-    hovering: State<bool>,
+    on_context: Option<EventHandler<(f32, f32)>>,
 ) -> Element {
     rect()
         .horizontal()
@@ -203,13 +261,15 @@ fn list_card(
         .corner_radius(CornerRadius::new_all(8.))
         .background(CARD_BG)
         .content(Content::Flex)
+        .on_secondary_down(on_secondary(on_context.clone()))
         .child(package_info(item, package_type, cluster_id, icon))
         .child(meta_size(item.size))
         .child(toggle_controlled(item.enabled, on_toggle))
-        .child(remove_button(can_remove, on_remove, hovering))
+        .maybe_child(on_context.map(kebab_button))
         .into_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn grid_card(
     item: &PackageEntry,
     package_type: &'static str,
@@ -217,46 +277,42 @@ pub(crate) fn grid_card(
     icon: impl IntoElement,
     on_toggle: EventHandler<()>,
     navigable: bool, // if true, it takes the user to the mod page
+    on_context: Option<EventHandler<(f32, f32)>>,
+    mut hovered: State<bool>,
 ) -> Element {
-    let remote = item.is_remote();
     let enabled = item.enabled;
     let title = item.name.clone();
+    let hovering = *hovered.read();
 
-    let (bg, border, content_alpha) = if enabled {
-        (colors::brand().with_a(38), colors::brand(), 255)
-    } else {
-        (CARD_BG, colors::component_border(), 140)
+    let bg = match (enabled, hovering) {
+		(_, true) => colors::component_bg_hover(),
+        (true, false) => colors::component_bg(),
+		(false, false) => colors::component_bg_disabled(),
     };
 
-    let badge = if remote && navigable {
-        let provider = item.provider;
-        let package_id = item.package_id.clone();
-        let package_type_owned = package_type.to_string();
-        rect()
-            .cursor(CursorIcon::Pointer)
-            .on_press(move |e: Event<PressEventData>| {
-                e.stop_propagation();
-                let _ = RouterContext::get().push(Route::BrowserPackage {
-                    cluster_id,
-                    package_type: package_type_owned.clone(),
-                    package_id: format!("{}:{}", provider as u8, package_id),
-                });
-            })
-            .child(provider_badge(item.provider))
-            .into_element()
-    } else if remote {
-        provider_badge(item.provider)
+	let alpha = if enabled {
+		255u8
+	} else {
+		115u8
+	};
+
+    let border = if !hovering {
+        colors::component_border()
     } else {
-        local_badge()
+        colors::component_border_hover()
     };
 
     let header = rect()
         .horizontal()
         .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(10.)
+        // .cross_align(Alignment::Center)
+        .spacing(11.)
         .content(Content::Flex)
-        .child(icon)
+        .child(
+			rect()
+				.opacity(alpha as f32 / 255.)
+				.child(icon)
+		)
         .child(
             rect()
                 .vertical()
@@ -266,62 +322,59 @@ pub(crate) fn grid_card(
                     label()
                         .text(title)
                         .font_size(14.)
-                        .font_weight(FontWeight::MEDIUM)
+                        .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .width(Size::fill())
-                        .color(CARD_NAME.with_a(content_alpha)),
+                        .color(if enabled {
+                            Color::WHITE
+                        } else {
+                            CARD_NAME.with_a(alpha)
+                        }),
                 )
-                .maybe(!item.author.is_empty(), |el| {
-                    el.child(
-                        label()
-                            .text(format!("by {}", item.author))
-                            .font_size(10.)
-                            .max_lines(1)
-                            .text_overflow(TextOverflow::Ellipsis)
-                            .width(Size::fill())
-                            .color(colors::fg_secondary().with_a(content_alpha)),
-                    )
-                })
-                .child(
-                    rect()
-                        .horizontal()
-                        .width(Size::fill())
-                        .cross_align(Alignment::Center)
-                        .spacing(6.)
-                        .content(Content::wrap_spacing(4.))
-                        .child(badge)
-                        .maybe_child(item.is_outdated().then(outdated_badge))
-                        .maybe_child(item.recency_badge()),
-                ),
+                .child(grid_meta(item, package_type, cluster_id, navigable, alpha)),
         )
+        .maybe_child(on_context.clone().map(kebab_button))
         .into_element();
 
-    let description = if item.description.is_empty() {
-        None
-    } else {
-        Some(
-            label()
-                .text(item.description.clone())
-                .font_size(11.)
-                .max_lines(3)
-                .width(Size::fill())
-                .color(colors::fg_secondary().with_a(content_alpha))
-                .into_element(),
-        )
-    };
+    let description = (!item.description.is_empty()).then(|| {
+        label()
+            .text(item.description.clone())
+            .font_size(11.)
+            .line_height(1.45)
+            .max_lines(2)
+            .text_overflow(TextOverflow::Ellipsis)
+            .width(Size::fill())
+            .color(colors::fg_primary().with_a(scale_a(alpha, 0.72)))
+            .into_element()
+    });
+
+    let floating = (item.is_outdated() || item.recency_badge().is_some()).then(|| {
+        rect()
+            .horizontal()
+            .position(Position::new_absolute().bottom(10.).right(10.))
+            .cross_align(Alignment::Center)
+            .spacing(4.)
+            .maybe_child(item.is_outdated().then(outdated_badge))
+            .maybe_child(item.recency_badge())
+            .into_element()
+    });
 
     rect()
         .vertical()
         .width(Size::fill())
         .height(Size::fill())
-        .spacing(8.)
-        .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(8.))
-        .background(bg)
-        .border(border_all_color(1.5, border))
+        .spacing(9.)
+        .padding(Gaps::new_all(14.))
+        .corner_radius(CornerRadius::new_all(6.))
+        .background(bg.with_a(alpha))
+        .border(border_all_color(1., border))
+        .overflow(Overflow::Clip)
         .content(Content::Flex)
         .cursor(CursorIcon::Pointer)
+        .on_pointer_enter(move |_| hovered.set(true))
+        .on_pointer_leave(move |_| hovered.set(false))
+        .on_secondary_down(on_secondary(on_context))
         .on_press(move |_| on_toggle.call(()))
         .child(header)
         .child(
@@ -331,7 +384,189 @@ pub(crate) fn grid_card(
                 .height(Size::flex(1.0))
                 .maybe_child(description),
         )
+        .maybe_child(floating)
         .into_element()
+}
+
+fn scale_a(alpha: u8, factor: f32) -> u8 {
+    (alpha as f32 * factor) as u8
+}
+
+fn grid_meta(
+    item: &PackageEntry,
+    package_type: &'static str,
+    cluster_id: i64,
+    navigable: bool,
+    alpha: u8,
+) -> Element {
+    let muted = CARD_NAME.with_a(scale_a(alpha, 0.5));
+
+    let source = if item.is_remote() && navigable {
+        SourceLink {
+            provider: item.provider,
+            package_id: item.package_id.clone(),
+            package_type,
+            cluster_id,
+            alpha,
+        }
+        .into_element()
+    } else if item.is_remote() {
+        meta_text(item.provider.to_string(), muted)
+    } else {
+        meta_text("Local file".to_string(), muted)
+    };
+
+    let mut parts: Vec<Element> = Vec::new();
+    if !item.author.is_empty() {
+        parts.push(meta_text(format!("by {}", item.author), muted));
+    }
+    if let Some(version) = &item.version {
+        parts.push(meta_text(version.clone(), muted));
+    }
+    parts.push(source);
+
+    let mut row = rect()
+        .horizontal()
+        .width(Size::fill())
+        .cross_align(Alignment::Center)
+        .spacing(5.)
+        .overflow(Overflow::Clip);
+
+    for (i, part) in parts.into_iter().enumerate() {
+        if i > 0 {
+            row = row.child(meta_text("\u{b7}".to_string(), muted));
+        }
+        row = row.child(part);
+    }
+
+    row.into_element()
+}
+
+#[derive(PartialEq)]
+struct SourceLink {
+    provider: ProviderId,
+    package_id: String,
+    package_type: &'static str,
+    cluster_id: i64,
+    alpha: u8,
+}
+
+impl Component for SourceLink {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let mut pressed = use_state(|| false);
+
+        let color = if *pressed.read() {
+            colors::fg_primary_pressed()
+        } else if *hovered.read() {
+            colors::fg_primary_hover()
+        } else {
+            CARD_NAME.with_a(scale_a(self.alpha, 0.68))
+        };
+
+        let provider = self.provider;
+        let package_id = self.package_id.clone();
+        let package_type = self.package_type.to_string();
+        let cluster_id = self.cluster_id;
+
+        rect()
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| {
+                hovered.set(false);
+                pressed.set(false);
+            })
+            .on_pointer_down(move |_| pressed.set(true))
+            .on_press(move |e: Event<PressEventData>| {
+                e.stop_propagation();
+                pressed.set(false);
+                let _ = RouterContext::get().push(Route::BrowserPackage {
+                    cluster_id,
+                    package_type: package_type.clone(),
+                    package_id: format!("{}:{}", provider as u8, package_id),
+                });
+            })
+            .child(meta_text(provider.to_string(), color))
+    }
+}
+
+fn meta_text(text: String, color: Color) -> Element {
+    label()
+        .text(text)
+        .font_size(11.)
+        .max_lines(1)
+        .color(color)
+        .into_element()
+}
+
+fn kebab_button(on_context: EventHandler<(f32, f32)>) -> Element {
+    KebabButton { on_context }.into_element()
+}
+
+#[derive(PartialEq)]
+struct KebabButton {
+    on_context: EventHandler<(f32, f32)>,
+}
+
+impl Component for KebabButton {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let on_context = self.on_context.clone();
+
+        rect()
+            .center()
+            .width(Size::px(26.))
+            .height(Size::px(26.))
+            .corner_radius(CornerRadius::new_all(6.))
+            .background(if *hovered.read() {
+                colors::ghost_overlay_hover()
+            } else {
+                Color::TRANSPARENT
+            })
+            .cursor(CursorIcon::Pointer)
+            .a11y_role(AccessibilityRole::Button)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
+            .on_press(move |e: Event<PressEventData>| {
+                e.stop_propagation();
+                if let PressEventData::Mouse(m) = e.data() {
+                    on_context.call((m.global_location.x as f32, m.global_location.y as f32));
+                }
+            })
+            .child(
+                Icon::new(IconType::DotsVertical)
+                    .size(16.)
+                    .color(if *hovered.read() {
+                        colors::fg_primary()
+                    } else {
+                        colors::fg_secondary()
+                    }),
+            )
+    }
+}
+
+fn reveal_in_store(hash: String) {
+    spawn(async move {
+        let Ok(state) = crate::launcher::state() else {
+            return;
+        };
+        let row = match oneclient_db::dao::artifact::get_artifact_by_hash(&state.services.db, &hash)
+            .await
+        {
+            Ok(Some(row)) => row,
+            Ok(None) => return,
+            Err(err) => {
+                tracing::warn!(%err, "failed to look up artifact for reveal");
+                return;
+            }
+        };
+        let Ok(path) = oneclient_content::packages::store::artifact_absolute_path(&row.path) else {
+            return;
+        };
+        if let Some(dir) = path.parent() {
+            crate::platform::open_path(&dir.to_string_lossy());
+        }
+    });
 }
 
 fn package_info(
@@ -536,39 +771,5 @@ fn accent_badge(icon: impl IntoElement, text: String, accent: Color) -> Element 
                 .font_weight(FontWeight::MEDIUM)
                 .color(accent),
         )
-        .into_element()
-}
-
-fn remove_button(
-    enabled: bool,
-    mut on_remove: impl FnMut() + 'static,
-    mut hovering: State<bool>,
-) -> impl IntoElement {
-    let hot = enabled && *hovering.read();
-    let color = if !enabled {
-        colors::fg_secondary().with_a(90)
-    } else if hot {
-        colors::danger()
-    } else {
-        colors::fg_secondary()
-    };
-
-    rect()
-        .center()
-        .width(Size::px(30.))
-        .height(Size::px(30.))
-        .corner_radius(CornerRadius::new_all(7.))
-        .background(if hot {
-            colors::danger().with_a(30)
-        } else {
-            Color::TRANSPARENT
-        })
-        .maybe(enabled, |el| {
-            el.cursor(CursorIcon::Pointer)
-                .on_pointer_enter(move |_| hovering.set(true))
-                .on_pointer_leave(move |_| hovering.set(false))
-                .on_press(move |_| on_remove())
-        })
-        .child(Icon::new(IconType::Trash01).size(14.).color(color))
         .into_element()
 }

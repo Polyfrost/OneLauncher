@@ -117,7 +117,11 @@ fn tab_label(text: &str, font_size: f32, active: bool) -> impl IntoElement {
                             FontWeight::NORMAL
                         })
                         .max_lines(1)
-                        .color(colors::fg_primary())
+                        .color(if active {
+                            colors::fg_primary()
+                        } else {
+                            colors::fg_secondary()
+                        })
                         .text_align(TextAlign::Center),
                 ),
         )
@@ -221,12 +225,12 @@ impl Component for TabButton {
                         .child(tab_label(&self.label, font_size, active))
                         .child(
                             rect()
-                                .height(Size::px(1.5))
+                                .height(Size::px(2.))
                                 .width(Size::fill_minimum())
                                 .margin(Gaps::new_symmetric(0., 4.0))
                                 .corner_radius(CornerRadius::new_all(2.))
                                 .background(if underline_on {
-                                    colors::fg_primary()
+                                    colors::brand()
                                 } else {
                                     Color::TRANSPARENT
                                 }),

@@ -6,10 +6,10 @@ use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, ScrollAreaCtx,
-    Segment, SegmentedControl, TabBar, TabItem, TextInput,
+    Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, Segment,
+    SegmentedControl, TextInput, package_context_menu,
 };
-use crate::hooks::{use_dispatch, use_overlay_claim};
+use crate::hooks::{use_cluster_mutation, use_dispatch, use_overlay_claim};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::{Actions, utils};
@@ -149,9 +149,14 @@ pub(super) fn toolbar_bar(
     package_type: &'static str,
     mut toolbar_width: State<f32>,
 ) -> impl IntoElement {
-    let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
+    let chips = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
-        TabItem::new(tab.label(), i == active_idx).on_press(move |_| *active.write() = i)
+        CategoryChip {
+            label: tab.label(),
+            selected: i == active_idx,
+            on_press: (move |_| *active.write() = i).into(),
+        }
+        .into_element()
     });
 
     let mut top_corners = CornerRadius::new_all(0.);
@@ -163,21 +168,22 @@ pub(super) fn toolbar_bar(
     let filter_tabs = ScrollView::new()
         .direction(Direction::Horizontal)
         .invert_scroll_wheel(true)
-        .show_scrollbar(stacked)
+        .show_scrollbar(true)
         .scrollbar_theme(tabs_scrollbar_theme())
         .width(if stacked {
             Size::fill()
         } else {
             Size::flex(1.0)
         })
-        .height(if stacked { Size::fill() } else { Size::auto() })
+        .height(Size::px(TABS_ROW_H))
         .child(
-            TabBar::new()
+            rect()
+                .horizontal()
                 .width(Size::auto())
-                .height(if stacked { Size::fill() } else { Size::auto() })
-                .spacing(20.)
-                .font_size(12.)
-                .tabs(tab_items),
+                .height(Size::fill())
+                .cross_align(Alignment::Center)
+                .spacing(6.)
+                .children(chips),
         )
         .into_element();
 
@@ -271,6 +277,67 @@ pub(super) fn toolbar_bar(
         })
         .child(inner)
         .into_element()
+}
+
+#[derive(PartialEq)]
+struct CategoryChip {
+    label: String,
+    selected: bool,
+    on_press: EventHandler<Event<PressEventData>>,
+}
+
+impl Component for CategoryChip {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let selected = self.selected;
+
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
+        let background = if selected {
+            colors::brand()
+        } else if *hovered.read() {
+            colors::component_bg_hover()
+        } else {
+            colors::component_bg()
+        };
+
+        rect()
+            .horizontal()
+            .height(Size::px(32.))
+            .center()
+            .padding(Gaps::new_symmetric(0., 12.))
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(background)
+            .border(crate::ui::border_all_color(
+                1.,
+                if selected || focused {
+                    colors::brand()
+                } else {
+                    colors::component_border()
+                },
+            ))
+            .cursor(CursorIcon::Pointer)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Tab)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
+            .on_press(self.on_press.clone())
+            .child(
+                label()
+                    .text(self.label.clone())
+                    .font_size(12.)
+                    .font_weight(FontWeight::MEDIUM)
+                    .max_lines(1)
+                    .color(if selected {
+                        Color::WHITE
+                    } else {
+                        colors::fg_primary()
+                    }),
+            )
+    }
 }
 
 pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {
@@ -673,33 +740,42 @@ impl Component for ContentBox {
         let layout = self.layout;
 
         let dispatch = use_dispatch();
+        let cluster = use_cluster_mutation();
+        let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
 
-        let count = items.len();
-        let scroll = (count > 0).then(|| match layout {
-            CardLayout::List => {
-                let items = items.clone();
-                ScrollArea::new()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .scrollbar_gutter(true)
-                    .lazy(count, CARD_H, CARD_SPACING, move |i| {
-                        let item = items[i].clone();
-                        let key = item.package_id.clone();
-                        PackageRow::new(item, cluster_id, package_type)
-                            .layout(CardLayout::List)
-                            .key(key)
-                            .into_element()
-                    })
+        let row = {
+            let items = items.clone();
+            move |i: usize| {
+                let item: PackageEntry = items[i].clone();
+                let key = item.package_id.clone();
+                let for_menu = item.clone();
+                PackageRow::new(item, cluster_id, package_type)
+                    .layout(layout)
+                    .on_context(move |(x, y)| menu.set(Some((x, y, for_menu.clone()))))
+                    .key(key)
                     .into_element()
             }
-            CardLayout::Grid => ScrollArea::new()
+        };
+
+        let count = items.len();
+        let scroll = (count > 0).then(|| {
+            let area = ScrollArea::new()
                 .width(Size::fill())
                 .height(Size::fill())
-                .scrollbar_gutter(true)
-                .content(move |ctx: ScrollAreaCtx| {
-                    grid_content(&items, package_type, cluster_id, ctx).into_element()
-                })
-                .into_element(),
+                .scrollbar_gutter(true);
+            match layout {
+                CardLayout::List => area.lazy(count, CARD_H, CARD_SPACING, row),
+                CardLayout::Grid => {
+                    area.lazy_grid(count, CARD_GRID_H, GRID_GAP, GRID_MIN_W, GRID_MAX_COLS, row)
+                }
+            }
+            .into_element()
+        });
+
+        let menu_overlay = menu.read().clone().map(|(x, y, item)| {
+            package_context_menu(x, y, &item, cluster_id, package_type, cluster)
+                .on_close(move |_| menu.set(None))
+                .into_element()
         });
 
         let empty = (count == 0).then(|| match kind {
@@ -737,14 +813,14 @@ impl Component for ContentBox {
             .vertical()
             .width(Size::fill())
             .height(Size::flex(1.0))
-            .spacing(8.)
-            .padding(Gaps::new_all(8.))
+            .padding(Gaps::new(0., 12., 12., 12.))
             .corner_radius(bottom_corners)
             .background(colors::page_elevated())
             .overflow(Overflow::Clip)
             .maybe_child(header)
             .maybe_child(scroll)
             .maybe_child(empty)
+            .maybe_child(menu_overlay)
     }
 }
 
@@ -756,61 +832,6 @@ fn action_header(button: impl IntoElement) -> impl IntoElement {
         .content(Content::Flex)
         .child(rect().width(Size::flex(1.0)))
         .child(button)
-}
-
-fn grid_content(
-    items: &[PackageEntry],
-    package_type: &'static str,
-    cluster_id: i64,
-    ctx: ScrollAreaCtx,
-) -> impl IntoElement {
-    let count = items.len();
-    let cols =
-        (((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize).clamp(1, 5);
-    let rows_total = count.div_ceil(cols);
-    let slot = CARD_GRID_H + GRID_GAP;
-
-    let first_row = (((-ctx.corrected_y) / slot).floor() as i64 - LAZY_OVERSCAN).max(0) as usize;
-    let span = ((ctx.viewport_h / slot).ceil() as i64 + 2 * LAZY_OVERSCAN).max(0) as usize;
-    let last_row = (first_row + span).min(rows_total);
-
-    let top_pad = first_row as f32 * slot;
-    let bottom_pad = rows_total.saturating_sub(last_row) as f32 * slot;
-
-    let mut container = rect().vertical().width(Size::fill());
-    if top_pad > 0. {
-        container = container.child(rect().width(Size::fill()).height(Size::px(top_pad)));
-    }
-    for r in first_row..last_row {
-        let mut row = rect()
-            .key(r)
-            .horizontal()
-            .width(Size::fill())
-            .height(Size::px(slot))
-            .spacing(GRID_GAP)
-            .content(Content::Flex);
-        for c in 0..cols {
-            let idx = r * cols + c;
-            let cell = rect().width(Size::flex(1.0)).height(Size::px(CARD_GRID_H));
-            row = row.child(if idx < count {
-                let item = items[idx].clone();
-                let key = item.package_id.clone();
-                cell.child(
-                    PackageRow::new(item, cluster_id, package_type)
-                        .layout(CardLayout::Grid)
-                        .key(key)
-                        .into_element(),
-                )
-            } else {
-                cell
-            });
-        }
-        container = container.child(row);
-    }
-    if bottom_pad > 0. {
-        container = container.child(rect().width(Size::fill()).height(Size::px(bottom_pad)));
-    }
-    container.into_element()
 }
 
 fn empty_shell(icon: IconType) -> Rect {

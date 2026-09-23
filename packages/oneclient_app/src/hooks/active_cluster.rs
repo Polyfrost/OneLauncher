@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
 use oneclient_content::packages::ProviderId;
+use oneclient_content::packages::types::SearchSort;
 use oneclient_db::models::ClusterId;
 
 #[derive(Clone)]
@@ -82,6 +83,7 @@ pub struct BrowserUiState {
     pub query: String,
     pub provider: ProviderId,
     pub categories: Vec<String>,
+    pub sort: SearchSort,
     pub page: usize,
 }
 
@@ -91,6 +93,7 @@ impl Default for BrowserUiState {
             query: String::new(),
             provider: ProviderId::Modrinth,
             categories: Vec::new(),
+            sort: SearchSort::Relevance,
             page: 0,
         }
     }

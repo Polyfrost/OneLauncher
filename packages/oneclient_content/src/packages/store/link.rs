@@ -1,7 +1,7 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use oneclient_db::models::{ArtifactRow, ClusterRow};
+use oneclient_db::models::{ArtifactRow, ClusterKind, ClusterRow};
 
 use crate::error::ContentResult;
 use oneclient_common::domain::ContentType;
@@ -11,6 +11,10 @@ use super::manifest;
 use super::paths::artifact_absolute_path;
 
 const STAGING_SUFFIX: &str = ".oneclient-tmp";
+
+pub(crate) fn shares_content(cluster: &ClusterRow, content_type: ContentType) -> bool {
+    content_type.is_global() && cluster.kind() == ClusterKind::OneClient
+}
 
 /// What a live add actually did, so a caller can say so instead of promising
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,7 +95,7 @@ async fn materialized_root(
     cluster: &ClusterRow,
     content_type: ContentType,
 ) -> Option<(PathBuf, &'static str)> {
-    if content_type.is_global() {
+    if shares_content(cluster, content_type) {
         return paths::shared_minecraft_dir()
             .ok()
             .map(|dir| (dir, manifest::GLOBAL_MANIFEST_NAME));
@@ -144,7 +148,7 @@ pub async fn try_unlink_materialized(
     };
 
     let relative = manifest::entry_path(content_type.folder_name(), file_name);
-    let ours = if content_type.is_global() {
+    let ours = if shares_content(cluster, content_type) {
         loaded.contains(&relative)
     } else {
         loaded.owns(cluster.id, &relative)
@@ -204,14 +208,14 @@ pub async fn try_link_materialized(
         return LiveSync::Skipped;
     };
 
-    if !content_type.is_global() && loaded.cluster_id != cluster.id {
+    if !shares_content(cluster, content_type) && loaded.cluster_id != cluster.id {
         return LiveSync::Deferred;
     }
 
     let relative = manifest::entry_path(content_type.folder_name(), file_name);
     let dest = root.join(&relative);
 
-    let ours = if content_type.is_global() {
+    let ours = if shares_content(cluster, content_type) {
         loaded.contains(&relative)
     } else {
         loaded.owns(cluster.id, &relative)
@@ -263,6 +267,11 @@ mod tests {
             last_played: None,
             overall_played: None,
             linked_modpack_hash: None,
+            kind: 0,
+            user_created: 0,
+            description: None,
+            tags: "[]".into(),
+            cover_path: None,
         }
     }
 

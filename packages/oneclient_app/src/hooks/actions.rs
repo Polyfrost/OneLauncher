@@ -2097,6 +2097,11 @@ mod tests {
             last_played: None,
             overall_played: Duration::ZERO,
             linked_modpack_hash: None,
+            kind: oneclient_db::models::ClusterKind::OneClient,
+            user_created: false,
+            description: None,
+            tags: Vec::new(),
+            cover_path: None,
         }
     }
 

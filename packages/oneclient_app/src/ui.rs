@@ -154,6 +154,37 @@ pub fn columns_for(width: f32, min_cell: f32, max: usize, gap: f32) -> usize {
     (((width + gap) / (min_cell + gap)).floor() as usize).clamp(1, max)
 }
 
+pub fn fixed_grid(cards: Vec<Element>, columns: usize, card_height: f32, gap: f32) -> Element {
+    let columns = columns.max(1);
+    let mut root = rect().vertical().width(Size::fill()).spacing(gap);
+
+    for (index, chunk) in cards.chunks(columns).enumerate() {
+        let mut row = rect()
+            .key(index)
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::px(card_height))
+            .content(Content::Flex)
+            .spacing(gap);
+
+        for card in chunk {
+            row = row.child(
+                rect()
+                    .width(Size::flex(1.0))
+                    .height(Size::fill())
+                    .child(card.clone()),
+            );
+        }
+        for _ in chunk.len()..columns {
+            row = row.child(rect().width(Size::flex(1.0)).height(Size::fill()));
+        }
+
+        root = root.child(row.into_element());
+    }
+
+    root.into_element()
+}
+
 /// Short final rows are padded with empty flex cells so tiles keep the column width
 pub fn flow_grid(items: Vec<Element>, cols: usize, mut width: State<f32>, gap: f32) -> Element {
     let cols = cols.max(1);

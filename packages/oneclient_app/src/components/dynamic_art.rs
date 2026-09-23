@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use bytes::Bytes;
 use freya::prelude::*;
 use oneclient_common::domain::GameLoader;
@@ -6,7 +8,10 @@ use oneclient_core::clusters::Cluster;
 use oneclient_core::images::DEFAULT_IMAGE_EDGE;
 
 use crate::AppAssets;
-use crate::hooks::{loaded_image, use_cached_image, use_version_metadata};
+use crate::hooks::{
+    loaded_image, settled_or_loading, use_cached_image, use_local_image, use_picked_image,
+    use_version_metadata,
+};
 use crate::layout::HOME_BACKGROUND_ASSET;
 use crate::ui::ImageFallbackExt;
 
@@ -18,6 +23,8 @@ pub struct DynamicArt {
     major: Option<u32>,
     key: Option<VersionKey>,
     loader: Option<GameLoader>,
+    cover: Option<PathBuf>,
+    cover_picked: bool,
     max_edge: u32,
     preview_edge: Option<u32>,
 }
@@ -28,6 +35,8 @@ impl DynamicArt {
             major: Some(major),
             key,
             loader,
+            cover: None,
+            cover_picked: false,
             max_edge: DEFAULT_IMAGE_EDGE,
             preview_edge: None,
         }
@@ -39,6 +48,8 @@ impl DynamicArt {
             major: parsed.as_ref().map(|p| p.major),
             key: parsed.and_then(|p| p.key()),
             loader: Some(cluster.mc_loader),
+            cover: cluster.cover_file(),
+            cover_picked: false,
             max_edge: DEFAULT_IMAGE_EDGE,
             preview_edge: None,
         }
@@ -49,9 +60,24 @@ impl DynamicArt {
             major: None,
             key: None,
             loader: None,
+            cover: None,
+            cover_picked: false,
             max_edge: DEFAULT_IMAGE_EDGE,
             preview_edge: None,
         }
+    }
+
+    #[must_use]
+    pub fn cover(mut self, cover: Option<PathBuf>) -> Self {
+        self.cover = cover;
+        self
+    }
+
+    #[must_use]
+    pub fn picked_cover(mut self, cover: Option<PathBuf>) -> Self {
+        self.cover = cover;
+        self.cover_picked = true;
+        self
     }
 
     #[must_use]
@@ -72,6 +98,8 @@ impl DynamicArt {
             self.major,
             self.key,
             self.loader,
+            self.cover.clone(),
+            self.cover_picked,
             self.max_edge,
             self.preview_edge,
         )
@@ -82,10 +110,27 @@ pub fn use_art_bytes(
     major: Option<u32>,
     key: Option<VersionKey>,
     loader: Option<GameLoader>,
+    cover: Option<PathBuf>,
+    cover_picked: bool,
     max_edge: u32,
     preview_edge: Option<u32>,
 ) -> (String, Bytes) {
     let fallback = use_memo(|| AppAssets::get_bytes(HOME_BACKGROUND_ASSET).unwrap_or_default());
+
+    let stored = cover.clone().filter(|_| !cover_picked).unwrap_or_default();
+    let chosen = cover.clone().filter(|_| cover_picked).unwrap_or_default();
+    let stored_query = use_local_image(stored, max_edge);
+    let picked_query = use_picked_image(chosen, max_edge);
+
+    let cover_bytes = cover.as_ref().and_then(|path| {
+        if cover_picked {
+            settled_or_loading(&picked_query)
+        } else {
+            settled_or_loading(&stored_query)
+        }
+        .filter(|bytes: &Bytes| !bytes.is_empty())
+        .map(|bytes| (format!("{max_edge}|{}", path.display()), bytes))
+    });
 
     let art_url = use_version_metadata(major, key, loader).and_then(|m| m.art_url);
 
@@ -105,7 +150,7 @@ pub fn use_art_bytes(
             .map(|(url, bytes)| (format!("{edge}|{url}"), bytes))
     };
 
-    full.or_else(preview).unwrap_or_else(|| {
+    cover_bytes.or(full).or_else(preview).unwrap_or_else(|| {
         (
             format!("{max_edge}|{HOME_BACKGROUND_ASSET}"),
             fallback.read().clone(),

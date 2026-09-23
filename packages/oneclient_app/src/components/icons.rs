@@ -20,6 +20,7 @@ impl Icon {
         let color = match icon {
             IconType::Modrinth => Some(colors::MODRINTH_COLOR),
             IconType::Curseforge => Some(colors::CURSEFORGE_COLOR),
+            IconType::Quilt => Some(colors::QUILT_COLOR),
             _ => None,
         };
 
@@ -141,6 +142,7 @@ pub enum IconType {
     Pencil01,
     Play,
     Plus,
+    Quilt,
     RefreshCcw02,
     RefreshCw01,
     Rocket02,

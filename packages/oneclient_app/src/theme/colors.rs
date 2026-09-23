@@ -2,6 +2,7 @@ use freya::prelude::Color;
 
 pub const MODRINTH_COLOR: Color = Color::from_rgb(27, 217, 106);
 pub const CURSEFORGE_COLOR: Color = Color::from_rgb(241, 100, 54);
+pub const QUILT_COLOR: Color = Color::from_rgb(151, 34, 255);
 
 pub fn page() -> Color {
     Color::from_rgb(17, 23, 28)

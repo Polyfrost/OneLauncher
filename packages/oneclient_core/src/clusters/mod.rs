@@ -11,6 +11,6 @@ pub use provision::{ensure_from_bundles, ensure_from_versions};
 pub use unlink_legacy::{SweepReport, unlink_legacy_cluster_content};
 
 pub use oneclient_cluster::{
-    Cluster, ClusterError, ClusterLinkTarget, ClusterManager, ClusterStage, ClusterUpdate,
-    CreateClusterOptions,
+    Cluster, ClusterError, ClusterKind, ClusterLinkTarget, ClusterManager, ClusterStage,
+    ClusterUpdate, CreateClusterOptions,
 };

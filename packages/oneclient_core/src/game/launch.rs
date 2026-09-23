@@ -132,13 +132,14 @@ async fn start(
             }
         }
     };
-    if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
-        cluster_id,
-        state.bundles.as_ref(),
-        Some(&progress),
-        &state.services.content(),
-    )
-    .await
+    if cluster.uses_bundles()
+        && let Err(err) = oneclient_content::bundles::install_cluster_bundles(
+            cluster_id,
+            state.bundles.as_ref(),
+            Some(&progress),
+            &state.services.content(),
+        )
+        .await
     {
         tracing::warn!(cluster_id, error = %err, "failed to install bundle content");
     }

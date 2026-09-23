@@ -5,7 +5,8 @@ use oneclient_common::domain::GameLoader;
 use oneclient_core::clusters::Cluster;
 
 use crate::components::{
-    Button, ClusterLandscapeArt, Dropdown, Icon, IconType, ScrollArea, VersionCard,
+    ART_PREVIEW_EDGE, Button, ClusterLandscapeArt, Dropdown, DynamicArt, Icon, IconType,
+    InstanceCard, ScrollArea, VersionCard,
 };
 use crate::hooks::{
     settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
@@ -15,9 +16,10 @@ use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::{
-    ReleaseLine, default_line, default_loader, default_version_key, group_clusters_by_release,
-    line_title, loaders_for_line, resolve_cluster, version_keys, version_label,
+    GridSelection, ReleaseLine, default_line, default_loader, default_version_key, line_title,
+    loaders_for_line, resolve_cluster, split_clusters, version_keys, version_label,
 };
+use crate::view::app::clusters::CreateInstanceModal;
 use crate::view::app::launch_button_state;
 
 const GRID_GAP_PX: f32 = 12.;
@@ -35,6 +37,8 @@ impl Component for Clusters {
     fn render(&self) -> impl IntoElement {
         let clusters_query = use_clusters();
         let active_id = use_active_cluster_id();
+        let mut show_create = use_state(|| false);
+        let mut selected = use_state(|| None::<GridSelection>);
         let mut selected_line = use_state(|| None::<ReleaseLine>);
         let mut selected_version = use_state(|| None::<VersionKey>);
         let mut selected_loader = use_state(|| None::<GameLoader>);
@@ -42,11 +46,11 @@ impl Component for Clusters {
 
         let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
-        let groups = group_clusters_by_release(&clusters);
+        let (groups, instances) = split_clusters(&clusters);
         // Newest version first
         let lines: Vec<ReleaseLine> = groups.keys().rev().copied().collect();
 
-        if lines.is_empty() {
+        if lines.is_empty() && instances.is_empty() {
             return rect()
                 .vertical()
                 .width(Size::fill())
@@ -54,7 +58,7 @@ impl Component for Clusters {
                 .overflow(Overflow::Clip)
                 .padding(40.)
                 .spacing(24.)
-                .child(page_header())
+                .child(page_header(show_create))
                 .child(
                     rect()
                         .vertical()
@@ -73,21 +77,48 @@ impl Component for Clusters {
             .read()
             .and_then(|id| clusters.iter().find(|c| c.id == id).cloned());
 
-        if selected_line.read().is_none() {
-            *selected_line.write() = default_line(&groups, active_cluster.clone());
+        let fallback = || {
+            lines
+                .first()
+                .copied()
+                .map(GridSelection::Line)
+                .or_else(|| instances.first().map(|c| GridSelection::Instance(c.id)))
+        };
+
+        if selected.read().is_none() {
+            *selected.write() = match active_cluster.as_ref() {
+                Some(cluster) if cluster.user_created => Some(GridSelection::Instance(cluster.id)),
+                other => default_line(&groups, other.cloned())
+                    .map(GridSelection::Line)
+                    .or_else(fallback),
+            };
         }
 
-        let line = (*selected_line.read())
-            .filter(|l| groups.contains_key(l))
-            .unwrap_or(lines[0]);
+        let current = (*selected.read())
+            .filter(|sel| match sel {
+                GridSelection::Line(line) => groups.contains_key(line),
+                GridSelection::Instance(id) => instances.iter().any(|c| c.id == *id),
+            })
+            .or_else(fallback);
 
-        if *selected_line.read() != Some(line) {
-            *selected_line.write() = Some(line);
+        if *selected.read() != current {
+            *selected.write() = current;
         }
 
-        let clusters_for_line = groups.get(&line).cloned().unwrap_or_default();
+        let line = match current {
+            Some(GridSelection::Line(line)) => Some(line),
+            _ => None,
+        };
 
-        if selected_version.read().is_none() {
+        if *selected_line.read() != line {
+            *selected_line.write() = line;
+        }
+
+        let clusters_for_line = line
+            .and_then(|line| groups.get(&line).cloned())
+            .unwrap_or_default();
+
+        if line.is_some() && selected_version.read().is_none() {
             let preferred = active_cluster
                 .as_ref()
                 .and_then(|c| oneclient_common::parse_mc_version(&c.mc_version))
@@ -95,7 +126,7 @@ impl Component for Clusters {
             *selected_version.write() = default_version_key(&clusters_for_line, preferred);
         }
 
-        if selected_loader.read().is_none() {
+        if line.is_some() && selected_loader.read().is_none() {
             let preferred = active_cluster.as_ref().map(|c| c.mc_loader);
             *selected_loader.write() = default_loader(&clusters_for_line, preferred);
         }
@@ -107,8 +138,19 @@ impl Component for Clusters {
         )
         .or_else(|| clusters_for_line.first().cloned());
 
+        let instance = match current {
+            Some(GridSelection::Instance(id)) => instances.iter().find(|c| c.id == id).cloned(),
+            _ => None,
+        };
+
         let columns = *grid_columns.read();
-        let grid_rows = chunk_lines(&lines, columns);
+        let items: Vec<GridSelection> = lines
+            .iter()
+            .copied()
+            .map(GridSelection::Line)
+            .chain(instances.iter().map(|c| GridSelection::Instance(c.id)))
+            .collect();
+        let grid_rows = chunk_items(&items, columns);
 
         rect()
             .vertical()
@@ -117,7 +159,7 @@ impl Component for Clusters {
             .overflow(Overflow::Clip)
             .padding(Gaps::new(0., 40., 40., 40.))
             .spacing(16.)
-            .child(page_header())
+            .child(page_header(show_create))
             .child(
                 rect()
                     .horizontal()
@@ -150,20 +192,46 @@ impl Component for Clusters {
                                             .width(Size::fill())
                                             .content(Content::Flex)
                                             .spacing(GRID_GAP_PX)
-                                            .children(row.into_iter().map(|line| {
-                                                let list =
-                                                    groups.get(&line).cloned().unwrap_or_default();
-                                                let selected = *selected_line.read() == Some(line);
-                                                let mut selected_line = selected_line;
+                                            .children(row.into_iter().map(|item| {
+                                                let is_selected = current == Some(item);
+                                                let mut selected = selected;
                                                 let mut selected_version = selected_version;
                                                 let mut selected_loader = selected_loader;
 
-                                                VersionCard::new(line, &list, selected, move |_| {
-                                                    *selected_line.write() = Some(line);
-                                                    *selected_version.write() = None;
-                                                    *selected_loader.write() = None;
-                                                })
-                                                .into_element()
+                                                match item {
+                                                    GridSelection::Line(line) => {
+                                                        let list = groups
+                                                            .get(&line)
+                                                            .cloned()
+                                                            .unwrap_or_default();
+                                                        VersionCard::new(
+                                                            line,
+                                                            &list,
+                                                            is_selected,
+                                                            move |_| {
+                                                                *selected.write() = Some(item);
+                                                                *selected_version.write() = None;
+                                                                *selected_loader.write() = None;
+                                                            },
+                                                        )
+                                                        .into_element()
+                                                    }
+                                                    GridSelection::Instance(id) => {
+                                                        let Some(cluster) =
+                                                            instances.iter().find(|c| c.id == id)
+                                                        else {
+                                                            return rect().into_element();
+                                                        };
+                                                        InstanceCard::new(
+                                                            cluster,
+                                                            is_selected,
+                                                            move |_| {
+                                                                *selected.write() = Some(item);
+                                                            },
+                                                        )
+                                                        .into_element()
+                                                    }
+                                                }
                                             }))
                                             .children((row_len..columns).map(|_| {
                                                 rect()
@@ -175,8 +243,18 @@ impl Component for Clusters {
                                     })),
                             ),
                     )
-                    .child(match cluster {
-                        Some(cluster) => DetailSidebar {
+                    .child(match (instance, line, cluster) {
+                        (Some(instance), _, _) => InstanceSidebar {
+                            cluster_id: instance.id,
+                            name: instance.name.clone(),
+                            description: instance.description.clone(),
+                            tags: instance.tags.clone(),
+                            cover: instance.cover_file(),
+                            mc_version: instance.mc_version.clone(),
+                            mc_loader: instance.mc_loader,
+                        }
+                        .into_element(),
+                        (None, Some(line), Some(cluster)) => DetailSidebar {
                             line,
                             cluster_id: cluster.id,
                             clusters_for_line,
@@ -184,8 +262,13 @@ impl Component for Clusters {
                             selected_loader,
                         }
                         .into_element(),
-                        None => sidebar_error(),
+                        _ => sidebar_error(),
                     }),
+            )
+            .maybe_child(
+                show_create.read().then(|| {
+                    CreateInstanceModal::new(move |()| show_create.set(false)).into_element()
+                }),
             )
     }
 }
@@ -304,6 +387,116 @@ impl Component for DetailSidebar {
                                 self.selected_version,
                             ))
                             .children(loader_rows(&loaders, loader_value, self.selected_loader)),
+                    )
+                    .child(
+                        rect()
+                            .horizontal()
+                            .width(Size::fill())
+                            .content(Content::Flex)
+                            .main_align(Alignment::Center)
+                            .spacing(8.)
+                            .child(play_button(
+                                self.cluster_id,
+                                dispatch,
+                                launch_button_state(&game, self.cluster_id, syncing),
+                            ))
+                            .child(view_button(self.cluster_id, active_id)),
+                    ),
+            )
+            .into_element()
+    }
+}
+
+#[derive(PartialEq)]
+struct InstanceSidebar {
+    cluster_id: i64,
+    name: String,
+    description: Option<String>,
+    tags: Vec<String>,
+    cover: Option<std::path::PathBuf>,
+    mc_version: String,
+    mc_loader: GameLoader,
+}
+
+impl Component for InstanceSidebar {
+    fn render(&self) -> impl IntoElement {
+        let mut sidebar_height = use_state(|| 0f32);
+        let active_id = use_active_cluster_id();
+        let dispatch = use_dispatch();
+        let game = use_game_snapshot();
+        let launcher = use_launcher();
+
+        let syncing = launcher.fetching || launcher.syncing_bundles;
+        let art_height = art_height_for(*sidebar_height.read());
+        let cover = self.cover.clone();
+
+        rect()
+            .width(Size::px(SIDEBAR_WIDTH_PX))
+            .min_width(Size::px(SIDEBAR_WIDTH_PX))
+            .height(Size::fill())
+            .vertical()
+            .spacing(8.)
+            .padding(8.)
+            .content(Content::Flex)
+            .corner_radius(CornerRadius::new_all(12.))
+            .background(colors::page_elevated())
+            .border(border_all_color(1., colors::component_border()))
+            .overflow(Overflow::Clip)
+            .on_sized(move |event: Event<SizedEventData>| {
+                let height = event.data().area.height();
+                if (*sidebar_height.peek() - height).abs() > 0.5 {
+                    *sidebar_height.write() = height;
+                }
+            })
+            .maybe_child(art_height.map(|max| {
+                let parsed = oneclient_common::parse_mc_version(&self.mc_version);
+                rect()
+                    .width(Size::fill())
+                    .max_height(Size::px(max))
+                    .corner_radius(CornerRadius::new_all(12.))
+                    .overflow(Overflow::Clip)
+                    .child(
+                        DynamicArt::for_version(
+                            parsed.as_ref().map_or(0, |p| p.major),
+                            parsed.and_then(|p| p.key()),
+                            Some(self.mc_loader),
+                        )
+                        .cover(cover.clone())
+                        .max_edge(ART_PREVIEW_EDGE),
+                    )
+                    .into_element()
+            }))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .content(Content::Flex)
+                    .padding(Gaps::new_all(8.))
+                    .spacing(8.)
+                    .child(
+                        ScrollArea::new()
+                            .width(Size::fill())
+                            .height(Size::flex(1.0))
+                            .spacing(4.)
+                            .child(
+                                label()
+                                    .text(self.name.clone())
+                                    .font_size(24.)
+                                    .font_weight(FontWeight::SEMI_BOLD)
+                                    .color(colors::fg_primary()),
+                            )
+                            .children(tags_row(&self.tags))
+                            .child(
+                                label()
+                                    .text(
+                                        self.description
+                                            .clone()
+                                            .unwrap_or_else(|| "No description yet.".to_string()),
+                                    )
+                                    .font_size(12.)
+                                    .color(colors::fg_secondary()),
+                            ),
                     )
                     .child(
                         rect()
@@ -467,7 +660,29 @@ fn view_button(cluster_id: i64, mut active_id: State<Option<i64>>) -> impl IntoE
         .child(Icon::new(IconType::ArrowRight).size(14.))
 }
 
-fn page_header() -> impl IntoElement {
+fn page_header(mut show_create: State<bool>) -> impl IntoElement {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .cross_align(Alignment::Center)
+        .content(Content::Flex)
+        .child(
+            rect()
+                .vertical()
+                .width(Size::flex(1.))
+                .spacing(6.)
+                .child(header_text()),
+        )
+        .child(
+            Button::new()
+                .primary()
+                .on_press(move |_| show_create.set(true))
+                .child(Icon::new(IconType::Plus).size(16.))
+                .text("New instance"),
+        )
+}
+
+fn header_text() -> impl IntoElement {
     rect()
         .vertical()
         .spacing(6.)
@@ -516,9 +731,9 @@ fn sidebar_error() -> Element {
         .into_element()
 }
 
-fn chunk_lines(lines: &[ReleaseLine], columns: usize) -> Vec<Vec<ReleaseLine>> {
+fn chunk_items(items: &[GridSelection], columns: usize) -> Vec<Vec<GridSelection>> {
     let columns = columns.max(1);
-    lines.chunks(columns).map(|chunk| chunk.to_vec()).collect()
+    items.chunks(columns).map(|chunk| chunk.to_vec()).collect()
 }
 
 fn grid_columns_for_width(available_width_px: f32) -> usize {

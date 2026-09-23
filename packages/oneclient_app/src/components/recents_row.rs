@@ -151,6 +151,8 @@ impl KeyExt for ClusterCard {
 impl PartialEq for ClusterCard {
     fn eq(&self, other: &Self) -> bool {
         self.cluster.id == other.cluster.id
+            && self.cluster.name == other.cluster.name
+            && self.cluster.cover_path == other.cluster.cover_path
             && self.index == other.index
             && self.items == other.items
             && self.progress == other.progress
@@ -171,7 +173,11 @@ impl Component for ClusterCard {
         let eased = stagger_eased(self.progress, self.index, self.items);
         let rise = (1.0 - eased) * CARD_RISE_PX;
 
-        let title = format!("{} {}", self.cluster.mc_version, self.cluster.mc_loader);
+        let title = if self.cluster.user_created {
+            self.cluster.name.clone()
+        } else {
+            format!("{} {}", self.cluster.mc_version, self.cluster.mc_loader)
+        };
 
         let cluster_id = self.cluster.id;
         let on_press = move |_| {

@@ -53,7 +53,12 @@ pub async fn materialize_content(
 ) -> LauncherResult<()> {
     let dedicated = cluster.uses_dedicated_dir();
     let cluster_dir = cluster.dir()?;
-    let global_root = paths::shared_minecraft_dir()?;
+    let isolated = cluster.is_isolated();
+    let global_root = if isolated {
+        cluster_dir.clone()
+    } else {
+        paths::shared_minecraft_dir()?
+    };
 
     polyio::create_dir_all(game_dir).await.ok();
     polyio::create_dir_all(&global_root).await.ok();
@@ -62,26 +67,39 @@ pub async fn materialize_content(
         polyio::create_dir_all(paths::cluster_mods_dir(&cluster.folder_name)?)
             .await
             .ok();
-        ensure_mods_link(cluster).await;
+        if isolated {
+            remove_mods_link(&cluster.folder_name).await;
+        } else {
+            ensure_mods_link(cluster).await;
+        }
         prune_mods_links(services).await;
     } else {
         unwind_cluster_mods(cluster, &cluster_dir).await;
     }
 
-    adopt_into_global(&cluster_dir, &global_root).await;
-    adopt_into_global(game_dir, &global_root).await;
-    ensure_global_links(game_dir, &global_root).await;
+    if !isolated {
+        adopt_into_global(&cluster_dir, &global_root).await;
+        adopt_into_global(game_dir, &global_root).await;
+        ensure_global_links(game_dir, &global_root).await;
+    }
 
     let mods_swapped = !dedicated && !mods_in_cluster;
     drop_stale_notes(&[game_dir, &cluster_dir, &global_root], mods_swapped).await;
 
     // In the shared directory this often belongs to another cluster so every
     // use of it checks the id
-    let previous = manifest::load(game_dir, manifest::MANIFEST_NAME)
-        .await
-        .map(without_global_entries);
+    let loaded_previous = manifest::load(game_dir, manifest::MANIFEST_NAME).await;
+    let previous = if isolated {
+        loaded_previous
+    } else {
+        loaded_previous.map(without_global_entries)
+    };
     let previous_mods = manifest::load(&cluster_dir, manifest::MODS_MANIFEST_NAME).await;
-    let previous_global = manifest::load(&global_root, manifest::GLOBAL_MANIFEST_NAME).await;
+    let previous_global = if isolated {
+        None
+    } else {
+        manifest::load(&global_root, manifest::GLOBAL_MANIFEST_NAME).await
+    };
     crate::game::heal::clear_zeroed_files(game_dir).await;
     if mods_in_cluster {
         crate::game::heal::clear_zeroed_mods(&cluster_dir).await;
@@ -105,17 +123,15 @@ pub async fn materialize_content(
 
     for content_type in GLOBAL_TYPES {
         let dir = global_root.join(content_type.folder_name());
-        let disabled = disable_hand_removed(
-            services,
-            cluster,
-            &dir,
-            content_type,
-            previous_global.as_ref(),
-        )
-        .await;
+        let seen = if isolated {
+            previous.as_ref()
+        } else {
+            previous_global.as_ref()
+        };
+        let disabled = disable_hand_removed(services, cluster, &dir, content_type, seen).await;
 
         if !disabled.is_empty() {
-            let (title, body) = removal_notice(&disabled);
+            let (title, body) = removal_notice(&disabled, !isolated);
             services.events.notify(title).body(body).send();
         }
     }
@@ -181,14 +197,27 @@ pub async fn materialize_content(
     clear_disabled_mod_files(services, cluster, &active_mods_dir).await;
 
     let mut unrestored = Vec::new();
+    let wanted: &[ContentType] = if isolated {
+        &[
+            ContentType::Mod,
+            ContentType::ResourcePack,
+            ContentType::Shader,
+        ]
+    } else {
+        &[ContentType::Mod]
+    };
     let (mods, rest): (Vec<Desired>, Vec<Desired>) =
-        desired_mods(services, cluster, &mut unrestored)
+        desired_linked(services, cluster, &mut unrestored, wanted)
             .await?
             .into_iter()
-            .partition(|_| mods_in_cluster);
+            .partition(|desired| mods_in_cluster && desired.content_type == ContentType::Mod);
 
     // read across every cluster rather than this one so a pack installed anywhere is present here too
-    let packs = desired_global(services, &mut unrestored).await?;
+    let packs = if isolated {
+        Vec::new()
+    } else {
+        desired_global(services, &mut unrestored).await?
+    };
 
     if !unrestored.is_empty() {
         let (title, body) = unrestored_notice(&unrestored);
@@ -251,13 +280,15 @@ pub async fn materialize_content(
         .await;
     }
 
-    let pack_entries = link_desired(&global_root, &packs).await;
-    manifest::save(
-        &global_root,
-        manifest::GLOBAL_MANIFEST_NAME,
-        &MaterializedManifest::new(cluster.id, pack_entries),
-    )
-    .await;
+    if !isolated {
+        let pack_entries = link_desired(&global_root, &packs).await;
+        manifest::save(
+            &global_root,
+            manifest::GLOBAL_MANIFEST_NAME,
+            &MaterializedManifest::new(cluster.id, pack_entries),
+        )
+        .await;
+    }
 
     let entries = link_desired(game_dir, &rest).await;
     manifest::save(
@@ -475,7 +506,7 @@ async fn disable_hand_removed(
     let mut disabled = Vec::new();
 
     for (name, hash) in removed {
-        let outcome = if content_type.is_global() {
+        let outcome = if cluster.shares_content(content_type) {
             disable_globally(cluster, &hash, &ctx).await
         } else {
             oneclient_content::bundles::set_artifact_enabled_to(cluster.id, &hash, false, &ctx)
@@ -534,15 +565,20 @@ fn removal_summary(disabled: &[String]) -> String {
     }
 }
 
-fn removal_notice(disabled: &[String]) -> (&'static str, String) {
+fn removal_notice(disabled: &[String], shared: bool) -> (&'static str, String) {
     let names = removal_summary(disabled);
+    let where_from = if shared {
+        "your shared folder"
+    } else {
+        "this instance"
+    };
+    let scope = if shared { " on every cluster" } else { "" };
 
     if disabled.len() == 1 {
         return (
             "Content disabled",
             format!(
-                "{names} is gone from your shared folder, so it has been switched off on every \
-                cluster. Turn it back on in OneClient to restore it."
+                "{names} is gone from {where_from}, so it has been switched off{scope}. Turn it back on in OneClient to restore it."
             ),
         );
     }
@@ -550,8 +586,7 @@ fn removal_notice(disabled: &[String]) -> (&'static str, String) {
     (
         "Content disabled",
         format!(
-            "{names} are gone from your shared folder, so they have been switched off on every \
-            cluster. Turn them back on in OneClient to restore them."
+            "{names} are gone from {where_from}, so they have been switched off{scope}. Turn them back on in OneClient to restore them."
         ),
     )
 }
@@ -630,16 +665,17 @@ pub async fn dematerialize_content(
     Ok(())
 }
 
-async fn desired_mods(
+async fn desired_linked(
     services: &LauncherServices,
     cluster: &Cluster,
     unrestored: &mut Vec<String>,
+    wanted: &[ContentType],
 ) -> LauncherResult<Vec<Desired>> {
     let linked = PackageStore::list_linked_artifacts(cluster.id, &services.content()).await?;
     let mut desired = Vec::with_capacity(linked.len());
 
     for link in linked {
-        if !link.enabled || link.content_type != ContentType::Mod {
+        if !link.enabled || !wanted.contains(&link.content_type) {
             continue;
         }
 
@@ -980,21 +1016,37 @@ async fn import_manual_content_with(
     )
     .await;
 
-    let Ok(global_root) = paths::shared_minecraft_dir() else {
-        return;
+    let isolated = cluster.is_isolated();
+    let global_root = if isolated {
+        let Ok(dir) = cluster.dir() else {
+            return;
+        };
+        dir
+    } else {
+        let Ok(dir) = paths::shared_minecraft_dir() else {
+            return;
+        };
+        dir
     };
-    let global_manifest = manifest::load(&global_root, manifest::GLOBAL_MANIFEST_NAME).await;
+    let global_manifest = if isolated {
+        manifest.clone()
+    } else {
+        manifest::load(&global_root, manifest::GLOBAL_MANIFEST_NAME).await
+    };
 
     for content_type in GLOBAL_TYPES {
         let dir = global_root.join(content_type.folder_name());
-        let known =
+        let known = if isolated {
+            names_linked_here(&linked, content_type)
+        } else {
             match artifact_dao::list_global_artifacts(&services.db, content_type as i64).await {
                 Ok(rows) => rows.into_iter().map(|row| row.file_name).collect(),
                 Err(err) => {
                     tracing::warn!(error = %err, "cannot list global content; skipping its import");
                     continue;
                 }
-            };
+            }
+        };
 
         import_from_dir(
             services,
@@ -2034,7 +2086,7 @@ mod tests {
 
     #[test]
     fn the_global_notice_owns_up_to_its_reach() {
-        let (_, body) = removal_notice(&["bsl.zip".into()]);
+        let (_, body) = removal_notice(&["bsl.zip".into()], true);
 
         assert!(body.contains("every cluster"), "{body}");
         assert!(!body.contains("'s folder"), "{body}");

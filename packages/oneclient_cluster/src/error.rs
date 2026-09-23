@@ -72,4 +72,10 @@ pub enum ClusterError {
 
     #[error("unknown stage id {0} in database")]
     InvalidStage(i64),
+
+    #[error("unknown cluster kind id {0} in database")]
+    InvalidKind(i64),
+
+    #[error("cluster {0} always uses its own game directory")]
+    DedicatedRequired(i64),
 }

@@ -9,7 +9,8 @@ pub async fn get_by_id(pool: &SqlitePool, id: i64) -> Result<Option<ClusterRow>,
         r#"
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		FROM clusters
 		WHERE id = ?
 		"#,
@@ -28,7 +29,8 @@ pub async fn get_by_folder_name(
         r#"
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		FROM clusters
 		WHERE folder_name = ?
 		"#,
@@ -44,7 +46,8 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<ClusterRow>, sqlx::Error>
         r#"
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		FROM clusters
 		ORDER BY last_played IS NULL, last_played DESC, name ASC
 		"#
@@ -63,9 +66,10 @@ pub async fn find_by_version_loader(
         r#"
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		FROM clusters
-		WHERE mc_version = ? AND mc_loader = ?
+		WHERE mc_version = ? AND mc_loader = ? AND user_created = 0
 		LIMIT 1
 		"#,
         mc_version,
@@ -83,12 +87,14 @@ pub async fn insert(pool: &SqlitePool, new: &NewCluster<'_>) -> Result<ClusterRo
         r#"
 		INSERT INTO clusters (
 			name, folder_name, mc_version, mc_loader, mc_loader_version,
-			setting_profile_name, stage, created_at
+			setting_profile_name, stage, created_at,
+			kind, user_created, description, tags, cover_path
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		"#,
         new.name,
         new.folder_name,
@@ -97,7 +103,12 @@ pub async fn insert(pool: &SqlitePool, new: &NewCluster<'_>) -> Result<ClusterRo
         new.mc_loader_version,
         new.setting_profile_name,
         new.stage,
-        created_at
+        created_at,
+        new.kind,
+        new.user_created,
+        new.description,
+        new.tags,
+        new.cover_path
     )
     .fetch_one(pool)
     .await
@@ -123,6 +134,9 @@ pub async fn update(
         .linked_modpack_hash
         .clone()
         .unwrap_or(existing.linked_modpack_hash);
+    let description = patch.description.clone().unwrap_or(existing.description);
+    let tags = patch.tags.clone().unwrap_or(existing.tags);
+    let cover_path = patch.cover_path.clone().unwrap_or(existing.cover_path);
 
     sqlx::query_as!(
         ClusterRow,
@@ -131,16 +145,23 @@ pub async fn update(
 		SET name = ?,
 		    setting_profile_name = ?,
 		    mc_loader_version = ?,
-		    linked_modpack_hash = ?
+		    linked_modpack_hash = ?,
+		    description = ?,
+		    tags = ?,
+		    cover_path = ?
 		WHERE id = ?
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		"#,
         name,
         setting_profile_name,
         mc_loader_version,
         linked_modpack_hash,
+        description,
+        tags,
+        cover_path,
         id
     )
     .fetch_one(pool)
@@ -168,7 +189,8 @@ pub async fn migrate_version(
 		WHERE id = ?
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		"#,
         mc_version,
         name,
@@ -188,7 +210,8 @@ pub async fn set_stage(pool: &SqlitePool, id: i64, stage: i64) -> Result<Cluster
 		WHERE id = ?
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		"#,
         stage,
         id
@@ -213,7 +236,8 @@ pub async fn add_playtime(
 		WHERE id = ?
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		"#,
         seconds,
         now,
@@ -255,6 +279,11 @@ mod tests {
                 mc_loader_version: None,
                 setting_profile_name: None,
                 stage: 0,
+                kind: 0,
+                user_created: 0,
+                description: None,
+                tags: "[]",
+                cover_path: None,
             },
         )
         .await

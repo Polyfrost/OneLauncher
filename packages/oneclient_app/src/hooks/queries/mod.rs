@@ -47,8 +47,9 @@ pub use auth::{
     use_refresh_all_accounts, use_remove_account, use_set_default_account,
 };
 pub use bundles::{
-    ClusterBundles, OnboardingBundlesQuery, bundle_overrides_map, bundles_with_status_items,
-    onboarding_bundles_items, use_bundle_overrides, use_bundle_updates, use_bundles_with_status,
+    AvailableBundlesQuery, ClusterBundles, OnboardingBundlesQuery, available_bundles,
+    bundle_overrides_map, bundles_with_status_items, onboarding_bundles_items,
+    use_available_bundles, use_bundle_overrides, use_bundle_updates, use_bundles_with_status,
     use_onboarding_bundles,
 };
 pub use changelog::{
@@ -82,7 +83,8 @@ pub use packages::{
 pub use player_profile::use_player_profile;
 pub use screenshots::{
     ScreenshotAction, UseScreenshotAction, invalidate_screenshots_queries, try_cluster_screenshots,
-    use_cluster_screenshots, use_local_image, use_screenshot_action, use_screenshot_folder_watch,
+    use_cluster_screenshots, use_local_image, use_picked_image, use_screenshot_action,
+    use_screenshot_folder_watch,
 };
 pub use settings_profiles::{
     try_game_profile, use_cluster_profile, use_cluster_settings, use_game_profile,
@@ -98,4 +100,9 @@ pub use storage::{
 };
 pub use tos::{TermsQuery, terms_document, terms_error, terms_is_loading, use_terms};
 pub use version_metadata::{pick_version_metadata, use_version_metadata};
-pub use versions::{loader_versions, use_loader_versions, use_versions, versions_metadata};
+pub use versions::{
+    GameVersion, JavaMajorsQuery, LoaderVersionSet, game_versions, java_majors,
+    loader_game_versions, loader_versions, use_game_versions, use_java_majors,
+    use_loader_game_versions, use_loader_versions, use_version_loaders, use_versions,
+    version_loaders, versions_metadata,
+};

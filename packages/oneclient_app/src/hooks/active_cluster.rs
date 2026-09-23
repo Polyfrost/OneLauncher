@@ -117,8 +117,6 @@ pub struct OnboardingSelectionState {
     pub migrated_categories: State<Option<Vec<String>>>,
     pub language: State<String>,
     pub reduce_motion: State<bool>,
-    pub predownload: State<bool>,
-    pub setup_started: State<bool>,
     /// `None` = don't import
     pub import_folder: State<Option<String>>,
     pub import_dedicated: State<bool>,

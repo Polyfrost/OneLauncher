@@ -1,11 +1,11 @@
 mod account;
 mod bundles;
-mod downloading;
 mod language;
 mod location;
 mod migration;
 mod preferences;
 mod selection;
+mod summary;
 mod terms;
 #[cfg(test)]
 pub(crate) mod test_support;
@@ -18,12 +18,12 @@ pub(crate) use selection::{
 
 pub use account::OnboardingAccount;
 pub use bundles::OnboardingBundles;
-pub use downloading::{LoadingBackdrop, OnboardingDownloading};
 pub use language::OnboardingLanguage;
 pub use location::OnboardingLocation;
 pub use migration::OnboardingMigration;
 pub(crate) use migration::matching_new_cluster_id;
 pub use preferences::OnboardingPreferences;
+pub use summary::OnboardingSummary;
 pub use terms::OnboardingTerms;
 pub use welcome::OnboardingWelcome;
 
@@ -34,7 +34,7 @@ use freya::prelude::*;
 use freya::router::{RouterContext, use_route};
 
 use crate::Route;
-use crate::components::{Button, Icon, IconType, toggle};
+use crate::components::{Button, Icon, IconType};
 use crate::hooks::{has_migration_data, use_migration, use_onboarding_selection};
 use crate::theme::colors;
 use crate::ui::{border_all_color, entrance_motion_layer};
@@ -56,7 +56,7 @@ pub fn onboarding_step_index(route: &Route, has_migration: bool, picks_location:
         Route::OnboardingAccount {} => 3 + shift,
         Route::OnboardingBundles {} => 4 + shift,
         Route::OnboardingPreferences {} => 5 + shift,
-        Route::OnboardingDownloading {} => 6 + shift,
+        Route::OnboardingSummary {} => 6 + shift,
         _ => 0,
     }
 }
@@ -207,44 +207,6 @@ pub(crate) fn onboarding_nav_action(
         .into_element()
 }
 
-pub(crate) fn predownload_toggle_row(predownload: State<bool>) -> impl IntoElement {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(16.)
-        .content(Content::Flex)
-        .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
-        .background(colors::page_elevated())
-        .border(border_all_color(1., colors::component_border()))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(3.)
-                .child(
-                    label()
-                        .text("Download mods now")
-                        .font_size(14.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text(
-                            "Downloads your chosen mods now. Minecraft itself is always \
-                             downloaded the first time you play a version. Turn this off to \
-                             leave the mods until then too.",
-                        )
-                        .font_size(11.)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(toggle(predownload))
-        .into_element()
-}
-
 pub(crate) fn choice_row(
     title: &str,
     subtitle: &str,
@@ -389,7 +351,7 @@ mod tests {
             Route::OnboardingAccount {},
             Route::OnboardingBundles {},
             Route::OnboardingPreferences {},
-            Route::OnboardingDownloading {},
+            Route::OnboardingSummary {},
         ]);
 
         routes

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tUPDATE clusters\n\t\tSET mc_version = ?,\n\t\t    name = ?,\n\t\t    folder_name = ?\n\t\tWHERE id = ?\n\t\tRETURNING\n\t\t\tid, name, folder_name, setting_profile_name, mc_version, mc_loader,\n\t\t\tstage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,\n\t\t\tkind, user_created, description, tags, cover_path\n\t\t",
+  "query": "\n\t\tUPDATE clusters\n\t\tSET mc_version = ?,\n\t\t    mc_loader = ?,\n\t\t    mc_loader_version = ?,\n\t\t    stage = ?,\n\t\t    name = ?,\n\t\t    folder_name = ?\n\t\tWHERE id = ?\n\t\tRETURNING\n\t\t\tid, name, folder_name, setting_profile_name, mc_version, mc_loader,\n\t\t\tstage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,\n\t\t\tkind, user_created, description, tags, cover_path\n\t\t",
   "describe": {
     "columns": [
       {
@@ -192,7 +192,7 @@
       }
     ],
     "parameters": {
-      "Right": 4
+      "Right": 7
     },
     "nullable": [
       false,
@@ -214,5 +214,5 @@
       true
     ]
   },
-  "hash": "14e6f75915391b0af3c49c0b7aaf7f7b193aae752f902a5ac8e5aa6757b66446"
+  "hash": "aeb2fbb78cfa536d6478878ccafb4f4754dfe057468fe06c22d87c3a062132b7"
 }

@@ -219,6 +219,21 @@ impl MetadataStore {
     }
 
     #[tracing::instrument(level = "debug", skip(self, ctx))]
+    pub async fn loader_supports_version(
+        &mut self,
+        ctx: &McCtx,
+        loader: GameLoader,
+        mc_version: &str,
+    ) -> McResult<bool> {
+        if !loader.is_modded() {
+            return Ok(true);
+        }
+
+        let manifest = self.get_modded_or_fetch(ctx, loader).await?;
+        Ok(manifest_supports_version(manifest, mc_version))
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, ctx))]
     pub async fn get_versions_for_loader(
         &mut self,
         ctx: &McCtx,

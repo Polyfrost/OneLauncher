@@ -168,22 +168,32 @@ pub async fn update(
     .await
 }
 
+pub struct ClusterMigration<'a> {
+    pub mc_version: &'a str,
+    pub mc_loader: i64,
+    pub mc_loader_version: Option<&'a str>,
+    pub stage: i64,
+    pub name: Option<&'a str>,
+    pub folder_name: &'a str,
+}
+
 pub async fn migrate_version(
     pool: &SqlitePool,
     id: i64,
-    mc_version: &str,
-    name: Option<&str>,
-    folder_name: &str,
+    migration: ClusterMigration<'_>,
 ) -> Result<ClusterRow, sqlx::Error> {
     let existing = get_by_id(pool, id).await?.ok_or(sqlx::Error::RowNotFound)?;
 
-    let name = name.unwrap_or(&existing.name);
+    let name = migration.name.unwrap_or(&existing.name);
 
     sqlx::query_as!(
         ClusterRow,
         r#"
 		UPDATE clusters
 		SET mc_version = ?,
+		    mc_loader = ?,
+		    mc_loader_version = ?,
+		    stage = ?,
 		    name = ?,
 		    folder_name = ?
 		WHERE id = ?
@@ -192,9 +202,12 @@ pub async fn migrate_version(
 			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
 			kind, user_created, description, tags, cover_path
 		"#,
-        mc_version,
+        migration.mc_version,
+        migration.mc_loader,
+        migration.mc_loader_version,
+        migration.stage,
         name,
-        folder_name,
+        migration.folder_name,
         id
     )
     .fetch_one(pool)
@@ -301,9 +314,14 @@ mod tests {
         let migrated = migrate_version(
             &pool,
             cluster.id,
-            "26.1.2",
-            Some("26.1.2 fabric"),
-            "26.1.2 fabric",
+            ClusterMigration {
+                mc_version: "26.1.2",
+                mc_loader: 1,
+                mc_loader_version: None,
+                stage: 0,
+                name: Some("26.1.2 fabric"),
+                folder_name: "26.1.2 fabric",
+            },
         )
         .await
         .expect("migrate");
@@ -336,13 +354,65 @@ mod tests {
         let pool = pool().await;
         let cluster = seed(&pool, "26.1", "my cool pack").await;
 
-        let migrated = migrate_version(&pool, cluster.id, "26.1.2", None, "my cool pack")
-            .await
-            .expect("migrate");
+        let migrated = migrate_version(
+            &pool,
+            cluster.id,
+            ClusterMigration {
+                mc_version: "26.1.2",
+                mc_loader: 1,
+                mc_loader_version: None,
+                stage: 0,
+                name: None,
+                folder_name: "my cool pack",
+            },
+        )
+        .await
+        .expect("migrate");
 
         assert_eq!(migrated.mc_version, "26.1.2");
         assert_eq!(migrated.name, "26.1 fabric", "custom name must survive");
         assert_eq!(migrated.folder_name, "my cool pack");
+    }
+
+    #[tokio::test]
+    async fn migrate_version_switches_loader_and_resets_preparation() {
+        let pool = pool().await;
+        let cluster = seed(&pool, "1.20.1", "1.20.1 Forge").await;
+        set_stage(&pool, cluster.id, 3).await.expect("mark ready");
+
+        let migrated = migrate_version(
+            &pool,
+            cluster.id,
+            ClusterMigration {
+                mc_version: "1.20.1",
+                mc_loader: 2,
+                mc_loader_version: None,
+                stage: 0,
+                name: Some("1.20.1 NeoForge"),
+                folder_name: "1.20.1 NeoForge",
+            },
+        )
+        .await
+        .expect("migrate");
+
+        assert_eq!(migrated.id, cluster.id);
+        assert_eq!(migrated.mc_loader, 2);
+        assert_eq!(migrated.mc_loader_version, None);
+        assert_eq!(migrated.stage, 0);
+        assert!(
+            find_by_version_loader(&pool, "1.20.1", 1)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            find_by_version_loader(&pool, "1.20.1", 2)
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            cluster.id
+        );
     }
 
     #[tokio::test]

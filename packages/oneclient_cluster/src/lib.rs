@@ -12,6 +12,7 @@ mod stage;
 pub mod logs;
 pub mod profiles;
 pub mod screenshots;
+pub mod worlds;
 
 pub use cluster::{Cluster, ClusterLinkTarget, remove_mods_link};
 pub use error::{ClusterError, ClusterResult};

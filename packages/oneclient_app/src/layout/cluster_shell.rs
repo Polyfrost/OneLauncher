@@ -25,6 +25,8 @@ pub enum ClusterViewShellTab {
     Mods,
     Shaders,
     Textures,
+    Worlds,
+    DataPacks,
     Settings,
 }
 
@@ -38,6 +40,8 @@ impl ClusterViewShellTab {
             Self::Mods => "Mods",
             Self::Shaders => "Shaders",
             Self::Textures => "Textures",
+            Self::Worlds => "Worlds",
+            Self::DataPacks => "Data packs",
             Self::Settings => "Settings",
         }
     }
@@ -51,6 +55,11 @@ impl ClusterViewShellTab {
             Self::Mods => Some(Route::ClusterMods { cluster_id }),
             Self::Shaders => Some(Route::ClusterShaders { cluster_id }),
             Self::Textures => Some(Route::ClusterTextures { cluster_id }),
+            Self::Worlds => Some(Route::ClusterWorlds { cluster_id }),
+            Self::DataPacks => Some(Route::ClusterDataPacks {
+                cluster_id,
+                world: String::new(),
+            }),
             Self::Settings => Some(Route::ClusterSettings { cluster_id }),
         }
     }
@@ -63,8 +72,10 @@ impl ClusterViewShellTab {
             Self::Mods => 3,
             Self::Shaders => 4,
             Self::Textures => 5,
-            Self::Settings => 6,
-            Self::GameLog => 7,
+            Self::Worlds => 6,
+            Self::DataPacks => 7,
+            Self::Settings => 8,
+            Self::GameLog => 9,
         }
     }
 }
@@ -84,6 +95,8 @@ fn route_cluster(route: &Route) -> Option<(i64, ClusterViewShellTab)> {
         Route::ClusterMods { cluster_id } => (*cluster_id, ClusterViewShellTab::Mods),
         Route::ClusterShaders { cluster_id } => (*cluster_id, ClusterViewShellTab::Shaders),
         Route::ClusterTextures { cluster_id } => (*cluster_id, ClusterViewShellTab::Textures),
+        Route::ClusterWorlds { cluster_id } => (*cluster_id, ClusterViewShellTab::Worlds),
+        Route::ClusterDataPacks { cluster_id, .. } => (*cluster_id, ClusterViewShellTab::DataPacks),
         Route::ClusterSettings { cluster_id } => (*cluster_id, ClusterViewShellTab::Settings),
         _ => return None,
     })
@@ -105,6 +118,9 @@ impl Component for ClusterShell {
         let cluster = use_cluster(cluster_id);
 
         let show_game_log = game.is_active(cluster_id);
+        let show_datapacks = cluster
+            .as_ref()
+            .is_none_or(|c| crate::view::app::cluster::supports_datapacks(&c.mc_version));
         let launch_state = launch_button_state(&game, cluster_id, syncing);
 
         // Queried unconditionally the shell can mount before the cluster list settles
@@ -152,7 +168,12 @@ impl Component for ClusterShell {
                     ))
                     .spacing(BAR_SPACING)
                     .maybe_child(header)
-                    .child(cluster_tabs(active_tab, cluster_id, show_game_log)),
+                    .child(cluster_tabs(
+                        active_tab,
+                        cluster_id,
+                        show_game_log,
+                        show_datapacks,
+                    )),
             )
             .child(
                 rect()
@@ -302,6 +323,7 @@ fn cluster_tabs(
     active: ClusterViewShellTab,
     cluster_id: i64,
     show_game_log: bool,
+    show_datapacks: bool,
 ) -> impl IntoElement {
     let tabs = [
         Some(ClusterViewShellTab::Overview),
@@ -310,6 +332,8 @@ fn cluster_tabs(
         Some(ClusterViewShellTab::Mods),
         Some(ClusterViewShellTab::Shaders),
         Some(ClusterViewShellTab::Textures),
+        Some(ClusterViewShellTab::Worlds),
+        show_datapacks.then_some(ClusterViewShellTab::DataPacks),
         Some(ClusterViewShellTab::Settings),
         show_game_log.then_some(ClusterViewShellTab::GameLog),
     ];

@@ -62,6 +62,10 @@ pub use queries::{
     use_set_default_account, use_storage_action, use_storage_report, use_terms, use_upload_log,
     use_version_metadata, use_versions, version_list, versions_metadata, versions_total,
 };
+pub use queries::{
+    add_world_datapacks, delete_world, delete_world_datapack, spawn_world_task, try_cluster_worlds,
+    try_world_datapacks, use_cluster_worlds, use_saves_folder_watch, use_world_datapacks,
+};
 
 use crate::notifications::NotificationSnapshot;
 use crate::state::{

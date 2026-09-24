@@ -28,7 +28,6 @@ pub struct WorldInfo {
     pub folder_name: String,
     pub path: PathBuf,
     pub icon: Option<PathBuf>,
-    pub size_bytes: u64,
     pub last_played: DateTime<Utc>,
 }
 
@@ -111,7 +110,6 @@ pub fn list_cluster_worlds(cluster: &Cluster) -> ClusterResult<Vec<WorldInfo>> {
         out.push(WorldInfo {
             folder_name: name.to_string(),
             icon: icon.is_file().then_some(icon),
-            size_bytes: dir_size(&path),
             last_played: modified_or_now(&level_meta),
             path,
         });
@@ -119,6 +117,11 @@ pub fn list_cluster_worlds(cluster: &Cluster) -> ClusterResult<Vec<WorldInfo>> {
 
     out.sort_by_key(|w| std::cmp::Reverse(w.last_played));
     Ok(out)
+}
+
+#[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
+pub fn world_size(cluster: &Cluster, world: &str) -> ClusterResult<u64> {
+    Ok(dir_size(&world_dir(cluster, world)?))
 }
 
 #[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]

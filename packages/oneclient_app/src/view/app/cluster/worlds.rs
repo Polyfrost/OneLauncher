@@ -8,8 +8,8 @@ use crate::components::{
 };
 use crate::hooks::{
     delete_world, query_is_loading, settled_or_loading, spawn_world_task, try_cluster_worlds,
-    use_cluster, use_cluster_worlds, use_clusters, use_dispatch, use_game_snapshot,
-    use_saves_folder_watch, use_view_state,
+    try_world_size, use_cluster, use_cluster_worlds, use_clusters, use_dispatch, use_game_snapshot,
+    use_saves_folder_watch, use_view_state, use_world_size,
 };
 use crate::layout::cluster_content;
 use crate::routes::Route;
@@ -94,6 +94,7 @@ impl Component for ClusterWorlds {
                 let press_world = info.folder_name.clone();
                 let menu_info = info.clone();
                 WorldCard {
+                    cluster_id,
                     info,
                     layout: card_layout,
                     on_press: datapacks.then(|| {
@@ -208,6 +209,7 @@ impl Component for ClusterWorlds {
 
 #[derive(PartialEq)]
 struct WorldCard {
+    cluster_id: i64,
     info: WorldInfo,
     layout: CardLayout,
     on_press: Option<EventHandler<()>>,
@@ -219,6 +221,7 @@ impl Component for WorldCard {
         let mut hovered = use_state(|| false);
         let info = &self.info;
         let grid = self.layout == CardLayout::Grid;
+        let size = try_world_size(&use_world_size(self.cluster_id, info.folder_name.clone()));
 
         let icon = card_icon(
             &info
@@ -247,7 +250,10 @@ impl Component for WorldCard {
                         .color(Color::WHITE),
                 )
                 .child(meta_text(
-                    format!("{last_played} \u{b7} {}", format_size(info.size_bytes)),
+                    match size {
+                        Some(size) => format!("{last_played} \u{b7} {}", format_size(size)),
+                        None => last_played.clone(),
+                    },
                     CARD_NAME.with_a(127),
                 ))
         } else {
@@ -322,7 +328,7 @@ impl Component for WorldCard {
                 .background(CARD_BG)
                 .child(icon)
                 .child(text)
-                .child(meta_size(info.size_bytes))
+                .child(meta_size(size.unwrap_or_default()))
                 .child(kebab_button(self.on_context.clone()))
         }
     }

@@ -1068,6 +1068,7 @@ impl Actions {
         provider: ProviderId,
         project_id: impl Into<String>,
         version_id: impl Into<String>,
+        world: Option<String>,
     ) {
         let (project_id, version_id) = (project_id.into(), version_id.into());
         let actions = self.clone();
@@ -1099,6 +1100,7 @@ impl Actions {
                 &project_id,
                 &version_id,
                 cluster_id,
+                world.clone(),
             )
             .await;
 
@@ -1149,6 +1151,9 @@ impl Actions {
                 }
 
                 super::invalidate_cluster_content_queries().await;
+                if world.is_some() {
+                    super::invalidate_worlds_queries().await;
+                }
 
                 state
                     .services

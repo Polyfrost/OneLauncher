@@ -1,18 +1,19 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use freya::prelude::*;
+use freya::router::RouterContext;
 use oneclient_core::DataPackInfo;
 
-use crate::Actions;
 use crate::components::{Button, CardLayout, ContextMenu, Dropdown, Icon, IconType};
 use crate::hooks::{
     add_world_datapacks, delete_world_datapack, query_is_loading, spawn_world_task,
-    try_cluster_worlds, try_world_datapacks, use_cluster, use_cluster_worlds, use_dispatch,
-    use_view_state, use_world_datapacks,
+    try_cluster_worlds, try_world_datapacks, use_cluster, use_cluster_worlds, use_datapack_world,
+    use_dispatch, use_view_state, use_world_datapacks,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
-use crate::ui::fmt_date;
+use crate::{Actions, Route};
 
 use super::cluster_not_found;
 use super::folder_list::{
@@ -48,6 +49,15 @@ fn pick_and_add(cluster_id: i64, world: String, dispatch: Actions) {
     });
 }
 
+fn browse(cluster_id: i64, world: String, mut remembered: State<HashMap<i64, String>>) {
+    remembered.write().insert(cluster_id, world);
+    let _ = RouterContext::get().push(Route::Browser {
+        cluster_id,
+        package_type: "datapack".to_string(),
+        pick_cluster: false,
+    });
+}
+
 impl Component for ClusterDataPacks {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
@@ -67,6 +77,7 @@ impl Component for ClusterDataPacks {
 
         let packs_query = use_world_datapacks(cluster_id, current.clone().unwrap_or_default());
         let dispatch = use_dispatch();
+        let remembered = use_datapack_world();
         let search = use_state(String::new);
         let layout = use_view_state("cluster.datapacks").layout;
         let mut menu = use_state(|| None::<(f32, f32, DataPackInfo)>);
@@ -130,7 +141,6 @@ impl Component for ClusterDataPacks {
                     } else {
                         (IconType::File02, "Zip".to_string())
                     },
-                    subtitle: format!("Modified {}", fmt_date(info.modified)),
                     description: info.description.clone(),
                     size: info.size_bytes,
                     layout: card_layout,
@@ -153,13 +163,32 @@ impl Component for ClusterDataPacks {
                     ))
                     .child(rect().height(Size::px(6.)))
                     .child(
-                        Button::new()
-                            .primary()
-                            .on_press(move |_| {
-                                pick_and_add(cluster_id, add_world.clone(), add_dispatch.clone())
+                        rect()
+                            .horizontal()
+                            .spacing(8.)
+                            .child({
+                                let browse_world = add_world.clone();
+                                Button::new()
+                                    .primary()
+                                    .on_press(move |_| {
+                                        browse(cluster_id, browse_world.clone(), remembered)
+                                    })
+                                    .child(Icon::new(IconType::SearchMd).size(14.))
+                                    .text("Browse Content")
                             })
-                            .child(Icon::new(IconType::FilePlus02).size(14.))
-                            .text("Add from file"),
+                            .child(
+                                Button::new()
+                                    .secondary()
+                                    .on_press(move |_| {
+                                        pick_and_add(
+                                            cluster_id,
+                                            add_world.clone(),
+                                            add_dispatch.clone(),
+                                        )
+                                    })
+                                    .child(Icon::new(IconType::FilePlus02).size(14.))
+                                    .text("Add from file"),
+                            ),
                     )
                     .into_element(),
             )
@@ -193,6 +222,12 @@ impl Component for ClusterDataPacks {
         let mut controls = vec![search_input(search)];
         controls.extend(folder.clone().map(folder_button));
         controls.push(layout_toggle(layout));
+        let browse_world = world.clone();
+        controls.push(
+            toolbar_action(IconType::SearchMd, "Browse")
+                .on_press(move |_| browse(cluster_id, browse_world.clone(), remembered))
+                .into_element(),
+        );
         controls.push(
             toolbar_action(IconType::Plus, "Add Data Packs")
                 .on_press(move |_| {

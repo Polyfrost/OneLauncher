@@ -30,6 +30,28 @@ impl QueryCapability for ClusterWorldsQuery {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WorldSizeKeys {
+    pub cluster_id: i64,
+    pub world: String,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct WorldSizeQuery;
+
+impl QueryCapability for WorldSizeQuery {
+    type Ok = u64;
+    type Err = LauncherError;
+    type Keys = WorldSizeKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state()?;
+        let cluster = state.clusters.get(keys.cluster_id).await?;
+        let world = keys.world.clone();
+        run_blocking(move || oneclient_core::world_size(&cluster, &world)).await
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct WorldDataPacksKeys {
     pub cluster_id: i64,
     pub world: String,
@@ -49,7 +71,12 @@ impl QueryCapability for WorldDataPacksQuery {
         }
         let state = crate::launcher::state()?;
         let cluster = state.clusters.get(keys.cluster_id).await?;
-        Ok(oneclient_core::list_world_datapacks(&cluster, &keys.world).await?)
+        let world = keys.world.clone();
+        Ok(tokio::spawn(
+            async move { oneclient_core::list_world_datapacks(&cluster, &world).await },
+        )
+        .await
+        .map_err(|e| LauncherError::Minecraft(e.to_string()))??)
     }
 }
 
@@ -58,6 +85,17 @@ pub fn use_cluster_worlds(cluster_id: i64) -> UseQuery<ClusterWorldsQuery> {
         ClusterWorldsKeys { cluster_id },
         ClusterWorldsQuery,
     ))
+}
+
+pub fn use_world_size(cluster_id: i64, world: String) -> UseQuery<WorldSizeQuery> {
+    use_query(Query::new(
+        WorldSizeKeys { cluster_id, world },
+        WorldSizeQuery,
+    ))
+}
+
+pub fn try_world_size(query: &UseQuery<WorldSizeQuery>) -> Option<u64> {
+    super::state::settled_or_loading(query)
 }
 
 pub fn use_world_datapacks(cluster_id: i64, world: String) -> UseQuery<WorldDataPacksQuery> {
@@ -115,9 +153,10 @@ pub fn spawn_world_task(
     });
 }
 
-async fn invalidate_worlds_queries() {
+pub async fn invalidate_worlds_queries() {
     QueriesStorage::<ClusterWorldsQuery>::invalidate_all().await;
     QueriesStorage::<WorldDataPacksQuery>::invalidate_all().await;
+    QueriesStorage::<WorldSizeQuery>::invalidate_all().await;
 }
 
 async fn run_blocking<T: Send + 'static>(

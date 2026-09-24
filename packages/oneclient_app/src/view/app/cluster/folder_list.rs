@@ -172,7 +172,6 @@ pub(super) struct FolderCard {
     pub icon: CardIcon,
     pub title: String,
     pub badge: (IconType, String),
-    pub subtitle: String,
     pub description: Option<String>,
     pub size: u64,
     pub layout: CardLayout,
@@ -290,7 +289,7 @@ impl Component for FolderCard {
 
 impl FolderCard {
     fn grid_meta(&self) -> String {
-        let mut parts = vec![self.subtitle.clone(), self.badge.1.clone()];
+        let mut parts = vec![self.badge.1.clone()];
         if self.size > 0 {
             parts.push(crate::utils::format_size(self.size));
         }
@@ -333,15 +332,6 @@ impl FolderCard {
                                     .into_element(),
                                 self.badge.1.clone(),
                             )),
-                    )
-                    .child(
-                        label()
-                            .text(self.subtitle.clone())
-                            .font_size(10.)
-                            .max_lines(1)
-                            .text_overflow(TextOverflow::Ellipsis)
-                            .width(Size::fill())
-                            .color(colors::fg_secondary()),
                     )
                     .maybe_child(self.description.clone().map(|text| {
                         label()

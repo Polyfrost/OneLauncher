@@ -25,7 +25,8 @@ pub mod versions;
 pub use changelog::{ChangelogGroup, fetch_changelog, parse_changelog};
 pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
-    ensure_from_bundles, ensure_from_versions, estimate_cluster_download, required_java_major,
+    apply_bundle_java_override, ensure_from_bundles, ensure_from_versions,
+    estimate_cluster_download, required_java_major,
 };
 pub use error::{LauncherError, LauncherResult, SentryExclusion};
 pub use game::{

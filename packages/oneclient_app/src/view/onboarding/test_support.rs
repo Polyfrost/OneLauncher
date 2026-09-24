@@ -43,6 +43,7 @@ pub fn archive(category: &str, enabled: bool, files: Vec<BundleFile>) -> BundleA
             loader: GameLoader::Fabric,
             loader_version: "0.16.0".to_string(),
             enabled,
+            java_version_override: None,
             files,
         },
     }

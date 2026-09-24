@@ -356,6 +356,17 @@ impl MutationCapability for ClusterMutation {
                             {
                                 tracing::warn!(cluster_id = cluster.id, error = %err, "failed to install bundle content for the new instance");
                             }
+                            if let Err(err) = oneclient_core::apply_bundle_java_override(
+                                &state,
+                                cluster.id,
+                                true,
+                                true,
+                                Some(&session),
+                            )
+                            .await
+                            {
+                                tracing::warn!(cluster_id = cluster.id, error = %err, "failed to apply the bundle java override for the new instance");
+                            }
                             session.finish();
                         }
                         Ok(())

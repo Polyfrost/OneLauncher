@@ -19,6 +19,8 @@ pub struct BundleManifest {
     pub loader: GameLoader,
     pub loader_version: String,
     pub enabled: bool,
+    #[serde(default)]
+    pub java_version_override: Option<u32>,
     pub files: Vec<BundleFile>,
 }
 

@@ -32,6 +32,8 @@ struct PolyMrpackManifest {
     pub version_id: String,
     pub name: String,
     #[serde(default)]
+    pub java_version_override: Option<u32>,
+    #[serde(default)]
     pub dependencies: HashMap<String, String>,
     #[serde(default)]
     pub files: Vec<PolyMrpackFile>,
@@ -97,6 +99,7 @@ fn parse_manifest_bytes(bytes: &[u8]) -> ContentResult<BundleManifest> {
         loader,
         loader_version,
         enabled: manifest.enabled,
+        java_version_override: manifest.java_version_override,
         files,
     })
 }

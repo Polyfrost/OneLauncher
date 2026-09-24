@@ -822,6 +822,19 @@ async fn install_one(
     )
     .await;
 
+    if bundles_result.is_ok()
+        && let Err(err) = oneclient_core::apply_bundle_java_override(
+            &state,
+            plan.cluster_id,
+            true,
+            true,
+            Some(&session),
+        )
+        .await
+    {
+        tracing::warn!(cluster_id = plan.cluster_id, error = %err, "failed to apply bundle java override");
+    }
+
     session.finish();
 
     bundles_result?;

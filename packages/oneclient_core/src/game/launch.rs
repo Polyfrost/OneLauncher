@@ -110,6 +110,19 @@ async fn start(
         format!("Launching {}", existing.name),
     );
 
+    if existing.uses_bundles()
+        && let Err(err) = crate::clusters::apply_bundle_java_override(
+            state,
+            cluster_id,
+            search_for_java,
+            false,
+            Some(&progress),
+        )
+        .await
+    {
+        tracing::warn!(cluster_id, error = %err, "failed to apply bundle java override");
+    }
+
     let cluster = if existing.stage == ClusterStage::Ready {
         existing
     } else {

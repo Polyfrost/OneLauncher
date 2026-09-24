@@ -1,8 +1,10 @@
+mod java_override;
 mod migrate;
 pub(crate) mod prepare;
 mod provision;
 mod unlink_legacy;
 
+pub use java_override::apply_bundle_java_override;
 pub use migrate::apply_remote_migrations;
 pub use prepare::{
     estimate_cluster_download, prepare_cluster, prepare_cluster_locked, required_java_major,

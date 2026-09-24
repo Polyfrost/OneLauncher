@@ -94,6 +94,9 @@ impl JavaService {
 
     #[tracing::instrument(level = "debug", skip(self))]
     async fn revalidate(&self, runtime: JavaRuntime) -> JavaResult<Option<JavaRuntime>> {
+        #[cfg(unix)]
+        crate::install::restore_executable_bits(Path::new(&runtime.absolute_path));
+
         if runtime.probe_version == PROBE_VERSION {
             if Path::new(&runtime.absolute_path).is_file() {
                 return Ok(Some(runtime));

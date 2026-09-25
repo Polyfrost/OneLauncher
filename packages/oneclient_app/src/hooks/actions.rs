@@ -26,6 +26,7 @@ use tokio::sync::mpsc;
 use crate::components::IconType;
 use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef, OptionalModsGroup,
+    OptionalModsOutcome,
     PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{AppChannel, AppState, AsyncStatus, RelocationState};
@@ -727,18 +728,25 @@ impl Actions {
     pub fn open_optional_mods(
         &self,
         groups: Vec<OptionalModsGroup>,
-        done: Option<tokio::sync::oneshot::Sender<()>>,
+        done: Option<tokio::sync::oneshot::Sender<OptionalModsOutcome>>,
     ) {
         self.with_engine(move |state| state.notifications.open_optional_mods(groups, done));
     }
 
     pub fn close_optional_mods(&self) {
-        self.with_engine(|state| state.notifications.finish_optional_mods());
+        self.with_engine(|state| {
+            state
+                .notifications
+                .finish_optional_mods(OptionalModsOutcome::Launch)
+        });
     }
 
-    pub fn decline_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
-        self.close_optional_mods();
-        self.record_skipped_optional_mods(mods);
+    pub fn cancel_optional_mods(&self) {
+        self.with_engine(|state| {
+            state
+                .notifications
+                .finish_optional_mods(OptionalModsOutcome::Cancel)
+        });
     }
 
     pub fn record_skipped_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
@@ -1641,7 +1649,7 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
-    ) {
+    ) -> OptionalModsOutcome {
         let pending = match oneclient_core::pending_optional_mods(
             cluster_id,
             state.bundles.as_ref(),
@@ -1656,7 +1664,7 @@ impl Actions {
                     error = %err,
                     "could not read queued optional mods, launching anyway"
                 );
-                return;
+                return OptionalModsOutcome::Launch;
             }
         };
 
@@ -1665,7 +1673,7 @@ impl Actions {
         let Some(group) =
             crate::install::pending_optional_group(cluster_id, &pending, &state.services).await
         else {
-            return;
+            return OptionalModsOutcome::Launch;
         };
 
         let (done, wait) = tokio::sync::oneshot::channel();
@@ -1676,7 +1684,7 @@ impl Actions {
             state.center_open = false;
         });
 
-        let _ = wait.await;
+        wait.await.unwrap_or(OptionalModsOutcome::Launch)
     }
 
     async fn prompt_package_updates(
@@ -1833,9 +1841,14 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         .await;
 
     // After the updates so the player never faces two modals at once
-    actions
+    if actions
         .resolve_optional_mods_before_launch(&state, cluster_id)
-        .await;
+        .await
+        == OptionalModsOutcome::Cancel
+    {
+        events.game_stage(cluster_id, oneclient_events::LaunchStage::Exited);
+        return;
+    }
 
     if let Err(err) = oneclient_core::launch_cluster(&state, cluster_id, &account, true).await {
         // A missing file is the one failure the launcher can fix itself and a

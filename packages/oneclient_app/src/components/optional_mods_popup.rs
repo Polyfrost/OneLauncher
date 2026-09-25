@@ -57,11 +57,9 @@ impl Component for OptionalModsPopup {
         };
 
         let close = dispatch.clone();
-        let dismissed: Vec<(i64, OptionalModRef)> =
-            groups.iter().flat_map(|group| group.offers()).collect();
 
         OverlayPopup::new()
-            .on_close(move |_| close.decline_optional_mods(dismissed.clone()))
+            .on_close(move |_| close.cancel_optional_mods())
             .child(
                 rect()
                     .width(Size::window_percent(100.))
@@ -180,12 +178,11 @@ fn content(
     };
 
     let cancel = dispatch.clone();
-    let declined = offers.clone();
 
-    let enable_text = if enable.is_empty() {
-        "Enable".to_string()
+    let primary_text = if enable.is_empty() {
+        "Launch".to_string()
     } else {
-        format!("Enable {}", enable.len())
+        format!("Install {}", enable.len())
     };
 
     rect()
@@ -225,22 +222,21 @@ fn content(
                 .child(
                     Button::new()
                         .ghost()
-                        .on_press(move |_| cancel.decline_optional_mods(declined.clone()))
+                        .on_press(move |_| cancel.cancel_optional_mods())
                         .text("Cancel"),
                 )
-                .maybe_child((!offers.is_empty()).then(|| {
+                .child({
                     let apply = dispatch.clone();
+                    let install = !enable.is_empty();
                     Button::new()
                         .primary()
-                        .disabled(enable.is_empty())
                         .on_press(move |_| {
                             apply.record_skipped_optional_mods(skip.clone());
                             apply.enable_optional_mods(enable.clone());
                         })
-                        .child(Icon::new(IconType::Check).size(15.))
-                        .text(enable_text.clone())
-                        .into_element()
-                })),
+                        .maybe_child(install.then(|| Icon::new(IconType::Check).size(15.)))
+                        .text(primary_text)
+                }),
         )
 }
 

@@ -38,6 +38,12 @@ pub struct PackageUpdateGroup {
 
 pub type OptionalModRef = (String, String);
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OptionalModsOutcome {
+    Launch,
+    Cancel,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterUpdateItem {
     pub provider: ProviderId,
@@ -233,7 +239,7 @@ pub struct NotificationState {
     /// Held here not by the launch task
     /// because every way the modal can end goes through this state
     package_updates_done: Option<oneshot::Sender<Vec<BrowserPackageUpdate>>>,
-    optional_mods_done: Option<oneshot::Sender<()>>,
+    optional_mods_done: Option<oneshot::Sender<OptionalModsOutcome>>,
 }
 
 const CATEGORY_ORDER: [TaskCategory; 7] = [
@@ -365,7 +371,7 @@ impl NotificationState {
     pub fn open_optional_mods(
         &mut self,
         groups: Vec<OptionalModsGroup>,
-        done: Option<oneshot::Sender<()>>,
+        done: Option<oneshot::Sender<OptionalModsOutcome>>,
     ) {
         let groups: Vec<OptionalModsGroup> = groups
             .into_iter()
@@ -374,12 +380,12 @@ impl NotificationState {
 
         if groups.is_empty() {
             if let Some(done) = done {
-                let _ = done.send(());
+                let _ = done.send(OptionalModsOutcome::Launch);
             }
             return;
         }
 
-        self.finish_optional_mods();
+        self.finish_optional_mods(OptionalModsOutcome::Launch);
         self.optional_mods = Some(groups);
         self.optional_mods_done = done;
     }
@@ -388,10 +394,10 @@ impl NotificationState {
         self.optional_mods = None;
     }
 
-    pub fn finish_optional_mods(&mut self) {
+    pub fn finish_optional_mods(&mut self, outcome: OptionalModsOutcome) {
         self.optional_mods = None;
         if let Some(done) = self.optional_mods_done.take() {
-            let _ = done.send(());
+            let _ = done.send(outcome);
         }
     }
 

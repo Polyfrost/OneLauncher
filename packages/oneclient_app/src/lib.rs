@@ -6,6 +6,7 @@
 mod assets;
 pub mod cli;
 mod components;
+pub mod essential;
 pub mod events;
 pub(crate) mod file_content;
 pub mod hooks;
@@ -32,7 +33,7 @@ mod view;
 pub mod constants;
 
 pub use assets::AppAssets;
-pub use components::ConfirmLinkOverlay;
+pub use components::{ConfirmLinkOverlay, EssentialConfirmOverlay};
 pub use events::EventPump;
 pub use hooks::*;
 pub use routes::{Route, router};

@@ -4,9 +4,17 @@ use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
 use oneclient_core::SeenStatus;
 
+<<<<<<< HEAD
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
 use crate::hooks::{
     ClusterAction, ClusterMutation, loaded_image, use_cached_image, use_cluster_mutation,
+=======
+use crate::components::{Icon, IconType, toggle_controlled};
+use crate::essential::EssentialPackage;
+use crate::hooks::{
+    ClusterAction, EssentialGuardKind, PendingEssential, loaded_image, use_cached_image,
+    use_cluster_mutation, use_essential_guard,
+>>>>>>> 3e68c883 (feat: first version of polyplus+ warning implementation)
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -14,6 +22,7 @@ use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
 pub(crate) const CARD_BG: Color = Color::from_rgb(26, 34, 41);
+const ESSENTIAL_BG: Color = Color::from_argb(36, 125, 185, 255);
 pub(crate) const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
 pub(crate) const CARD_H: f32 = 84.;
 pub(crate) const CARD_GRID_H: f32 = 112.;
@@ -58,6 +67,7 @@ pub struct PackageEntry {
     pub update_available: bool,
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
+    pub essential: Option<&'static EssentialPackage>,
 }
 
 impl PackageEntry {
@@ -129,7 +139,12 @@ impl Component for PackageRow {
         let package_type = self.package_type;
         let layout = self.layout;
         let cluster = use_cluster_mutation();
+<<<<<<< HEAD
         let hovered = use_state(|| false);
+=======
+        let guard = use_essential_guard();
+        let remove_hover = use_state(|| false);
+>>>>>>> 3e68c883 (feat: first version of polyplus+ warning implementation)
 
         let icon_size = match layout {
             CardLayout::List => 44.,
@@ -144,21 +159,34 @@ impl Component for PackageRow {
             let package_id = item.package_id.clone();
             let enabled_now = item.enabled;
             let manifest_default = item.manifest_default;
+            let essential = item.essential;
+            let mut guard = guard;
             (move |()| {
-                if let Some(h) = &hash {
-                    cluster.mutate(ClusterAction::SetArtifactEnabled {
+                let action = if let Some(h) = &hash {
+                    ClusterAction::SetArtifactEnabled {
                         cluster_id,
                         hash: h.clone(),
                         enabled: !enabled_now,
-                    });
+                    }
                 } else if let Some(bundle) = &bundle_name {
-                    cluster.mutate(ClusterAction::SetBundlePackageEnabled {
+                    ClusterAction::SetBundlePackageEnabled {
                         cluster_id,
                         bundle_name: bundle.clone(),
                         package_id: package_id.clone(),
                         enabled: !enabled_now,
                         manifest_default,
-                    });
+                    }
+                } else {
+                    return;
+                };
+
+                match essential.filter(|_| enabled_now) {
+                    Some(package) => guard.set(Some(PendingEssential {
+                        package,
+                        kind: EssentialGuardKind::Disable,
+                        action,
+                    })),
+                    None => cluster.mutate(action),
                 }
             })
             .into()
@@ -168,7 +196,42 @@ impl Component for PackageRow {
 
         match layout {
             CardLayout::List => {
+<<<<<<< HEAD
                 list_card(&item, package_type, cluster_id, icon, on_toggle, on_context)
+=======
+                let removable = !item.in_bundle();
+                let can_remove = removable && item.installed;
+                let rm_hash = item.hash.clone();
+                let essential = item.essential;
+                let mut guard = guard;
+                let on_remove = move || {
+                    let Some(h) = &rm_hash else {
+                        return;
+                    };
+                    let action = ClusterAction::RemoveArtifact {
+                        cluster_id,
+                        hash: h.clone(),
+                    };
+                    match essential {
+                        Some(package) => guard.set(Some(PendingEssential {
+                            package,
+                            kind: EssentialGuardKind::Remove,
+                            action,
+                        })),
+                        None => cluster.mutate(action),
+                    }
+                };
+                list_card(
+                    &item,
+                    package_type,
+                    cluster_id,
+                    icon,
+                    on_toggle,
+                    can_remove,
+                    on_remove,
+                    remove_hover,
+                )
+>>>>>>> 3e68c883 (feat: first version of polyplus+ warning implementation)
             }
             CardLayout::Grid => grid_card(
                 &item,
@@ -259,7 +322,11 @@ fn list_card(
         .spacing(12.)
         .padding(Gaps::new_all(10.))
         .corner_radius(CornerRadius::new_all(8.))
-        .background(CARD_BG)
+        .background(if item.essential.is_some() {
+            ESSENTIAL_BG
+        } else {
+            CARD_BG
+        })
         .content(Content::Flex)
         .on_secondary_down(on_secondary(on_context.clone()))
         .child(package_info(item, package_type, cluster_id, icon))
@@ -288,6 +355,11 @@ pub(crate) fn grid_card(
 		(_, true) => colors::component_bg_hover(),
         (true, false) => colors::component_bg(),
 		(false, false) => colors::component_bg_disabled(),
+    };
+    let bg = if item.essential.is_some() {
+        ESSENTIAL_BG
+    } else {
+        bg
     };
 
 	let alpha = if enabled {

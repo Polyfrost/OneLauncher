@@ -92,6 +92,7 @@ fn entry_from_item(
         .and_then(|project_id| meta.get(&(item.provider, project_id.clone())));
 
     PackageEntry {
+        essential: crate::essential::lookup(item.provider, &package_id),
         package_id,
         bundle_name: item.offer.as_ref().map(|(bundle, _)| bundle.clone()),
         provider: item.provider,

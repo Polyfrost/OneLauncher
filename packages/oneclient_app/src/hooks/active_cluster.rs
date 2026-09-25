@@ -5,6 +5,9 @@ use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::SearchSort;
 use oneclient_db::models::ClusterId;
 
+use crate::essential::EssentialPackage;
+use crate::hooks::ClusterAction;
+
 #[derive(Clone)]
 pub struct ActiveClusterState(pub State<Option<ClusterId>>);
 
@@ -76,6 +79,30 @@ pub fn use_provide_link_confirm(state: LinkConfirmState) {
 
 pub fn use_link_confirm() -> State<Option<String>> {
     consume_root_context::<LinkConfirmState>().0
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum EssentialGuardKind {
+    Disable,
+    Remove,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct PendingEssential {
+    pub package: &'static EssentialPackage,
+    pub kind: EssentialGuardKind,
+    pub action: ClusterAction,
+}
+
+#[derive(Clone)]
+pub struct EssentialGuardState(pub State<Option<PendingEssential>>);
+
+pub fn use_provide_essential_guard(state: EssentialGuardState) {
+    use_provide_root_context(move || state.clone());
+}
+
+pub fn use_essential_guard() -> State<Option<PendingEssential>> {
+    consume_root_context::<EssentialGuardState>().0
 }
 
 #[derive(Clone)]

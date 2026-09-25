@@ -5,8 +5,10 @@ use oneclient_content::packages::ProviderId;
 use oneclient_core::SeenStatus;
 
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
+use crate::essential::EssentialPackage;
 use crate::hooks::{
-    ClusterAction, ClusterMutation, loaded_image, use_cached_image, use_cluster_mutation,
+    ClusterAction, EssentialGuardKind, ClusterMutation, PendingEssential, loaded_image, use_cached_image,
+    use_cluster_mutation, use_essential_guard,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -58,6 +60,7 @@ pub struct PackageEntry {
     pub update_available: bool,
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
+    pub essential: Option<&'static EssentialPackage>,
 }
 
 impl PackageEntry {
@@ -129,6 +132,7 @@ impl Component for PackageRow {
         let package_type = self.package_type;
         let layout = self.layout;
         let cluster = use_cluster_mutation();
+        let guard = use_essential_guard();
         let hovered = use_state(|| false);
 
         let icon_size = match layout {
@@ -144,21 +148,34 @@ impl Component for PackageRow {
             let package_id = item.package_id.clone();
             let enabled_now = item.enabled;
             let manifest_default = item.manifest_default;
+            let essential = item.essential;
+            let mut guard = guard;
             (move |()| {
-                if let Some(h) = &hash {
-                    cluster.mutate(ClusterAction::SetArtifactEnabled {
+                let action = if let Some(h) = &hash {
+                    ClusterAction::SetArtifactEnabled {
                         cluster_id,
                         hash: h.clone(),
                         enabled: !enabled_now,
-                    });
+                    }
                 } else if let Some(bundle) = &bundle_name {
-                    cluster.mutate(ClusterAction::SetBundlePackageEnabled {
+                    ClusterAction::SetBundlePackageEnabled {
                         cluster_id,
                         bundle_name: bundle.clone(),
                         package_id: package_id.clone(),
                         enabled: !enabled_now,
                         manifest_default,
-                    });
+                    }
+                } else {
+                    return;
+                };
+
+                match essential.filter(|_| enabled_now) {
+                    Some(package) => guard.set(Some(PendingEssential {
+                        package,
+                        kind: EssentialGuardKind::Disable,
+                        action,
+                    })),
+                    None => cluster.mutate(action),
                 }
             })
             .into()
@@ -167,9 +184,7 @@ impl Component for PackageRow {
         let on_context = has_menu(&item).then(|| self.on_context.clone());
 
         match layout {
-            CardLayout::List => {
-                list_card(&item, package_type, cluster_id, icon, on_toggle, on_context)
-            }
+            CardLayout::List => list_card(&item, package_type, cluster_id, icon, on_toggle, on_context),
             CardLayout::Grid => grid_card(
                 &item,
                 package_type,

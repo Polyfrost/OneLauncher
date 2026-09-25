@@ -15,10 +15,11 @@ pub use view_state::{PersistedView, use_view_state};
 
 pub use active_cluster::{
     ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserTypeState, BrowserUiState,
-    LinkConfirmState, OnboardingSelectionState, SplashState, StartMaximizedState,
-    use_active_cluster_id, use_browser_compat, use_browser_state_store, use_browser_type,
-    use_link_confirm, use_onboarding_selection, use_provide_active_cluster,
-    use_provide_browser_compat, use_provide_browser_state, use_provide_browser_type,
+    EssentialGuardKind, EssentialGuardState, LinkConfirmState, OnboardingSelectionState,
+    PendingEssential, SplashState, StartMaximizedState, use_active_cluster_id, use_browser_compat,
+    use_browser_state_store, use_browser_type, use_essential_guard, use_link_confirm,
+    use_onboarding_selection, use_provide_active_cluster, use_provide_browser_compat,
+    use_provide_browser_state, use_provide_browser_type, use_provide_essential_guard,
     use_provide_link_confirm, use_provide_onboarding_selection, use_provide_splash,
     use_provide_start_maximized, use_splash, use_start_maximized,
 };

@@ -362,6 +362,18 @@ pub(super) fn global_notice(noun_plural: &'static str) -> Element {
     ))
 }
 
+pub(super) fn essential_notice(names: &[&'static str]) -> Element {
+    let text = match names {
+        [only] => format!("{only} is turned off, so its features will not work in game."),
+        _ => format!(
+            "{} are turned off, so their features will not work in game.",
+            names.join(", ")
+        ),
+    };
+
+    notice_bar(text)
+}
+
 fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()

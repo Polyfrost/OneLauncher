@@ -602,6 +602,7 @@ fn loader_rows(
     Some(info_row(
         "Mod Loader",
         Dropdown::new(options[current].clone(), options)
+            .width(Size::px(120.))
             .on_select(move |idx: usize| {
                 if let Some(loader) = loaders.get(idx).copied() {
                     *selected_loader.write() = Some(loader);

@@ -4,17 +4,11 @@ use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
 use oneclient_core::SeenStatus;
 
-<<<<<<< HEAD
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
-use crate::hooks::{
-    ClusterAction, ClusterMutation, loaded_image, use_cached_image, use_cluster_mutation,
-=======
-use crate::components::{Icon, IconType, toggle_controlled};
 use crate::essential::EssentialPackage;
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, PendingEssential, loaded_image, use_cached_image,
+    ClusterAction, EssentialGuardKind, ClusterMutation, PendingEssential, loaded_image, use_cached_image,
     use_cluster_mutation, use_essential_guard,
->>>>>>> 3e68c883 (feat: first version of polyplus+ warning implementation)
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -22,7 +16,6 @@ use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
 pub(crate) const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-const ESSENTIAL_BG: Color = Color::from_argb(36, 125, 185, 255);
 pub(crate) const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
 pub(crate) const CARD_H: f32 = 84.;
 pub(crate) const CARD_GRID_H: f32 = 112.;
@@ -139,12 +132,8 @@ impl Component for PackageRow {
         let package_type = self.package_type;
         let layout = self.layout;
         let cluster = use_cluster_mutation();
-<<<<<<< HEAD
-        let hovered = use_state(|| false);
-=======
         let guard = use_essential_guard();
-        let remove_hover = use_state(|| false);
->>>>>>> 3e68c883 (feat: first version of polyplus+ warning implementation)
+        let hovered = use_state(|| false);
 
         let icon_size = match layout {
             CardLayout::List => 44.,
@@ -195,44 +184,7 @@ impl Component for PackageRow {
         let on_context = has_menu(&item).then(|| self.on_context.clone());
 
         match layout {
-            CardLayout::List => {
-<<<<<<< HEAD
-                list_card(&item, package_type, cluster_id, icon, on_toggle, on_context)
-=======
-                let removable = !item.in_bundle();
-                let can_remove = removable && item.installed;
-                let rm_hash = item.hash.clone();
-                let essential = item.essential;
-                let mut guard = guard;
-                let on_remove = move || {
-                    let Some(h) = &rm_hash else {
-                        return;
-                    };
-                    let action = ClusterAction::RemoveArtifact {
-                        cluster_id,
-                        hash: h.clone(),
-                    };
-                    match essential {
-                        Some(package) => guard.set(Some(PendingEssential {
-                            package,
-                            kind: EssentialGuardKind::Remove,
-                            action,
-                        })),
-                        None => cluster.mutate(action),
-                    }
-                };
-                list_card(
-                    &item,
-                    package_type,
-                    cluster_id,
-                    icon,
-                    on_toggle,
-                    can_remove,
-                    on_remove,
-                    remove_hover,
-                )
->>>>>>> 3e68c883 (feat: first version of polyplus+ warning implementation)
-            }
+            CardLayout::List => list_card(&item, package_type, cluster_id, icon, on_toggle, on_context),
             CardLayout::Grid => grid_card(
                 &item,
                 package_type,
@@ -322,11 +274,7 @@ fn list_card(
         .spacing(12.)
         .padding(Gaps::new_all(10.))
         .corner_radius(CornerRadius::new_all(8.))
-        .background(if item.essential.is_some() {
-            ESSENTIAL_BG
-        } else {
-            CARD_BG
-        })
+        .background(CARD_BG)
         .content(Content::Flex)
         .on_secondary_down(on_secondary(on_context.clone()))
         .child(package_info(item, package_type, cluster_id, icon))
@@ -355,11 +303,6 @@ pub(crate) fn grid_card(
 		(_, true) => colors::component_bg_hover(),
         (true, false) => colors::component_bg(),
 		(false, false) => colors::component_bg_disabled(),
-    };
-    let bg = if item.essential.is_some() {
-        ESSENTIAL_BG
-    } else {
-        bg
     };
 
 	let alpha = if enabled {

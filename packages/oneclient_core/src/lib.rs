@@ -43,14 +43,14 @@ pub use oneclient_cluster::screenshots::{
 };
 pub use oneclient_content::bundles::{
     ApplyBundleUpdatesResult, Bundle, BundleArchive, BundleError, BundleFile, BundleFileKind,
-    BundleManifest, BundleOptionalPackage, BundleUpdateCheckResult, BundleWithUpdateStatus,
-    BundlesManager, FileUpdateStatus, PendingOptionalMod, apply_bundle_updates,
-    apply_bundle_updates_with, check_bundle_updates, cluster_has_bundle_content, effective_enabled,
-    get_bundles_with_update_status, install_bundle, install_cluster_bundles,
-    install_package_from_bundle, list_cluster_bundle_overrides, pending_optional_mods,
-    remove_artifact_from_cluster, resolve_optional_mods, set_artifact_enabled_to,
-    set_bundle_package_enabled, set_bundle_package_opt_in, set_bundle_package_override,
-    set_bundle_package_overrides, skip_optional_mods,
+    BundleFileType, BundleManifest, BundleOptionalPackage, BundleUpdateCheckResult,
+    BundleWithUpdateStatus, BundlesManager, FileUpdateStatus, PendingOptionalMod,
+    apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,
+    cluster_has_bundle_content, effective_enabled, get_bundles_with_update_status, install_bundle,
+    install_cluster_bundles, install_package_from_bundle, list_cluster_bundle_overrides,
+    pending_optional_mods, remove_artifact_from_cluster, resolve_optional_mods,
+    set_artifact_enabled_to, set_bundle_package_enabled, set_bundle_package_opt_in,
+    set_bundle_package_override, set_bundle_package_overrides, skip_optional_mods,
 };
 pub use oneclient_content::packages::LinkedArtifactInfo;
 pub use oneclient_content::packages::updates::{

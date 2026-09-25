@@ -10,6 +10,7 @@ pub fn file(package_id: &str, enabled: bool, hidden: bool) -> BundleFile {
         hidden,
         path: format!("mods/{package_id}.jar"),
         size: 1,
+        file_type: Default::default(),
         kind: BundleFileKind::External(ExternalFile {
             name: format!("{package_id}.jar"),
             url: format!("https://example.invalid/{package_id}.jar"),

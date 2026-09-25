@@ -19,6 +19,7 @@ fn managed_file(enabled: bool) -> BundleFile {
         hidden: false,
         path: "mods/sodium.jar".to_string(),
         size: 1,
+        file_type: Default::default(),
         kind: BundleFileKind::Managed {
             provider: ProviderId::Modrinth,
             project_id: PROJECT_ID.to_string(),
@@ -35,6 +36,7 @@ fn newly_shipped_file() -> BundleFile {
         hidden: false,
         path: "mods/newcomer.jar".to_string(),
         size: 1,
+        file_type: Default::default(),
         kind: BundleFileKind::Managed {
             provider: ProviderId::Modrinth,
             project_id: "newcomer".to_string(),

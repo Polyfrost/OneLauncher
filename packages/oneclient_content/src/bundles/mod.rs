@@ -23,9 +23,9 @@ pub use optional::{
     PendingOptionalMod, pending_optional_mods, resolve_optional_mods, skip_optional_mods,
 };
 pub use types::{
-    ApplyBundleUpdatesResult, BundleArchive, BundleFile, BundleFileKind, BundleManifest,
-    BundleOptionalPackage, BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate,
-    BundleUpdateCheckResult, BundleWithUpdateStatus, FileUpdateStatus,
+    ApplyBundleUpdatesResult, BundleArchive, BundleFile, BundleFileKind, BundleFileType,
+    BundleManifest, BundleOptionalPackage, BundlePackageAddition, BundlePackageRemoval,
+    BundlePackageUpdate, BundleUpdateCheckResult, BundleWithUpdateStatus, FileUpdateStatus,
 };
 pub use updates::{
     apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,

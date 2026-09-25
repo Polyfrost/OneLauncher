@@ -30,7 +30,18 @@ pub struct BundleFile {
     pub path: String,
     #[serde(default)]
     pub size: u64,
+    #[serde(default)]
+    pub file_type: BundleFileType,
     pub kind: BundleFileKind,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BundleFileType {
+    Advanced,
+    #[default]
+    #[serde(other)]
+    Normal,
 }
 
 impl BundleFile {

@@ -12,6 +12,7 @@ const DATAPACKS_DIR: &str = "datapacks";
 const LEVEL_DAT: &str = "level.dat";
 const WORLD_ICON: &str = "icon.png";
 const PACK_META: &str = "pack.mcmeta";
+const PACK_ICON: &str = "pack.png";
 
 #[derive(Debug, Error)]
 pub enum WorldsError {
@@ -32,12 +33,19 @@ pub struct WorldInfo {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub enum PackIcon {
+    File(PathBuf),
+    Cached(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct DataPackInfo {
     pub file_name: String,
     pub is_dir: bool,
     pub size_bytes: u64,
     pub modified: DateTime<Utc>,
     pub description: Option<String>,
+    pub icon: Option<PackIcon>,
 }
 
 fn plain_name(name: &str) -> ClusterResult<&str> {
@@ -141,7 +149,7 @@ pub async fn list_world_datapacks(
 
     for (path, info) in &mut found {
         if !info.is_dir {
-            info.description = zip_description(path).await;
+            (info.description, info.icon) = zip_meta(path).await;
         }
     }
 
@@ -188,6 +196,10 @@ fn scan_datapacks(dir: &Path) -> Vec<(PathBuf, DataPackInfo)> {
             } else {
                 None
             },
+            icon: is_dir
+                .then(|| path.join(PACK_ICON))
+                .filter(|icon| icon.is_file())
+                .map(PackIcon::File),
         };
         out.push((path, info));
     }
@@ -237,13 +249,43 @@ fn is_same_file(a: &Path, b: &Path) -> bool {
     }
 }
 
-async fn zip_description(path: &Path) -> Option<String> {
-    let (_, raw) = polyio::read_zip_file_entries(path, |name| name == PACK_META)
-        .await
-        .ok()?
-        .into_iter()
-        .next()?;
-    parse_description(&raw)
+async fn zip_meta(path: &Path) -> (Option<String>, Option<PackIcon>) {
+    let Ok(entries) =
+        polyio::read_zip_file_entries(path, |name| name == PACK_META || name == PACK_ICON).await
+    else {
+        return (None, None);
+    };
+
+    let mut description = None;
+    let mut icon = None;
+    for (name, raw) in entries {
+        if name == PACK_META {
+            description = parse_description(&raw);
+        } else {
+            icon = store_icon(&raw).await;
+        }
+    }
+    (description, icon)
+}
+
+async fn store_icon(bytes: &[u8]) -> Option<PackIcon> {
+    if bytes.is_empty() {
+        return None;
+    }
+
+    let mut hash = polyio::Sha1Stream::new();
+    hash.update(bytes);
+    let dir = oneclient_common::paths::local_icons_dir().ok()?;
+    let name = format!("{}.png", hash.finish());
+    let target = dir.join(&name);
+    if !target.is_file() {
+        polyio::create_dir_all(&dir).await.ok()?;
+        polyio::write(&target, bytes).await.ok()?;
+    }
+    Some(PackIcon::Cached(format!(
+        "{}{name}",
+        oneclient_common::paths::LOCAL_IMAGE_SCHEME
+    )))
 }
 
 fn parse_description(raw: &[u8]) -> Option<String> {

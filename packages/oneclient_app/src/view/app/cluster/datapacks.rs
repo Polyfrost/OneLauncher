@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 use freya::prelude::*;
 use freya::router::RouterContext;
-use oneclient_core::DataPackInfo;
+use oneclient_core::{DataPackInfo, PackIcon};
 
 use crate::components::{Button, CardLayout, ContextMenu, Dropdown, Icon, IconType};
 use crate::hooks::{
@@ -134,7 +134,11 @@ impl Component for ClusterDataPacks {
                 let info = packs[i].clone();
                 let menu_info = info.clone();
                 FolderCard {
-                    icon: CardIcon::Symbol(IconType::Database01),
+                    icon: match info.icon.clone() {
+                        Some(PackIcon::File(path)) => CardIcon::Image(path),
+                        Some(PackIcon::Cached(url)) => CardIcon::Cached(url, IconType::Database01),
+                        None => CardIcon::Symbol(IconType::Database01),
+                    },
                     title: info.file_name.clone(),
                     badge: if info.is_dir {
                         (IconType::Folder, "Folder".to_string())

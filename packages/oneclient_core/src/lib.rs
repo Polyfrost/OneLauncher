@@ -42,7 +42,7 @@ pub use oneclient_cluster::screenshots::{
     ScreenshotInfo, ScreenshotsError, delete_screenshot, list_cluster_screenshots, load_screenshot,
 };
 pub use oneclient_cluster::worlds::{
-    DataPackInfo, WorldInfo, WorldsError, add_world_datapacks, delete_world, delete_world_datapack,
+    DataPackInfo, PackIcon, WorldInfo, WorldsError, add_world_datapacks, delete_world, delete_world_datapack,
     list_cluster_worlds, list_world_datapacks, world_size,
 };
 pub use oneclient_content::bundles::{

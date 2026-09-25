@@ -9,8 +9,9 @@ use crate::components::{
     IconType, LocalImage, OverlayPopup, ScrollArea, Segment, SegmentedControl, TextInput, badge,
     icon_box, kebab_button, meta_size, meta_text, on_secondary, open_folder_button,
 };
+use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{ImageFallbackExt, border_all_color};
 
 use super::package_manager::{CARD_SPACING, GRID_MAX_COLS, notice_bar};
 
@@ -164,7 +165,32 @@ pub(super) fn content_box(
 #[derive(Clone, PartialEq)]
 pub(super) enum CardIcon {
     Image(PathBuf),
+    Cached(String, IconType),
     Symbol(IconType),
+}
+
+#[derive(PartialEq)]
+struct CachedIcon {
+    url: String,
+    fallback: IconType,
+    size: f32,
+}
+
+impl Component for CachedIcon {
+    fn render(&self) -> impl IntoElement {
+        let query = use_cached_image(Some(self.url.clone()), IMAGE_EDGE);
+
+        match loaded_image(Some(&self.url), &query) {
+            Some(loaded) => ImageViewer::new(loaded)
+                .width(Size::px(self.size))
+                .height(Size::px(self.size))
+                .aspect_ratio(AspectRatio::Min)
+                .corner_radius(CornerRadius::new_all(8.))
+                .fallback(icon_box(self.fallback, self.size))
+                .into_element(),
+            None => icon_box(self.fallback, self.size),
+        }
+    }
 }
 
 #[derive(PartialEq)]
@@ -358,6 +384,12 @@ pub(super) fn card_icon(icon: &CardIcon, size: f32) -> Element {
             .background(colors::component_bg())
             .child(LocalImage::new(path.clone(), IMAGE_EDGE, true).skeleton(true))
             .into_element(),
+        CardIcon::Cached(url, fallback) => CachedIcon {
+            url: url.clone(),
+            fallback: *fallback,
+            size,
+        }
+        .into_element(),
         CardIcon::Symbol(symbol) => icon_box(*symbol, size),
     }
 }

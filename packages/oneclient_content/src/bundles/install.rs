@@ -797,6 +797,7 @@ mod tests {
             hidden: false,
             path: "mods/example.jar".to_string(),
             size: 1,
+            file_type: Default::default(),
             kind: BundleFileKind::External(ExternalFile {
                 name: "example.jar".to_string(),
                 url: "https://example.invalid/example.jar".to_string(),

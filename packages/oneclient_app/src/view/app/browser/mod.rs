@@ -401,6 +401,7 @@ mod tests {
             hidden: false,
             path: format!("mods/{project_id}.jar"),
             size: 1,
+            file_type: Default::default(),
             kind: BundleFileKind::Managed {
                 provider: ProviderId::Modrinth,
                 project_id: project_id.to_string(),

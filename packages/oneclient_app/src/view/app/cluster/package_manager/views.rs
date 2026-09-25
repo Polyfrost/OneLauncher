@@ -6,7 +6,7 @@ use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, Segment,
+    Button, CardLayout, Icon, IconType, LazySection, PackageEntry, PackageRow, ScrollArea, Segment,
     SegmentedControl, TextInput, package_context_menu,
 };
 use crate::hooks::{use_cluster_mutation, use_dispatch, use_overlay_claim};
@@ -695,9 +695,84 @@ pub(super) enum ContentKind {
     },
 }
 
+const SECTION_HEADER_H: f32 = 36.;
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct AdvancedSection {
+    pub(super) open: State<bool>,
+    pub(super) forced: bool,
+}
+
+impl AdvancedSection {
+    fn expanded(self) -> bool {
+        self.forced || *self.open.read()
+    }
+}
+
+#[derive(PartialEq)]
+struct SectionHeader {
+    label: &'static str,
+    count: usize,
+    section: AdvancedSection,
+}
+
+impl Component for SectionHeader {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let section = self.section;
+        let mut open = section.open;
+        let expanded = section.expanded();
+        let interactive = !section.forced;
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .padding(Gaps::new_symmetric(0., 12.))
+            .corner_radius(CornerRadius::new_all(10.))
+            .background(if interactive && *hovered.read() {
+                colors::ghost_overlay_hover()
+            } else {
+                Color::TRANSPARENT
+            })
+            .maybe(interactive, |el| {
+                el.cursor(CursorIcon::Pointer)
+                    .on_pointer_enter(move |_| hovered.set(true))
+                    .on_pointer_leave(move |_| hovered.set(false))
+                    .on_press(move |_| open.toggle())
+            })
+            .child(
+                Icon::new(if expanded {
+                    IconType::ChevronDown
+                } else {
+                    IconType::ChevronRight
+                })
+                .size(14.)
+                .color(colors::fg_secondary()),
+            )
+            .child(
+                label()
+                    .text(self.label)
+                    .font_size(13.)
+                    .font_weight(FontWeight::SEMI_BOLD)
+                    .color(colors::fg_primary()),
+            )
+            .child(
+                label()
+                    .text(self.count.to_string())
+                    .font_size(12.)
+                    .color(colors::fg_secondary()),
+            )
+    }
+}
+
 #[derive(PartialEq)]
 pub(super) struct ContentBox {
     items: Vec<PackageEntry>,
+    advanced: Vec<PackageEntry>,
+    section: AdvancedSection,
     noun_plural: &'static str,
     package_type: &'static str,
     content_type: ContentType,
@@ -710,6 +785,8 @@ impl ContentBox {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         items: Vec<PackageEntry>,
+        advanced: Vec<PackageEntry>,
+        section: AdvancedSection,
         noun_plural: &'static str,
         package_type: &'static str,
         content_type: ContentType,
@@ -719,6 +796,8 @@ impl ContentBox {
     ) -> Self {
         Self {
             items,
+            advanced,
+            section,
             noun_plural,
             package_type,
             content_type,
@@ -731,7 +810,14 @@ impl ContentBox {
 
 impl Component for ContentBox {
     fn render(&self) -> impl IntoElement {
-        let items = self.items.clone();
+        let section = self.section;
+        let expanded = section.expanded();
+        let advanced_count = self.advanced.len();
+        let mut items = self.items.clone();
+        let normal_count = items.len();
+        if expanded {
+            items.extend(self.advanced.iter().cloned());
+        }
         let package_type = self.package_type;
         let content_type = self.content_type;
         let cluster_id = self.cluster_id;
@@ -757,19 +843,43 @@ impl Component for ContentBox {
             }
         };
 
-        let count = items.len();
+        let count = normal_count + advanced_count;
         let scroll = (count > 0).then(|| {
-            let area = ScrollArea::new()
+            let mut sections = vec![LazySection {
+                header_height: None,
+                count: normal_count,
+            }];
+            if advanced_count > 0 {
+                sections.push(LazySection {
+                    header_height: Some(SECTION_HEADER_H),
+                    count: if expanded { advanced_count } else { 0 },
+                });
+            }
+            let (item_height, gap, min_width, max_cols) = match layout {
+                CardLayout::List => (CARD_H, CARD_SPACING, 0., 1),
+                CardLayout::Grid => (CARD_GRID_H, GRID_GAP, GRID_MIN_W, GRID_MAX_COLS),
+            };
+            ScrollArea::new()
                 .width(Size::fill())
                 .height(Size::fill())
-                .scrollbar_gutter(true);
-            match layout {
-                CardLayout::List => area.lazy(count, CARD_H, CARD_SPACING, row),
-                CardLayout::Grid => {
-                    area.lazy_grid(count, CARD_GRID_H, GRID_GAP, GRID_MIN_W, GRID_MAX_COLS, row)
-                }
-            }
-            .into_element()
+                .scrollbar_gutter(true)
+                .lazy_sections(
+                    sections,
+                    item_height,
+                    gap,
+                    min_width,
+                    max_cols,
+                    row,
+                    move |_| {
+                        SectionHeader {
+                            label: "Advanced",
+                            count: advanced_count,
+                            section,
+                        }
+                        .into_element()
+                    },
+                )
+                .into_element()
         });
 
         let menu_overlay = menu.read().clone().map(|(x, y, item)| {

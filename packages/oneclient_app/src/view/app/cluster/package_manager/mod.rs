@@ -3,14 +3,16 @@ use std::collections::{HashMap, HashSet};
 use freya::prelude::*;
 use oneclient_common::search::{MatchScore, SearchQuery};
 use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
-use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
+use oneclient_core::{BundleFileKind, BundleFileType, BundleWithUpdateStatus, LinkedArtifactInfo};
 use oneclient_db::models::OverrideType;
 
 use crate::components::{CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry};
 use crate::hooks::{package_meta_batch, use_game_snapshot, use_package_meta_batch, use_view_state};
 
 mod views;
-use views::{ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, toolbar_bar};
+use views::{
+    AdvancedSection, ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, toolbar_bar,
+};
 
 const CARD_H: f32 = 84.;
 const CARD_SPACING: f32 = 8.;
@@ -103,10 +105,14 @@ pub fn bundle_packages(
 
     // Hidden is per-bundle so one bundle carrying a mod as a private dependency must not suppress a bundle that offers it openly
     let mut shown_elsewhere: HashSet<String> = HashSet::new();
+    let mut normal_elsewhere: HashSet<String> = HashSet::new();
     for bundle in bundles {
         for (file, _status) in &bundle.files {
             if !file.hidden && file.content_type() == content_type {
                 shown_elsewhere.insert(file.kind.package_id());
+                if file.file_type == BundleFileType::Normal {
+                    normal_elsewhere.insert(file.kind.package_id());
+                }
             }
         }
     }
@@ -146,13 +152,17 @@ pub fn bundle_packages(
                 None => oneclient_core::effective_enabled(file, ov.and_then(OverrideType::parse)),
             };
 
+            let advanced = content_type == ContentType::Mod
+                && file.file_type == BundleFileType::Advanced
+                && !normal_elsewhere.contains(&pid);
+
             let categories = if category.is_empty() {
                 Vec::new()
             } else {
                 vec![category.clone()]
             };
 
-            rows.push(make_row(
+            let mut row = make_row(
                 pid,
                 Some(bundle_name.clone()),
                 provider,
@@ -166,7 +176,9 @@ pub fn bundle_packages(
                 false,
                 // Flagged rather than dropped `HiddenFilter` filters on the row and the seen id stops the loose-content pass resurrecting it as a local file
                 file.hidden,
-            ));
+            );
+            row.advanced = advanced;
+            rows.push(row);
         }
     }
 
@@ -251,6 +263,7 @@ fn make_row(
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
         hidden,
+        advanced: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
     }
 }
@@ -414,6 +427,7 @@ impl Component for PackageManager {
         let search = use_state(String::new);
         let enabled_filter = use_state(|| EnabledFilter::All);
         let hidden_filter = use_state(|| HiddenFilter::Hide);
+        let advanced_open = use_state(|| false);
         let toolbar_width = use_state(|| 0f32);
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
@@ -456,6 +470,8 @@ impl Component for PackageManager {
             }
         };
 
+        let (advanced, filtered): (Vec<_>, Vec<_>) = filtered.into_iter().partition(|p| p.advanced);
+
         rect()
             .vertical()
             .width(Size::fill())
@@ -482,6 +498,11 @@ impl Component for PackageManager {
             .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
             .child(ContentBox::new(
                 filtered,
+                advanced,
+                AdvancedSection {
+                    open: advanced_open,
+                    forced: !query.is_empty(),
+                },
                 noun_plural,
                 package_type,
                 content_type,

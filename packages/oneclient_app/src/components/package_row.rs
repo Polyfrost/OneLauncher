@@ -54,6 +54,7 @@ pub struct PackageEntry {
     pub manifest_default: bool,
     /// Private bundle dependency only set for bundle rows
     pub hidden: bool,
+    pub advanced: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
     /// Recency badge state cleared once the user views the list

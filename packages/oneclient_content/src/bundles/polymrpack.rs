@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::bundles::error::BundleError;
 use crate::bundles::types::{
-    BundleFile, BundleFileKind, BundleManifest, content_type_from_bundle_path,
+    BundleFile, BundleFileKind, BundleFileType, BundleManifest, content_type_from_bundle_path,
 };
 use crate::error::ContentResult;
 use crate::packages::types::ExternalFile;
@@ -49,6 +49,8 @@ struct PolyMrpackFile {
     pub enabled: bool,
     #[serde(default)]
     pub hidden: bool,
+    #[serde(rename = "type", default)]
+    pub file_type: BundleFileType,
 }
 
 #[derive(Debug, Deserialize)]
@@ -140,6 +142,7 @@ fn parse_bundle_file(file: &PolyMrpackFile) -> Option<BundleFile> {
                 hidden: file.hidden,
                 path: file.path.clone(),
                 size: file.file_size,
+                file_type: file.file_type,
                 kind: BundleFileKind::Managed {
                     provider: ProviderId::Modrinth,
                     project_id: paths[0].to_string(),
@@ -165,6 +168,7 @@ fn parse_bundle_file(file: &PolyMrpackFile) -> Option<BundleFile> {
         hidden: file.hidden,
         path: file.path.clone(),
         size: file.file_size,
+        file_type: file.file_type,
         kind: BundleFileKind::External(ExternalFile {
             name: file_name,
             url: download_url,

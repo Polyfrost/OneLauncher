@@ -81,6 +81,25 @@ pub struct ScrollAreaCtx {
     pub viewport_left: f32,
 }
 
+#[derive(Clone, Copy)]
+pub struct LazySection {
+    pub header_height: Option<f32>,
+    pub count: usize,
+}
+
+enum LazyRow {
+    Header {
+        section: usize,
+        height: f32,
+    },
+    Items {
+        section: usize,
+        row: usize,
+        start: usize,
+        end: usize,
+    },
+}
+
 pub struct ScrollArea {
     width: Size,
     height: Size,
@@ -291,6 +310,119 @@ impl ScrollArea {
                     });
                 }
                 container = container.child(row);
+            }
+            if bottom_pad > 0. {
+                container =
+                    container.child(rect().width(Size::fill()).height(Size::px(bottom_pad)));
+            }
+            container.into_element()
+        }));
+        self
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn lazy_sections(
+        mut self,
+        sections: Vec<LazySection>,
+        item_height: f32,
+        gap: f32,
+        min_width: f32,
+        max_cols: usize,
+        render: impl Fn(usize) -> Element + 'static,
+        render_header: impl Fn(usize) -> Element + 'static,
+    ) -> Self {
+        let slot = (item_height + gap).max(1.);
+        self.builder = Some(Box::new(move |ctx: ScrollAreaCtx| {
+            let cols = (((ctx.viewport_w + gap) / (min_width + gap)).floor() as usize)
+                .clamp(1, max_cols.max(1));
+
+            let mut rows = Vec::new();
+            let mut offset = 0;
+            for (s, section) in sections.iter().enumerate() {
+                if let Some(header_height) = section.header_height {
+                    rows.push(LazyRow::Header {
+                        section: s,
+                        height: header_height,
+                    });
+                }
+                for r in 0..section.count.div_ceil(cols) {
+                    let start = offset + r * cols;
+                    rows.push(LazyRow::Items {
+                        section: s,
+                        row: r,
+                        start,
+                        end: (start + cols).min(offset + section.count),
+                    });
+                }
+                offset += section.count;
+            }
+
+            let row_slot = |row: &LazyRow| match row {
+                LazyRow::Header { height, .. } => height + gap,
+                LazyRow::Items { .. } => slot,
+            };
+
+            let overscan = LAZY_OVERSCAN as f32 * slot;
+            let visible_top = -ctx.corrected_y - overscan;
+            let visible_bottom = -ctx.corrected_y + ctx.viewport_h + overscan;
+
+            let mut top_pad = 0.;
+            let mut bottom_pad = 0.;
+            let mut visible = Vec::new();
+            let mut y = 0.;
+            for row in &rows {
+                let h = row_slot(row);
+                if y + h <= visible_top {
+                    top_pad += h;
+                } else if y >= visible_bottom {
+                    bottom_pad += h;
+                } else {
+                    visible.push(row);
+                }
+                y += h;
+            }
+
+            let mut container = rect().vertical().width(Size::fill());
+            if top_pad > 0. {
+                container = container.child(rect().width(Size::fill()).height(Size::px(top_pad)));
+            }
+            for row in visible {
+                let el = match *row {
+                    LazyRow::Header { section, height } => rect()
+                        .key(("h", section))
+                        .width(Size::fill())
+                        .height(Size::px(height + gap))
+                        .child(
+                            rect()
+                                .width(Size::fill())
+                                .height(Size::px(height))
+                                .child(render_header(section)),
+                        ),
+                    LazyRow::Items {
+                        section,
+                        row,
+                        start,
+                        end,
+                    } => {
+                        let mut items = rect()
+                            .key(("r", section, row))
+                            .horizontal()
+                            .width(Size::fill())
+                            .height(Size::px(slot))
+                            .spacing(gap)
+                            .content(Content::Flex);
+                        for idx in start..start + cols {
+                            let cell = rect().width(Size::flex(1.0)).height(Size::px(item_height));
+                            items = items.child(if idx < end {
+                                cell.child(render(idx))
+                            } else {
+                                cell
+                            });
+                        }
+                        items
+                    }
+                };
+                container = container.child(el);
             }
             if bottom_pad > 0. {
                 container =

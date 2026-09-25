@@ -353,10 +353,54 @@ pub async fn extract_tar_gz(
         let buf_reader = tokio::io::BufReader::new(file);
         let gzip_decoder = async_compression::tokio::bufread::GzipDecoder::new(buf_reader);
 
-        let mut tar_archive = tokio_tar::Archive::new(gzip_decoder);
+        // Unlike the `tar` crate, this one applies no mode at all without the
+        // flag, which strips the executable bits off every binary
+        let mut tar_archive = tokio_tar::ArchiveBuilder::new(gzip_decoder)
+            .set_preserve_permissions(true)
+            .build();
         tar_archive.unpack(dest).await?;
 
         Ok(())
     })
     .await
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use std::os::unix::fs::PermissionsExt;
+
+    use tokio::io::AsyncWriteExt;
+
+    #[tokio::test]
+    async fn tar_gz_extraction_keeps_executable_bits() {
+        let dir = std::env::temp_dir().join(format!("polyio-tar-test-{}", std::process::id()));
+        let archive = dir.join("runtime.tar.gz");
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let mut header = tokio_tar::Header::new_gnu();
+        header.set_size(0);
+        header.set_mode(0o755);
+        header.set_cksum();
+
+        let file = tokio::fs::File::create(&archive).await.unwrap();
+        let mut builder =
+            tokio_tar::Builder::new(async_compression::tokio::write::GzipEncoder::new(file));
+        builder
+            .append_data(&mut header, "jdk/lib/jspawnhelper", tokio::io::empty())
+            .await
+            .unwrap();
+        let mut gzip = builder.into_inner().await.unwrap();
+        gzip.shutdown().await.unwrap();
+
+        super::extract_tar_gz(&archive, dir.join("out"))
+            .await
+            .unwrap();
+
+        let mode = std::fs::metadata(dir.join("out/jdk/lib/jspawnhelper"))
+            .unwrap()
+            .permissions()
+            .mode();
+        std::fs::remove_dir_all(&dir).unwrap();
+        assert_eq!(mode & 0o777, 0o755);
+    }
 }

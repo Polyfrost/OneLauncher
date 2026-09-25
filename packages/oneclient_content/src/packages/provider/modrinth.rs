@@ -198,7 +198,10 @@ impl PackageProvider for ModrinthProvider {
             project_type: String,
         }
         let tags: Vec<Tag> = fetch_json(&ctx.net, Method::GET, &v2("/tag/category"), None).await?;
-        let want = content_type.modrinth_type();
+        let want = match content_type {
+            ContentType::DataPack => ContentType::Mod.modrinth_type(),
+            other => other.modrinth_type(),
+        };
         Ok(tags
             .into_iter()
             .filter(|t| t.project_type == want)

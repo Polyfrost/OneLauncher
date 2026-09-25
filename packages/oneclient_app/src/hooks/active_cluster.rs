@@ -68,6 +68,17 @@ pub fn use_browser_type() -> State<String> {
 }
 
 #[derive(Clone)]
+pub struct DataPackWorldState(pub State<HashMap<ClusterId, String>>);
+
+pub fn use_provide_datapack_world(state: DataPackWorldState) {
+    use_hook(move || provide_root_context(state));
+}
+
+pub fn use_datapack_world() -> State<HashMap<ClusterId, String>> {
+    consume_root_context::<DataPackWorldState>().0
+}
+
+#[derive(Clone)]
 pub struct LinkConfirmState(pub State<Option<String>>);
 
 pub fn use_provide_link_confirm(state: LinkConfirmState) {

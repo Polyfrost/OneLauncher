@@ -13,7 +13,10 @@ use oneclient_db::models::ClusterId;
 
 use crate::Route;
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
-use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch};
+use crate::hooks::{
+    add_world_datapacks, settled_or_loading, spawn_world_task, try_cluster_worlds,
+    use_active_cluster_id, use_cluster_worlds, use_clusters, use_dispatch,
+};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -23,19 +26,22 @@ const FILE_ROW_H: f32 = 34.;
 const FILE_LIST_MAX_ROWS: usize = 5;
 const TYPE_DROPDOWN_W: f32 = 108.;
 
-/// Worlds are directories and modpacks/datapacks have no view so both are excluded
-const IMPORTABLE: [ContentType; 3] = [
+/// Worlds are directories and modpacks have no view so both are excluded
+const IMPORTABLE: [ContentType; 4] = [
     ContentType::Mod,
     ContentType::ResourcePack,
     ContentType::Shader,
+    ContentType::DataPack,
 ];
 
 const SHADER_HINTS: [&str; 5] = ["shader", "bsl", "seus", "complementary", "sildur"];
+const DATAPACK_HINTS: [&str; 4] = ["datapack", "data pack", "data_pack", "data-pack"];
 
 fn content_label(content_type: ContentType) -> &'static str {
     match content_type {
         ContentType::ResourcePack => "Textures",
         ContentType::Shader => "Shaders",
+        ContentType::DataPack => "Data packs",
         _ => "Mods",
     }
 }
@@ -59,7 +65,9 @@ fn infer_content_type(path: &Path, route_type: Option<ContentType>) -> ContentTy
         return route_type;
     }
     let name = file_name(path).to_lowercase();
-    if SHADER_HINTS.iter().any(|hint| name.contains(hint)) {
+    if DATAPACK_HINTS.iter().any(|hint| name.contains(hint)) {
+        ContentType::DataPack
+    } else if SHADER_HINTS.iter().any(|hint| name.contains(hint)) {
         ContentType::Shader
     } else {
         ContentType::ResourcePack
@@ -71,6 +79,14 @@ fn route_target(route: &Route) -> Option<(ClusterId, ContentType)> {
         Route::ClusterMods { cluster_id } => Some((*cluster_id, ContentType::Mod)),
         Route::ClusterShaders { cluster_id } => Some((*cluster_id, ContentType::Shader)),
         Route::ClusterTextures { cluster_id } => Some((*cluster_id, ContentType::ResourcePack)),
+        Route::ClusterDataPacks { cluster_id, .. } => Some((*cluster_id, ContentType::DataPack)),
+        _ => None,
+    }
+}
+
+fn route_world(route: &Route) -> Option<String> {
+    match route {
+        Route::ClusterDataPacks { world, .. } if !world.is_empty() => Some(world.clone()),
         _ => None,
     }
 }
@@ -191,23 +207,40 @@ impl Component for DropPrompt {
         let target = route_target(&route);
         let initial_cluster = target.map(|(id, _)| id).or(*active_cluster.peek());
         let selected_cluster = use_state(move || initial_cluster);
+        let initial_world = route_world(&route);
+        let selected_world = use_state(move || initial_world);
         // Absent entries fall back to the inferred type covering drops landing mid-prompt
         let overrides = use_state(HashMap::<PathBuf, ContentType>::new);
 
         let clusters: Vec<Cluster> = settled_or_loading(&clusters_query).unwrap_or_default();
 
-        let body = if clusters.is_empty() {
-            no_clusters_body(pending)
-        } else {
-            prompt_body(
+        // The remembered cluster may have been deleted while the prompt was open
+        let cluster_id = selected_cluster
+            .read()
+            .filter(|id| clusters.iter().any(|c| c.id == *id))
+            .or_else(|| clusters.first().map(|c| c.id));
+
+        let worlds_query = use_cluster_worlds(cluster_id.unwrap_or_default());
+        let worlds: Vec<String> = try_cluster_worlds(&worlds_query)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|w| w.folder_name)
+            .collect();
+
+        let body = match cluster_id {
+            None => no_clusters_body(pending),
+            Some(cluster_id) => prompt_body(
                 &files,
                 &clusters,
+                cluster_id,
                 target.map(|(_, ct)| ct),
                 selected_cluster,
+                &worlds,
+                selected_world,
                 overrides,
                 dispatch,
                 pending,
-            )
+            ),
         };
 
         OverlayPopup::new()
@@ -297,20 +330,19 @@ fn no_clusters_body(mut pending: State<Vec<PathBuf>>) -> Element {
         .into_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn prompt_body(
     files: &[PathBuf],
     clusters: &[Cluster],
+    cluster_id: ClusterId,
     route_type: Option<ContentType>,
     selected_cluster: State<Option<ClusterId>>,
+    worlds: &[String],
+    selected_world: State<Option<String>>,
     overrides: State<HashMap<PathBuf, ContentType>>,
     dispatch: crate::Actions,
     mut pending: State<Vec<PathBuf>>,
 ) -> Element {
-    // The remembered cluster may have been deleted while the prompt was open
-    let cluster_id = selected_cluster
-        .read()
-        .filter(|id| clusters.iter().any(|c| c.id == *id))
-        .unwrap_or(clusters[0].id);
     let cluster_idx = clusters
         .iter()
         .position(|c| c.id == cluster_id)
@@ -328,9 +360,38 @@ fn prompt_body(
         })
         .collect();
 
+    let has_datapacks = resolved.iter().any(|(_, ct)| *ct == ContentType::DataPack);
+    let world = selected_world
+        .read()
+        .clone()
+        .filter(|name| worlds.contains(name))
+        .or_else(|| worlds.first().cloned());
+    let can_import = !has_datapacks || world.is_some();
+
     let import_list = resolved.clone();
+    let import_world = world.clone();
     let import = move |_| {
-        dispatch.import_local_files(cluster_id, import_list.clone());
+        if !can_import {
+            return;
+        }
+        let (datapacks, packages): (Vec<_>, Vec<_>) = import_list
+            .iter()
+            .cloned()
+            .partition(|(_, ct)| *ct == ContentType::DataPack);
+        dispatch.import_local_files(cluster_id, packages);
+        if let Some(world) = import_world.clone()
+            && !datapacks.is_empty()
+        {
+            spawn_world_task(
+                dispatch.clone(),
+                "Couldn't add data packs",
+                add_world_datapacks(
+                    cluster_id,
+                    world,
+                    datapacks.into_iter().map(|(path, _)| path).collect(),
+                ),
+            );
+        }
         pending.set(Vec::new());
     };
 
@@ -347,6 +408,7 @@ fn prompt_body(
             "Pick a cluster, then check what each one gets installed as.".to_string(),
         ))
         .child(cluster_field(clusters, cluster_idx, selected_cluster))
+        .maybe_child(has_datapacks.then(|| world_field(worlds, world.as_deref(), selected_world)))
         .child(file_field(&resolved, overrides))
         .child(
             rect()
@@ -364,6 +426,7 @@ fn prompt_body(
                 .child(
                     Button::new()
                         .primary()
+                        .enabled(can_import)
                         .on_press(import)
                         .child(Icon::new(IconType::Plus).size(15.))
                         .text(match files.len() {
@@ -413,6 +476,37 @@ fn cluster_field(
                 }
             }),
     )
+}
+
+fn world_field(
+    worlds: &[String],
+    current: Option<&str>,
+    mut selected: State<Option<String>>,
+) -> Element {
+    let Some(current) = current else {
+        return field(
+            "Destination world",
+            label()
+                .text("This cluster has no worlds yet. Create one in game, then drop the data packs again.")
+                .font_size(12.)
+                .color(colors::fg_secondary()),
+        )
+        .into_element();
+    };
+
+    let names = worlds.to_vec();
+    field(
+        "Destination world",
+        Dropdown::new(current.to_string(), worlds.to_vec())
+            .width(Size::fill())
+            .height(Size::px(32.))
+            .on_select(move |idx: usize| {
+                if let Some(name) = names.get(idx) {
+                    selected.set(Some(name.clone()));
+                }
+            }),
+    )
+    .into_element()
 }
 
 fn file_field(

@@ -11,10 +11,11 @@ use crate::hooks::{package_meta_batch, use_game_snapshot, use_package_meta_batch
 
 mod views;
 use views::{ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, toolbar_bar};
+pub(super) use views::{empty_hint, empty_shell, empty_title, notice_bar};
 
 const CARD_H: f32 = 84.;
-const CARD_SPACING: f32 = 8.;
-const GRID_MAX_COLS: usize = 5;
+pub(super) const CARD_SPACING: f32 = 8.;
+pub(super) const GRID_MAX_COLS: usize = 5;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
@@ -456,6 +457,14 @@ impl Component for PackageManager {
             }
         };
 
+        let mut notices = Vec::new();
+        if content_type.is_global() {
+            notices.push(views::global_notice(noun_plural));
+        }
+        if session_live {
+            notices.push(views::running_notice(noun_plural, content_type));
+        }
+
         rect()
             .vertical()
             .width(Size::fill())
@@ -474,20 +483,17 @@ impl Component for PackageManager {
                 package_type,
                 toolbar_width,
             ))
-            .maybe_child(
-                content_type
-                    .is_global()
-                    .then(|| views::global_notice(noun_plural)),
+            .child(
+                ContentBox::new(
+                    filtered,
+                    noun_plural,
+                    package_type,
+                    content_type,
+                    cluster_id,
+                    content_kind,
+                    card_layout,
+                )
+                .notices(notices),
             )
-            .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
-            .child(ContentBox::new(
-                filtered,
-                noun_plural,
-                package_type,
-                content_type,
-                cluster_id,
-                content_kind,
-                card_layout,
-            ))
     }
 }

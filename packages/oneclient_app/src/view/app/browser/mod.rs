@@ -2,6 +2,25 @@ mod index;
 mod package;
 
 pub use index::Browser;
+pub(crate) use index::browsable_type;
+
+mod world_prompt;
+use world_prompt::WorldInstallPrompt;
+
+/// Projects shipping both a mod and a data pack tag the mod files with a loader
+fn preferred_version(
+    versions: &[oneclient_content::packages::types::VersionSummary],
+    content_type: oneclient_content::packages::ContentType,
+) -> Option<&oneclient_content::packages::types::VersionSummary> {
+    if content_type == oneclient_content::packages::ContentType::DataPack {
+        versions
+            .iter()
+            .find(|v| v.loaders.is_empty())
+            .or_else(|| versions.first())
+    } else {
+        versions.first()
+    }
+}
 pub use package::BrowserPackage;
 
 use std::collections::HashMap;

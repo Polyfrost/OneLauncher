@@ -22,9 +22,9 @@ use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
     ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserTypeState,
-    use_active_cluster_id, use_clusters, use_game_snapshot, use_launcher,
+    DataPackWorldState, use_active_cluster_id, use_clusters, use_game_snapshot, use_launcher,
     use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
-    use_provide_browser_type, use_splash,
+    use_provide_browser_type, use_provide_datapack_world, use_splash,
 };
 use crate::theme::colors;
 use oneclient_events::LaunchStage;
@@ -47,6 +47,9 @@ impl Component for AppShell {
 
         let browser_type = use_state(|| "mod".to_string());
         use_provide_browser_type(BrowserTypeState(browser_type));
+
+        let datapack_world = use_state(HashMap::new);
+        use_provide_datapack_world(DataPackWorldState(datapack_world));
 
         // `FileDrop` bubbles so anything a drop zone doesn't `stop_propagation()` lands here
         let mut drop_hovering = use_state(|| false);

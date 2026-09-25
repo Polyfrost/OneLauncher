@@ -362,7 +362,9 @@ impl Component for InstallButton {
             loader,
             0,
         ));
-        let latest = versions.first().map(|v| v.version_id.clone());
+        let latest = preferred_version(&versions, self.content_type).map(|v| v.version_id.clone());
+        let is_datapack = self.content_type == ContentType::DataPack;
+        let mut world_prompt = use_state(|| None::<String>);
 
         // Nothing to start twice while an install is running or before versions arrive
         let installing = use_installs_snapshot().is_installing(cluster_id, provider, &project_id);
@@ -400,14 +402,23 @@ impl Component for InstallButton {
                     .height(Size::px(INSTALL_BUTTON_H))
                     .padding(Gaps::new_symmetric(0., 11.))
                     .enabled(latest.is_some() && !installing)
-                    .on_press(move |_| {
-                        if let Some(version_id) = latest.clone() {
-                            dispatch.install_package(
-                                cluster_id,
-                                provider,
-                                project_id.clone(),
-                                version_id,
-                            );
+                    .on_press({
+                        let project_id = project_id.clone();
+                        move |_| {
+                            let Some(version_id) = latest.clone() else {
+                                return;
+                            };
+                            if is_datapack {
+                                world_prompt.set(Some(version_id));
+                            } else {
+                                dispatch.install_package(
+                                    cluster_id,
+                                    provider,
+                                    project_id.clone(),
+                                    version_id,
+                                    None,
+                                );
+                            }
                         }
                     })
                     .child(
@@ -428,6 +439,12 @@ impl Component for InstallButton {
                             .color(colors::fg_primary()),
                     ),
             )
+            .maybe_child(world_prompt.read().is_some().then_some(WorldInstallPrompt {
+                cluster_id,
+                provider,
+                project_id,
+                pending: world_prompt,
+            }))
             .into_element()
     }
 }

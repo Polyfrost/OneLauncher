@@ -3,18 +3,14 @@ use super::*;
 use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ProjectDetail, ProjectMember};
 
-use crate::Actions;
 use crate::components::{Button, Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
     latest_version: Option<String>,
-    provider: ProviderId,
-    cluster_id: i64,
-    dispatch: Actions,
+    installer: Installer,
     confirm: State<Option<String>>,
     installed: Option<Installed>,
     installing: bool,
@@ -111,12 +107,7 @@ pub(super) fn sidebar(
                 .enabled(can_install)
                 .on_press(move |_| {
                     if let Some(version_id) = latest_version.clone() {
-                        dispatch.install_package(
-                            cluster_id,
-                            provider,
-                            project_id.clone(),
-                            version_id,
-                        );
+                        installer.install(project_id.clone(), version_id);
                     }
                 })
                 .child(Icon::new(IconType::Download01).size(14.))

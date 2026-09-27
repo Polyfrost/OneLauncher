@@ -1147,6 +1147,7 @@ impl Actions {
                     project_id: project_id.clone(),
                     version_id: version_id.clone(),
                     name: flagged.name,
+                    mc_version: flagged.mc_version,
                     alternatives: flagged.alternatives,
                 });
                 app.installs.finish(cluster_id, provider, &project_id);

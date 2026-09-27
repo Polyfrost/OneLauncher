@@ -207,6 +207,7 @@ pub struct PackageInstall {
 
 pub struct FlaggedInstall {
     pub name: String,
+    pub mc_version: String,
     pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
 }
 
@@ -293,14 +294,24 @@ pub async fn install_package(
     let content = state.services.content();
     let bad_mods = oneclient_content::packages::load_bad_mods(&content).await;
 
-    if !allow_flagged
-        && let Some(file) = version.primary_file()
-        && let Some(entry) = bad_mods.find(&file.sha1)
-    {
-        tracing::warn!(project = %project.name, hash = %file.sha1, "refusing to install flagged mod");
-        let alternatives = oneclient_content::packages::resolve_alternatives(entry, &content).await;
+    if !allow_flagged && let Some(entry) = bad_mods.check(&project, &version) {
+        tracing::warn!(project = %project.name, version = %version.version_number, "refusing to install flagged mod");
+        let (mc_version, alternatives) = match PackageStore::get_cluster(cluster_id, &content).await
+        {
+            Ok(cluster) => {
+                let alternatives =
+                    oneclient_content::packages::resolve_alternatives(entry, &cluster, &content)
+                        .await;
+                (cluster.mc_version, alternatives)
+            }
+            Err(err) => {
+                tracing::warn!(%err, cluster_id, "cannot resolve alternatives without the cluster");
+                (String::new(), Vec::new())
+            }
+        };
         return PackageInstall::flagged(FlaggedInstall {
             name: project.name,
+            mc_version,
             alternatives,
         });
     }
@@ -327,10 +338,7 @@ pub async fn install_package(
         std::mem::take(&mut resolution.install)
             .into_iter()
             .partition(|dependency| {
-                dependency
-                    .version
-                    .primary_file()
-                    .is_some_and(|file| bad_mods.is_bad(&file.sha1))
+                bad_mods.is_flagged(&dependency.project, &dependency.version)
             });
     resolution.install = clean_dependencies;
     for dependency in flagged_dependencies {

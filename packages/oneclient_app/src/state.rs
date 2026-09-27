@@ -79,6 +79,7 @@ pub struct FlaggedInstallPrompt {
     pub project_id: String,
     pub version_id: String,
     pub name: String,
+    pub mc_version: String,
     pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
 }
 

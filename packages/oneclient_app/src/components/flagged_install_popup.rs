@@ -99,6 +99,7 @@ fn dialog(prompt: FlaggedInstallPrompt, dispatch: crate::Actions) -> impl IntoEl
             AlternativeRow {
                 alternative: alternative.clone(),
                 cluster_id: prompt.cluster_id,
+                mc_version: prompt.mc_version.clone(),
             }
             .into_element()
         })
@@ -151,6 +152,7 @@ fn dialog(prompt: FlaggedInstallPrompt, dispatch: crate::Actions) -> impl IntoEl
 struct AlternativeRow {
     alternative: ResolvedAlternative,
     cluster_id: i64,
+    mc_version: String,
 }
 
 impl Component for AlternativeRow {
@@ -158,12 +160,24 @@ impl Component for AlternativeRow {
         let dispatch = use_dispatch();
         let icon_query = use_cached_image(self.alternative.icon_url.clone(), 256);
         let icon = remote_icon(self.alternative.icon_url.as_deref(), &icon_query, ICON_SIZE);
-        alternative_row(self.alternative.clone(), self.cluster_id, icon, dispatch)
+        let version = self
+            .alternative
+            .version_number
+            .clone()
+            .unwrap_or_else(|| format!("No version for {}", self.mc_version));
+        alternative_row(
+            self.alternative.clone(),
+            version,
+            self.cluster_id,
+            icon,
+            dispatch,
+        )
     }
 }
 
 fn alternative_row(
     alternative: ResolvedAlternative,
+    version: String,
     cluster_id: i64,
     icon: Element,
     dispatch: crate::Actions,
@@ -172,7 +186,6 @@ fn alternative_row(
         provider,
         project_id,
         name,
-        version_number,
         ..
     } = alternative;
 
@@ -203,7 +216,7 @@ fn alternative_row(
                 )
                 .child(
                     label()
-                        .text(version_number)
+                        .text(version)
                         .font_size(11.)
                         .max_lines(1)
                         .color(colors::fg_secondary()),

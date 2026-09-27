@@ -16,8 +16,8 @@ pub mod markdown;
 // Re-exported so `oneclient_core::packages::ContentType` keeps working
 pub use activity::{disable_foreign_game_versions, reconcile_duplicate_activity};
 pub use bad_mods::{
-    BadMod, BadModAlternative, BadModList, ResolvedAlternative, fetch_bad_mods, load_bad_mods,
-    resolve_alternatives,
+    BadMod, BadModAlternative, BadModList, ProjectIds, ResolvedAlternative, fetch_bad_mods,
+    load_bad_mods, resolve_alternatives,
 };
 pub use dependencies::{
     DependencyResolution, ResolvedDependency, resolve_required, resolves_dependencies,

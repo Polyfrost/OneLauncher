@@ -657,8 +657,15 @@ pub(crate) fn package_icon(
     icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
     size: f32,
 ) -> Element {
-    let icon_url = &item.icon_url;
-    let loaded = loaded_image(icon_url.as_deref(), icon_query);
+    remote_icon(item.icon_url.as_deref(), icon_query, size)
+}
+
+pub(crate) fn remote_icon(
+    icon_url: Option<&str>,
+    icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
+    size: f32,
+) -> Element {
+    let loaded = loaded_image(icon_url, icon_query);
 
     match loaded {
         Some((url, bytes)) => ImageViewer::new((url, bytes))

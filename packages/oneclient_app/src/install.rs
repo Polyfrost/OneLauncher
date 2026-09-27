@@ -202,6 +202,12 @@ pub struct PackageInstall {
     /// The game is open but could not take the package, so the toast must not
     /// claim it is there now
     pub live_deferred: bool,
+    pub flagged: Option<FlaggedInstall>,
+}
+
+pub struct FlaggedInstall {
+    pub name: String,
+    pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
 }
 
 pub fn install_body(
@@ -240,6 +246,21 @@ impl PackageInstall {
             dependencies: Vec::new(),
             missing_dependencies: Vec::new(),
             live_deferred: false,
+            flagged: None,
+        }
+    }
+
+    fn flagged(flagged: FlaggedInstall) -> Self {
+        Self {
+            session_id: None,
+            result: Err(anyhow::anyhow!(
+                "{} is flagged as a problematic mod",
+                flagged.name
+            )),
+            dependencies: Vec::new(),
+            missing_dependencies: Vec::new(),
+            live_deferred: false,
+            flagged: Some(flagged),
         }
     }
 }
@@ -250,6 +271,7 @@ pub async fn install_package(
     project_id: &str,
     version_id: &str,
     cluster_id: i64,
+    allow_flagged: bool,
 ) -> PackageInstall {
     let lookup = async {
         let provider_impl = state.services.packages.get(provider)?;
@@ -268,6 +290,21 @@ pub async fn install_package(
         Err(err) => return PackageInstall::failed(err),
     };
 
+    let content = state.services.content();
+    let bad_mods = oneclient_content::packages::load_bad_mods(&content).await;
+
+    if !allow_flagged
+        && let Some(file) = version.primary_file()
+        && let Some(entry) = bad_mods.find(&file.sha1)
+    {
+        tracing::warn!(project = %project.name, hash = %file.sha1, "refusing to install flagged mod");
+        let alternatives = oneclient_content::packages::resolve_alternatives(entry, &content).await;
+        return PackageInstall::flagged(FlaggedInstall {
+            name: project.name,
+            alternatives,
+        });
+    }
+
     // Resolved before the session starts so its children can be announced up front
     let mut resolution = oneclient_content::packages::DependencyResolution::default();
     if oneclient_content::packages::resolves_dependencies(project.content_type) {
@@ -284,6 +321,21 @@ pub async fn install_package(
                 tracing::warn!(%err, "dependency resolution failed, installing package alone");
             }
         }
+    }
+
+    let (flagged_dependencies, clean_dependencies): (Vec<_>, Vec<_>) =
+        std::mem::take(&mut resolution.install)
+            .into_iter()
+            .partition(|dependency| {
+                dependency
+                    .version
+                    .primary_file()
+                    .is_some_and(|file| bad_mods.is_bad(&file.sha1))
+            });
+    resolution.install = clean_dependencies;
+    for dependency in flagged_dependencies {
+        tracing::warn!(dependency = %dependency.project.name, "skipping flagged dependency");
+        resolution.unresolved.push(dependency.project.name);
     }
 
     let session = oneclient_events::GroupedProgressSession::start(
@@ -383,6 +435,7 @@ pub async fn install_package(
         dependencies: installed_dependencies,
         missing_dependencies,
         live_deferred,
+        flagged: None,
     }
 }
 

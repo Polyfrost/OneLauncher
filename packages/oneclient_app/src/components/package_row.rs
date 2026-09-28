@@ -1,13 +1,10 @@
 use freya::prelude::*;
-use freya::query::UseMutation;
 use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
 use oneclient_core::SeenStatus;
 
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
-use crate::hooks::{
-    ClusterAction, ClusterMutation, loaded_image, use_cached_image, use_cluster_mutation,
-};
+use crate::hooks::{ClusterAction, loaded_image, use_cached_image, use_cluster_mutation};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
@@ -194,7 +191,7 @@ pub fn package_context_menu(
     item: &PackageEntry,
     cluster_id: i64,
     package_type: &'static str,
-    cluster: UseMutation<ClusterMutation>,
+    on_delete: EventHandler<(String, String)>,
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone());
 
@@ -212,21 +209,21 @@ pub fn package_context_menu(
     }
 
     if let Some(hash) = item.hash.clone() {
-        menu = menu.action(IconType::Folder, "View in folder", move |()| {
-            reveal_in_store(hash.clone());
-        });
+        menu = menu.action(
+            IconType::Folder,
+            "View in folder",
+            EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
+        );
     }
 
     if item.installed && !item.in_bundle() {
         let hash = item.hash.clone();
+        let name = item.name.clone();
         menu = menu
             .separator()
             .danger_action(IconType::Trash01, "Delete", move |()| {
                 if let Some(hash) = &hash {
-                    cluster.mutate(ClusterAction::RemoveArtifact {
-                        cluster_id,
-                        hash: hash.clone(),
-                    });
+                    on_delete.call((name.clone(), hash.clone()));
                 }
             });
     }

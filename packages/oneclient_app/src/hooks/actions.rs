@@ -1194,13 +1194,8 @@ impl Actions {
             };
 
             let events = state.services.events.clone();
-            match oneclient_core::remove_artifact_from_cluster(
-                cluster_id,
-                &hash,
-                true,
-                &state.services.content(),
-            )
-            .await
+            match oneclient_core::delete_artifact(cluster_id, &hash, &state.services.content())
+                .await
             {
                 Ok(()) => {
                     events.notify("Removed").body(display_name).send();

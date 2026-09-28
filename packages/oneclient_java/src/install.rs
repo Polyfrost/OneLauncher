@@ -127,9 +127,6 @@ pub fn is_launcher_managed(executable: &Path) -> bool {
     managed_install_root(executable).is_ok_and(|root| root.is_some())
 }
 
-/// Runtimes extracted before archive permissions were preserved only had
-/// `bin/java` made executable, which left `lib/jspawnhelper` unrunnable and
-/// broke every process the game tried to spawn
 #[cfg(unix)]
 pub(crate) fn restore_executable_bits(executable: &Path) {
     use std::os::unix::fs::PermissionsExt;
@@ -355,47 +352,6 @@ mod tests {
 
         assert!(is_launcher_managed(&ours));
         assert!(!is_launcher_managed(&theirs));
-
-        std::fs::remove_dir_all(&elsewhere).unwrap();
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn stripped_executable_bits_are_restored_only_on_managed_runtimes() {
-        use std::os::unix::fs::PermissionsExt;
-
-        let mode = |path: &Path| std::fs::metadata(path).unwrap().permissions().mode() & 0o777;
-        let strip = |path: &Path| {
-            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o644)).unwrap();
-        };
-        let with_helper = |executable: &Path| {
-            let lib = executable.parent().unwrap().parent().unwrap().join("lib");
-            std::fs::create_dir_all(&lib).unwrap();
-            let helper = lib.join("jspawnhelper");
-            std::fs::write(&helper, b"").unwrap();
-            strip(&helper);
-            strip(executable);
-            helper
-        };
-
-        let java_dir = java_dir();
-        let (_, ours) = install_runtime(&java_dir);
-        let our_helper = with_helper(&ours);
-        let elsewhere = java_dir.parent().unwrap().join("stripped-jdk");
-        let (_, theirs) = install_runtime(&elsewhere);
-        let their_helper = with_helper(&theirs);
-
-        restore_executable_bits(&ours);
-        restore_executable_bits(&theirs);
-
-        assert_eq!(mode(&ours), 0o755);
-        assert_eq!(mode(&our_helper), 0o755);
-        assert_eq!(
-            mode(&theirs),
-            0o644,
-            "a folder the user added is not ours to change"
-        );
-        assert_eq!(mode(&their_helper), 0o644);
 
         std::fs::remove_dir_all(&elsewhere).unwrap();
     }

@@ -40,25 +40,22 @@ impl Component for SettingsApis {
         });
 
         let mut first = use_state(|| true);
-        {
-            let dispatch = dispatch.clone();
-            use_side_effect(move || {
-                let modrinth = modrinth_key.read().clone();
-                let curseforge = curseforge_key.read().clone();
-                let endpoint = custom_api_endpoint.read().clone();
-                let meta_url_base = custom_meta_url_base.read().clone();
-                if *first.peek() {
-                    first.set(false);
-                    return;
-                }
-                dispatch.edit_settings(|settings| {
-                    settings.modrinth_api_key = normalize(&modrinth);
-                    settings.curseforge_api_key = normalize(&curseforge);
-                    settings.custom_api_endpoint = normalize(&endpoint);
-                    settings.custom_meta_url_base = normalize(&meta_url_base);
-                });
+        use_side_effect(move || {
+            let modrinth = modrinth_key.read().clone();
+            let curseforge = curseforge_key.read().clone();
+            let endpoint = custom_api_endpoint.read().clone();
+            let meta_url_base = custom_meta_url_base.read().clone();
+            if *first.peek() {
+                first.set(false);
+                return;
+            }
+            dispatch.edit_settings(|settings| {
+                settings.modrinth_api_key = normalize(&modrinth);
+                settings.curseforge_api_key = normalize(&curseforge);
+                settings.custom_api_endpoint = normalize(&endpoint);
+                settings.custom_meta_url_base = normalize(&meta_url_base);
             });
-        }
+        });
 
         settings_page()
             .child(section_header("PROVIDERS"))

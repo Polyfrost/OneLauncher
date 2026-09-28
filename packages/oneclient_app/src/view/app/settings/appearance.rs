@@ -67,21 +67,18 @@ impl Component for SettingsAppearance {
         });
 
         let mut first = use_state(|| true);
-        {
-            let dispatch = dispatch.clone();
-            use_side_effect(move || {
-                let parallax = *dynamic_bg.read();
-                let animations = *animations_on.read();
-                if *first.peek() {
-                    first.set(false);
-                    return;
-                }
-                dispatch.edit_settings(|settings| {
-                    settings.dynamic_background_enabled = parallax;
-                    settings.animations_enabled = animations;
-                });
+        use_side_effect(move || {
+            let parallax = *dynamic_bg.read();
+            let animations = *animations_on.read();
+            if *first.peek() {
+                first.set(false);
+                return;
+            }
+            dispatch.edit_settings(|settings| {
+                settings.dynamic_background_enabled = parallax;
+                settings.animations_enabled = animations;
             });
-        }
+        });
 
         settings_page()
             .child(theme_section(selected_theme))

@@ -142,7 +142,15 @@ impl<T: Clone + PartialEq + 'static> Component for ResetButton<T> {
     }
 }
 
-fn with_reset<T: Clone + PartialEq + 'static>(
+pub fn resettable<T: Clone + PartialEq + 'static>(
+    control: impl IntoElement,
+    value: State<T>,
+    default: T,
+) -> impl IntoElement {
+    resettable_all(control, vec![(value, default)])
+}
+
+pub fn resettable_all<T: Clone + PartialEq + 'static>(
     control: impl IntoElement,
     values: Vec<(State<T>, T)>,
 ) -> impl IntoElement {
@@ -153,19 +161,4 @@ fn with_reset<T: Clone + PartialEq + 'static>(
         .child(control)
         .child(ResetButton { values })
         .into_element()
-}
-
-pub fn resettable<T: Clone + PartialEq + 'static>(
-    control: impl IntoElement,
-    value: State<T>,
-    default: T,
-) -> impl IntoElement {
-    with_reset(control, vec![(value, default)])
-}
-
-pub fn resettable_all<T: Clone + PartialEq + 'static>(
-    control: impl IntoElement,
-    values: Vec<(State<T>, T)>,
-) -> impl IntoElement {
-    with_reset(control, values)
 }

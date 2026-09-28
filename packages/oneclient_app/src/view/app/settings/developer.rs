@@ -26,17 +26,14 @@ impl Component for SettingsDeveloper {
         });
 
         let mut first = use_state(|| true);
-        {
-            let dispatch = dispatch.clone();
-            use_side_effect(move || {
-                let enabled = *log_debug.read();
-                if *first.peek() {
-                    first.set(false);
-                    return;
-                }
-                dispatch.edit_settings(|settings| settings.log_debug = enabled);
-            });
-        }
+        use_side_effect(move || {
+            let enabled = *log_debug.read();
+            if *first.peek() {
+                first.set(false);
+                return;
+            }
+            dispatch.edit_settings(|settings| settings.log_debug = enabled);
+        });
 
         let browser_compat = use_browser_compat();
 

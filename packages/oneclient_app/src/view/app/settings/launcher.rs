@@ -58,29 +58,26 @@ impl Component for SettingsLauncher {
         });
 
         let mut first = use_state(|| true);
-        {
-            let dispatch = dispatch.clone();
-            use_side_effect(move || {
-                let discord = *discord_rpc.read();
-                let crash = *crash_reporting.read();
-                let maximized = *start_maximized.read();
-                let background = *run_in_background.read();
-                let tray = *show_tray_icon.read();
-                let behaviour = *launch_behaviour.read();
-                if *first.peek() {
-                    first.set(false);
-                    return;
-                }
-                dispatch.edit_settings(|next| {
-                    next.discord_enabled = discord;
-                    next.crash_reporting = crash;
-                    next.start_maximized = maximized;
-                    next.run_in_background = background;
-                    next.show_tray_icon = tray;
-                    next.launch_behaviour = behaviour;
-                });
+        use_side_effect(move || {
+            let discord = *discord_rpc.read();
+            let crash = *crash_reporting.read();
+            let maximized = *start_maximized.read();
+            let background = *run_in_background.read();
+            let tray = *show_tray_icon.read();
+            let behaviour = *launch_behaviour.read();
+            if *first.peek() {
+                first.set(false);
+                return;
+            }
+            dispatch.edit_settings(|next| {
+                next.discord_enabled = discord;
+                next.crash_reporting = crash;
+                next.start_maximized = maximized;
+                next.run_in_background = background;
+                next.show_tray_icon = tray;
+                next.launch_behaviour = behaviour;
             });
-        }
+        });
 
         // The only way back for someone who declined during onboarding
         let consent_summary = if settings.declined_tos {

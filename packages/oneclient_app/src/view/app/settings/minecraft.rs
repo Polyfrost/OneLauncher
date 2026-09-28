@@ -74,33 +74,30 @@ impl Component for SettingsMinecraft {
         });
 
         let mut first = use_state(|| true);
-        {
-            let dispatch = dispatch.clone();
-            use_side_effect(move || {
-                let update = build_update(
-                    *fullscreen.read(),
-                    &width.read(),
-                    &height.read(),
-                    &memory.read(),
-                    &jvm_args.read(),
-                    &pre_launch_command.read(),
-                    &wrapper_command.read(),
-                    &post_exit_command.read(),
-                    *update_mode.read(),
-                );
-                #[cfg(any(target_os = "linux", windows))]
-                let gpu = *discrete_gpu.read();
-                if *first.peek() {
-                    first.set(false);
-                    return;
-                }
+        use_side_effect(move || {
+            let update = build_update(
+                *fullscreen.read(),
+                &width.read(),
+                &height.read(),
+                &memory.read(),
+                &jvm_args.read(),
+                &pre_launch_command.read(),
+                &wrapper_command.read(),
+                &post_exit_command.read(),
+                *update_mode.read(),
+            );
+            #[cfg(any(target_os = "linux", windows))]
+            let gpu = *discrete_gpu.read();
+            if *first.peek() {
+                first.set(false);
+                return;
+            }
 
-                #[cfg(any(target_os = "linux", windows))]
-                let update = with_discrete_gpu(update, gpu);
+            #[cfg(any(target_os = "linux", windows))]
+            let update = with_discrete_gpu(update, gpu);
 
-                dispatch.update_global_profile(update);
-            });
-        }
+            dispatch.update_global_profile(update);
+        });
 
         #[cfg(any(target_os = "linux", windows))]
         let discrete_gpu_default = SettingsOsExtra::default().use_discrete_gpu.unwrap_or(false);

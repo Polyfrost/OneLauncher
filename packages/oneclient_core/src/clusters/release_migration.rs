@@ -22,7 +22,7 @@ pub struct ReleaseMigrationOffer {
 pub enum OfferLookup {
     MissingCluster,
     NoSources,
-    Offer(ReleaseMigrationOffer),
+    Offer(Box<ReleaseMigrationOffer>),
 }
 
 fn version_order(mc_version: &str) -> Option<(u32, u32, u32)> {
@@ -124,14 +124,14 @@ pub async fn manual_migration_offer(
         return Ok(OfferLookup::NoSources);
     }
 
-    Ok(OfferLookup::Offer(ReleaseMigrationOffer {
+    Ok(OfferLookup::Offer(Box::new(ReleaseMigrationOffer {
         release: ReleaseTarget {
             mc_version: target.mc_version.clone(),
             loader: target.mc_loader,
         },
         target: target.clone(),
         sources: vec![source.clone()],
-    }))
+    })))
 }
 
 #[must_use]
@@ -187,14 +187,14 @@ async fn offer_for(
         )
     });
 
-    Ok(OfferLookup::Offer(ReleaseMigrationOffer {
+    Ok(OfferLookup::Offer(Box::new(ReleaseMigrationOffer {
         release: ReleaseTarget {
             mc_version: target.mc_version.clone(),
             loader: target.mc_loader,
         },
         target: target.clone(),
         sources,
-    }))
+    })))
 }
 
 #[cfg(test)]

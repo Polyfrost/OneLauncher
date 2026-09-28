@@ -309,8 +309,8 @@ impl Actions {
         self.write_release_migration(|prompt| {
             let Some(prompt) = prompt.as_mut() else { return };
             prompt.selected = source_id;
-            if !prompt.plans.contains_key(&source_id) {
-                prompt.plans.insert(source_id, ReleasePlanState::Loading);
+            if let std::collections::hash_map::Entry::Vacant(entry) = prompt.plans.entry(source_id) {
+                entry.insert(ReleasePlanState::Loading);
                 target_id = Some(prompt.target.id);
             }
         });

@@ -180,6 +180,7 @@ impl Component for ReleaseMigrationPopup {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn dialog(
     prompt: &ReleaseMigrationPrompt,
     meta: &MetaMap,
@@ -372,6 +373,7 @@ fn summary_row(name: &str, value: String, name_color: Color) -> impl IntoElement
         )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn content_panel(
     prompt: &ReleaseMigrationPrompt,
     plan: Option<&ReleaseMigrationPlan>,

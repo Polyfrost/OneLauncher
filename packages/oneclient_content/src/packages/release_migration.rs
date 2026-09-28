@@ -177,12 +177,13 @@ fn fits_target(version: &VersionDetail, content_type: ContentType, mc_version: &
 }
 
 type Lookup = Option<ResolvedDependency>;
+type LookupCells = HashMap<(ProviderId, String), Arc<OnceCell<Lookup>>>;
 
 struct Unreachable;
 
 #[derive(Default)]
 pub struct DependencyCache {
-	entries: Mutex<HashMap<(ProviderId, String), Arc<OnceCell<Lookup>>>>,
+	entries: Mutex<LookupCells>,
 }
 
 fn dependency_key(dep: &VersionDependency) -> Option<String> {

@@ -38,7 +38,9 @@ impl Component for OnboardingSummary {
         let mut finishing = use_state(|| false);
         let mut failure = use_state(|| None::<String>);
 
-        let items = onboarding_bundles_items(&bundles_query).unwrap_or_default();
+        let loaded = onboarding_bundles_items(&bundles_query);
+        let ready = loaded.is_some();
+        let items = loaded.unwrap_or_default();
         let selected = selected_state.read().clone();
         let language = selection.language.read().clone();
         let reduce_motion = *selection.reduce_motion.read();
@@ -50,7 +52,6 @@ impl Component for OnboardingSummary {
         let import_folder = selection.import_folder;
         let import_dedicated = selection.import_dedicated;
         let import_detection = migration_detection(&migration_query);
-        let import_items = items.clone();
 
         let migration_summary = import_detection.as_ref().map(|detection| {
             let source_name = detection.source.display_name().to_string();
@@ -82,8 +83,9 @@ impl Component for OnboardingSummary {
         });
 
         let finish_items = items.clone();
+        let finish_versions = seen_versions(&items);
         let finish_dispatch = dispatch.clone();
-        let continue_items = items.clone();
+        let continue_versions = finish_versions.clone();
         let continue_dispatch = dispatch;
 
         summary_view(
@@ -95,8 +97,8 @@ impl Component for OnboardingSummary {
                 parallax: settings.dynamic_background_enabled,
                 account_name,
                 migration: migration_summary,
+                ready,
                 finishing: *finishing.read(),
-                attempted: *attempted.read(),
                 failure: failure.read().clone(),
             },
             move |_| {
@@ -115,7 +117,7 @@ impl Component for OnboardingSummary {
                                 .instances
                                 .iter()
                                 .find(|c| c.folder_name == folder)
-                                .and_then(|inst| matching_new_cluster_id(inst, &import_items))
+                                .and_then(|inst| matching_new_cluster_id(inst, &finish_items))
                                 .map(|new_cluster_id| ImportTarget::Dedicated { new_cluster_id })
                                 .unwrap_or(ImportTarget::Shared)
                         } else {
@@ -129,8 +131,8 @@ impl Component for OnboardingSummary {
                 failure.set(None);
                 finishing.set(true);
                 finish_setup(
-                    build_plans(&finish_items, &selected_state.peek().clone()),
-                    seen_versions(&finish_items),
+                    build_plans(&finish_items, &selected_state.peek()),
+                    finish_versions.clone(),
                     finish_dispatch.clone(),
                     finishing,
                     failure,
@@ -144,7 +146,7 @@ impl Component for OnboardingSummary {
                 // Leaves the manifest defaults in place the picks are already lost
                 finish_setup(
                     Vec::new(),
-                    seen_versions(&continue_items),
+                    continue_versions.clone(),
                     continue_dispatch.clone(),
                     finishing,
                     failure,

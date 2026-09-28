@@ -16,10 +16,9 @@ pub(super) struct SummaryView<'a> {
     pub parallax: bool,
     pub account_name: String,
     pub migration: Option<(String, String, String)>,
+    pub ready: bool,
     /// A run is in flight both buttons stay down until it settles
     pub finishing: bool,
-    /// The import is dispatched on the first press so going back afterwards would apply to nothing
-    pub attempted: bool,
     pub failure: Option<String>,
 }
 
@@ -36,8 +35,8 @@ pub(super) fn summary_view(
         parallax,
         account_name,
         migration,
+        ready,
         finishing,
-        attempted,
         failure,
     } = view;
 
@@ -154,7 +153,7 @@ pub(super) fn summary_view(
                     Button::new()
                         .secondary()
                         .width(Size::px(180.))
-                        .enabled(!finishing)
+                        .enabled(ready && !finishing)
                         .on_press(on_continue)
                         .text("Continue anyway")
                         .into_element()
@@ -162,7 +161,7 @@ pub(super) fn summary_view(
                     Button::new()
                         .secondary()
                         .width(Size::px(128.))
-                        .enabled(!finishing && !attempted)
+                        .enabled(!finishing)
                         .on_press(move |_| {
                             let _ = RouterContext::get().replace(Route::OnboardingPreferences {});
                         })
@@ -173,7 +172,7 @@ pub(super) fn summary_view(
                     Button::new()
                         .primary()
                         .width(Size::px(160.))
-                        .enabled(!finishing)
+                        .enabled(ready && !finishing)
                         .on_press(on_finish)
                         .text(if failed { "Try again" } else { "Finish" })
                         .child(Icon::new(IconType::Check).size(16.)),
@@ -201,7 +200,8 @@ fn failure_notice(reason: &str) -> Element {
         .child(
             label()
                 .text(format!(
-                    "{reason}. Continuing anyway keeps every mod the bundles ship by default."
+                    "{}. Continuing anyway keeps the bundle defaults for any version whose choices were not saved.",
+                    reason.trim_end_matches('.')
                 ))
                 .font_size(11.)
                 .color(colors::fg_secondary()),

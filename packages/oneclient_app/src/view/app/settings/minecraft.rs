@@ -148,7 +148,7 @@ impl Component for SettingsMinecraft {
                 resettable(
                     memory_field(memory, "Default", oneclient_common::default_mem_max()),
                     memory,
-                    defaults.mem_max.map(|m| m.to_string()).unwrap_or_default(),
+                    String::new(),
                 ),
             ))
             .child(settings_row(

@@ -21,8 +21,8 @@ use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
 use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
-    ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserTypeState,
-    use_active_cluster_id, use_clusters, use_game_snapshot, use_launcher,
+    ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
+    BrowserTypeState, use_active_cluster_id, use_clusters, use_game_snapshot, use_launcher,
     use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
     use_provide_browser_type, use_splash,
 };
@@ -39,7 +39,7 @@ impl Component for AppShell {
         let active_cluster = use_state(|| None::<ClusterId>);
         use_provide_active_cluster(ActiveClusterState(active_cluster));
 
-        let browser_compat = use_state(|| true);
+        let browser_compat = use_state(|| BROWSER_COMPAT_DEFAULT);
         use_provide_browser_compat(BrowserCompatState(browser_compat));
 
         let browser_state = use_state(HashMap::new);
@@ -577,7 +577,7 @@ half4 main(float2 fragCoord) {
 }
 "#;
 
-pub(crate) fn gradient_overlay_radial() -> impl IntoElement {
+fn gradient_overlay_radial() -> impl IntoElement {
     let effect = use_hook(|| {
         freya::engine::prelude::RuntimeEffect::make_for_shader(VIGNETTE_SPOTLIGHT_SHADER, None)
             .expect("Failed to compile vignette shader")

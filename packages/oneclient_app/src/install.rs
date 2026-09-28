@@ -46,14 +46,16 @@ pub fn item_from_bundle_file(file: &oneclient_core::BundleFile) -> ClusterUpdate
             ..
         } => ClusterUpdateItem {
             provider: *provider,
+            github_hosted: false,
             project_id: Some(project_id.clone()),
             fallback: file.display_name(),
             offer: None,
             status: None,
         },
-        oneclient_core::BundleFileKind::External(_) => ClusterUpdateItem {
+        oneclient_core::BundleFileKind::External { .. } => ClusterUpdateItem {
             provider: oneclient_content::packages::ProviderId::Local,
-            project_id: None,
+            github_hosted: file.is_github_hosted(),
+            project_id: Some(file.kind.metadata_id()),
             fallback: file.display_name(),
             offer: None,
             status: None,
@@ -90,6 +92,7 @@ async fn cluster_update_summary(
             provider: r
                 .provider
                 .unwrap_or(oneclient_content::packages::ProviderId::Local),
+            github_hosted: false,
             project_id: r.project_id.clone(),
             fallback: r
                 .display_name

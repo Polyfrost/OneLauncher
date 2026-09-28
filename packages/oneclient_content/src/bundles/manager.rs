@@ -4,16 +4,17 @@ use std::str::FromStr;
 
 use chrono::Utc;
 use oneclient_db::dao::bundle as bundle_dao;
+use oneclient_db::dao::package_metadata as meta_dao;
 use oneclient_db::models::{BundleRow, NewBundle};
 use tokio::sync::RwLock;
 
 use crate::bundles::error::BundleError;
 use crate::bundles::manifest::{BundleManifest as RemoteBundleManifest, RemoteBundleRef};
 use crate::bundles::polymrpack;
-use crate::bundles::types::BundleArchive;
+use crate::bundles::types::{BundleArchive, BundleFileKind};
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
-use oneclient_common::domain::GameLoader;
+use oneclient_common::domain::{GameLoader, ProviderId};
 use oneclient_common::paths;
 use oneclient_net::RequestError;
 use oneclient_net::{EtagPolicy, fetch_cached};
@@ -149,21 +150,23 @@ impl BundlesManager {
     ) -> ContentResult<Vec<BundleArchive>> {
         let mut archives = Vec::new();
         for bundle in self.list_for(ctx, mc_version, loader).await? {
-            let manifest = self.manifest_for_archive(&bundle.path).await?;
+            let manifest = self.manifest_for_archive(ctx, &bundle.path).await?;
             archives.push(BundleArchive { bundle, manifest });
         }
         Ok(archives)
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self, ctx))]
     async fn manifest_for_archive(
         &self,
+        ctx: &ContentCtx,
         path: &Path,
     ) -> ContentResult<crate::bundles::types::BundleManifest> {
         if let Some(manifest) = self.archive_cache.read().await.get(path) {
             return Ok(manifest.clone());
         }
         let manifest = polymrpack::read_manifest_from_archive(path).await?;
+        record_external_metadata(&manifest, ctx).await;
         self.archive_cache
             .write()
             .await
@@ -267,6 +270,37 @@ impl BundlesManager {
 impl Default for BundlesManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+#[tracing::instrument(level = "debug", skip_all, fields(bundle = %manifest.name))]
+async fn record_external_metadata(
+    manifest: &crate::bundles::types::BundleManifest,
+    ctx: &ContentCtx,
+) {
+    for bundle_file in &manifest.files {
+        let BundleFileKind::External {
+            file,
+            meta: Some(meta),
+            ..
+        } = &bundle_file.kind
+        else {
+            continue;
+        };
+
+        if let Err(err) = meta_dao::upsert_package_metadata(
+            &ctx.db,
+            ProviderId::Local as i64,
+            &file.sha1,
+            meta.name.as_deref().unwrap_or(&file.name),
+            meta.description.as_deref().unwrap_or_default(),
+            &meta.authors.join(", "),
+            meta.icon_url.as_deref(),
+        )
+        .await
+        {
+            tracing::warn!(file = %file.name, error = %err, "failed to record bundle file metadata");
+        }
     }
 }
 

@@ -312,6 +312,13 @@ pub async fn is_cluster_linked(
     Ok(row.is_some())
 }
 
+pub async fn list_clusters_linking(pool: &SqlitePool, hash: &str) -> Result<Vec<i64>, sqlx::Error> {
+    sqlx::query_scalar("SELECT cluster_id FROM cluster_artifacts WHERE hash = ?")
+        .bind(hash)
+        .fetch_all(pool)
+        .await
+}
+
 pub async fn unlink_cluster_artifact(
     pool: &SqlitePool,
     cluster_id: i64,

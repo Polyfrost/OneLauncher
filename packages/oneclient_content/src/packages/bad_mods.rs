@@ -30,6 +30,8 @@ pub struct BadMod {
     pub name: Option<String>,
     #[serde(default, deserialize_with = "non_blank")]
     pub author: Option<String>,
+    #[serde(default, deserialize_with = "non_blank")]
+    pub explanation: Option<String>,
     #[serde(default, deserialize_with = "lenient_list")]
     pub alternatives: Vec<BadModAlternative>,
 }
@@ -202,6 +204,60 @@ pub async fn load_bad_mods(ctx: &ContentCtx) -> Arc<BadModList> {
         Err(err) => {
             tracing::warn!(%err, "bad mods list unavailable, installs are not screened");
             Arc::default()
+        }
+    }
+}
+
+const EXPLANATIONS_DIR: &str = "/oneclient/bad_mods_mds/";
+const EXPLANATION_MAX_BYTES: usize = 100 * 1024;
+
+fn explanation_file_name(path: &str) -> Option<&str> {
+    let name = path.strip_prefix(EXPLANATIONS_DIR)?;
+    let valid = name.ends_with(".md")
+        && name.len() > ".md".len()
+        && !name.contains("..")
+        && !name.contains(['/', '\\', '?', '#']);
+    valid.then_some(name)
+}
+
+#[tracing::instrument(level = "debug", skip_all)]
+pub async fn fetch_explanation(entry: &BadMod, ctx: &ContentCtx) -> Option<String> {
+    let path = entry.explanation.as_deref()?;
+    let Some(file_name) = explanation_file_name(path) else {
+        tracing::warn!(
+            path,
+            "ignoring bad mod explanation outside {EXPLANATIONS_DIR}"
+        );
+        return None;
+    };
+
+    let url = format!("{}{path}", ctx.net.config().meta_url_base);
+    let cache_path = match paths::caches_dir() {
+        Ok(dir) => dir.join("bad_mods_mds").join(file_name),
+        Err(err) => {
+            tracing::warn!(%err, "cannot resolve the cache dir for bad mod explanations");
+            return None;
+        }
+    };
+
+    match fetch_cached(&ctx.net, &url, &cache_path, EtagPolicy::CommitNow).await {
+        Ok(Some(fetched)) if fetched.bytes.len() > EXPLANATION_MAX_BYTES => {
+            tracing::warn!(
+                path,
+                bytes = fetched.bytes.len(),
+                limit = EXPLANATION_MAX_BYTES,
+                "bad mod explanation is too large to show"
+            );
+            None
+        }
+        Ok(Some(fetched)) => Some(fetched.text()).filter(|text| !text.trim().is_empty()),
+        Ok(None) => {
+            tracing::warn!(path, "bad mod explanation is unavailable and not cached");
+            None
+        }
+        Err(err) => {
+            tracing::warn!(%err, path, "failed to fetch bad mod explanation");
+            None
         }
     }
 }
@@ -595,6 +651,52 @@ mod tests {
         assert!(is_modrinth_id("xaeros-minimap"));
         assert!(!is_modrinth_id("bad id"));
         assert!(!is_modrinth_id("a\"],[\"b"));
+    }
+
+    #[test]
+    fn parses_explanation_path() {
+        let raw = br#"{"bad-mods":[{"hash":"aaa","explanation":"/oneclient/bad_mods_mds/test-file.md"},{"hash":"bbb","explanation":"  "}]}"#;
+        let list: BadModList = serde_json::from_slice(raw).unwrap();
+
+        assert_eq!(
+            list.bad_mods[0].explanation.as_deref(),
+            Some("/oneclient/bad_mods_mds/test-file.md")
+        );
+        assert_eq!(list.bad_mods[1].explanation, None);
+    }
+
+    #[test]
+    fn explanation_must_be_an_md_file_in_the_folder() {
+        assert_eq!(
+            explanation_file_name("/oneclient/bad_mods_mds/test-file.md"),
+            Some("test-file.md")
+        );
+        assert_eq!(explanation_file_name("/oneclient/tos.json"), None);
+        assert_eq!(
+            explanation_file_name("/oneclient/bad_mods_mds/notes.txt"),
+            None
+        );
+        assert_eq!(explanation_file_name("/oneclient/bad_mods_mds/.md"), None);
+        assert_eq!(
+            explanation_file_name("/oneclient/bad_mods_mds/../tos.md"),
+            None
+        );
+        assert_eq!(
+            explanation_file_name("/oneclient/bad_mods_mds/sub/file.md"),
+            None
+        );
+        assert_eq!(
+            explanation_file_name("/oneclient/bad_mods_mds/a.md?x=1"),
+            None
+        );
+        assert_eq!(
+            explanation_file_name("oneclient/bad_mods_mds/test-file.md"),
+            None
+        );
+        assert_eq!(
+            explanation_file_name("https://evil.example/oneclient/bad_mods_mds/x.md"),
+            None
+        );
     }
 
     #[test]

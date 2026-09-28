@@ -80,6 +80,7 @@ pub struct FlaggedInstallPrompt {
     pub version_id: String,
     pub name: String,
     pub mc_version: String,
+    pub explanation: Option<String>,
     pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
 }
 

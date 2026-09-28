@@ -208,6 +208,7 @@ pub struct PackageInstall {
 pub struct FlaggedInstall {
     pub name: String,
     pub mc_version: String,
+    pub explanation: Option<String>,
     pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
 }
 
@@ -296,22 +297,28 @@ pub async fn install_package(
 
     if !allow_flagged && let Some(entry) = bad_mods.check(&project, &version) {
         tracing::warn!(project = %project.name, version = %version.version_number, "refusing to install flagged mod");
-        let (mc_version, alternatives) = match PackageStore::get_cluster(cluster_id, &content).await
-        {
-            Ok(cluster) => {
-                let alternatives =
-                    oneclient_content::packages::resolve_alternatives(entry, &cluster, &content)
-                        .await;
-                (cluster.mc_version, alternatives)
-            }
-            Err(err) => {
-                tracing::warn!(%err, cluster_id, "cannot resolve alternatives without the cluster");
-                (String::new(), Vec::new())
+        let resolve = async {
+            match PackageStore::get_cluster(cluster_id, &content).await {
+                Ok(cluster) => {
+                    let alternatives =
+                        oneclient_content::packages::resolve_alternatives(entry, &cluster, &content)
+                            .await;
+                    (cluster.mc_version, alternatives)
+                }
+                Err(err) => {
+                    tracing::warn!(%err, cluster_id, "cannot resolve alternatives without the cluster");
+                    (String::new(), Vec::new())
+                }
             }
         };
+        let ((mc_version, alternatives), explanation) = tokio::join!(
+            resolve,
+            oneclient_content::packages::fetch_explanation(entry, &content),
+        );
         return PackageInstall::flagged(FlaggedInstall {
             name: project.name,
             mc_version,
+            explanation,
             alternatives,
         });
     }

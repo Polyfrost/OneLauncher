@@ -1,7 +1,9 @@
 use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_content::packages::types::ExternalFile;
 use oneclient_core::clusters::{Cluster, ClusterStage};
-use oneclient_core::{Bundle, BundleArchive, BundleFile, BundleFileKind, BundleManifest};
+use oneclient_core::{
+    Bundle, BundleArchive, BundleFile, BundleFileKind, BundleFileType, BundleManifest,
+};
 use std::path::PathBuf;
 
 pub fn file(package_id: &str, enabled: bool, hidden: bool) -> BundleFile {
@@ -10,7 +12,7 @@ pub fn file(package_id: &str, enabled: bool, hidden: bool) -> BundleFile {
         hidden,
         path: format!("mods/{package_id}.jar"),
         size: 1,
-        file_type: Default::default(),
+        file_type: BundleFileType::Normal,
         kind: BundleFileKind::External(ExternalFile {
             name: format!("{package_id}.jar"),
             url: format!("https://example.invalid/{package_id}.jar"),

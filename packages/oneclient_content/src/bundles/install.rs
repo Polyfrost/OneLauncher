@@ -788,6 +788,7 @@ pub async fn remove_artifact_from_cluster(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bundles::types::BundleFileType;
     use oneclient_common::domain::ContentType;
     use oneclient_db::models::ClusterBundleOverrideRow;
 
@@ -797,7 +798,7 @@ mod tests {
             hidden: false,
             path: "mods/example.jar".to_string(),
             size: 1,
-            file_type: Default::default(),
+            file_type: BundleFileType::Normal,
             kind: BundleFileKind::External(ExternalFile {
                 name: "example.jar".to_string(),
                 url: "https://example.invalid/example.jar".to_string(),

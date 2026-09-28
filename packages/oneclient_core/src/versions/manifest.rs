@@ -125,9 +125,15 @@ impl VersionsManifest {
     pub fn shows_initial_migration(&self, target: &ReleaseTarget) -> bool {
         self.clusters
             .iter()
-            .flat_map(|cluster| cluster.entries.iter().map(move |entry| (cluster.major_version, entry)))
+            .flat_map(|cluster| {
+                cluster
+                    .entries
+                    .iter()
+                    .map(move |entry| (cluster.major_version, entry))
+            })
             .find(|(major, entry)| {
-                format_mc_version(*major, entry.minor_version, entry.patch_version) == target.mc_version
+                format_mc_version(*major, entry.minor_version, entry.patch_version)
+                    == target.mc_version
                     && entry
                         .loader
                         .as_deref()
@@ -140,7 +146,10 @@ impl VersionsManifest {
 }
 
 #[must_use]
-pub fn added_release_targets(previous: &VersionsManifest, next: &VersionsManifest) -> Vec<ReleaseTarget> {
+pub fn added_release_targets(
+    previous: &VersionsManifest,
+    next: &VersionsManifest,
+) -> Vec<ReleaseTarget> {
     if previous.clusters.is_empty() {
         return Vec::new();
     }
@@ -275,8 +284,10 @@ mod tests {
     }
 
     fn versions(entries: &str) -> VersionsManifest {
-        serde_json::from_str(&format!(r#"{{"clusters":[{{"major_version":26,"entries":[{entries}]}}]}}"#))
-            .expect("should parse")
+        serde_json::from_str(&format!(
+            r#"{{"clusters":[{{"major_version":26,"entries":[{entries}]}}]}}"#
+        ))
+        .expect("should parse")
     }
 
     #[test]
@@ -287,7 +298,10 @@ mod tests {
         );
         assert_eq!(
             added_release_targets(&previous, &next),
-            vec![ReleaseTarget { mc_version: "26.3".into(), loader: GameLoader::Fabric }]
+            vec![ReleaseTarget {
+                mc_version: "26.3".into(),
+                loader: GameLoader::Fabric
+            }]
         );
     }
 
@@ -308,7 +322,10 @@ mod tests {
         );
         assert_eq!(
             added_release_targets(&previous, &next),
-            vec![ReleaseTarget { mc_version: "26.3".into(), loader: GameLoader::NeoForge }]
+            vec![ReleaseTarget {
+                mc_version: "26.3".into(),
+                loader: GameLoader::NeoForge
+            }]
         );
     }
 
@@ -324,11 +341,23 @@ mod tests {
         )
         .expect("should parse");
 
-        let target = |mc_version: &str, loader| ReleaseTarget { mc_version: mc_version.into(), loader };
+        let target = |mc_version: &str, loader| ReleaseTarget {
+            mc_version: mc_version.into(),
+            loader,
+        };
         assert!(!manifest.shows_initial_migration(&target("1.8.9", GameLoader::Ornithe)));
-        assert!(manifest.shows_initial_migration(&target("26.3", GameLoader::Fabric)), "no flags means show");
-        assert!(manifest.shows_initial_migration(&target("26.4", GameLoader::Fabric)), "an empty flags object means show");
-        assert!(manifest.shows_initial_migration(&target("1.8.9", GameLoader::Fabric)), "the flag belongs to its own loader");
+        assert!(
+            manifest.shows_initial_migration(&target("26.3", GameLoader::Fabric)),
+            "no flags means show"
+        );
+        assert!(
+            manifest.shows_initial_migration(&target("26.4", GameLoader::Fabric)),
+            "an empty flags object means show"
+        );
+        assert!(
+            manifest.shows_initial_migration(&target("1.8.9", GameLoader::Fabric)),
+            "the flag belongs to its own loader"
+        );
     }
 
     #[test]
@@ -339,12 +368,18 @@ mod tests {
             ]}]}"#,
         )
         .expect("an unknown flag must not break parsing");
-        assert_eq!(manifest.clusters[0].entries[0].flags.show_initial_migration, None);
+        assert_eq!(
+            manifest.clusters[0].entries[0].flags.show_initial_migration,
+            None
+        );
     }
 
     #[test]
     fn release_target_keys_round_trip() {
-        let target = ReleaseTarget { mc_version: "1.8.9".into(), loader: GameLoader::Fabric };
+        let target = ReleaseTarget {
+            mc_version: "1.8.9".into(),
+            loader: GameLoader::Fabric,
+        };
         assert_eq!(target.key(), "1.8.9:fabric");
         assert_eq!(ReleaseTarget::from_key("1.8.9:fabric"), Some(target));
         assert_eq!(ReleaseTarget::from_key("garbage"), None);

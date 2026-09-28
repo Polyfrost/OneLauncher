@@ -14,11 +14,11 @@ use crate::hooks::{
     use_game_profile, use_game_snapshot, use_java_runtimes, use_loader_versions,
     use_release_migration_checking, use_settings_snapshot,
 };
-use oneclient_core::clusters::rank_migration_sources;
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
 use crate::view::app::settings::{section_header, settings_row};
+use oneclient_core::clusters::rank_migration_sources;
 
 use super::cluster_not_found;
 use crate::hooks::use_cluster;
@@ -842,7 +842,7 @@ impl Component for MigrateFromRow {
                 .cross_align(Alignment::Center)
                 .spacing(8.)
                 .child(picker)
-                .child(button)
+                .child(button),
         )
     }
 }

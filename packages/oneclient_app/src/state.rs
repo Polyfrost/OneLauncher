@@ -85,7 +85,9 @@ pub struct ReleaseMigrationPrompt {
 impl ReleaseMigrationPrompt {
     #[must_use]
     pub fn source(&self) -> Option<&Cluster> {
-        self.sources.iter().find(|cluster| cluster.id == self.selected)
+        self.sources
+            .iter()
+            .find(|cluster| cluster.id == self.selected)
     }
 
     #[must_use]
@@ -95,7 +97,8 @@ impl ReleaseMigrationPrompt {
 
     #[must_use]
     pub fn is_cross_loader(&self) -> bool {
-        self.source().is_some_and(|source| source.mc_loader != self.target.mc_loader)
+        self.source()
+            .is_some_and(|source| source.mc_loader != self.target.mc_loader)
     }
 }
 

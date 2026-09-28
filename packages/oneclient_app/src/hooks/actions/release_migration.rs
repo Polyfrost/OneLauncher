@@ -57,11 +57,12 @@ async fn plan_sources(
     content: &oneclient_content::ContentCtx,
 ) -> SourcePlans {
     let ids: Vec<i64> = offer.sources.iter().map(|source| source.id).collect();
-    let mut checked: HashMap<i64, SourcePlan> = plan_release_migrations(&ids, offer.target.id, bundles, content)
-        .await
-        .into_iter()
-        .map(|(source_id, plan)| (source_id, classify(plan)))
-        .collect();
+    let mut checked: HashMap<i64, SourcePlan> =
+        plan_release_migrations(&ids, offer.target.id, bundles, content)
+            .await
+            .into_iter()
+            .map(|(source_id, plan)| (source_id, classify(plan)))
+            .collect();
 
     let mut sources = Vec::new();
     let mut plans = HashMap::new();
@@ -175,10 +176,25 @@ fn fake_dependency(
 fn fake_plan(source_cluster_id: i64, target_cluster_id: i64) -> ReleaseMigrationPlan {
     let packages = vec![
         fake_package("Sodium", "AANobbMI", ContentType::Mod, true),
-        fake_package("Just Enough Items (JEI)", "u6dRKJwZ", ContentType::Mod, true),
+        fake_package(
+            "Just Enough Items (JEI)",
+            "u6dRKJwZ",
+            ContentType::Mod,
+            true,
+        ),
         fake_package("Mod Menu", "mOgUt4GM", ContentType::Mod, false),
-        fake_package("Fresh Animations", "50dA9Sha", ContentType::ResourcePack, true),
-        fake_package("Complementary Shaders", "R6NEzAwj", ContentType::Shader, true),
+        fake_package(
+            "Fresh Animations",
+            "50dA9Sha",
+            ContentType::ResourcePack,
+            true,
+        ),
+        fake_package(
+            "Complementary Shaders",
+            "R6NEzAwj",
+            ContentType::Shader,
+            true,
+        ),
     ];
 
     ReleaseMigrationPlan {
@@ -191,7 +207,11 @@ fn fake_plan(source_cluster_id: i64, target_cluster_id: i64) -> ReleaseMigration
         )],
         unavailable: vec![
             fake_skip("Iris Shaders", "YL57xq9U", SkipReason::NoCompatibleVersion),
-            fake_skip("Distant Horizons", "uCdwusMi", SkipReason::MissingDependency),
+            fake_skip(
+                "Distant Horizons",
+                "uCdwusMi",
+                SkipReason::MissingDependency,
+            ),
         ],
         packages,
         unreachable: false,
@@ -257,7 +277,10 @@ impl Actions {
 
             let (pending, onboarded) = {
                 let settings = state.settings.read();
-                (settings.pending_release_migrations.clone(), settings.seen_onboarding)
+                (
+                    settings.pending_release_migrations.clone(),
+                    settings.seen_onboarding,
+                )
             };
             if pending.is_empty() {
                 return;
@@ -278,7 +301,10 @@ impl Actions {
                 };
 
                 if !state.versions.shows_initial_migration(&release).await {
-                    tracing::info!(key, "pending version opts out of the initial migration offer, dropping it");
+                    tracing::info!(
+                        key,
+                        "pending version opts out of the initial migration offer, dropping it"
+                    );
                     finished.push(key);
                     continue;
                 }
@@ -296,14 +322,15 @@ impl Actions {
                     }
                 };
 
-                let (sources, plans) = match plan_sources(&offer, state.bundles.as_ref(), &content).await {
-                    SourcePlans::Ready { sources, plans } => (sources, plans),
-                    SourcePlans::Nothing => {
-                        finished.push(key);
-                        continue;
-                    }
-                    SourcePlans::Unreachable => continue,
-                };
+                let (sources, plans) =
+                    match plan_sources(&offer, state.bundles.as_ref(), &content).await {
+                        SourcePlans::Ready { sources, plans } => (sources, plans),
+                        SourcePlans::Nothing => {
+                            finished.push(key);
+                            continue;
+                        }
+                        SourcePlans::Unreachable => continue,
+                    };
 
                 actions.remove_pending_release_migrations(finished);
                 actions
@@ -319,9 +346,12 @@ impl Actions {
     pub fn select_release_migration_source(&self, source_id: i64) {
         let mut target_id = None;
         self.write_release_migration(|prompt| {
-            let Some(prompt) = prompt.as_mut() else { return };
+            let Some(prompt) = prompt.as_mut() else {
+                return;
+            };
             prompt.selected = source_id;
-            if let std::collections::hash_map::Entry::Vacant(entry) = prompt.plans.entry(source_id) {
+            if let std::collections::hash_map::Entry::Vacant(entry) = prompt.plans.entry(source_id)
+            {
                 entry.insert(ReleasePlanState::Loading);
                 target_id = Some(prompt.target.id);
             }
@@ -362,7 +392,9 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
-            let Ok(clusters) = state.clusters.list().await else { return };
+            let Ok(clusters) = state.clusters.list().await else {
+                return;
+            };
             let Some(target) = clusters
                 .iter()
                 .find(|cluster| cluster.id == target_cluster_id)
@@ -423,9 +455,7 @@ impl Actions {
                 Ok(OfferLookup::NoSources | OfferLookup::MissingCluster) => {
                     actions
                         .notify("Nothing to migrate")
-                        .body(
-                            "All found packages were migrated"
-                        )
+                        .body("All found packages were migrated")
                         .level(Level::Error)
                         .send();
                     return;
@@ -440,27 +470,27 @@ impl Actions {
                 }
             };
 
-            let (sources, plans) = match plan_sources(&offer, state.bundles.as_ref(), &state.services.content()).await {
-                SourcePlans::Ready { sources, plans } => (sources, plans),
-                SourcePlans::Nothing => {
-                    actions
-                        .notify("Nothing to migrate")
-                        .body(
-                            "All found packages were migrated"
-                        )
-                        .level(Level::Error)
-                        .send();
-                    return;
-                }
-                SourcePlans::Unreachable => {
-                    actions
-                        .notify("Release migration simulation failed")
-                        .body("Couldn't reach Modrinth or CurseForge.")
-                        .level(Level::Error)
-                        .send();
-                    return;
-                }
-            };
+            let (sources, plans) =
+                match plan_sources(&offer, state.bundles.as_ref(), &state.services.content()).await
+                {
+                    SourcePlans::Ready { sources, plans } => (sources, plans),
+                    SourcePlans::Nothing => {
+                        actions
+                            .notify("Nothing to migrate")
+                            .body("All found packages were migrated")
+                            .level(Level::Error)
+                            .send();
+                        return;
+                    }
+                    SourcePlans::Unreachable => {
+                        actions
+                            .notify("Release migration simulation failed")
+                            .body("Couldn't reach Modrinth or CurseForge.")
+                            .level(Level::Error)
+                            .send();
+                        return;
+                    }
+                };
 
             actions
                 .open_release_prompt(&state, *offer, sources, plans, PromptOrigin::Simulated)
@@ -496,13 +526,12 @@ impl Actions {
 
         let nothing = || {
             self.notify("Nothing to migrate")
-                .body(
-                    "No packages to migrate"
-                )
+                .body("No packages to migrate")
                 .send();
         };
 
-        let offer = match manual_migration_offer(&state, target_cluster_id, source_cluster_id).await {
+        let offer = match manual_migration_offer(&state, target_cluster_id, source_cluster_id).await
+        {
             Ok(OfferLookup::Offer(offer)) => offer,
             Ok(OfferLookup::NoSources) => {
                 nothing();
@@ -519,7 +548,13 @@ impl Actions {
             }
         };
 
-        let (sources, plans) = match plan_sources(&offer, state.bundles.as_ref(), &state.services.content()).await {
+        let (sources, plans) = match plan_sources(
+            &offer,
+            state.bundles.as_ref(),
+            &state.services.content(),
+        )
+        .await
+        {
             SourcePlans::Ready { sources, plans } => (sources, plans),
             SourcePlans::Nothing => {
                 nothing();
@@ -542,7 +577,9 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
-            let Ok(target) = state.clusters.get(target_cluster_id).await else { return };
+            let Ok(target) = state.clusters.get(target_cluster_id).await else {
+                return;
+            };
             let key = ReleaseTarget {
                 mc_version: target.mc_version,
                 loader: target.mc_loader,
@@ -584,14 +621,22 @@ impl Actions {
             }
 
             for install in &installs {
-                let verb = if install.names.len() == 1 { "supports" } else { "support" };
+                let verb = if install.names.len() == 1 {
+                    "supports"
+                } else {
+                    "support"
+                };
                 actions
                     .notify(format!("New {} builds added", install.mc_version))
                     .body(format!(
                         "{} now {verb} {} and {} added to {}.",
                         install.names.join(", "),
                         install.mc_version,
-                        if install.names.len() == 1 { "was" } else { "were" },
+                        if install.names.len() == 1 {
+                            "was"
+                        } else {
+                            "were"
+                        },
                         install.cluster_name
                     ))
                     .send();
@@ -639,7 +684,8 @@ impl Actions {
             .iter()
             .map(|package| package.source_hash.clone())
             .collect();
-        let (dependencies, unavailable): (Vec<_>, Vec<_>) = match prompt.plans.get(&prompt.selected) {
+        let (dependencies, unavailable): (Vec<_>, Vec<_>) = match prompt.plans.get(&prompt.selected)
+        {
             Some(ReleasePlanState::Ready(plan)) => (
                 plan.dependencies
                     .iter()
@@ -681,7 +727,15 @@ impl Actions {
                     1,
                     oneclient_events::TaskCategory::Packages,
                 );
-                match apply_release_migration_dependency(target.id, dependency, *enabled, Some(&child), &content).await {
+                match apply_release_migration_dependency(
+                    target.id,
+                    dependency,
+                    *enabled,
+                    Some(&child),
+                    &content,
+                )
+                .await
+                {
                     Ok(_) => migrated += 1,
                     Err(err) => {
                         tracing::warn!(
@@ -709,7 +763,9 @@ impl Actions {
                     child.finish();
                     continue;
                 }
-                match apply_release_migration_package(target.id, package, Some(&child), &content).await {
+                match apply_release_migration_package(target.id, package, Some(&child), &content)
+                    .await
+                {
                     Ok(_) => migrated += 1,
                     Err(err) => tracing::warn!(
                         package = %package.display_name,
@@ -735,11 +791,19 @@ impl Actions {
             let spec = Some(NotificationSpec {
                 title: format!("Migrated to {}", target.name),
                 body: if failed == 0 {
-                    format!("{migrated} package{} copied into {}", if migrated == 1 { "" } else { "s" }, target.name)
+                    format!(
+                        "{migrated} package{} copied into {}",
+                        if migrated == 1 { "" } else { "s" },
+                        target.name
+                    )
                 } else {
                     format!("{migrated} of {total} packages copied, {failed} failed")
                 },
-                level: if failed == 0 { Level::Info } else { Level::Error },
+                level: if failed == 0 {
+                    Level::Info
+                } else {
+                    Level::Error
+                },
                 icon: Some(IconType::DownloadCloud02),
                 progress: None,
                 actions: Vec::new(),

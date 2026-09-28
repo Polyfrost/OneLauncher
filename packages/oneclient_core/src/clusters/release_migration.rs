@@ -27,10 +27,17 @@ pub enum OfferLookup {
 
 fn version_order(mc_version: &str) -> Option<(u32, u32, u32)> {
     let parsed = parse_mc_version(mc_version)?;
-    Some((parsed.major, parsed.minor.unwrap_or(0), parsed.patch.unwrap_or(0)))
+    Some((
+        parsed.major,
+        parsed.minor.unwrap_or(0),
+        parsed.patch.unwrap_or(0),
+    ))
 }
 
-fn source_rank(target: (u32, u32, u32), source: (u32, u32, u32)) -> (bool, Reverse<(u32, u32, u32)>) {
+fn source_rank(
+    target: (u32, u32, u32),
+    source: (u32, u32, u32),
+) -> (bool, Reverse<(u32, u32, u32)>) {
     (source > target, Reverse(source))
 }
 
@@ -92,7 +99,9 @@ pub async fn release_migration_offer(
 
     let Some(target) = clusters
         .iter()
-        .filter(|cluster| cluster.mc_loader == release.loader && cluster.mc_version == release.mc_version)
+        .filter(|cluster| {
+            cluster.mc_loader == release.loader && cluster.mc_version == release.mc_version
+        })
         .min_by_key(|cluster| cluster.created_at)
     else {
         return Ok(OfferLookup::MissingCluster);
@@ -111,8 +120,12 @@ pub async fn manual_migration_offer(
     let content = state.services.content();
 
     let (Some(target), Some(source)) = (
-        clusters.iter().find(|cluster| cluster.id == target_cluster_id),
-        clusters.iter().find(|cluster| cluster.id == source_cluster_id),
+        clusters
+            .iter()
+            .find(|cluster| cluster.id == target_cluster_id),
+        clusters
+            .iter()
+            .find(|cluster| cluster.id == source_cluster_id),
     ) else {
         return Ok(OfferLookup::MissingCluster);
     };
@@ -139,7 +152,9 @@ pub fn rank_migration_sources(target: &Cluster, clusters: &[Cluster]) -> Vec<Clu
     let target_order = version_order(&target.mc_version);
     let mut sources: Vec<Cluster> = clusters
         .iter()
-        .filter(|cluster| cluster.id != target.id && can_migrate_manually(cluster.mc_loader, target.mc_loader))
+        .filter(|cluster| {
+            cluster.id != target.id && can_migrate_manually(cluster.mc_loader, target.mc_loader)
+        })
         .cloned()
         .collect();
     sources.sort_by_key(|cluster| {
@@ -228,12 +243,26 @@ mod tests {
     fn a_version_that_existing_clusters_move_to_is_not_a_new_release() {
         let rules = vec![RemoteMigration {
             id: "x".into(),
-            from: crate::versions::MigrationSource { mc_version: "26.1".into(), loader: "fabric".into() },
-            to: crate::versions::MigrationTarget { mc_version: "26.1.2".into() },
+            from: crate::versions::MigrationSource {
+                mc_version: "26.1".into(),
+                loader: "fabric".into(),
+            },
+            to: crate::versions::MigrationTarget {
+                mc_version: "26.1.2".into(),
+            },
         }];
-        let moved = ReleaseTarget { mc_version: "26.1.2".into(), loader: GameLoader::Fabric };
-        let released = ReleaseTarget { mc_version: "26.3".into(), loader: GameLoader::Fabric };
-        let other_loader = ReleaseTarget { mc_version: "26.1.2".into(), loader: GameLoader::NeoForge };
+        let moved = ReleaseTarget {
+            mc_version: "26.1.2".into(),
+            loader: GameLoader::Fabric,
+        };
+        let released = ReleaseTarget {
+            mc_version: "26.3".into(),
+            loader: GameLoader::Fabric,
+        };
+        let other_loader = ReleaseTarget {
+            mc_version: "26.1.2".into(),
+            loader: GameLoader::NeoForge,
+        };
 
         assert!(is_migration_destination(&moved, &rules));
         assert!(!is_migration_destination(&released, &rules));
@@ -250,10 +279,19 @@ mod tests {
 
     #[test]
     fn fabric_sources_can_fill_an_ornithe_cluster_manually() {
-        assert!(can_migrate_manually(GameLoader::Fabric, GameLoader::Ornithe));
+        assert!(can_migrate_manually(
+            GameLoader::Fabric,
+            GameLoader::Ornithe
+        ));
         assert!(can_migrate_manually(GameLoader::Fabric, GameLoader::Fabric));
-        assert!(!can_migrate_manually(GameLoader::Ornithe, GameLoader::Fabric));
-        assert!(!can_migrate_manually(GameLoader::Forge, GameLoader::Ornithe));
+        assert!(!can_migrate_manually(
+            GameLoader::Ornithe,
+            GameLoader::Fabric
+        ));
+        assert!(!can_migrate_manually(
+            GameLoader::Forge,
+            GameLoader::Ornithe
+        ));
     }
 
     #[test]

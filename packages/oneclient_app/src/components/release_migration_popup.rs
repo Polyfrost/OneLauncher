@@ -5,13 +5,13 @@ use freya::router::use_route;
 use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_common::version::parse_mc_version;
 use oneclient_content::packages::release_migration::{
-    ReleaseMigrationDependency, ReleaseMigrationPackage, ReleaseMigrationPlan, ReleaseMigrationSkip,
-    SkipReason, WAITLIST_DAYS,
+    ReleaseMigrationDependency, ReleaseMigrationPackage, ReleaseMigrationPlan,
+    ReleaseMigrationSkip, SkipReason, WAITLIST_DAYS,
 };
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 use oneclient_core::clusters::Cluster;
 
-use crate::components::{Button, DynamicArt, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::components::{Button, Dropdown, DynamicArt, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{
     loaded_image, package_meta_batch, use_cached_image, use_dispatch, use_game_snapshot,
     use_launcher, use_notifications_snapshot, use_package_meta_batch, use_release_migration,
@@ -119,20 +119,27 @@ impl Component for ReleaseMigrationPopup {
         let mut wont_open = use_state(|| true);
         let mut deps_open = use_state(|| false);
 
-        let projects: Vec<(ProviderId, String)> = prompt
-            .as_ref()
-            .and_then(|prompt| match prompt.plan() {
-                Some(ReleasePlanState::Ready(plan)) => Some(
-                    plan.packages
-                        .iter()
-                        .map(|package| (package.provider, package.project_id.clone()))
-                        .chain(plan.unavailable.iter().map(|skip| (skip.provider, skip.project_id.clone())))
-                        .chain(plan.dependencies.iter().map(|dependency| (dependency.provider, dependency.project.id.clone())))
-                        .collect(),
-                ),
-                _ => None,
-            })
-            .unwrap_or_default();
+        let projects: Vec<(ProviderId, String)> =
+            prompt
+                .as_ref()
+                .and_then(|prompt| match prompt.plan() {
+                    Some(ReleasePlanState::Ready(plan)) => Some(
+                        plan.packages
+                            .iter()
+                            .map(|package| (package.provider, package.project_id.clone()))
+                            .chain(
+                                plan.unavailable
+                                    .iter()
+                                    .map(|skip| (skip.provider, skip.project_id.clone())),
+                            )
+                            .chain(plan.dependencies.iter().map(|dependency| {
+                                (dependency.provider, dependency.project.id.clone())
+                            }))
+                            .collect(),
+                    ),
+                    _ => None,
+                })
+                .unwrap_or_default();
 
         let mut meta = MetaMap::new();
         for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {
@@ -174,7 +181,16 @@ impl Component for ReleaseMigrationPopup {
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
                     .center()
-                    .child(dialog(&prompt, &meta, panel_dispatch, excluded, tab, wont_open, deps_open, target_running)),
+                    .child(dialog(
+                        &prompt,
+                        &meta,
+                        panel_dispatch,
+                        excluded,
+                        tab,
+                        wont_open,
+                        deps_open,
+                        target_running,
+                    )),
             )
             .into_element()
     }
@@ -206,10 +222,26 @@ fn dialog(
         .corner_radius(CornerRadius::new_all(18.))
         .background(PANEL_BG)
         .border(border_all_color(1., colors::component_border()))
-        .shadow(Shadow::from((0., 24., 64., 0., Color::from_argb(160, 0, 0, 0))))
+        .shadow(Shadow::from((
+            0.,
+            24.,
+            64.,
+            0.,
+            Color::from_argb(160, 0, 0, 0),
+        )))
         .content(Content::Flex)
         .child(art_panel(prompt, plan, &excluded.read()))
-        .child(content_panel(prompt, plan, meta, dispatch, excluded, tab, wont_open, deps_open, target_running))
+        .child(content_panel(
+            prompt,
+            plan,
+            meta,
+            dispatch,
+            excluded,
+            tab,
+            wont_open,
+            deps_open,
+            target_running,
+        ))
 }
 
 fn art_panel(
@@ -219,9 +251,8 @@ fn art_panel(
 ) -> impl IntoElement {
     let target = &prompt.target;
     let parsed = parse_mc_version(&target.mc_version);
-    let art = parsed.map(|parsed| {
-        DynamicArt::for_version(parsed.major, parsed.key(), Some(target.mc_loader))
-    });
+    let art = parsed
+        .map(|parsed| DynamicArt::for_version(parsed.major, parsed.key(), Some(target.mc_loader)));
 
     let mut runtime = Vec::new();
     if target.mc_loader != GameLoader::Vanilla {
@@ -322,7 +353,9 @@ fn summary_card(
                         .packages
                         .iter()
                         .filter(|package| package.content_type == tab.content_type())
-                        .filter(|package| !excluded.contains(&selection_key(package, plan.source_cluster_id)))
+                        .filter(|package| {
+                            !excluded.contains(&selection_key(package, plan.source_cluster_id))
+                        })
                         .count();
                 format!("{selected} of {total}")
             },
@@ -330,7 +363,10 @@ fn summary_card(
         rows = rows.child(summary_row(tab.label(), value, colors::fg_primary()));
     }
 
-    let wont = plan.map_or_else(|| "–".to_string(), |plan| plan.unavailable.len().to_string());
+    let wont = plan.map_or_else(
+        || "–".to_string(),
+        |plan| plan.unavailable.len().to_string(),
+    );
 
     rect()
         .vertical()
@@ -426,7 +462,11 @@ fn content_panel(
                                 .ghost()
                                 .icon()
                                 .on_press(move |_| close.dismiss_release_migration())
-                                .child(Icon::new(IconType::XClose).size(16.).color(colors::fg_secondary())),
+                                .child(
+                                    Icon::new(IconType::XClose)
+                                        .size(16.)
+                                        .color(colors::fg_secondary()),
+                                ),
                         ),
                 )
                 .child(
@@ -439,7 +479,9 @@ fn content_panel(
                 )
                 .child(source_picker(prompt, picker_dispatch))
                 .child(tab_row(plan, excluded, tab))
-                .child(package_list(prompt, plan, meta, excluded, tab, wont_open, deps_open)),
+                .child(package_list(
+                    prompt, plan, meta, excluded, tab, wont_open, deps_open,
+                )),
         )
         .child(
             rect()
@@ -486,7 +528,10 @@ fn tab_row(
 ) -> impl IntoElement {
     let active = *tab.read();
 
-    let mut pills = rect().horizontal().spacing(8.).cross_align(Alignment::Center);
+    let mut pills = rect()
+        .horizontal()
+        .spacing(8.)
+        .cross_align(Alignment::Center);
     for option in PackageTab::ALL {
         let count = plan.map_or(0, |plan| plan.offered(option.content_type()));
         let mut tab = tab;
@@ -532,7 +577,11 @@ fn tab_row(
                 })
                 .child(
                     label()
-                        .text(if any_selected { "Clear all" } else { "Select all" })
+                        .text(if any_selected {
+                            "Clear all"
+                        } else {
+                            "Select all"
+                        })
                         .font_size(13.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
@@ -546,10 +595,18 @@ fn tab_pill(text: String, active: bool, mut on_press: impl FnMut() + 'static) ->
         .padding(Gaps::new_symmetric(0., 13.))
         .center()
         .corner_radius(CornerRadius::new_all(8.))
-        .background(if active { colors::brand() } else { Color::TRANSPARENT })
+        .background(if active {
+            colors::brand()
+        } else {
+            Color::TRANSPARENT
+        })
         .border(border_all_color(
             1.,
-            if active { colors::brand() } else { colors::component_border() },
+            if active {
+                colors::brand()
+            } else {
+                colors::component_border()
+            },
         ))
         .cursor(CursorIcon::Pointer)
         .on_press(move |_| on_press())
@@ -558,7 +615,11 @@ fn tab_pill(text: String, active: bool, mut on_press: impl FnMut() + 'static) ->
                 .text(text)
                 .font_size(14.)
                 .font_weight(FontWeight::MEDIUM)
-                .color(if active { Color::WHITE } else { colors::fg_primary() }),
+                .color(if active {
+                    Color::WHITE
+                } else {
+                    colors::fg_primary()
+                }),
         )
 }
 
@@ -574,8 +635,13 @@ fn package_list(
     let source_title = prompt.source().map(cluster_title).unwrap_or_default();
 
     let message = match (prompt.plan(), plan) {
-        (Some(ReleasePlanState::Loading) | None, _) => Some("Checking which packages have a compatible version…".to_string()),
-        (Some(ReleasePlanState::Failed), _) => Some("Couldn't reach Modrinth or CurseForge. Check your connection and try again.".to_string()),
+        (Some(ReleasePlanState::Loading) | None, _) => {
+            Some("Checking which packages have a compatible version…".to_string())
+        }
+        (Some(ReleasePlanState::Failed), _) => Some(
+            "Couldn't reach Modrinth or CurseForge. Check your connection and try again."
+                .to_string(),
+        ),
         _ => None,
     };
     if let Some(message) = message {
@@ -625,7 +691,12 @@ fn package_list(
 
         scroll = scroll.child(
             MigrationRow {
-                name: package_name(meta, package.provider, &package.project_id, &package.display_name),
+                name: package_name(
+                    meta,
+                    package.provider,
+                    &package.project_id,
+                    &package.display_name,
+                ),
                 icon_url: meta
                     .get(&(package.provider, package.project_id.clone()))
                     .and_then(|cached| cached.icon_url.clone()),
@@ -658,14 +729,30 @@ fn package_list(
                 let required_by: Vec<String> = dependency
                     .required_by
                     .iter()
-                    .filter_map(|hash| plan.packages.iter().find(|package| &package.source_hash == hash))
-                    .map(|package| package_name(meta, package.provider, &package.project_id, &package.display_name))
+                    .filter_map(|hash| {
+                        plan.packages
+                            .iter()
+                            .find(|package| &package.source_hash == hash)
+                    })
+                    .map(|package| {
+                        package_name(
+                            meta,
+                            package.provider,
+                            &package.project_id,
+                            &package.display_name,
+                        )
+                    })
                     .collect();
                 let cached = meta.get(&(dependency.provider, dependency.project.id.clone()));
 
                 scroll = scroll.child(
                     DependencyRow {
-                        name: package_name(meta, dependency.provider, &dependency.project.id, &dependency.project.name),
+                        name: package_name(
+                            meta,
+                            dependency.provider,
+                            &dependency.project.id,
+                            &dependency.project.name,
+                        ),
                         icon_url: cached
                             .and_then(|cached| cached.icon_url.clone())
                             .or_else(|| dependency.project.icon_url.clone()),
@@ -676,7 +763,10 @@ fn package_list(
                         needed: dependency.is_needed_by(&selected_hashes),
                         key: DiffKey::None,
                     }
-                    .key(format!("dependency:{}:{}", plan.source_cluster_id, dependency.project.id))
+                    .key(format!(
+                        "dependency:{}:{}",
+                        plan.source_cluster_id, dependency.project.id
+                    ))
                     .into_element(),
                 );
             }
@@ -714,12 +804,20 @@ fn package_list(
                 let cached = meta.get(&(skip.provider, skip.project_id.clone()));
                 scroll = scroll.child(
                     SkippedRow {
-                        name: package_name(meta, skip.provider, &skip.project_id, &skip.display_name),
+                        name: package_name(
+                            meta,
+                            skip.provider,
+                            &skip.project_id,
+                            &skip.display_name,
+                        ),
                         icon_url: cached.and_then(|cached| cached.icon_url.clone()),
                         reason: reason_text(skip.reason, mc_version),
                         key: DiffKey::None,
                     }
-                    .key(format!("skip:{}:{}", plan.source_cluster_id, skip.project_id))
+                    .key(format!(
+                        "skip:{}:{}",
+                        plan.source_cluster_id, skip.project_id
+                    ))
                     .into_element(),
                 );
             }
@@ -736,7 +834,10 @@ fn package_name(meta: &MetaMap, provider: ProviderId, project_id: &str, fallback
         .unwrap_or_else(|| fallback.to_string())
 }
 
-fn selected_hashes(plan: &ReleaseMigrationPlan, excluded: &HashSet<SelectionKey>) -> HashSet<String> {
+fn selected_hashes(
+    plan: &ReleaseMigrationPlan,
+    excluded: &HashSet<SelectionKey>,
+) -> HashSet<String> {
     plan.packages
         .iter()
         .filter(|package| !excluded.contains(&selection_key(package, plan.source_cluster_id)))
@@ -768,10 +869,14 @@ fn most_common_reason(skipped: &[&ReleaseMigrationSkip]) -> Option<SkipReason> {
     for skip in skipped {
         *counts.entry(skip.reason).or_default() += 1;
     }
-    [SkipReason::NoCompatibleVersion, SkipReason::MissingDependency, SkipReason::ProviderUnavailable]
-        .into_iter()
-        .filter(|reason| counts.contains_key(reason))
-        .max_by_key(|reason| counts[reason])
+    [
+        SkipReason::NoCompatibleVersion,
+        SkipReason::MissingDependency,
+        SkipReason::ProviderUnavailable,
+    ]
+    .into_iter()
+    .filter(|reason| counts.contains_key(reason))
+    .max_by_key(|reason| counts[reason])
 }
 
 fn section_header(
@@ -813,9 +918,13 @@ fn section_header(
                 .color(colors::fg_secondary()),
         )
         .child(
-            Icon::new(if open { IconType::ChevronDown } else { IconType::ChevronRight })
-                .size(16.)
-                .color(colors::fg_secondary()),
+            Icon::new(if open {
+                IconType::ChevronDown
+            } else {
+                IconType::ChevronRight
+            })
+            .size(16.)
+            .color(colors::fg_secondary()),
         )
 }
 
@@ -883,7 +992,11 @@ impl Component for DependencyRow {
                     )
                     .child(
                         label()
-                            .text(format!("{} · {}", provider_label(self.provider), self.version_name))
+                            .text(format!(
+                                "{} · {}",
+                                provider_label(self.provider),
+                                self.version_name
+                            ))
                             .font_size(12.)
                             .max_lines(1)
                             .width(Size::fill())
@@ -961,12 +1074,7 @@ impl Component for SkippedRow {
             .spacing(14.)
             .padding(Gaps::new_symmetric(0., 12.))
             .opacity(0.6)
-            .child(
-                rect()
-                    .width(Size::px(ROW_ICON))
-                    .center()
-                    .child(icon),
-            )
+            .child(rect().width(Size::px(ROW_ICON)).center().child(icon))
             .child(
                 label()
                     .text(self.name.clone())
@@ -1013,7 +1121,11 @@ fn footer(
         .map(|plan| {
             plan.packages
                 .iter()
-                .filter(|package| !excluded.read().contains(&selection_key(package, plan.source_cluster_id)))
+                .filter(|package| {
+                    !excluded
+                        .read()
+                        .contains(&selection_key(package, plan.source_cluster_id))
+                })
                 .cloned()
                 .collect()
         })
@@ -1142,7 +1254,11 @@ impl Component for MigrationRow {
             .spacing(14.)
             .padding(Gaps::new_symmetric(0., 12.))
             .corner_radius(CornerRadius::new_all(10.))
-            .background(if *hovered.read() { colors::ghost_overlay() } else { Color::TRANSPARENT })
+            .background(if *hovered.read() {
+                colors::ghost_overlay()
+            } else {
+                Color::TRANSPARENT
+            })
             .cursor(CursorIcon::Pointer)
             .on_pointer_enter(move |_| hovered.set(true))
             .on_pointer_leave(move |_| hovered.set(false))
@@ -1212,10 +1328,21 @@ fn check_box(checked: bool) -> impl IntoElement {
         .height(Size::px(CHECK_SIZE))
         .center()
         .corner_radius(CornerRadius::new_all(6.))
-        .background(if checked { colors::brand() } else { Color::TRANSPARENT })
-        .border(border_all_color(
-            1.,
-            if checked { colors::brand() } else { colors::component_border() },
-        ).alignment(BorderAlignment::Inner))
+        .background(if checked {
+            colors::brand()
+        } else {
+            Color::TRANSPARENT
+        })
+        .border(
+            border_all_color(
+                1.,
+                if checked {
+                    colors::brand()
+                } else {
+                    colors::component_border()
+                },
+            )
+            .alignment(BorderAlignment::Inner),
+        )
         .maybe_child(checked.then(|| Icon::new(IconType::Check).size(14.).color(Color::WHITE)))
 }

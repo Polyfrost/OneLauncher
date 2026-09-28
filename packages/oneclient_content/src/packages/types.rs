@@ -235,9 +235,9 @@ pub type VersionLookup = HashMap<String, VersionDetail>;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstalledPackage {
-	pub hash: String,
-	pub project_id: String,
-	pub content_type: ContentType,
+    pub hash: String,
+    pub project_id: String,
+    pub content_type: ContentType,
 }
 pub type ProviderVersionLookup = HashMap<String, (ProviderId, VersionDetail)>;
 

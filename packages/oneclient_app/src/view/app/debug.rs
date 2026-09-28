@@ -591,8 +591,13 @@ struct ReleaseMigrationSimulator;
 fn newest_first(clusters: &mut [oneclient_core::clusters::Cluster]) {
     clusters.sort_by_key(|cluster| {
         std::cmp::Reverse(
-            oneclient_common::version::parse_mc_version(&cluster.mc_version)
-                .map(|parsed| (parsed.major, parsed.minor.unwrap_or(0), parsed.patch.unwrap_or(0))),
+            oneclient_common::version::parse_mc_version(&cluster.mc_version).map(|parsed| {
+                (
+                    parsed.major,
+                    parsed.minor.unwrap_or(0),
+                    parsed.patch.unwrap_or(0),
+                )
+            }),
         )
     });
 }
@@ -613,7 +618,10 @@ impl Component for ReleaseMigrationSimulator {
             .cloned();
 
         let ids: Vec<i64> = clusters.iter().map(|cluster| cluster.id).collect();
-        let options: Vec<String> = clusters.iter().map(|cluster| cluster.name.clone()).collect();
+        let options: Vec<String> = clusters
+            .iter()
+            .map(|cluster| cluster.name.clone())
+            .collect();
         let selected_name = selected
             .as_ref()
             .map(|cluster| cluster.name.clone())

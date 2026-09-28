@@ -14,9 +14,9 @@ use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
-    DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary,
-    ReleaseType, SearchFilters, VersionDependency, VersionDetail, VersionFile, VersionLookup,
-    VersionSummary,
+    DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail,
+    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
+    VersionFile, VersionLookup, VersionSummary,
 };
 use oneclient_common::constants::MODRINTH_API_URL;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};

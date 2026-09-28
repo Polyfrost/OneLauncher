@@ -137,10 +137,6 @@ impl BadModList {
             .or_else(|| self.find_name_and_author(&project.name, &authors))
     }
 
-    pub fn is_flagged(&self, project: &ProjectDetail, version: &VersionDetail) -> bool {
-        self.check(project, version).is_some()
-    }
-
     pub fn find(&self, sha1: &str) -> Option<&BadMod> {
         let sha1 = polyio::normalize_hash(sha1);
         self.bad_mods.iter().find(|entry| {
@@ -209,7 +205,6 @@ pub async fn load_bad_mods(ctx: &ContentCtx) -> Arc<BadModList> {
 }
 
 const EXPLANATIONS_DIR: &str = "/oneclient/bad_mods_mds/";
-const EXPLANATION_MAX_BYTES: usize = 100 * 1024;
 
 fn explanation_file_name(path: &str) -> Option<&str> {
     let name = path.strip_prefix(EXPLANATIONS_DIR)?;
@@ -241,15 +236,6 @@ pub async fn fetch_explanation(entry: &BadMod, ctx: &ContentCtx) -> Option<Strin
     };
 
     match fetch_cached(&ctx.net, &url, &cache_path, EtagPolicy::CommitNow).await {
-        Ok(Some(fetched)) if fetched.bytes.len() > EXPLANATION_MAX_BYTES => {
-            tracing::warn!(
-                path,
-                bytes = fetched.bytes.len(),
-                limit = EXPLANATION_MAX_BYTES,
-                "bad mod explanation is too large to show"
-            );
-            None
-        }
         Ok(Some(fetched)) => Some(fetched.text()).filter(|text| !text.trim().is_empty()),
         Ok(None) => {
             tracing::warn!(path, "bad mod explanation is unavailable and not cached");

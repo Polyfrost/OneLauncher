@@ -161,7 +161,8 @@ impl VersionsManifest {
                     patch_version: entry.patch_version,
                     loader: entry.loader.clone(),
                     name: entry.name.clone().unwrap_or_else(|| cluster_name.clone()),
-                    art_url: art_url(&entry.art, meta_url_base).or_else(|| art_url(&cluster.art, meta_url_base)),
+                    art_url: art_url(&entry.art, meta_url_base)
+                        .or_else(|| art_url(&cluster.art, meta_url_base)),
                     long_description: entry
                         .long_description
                         .clone()

@@ -10,16 +10,13 @@ use crate::state::LauncherState;
 use oneclient_common::domain::ContentType;
 use oneclient_common::paths;
 use oneclient_content::packages::store::manifest;
-use oneclient_content::packages::store::{
-    find_unreferenced_files, remove_unreferenced_files,
-};
+use oneclient_content::packages::store::{find_unreferenced_files, remove_unreferenced_files};
 use oneclient_events::EventBus;
 
 const LEGACY_TYPES: [ContentType; 2] = [ContentType::Mod, ContentType::DataPack];
 
 // stable id for the storage scan's progress
-pub const STORAGE_SCAN_PROGRESS: Uuid =
-    Uuid::from_u128(0x5354_4F52_4147_4500_0000_0000_0000_0001);
+pub const STORAGE_SCAN_PROGRESS: Uuid = Uuid::from_u128(0x5354_4F52_4147_4500_0000_0000_0000_0001);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StorageEntry {
@@ -575,7 +572,9 @@ mod tests {
         let dir = root.path();
         polyio::create_dir_all(dir.join("nested")).await.unwrap();
 
-        polyio::write(dir.join("a.jar"), vec![0u8; 1000]).await.unwrap();
+        polyio::write(dir.join("a.jar"), vec![0u8; 1000])
+            .await
+            .unwrap();
         polyio::write(dir.join("nested").join("b.jar"), vec![0u8; 500])
             .await
             .unwrap();
@@ -603,7 +602,9 @@ mod tests {
         polyio::create_dir_all(&store).await.unwrap();
         polyio::create_dir_all(&cluster).await.unwrap();
 
-        polyio::write(store.join("mod.jar"), vec![0u8; 1000]).await.unwrap();
+        polyio::write(store.join("mod.jar"), vec![0u8; 1000])
+            .await
+            .unwrap();
         polyio::symlink_file(store.join("mod.jar"), cluster.join("mod.jar"))
             .await
             .unwrap();

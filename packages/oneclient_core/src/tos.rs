@@ -1,11 +1,10 @@
-
 use serde::{Deserialize, Serialize};
 
+use crate::{LauncherError, LauncherResult};
 use oneclient_common::constants;
 use oneclient_common::paths;
-use oneclient_net::{EtagPolicy, fetch_cached};
 use oneclient_net::RequestClient;
-use crate::{LauncherError, LauncherResult};
+use oneclient_net::{EtagPolicy, fetch_cached};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TermsDocument {
@@ -51,10 +50,7 @@ impl TermsDocument {
 
 #[tracing::instrument(level = "debug", skip(net))]
 pub async fn fetch_terms(net: &RequestClient) -> LauncherResult<TermsDocument> {
-    let url = format!(
-        "{}/oneclient/tos.json",
-        net.config().meta_url_base
-    );
+    let url = format!("{}/oneclient/tos.json", net.config().meta_url_base);
     let cache_path = paths::caches_dir()?.join("TERMS.json");
 
     let fetched = fetch_cached(net, &url, &cache_path, EtagPolicy::CommitNow)
@@ -65,7 +61,6 @@ pub async fn fetch_terms(net: &RequestClient) -> LauncherResult<TermsDocument> {
 
     Ok(fetched.json()?)
 }
-
 
 #[cfg(test)]
 mod tests {

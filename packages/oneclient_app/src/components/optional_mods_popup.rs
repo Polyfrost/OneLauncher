@@ -20,7 +20,7 @@ const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_W: f32 = 720.;
 const DIALOG_PAD: f32 = 22.;
 const LIST_MAX_H: f32 = 306.;
-const ICON_SIZE: f32 = 52.;
+const ICON_SIZE: f32 = 40.;
 
 type MetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
@@ -103,6 +103,7 @@ fn entry_from_item(
         author: cached
             .map(|cached| cached.author.clone())
             .unwrap_or_default(),
+        version: None,
         description: cached
             .map(|cached| cached.summary.clone())
             .unwrap_or_default(),
@@ -350,6 +351,7 @@ impl Component for OptionalModCard {
     fn render(&self) -> impl IntoElement {
         let icon_query = use_cached_image(self.entry.icon_url.clone(), 256);
         let icon = package_icon(&self.entry, &icon_query, ICON_SIZE);
+        let hovered = use_state(|| false);
 
         grid_card(
             &self.entry,
@@ -358,6 +360,8 @@ impl Component for OptionalModCard {
             icon,
             self.on_toggle.clone(),
             false,
+            None,
+            hovered,
         )
     }
 }

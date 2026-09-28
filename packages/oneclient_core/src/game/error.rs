@@ -47,9 +47,7 @@ pub enum GameError {
 impl GameError {
     pub(crate) fn wrapper_spawn(program: &str, err: &std::io::Error) -> Self {
         let reason = match err.kind() {
-            std::io::ErrorKind::NotFound => {
-                "command not found".to_string()
-            }
+            std::io::ErrorKind::NotFound => "command not found".to_string(),
             std::io::ErrorKind::PermissionDenied => {
                 "insufficient permissions or file is not an executable".to_string()
             }

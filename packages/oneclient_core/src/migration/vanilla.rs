@@ -210,7 +210,9 @@ mod tests {
             polyio::write(path, b"x".to_vec()).await.unwrap();
         }
 
-        polyio::copy_dir(src, dst, IMPORT_EXCLUDE_TOP).await.unwrap();
+        polyio::copy_dir(src, dst, IMPORT_EXCLUDE_TOP)
+            .await
+            .unwrap();
 
         for kept in [
             "options.txt",

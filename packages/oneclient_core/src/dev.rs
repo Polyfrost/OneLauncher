@@ -6,20 +6,18 @@ use tokio::sync::mpsc;
 use uuid::Uuid;
 
 use oneclient_content::packages::provider::PackageProviderRegistry;
-use oneclient_net::RequestClient;
 use oneclient_events::{
-	Event, EventBus, GameEvent, GroupedProgressEvent, Level, Notification, ProgressEvent,
+    Event, EventBus, GameEvent, GroupedProgressEvent, Level, Notification, ProgressEvent,
 };
+use oneclient_net::RequestClient;
 
-use crate::{
-	LauncherResult, LauncherServices, LauncherState,
-};
+use crate::{LauncherResult, LauncherServices, LauncherState};
 
 struct GroupedSessionUi {
-	title: String,
-	parent: ProgressBar,
-	children: HashMap<Uuid, ProgressBar>,
-	child_bytes: HashMap<Uuid, (u64, u64)>,
+    title: String,
+    parent: ProgressBar,
+    children: HashMap<Uuid, ProgressBar>,
+    child_bytes: HashMap<Uuid, (u64, u64)>,
 }
 
 fn spawn_notification_handler(mut rx: oneclient_events::EventReceiver) {
@@ -55,7 +53,12 @@ fn spawn_notification_handler(mut rx: oneclient_events::EventReceiver) {
                         Level::Error => tracing::error!(%title, %body),
                     });
                 }
-                Event::Progress(ProgressEvent::Update { id, label, current, total }) => {
+                Event::Progress(ProgressEvent::Update {
+                    id,
+                    label,
+                    current,
+                    total,
+                }) => {
                     if current >= total {
                         if let Some(pb) = progress_bars.remove(&id) {
                             pb.finish_with_message(format!("{label} Done!"));
@@ -160,10 +163,9 @@ fn spawn_notification_handler(mut rx: oneclient_events::EventReceiver) {
                     }
                     GroupedProgressEvent::End { session_id } => {
                         if let Some(session) = grouped_sessions.remove(&session_id) {
-                            session.parent.finish_with_message(format!(
-                                "{} - complete",
-                                session.title
-                            ));
+                            session
+                                .parent
+                                .finish_with_message(format!("{} - complete", session.title));
                         }
                     }
                 },
@@ -174,7 +176,10 @@ fn spawn_notification_handler(mut rx: oneclient_events::EventReceiver) {
                 Event::Game(GameEvent::Log { line, .. }) => {
                     mp.suspend(|| tracing::info!("[game] {line}"));
                 }
-                Event::Game(GameEvent::Failed { cluster_id, message }) => {
+                Event::Game(GameEvent::Failed {
+                    cluster_id,
+                    message,
+                }) => {
                     mp.suspend(|| tracing::error!(cluster_id, "launch failed: {message}"));
                 }
                 // No TTY dialog here answer `None` so the waiting task fails
@@ -216,104 +221,104 @@ pub async fn initialize() -> LauncherResult<Arc<LauncherState>> {
 }
 
 async fn ephemeral_root() -> LauncherResult<std::path::PathBuf> {
-	let path = std::env::current_dir()
-		.map_err(crate::LauncherError::StdIoError)?
-		.join("target")
-		.join(format!("ephemeral-{}", Uuid::new_v4()));
+    let path = std::env::current_dir()
+        .map_err(crate::LauncherError::StdIoError)?
+        .join("target")
+        .join(format!("ephemeral-{}", Uuid::new_v4()));
 
-	polyio::create_dir_all(&path).await?;
-	
+    polyio::create_dir_all(&path).await?;
+
     Ok(path)
 }
 
 pub async fn ephemeral_state() -> LauncherResult<Arc<LauncherState>> {
-	let root = ephemeral_root().await?;
-	oneclient_common::paths::set_launcher_dir(root.clone());
+    let root = ephemeral_root().await?;
+    oneclient_common::paths::set_launcher_dir(root.clone());
 
-	let (tx, rx) = mpsc::unbounded_channel();
-	spawn_notification_handler(rx);
+    let (tx, rx) = mpsc::unbounded_channel();
+    spawn_notification_handler(rx);
 
-	let db = oneclient_db::connect(root.join("example.db")).await?;
-	let settings = crate::settings::store::load_settings(None).await;
+    let db = oneclient_db::connect(root.join("example.db")).await?;
+    let settings = crate::settings::store::load_settings(None).await;
 
-	let services = LauncherServices {
-		events: EventBus::new(tx),
-		requester: RequestClient::new(oneclient_net::NetConfig::default())?,
-		db,
-		packages: PackageProviderRegistry::new(),
-	};
-	let auth = Arc::new(oneclient_auth::AuthService::with_store(
-		Default::default(),
-		services.requester.clone(),
-		services.events.clone(),
-	));
+    let services = LauncherServices {
+        events: EventBus::new(tx),
+        requester: RequestClient::new(oneclient_net::NetConfig::default())?,
+        db,
+        packages: PackageProviderRegistry::new(),
+    };
+    let auth = Arc::new(oneclient_auth::AuthService::with_store(
+        Default::default(),
+        services.requester.clone(),
+        services.events.clone(),
+    ));
 
-	let clusters = crate::clusters::ClusterManager::new(services.db.clone());
+    let clusters = crate::clusters::ClusterManager::new(services.db.clone());
 
-	let java = oneclient_java::JavaService::new(
-		Arc::new(crate::java_store::SqlJavaStore::new(services.db.clone())),
-		services.requester.clone(),
-		services.events.clone(),
-	);
+    let java = oneclient_java::JavaService::new(
+        Arc::new(crate::java_store::SqlJavaStore::new(services.db.clone())),
+        services.requester.clone(),
+        services.events.clone(),
+    );
 
-	Ok(Arc::new(LauncherState {
-		services,
-		auth,
-		java,
-		clusters,
-		settings: parking_lot::RwLock::new(settings),
-		metadata: tokio::sync::Mutex::new(oneclient_mc::MetadataStore::new()),
-		bundles: Arc::new(oneclient_content::bundles::BundlesManager::new()),
-		versions: Arc::new(crate::versions::VersionsManager::new()),
-		images: crate::images::ImageCacheStore::new(),
-		games: crate::game::GameProcessManager::new(),
-		discord: oneclient_discord::DiscordRpc::spawn(false),
-	}))
+    Ok(Arc::new(LauncherState {
+        services,
+        auth,
+        java,
+        clusters,
+        settings: parking_lot::RwLock::new(settings),
+        metadata: tokio::sync::Mutex::new(oneclient_mc::MetadataStore::new()),
+        bundles: Arc::new(oneclient_content::bundles::BundlesManager::new()),
+        versions: Arc::new(crate::versions::VersionsManager::new()),
+        images: crate::images::ImageCacheStore::new(),
+        games: crate::game::GameProcessManager::new(),
+        discord: oneclient_discord::DiscordRpc::spawn(false),
+    }))
 }
 
 pub async fn ephemeral_services() -> LauncherResult<LauncherServices> {
-	let root = ephemeral_root().await?;
-	oneclient_common::paths::set_launcher_dir(root.clone());
-	let db = oneclient_db::connect(root.join("example.db")).await?;
-	let (tx, rx) = mpsc::unbounded_channel();
-	spawn_notification_handler(rx);
+    let root = ephemeral_root().await?;
+    oneclient_common::paths::set_launcher_dir(root.clone());
+    let db = oneclient_db::connect(root.join("example.db")).await?;
+    let (tx, rx) = mpsc::unbounded_channel();
+    spawn_notification_handler(rx);
 
-	Ok(LauncherServices {
-		events: EventBus::new(tx),
-		requester: RequestClient::new(oneclient_net::NetConfig::default())?,
-		db,
-		packages: PackageProviderRegistry::new(),
-	})
+    Ok(LauncherServices {
+        events: EventBus::new(tx),
+        requester: RequestClient::new(oneclient_net::NetConfig::default())?,
+        db,
+        packages: PackageProviderRegistry::new(),
+    })
 }
 
 pub async fn seed_bundle_archive(
-	state: &LauncherState,
-	manifest: oneclient_content::bundles::BundleManifest,
+    state: &LauncherState,
+    manifest: oneclient_content::bundles::BundleManifest,
 ) -> LauncherResult<()> {
-	let disk_path = format!("bundles/{}.mrpack", manifest.name);
-	let loader = manifest.loader as i64;
+    let disk_path = format!("bundles/{}.mrpack", manifest.name);
+    let loader = manifest.loader as i64;
 
-	oneclient_db::dao::bundle::upsert_bundle(
-		&state.services.db,
-		oneclient_db::models::NewBundle {
-			remote_path: &disk_path,
-			mc_version: &manifest.mc_version,
-			mc_loader: loader,
-			file_name: &format!("{}.mrpack", manifest.name),
-			name: Some(&manifest.name),
-			version_id: Some(&manifest.version_id),
-			category: Some(&manifest.category),
-			loader_version: Some(&manifest.loader_version),
-			disk_path: &disk_path,
-			hidden: false,
-			etag: None,
-			synced_at: None,
-		},
-	)
-	.await?;
+    oneclient_db::dao::bundle::upsert_bundle(
+        &state.services.db,
+        oneclient_db::models::NewBundle {
+            remote_path: &disk_path,
+            mc_version: &manifest.mc_version,
+            mc_loader: loader,
+            file_name: &format!("{}.mrpack", manifest.name),
+            name: Some(&manifest.name),
+            version_id: Some(&manifest.version_id),
+            category: Some(&manifest.category),
+            loader_version: Some(&manifest.loader_version),
+            disk_path: &disk_path,
+            hidden: false,
+            etag: None,
+            synced_at: None,
+        },
+    )
+    .await?;
 
-	let path = oneclient_common::paths::data_dir()?.join(&disk_path);
-	state.bundles.cache_archive_manifest(path, manifest).await;
+    let path = oneclient_common::paths::data_dir()?.join(&disk_path);
+    state.bundles.cache_archive_manifest(path, manifest).await;
 
-	Ok(())
+    Ok(())
 }

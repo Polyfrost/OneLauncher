@@ -18,8 +18,5 @@ pub fn install(state: Arc<LauncherState>) -> Arc<LauncherState> {
 
 /// Errors with [`LauncherError::NotInitialized`] before startup installs the handle
 pub fn state() -> LauncherResult<Arc<LauncherState>> {
-    LAUNCHER
-        .get()
-        .cloned()
-        .ok_or(LauncherError::NotInitialized)
+    LAUNCHER.get().cloned().ok_or(LauncherError::NotInitialized)
 }

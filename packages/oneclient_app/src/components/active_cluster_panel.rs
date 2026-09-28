@@ -5,7 +5,10 @@ use freya::router::RouterContext;
 use crate::components::{Button, Icon, IconType};
 use oneclient_common::parse_mc_version;
 
-use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata};
+use crate::hooks::{
+    settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
+    use_launcher, use_version_metadata,
+};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::utils::sort_clusters_for_home;

@@ -29,12 +29,7 @@ pub fn window_controls() -> impl IntoElement {
         });
     };
 
-    let close = |_| {
-        let platform = Platform::get();
-        Platform::get().with_window(Platform::window_id(), move |window| {
-            platform.close_window(window.id());
-        });
-    };
+    let close = |_| crate::platform::close();
 
     rect()
         .horizontal()

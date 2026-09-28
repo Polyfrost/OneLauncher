@@ -4,7 +4,9 @@ use freya::{prelude::*, router::RouterContext};
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TabBar, TabItem};
-use crate::hooks::{package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch};
+use crate::hooks::{
+    package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch,
+};
 use crate::notifications::{ClusterUpdateItem, ClusterUpdateSummary};
 use crate::routes::Route;
 use crate::theme::colors;
@@ -355,11 +357,7 @@ fn change_list(
 }
 
 /// Multi-cluster stand-in for the footer's "Open cluster" shortcut
-fn cluster_header(
-    group: &ClusterGroup,
-    first: bool,
-    dispatch: crate::Actions,
-) -> impl IntoElement {
+fn cluster_header(group: &ClusterGroup, first: bool, dispatch: crate::Actions) -> impl IntoElement {
     let cluster_id = group.cluster_id;
     let count = group.names.len();
 

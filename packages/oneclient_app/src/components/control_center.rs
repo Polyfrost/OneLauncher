@@ -120,7 +120,12 @@ impl Component for AccountHeader {
         let unusable = query_error(&current).is_some();
         let account = try_default_account(&current).or_else(|| {
             unusable
-                .then(|| try_accounts(&accounts_query).unwrap_or_default().into_iter().next())
+                .then(|| {
+                    try_accounts(&accounts_query)
+                        .unwrap_or_default()
+                        .into_iter()
+                        .next()
+                })
                 .flatten()
         });
 
@@ -164,11 +169,7 @@ impl Component for AccountHeader {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_all(4.))
-            .child(
-                Avatar::new(uuid)
-                    .width(Size::px(40.))
-                    .height(Size::px(40.)),
-            )
+            .child(Avatar::new(uuid).width(Size::px(40.)).height(Size::px(40.)))
             .child(
                 rect()
                     .vertical()
@@ -257,11 +258,7 @@ impl Component for NavRow {
             .on_pointer_enter(move |_| hovered.set(true))
             .on_pointer_leave(move |_| hovered.set(false))
             .on_press(go)
-            .child(
-                Icon::new(self.icon)
-                    .size(20.)
-                    .color(colors::fg_secondary()),
-            )
+            .child(Icon::new(self.icon).size(20.).color(colors::fg_secondary()))
             .child(
                 label()
                     .text(self.row_label)
@@ -286,8 +283,11 @@ impl Component for QuickSettings {
         let dispatch = use_dispatch();
 
         let discord_on = settings.discord_enabled;
-        let toggle_discord = move |_| {
-            dispatch.edit_settings(|s| s.discord_enabled = !s.discord_enabled);
+        let toggle_discord = {
+            let dispatch = dispatch.clone();
+            move |_| {
+                dispatch.edit_settings(|s| s.discord_enabled = !s.discord_enabled);
+            }
         };
 
         rect()
@@ -299,7 +299,6 @@ impl Component for QuickSettings {
                 QuickTile::new(IconType::Discord, "Discord RPC", discord_on)
                     .on_press(toggle_discord),
             )
-            .child(QuickTile::new(IconType::Moon01, "Close on launch", false).disabled())
     }
 }
 
@@ -329,11 +328,6 @@ impl QuickTile {
             enabled: true,
             on_press: None,
         }
-    }
-
-    fn disabled(mut self) -> Self {
-        self.enabled = false;
-        self
     }
 
     fn on_press(mut self, on_press: impl Into<EventHandler<Event<PressEventData>>>) -> Self {
@@ -619,9 +613,7 @@ impl Component for FooterAction {
             .a11y_role(AccessibilityRole::Button)
             .on_pointer_enter(move |_| hovered.set(true))
             .on_pointer_leave(move |_| hovered.set(false))
-            .map(handler, |el, handler| {
-                el.on_press(move |e| handler.call(e))
-            })
+            .map(handler, |el, handler| el.on_press(move |e| handler.call(e)))
             .child(Icon::new(self.icon).size(16.).color(self.color))
             .child(
                 label()

@@ -52,26 +52,24 @@ impl Component for Pagination {
         let current = *page.read();
         let last = total_pages.saturating_sub(1);
 
-        let icon_btn = move |target: usize,
-                             available: bool,
-                             icon: IconType,
-                             tooltip: &'static str| {
-            let mut page = page;
-            let enabled = available && interactive;
-            Button::new()
-                .secondary()
-                .icon()
-                .enabled(enabled)
-                .tooltip(tooltip)
-                .tooltip_placement(TooltipPlacement::Top)
-                .on_press(move |_| page.set(target))
-                .child(Icon::new(icon).size(14.).color(if enabled {
-                    colors::fg_primary()
-                } else {
-                    colors::fg_secondary().with_a(90)
-                }))
-                .into_element()
-        };
+        let icon_btn =
+            move |target: usize, available: bool, icon: IconType, tooltip: &'static str| {
+                let mut page = page;
+                let enabled = available && interactive;
+                Button::new()
+                    .secondary()
+                    .icon()
+                    .enabled(enabled)
+                    .tooltip(tooltip)
+                    .tooltip_placement(TooltipPlacement::Top)
+                    .on_press(move |_| page.set(target))
+                    .child(Icon::new(icon).size(14.).color(if enabled {
+                        colors::fg_primary()
+                    } else {
+                        colors::fg_secondary().with_a(90)
+                    }))
+                    .into_element()
+            };
 
         let num_btn = move |target: usize| {
             let mut page = page;

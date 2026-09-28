@@ -49,7 +49,9 @@ fn retry(actions: &Actions) {
     let events = actions.events();
 
     {
-        let mut guard = station.clone().write_channel(crate::state::AppChannel::Launcher);
+        let mut guard = station
+            .clone()
+            .write_channel(crate::state::AppChannel::Launcher);
         guard.launcher.error = None;
         guard.launcher.snapshots = snapshots().len();
     }

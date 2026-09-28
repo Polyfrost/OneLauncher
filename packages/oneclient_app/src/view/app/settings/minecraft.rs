@@ -1,15 +1,15 @@
 use freya::prelude::*;
 use oneclient_common::Patch;
-use oneclient_core::settings::{PackageUpdateMode, ProfileUpdate, Resolution};
 #[cfg(any(target_os = "linux", windows))]
 use oneclient_core::settings::SettingsOsExtra;
+use oneclient_core::settings::{PackageUpdateMode, ProfileUpdate, Resolution};
 
 use super::settings_page;
+#[cfg(any(target_os = "linux", windows))]
+use crate::components::toggle_controlled;
 use crate::components::{
     Dropdown, Icon, IconType, TextInput, memory_field, toggle, validate_number,
 };
-#[cfg(any(target_os = "linux", windows))]
-use crate::components::toggle_controlled;
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
@@ -108,6 +108,7 @@ impl Component for SettingsMinecraft {
                 "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",
                 TextInput::new(jvm_args)
                     .placeholder("-XX:+UseG1GC")
+                    .expandable(true)
                     .width(Size::px(220.)),
             ))
             .child(section_header("CONTENT"))
@@ -127,6 +128,7 @@ impl Component for SettingsMinecraft {
                 "Command to run before launching the game.",
                 TextInput::new(pre_launch_command)
                     .placeholder("echo 'Game started'")
+                    .expandable(true)
                     .width(Size::px(220.)),
             ))
             .child(settings_row(
@@ -135,6 +137,7 @@ impl Component for SettingsMinecraft {
                 "Command to run when launching the game.",
                 TextInput::new(wrapper_command)
                     .placeholder("gamescope")
+                    .expandable(true)
                     .width(Size::px(220.)),
             ))
             .child(settings_row(
@@ -143,6 +146,7 @@ impl Component for SettingsMinecraft {
                 "Command to run after exiting the game.",
                 TextInput::new(post_exit_command)
                     .placeholder("echo 'Game exited'")
+                    .expandable(true)
                     .width(Size::px(220.)),
             ));
 
@@ -219,10 +223,7 @@ fn build_update(
 }
 
 /// Dispatched separately from [`build_update`] which debounces keystrokes a dropdown has no intermediate states
-fn update_mode_field(
-    selected: PackageUpdateMode,
-    dispatch: crate::Actions,
-) -> impl IntoElement {
+fn update_mode_field(selected: PackageUpdateMode, dispatch: crate::Actions) -> impl IntoElement {
     let options: Vec<String> = PackageUpdateMode::ALL
         .iter()
         .map(|mode| mode.label().to_string())
@@ -276,4 +277,3 @@ fn resolution_field(width: State<String>, height: State<String>) -> impl IntoEle
         )
         .into_element()
 }
-

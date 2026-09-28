@@ -24,8 +24,7 @@ const ONBOARDING_TIPS_BACKUP: &[&str] = &[
     "You can sleep through a thunderstorm, even during the day",
 ];
 
-const FUNFACTS_URL: &str =
-    "https://data-v2.polyfrost.org/oneclient/funfacts.txt";
+const FUNFACTS_URL: &str = "https://data-v2.polyfrost.org/oneclient/funfacts.txt";
 
 fn normalize_line_breaks(value: &str) -> String {
     value.replace("/n", "\n").replace("\\n", "\n")

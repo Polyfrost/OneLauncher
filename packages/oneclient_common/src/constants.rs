@@ -1,4 +1,3 @@
-
 pub const DUMMY_REPLACE_NEWLINE: &str = "\n";
 
 pub const MICROSOFT_CLIENT_ID: &str = "9419b7ee-1448-4d1b-b52a-550d8f36ab56";
@@ -13,15 +12,17 @@ pub const CURSEFORGE_GAME_ID: u32 = 432;
 pub const METADATA_API_URL: &str = "https://meta.polyfrost.org";
 pub const MCLOGS_API_URL: &str = "https://api.mclo.gs/1";
 pub const SKYCLIENT_BASE_URL: &str =
-	"https://raw.githubusercontent.com/SkyblockClient/SkyblockClient-REPO/refs/heads/main/v1";
+    "https://raw.githubusercontent.com/SkyblockClient/SkyblockClient-REPO/refs/heads/main/v1";
 pub const META_URL_BASE: &str = "https://data-v2.polyfrost.org";
 pub const TOS_URL: &str = "https://polyfrost.org/legal/terms";
 pub const PRIVACY_URL: &str = "https://polyfrost.org/legal/privacy";
 pub const PLUS_BACKEND_URL: &str = "https://plus.polyfrost.org";
 
 pub const SENTRY_DSN: &str = match option_env!("ONECLIENT_SENTRY_DSN") {
-	Some(dsn) => dsn,
-	None => "https://e7dff7e07427e1a28b9212cfcc8ddc1e@o4511714343124992.ingest.us.sentry.io/4511714354135040",
+    Some(dsn) => dsn,
+    None => {
+        "https://e7dff7e07427e1a28b9212cfcc8ddc1e@o4511714343124992.ingest.us.sentry.io/4511714354135040"
+    }
 };
 
 pub const TARGET_OS: &str = cfg_select! {
@@ -39,9 +40,9 @@ pub const NATIVE_ARCH: &str = cfg_select! {
 pub const JAVA_BIN: &str = if cfg!(windows) { "javaw.exe" } else { "java" };
 
 pub const ARCH_WIDTH: &str = if cfg!(target_pointer_width = "64") {
-	"64"
+    "64"
 } else {
-	"32"
+    "32"
 };
 
 pub const LINE_ENDING: &str = if cfg!(windows) { "\r\n" } else { "\n" };

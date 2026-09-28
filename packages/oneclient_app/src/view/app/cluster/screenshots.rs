@@ -9,7 +9,10 @@ use crate::components::{
     Button, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea, Segment,
     SegmentedControl, open_folder_button, screenshot_context_menu,
 };
-use crate::hooks::{ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots, use_dispatch, use_screenshot_action, use_screenshot_folder_watch, use_view_state};
+use crate::hooks::{
+    ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots,
+    use_dispatch, use_screenshot_action, use_screenshot_folder_watch, use_view_state,
+};
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::{border_all_color, flow_grid, fmt_date, grid_columns_for_width};
@@ -65,8 +68,7 @@ impl Component for ClusterScreenshots {
         );
 
         let content: Element = if shots.is_empty() {
-            empty_state(query_is_loading(&query))
-            .into_element()
+            empty_state(query_is_loading(&query)).into_element()
         } else {
             let mut items: Vec<Element> = Vec::new();
             for (idx, info) in shots.iter().enumerate() {

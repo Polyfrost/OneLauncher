@@ -7,14 +7,14 @@ pub use curseforge::CurseForgeProvider;
 pub use modrinth::ModrinthProvider;
 pub use registry::PackageProviderRegistry;
 
-use oneclient_common::domain::ProviderId;
-use crate::packages::file_identity::FileIdentity;
 use super::types::{
     Page, ProjectDetail, ProjectSummary, SearchFilters, VersionDetail, VersionLookup,
     VersionSummary,
 };
-use crate::error::ContentResult;
 use crate::ctx::ContentCtx;
+use crate::error::ContentResult;
+use crate::packages::file_identity::FileIdentity;
+use oneclient_common::domain::ProviderId;
 
 #[async_trait::async_trait]
 pub trait PackageProvider: Send + Sync {
@@ -26,11 +26,8 @@ pub trait PackageProvider: Send + Sync {
         ctx: &ContentCtx,
     ) -> ContentResult<Page<ProjectSummary>>;
 
-    async fn get_project(
-        &self,
-        project_id: &str,
-        ctx: &ContentCtx,
-    ) -> ContentResult<ProjectDetail>;
+    async fn get_project(&self, project_id: &str, ctx: &ContentCtx)
+    -> ContentResult<ProjectDetail>;
 
     /// Populates [`ProjectDetail::body`]
     /// Costs an extra request on providers that serve descriptions separately

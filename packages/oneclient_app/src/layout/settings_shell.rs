@@ -68,8 +68,16 @@ const SEARCH_INDEX: &[SearchItem] = &[
         title: "Launcher Folder",
         description: "Open the launcher data directory, or move it to another drive.",
         keywords: &[
-            "data dir", "directory", "folder", "open", "move", "change", "relocate", "location",
-            "drive", "disk",
+            "data dir",
+            "directory",
+            "folder",
+            "open",
+            "move",
+            "change",
+            "relocate",
+            "location",
+            "drive",
+            "disk",
         ],
         route: Route::SettingsLauncher {},
     },
@@ -457,11 +465,7 @@ impl Component for SettingsShell {
     }
 }
 
-fn content_header(
-    title: String,
-    search: State<String>,
-    mut width: State<f32>,
-) -> impl IntoElement {
+fn content_header(title: String, search: State<String>, mut width: State<f32>) -> impl IntoElement {
     let search_width = search_width_for(*width.read());
 
     rect()
@@ -754,6 +758,7 @@ impl Component for SidebarInfo {
                     .notify("Copy failed")
                     .body("Could not copy system information to the clipboard.")
                     .error()
+                    .toast_only()
                     .send();
             } else {
                 dispatch
@@ -761,6 +766,7 @@ impl Component for SidebarInfo {
                     .body("System information copied to your clipboard.")
                     .info()
                     .icon(IconType::ClipboardCheck)
+                    .toast_only()
                     .send();
             }
         };
@@ -770,9 +776,7 @@ impl Component for SidebarInfo {
             .width(Size::fill())
             .spacing(4.)
             .font_size(12.)
-            .padding(Gaps::new(
-                15.,0.,0.,0.
-            ))
+            .padding(Gaps::new(15., 0., 0., 0.))
             .color(colors::fg_secondary())
             .children(
                 items

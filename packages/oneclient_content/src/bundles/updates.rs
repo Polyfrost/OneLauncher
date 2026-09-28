@@ -379,7 +379,6 @@ async fn check_bundle_updates_inner(
                 continue;
             }
 
-            // The user switched this content type off so new files are neither added nor offered
             if suppressed && user_override.is_none() {
                 continue;
             }
@@ -859,7 +858,6 @@ pub async fn get_bundles_with_update_status(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
 
-    // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
     let (live_managed_keys, _) =
         installed_bundle_keys(ctx, all_linked.iter().filter(|item| item.enabled)).await?;
     let mut live_bundles = live_bundle_names(&bundle_packages, &overrides);

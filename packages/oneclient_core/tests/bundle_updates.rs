@@ -933,7 +933,6 @@ async fn package_list_and_updater_infer_the_same_bundle_through_overrides() {
     bundle_dao::clear_bundle_tracking(&state.services.db, cluster_id, HASH)
         .await
         .unwrap();
-    // Switched off for the other bundle only so the installed mod is unique to this one
     bundle_dao::save_override(
         &state.services.db,
         cluster_id,

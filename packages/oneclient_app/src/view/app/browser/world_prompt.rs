@@ -1,14 +1,12 @@
 use freya::prelude::*;
 use oneclient_content::packages::ProviderId;
 
-use crate::components::{Button, CARD_BG, Dropdown, Icon, IconType, OverlayPopup};
+use crate::components::{Button, Dropdown, Icon, IconType};
 use crate::hooks::{
     query_is_loading, try_cluster_worlds, use_cluster_worlds, use_datapack_world, use_dispatch,
 };
 use crate::theme::colors;
-use crate::ui::border_all_color;
-
-const DIALOG_W: f32 = 400.;
+use crate::view::app::cluster::dialog;
 
 #[derive(PartialEq)]
 pub(crate) struct WorldInstallPrompt {
@@ -87,60 +85,25 @@ impl Component for WorldInstallPrompt {
             pending.set(None);
         };
 
-        OverlayPopup::new()
-            .on_close(move |_| pending.set(None))
-            .child(
-                rect()
-                    .width(Size::window_percent(100.))
-                    .height(Size::window_percent(100.))
-                    .center()
-                    .child(
-                        rect()
-                            .vertical()
-                            .width(Size::px(DIALOG_W))
-                            .max_width(Size::window_percent(90.))
-                            .spacing(14.)
-                            .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
-                            .border(border_all_color(1., colors::component_border()))
-                            .child(
-                                label()
-                                    .text("Install into which world?")
-                                    .font_size(16.)
-                                    .font_weight(FontWeight::SEMI_BOLD)
-                                    .color(colors::fg_primary()),
-                            )
-                            .child(
-                                label()
-                                    .text("Data packs only apply to the world they are added to.")
-                                    .font_size(12.)
-                                    .color(colors::fg_secondary()),
-                            )
-                            .child(control)
-                            .child(
-                                rect()
-                                    .horizontal()
-                                    .width(Size::fill())
-                                    .main_align(Alignment::End)
-                                    .spacing(8.)
-                                    .child(
-                                        Button::new()
-                                            .secondary()
-                                            .on_press(move |_| pending.set(None))
-                                            .text("Cancel"),
-                                    )
-                                    .child(
-                                        Button::new()
-                                            .primary()
-                                            .enabled(world.is_some())
-                                            .on_press(install)
-                                            .child(Icon::new(IconType::Download01).size(14.))
-                                            .text("Install"),
-                                    ),
-                            ),
-                    ),
-            )
-            .into_element()
+        dialog(
+            "Install into which world?".to_string(),
+            "Data packs only apply to the world they are added to.".to_string(),
+            Some(control),
+            move || pending.set(None),
+            [
+                Button::new()
+                    .secondary()
+                    .on_press(move |_| pending.set(None))
+                    .text("Cancel")
+                    .into_element(),
+                Button::new()
+                    .primary()
+                    .enabled(world.is_some())
+                    .on_press(install)
+                    .child(Icon::new(IconType::Download01).size(14.))
+                    .text("Install")
+                    .into_element(),
+            ],
+        )
     }
 }

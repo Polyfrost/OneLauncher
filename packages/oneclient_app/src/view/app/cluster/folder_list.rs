@@ -426,11 +426,38 @@ pub(super) fn confirm_dialog(
     on_cancel: impl FnMut() + Clone + 'static,
     mut on_confirm: impl FnMut() + 'static,
 ) -> Element {
-    let mut close = on_cancel.clone();
-    let mut cancel = on_cancel;
+    let mut cancel = on_cancel.clone();
 
+    dialog(
+        title,
+        body,
+        None,
+        on_cancel,
+        [
+            Button::new()
+                .secondary()
+                .on_press(move |_| cancel())
+                .text("Cancel")
+                .into_element(),
+            Button::new()
+                .danger()
+                .on_press(move |_| on_confirm())
+                .child(Icon::new(IconType::Trash01).size(14.))
+                .text("Delete")
+                .into_element(),
+        ],
+    )
+}
+
+pub(crate) fn dialog(
+    title: String,
+    body: String,
+    control: Option<Element>,
+    mut on_close: impl FnMut() + 'static,
+    buttons: [Element; 2],
+) -> Element {
     OverlayPopup::new()
-        .on_close(move |_| close())
+        .on_close(move |_| on_close())
         .child(
             rect()
                 .width(Size::window_percent(100.))
@@ -459,25 +486,14 @@ pub(super) fn confirm_dialog(
                                 .font_size(12.)
                                 .color(colors::fg_secondary()),
                         )
+                        .maybe_child(control)
                         .child(
                             rect()
                                 .horizontal()
                                 .width(Size::fill())
                                 .main_align(Alignment::End)
                                 .spacing(8.)
-                                .child(
-                                    Button::new()
-                                        .secondary()
-                                        .on_press(move |_| cancel())
-                                        .text("Cancel"),
-                                )
-                                .child(
-                                    Button::new()
-                                        .danger()
-                                        .on_press(move |_| on_confirm())
-                                        .child(Icon::new(IconType::Trash01).size(14.))
-                                        .text("Delete"),
-                                ),
+                                .children(buttons),
                         ),
                 ),
         )

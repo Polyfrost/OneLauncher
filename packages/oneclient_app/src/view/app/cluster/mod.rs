@@ -17,7 +17,7 @@ pub use overview::ClusterOverview;
 
 pub use cluster_settings::ClusterSettings;
 pub use datapacks::ClusterDataPacks;
-pub(crate) use folder_list::supports_datapacks;
+pub(crate) use folder_list::{dialog, supports_datapacks};
 pub use mods::ClusterMods;
 pub use process_logs::ProcessLogs;
 pub use screenshots::ClusterScreenshots;

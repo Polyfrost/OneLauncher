@@ -372,7 +372,7 @@ impl Actions {
                     sources: vec![source],
                     selected,
                     plans: HashMap::from([(selected, ReleasePlanState::Ready(plan))]),
-                    origin: PromptOrigin::Simulated,
+                    origin: PromptOrigin::Fake,
                 });
             });
         });
@@ -629,8 +629,17 @@ impl Actions {
         let mut taken = None;
         self.write_release_migration(|prompt| taken = prompt.take());
         let Some(prompt) = taken else { return };
-        if prompt.origin != PromptOrigin::Simulated {
-            self.remove_pending_release_migrations(vec![prompt.key.clone()]);
+        match prompt.origin {
+            PromptOrigin::Fake => {
+                self.notify("Fake plan")
+                    .body("Nothing was installed")
+                    .send();
+                return;
+            }
+            PromptOrigin::Simulated => {}
+            PromptOrigin::NewRelease | PromptOrigin::Manual => {
+                self.remove_pending_release_migrations(vec![prompt.key.clone()]);
+            }
         }
 
         if packages.is_empty() {

@@ -61,6 +61,7 @@ pub enum PromptOrigin {
     NewRelease,
     Manual,
     Simulated,
+    Fake,
 }
 
 #[derive(Clone, Debug)]

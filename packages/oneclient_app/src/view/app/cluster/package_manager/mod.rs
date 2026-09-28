@@ -298,7 +298,7 @@ impl Tab {
         match self {
             Tab::All => "All".to_string(),
             Tab::Category(c) => c.clone(),
-            Tab::Browser => "Browser".to_string(),
+            Tab::Browser => "Online".to_string(),
             Tab::Local => "Local".to_string(),
         }
     }
@@ -307,7 +307,7 @@ impl Tab {
         match self {
             Tab::All => true,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
-            Tab::Browser => p.is_remote() && !p.in_bundle(),
+            Tab::Browser => (p.is_remote() || p.github_hosted) && !p.in_bundle(),
             Tab::Local => !p.is_remote() && !p.github_hosted,
         }
     }
@@ -361,7 +361,7 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
         }
     }
 
-    // Category tabs are hidden when empty All + Browser + Local are always shown
+    // Category tabs are hidden when empty All + Online + Local are always shown
     let mut tabs: Vec<Tab> = vec![Tab::All];
     tabs.extend(
         cats.into_iter()

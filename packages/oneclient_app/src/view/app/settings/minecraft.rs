@@ -165,7 +165,7 @@ fn discrete_gpu_row(
     dispatch: crate::Actions,
 ) -> impl IntoElement {
     let current = os_extra.unwrap_or_default();
-    let on = current.use_discrete_gpu.unwrap_or(false);
+    let on = current.use_discrete_gpu.unwrap_or(true);
 
     let on_toggle: EventHandler<()> = (move |()| {
         dispatch.update_global_profile(ProfileUpdate {

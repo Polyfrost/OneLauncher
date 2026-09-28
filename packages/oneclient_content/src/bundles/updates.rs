@@ -379,7 +379,12 @@ async fn check_bundle_updates_inner(
                 continue;
             }
 
-            if suppressed || !crate::bundles::effective_enabled(file, user_override) {
+            // The user switched this content type off so new files are neither added nor offered
+            if suppressed && user_override.is_none() {
+                continue;
+            }
+
+            if !crate::bundles::effective_enabled(file, user_override) {
                 if user_override.is_none()
                     && !file.hidden
                     && !optional_available.iter().any(|(key, _)| *key == file_key)
@@ -784,7 +789,11 @@ async fn sync_cluster_loader_version_from_bundles(
     let subscribed: HashSet<String> = bundle_packages
         .iter()
         .filter_map(|bp| bp.bundle_name.clone())
-        .chain(infer_subscribed_from_archives(&archives, &managed_keys))
+        .chain(infer_subscribed_from_archives(
+            &archives,
+            &HashMap::new(),
+            &managed_keys,
+        ))
         .collect();
 
     let target = select_highest_loader_version(
@@ -846,7 +855,20 @@ pub async fn get_bundles_with_update_status(
         })
         .collect();
 
-    let live_bundles = live_bundle_names(&bundle_packages, &overrides);
+    let archives = bundles
+        .archives_for(ctx, &cluster.mc_version, loader)
+        .await?;
+
+    // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
+    let (live_managed_keys, _) =
+        installed_bundle_keys(ctx, all_linked.iter().filter(|item| item.enabled)).await?;
+    let mut live_bundles = live_bundle_names(&bundle_packages, &overrides);
+    live_bundles.extend(infer_subscribed_from_archives(
+        &archives,
+        &overrides_map,
+        &live_managed_keys,
+    ));
+
     let (installed_managed_keys, installed_external_hashes) =
         installed_bundle_keys(ctx, &all_linked).await?;
     let installed_keys: HashSet<String> = installed_managed_keys
@@ -857,10 +879,6 @@ pub async fn get_bundles_with_update_status(
                 .map(|h| external_bundle_key(h)),
         )
         .collect();
-
-    let archives = bundles
-        .archives_for(ctx, &cluster.mc_version, loader)
-        .await?;
     let shared_keys = keys_shipped_by_several_bundles(
         archives
             .iter()
@@ -1134,13 +1152,17 @@ fn infer_bundle_names_from_unique_installed_keys(
 
 fn infer_subscribed_from_archives(
     archives: &[BundleArchive],
+    overrides_map: &HashMap<(String, String), OverrideType>,
     managed_keys: &HashSet<String>,
 ) -> HashSet<String> {
     let mut candidate_keys_by_bundle = HashMap::new();
     for archive in archives {
         let mut keys = HashSet::new();
         for file in &archive.manifest.files {
-            if !file.enabled {
+            let user_override = overrides_map
+                .get(&(archive.manifest.name.clone(), file.kind.package_id()))
+                .copied();
+            if !crate::bundles::effective_enabled(file, user_override) {
                 continue;
             }
             if let BundleFileKind::Managed {

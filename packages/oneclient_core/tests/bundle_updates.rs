@@ -564,11 +564,11 @@ async fn disabling_every_mod_stops_new_mods_while_a_resource_pack_stays_on() {
         "the resource pack side of the bundle is still live: {added:?}"
     );
     assert!(
-        check
+        !check
             .optional_available
             .iter()
             .any(|o| o.package_id == "newcomer"),
-        "the new mod is still offered so the user can take it if they want it"
+        "mods were switched off for this bundle so a new mod must not be offered either"
     );
 
     let status = get_bundles_with_update_status(
@@ -880,5 +880,99 @@ async fn an_unrelated_catalog_bundle_sharing_a_mod_does_not_undo_the_opt_out() {
     assert!(
         !added.iter().any(|id| id == "newcomer"),
         "a bundle the user never installed must not speak for this one: {added:?}"
+    );
+}
+
+#[tokio::test]
+async fn untracked_older_install_counts_as_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![managed_file(true), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    bundle_dao::clear_bundle_tracking(&state.services.db, cluster_id, HASH)
+        .await
+        .unwrap();
+
+    let bundles = get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        bundles
+            .iter()
+            .all(|b| b.opted_in_types.contains(&ContentType::Mod)),
+        "a bundle the updater infers from its installed mods must not have its files hidden from the All tab"
+    );
+}
+
+#[tokio::test]
+async fn package_list_and_updater_infer_the_same_bundle_through_overrides() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest(BUNDLE, vec![managed_file(true), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        named_manifest(SHARED_BUNDLE, vec![managed_file(true)]),
+    )
+    .await
+    .unwrap();
+
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    bundle_dao::clear_bundle_tracking(&state.services.db, cluster_id, HASH)
+        .await
+        .unwrap();
+    // Switched off for the other bundle only so the installed mod is unique to this one
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        SHARED_BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    assert!(
+        check
+            .additions_available
+            .iter()
+            .any(|a| a.new_file.kind.package_id() == "newcomer"),
+        "the updater infers this bundle from its uniquely installed mod"
+    );
+
+    let status = get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let types = &status
+        .iter()
+        .find(|b| b.archive.manifest.name == BUNDLE)
+        .unwrap()
+        .opted_in_types;
+    assert!(
+        types.contains(&ContentType::Mod),
+        "the package list must infer the same bundle the updater does: {types:?}"
     );
 }

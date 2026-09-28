@@ -6,8 +6,7 @@ use std::collections::HashSet;
 use oneclient_content::packages::release_migration::{
     ReleaseMigrationDependency, ReleaseMigrationPackage, ReleaseMigrationPlan,
     ReleaseMigrationSkip, SkipReason, add_to_waitlist, apply_release_migration_dependency,
-    apply_release_migration_package, plan_release_migration, plan_release_migrations,
-    process_waitlist,
+    apply_release_migration_package, plan_release_migrations, process_waitlist,
 };
 use oneclient_content::packages::{
     ContentType, GameLoader, PackageBody, ProjectDetail, ProviderId, VersionDetail, VersionFile,
@@ -219,6 +218,33 @@ impl Actions {
         });
     }
 
+    async fn open_release_prompt(
+        &self,
+        state: &std::sync::Arc<oneclient_core::LauncherState>,
+        offer: ReleaseMigrationOffer,
+        sources: Vec<Cluster>,
+        plans: HashMap<i64, ReleasePlanState>,
+        origin: PromptOrigin,
+    ) {
+        let java_major = oneclient_core::required_java_major(state, offer.target.id)
+            .await
+            .ok()
+            .flatten();
+
+        let selected = sources[0].id;
+        self.write_release_migration(move |prompt| {
+            *prompt = Some(ReleaseMigrationPrompt {
+                key: offer.release.key(),
+                target: offer.target,
+                java_major,
+                sources,
+                selected,
+                plans,
+                origin,
+            });
+        });
+    }
+
     pub fn check_release_migration(&self) {
         let actions = self.clone();
         spawn_forever(async move {
@@ -279,24 +305,10 @@ impl Actions {
                     SourcePlans::Unreachable => continue,
                 };
 
-                let java_major = oneclient_core::required_java_major(&state, offer.target.id)
-                    .await
-                    .ok()
-                    .flatten();
-
                 actions.remove_pending_release_migrations(finished);
-                let selected = sources[0].id;
-                actions.write_release_migration(move |prompt| {
-                    *prompt = Some(ReleaseMigrationPrompt {
-                        key,
-                        target: offer.target,
-                        java_major,
-                        sources,
-                        selected,
-                        plans,
-                        origin: PromptOrigin::NewRelease,
-                    });
-                });
+                actions
+                    .open_release_prompt(&state, *offer, sources, plans, PromptOrigin::NewRelease)
+                    .await;
                 return;
             }
 
@@ -319,17 +331,19 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
-            let result = plan_release_migration(
-                source_id,
+            let result = plan_release_migrations(
+                &[source_id],
                 target_id,
                 state.bundles.as_ref(),
                 &state.services.content(),
             )
-            .await;
+            .await
+            .pop()
+            .map(|(_, plan)| plan);
             let next = match result {
-                Ok(plan) if !plan.unreachable => ReleasePlanState::Ready(plan),
-                Ok(_) => ReleasePlanState::Failed,
-                Err(err) => {
+                Some(Ok(plan)) if !plan.unreachable => ReleasePlanState::Ready(plan),
+                Some(Ok(_)) | None => ReleasePlanState::Failed,
+                Some(Err(err)) => {
                     tracing::warn!(error = %err, source_id, "release migration plan failed");
                     ReleasePlanState::Failed
                 }
@@ -448,23 +462,9 @@ impl Actions {
                 }
             };
 
-            let java_major = oneclient_core::required_java_major(&state, offer.target.id)
-                .await
-                .ok()
-                .flatten();
-
-            let selected = sources[0].id;
-            actions.write_release_migration(move |prompt| {
-                *prompt = Some(ReleaseMigrationPrompt {
-                    key: offer.release.key(),
-                    target: offer.target,
-                    java_major,
-                    sources,
-                    selected,
-                    plans,
-                    origin: PromptOrigin::Simulated,
-                });
-            });
+            actions
+                .open_release_prompt(&state, *offer, sources, plans, PromptOrigin::Simulated)
+                .await;
         });
     }
 
@@ -534,23 +534,8 @@ impl Actions {
             }
         };
 
-        let java_major = oneclient_core::required_java_major(&state, offer.target.id)
-            .await
-            .ok()
-            .flatten();
-
-        let selected = sources[0].id;
-        self.write_release_migration(move |prompt| {
-            *prompt = Some(ReleaseMigrationPrompt {
-                key: offer.release.key(),
-                target: offer.target,
-                java_major,
-                sources,
-                selected,
-                plans,
-                origin: PromptOrigin::Manual,
-            });
-        });
+        self.open_release_prompt(&state, *offer, sources, plans, PromptOrigin::Manual)
+            .await;
     }
 
     pub fn queue_release_migration(&self, target_cluster_id: i64) {

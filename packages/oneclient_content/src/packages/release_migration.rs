@@ -320,23 +320,6 @@ pub async fn plan_release_migrations(
 	.await
 }
 
-#[tracing::instrument(level = "debug", skip(bundles, ctx))]
-pub async fn plan_release_migration(
-	source_cluster_id: i64,
-	target_cluster_id: i64,
-	bundles: &BundlesManager,
-	ctx: &ContentCtx,
-) -> ContentResult<ReleaseMigrationPlan> {
-	plan_release_migration_cached(
-		source_cluster_id,
-		target_cluster_id,
-		&DependencyCache::new(),
-		bundles,
-		ctx,
-	)
-	.await
-}
-
 #[tracing::instrument(level = "debug", skip(cache, bundles, ctx))]
 async fn plan_release_migration_cached(
 	source_cluster_id: i64,

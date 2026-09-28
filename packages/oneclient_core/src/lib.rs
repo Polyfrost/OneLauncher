@@ -74,5 +74,6 @@ pub use state::shutdown;
 pub use tos::{TermsDocument, fetch_terms};
 pub use verify::{ClusterVerifyReport, verify_cluster_files};
 pub use versions::{
-    RemoteMigration, VersionMetadata, VersionsManager, VersionsManifest, resolve_migration_chain,
+    ReleaseTarget, RemoteMigration, VersionMetadata, VersionsManager, VersionsManifest,
+    resolve_migration_chain,
 };

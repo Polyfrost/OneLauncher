@@ -214,12 +214,48 @@ pub async fn resolve_alternatives(
 ) -> Vec<ResolvedAlternative> {
     let by_hash = lookup_alternative_hashes(entry, ctx).await;
 
-    let resolved = futures_util::future::join_all(
-        entry
-            .alternatives
-            .iter()
-            .map(|alternative| resolve_alternative(alternative, &by_hash, cluster, ctx)),
-    )
+    let hits: Vec<(&BadModAlternative, Option<&VersionDetail>)> = entry
+        .alternatives
+        .iter()
+        .map(|alternative| {
+            let hit = alternative
+                .hash
+                .as_deref()
+                .and_then(|hash| by_hash.get(&polyio::normalize_hash(hash)));
+            (alternative, hit)
+        })
+        .collect();
+
+    let mut modrinth_ids = HashSet::new();
+    let mut curseforge_ids = HashSet::new();
+    for (alternative, hit) in &hits {
+        match hit {
+            Some(version) => {
+                modrinth_ids.insert(version.project_id.clone());
+            }
+            None => {
+                if let Some(id) = alternative.project_ids.modrinth.as_deref() {
+                    if is_modrinth_id(id) {
+                        modrinth_ids.insert(id.to_string());
+                    } else {
+                        tracing::warn!(id, "ignoring malformed Modrinth project id");
+                    }
+                }
+                if let Some(id) = alternative.project_ids.curseforge.as_deref() {
+                    curseforge_ids.insert(id.to_string());
+                }
+            }
+        }
+    }
+
+    let (modrinth, curseforge) = tokio::join!(
+        fetch_projects(ProviderId::Modrinth, modrinth_ids, ctx),
+        fetch_projects(ProviderId::CurseForge, curseforge_ids, ctx),
+    );
+
+    let resolved = futures_util::future::join_all(hits.into_iter().map(|(alternative, hit)| {
+        resolve_alternative(alternative, hit, &modrinth, &curseforge, cluster, ctx)
+    }))
     .await;
 
     let mut seen = HashSet::new();
@@ -255,25 +291,72 @@ async fn lookup_alternative_hashes(entry: &BadMod, ctx: &ContentCtx) -> VersionL
     })
 }
 
+fn is_modrinth_id(id: &str) -> bool {
+    id.chars()
+        .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'))
+}
+
+async fn fetch_projects(
+    provider_id: ProviderId,
+    ids: HashSet<String>,
+    ctx: &ContentCtx,
+) -> Vec<ProjectDetail> {
+    if ids.is_empty() {
+        return Vec::new();
+    }
+
+    let ids: Vec<String> = ids.into_iter().collect();
+    let fetched = match ctx.providers.get(provider_id) {
+        Ok(provider) => provider.get_projects(&ids, ctx).await,
+        Err(err) => Err(err),
+    };
+
+    fetched.unwrap_or_else(|err| {
+        tracing::warn!(%err, ?provider_id, "failed to fetch alternative projects");
+        Vec::new()
+    })
+}
+
+fn find_project<'a>(projects: &'a [ProjectDetail], id: &str) -> Option<&'a ProjectDetail> {
+    projects
+        .iter()
+        .find(|project| project.id == id || project.slug.eq_ignore_ascii_case(id))
+}
+
 async fn resolve_alternative(
     alternative: &BadModAlternative,
-    by_hash: &VersionLookup,
+    hit: Option<&VersionDetail>,
+    modrinth: &[ProjectDetail],
+    curseforge: &[ProjectDetail],
     cluster: &ClusterRow,
     ctx: &ContentCtx,
 ) -> Option<ResolvedAlternative> {
-    if let Some(hash) = alternative.hash.as_deref()
-        && let Some(version) = by_hash.get(&polyio::normalize_hash(hash))
-    {
-        return Some(from_hash(version, ctx).await);
+    if let Some(version) = hit {
+        let (name, icon_url) = find_project(modrinth, &version.project_id)
+            .map(|project| (project.name.clone(), project.icon_url.clone()))
+            .unwrap_or_else(|| (version.name.clone(), None));
+
+        return Some(ResolvedAlternative {
+            provider: ProviderId::Modrinth,
+            project_id: version.project_id.clone(),
+            name,
+            version_number: Some(version.version_number.clone()),
+            icon_url,
+        });
     }
 
-    for provider_id in [ProviderId::Modrinth, ProviderId::CurseForge] {
-        let Some(project_id) = alternative.project_ids.get(provider_id) else {
+    for (provider_id, projects) in [
+        (ProviderId::Modrinth, modrinth),
+        (ProviderId::CurseForge, curseforge),
+    ] {
+        let Some(project) = alternative
+            .project_ids
+            .get(provider_id)
+            .and_then(|id| find_project(projects, id))
+        else {
             continue;
         };
-        if let Some(resolved) = from_project_id(provider_id, project_id, cluster, ctx).await {
-            return Some(resolved);
-        }
+        return Some(with_newest_version(provider_id, project, cluster, ctx).await);
     }
 
     tracing::warn!(
@@ -283,66 +366,32 @@ async fn resolve_alternative(
     None
 }
 
-async fn from_hash(version: &VersionDetail, ctx: &ContentCtx) -> ResolvedAlternative {
-    let project = match ctx.providers.get(ProviderId::Modrinth) {
-        Ok(provider) => provider.get_project(&version.project_id, ctx).await,
+async fn with_newest_version(
+    provider_id: ProviderId,
+    project: &ProjectDetail,
+    cluster: &ClusterRow,
+    ctx: &ContentCtx,
+) -> ResolvedAlternative {
+    let picked = match ctx.providers.get(provider_id) {
+        Ok(provider) => pick_version(provider, &project.id, cluster, ctx).await,
         Err(err) => Err(err),
     };
 
-    let (name, icon_url) = match project {
-        Ok(project) => (project.name, project.icon_url),
-        Err(err) => {
-            tracing::warn!(%err, project_id = %version.project_id, "failed to fetch alternative project");
-            (version.name.clone(), None)
-        }
-    };
-
-    ResolvedAlternative {
-        provider: ProviderId::Modrinth,
-        project_id: version.project_id.clone(),
-        name,
-        version_number: Some(version.version_number.clone()),
-        icon_url,
-    }
-}
-
-async fn from_project_id(
-    provider_id: ProviderId,
-    project_id: &str,
-    cluster: &ClusterRow,
-    ctx: &ContentCtx,
-) -> Option<ResolvedAlternative> {
-    let provider = match ctx.providers.get(provider_id) {
-        Ok(provider) => provider,
-        Err(err) => {
-            tracing::warn!(%err, ?provider_id, "cannot resolve alternative project id");
-            return None;
-        }
-    };
-
-    let project = match provider.get_project(project_id, ctx).await {
-        Ok(project) => project,
-        Err(err) => {
-            tracing::warn!(%err, ?provider_id, project_id, "alternative project not found");
-            return None;
-        }
-    };
-
-    let version_number = match pick_version(provider, &project.id, cluster, ctx).await {
+    let version_number = match picked {
         Ok(pick) => pick.map(|pick| pick.version_number),
         Err(err) => {
-            tracing::warn!(%err, ?provider_id, project_id, "failed to pick alternative version");
+            tracing::warn!(%err, ?provider_id, project_id = %project.id, "failed to pick alternative version");
             None
         }
     };
 
-    Some(ResolvedAlternative {
+    ResolvedAlternative {
         provider: provider_id,
-        project_id: project.id,
-        name: project.name,
+        project_id: project.id.clone(),
+        name: project.name.clone(),
         version_number,
-        icon_url: project.icon_url,
-    })
+        icon_url: project.icon_url.clone(),
+    }
 }
 
 #[cfg(test)]
@@ -352,7 +401,6 @@ mod tests {
     const FULL: &[u8] = br#"{
         "bad-mods": [
             {
-                "mc-version": "26.3",
                 "hash": "28b67391892582747bd17a7525318a954e54c80a",
                 "project-ids": { "modrinth": "1bokaNcj", "curseforge": "263420" },
                 "name": "Xaero's Minimap",
@@ -466,8 +514,7 @@ mod tests {
         assert!(list.find_project(ProviderId::Modrinth, "other").is_none());
     }
 
-    const NAME_ONLY: &[u8] =
-        br#"{"bad-mods":[{"mc-version":"26.3","name":"Xaero's Minimap","author":"xaero96"}]}"#;
+    const NAME_ONLY: &[u8] = br#"{"bad-mods":[{"name":"Xaero's Minimap","author":"xaero96"}]}"#;
 
     #[test]
     fn name_and_author_must_both_match() {
@@ -540,6 +587,14 @@ mod tests {
     fn null_list_is_empty() {
         let list: BadModList = serde_json::from_slice(br#"{"bad-mods":null}"#).unwrap();
         assert!(list.bad_mods.is_empty());
+    }
+
+    #[test]
+    fn modrinth_ids_reject_url_breaking_characters() {
+        assert!(is_modrinth_id("1bokaNcj"));
+        assert!(is_modrinth_id("xaeros-minimap"));
+        assert!(!is_modrinth_id("bad id"));
+        assert!(!is_modrinth_id("a\"],[\"b"));
     }
 
     #[test]

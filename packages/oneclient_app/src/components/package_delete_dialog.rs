@@ -6,28 +6,60 @@ use crate::ui::border_all_color;
 
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
+pub fn use_shared_delete(
+    delete: impl Into<EventHandler<(String, String)>>,
+) -> (EventHandler<(String, String)>, Option<Element>) {
+    let mut pending = use_state(|| None::<(String, String, usize)>);
+    let delete = delete.into();
+
+    let request = {
+        let delete = delete.clone();
+        EventHandler::new_current(move |(name, hash): (String, String)| {
+            let delete = delete.clone();
+            spawn(async move {
+                let clusters = match crate::launcher::state() {
+                    Ok(state) => oneclient_core::clusters_sharing_artifact(
+                        &hash,
+                        &state.services.content(),
+                    )
+                    .await
+                    .unwrap_or_else(|err| {
+                        tracing::warn!(%err, "could not check whether this package is shared");
+                        None
+                    }),
+                    Err(_) => None,
+                };
+                match clusters {
+                    Some(clusters) if clusters > 1 => pending.set(Some((name, hash, clusters))),
+                    _ => delete.call((name, hash)),
+                }
+            });
+        })
+    };
+
+    let dialog = pending.read().clone().map(|(name, hash, clusters)| {
+        SharedPackageDeleteDialog {
+            name: name.clone(),
+            clusters,
+            on_cancel: (move |()| pending.set(None)).into(),
+            on_confirm: (move |()| {
+                delete.call((name.clone(), hash.clone()));
+                pending.set(None);
+            })
+            .into(),
+        }
+        .into_element()
+    });
+
+    (request, dialog)
+}
+
 #[derive(PartialEq)]
-pub struct SharedPackageDeleteDialog {
+struct SharedPackageDeleteDialog {
     name: String,
     clusters: usize,
     on_cancel: EventHandler<()>,
     on_confirm: EventHandler<()>,
-}
-
-impl SharedPackageDeleteDialog {
-    pub fn new(
-        name: impl Into<String>,
-        clusters: usize,
-        on_cancel: impl Into<EventHandler<()>>,
-        on_confirm: impl Into<EventHandler<()>>,
-    ) -> Self {
-        Self {
-            name: name.into(),
-            clusters,
-            on_cancel: on_cancel.into(),
-            on_confirm: on_confirm.into(),
-        }
-    }
 }
 
 impl Component for SharedPackageDeleteDialog {

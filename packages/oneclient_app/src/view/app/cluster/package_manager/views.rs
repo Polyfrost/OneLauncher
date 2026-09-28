@@ -7,7 +7,7 @@ use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, Segment,
-    SegmentedControl, SharedPackageDeleteDialog, TextInput, package_context_menu,
+    SegmentedControl, TextInput, package_context_menu, use_shared_delete,
 };
 use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch, use_overlay_claim};
 use crate::routes::Route;
@@ -742,29 +742,8 @@ impl Component for ContentBox {
         let dispatch = use_dispatch();
         let cluster = use_cluster_mutation();
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
-        let mut confirm_delete = use_state(|| None::<(String, String, usize)>);
-
-        let on_delete = EventHandler::new_current(move |(name, hash): (String, String)| {
-            spawn(async move {
-                let clusters = match crate::launcher::state() {
-                    Ok(state) => oneclient_core::clusters_sharing_artifact(
-                        &hash,
-                        &state.services.content(),
-                    )
-                    .await
-                    .unwrap_or_else(|err| {
-                        tracing::warn!(%err, "could not check whether this package is shared");
-                        None
-                    }),
-                    Err(_) => None,
-                };
-                match clusters {
-                    Some(clusters) if clusters > 1 => {
-                        confirm_delete.set(Some((name, hash, clusters)));
-                    }
-                    _ => cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash }),
-                }
-            });
+        let (on_delete, delete_dialog) = use_shared_delete(move |(_, hash)| {
+            cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
         });
 
         let row = {
@@ -800,22 +779,6 @@ impl Component for ContentBox {
             package_context_menu(x, y, &item, cluster_id, package_type, on_delete)
                 .on_close(move |_| menu.set(None))
                 .into_element()
-        });
-
-        let delete_dialog = confirm_delete.read().clone().map(|(name, hash, clusters)| {
-            SharedPackageDeleteDialog::new(
-                name,
-                clusters,
-                move |()| confirm_delete.set(None),
-                move |()| {
-                    cluster.mutate(ClusterAction::RemoveArtifact {
-                        cluster_id,
-                        hash: hash.clone(),
-                    });
-                    confirm_delete.set(None);
-                },
-            )
-            .into_element()
         });
 
         let empty = (count == 0).then(|| match kind {

@@ -45,6 +45,10 @@ pub enum BundleFileType {
 }
 
 impl BundleFile {
+    pub fn is_optional_offer(&self) -> bool {
+        !self.enabled && !self.hidden && self.file_type == BundleFileType::Normal
+    }
+
     pub fn content_type(&self) -> ContentType {
         if let BundleFileKind::External(ext) = &self.kind {
             return ext.content_type;

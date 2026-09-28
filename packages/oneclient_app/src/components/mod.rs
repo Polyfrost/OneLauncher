@@ -12,6 +12,7 @@ mod date_range_picker;
 mod dropdown;
 mod dynamic_art;
 mod file_drop;
+mod flagged_install_popup;
 mod generic_prompt;
 mod icons;
 mod java_install_manager;
@@ -62,6 +63,7 @@ pub use date_range_picker::{DateRange, DateRangePicker};
 pub use dropdown::Dropdown;
 pub use dynamic_art::{ART_PREVIEW_EDGE, DynamicArt};
 pub use file_drop::FileDropOverlay;
+pub use flagged_install_popup::FlaggedInstallPopup;
 pub use generic_prompt::GenericPromptOverlay;
 pub use icons::{Icon, IconTint, IconType};
 pub use java_install_manager::JavaInstallManager;
@@ -80,7 +82,9 @@ pub use notifications::NotificationCenter;
 pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub use package_delete_dialog::use_shared_delete;
-pub(crate) use package_row::{CARD_GRID_H, GRID_GAP, GRID_MIN_W, grid_card, package_icon};
+pub(crate) use package_row::{
+    CARD_GRID_H, GRID_GAP, GRID_MIN_W, grid_card, package_icon, remote_icon,
+};
 pub use package_row::{
     CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,
 };

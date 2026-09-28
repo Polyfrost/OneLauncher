@@ -28,7 +28,7 @@ use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef, OptionalModsGroup,
     OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
 };
-use crate::state::{AppChannel, AppState, AsyncStatus, RelocationState};
+use crate::state::{AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, RelocationState};
 use crate::{invalidate_java_queries, launcher};
 
 /// Over-disabling is the cheaper mistake a dead button beats a second game
@@ -1064,7 +1064,42 @@ impl Actions {
         project_id: impl Into<String>,
         version_id: impl Into<String>,
     ) {
-        let (project_id, version_id) = (project_id.into(), version_id.into());
+        self.start_install(
+            cluster_id,
+            provider,
+            project_id.into(),
+            version_id.into(),
+            false,
+        );
+    }
+
+    pub fn install_flagged_anyway(&self, prompt: FlaggedInstallPrompt) {
+        self.dismiss_flagged_install();
+        self.start_install(
+            prompt.cluster_id,
+            prompt.provider,
+            prompt.project_id,
+            prompt.version_id,
+            true,
+        );
+    }
+
+    pub fn dismiss_flagged_install(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Installs)
+            .installs
+            .flagged = None;
+    }
+
+    fn start_install(
+        &self,
+        cluster_id: ClusterId,
+        provider: ProviderId,
+        project_id: String,
+        version_id: String,
+        allow_flagged: bool,
+    ) {
         let actions = self.clone();
 
         self.station
@@ -1088,14 +1123,34 @@ impl Actions {
                 return;
             };
 
-            let install = crate::install::install_package(
+            let install = match crate::install::install_package(
                 &state,
                 provider,
                 &project_id,
                 &version_id,
                 cluster_id,
+                allow_flagged,
             )
-            .await;
+            .await
+            {
+                Ok(install) => install,
+                Err(flagged) => {
+                    let mut station = actions.station;
+                    let mut app = station.write_channel(AppChannel::Installs);
+                    app.installs.flagged = Some(FlaggedInstallPrompt {
+                        cluster_id,
+                        provider,
+                        project_id: project_id.clone(),
+                        version_id: version_id.clone(),
+                        name: flagged.name,
+                        mc_version: flagged.mc_version,
+                        explanation: flagged.explanation,
+                        alternatives: flagged.alternatives,
+                    });
+                    app.installs.finish(cluster_id, provider, &project_id);
+                    return;
+                }
+            };
 
             // Replaces the download's progress notification in place rather
             // than arriving as a second one
@@ -1812,6 +1867,13 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     };
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
+
+    let content = state.services.content();
+    tokio::spawn(async move {
+        if let Err(err) = oneclient_content::packages::refresh_bad_mods(&content).await {
+            tracing::warn!(%err, "bad mods list refresh failed, keeping the last one");
+        }
+    });
 
     // Before the game process never after Minecraft reads its mods once at
     // startup

@@ -1,4 +1,5 @@
 pub mod activity;
+pub mod bad_mods;
 pub mod dependencies;
 pub mod error;
 pub mod local_manifest;
@@ -14,6 +15,10 @@ pub mod markdown;
 
 // Re-exported so `oneclient_core::packages::ContentType` keeps working
 pub use activity::{disable_foreign_game_versions, reconcile_duplicate_activity};
+pub use bad_mods::{
+    BadMod, BadModAlternative, BadModList, ProjectIds, ResolvedAlternative, fetch_bad_mods,
+    fetch_explanation, load_bad_mods, refresh_bad_mods, resolve_alternatives,
+};
 pub use dependencies::{
     DependencyResolution, ResolvedDependency, resolve_required, resolves_dependencies,
 };

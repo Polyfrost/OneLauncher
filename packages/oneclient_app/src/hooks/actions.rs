@@ -26,8 +26,7 @@ use tokio::sync::mpsc;
 use crate::components::IconType;
 use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef, OptionalModsGroup,
-    OptionalModsOutcome,
-    PackageUpdateGroup, PendingPrompt,
+    OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{AppChannel, AppState, AsyncStatus, RelocationState};
 use crate::{invalidate_java_queries, launcher};

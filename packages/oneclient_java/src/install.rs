@@ -81,15 +81,6 @@ pub async fn install_package(
             .map_err(|err| polyio::IOError::from(std::io::Error::other(err)))?
     };
 
-    #[cfg(unix)]
-    {
-        let _ = tokio::process::Command::new("chmod")
-            .arg("755")
-            .arg(&executable)
-            .output()
-            .await;
-    }
-
     let _ = polyio::remove_file(&archive_path).await;
 
     tracing::info!(vendor = %package.vendor, major, "installed Java runtime");
@@ -134,6 +125,52 @@ fn managed_install_root(executable: &Path) -> JavaResult<Option<PathBuf>> {
 #[must_use]
 pub fn is_launcher_managed(executable: &Path) -> bool {
     managed_install_root(executable).is_ok_and(|root| root.is_some())
+}
+
+#[cfg(unix)]
+pub(crate) fn restore_executable_bits(executable: &Path) {
+    use std::os::unix::fs::PermissionsExt;
+
+    let Ok(executable) = polyio::canonicalize(executable) else {
+        return;
+    };
+    if !is_launcher_managed(&executable) {
+        return;
+    }
+    let Some(home) = executable.parent().and_then(Path::parent) else {
+        return;
+    };
+    let jre = home.join("jre");
+
+    let entries = |dir: PathBuf| {
+        std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+    };
+    let tools = entries(home.join("bin")).chain(entries(jre.join("bin")));
+    let helpers = ["jspawnhelper", "jexec"].map(|name| home.join("lib").join(name));
+    let jre_helpers = std::iter::once(jre.join("lib"))
+        .chain(entries(jre.join("lib")))
+        .map(|dir| dir.join("jspawnhelper"));
+
+    for path in tools.chain(helpers).chain(jre_helpers) {
+        let Ok(metadata) = std::fs::metadata(&path) else {
+            continue;
+        };
+        let mode = metadata.permissions().mode();
+        if !metadata.is_file() || mode & 0o111 != 0 {
+            continue;
+        }
+
+        match std::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode | 0o111)) {
+            Ok(()) => tracing::info!(path = %path.display(), "restored missing executable bit"),
+            Err(err) => {
+                tracing::warn!(path = %path.display(), "could not restore executable bit: {err}");
+            }
+        }
+    }
 }
 
 /// Only ever touches OneClient's own java dir a runtime the user added from

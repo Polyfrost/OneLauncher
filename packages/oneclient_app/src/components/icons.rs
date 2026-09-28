@@ -115,6 +115,7 @@ pub enum IconType {
     Folder,
     FolderCheck,
     FolderDownload,
+    Github,
     Globe01,
     HelpCircle,
     IconLogo,

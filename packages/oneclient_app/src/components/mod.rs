@@ -12,6 +12,7 @@ mod date_range_picker;
 mod dropdown;
 mod dynamic_art;
 mod file_drop;
+mod flagged_install_popup;
 mod generic_prompt;
 mod icons;
 mod java_install_manager;
@@ -27,6 +28,7 @@ mod navbar;
 mod notifications;
 mod optional_mods_popup;
 mod overlay_popup;
+mod package_delete_dialog;
 mod package_row;
 mod package_update_popup;
 mod pagination;
@@ -62,6 +64,7 @@ pub use date_range_picker::{DateRange, DateRangePicker};
 pub use dropdown::Dropdown;
 pub use dynamic_art::{ART_PREVIEW_EDGE, DynamicArt};
 pub use file_drop::FileDropOverlay;
+pub use flagged_install_popup::FlaggedInstallPopup;
 pub use generic_prompt::GenericPromptOverlay;
 pub use icons::{Icon, IconTint, IconType};
 pub use java_install_manager::JavaInstallManager;
@@ -79,8 +82,13 @@ pub use navbar::{AppNavbar, OnboardingNavbar};
 pub use notifications::NotificationCenter;
 pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
-pub(crate) use package_row::{CARD_GRID_H, GRID_GAP, GRID_MIN_W, grid_card, package_icon};
-pub use package_row::{CardLayout, PackageEntry, PackageRow, package_context_menu, provider_badge};
+pub use package_delete_dialog::use_shared_delete;
+pub(crate) use package_row::{
+    CARD_GRID_H, GRID_GAP, GRID_MIN_W, grid_card, package_icon, remote_icon,
+};
+pub use package_row::{
+    CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,
+};
 pub use package_update_popup::PackageUpdatePopup;
 pub use pagination::Pagination;
 pub use player_model::PlayerModel;

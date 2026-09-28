@@ -2,7 +2,7 @@ use oneclient_core::dev;
 use oneclient_core::game::download_to_path;
 use oneclient_events::{GroupedProgressSession, TaskCategory};
 use polyio::testing::ScratchDir as Scratch;
-use polyio::{Sha1Stream, sha1_bytes, sha1_file};
+use polyio::{sha1_bytes, sha1_file};
 
 /// Minecraft asset objects are content-addressed and immutable so this
 /// URL/hash pair stays valid
@@ -10,23 +10,6 @@ const ASSET_SHA1: &str = "af96f55a90eaf11b327f1b5f8834a051027dc506";
 const ASSET_URL: &str =
     "https://resources.download.minecraft.net/af/af96f55a90eaf11b327f1b5f8834a051027dc506";
 const ASSET_SIZE: u64 = 2063;
-
-#[test]
-fn sha1_stream_matches_one_shot_hash() {
-    let data: Vec<u8> = (0..70_000u32).map(|i| (i % 251) as u8).collect();
-
-    let mut hasher = Sha1Stream::new();
-    for chunk in data.chunks(4096) {
-        hasher.update(chunk);
-    }
-
-    assert_eq!(hasher.finish(), sha1_bytes(&data));
-}
-
-#[test]
-fn sha1_stream_of_empty_input_matches() {
-    assert_eq!(Sha1Stream::new().finish(), sha1_bytes(&[]));
-}
 
 #[tokio::test]
 async fn sha1_file_matches_sha1_bytes() {

@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::bundles::error::BundleError;
 use crate::bundles::types::{
-    BundleFile, BundleFileKind, BundleManifest, content_type_from_bundle_path,
+    BundleFile, BundleFileKind, BundleManifest, ExternalFileMeta, content_type_from_bundle_path,
 };
 use crate::error::ContentResult;
 use crate::packages::types::ExternalFile;
@@ -49,6 +49,22 @@ struct PolyMrpackFile {
     pub enabled: bool,
     #[serde(default)]
     pub hidden: bool,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub overrides: Option<PolyMrpackFileOverrides>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PolyMrpackFileOverrides {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub authors: Vec<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -165,12 +181,45 @@ fn parse_bundle_file(file: &PolyMrpackFile) -> Option<BundleFile> {
         hidden: file.hidden,
         path: file.path.clone(),
         size: file.file_size,
-        kind: BundleFileKind::External(ExternalFile {
-            name: file_name,
-            url: download_url,
-            sha1: file.hashes.sha1.to_ascii_lowercase(),
-            size: file.file_size,
-            content_type: content_type_from_bundle_path(&file.path),
-        }),
+        kind: BundleFileKind::External {
+            file: ExternalFile {
+                name: file_name,
+                url: download_url,
+                sha1: file.hashes.sha1.to_ascii_lowercase(),
+                size: file.file_size,
+                content_type: content_type_from_bundle_path(&file.path),
+            },
+            id: non_blank(file.id.as_deref()).map(|id| {
+                if id.starts_with(EXTERNAL_ID_PREFIX) {
+                    id
+                } else {
+                    format!("{EXTERNAL_ID_PREFIX}{id}")
+                }
+            }),
+            meta: file.overrides.as_ref().and_then(external_meta),
+        },
     })
+}
+
+const EXTERNAL_ID_PREFIX: &str = "ext:";
+
+fn non_blank(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn external_meta(overrides: &PolyMrpackFileOverrides) -> Option<ExternalFileMeta> {
+    let meta = ExternalFileMeta {
+        name: non_blank(overrides.name.as_deref()),
+        description: non_blank(overrides.description.as_deref()),
+        authors: overrides
+            .authors
+            .iter()
+            .filter_map(|author| non_blank(Some(author)))
+            .collect(),
+        icon_url: non_blank(overrides.icon.as_deref()),
+    };
+    (meta != ExternalFileMeta::default()).then_some(meta)
 }

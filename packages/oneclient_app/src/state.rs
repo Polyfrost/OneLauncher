@@ -120,6 +120,19 @@ pub struct RelocationState {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InstallState {
     pending: HashSet<(i64, ProviderId, String)>,
+    pub flagged: Option<FlaggedInstallPrompt>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlaggedInstallPrompt {
+    pub cluster_id: i64,
+    pub provider: ProviderId,
+    pub project_id: String,
+    pub version_id: String,
+    pub name: String,
+    pub mc_version: String,
+    pub explanation: Option<String>,
+    pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
 }
 
 impl InstallState {

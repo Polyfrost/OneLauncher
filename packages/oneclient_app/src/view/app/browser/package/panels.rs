@@ -111,6 +111,7 @@ pub(super) fn versions_panel(
     project_id: String,
     cluster_id: i64,
     dispatch: Actions,
+    on_remove: EventHandler<(String, String)>,
     installed: Option<Installed>,
     installing: bool,
 ) -> impl IntoElement {
@@ -148,6 +149,7 @@ pub(super) fn versions_panel(
                     project_id.clone(),
                     cluster_id,
                     dispatch.clone(),
+                    on_remove.clone(),
                     tag,
                     duplicated,
                     installing,
@@ -222,6 +224,7 @@ fn version_row(
     project_id: String,
     cluster_id: i64,
     dispatch: Actions,
+    on_remove: EventHandler<(String, String)>,
     installed: Option<InstalledVersion>,
     // Saying which version is live only tells the user anything when there are several
     duplicated: bool,
@@ -285,7 +288,8 @@ fn version_row(
                 .map(|installed| activity_badge(installed.enabled).into_element()),
         )
         .child(version_button(
-            installed, v.name, provider, project_id, version_id, cluster_id, dispatch, installing,
+            installed, v.name, provider, project_id, version_id, cluster_id, dispatch, on_remove,
+            installing,
         ))
 }
 
@@ -299,6 +303,7 @@ fn version_button(
     version_id: String,
     cluster_id: i64,
     dispatch: Actions,
+    on_remove: EventHandler<(String, String)>,
     busy: bool,
 ) -> impl IntoElement {
     let Some(installed) = installed else {
@@ -329,15 +334,7 @@ fn version_button(
         .danger()
         .small()
         .enabled(!busy)
-        .on_press(move |_| {
-            dispatch.remove_package_version(
-                cluster_id,
-                provider,
-                project_id.clone(),
-                hash.clone(),
-                version_name.clone(),
-            );
-        })
+        .on_press(move |_| on_remove.call((version_name.clone(), hash.clone())))
         .text("Remove")
 }
 

@@ -2,6 +2,7 @@ mod index;
 mod package;
 
 pub use index::Browser;
+pub(crate) use index::encode_package_id;
 pub use package::BrowserPackage;
 
 use std::collections::HashMap;

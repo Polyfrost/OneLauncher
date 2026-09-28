@@ -216,6 +216,14 @@ pub async fn extract_zip_filtered(
             let entry_reader = reader.reader_without_entry(index).await?;
 
             futures_lite::io::copy(entry_reader, &mut writer.compat_write()).await?;
+
+            #[cfg(unix)]
+            if let Some(mode) = entry.unix_permissions().filter(|mode| mode & 0o777 != 0) {
+                use std::os::unix::fs::PermissionsExt;
+
+                let mode = u32::from(mode & 0o777) | 0o600;
+                tokio::fs::set_permissions(&path, std::fs::Permissions::from_mode(mode)).await?;
+            }
         }
     }
 
@@ -353,7 +361,9 @@ pub async fn extract_tar_gz(
         let buf_reader = tokio::io::BufReader::new(file);
         let gzip_decoder = async_compression::tokio::bufread::GzipDecoder::new(buf_reader);
 
-        let mut tar_archive = tokio_tar::Archive::new(gzip_decoder);
+        let mut tar_archive = tokio_tar::ArchiveBuilder::new(gzip_decoder)
+            .set_preserve_permissions(true)
+            .build();
         tar_archive.unpack(dest).await?;
 
         Ok(())

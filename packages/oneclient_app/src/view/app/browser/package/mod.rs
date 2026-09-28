@@ -1,7 +1,7 @@
 use freya::prelude::*;
 use oneclient_content::packages::{ContentType, ProviderId};
 
-use crate::components::ScrollArea;
+use crate::components::{ScrollArea, use_shared_delete};
 use crate::hooks::use_cluster;
 use crate::hooks::{
     bundles_with_status_items, cluster_content_items, content_type_for_slug, project_detail,
@@ -148,6 +148,21 @@ impl Component for BrowserPackage {
         .remove(&(provider, project_id.clone()));
 
         let project = project_detail(&project_query);
+
+        let remove_id = project.as_ref().map(|p| p.id.clone());
+        let remove_dispatch = dispatch.clone();
+        let (on_remove, remove_dialog) = use_shared_delete(move |(name, hash)| {
+            if let Some(project_id) = &remove_id {
+                remove_dispatch.remove_package_version(
+                    cluster_id,
+                    provider,
+                    project_id.clone(),
+                    hash,
+                    name,
+                );
+            }
+        });
+
         let versions = version_list(&versions_query);
         let total_versions = versions_total(&versions_query);
         let latest_version = versions.first().map(|v| v.version_id.clone());
@@ -171,6 +186,7 @@ impl Component for BrowserPackage {
                 project.id.clone(),
                 cluster_id,
                 dispatch.clone(),
+                on_remove,
                 installed.clone(),
                 installing,
             )
@@ -217,6 +233,7 @@ impl Component for BrowserPackage {
                     .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.))
                     .children([row]),
             )
+            .maybe_child(remove_dialog)
             .into_element()
     }
 }

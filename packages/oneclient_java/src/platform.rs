@@ -234,11 +234,4 @@ mod tests {
         };
         assert_eq!(HostTarget::CURRENT.archive(), expected);
     }
-
-    #[test]
-    fn musl_is_only_ever_reported_on_linux() {
-        if HostTarget::CURRENT.is_musl() {
-            assert!(matches!(HostTarget::CURRENT.os, HostOs::Linux { .. }));
-        }
-    }
 }

@@ -77,7 +77,7 @@ impl Component for OnboardingPreferences {
             content,
             onboarding_nav(
                 Some(Route::OnboardingBundles {}),
-                Route::OnboardingDownloading {},
+                Route::OnboardingSummary {},
                 true,
             ),
         )

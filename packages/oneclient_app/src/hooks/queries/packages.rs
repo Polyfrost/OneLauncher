@@ -19,6 +19,7 @@ pub fn content_type_for_slug(slug: &str) -> ContentType {
     match slug {
         "shader" => ContentType::Shader,
         "texture" => ContentType::ResourcePack,
+        "datapack" => ContentType::DataPack,
         _ => ContentType::Mod,
     }
 }

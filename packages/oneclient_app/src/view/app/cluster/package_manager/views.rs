@@ -6,10 +6,10 @@ use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, Segment,
-    SegmentedControl, TextInput, package_context_menu,
+    Button, CardLayout, ChevronToggle, Icon, IconType, LazySection, PackageEntry, PackageRow,
+    ScrollArea, Segment, SegmentedControl, TextInput, package_context_menu, use_shared_delete,
 };
-use crate::hooks::{use_cluster_mutation, use_dispatch, use_overlay_claim};
+use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch, use_overlay_claim};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::{Actions, utils};
@@ -340,8 +340,8 @@ impl Component for CategoryChip {
     }
 }
 
-pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {
-    let text = match content_type {
+pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> String {
+    match content_type {
         ContentType::ResourcePack => format!(
             "Minecraft is running. New {noun_plural} usually go in right away, open Options → Resource Packs in game to turn them on. OneClient tells you when one has to wait for the next launch."
         ),
@@ -351,37 +351,33 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
         _ => format!(
             "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
         ),
-    };
-
-    notice_bar(text)
+    }
 }
 
-pub(super) fn global_notice(noun_plural: &'static str) -> Element {
-    notice_bar(format!(
+pub(super) fn global_notice(noun_plural: &'static str) -> String {
+    format!(
         "These {noun_plural} are shared across all your clusters. Adding one here makes it available everywhere, and turning one off removes it everywhere."
-    ))
+    )
 }
 
-pub(super) fn essential_notice(names: &[&'static str]) -> Element {
-    let text = match names {
+pub(super) fn essential_notice(names: &[&'static str]) -> String {
+    match names {
         [only] => format!("{only} is turned off, so its features will not work in game."),
         _ => format!(
             "{} are turned off, so their features will not work in game.",
             names.join(", ")
         ),
-    };
-
-    notice_bar(text)
+    }
 }
 
-fn notice_bar(text: String) -> Element {
+pub(crate) fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .content(Content::Flex)
         .spacing(10.)
-        .margin(Gaps::new(8., 0., 0., 0.))
+        .margin(Gaps::new(0., 0., 8., 0.))
         .padding(Gaps::new_symmetric(9., 12.))
         .corner_radius(CornerRadius::new_all(10.))
         .background(colors::brand().with_a(30))
@@ -707,21 +703,91 @@ pub(super) enum ContentKind {
     },
 }
 
+const SECTION_HEADER_H: f32 = 36.;
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct AdvancedSection {
+    pub(super) open: State<bool>,
+    pub(super) forced: bool,
+}
+
+impl AdvancedSection {
+    fn expanded(self) -> bool {
+        self.forced || *self.open.read()
+    }
+}
+
+#[derive(PartialEq)]
+struct SectionHeader {
+    label: &'static str,
+    count: usize,
+    section: AdvancedSection,
+}
+
+impl Component for SectionHeader {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let section = self.section;
+        let mut open = section.open;
+        let expanded = section.expanded();
+        let interactive = !section.forced;
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .padding(Gaps::new_symmetric(0., 12.))
+            .corner_radius(CornerRadius::new_all(10.))
+            .background(if interactive && *hovered.read() {
+                colors::ghost_overlay_hover()
+            } else {
+                Color::TRANSPARENT
+            })
+            .maybe(interactive, |el| {
+                el.cursor(CursorIcon::Pointer)
+                    .on_pointer_enter(move |_| hovered.set(true))
+                    .on_pointer_leave(move |_| hovered.set(false))
+                    .on_press(move |_| open.toggle())
+            })
+            .child(ChevronToggle { expanded })
+            .child(
+                label()
+                    .text(self.label)
+                    .font_size(13.)
+                    .font_weight(FontWeight::SEMI_BOLD)
+                    .color(colors::fg_primary()),
+            )
+            .child(
+                label()
+                    .text(self.count.to_string())
+                    .font_size(12.)
+                    .color(colors::fg_secondary()),
+            )
+    }
+}
+
 #[derive(PartialEq)]
 pub(super) struct ContentBox {
     items: Vec<PackageEntry>,
+    advanced: Vec<PackageEntry>,
+    section: AdvancedSection,
     noun_plural: &'static str,
     package_type: &'static str,
     content_type: ContentType,
     cluster_id: i64,
     kind: ContentKind,
     layout: CardLayout,
+    notices: Vec<String>,
 }
 
 impl ContentBox {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         items: Vec<PackageEntry>,
+        advanced: Vec<PackageEntry>,
+        section: AdvancedSection,
         noun_plural: &'static str,
         package_type: &'static str,
         content_type: ContentType,
@@ -731,19 +797,34 @@ impl ContentBox {
     ) -> Self {
         Self {
             items,
+            advanced,
+            section,
             noun_plural,
             package_type,
             content_type,
             cluster_id,
             kind,
             layout,
+            notices: Vec::new(),
         }
+    }
+
+    pub(super) fn notices(mut self, notices: Vec<String>) -> Self {
+        self.notices = notices;
+        self
     }
 }
 
 impl Component for ContentBox {
     fn render(&self) -> impl IntoElement {
-        let items = self.items.clone();
+        let section = self.section;
+        let expanded = section.expanded();
+        let advanced_count = self.advanced.len();
+        let mut items = self.items.clone();
+        let normal_count = items.len();
+        if expanded {
+            items.extend(self.advanced.iter().cloned());
+        }
         let package_type = self.package_type;
         let content_type = self.content_type;
         let cluster_id = self.cluster_id;
@@ -754,6 +835,9 @@ impl Component for ContentBox {
         let dispatch = use_dispatch();
         let cluster = use_cluster_mutation();
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
+        let (on_delete, delete_dialog) = use_shared_delete(move |(_, hash)| {
+            cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
+        });
 
         let row = {
             let items = items.clone();
@@ -769,23 +853,48 @@ impl Component for ContentBox {
             }
         };
 
-        let count = items.len();
+        let count = normal_count + advanced_count;
         let scroll = (count > 0).then(|| {
-            let area = ScrollArea::new()
-                .width(Size::fill())
-                .height(Size::fill())
-                .scrollbar_gutter(true);
-            match layout {
-                CardLayout::List => area.lazy(count, CARD_H, CARD_SPACING, row),
-                CardLayout::Grid => {
-                    area.lazy_grid(count, CARD_GRID_H, GRID_GAP, GRID_MIN_W, GRID_MAX_COLS, row)
-                }
+            let mut sections = vec![LazySection {
+                header: false,
+                count: normal_count,
+            }];
+            if advanced_count > 0 {
+                sections.push(LazySection {
+                    header: true,
+                    count: if expanded { advanced_count } else { 0 },
+                });
             }
-            .into_element()
+            let (item_height, gap, min_width, max_cols) = match layout {
+                CardLayout::List => (CARD_H, CARD_SPACING, 0., 1),
+                CardLayout::Grid => (CARD_GRID_H, GRID_GAP, GRID_MIN_W, GRID_MAX_COLS),
+            };
+            ScrollArea::new()
+                .width(Size::fill())
+                .height(Size::flex(1.0))
+                .scrollbar_gutter(true)
+                .lazy_sections(
+                    sections,
+                    item_height,
+                    gap,
+                    min_width,
+                    max_cols,
+                    SECTION_HEADER_H,
+                    row,
+                    move |_| {
+                        SectionHeader {
+                            label: "Advanced",
+                            count: advanced_count,
+                            section,
+                        }
+                        .into_element()
+                    },
+                )
+                .into_element()
         });
 
         let menu_overlay = menu.read().clone().map(|(x, y, item)| {
-            package_context_menu(x, y, &item, cluster_id, package_type, cluster)
+            package_context_menu(x, y, &item, cluster_id, package_type, on_delete)
                 .on_close(move |_| menu.set(None))
                 .into_element()
         });
@@ -829,10 +938,18 @@ impl Component for ContentBox {
             .corner_radius(bottom_corners)
             .background(colors::page_elevated())
             .overflow(Overflow::Clip)
+            .content(Content::Flex)
+            .children(self.notices.iter().map(|text| notice_bar(text.clone())))
             .maybe_child(header)
             .maybe_child(scroll)
-            .maybe_child(empty)
+            .maybe_child(empty.map(|empty| {
+                rect()
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .child(empty)
+            }))
             .maybe_child(menu_overlay)
+            .maybe_child(delete_dialog)
     }
 }
 
@@ -846,7 +963,7 @@ fn action_header(button: impl IntoElement) -> impl IntoElement {
         .child(button)
 }
 
-fn empty_shell(icon: IconType) -> Rect {
+pub(crate) fn empty_shell(icon: IconType) -> Rect {
     rect()
         .vertical()
         .width(Size::fill())
@@ -857,14 +974,14 @@ fn empty_shell(icon: IconType) -> Rect {
         .child(Icon::new(icon).size(28.).color(colors::fg_secondary()))
 }
 
-fn empty_title(text: impl Into<String>) -> impl IntoElement {
+pub(crate) fn empty_title(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
         .font_size(14.)
         .color(colors::fg_secondary())
 }
 
-fn empty_hint(text: impl Into<String>) -> impl IntoElement {
+pub(crate) fn empty_hint(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
         .font_size(12.)

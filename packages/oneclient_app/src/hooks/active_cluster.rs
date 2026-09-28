@@ -47,6 +47,8 @@ pub fn use_start_maximized() -> bool {
     consume_root_context::<StartMaximizedState>().0
 }
 
+pub const BROWSER_COMPAT_DEFAULT: bool = true;
+
 #[derive(Clone)]
 pub struct BrowserCompatState(pub State<bool>);
 
@@ -67,6 +69,17 @@ pub fn use_provide_browser_type(state: BrowserTypeState) {
 
 pub fn use_browser_type() -> State<String> {
     consume_root_context::<BrowserTypeState>().0
+}
+
+#[derive(Clone)]
+pub struct DataPackWorldState(pub State<HashMap<ClusterId, String>>);
+
+pub fn use_provide_datapack_world(state: DataPackWorldState) {
+    use_hook(move || provide_root_context(state));
+}
+
+pub fn use_datapack_world() -> State<HashMap<ClusterId, String>> {
+    consume_root_context::<DataPackWorldState>().0
 }
 
 #[derive(Clone)]
@@ -147,8 +160,6 @@ pub struct OnboardingSelectionState {
     pub migrated_categories: State<Option<Vec<String>>>,
     pub language: State<String>,
     pub reduce_motion: State<bool>,
-    pub predownload: State<bool>,
-    pub setup_started: State<bool>,
     /// `None` = don't import
     pub import_folder: State<Option<String>>,
     pub import_dedicated: State<bool>,

@@ -139,12 +139,16 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
         crate::game::recover_sessions(&background).await;
 
         let content = background.services.content();
-        let (versions_res, bundles_res) = tokio::join!(
+        let (versions_res, bundles_res, _) = tokio::join!(
             background.versions.sync(&background.services),
             background.bundles.sync(&content),
+            oneclient_content::packages::load_bad_mods(&content),
         );
         if let Err(err) = versions_res {
             tracing::error!("versions manifest sync failed: {err:#}");
+        }
+        if let Err(err) = crate::clusters::record_new_versions(&background).await {
+            tracing::warn!("could not record new versions for migration: {err:#}");
         }
         if let Err(err) = bundles_res {
             tracing::error!("bundle catalog sync failed: {err:#}");

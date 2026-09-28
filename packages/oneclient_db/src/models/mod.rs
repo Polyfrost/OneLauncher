@@ -7,6 +7,7 @@ mod cluster_optional_mod;
 mod game_session;
 mod java;
 mod package_metadata;
+mod release_migration_waitlist;
 mod setting_profile;
 
 pub use artifact::{
@@ -24,4 +25,5 @@ pub use game_session::{
 };
 pub use java::JavaVersionRow;
 pub use package_metadata::PackageMetadataRow;
+pub use release_migration_waitlist::ReleaseMigrationWaitlistRow;
 pub use setting_profile::SettingProfileRow;

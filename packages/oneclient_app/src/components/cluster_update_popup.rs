@@ -110,7 +110,11 @@ impl Component for ClusterUpdatePopup {
             })
             .collect();
         let mut meta = MetaMap::new();
-        for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {
+        for provider in ProviderId::REMOTE_PROVIDERS
+            .iter()
+            .copied()
+            .chain([ProviderId::Local])
+        {
             let ids: Vec<String> = all_items
                 .iter()
                 .filter(|i| i.provider == provider)

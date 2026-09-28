@@ -1,5 +1,4 @@
 use freya::prelude::*;
-use freya::query::UseMutation;
 use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
 use oneclient_core::SeenStatus;
@@ -7,7 +6,7 @@ use oneclient_core::SeenStatus;
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
 use crate::essential::EssentialPackage;
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, ClusterMutation, PendingEssential, disable_warnings,
+    ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings,
     loaded_image, use_cached_image, use_cluster_mutation, use_disable_warnings,
     use_essential_guard,
 };
@@ -47,6 +46,7 @@ pub struct PackageEntry {
     pub package_id: String,
     pub bundle_name: Option<String>,
     pub provider: ProviderId,
+    pub github_hosted: bool,
     pub name: String,
     pub file_name: String,
     pub author: String,
@@ -61,6 +61,7 @@ pub struct PackageEntry {
     pub manifest_default: bool,
     /// Private bundle dependency only set for bundle rows
     pub hidden: bool,
+    pub advanced: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
     /// Recency badge state cleared once the user views the list
@@ -230,7 +231,7 @@ pub fn package_context_menu(
     item: &PackageEntry,
     cluster_id: i64,
     package_type: &'static str,
-    cluster: UseMutation<ClusterMutation>,
+    on_delete: EventHandler<(String, String)>,
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone());
 
@@ -248,21 +249,21 @@ pub fn package_context_menu(
     }
 
     if let Some(hash) = item.hash.clone() {
-        menu = menu.action(IconType::Folder, "View in folder", move |()| {
-            reveal_in_store(hash.clone());
-        });
+        menu = menu.action(
+            IconType::Folder,
+            "View in folder",
+            EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
+        );
     }
 
     if item.installed && !item.in_bundle() {
         let hash = item.hash.clone();
+        let name = item.name.clone();
         menu = menu
             .separator()
             .danger_action(IconType::Trash01, "Delete", move |()| {
                 if let Some(hash) = &hash {
-                    cluster.mutate(ClusterAction::RemoveArtifact {
-                        cluster_id,
-                        hash: hash.clone(),
-                    });
+                    on_delete.call((name.clone(), hash.clone()));
                 }
             });
     }
@@ -270,7 +271,9 @@ pub fn package_context_menu(
     menu
 }
 
-fn on_secondary(handler: Option<EventHandler<(f32, f32)>>) -> impl FnMut(Event<PressEventData>) {
+pub(crate) fn on_secondary(
+    handler: Option<EventHandler<(f32, f32)>>,
+) -> impl FnMut(Event<PressEventData>) {
     move |e: Event<PressEventData>| {
         if let (Some(handler), PressEventData::Mouse(m)) = (handler.as_ref(), e.data()) {
             e.stop_propagation();
@@ -443,7 +446,9 @@ fn grid_meta(
 ) -> Element {
     let muted = CARD_NAME.with_a(scale_a(alpha, 0.5));
 
-    let source = if item.is_remote() && navigable {
+    let source = if item.github_hosted {
+        meta_text("GitHub".to_string(), muted)
+    } else if item.is_remote() && navigable {
         SourceLink {
             provider: item.provider,
             package_id: item.package_id.clone(),
@@ -532,7 +537,7 @@ impl Component for SourceLink {
     }
 }
 
-fn meta_text(text: String, color: Color) -> Element {
+pub(crate) fn meta_text(text: String, color: Color) -> Element {
     label()
         .text(text)
         .font_size(11.)
@@ -541,7 +546,7 @@ fn meta_text(text: String, color: Color) -> Element {
         .into_element()
 }
 
-fn kebab_button(on_context: EventHandler<(f32, f32)>) -> Element {
+pub(crate) fn kebab_button(on_context: EventHandler<(f32, f32)>) -> Element {
     KebabButton { on_context }.into_element()
 }
 
@@ -660,7 +665,9 @@ fn package_info(
                                 .max_width(Size::percent(60.))
                                 .color(CARD_NAME),
                         )
-                        .child(if remote {
+                        .child(if item.github_hosted {
+                            github_badge()
+                        } else if remote {
                             provider_badge(item.provider)
                         } else {
                             local_badge()
@@ -699,8 +706,15 @@ pub(crate) fn package_icon(
     icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
     size: f32,
 ) -> Element {
-    let icon_url = &item.icon_url;
-    let loaded = loaded_image(icon_url.as_deref(), icon_query);
+    remote_icon(item.icon_url.as_deref(), icon_query, size)
+}
+
+pub(crate) fn remote_icon(
+    icon_url: Option<&str>,
+    icon_query: &freya::query::UseQuery<crate::hooks::CachedImageQuery>,
+    size: f32,
+) -> Element {
+    let loaded = loaded_image(icon_url, icon_query);
 
     match loaded {
         Some((url, bytes)) => ImageViewer::new((url, bytes))
@@ -716,7 +730,7 @@ pub(crate) fn package_icon(
     }
 }
 
-fn icon_box(icon: IconType, size: f32) -> Element {
+pub(crate) fn icon_box(icon: IconType, size: f32) -> Element {
     rect()
         .center()
         .width(Size::px(size))
@@ -731,7 +745,7 @@ fn icon_box(icon: IconType, size: f32) -> Element {
         .into_element()
 }
 
-fn meta_size(size: u64) -> impl IntoElement {
+pub(crate) fn meta_size(size: u64) -> impl IntoElement {
     rect()
         .maybe_child((size > 0).then(|| {
             label()
@@ -746,6 +760,13 @@ pub fn provider_badge(provider: ProviderId) -> Element {
     badge(
         Icon::new(provider).size(12.).into_element(),
         provider.to_string(),
+    )
+}
+
+pub fn github_badge() -> Element {
+    badge(
+        Icon::new(IconType::Github).size(12.).into_element(),
+        "GitHub".to_string(),
     )
 }
 
@@ -793,7 +814,7 @@ fn local_badge() -> Element {
     )
 }
 
-fn badge(icon: impl IntoElement, text: String) -> Element {
+pub(crate) fn badge(icon: impl IntoElement, text: String) -> Element {
     accent_badge(icon, text, colors::fg_secondary())
 }
 

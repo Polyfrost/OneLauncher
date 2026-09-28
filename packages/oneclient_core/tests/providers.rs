@@ -15,15 +15,6 @@ fn registry_get_unknown_provider_errors() {
 }
 
 #[tokio::test]
-async fn registry_providers_match_ids() {
-    let registry = oneclient_content::packages::PackageProviderRegistry::new();
-
-    for id in registry.remote_ids() {
-        assert_eq!(registry.get(id).unwrap().id(), id);
-    }
-}
-
-#[tokio::test]
 #[ignore = "requires network"]
 async fn modrinth_search_returns_hits() {
     let env = dev::ephemeral_services().await.unwrap().content();

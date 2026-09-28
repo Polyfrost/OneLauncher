@@ -16,6 +16,7 @@ mod changelog;
 mod cluster_content;
 mod clusters;
 mod disable_warnings;
+mod folder_watch;
 mod image;
 mod java;
 mod logs;
@@ -32,6 +33,7 @@ mod storage;
 mod tos;
 mod version_metadata;
 mod versions;
+mod worlds;
 
 pub use analytics::{
     try_cluster_analytics, try_global_analytics, use_cluster_analytics, use_global_analytics,
@@ -101,3 +103,8 @@ pub use storage::{
 pub use tos::{TermsQuery, terms_document, terms_error, terms_is_loading, use_terms};
 pub use version_metadata::{pick_version_metadata, use_version_metadata};
 pub use versions::{loader_versions, use_loader_versions, use_versions, versions_metadata};
+pub use worlds::{
+    add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,
+    spawn_world_task, try_cluster_worlds, try_world_datapacks, try_world_size, use_cluster_worlds,
+    use_saves_folder_watch, use_world_datapacks, use_world_size,
+};

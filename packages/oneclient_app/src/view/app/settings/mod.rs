@@ -24,7 +24,7 @@ pub use minecraft::SettingsMinecraft;
 pub use storage::SettingsStorage;
 
 use crate::{
-    components::{Icon, IconType},
+    components::{Button, Icon, IconType},
     theme::colors,
 };
 
@@ -102,5 +102,63 @@ fn settings_row_inner(
                 ),
         )
         .child(trailing)
+        .into_element()
+}
+
+#[derive(PartialEq)]
+struct ResetButton<T: Clone + PartialEq + 'static> {
+    values: Vec<(State<T>, T)>,
+}
+
+impl<T: Clone + PartialEq + 'static> Component for ResetButton<T> {
+    fn render(&self) -> impl IntoElement {
+        let at_default = self
+            .values
+            .iter()
+            .all(|(value, default)| *value.read() == *default);
+
+        let values = self.values.clone();
+
+        Button::new()
+            .ghost()
+            .icon()
+            .disabled(at_default)
+            .alt(if at_default {
+                "Already at the default"
+            } else {
+                "Reset to default"
+            })
+            .on_press(move |_| {
+                for (value, default) in &values {
+                    let mut value = *value;
+                    value.set(default.clone());
+                }
+            })
+            .child(
+                Icon::new(IconType::RefreshCcw02)
+                    .size(14.)
+                    .color(colors::fg_secondary()),
+            )
+    }
+}
+
+pub fn resettable<T: Clone + PartialEq + 'static>(
+    control: impl IntoElement,
+    value: State<T>,
+    default: T,
+) -> impl IntoElement {
+    resettable_all(control, vec![(value, default)])
+}
+
+pub fn resettable_all<T: Clone + PartialEq + 'static>(
+    control: impl IntoElement,
+    values: Vec<(State<T>, T)>,
+) -> impl IntoElement {
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(8.)
+        .child(control)
+        .child(ResetButton { values })
         .into_element()
 }

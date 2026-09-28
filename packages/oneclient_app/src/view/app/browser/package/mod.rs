@@ -1,7 +1,7 @@
 use freya::prelude::*;
 use oneclient_content::packages::{ContentType, ProviderId};
 
-use crate::components::ScrollArea;
+use crate::components::{ScrollArea, use_shared_delete};
 use crate::hooks::use_cluster;
 use crate::hooks::{
     bundles_with_status_items, cluster_content_items, content_type_for_slug, project_detail,
@@ -13,8 +13,8 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 
 use super::{
-    Installed, InstalledVersion, PackageBanner, Thumbnail, activity_badge, installed_badge,
-    installed_map,
+    Installed, InstalledVersion, PackageBanner, Thumbnail, WorldInstallPrompt, activity_badge,
+    installed_badge, installed_map, preferred_version,
 };
 use crate::utils::abbreviate_number;
 
@@ -28,6 +28,29 @@ use sidebar::sidebar;
 const PANEL_BG: Color = Color::from_rgb(21, 28, 34);
 const SIDEBAR_W: f32 = 280.;
 const SCROLLBAR_GUTTER: f32 = 18.;
+
+#[derive(Clone)]
+struct Installer {
+    dispatch: crate::Actions,
+    cluster_id: i64,
+    provider: ProviderId,
+    world_prompt: Option<State<Option<String>>>,
+}
+
+impl Installer {
+    fn install(&self, project_id: String, version_id: String) {
+        match self.world_prompt {
+            Some(mut prompt) => prompt.set(Some(version_id)),
+            None => self.dispatch.install_package(
+                self.cluster_id,
+                self.provider,
+                project_id,
+                version_id,
+                None,
+            ),
+        }
+    }
+}
 
 fn decode_package_id(package_id: &str) -> (ProviderId, String) {
     match package_id.split_once(':') {
@@ -110,6 +133,14 @@ impl Component for BrowserPackage {
         let compatible_only = use_browser_compat();
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
+        let world_prompt = use_state(|| None::<String>);
+        let is_datapack = content_type == ContentType::DataPack;
+        let installer = Installer {
+            dispatch: dispatch.clone(),
+            cluster_id,
+            provider,
+            world_prompt: is_datapack.then_some(world_prompt),
+        };
 
         let cluster = use_cluster(cluster_id);
         let compat = *compatible_only.read();
@@ -145,12 +176,29 @@ impl Component for BrowserPackage {
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
         )
-        .remove(&(provider, project_id.clone()));
+        .remove(&(provider, project_id.clone()))
+        .filter(|_| !is_datapack);
 
         let project = project_detail(&project_query);
+
+        let remove_id = project.as_ref().map(|p| p.id.clone());
+        let remove_dispatch = dispatch.clone();
+        let (on_remove, remove_dialog) = use_shared_delete(move |(name, hash)| {
+            if let Some(project_id) = &remove_id {
+                remove_dispatch.remove_package_version(
+                    cluster_id,
+                    provider,
+                    project_id.clone(),
+                    hash,
+                    name,
+                );
+            }
+        });
+
         let versions = version_list(&versions_query);
         let total_versions = versions_total(&versions_query);
-        let latest_version = versions.first().map(|v| v.version_id.clone());
+        let latest_version =
+            preferred_version(&versions, content_type).map(|v| v.version_id.clone());
 
         let gallery = project
             .as_ref()
@@ -167,10 +215,9 @@ impl Component for BrowserPackage {
                 versions,
                 total_versions,
                 versions_page,
-                provider,
                 project.id.clone(),
-                cluster_id,
-                dispatch.clone(),
+                installer.clone(),
+                on_remove,
                 installed.clone(),
                 installing,
             )
@@ -187,9 +234,7 @@ impl Component for BrowserPackage {
             .child(sidebar(
                 project,
                 latest_version,
-                provider,
-                cluster_id,
-                dispatch,
+                installer,
                 confirm,
                 installed,
                 installing,
@@ -217,6 +262,13 @@ impl Component for BrowserPackage {
                     .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.))
                     .children([row]),
             )
+            .maybe_child(remove_dialog)
+            .maybe_child(world_prompt.read().is_some().then(|| WorldInstallPrompt {
+                cluster_id,
+                provider,
+                project_id: project_id.clone(),
+                pending: world_prompt,
+            }))
             .into_element()
     }
 }

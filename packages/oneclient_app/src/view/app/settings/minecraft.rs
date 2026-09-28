@@ -98,7 +98,7 @@ impl Component for SettingsMinecraft {
         });
 
         #[cfg(any(target_os = "linux", windows))]
-        let discrete_gpu_default = SettingsOsExtra::default().use_discrete_gpu.unwrap_or(false);
+        let discrete_gpu_default = SettingsOsExtra::default().use_discrete_gpu.unwrap_or(true);
 
         let page = settings_page()
             .child(section_header("GAME"))

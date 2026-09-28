@@ -759,8 +759,10 @@ impl Component for ContentBox {
                     Err(_) => None,
                 };
                 match clusters {
-                    Some(clusters) => confirm_delete.set(Some((name, hash, clusters))),
-                    None => cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash }),
+                    Some(clusters) if clusters > 1 => {
+                        confirm_delete.set(Some((name, hash, clusters)));
+                    }
+                    _ => cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash }),
                 }
             });
         });

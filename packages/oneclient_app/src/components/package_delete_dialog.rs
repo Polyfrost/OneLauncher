@@ -33,15 +33,10 @@ impl SharedPackageDeleteDialog {
 impl Component for SharedPackageDeleteDialog {
     fn render(&self) -> impl IntoElement {
         let title = format!("Delete {} from every cluster?", self.name);
-        let body = if self.clusters > 1 {
-            format!(
-                "Resource packs and shaders are shared, so this deletes it from all {} clusters that use it.",
-                self.clusters
-            )
-        } else {
-            "Resource packs and shaders are shared, so this deletes it from every cluster."
-                .to_string()
-        };
+        let body = format!(
+            "Resource packs and shaders are shared, so this deletes it from all {} clusters that use it.",
+            self.clusters
+        );
         let close = self.on_cancel.clone();
         let cancel = self.on_cancel.clone();
         let confirm = self.on_confirm.clone();

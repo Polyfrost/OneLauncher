@@ -641,12 +641,7 @@ pub async fn set_artifact_enabled_to(
 
 // which clusters have to record what the user just did
 async fn override_scope(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<Vec<i64>> {
-    let global = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
-        .await?
-        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8))
-        .is_some_and(ContentType::is_global);
-
-    if !global {
+    if !is_shared_artifact(hash, ctx).await? {
         return Ok(vec![cluster_id]);
     }
 
@@ -793,12 +788,19 @@ async fn is_shared_artifact(hash: &str, ctx: &ContentCtx) -> ContentResult<bool>
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn clusters_sharing_artifact(hash: &str, ctx: &ContentCtx) -> ContentResult<Option<usize>> {
+pub async fn clusters_sharing_artifact(
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<usize>> {
     if !is_shared_artifact(hash, ctx).await? {
         return Ok(None);
     }
 
-    Ok(Some(artifact_dao::list_clusters_linking(&ctx.db, hash).await?.len()))
+    Ok(Some(
+        artifact_dao::list_clusters_linking(&ctx.db, hash)
+            .await?
+            .len(),
+    ))
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]

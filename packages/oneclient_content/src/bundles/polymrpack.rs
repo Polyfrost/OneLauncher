@@ -50,7 +50,7 @@ struct PolyMrpackFile {
     #[serde(default)]
     pub hidden: bool,
     #[serde(rename = "type", default)]
-    pub file_type: BundleFileType,
+    pub file_type: Option<BundleFileType>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -142,7 +142,7 @@ fn parse_bundle_file(file: &PolyMrpackFile) -> Option<BundleFile> {
                 hidden: file.hidden,
                 path: file.path.clone(),
                 size: file.file_size,
-                file_type: file.file_type,
+                file_type: file.file_type.unwrap_or_default(),
                 kind: BundleFileKind::Managed {
                     provider: ProviderId::Modrinth,
                     project_id: paths[0].to_string(),
@@ -168,7 +168,7 @@ fn parse_bundle_file(file: &PolyMrpackFile) -> Option<BundleFile> {
         hidden: file.hidden,
         path: file.path.clone(),
         size: file.file_size,
-        file_type: file.file_type,
+        file_type: file.file_type.unwrap_or_default(),
         kind: BundleFileKind::External(ExternalFile {
             name: file_name,
             url: download_url,

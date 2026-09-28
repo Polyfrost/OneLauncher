@@ -1063,12 +1063,14 @@ impl Actions {
         provider: ProviderId,
         project_id: impl Into<String>,
         version_id: impl Into<String>,
+        world: Option<String>,
     ) {
         self.start_install(
             cluster_id,
             provider,
             project_id.into(),
             version_id.into(),
+            world,
             false,
         );
     }
@@ -1080,6 +1082,7 @@ impl Actions {
             prompt.provider,
             prompt.project_id,
             prompt.version_id,
+            None,
             true,
         );
     }
@@ -1098,6 +1101,7 @@ impl Actions {
         provider: ProviderId,
         project_id: String,
         version_id: String,
+        world: Option<String>,
         allow_flagged: bool,
     ) {
         let actions = self.clone();
@@ -1129,6 +1133,7 @@ impl Actions {
                 &project_id,
                 &version_id,
                 cluster_id,
+                world.clone(),
                 allow_flagged,
             )
             .await
@@ -1199,6 +1204,9 @@ impl Actions {
                 }
 
                 super::invalidate_cluster_content_queries().await;
+                if let Some(world) = world {
+                    super::invalidate_world_contents(cluster_id, world).await;
+                }
 
                 state
                     .services

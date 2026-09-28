@@ -83,7 +83,8 @@ pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
-    CARD_GRID_H, GRID_GAP, GRID_MIN_W, grid_card, package_icon, remote_icon,
+    CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, grid_card, icon_box,
+    kebab_button, meta_size, meta_text, on_secondary, package_icon, remote_icon,
 };
 pub use package_row::{
     CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,

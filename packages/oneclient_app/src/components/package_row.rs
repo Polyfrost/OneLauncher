@@ -233,7 +233,9 @@ pub fn package_context_menu(
     menu
 }
 
-fn on_secondary(handler: Option<EventHandler<(f32, f32)>>) -> impl FnMut(Event<PressEventData>) {
+pub(crate) fn on_secondary(
+    handler: Option<EventHandler<(f32, f32)>>,
+) -> impl FnMut(Event<PressEventData>) {
     move |e: Event<PressEventData>| {
         if let (Some(handler), PressEventData::Mouse(m)) = (handler.as_ref(), e.data()) {
             e.stop_propagation();
@@ -491,7 +493,7 @@ impl Component for SourceLink {
     }
 }
 
-fn meta_text(text: String, color: Color) -> Element {
+pub(crate) fn meta_text(text: String, color: Color) -> Element {
     label()
         .text(text)
         .font_size(11.)
@@ -500,7 +502,7 @@ fn meta_text(text: String, color: Color) -> Element {
         .into_element()
 }
 
-fn kebab_button(on_context: EventHandler<(f32, f32)>) -> Element {
+pub(crate) fn kebab_button(on_context: EventHandler<(f32, f32)>) -> Element {
     KebabButton { on_context }.into_element()
 }
 
@@ -684,7 +686,7 @@ pub(crate) fn remote_icon(
     }
 }
 
-fn icon_box(icon: IconType, size: f32) -> Element {
+pub(crate) fn icon_box(icon: IconType, size: f32) -> Element {
     rect()
         .center()
         .width(Size::px(size))
@@ -699,7 +701,7 @@ fn icon_box(icon: IconType, size: f32) -> Element {
         .into_element()
 }
 
-fn meta_size(size: u64) -> impl IntoElement {
+pub(crate) fn meta_size(size: u64) -> impl IntoElement {
     rect()
         .maybe_child((size > 0).then(|| {
             label()
@@ -767,7 +769,7 @@ fn local_badge() -> Element {
     )
 }
 
-fn badge(icon: impl IntoElement, text: String) -> Element {
+pub(crate) fn badge(icon: impl IntoElement, text: String) -> Element {
     accent_badge(icon, text, colors::fg_secondary())
 }
 

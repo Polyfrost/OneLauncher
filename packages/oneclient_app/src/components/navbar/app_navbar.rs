@@ -157,14 +157,17 @@ fn browse_target() -> Route {
     let active = *use_active_cluster_id().read();
     let package_type = use_browser_type().read().clone();
 
-    let cluster_id = active
-        .filter(|id| clusters.iter().any(|cluster| cluster.id == *id))
-        .or_else(|| sort_clusters_for_home(clusters).first().map(|c| c.id));
+    let cluster = active
+        .and_then(|id| clusters.iter().find(|cluster| cluster.id == id).cloned())
+        .or_else(|| sort_clusters_for_home(clusters).into_iter().next());
 
-    match cluster_id {
-        Some(cluster_id) => Route::Browser {
-            cluster_id,
-            package_type,
+    match cluster {
+        Some(cluster) => Route::Browser {
+            cluster_id: cluster.id,
+            package_type: crate::view::app::browser::browsable_type(
+                &package_type,
+                &cluster.mc_version,
+            ),
             pick_cluster: true,
         },
         None => Route::Clusters {},

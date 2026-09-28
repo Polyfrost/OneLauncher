@@ -487,7 +487,7 @@ struct CfHash {
 enum CfClass {
     Mod = 6,
     ResourcePack = 12,
-    DataPack = 4472,
+    DataPack = 6945,
     Shader = 6552,
     Modpack = 4471,
 }
@@ -633,7 +633,7 @@ fn cf_class_id(t: ContentType) -> u32 {
     match t {
         ContentType::Mod => 6,
         ContentType::ResourcePack => 12,
-        ContentType::DataPack => 4472,
+        ContentType::DataPack => 6945,
         ContentType::Shader => 6552,
         ContentType::Modpack => 4471,
         ContentType::World => 6,
@@ -669,7 +669,7 @@ impl From<u32> for CfClass {
         match value {
             6 => Self::Mod,
             12 => Self::ResourcePack,
-            4472 => Self::DataPack,
+            6945 => Self::DataPack,
             6552 => Self::Shader,
             4471 => Self::Modpack,
             _ => Self::Mod,

@@ -340,8 +340,8 @@ impl Component for CategoryChip {
     }
 }
 
-pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {
-    let text = match content_type {
+pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> String {
+    match content_type {
         ContentType::ResourcePack => format!(
             "Minecraft is running. New {noun_plural} usually go in right away, open Options → Resource Packs in game to turn them on. OneClient tells you when one has to wait for the next launch."
         ),
@@ -351,25 +351,23 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
         _ => format!(
             "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
         ),
-    };
-
-    notice_bar(text)
+    }
 }
 
-pub(super) fn global_notice(noun_plural: &'static str) -> Element {
-    notice_bar(format!(
+pub(super) fn global_notice(noun_plural: &'static str) -> String {
+    format!(
         "These {noun_plural} are shared across all your clusters. Adding one here makes it available everywhere, and turning one off removes it everywhere."
-    ))
+    )
 }
 
-fn notice_bar(text: String) -> Element {
+pub(crate) fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .content(Content::Flex)
         .spacing(10.)
-        .margin(Gaps::new(8., 0., 0., 0.))
+        .margin(Gaps::new(0., 0., 8., 0.))
         .padding(Gaps::new_symmetric(9., 12.))
         .corner_radius(CornerRadius::new_all(10.))
         .background(colors::brand().with_a(30))
@@ -771,6 +769,7 @@ pub(super) struct ContentBox {
     cluster_id: i64,
     kind: ContentKind,
     layout: CardLayout,
+    notices: Vec<String>,
 }
 
 impl ContentBox {
@@ -796,7 +795,13 @@ impl ContentBox {
             cluster_id,
             kind,
             layout,
+            notices: Vec::new(),
         }
+    }
+
+    pub(super) fn notices(mut self, notices: Vec<String>) -> Self {
+        self.notices = notices;
+        self
     }
 }
 
@@ -856,7 +861,7 @@ impl Component for ContentBox {
             };
             ScrollArea::new()
                 .width(Size::fill())
-                .height(Size::fill())
+                .height(Size::flex(1.0))
                 .scrollbar_gutter(true)
                 .lazy_sections(
                     sections,
@@ -923,9 +928,16 @@ impl Component for ContentBox {
             .corner_radius(bottom_corners)
             .background(colors::page_elevated())
             .overflow(Overflow::Clip)
+            .content(Content::Flex)
+            .children(self.notices.iter().map(|text| notice_bar(text.clone())))
             .maybe_child(header)
             .maybe_child(scroll)
-            .maybe_child(empty)
+            .maybe_child(empty.map(|empty| {
+                rect()
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .child(empty)
+            }))
             .maybe_child(menu_overlay)
             .maybe_child(delete_dialog)
     }
@@ -941,7 +953,7 @@ fn action_header(button: impl IntoElement) -> impl IntoElement {
         .child(button)
 }
 
-fn empty_shell(icon: IconType) -> Rect {
+pub(crate) fn empty_shell(icon: IconType) -> Rect {
     rect()
         .vertical()
         .width(Size::fill())
@@ -952,14 +964,14 @@ fn empty_shell(icon: IconType) -> Rect {
         .child(Icon::new(icon).size(28.).color(colors::fg_secondary()))
 }
 
-fn empty_title(text: impl Into<String>) -> impl IntoElement {
+pub(crate) fn empty_title(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
         .font_size(14.)
         .color(colors::fg_secondary())
 }
 
-fn empty_hint(text: impl Into<String>) -> impl IntoElement {
+pub(crate) fn empty_hint(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
         .font_size(12.)

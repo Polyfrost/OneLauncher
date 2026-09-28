@@ -356,7 +356,7 @@ async fn check_bundle_updates_inner(
 
             if !crate::bundles::effective_enabled(file, user_override) {
                 if user_override.is_none()
-                    && !file.hidden
+                    && file.is_optional_offer()
                     && !optional_available.iter().any(|(key, _)| *key == file_key)
                 {
                     optional_available.push((

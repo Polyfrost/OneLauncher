@@ -30,10 +30,25 @@ pub struct BundleFile {
     pub path: String,
     #[serde(default)]
     pub size: u64,
+    #[serde(default)]
+    pub file_type: BundleFileType,
     pub kind: BundleFileKind,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BundleFileType {
+    Advanced,
+    #[default]
+    #[serde(other)]
+    Normal,
+}
+
 impl BundleFile {
+    pub fn is_optional_offer(&self) -> bool {
+        !self.enabled && !self.hidden && self.file_type == BundleFileType::Normal
+    }
+
     pub fn content_type(&self) -> ContentType {
         if let BundleFileKind::External { file, .. } = &self.kind {
             return file.content_type;

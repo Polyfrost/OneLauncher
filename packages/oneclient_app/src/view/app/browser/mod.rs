@@ -402,6 +402,7 @@ mod tests {
             hidden: false,
             path: format!("mods/{project_id}.jar"),
             size: 1,
+            file_type: oneclient_core::BundleFileType::Normal,
             kind: BundleFileKind::Managed {
                 provider: ProviderId::Modrinth,
                 project_id: project_id.to_string(),

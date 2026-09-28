@@ -16,8 +16,8 @@ use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::onboarding::{
-    archive_selected, choice_row_sized, is_default_bundle, is_optional_file, onboarding_nav,
-    onboarding_slide, pkg_key, set_archive_selected, step_heading, version_chip,
+    archive_selected, choice_row_sized, is_default_bundle, onboarding_nav, onboarding_slide,
+    pkg_key, set_archive_selected, step_heading, version_chip,
 };
 
 mod row;
@@ -173,7 +173,7 @@ fn optional_mods(clusters: &[ClusterBundles]) -> Vec<OptionalMod> {
                 .manifest
                 .files
                 .iter()
-                .filter(|f| is_optional_file(f))
+                .filter(|f| f.is_optional_offer())
             {
                 let package_id = file.kind.package_id();
                 let entry = map.entry(package_id.clone()).or_insert_with(|| {

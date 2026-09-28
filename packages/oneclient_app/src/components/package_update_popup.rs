@@ -8,7 +8,9 @@ use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 use oneclient_core::{BrowserPackageUpdate, ProfileUpdate};
 use oneclient_db::models::ClusterId;
 
-use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea, checkbox_labeled};
+use crate::components::{
+    Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea, checkbox_labeled,
+};
 use crate::hooks::{
     package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch,
 };
@@ -210,9 +212,7 @@ fn content(
                         .main_align(Alignment::Start)
                         .cross_align(Alignment::Center)
                         .spacing(6.)
-                        .child(
-                            checkbox_labeled(dont_show_again, "Don't show again?")
-                        )
+                        .child(checkbox_labeled(dont_show_again, "Don't show again?")),
                 )
                 .child(
                     rect()
@@ -247,15 +247,14 @@ fn content(
                                     }
 
                                     let answers = choices.read();
+                                    let mut chosen = Vec::new();
                                     for update in &all {
                                         match answers
                                             .get(&row_key(update))
                                             .copied()
                                             .unwrap_or_default()
                                         {
-                                            RowChoice::Update => {
-                                                proceed_dispatch.apply_package_update(update.clone());
-                                            }
+                                            RowChoice::Update => chosen.push(update.clone()),
                                             RowChoice::Skip => {}
                                             RowChoice::SkipVersion => proceed_dispatch
                                                 .skip_package_update(
@@ -264,11 +263,11 @@ fn content(
                                                 ),
                                         }
                                     }
-                                    proceed_dispatch.close_package_updates();
+                                    proceed_dispatch.proceed_package_updates(chosen);
                                 })
                                 .child(Icon::new(IconType::DownloadCloud02).size(15.))
                                 .text("Proceed"),
-                        )
+                        ),
                 ),
         )
 }

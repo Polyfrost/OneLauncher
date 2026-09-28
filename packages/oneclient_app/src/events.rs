@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 use crate::hooks::PumpSignal;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
-use crate::state::{AppChannel, AppState, LoginProgress};
+use crate::state::{AppChannel, AppState, LoginProgress, StorageScanProgress};
 
 /// Quiet period before log lines are written without it every line wakes the log view
 const GAME_LOG_FLUSH: Duration = Duration::from_millis(120);
@@ -30,6 +30,8 @@ impl EventPump {
         // Hovering any toast pauses every toast including ones arriving while hovering
         let mut paused = false;
         let mut game_flush: Option<tokio::time::Instant> = None;
+        let mut launched: HashSet<i64> = HashSet::new();
+        let mut playing: Option<i64> = None;
 
         loop {
             let next_deadline = armed
@@ -96,6 +98,10 @@ impl EventPump {
                     if folded.saw_game_log && game_flush.is_none() {
                         game_flush = Some(tokio::time::Instant::now() + GAME_LOG_FLUSH);
                     }
+                    if folded.saw_stage {
+                        launched.extend(&folded.launched);
+                        playing = crate::platform::follow_game(&self.station, &launched, playing);
+                    }
                 }
 
                 signal = self.signals.recv() => {
@@ -127,6 +133,7 @@ impl EventPump {
         let mut logs: Vec<(i64, String)> = Vec::new();
         let mut failed: Option<(i64, String)> = None;
         let mut login: Option<Option<LoginProgress>> = None;
+        let mut storage_scan: Option<Option<StorageScanProgress>> = None;
         let mut sync_complete = false;
 
         for event in batch {
@@ -138,6 +145,10 @@ impl EventPump {
                     folded.clusters = true;
                 }
                 Event::Game(GameEvent::Stage { cluster_id, stage }) => {
+                    folded.saw_stage = true;
+                    if stage.is_busy() {
+                        folded.launched.push(cluster_id);
+                    }
                     stages.push((cluster_id, stage));
                 }
                 Event::Game(GameEvent::Log { cluster_id, line }) => {
@@ -147,8 +158,10 @@ impl EventPump {
                 Event::Game(GameEvent::Failed {
                     cluster_id,
                     message,
-                }) => failed = Some((cluster_id, message)),
-                // Lifted out so it never reaches the engine the sign-in modal renders it inline
+                }) => {
+                    folded.saw_stage = true;
+                    failed = Some((cluster_id, message));
+                }
                 Event::Progress(ProgressEvent::Update {
                     id,
                     ref label,
@@ -156,6 +169,18 @@ impl EventPump {
                     total,
                 }) if id == oneclient_auth::MICROSOFT_LOGIN_PROGRESS => {
                     login = Some((current < total).then(|| LoginProgress {
+                        label: label.clone(),
+                        current,
+                        total,
+                    }));
+                }
+                Event::Progress(ProgressEvent::Update {
+                    id,
+                    ref label,
+                    current,
+                    total,
+                }) if id == oneclient_core::storage::STORAGE_SCAN_PROGRESS => {
+                    storage_scan = Some((current < total).then(|| StorageScanProgress {
                         label: label.clone(),
                         current,
                         total,
@@ -171,7 +196,10 @@ impl EventPump {
                 guard.game.stages.insert(cluster_id, stage);
                 if stage == LaunchStage::Checking {
                     guard.game.error = None;
-                    guard.game.logs.insert(cluster_id, std::sync::Arc::new(Vec::new()));
+                    guard
+                        .game
+                        .logs
+                        .insert(cluster_id, std::sync::Arc::new(Vec::new()));
                 }
             }
             for (cluster_id, line) in logs {
@@ -195,6 +223,12 @@ impl EventPump {
             self.station
                 .write_channel(AppChannel::MicrosoftLogin)
                 .microsoft_login = progress;
+        }
+
+        if let Some(progress) = storage_scan {
+            self.station
+                .write_channel(AppChannel::StorageScan)
+                .storage_scan = progress;
         }
 
         if !engine_events.is_empty() {
@@ -228,6 +262,8 @@ impl EventPump {
 struct Folded {
     touched_engine: bool,
     saw_game_log: bool,
+    saw_stage: bool,
+    launched: Vec<i64>,
     clusters: bool,
     java: bool,
 }
@@ -246,7 +282,9 @@ fn reconcile(
         .collect();
 
     for id in &want {
-        armed.entry(*id).or_insert_with(|| ToastTimer::armed(paused));
+        armed
+            .entry(*id)
+            .or_insert_with(|| ToastTimer::armed(paused));
     }
     armed.retain(|id, _| want.contains(id));
 }
@@ -340,10 +378,7 @@ pub async fn start_launcher(
     Ok(())
 }
 
-pub fn report_startup_failure(
-    station: &RadioStation<AppState, AppChannel>,
-    err: &anyhow::Error,
-) {
+pub fn report_startup_failure(station: &RadioStation<AppState, AppChannel>, err: &anyhow::Error) {
     let message = err.to_string();
     tracing::error!("launcher init failed: {err:#}");
 
@@ -361,7 +396,9 @@ pub fn report_startup_failure(
 
     let mut guard = station.write_channel(AppChannel::Notifications);
     let AppState {
-        notifications, inbox, ..
+        notifications,
+        inbox,
+        ..
     } = &mut **guard;
     notifications.dispatch(
         inbox,

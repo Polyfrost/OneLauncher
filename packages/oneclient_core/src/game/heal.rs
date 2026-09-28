@@ -8,7 +8,7 @@ const PROBE_LEN: usize = 4096;
 
 const MAX_PROBE_BYTES: u64 = 32 * 1024 * 1024;
 
-const BULK_NAMES: [&[u8]; 4] = [b"cache", b"repo", b"backup", b"logs"];
+const BULK_NAMES: [&str; 4] = ["cache", "repo", "backup", "log"];
 
 const NEVER_PROBED: [&str; 8] = [
     "db", "sqlite", "sqlite3", "wal", "shm", "journal", "lock", "idx",
@@ -21,6 +21,27 @@ const SWEPT_CONTENT: [(ContentType, bool); 3] = [
     (ContentType::ResourcePack, false),
     (ContentType::Shader, false),
 ];
+
+#[tracing::instrument(level = "debug")]
+pub async fn clear_zeroed_mods(cluster_dir: &Path) -> usize {
+    let mods_dir = cluster_dir.join(ContentType::Mod.folder_name());
+
+    tokio::task::spawn_blocking(move || {
+        let cleared = sweep_dir(&mods_dir, true);
+
+        if cleared > 0 {
+            tracing::info!(
+                cleared,
+                mods_dir = %mods_dir.display(),
+                "cleared zero-filled files; affected mods will regenerate defaults"
+            );
+        }
+
+        cleared
+    })
+    .await
+    .unwrap_or(0)
+}
 
 #[tracing::instrument(level = "debug")]
 pub async fn clear_zeroed_files(game_dir: &Path) -> usize {
@@ -67,12 +88,8 @@ fn sweep_dir(root: &Path, recurse: bool) -> usize {
 
             let path = entry.path();
 
-            if names_bulk_data(&path) {
-                continue;
-            }
-
             if file_type.is_dir() {
-                if recurse {
+                if recurse && !names_bulk_data(&path) {
                     stack.push(path);
                 }
                 continue;
@@ -106,12 +123,13 @@ fn names_bulk_data(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| {
-            let name = name.as_bytes();
-
-            BULK_NAMES.iter().any(|needle| {
-                name.windows(needle.len())
-                    .any(|window| window.eq_ignore_ascii_case(needle))
-            })
+            name.split(|c: char| !c.is_ascii_alphanumeric())
+                .any(|word| {
+                    let word = word.strip_suffix(['s', 'S']).unwrap_or(word);
+                    BULK_NAMES
+                        .iter()
+                        .any(|needle| word.eq_ignore_ascii_case(needle))
+                })
         })
 }
 
@@ -119,7 +137,11 @@ fn worth_probing(path: &Path) -> bool {
     !path
         .extension()
         .and_then(|ext| ext.to_str())
-        .is_some_and(|ext| NEVER_PROBED.iter().any(|skip| ext.eq_ignore_ascii_case(skip)))
+        .is_some_and(|ext| {
+            NEVER_PROBED
+                .iter()
+                .any(|skip| ext.eq_ignore_ascii_case(skip))
+        })
 }
 
 fn is_zeroed(path: &Path) -> bool {
@@ -149,4 +171,35 @@ fn is_zeroed(path: &Path) -> bool {
     }
 
     read_so_far > 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn bulk_names_match_whole_words_only() {
+        for bulk in [
+            "cache",
+            "logs",
+            "backups",
+            "catharsis-repo-cache",
+            "meowdding-repo-cache",
+            "config_backup.json",
+        ] {
+            assert!(names_bulk_data(Path::new(bulk)), "{bulk} should be skipped");
+        }
+
+        for swept in [
+            "NoChatReports",
+            "NCR-Common.json",
+            "crash-reports",
+            "catalog.json",
+        ] {
+            assert!(
+                !names_bulk_data(Path::new(swept)),
+                "{swept} should be swept"
+            );
+        }
+    }
 }

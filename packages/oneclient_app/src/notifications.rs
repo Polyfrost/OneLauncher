@@ -1,12 +1,12 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use oneclient_events::{
-    Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
-};
 use oneclient_content::packages::ProviderId;
 use oneclient_core::BrowserPackageUpdate;
 use oneclient_db::models::{ClusterId, OptionalModStatus};
+use oneclient_events::{
+    Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
+};
 use tokio::sync::oneshot;
 use uuid::Uuid;
 
@@ -80,9 +80,11 @@ impl OptionalModsGroup {
     }
 
     pub fn offers(&self) -> impl Iterator<Item = (ClusterId, OptionalModRef)> + '_ {
-        self.mods
-            .iter()
-            .filter_map(move |item| item.offer.clone().map(|reference| (self.cluster_id, reference)))
+        self.mods.iter().filter_map(move |item| {
+            item.offer
+                .clone()
+                .map(|reference| (self.cluster_id, reference))
+        })
     }
 }
 
@@ -117,6 +119,10 @@ pub struct InboxEntry {
     pub tasks: Vec<TaskView>,
     /// Bytes/sec and seconds remaining for grouped downloads
     pub transfer: Option<TransferStats>,
+    /// Toast-only notices still render as a toast but are never kept in the
+    /// notification center: they are dropped from the inbox when dismissed or
+    /// when their toast expires
+    pub toast_only: bool,
 }
 
 /// One aggregate row per [`TaskCategory`] (all libraries collapse into one "Libraries" row)
@@ -138,6 +144,7 @@ pub struct NotificationSpec {
     pub icon: Option<IconType>,
     pub progress: Option<(u64, u64)>,
     pub actions: Vec<NotificationAction>,
+    pub toast_only: bool,
 }
 
 impl InboxEntry {
@@ -225,7 +232,7 @@ pub struct NotificationState {
     /// Resumes the launch that opened the update modal
     /// Held here not by the launch task
     /// because every way the modal can end goes through this state
-    package_updates_done: Option<oneshot::Sender<()>>,
+    package_updates_done: Option<oneshot::Sender<Vec<BrowserPackageUpdate>>>,
     optional_mods_done: Option<oneshot::Sender<()>>,
 }
 
@@ -274,8 +281,11 @@ impl GroupedTasks {
                 let done_count = self.done_count.get(&cat).copied().unwrap_or(0);
                 let reserved_units = self.reserved_units.get(&cat).copied().unwrap_or(0);
 
-                let live: Vec<&ChildRec> =
-                    self.children.values().filter(|c| c.category == cat).collect();
+                let live: Vec<&ChildRec> = self
+                    .children
+                    .values()
+                    .filter(|c| c.category == cat)
+                    .collect();
                 let live_current: u64 = live.iter().map(|c| c.current.min(c.total)).sum();
                 let live_total: u64 = live.iter().map(|c| c.total).sum();
 
@@ -388,7 +398,7 @@ impl NotificationState {
     pub fn open_package_updates(
         &mut self,
         groups: Vec<PackageUpdateGroup>,
-        done: Option<oneshot::Sender<()>>,
+        done: Option<oneshot::Sender<Vec<BrowserPackageUpdate>>>,
     ) {
         let groups: Vec<PackageUpdateGroup> = groups
             .into_iter()
@@ -397,19 +407,25 @@ impl NotificationState {
 
         if groups.is_empty() {
             if let Some(done) = done {
-                let _ = done.send(());
+                let _ = done.send(Vec::new());
             }
             return;
         }
 
         // A second modal would strand the first launch so release the old continuation first
-        self.finish_package_updates();
+        self.finish_package_updates(Vec::new());
         self.package_updates = Some(groups);
         self.package_updates_done = done;
     }
 
     pub fn close_package_updates(&mut self) {
-        self.finish_package_updates();
+        self.finish_package_updates(Vec::new());
+    }
+
+    /// The launch applies these itself so the game starts on the versions the
+    /// player just picked rather than racing them
+    pub fn proceed_package_updates(&mut self, chosen: Vec<BrowserPackageUpdate>) {
+        self.finish_package_updates(chosen);
     }
 
     /// Applying and skipping are both answers either drops the row and can close the modal
@@ -426,21 +442,24 @@ impl NotificationState {
         groups.retain(|group| !group.packages.is_empty());
 
         if groups.is_empty() {
-            self.finish_package_updates();
+            self.finish_package_updates(Vec::new());
         }
     }
 
     /// Safe to call when nothing is open so every exit path can call it unconditionally
-    fn finish_package_updates(&mut self) {
+    fn finish_package_updates(&mut self, chosen: Vec<BrowserPackageUpdate>) {
         self.package_updates = None;
         if let Some(done) = self.package_updates_done.take() {
             // A send failure means the launch task is gone nothing left to resume
-            let _ = done.send(());
+            let _ = done.send(chosen);
         }
     }
 
     pub fn unread_count(inbox: &[InboxEntry]) -> usize {
-        inbox.iter().filter(|entry| !entry.read).count()
+        inbox
+            .iter()
+            .filter(|entry| !entry.read && !entry.toast_only)
+            .count()
     }
 
     /// Deliberately does not snapshot this runs tens of thousands of times per download
@@ -465,9 +484,11 @@ impl NotificationState {
                 );
                 self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
             }
-            // The sign-in modal renders this progress itself it must not also become a toast
+
             Event::Progress(ProgressEvent::Update { id, .. })
                 if id == oneclient_auth::MICROSOFT_LOGIN_PROGRESS => {}
+            Event::Progress(ProgressEvent::Update { id, .. })
+                if id == oneclient_core::storage::STORAGE_SCAN_PROGRESS => {}
             Event::Progress(ProgressEvent::Update {
                 id,
                 label,
@@ -532,7 +553,7 @@ impl NotificationState {
         }
         let has_progress = entry.is_some_and(|e| e.progress.is_some());
         self.active_toasts.remove(pos);
-        if !has_progress {
+        if !has_progress || entry.is_some_and(|e| e.toast_only) {
             self.forget_entry(inbox, entry_id);
         }
     }
@@ -543,9 +564,16 @@ impl NotificationState {
             .retain(|toast| toast.toast_id != toast_id);
     }
 
-    pub fn expire_toast(&mut self, _inbox: &[InboxEntry], entry_id: u64) {
+    pub fn expire_toast(&mut self, inbox: &mut Vec<InboxEntry>, entry_id: u64) {
         self.active_toasts
             .retain(|toast| toast.entry_id != entry_id);
+        if inbox
+            .iter()
+            .find(|e| e.id == entry_id)
+            .is_some_and(|e| e.toast_only)
+        {
+            self.forget_entry(inbox, entry_id);
+        }
     }
 
     pub fn mark_read(&mut self, inbox: &mut [InboxEntry], entry_id: u64) {
@@ -597,6 +625,7 @@ impl NotificationState {
                 actions: Vec::new(),
                 tasks: Vec::new(),
                 transfer: None,
+                toast_only: false,
             },
         );
         id
@@ -610,6 +639,7 @@ impl NotificationState {
             icon,
             progress,
             actions,
+            toast_only,
         } = spec;
 
         let is_loading = progress.is_some_and(|(current, total)| total == 0 || current < total);
@@ -631,6 +661,7 @@ impl NotificationState {
                 actions,
                 tasks: Vec::new(),
                 transfer: None,
+                toast_only,
             },
         );
 
@@ -733,8 +764,7 @@ impl NotificationState {
             self.update_inbox_entry(inbox, entry_id, title, body, None, false);
             self.ensure_progress_toast(entry_id);
         } else {
-            let entry_id =
-                self.push_inbox(inbox, title, body, Level::Info, None, false);
+            let entry_id = self.push_inbox(inbox, title, body, Level::Info, None, false);
             self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
         }
     }
@@ -887,6 +917,7 @@ impl NotificationState {
             icon,
             progress: _,
             actions,
+            toast_only: _,
         } = spec;
 
         match entry_id.and_then(|id| inbox.iter_mut().find(|e| e.id == id)) {
@@ -916,6 +947,7 @@ impl NotificationState {
                         icon,
                         progress: None,
                         actions,
+                        toast_only: false,
                     },
                 );
             }
@@ -1009,7 +1041,10 @@ mod package_update_tests {
         );
 
         state.resolve_package_update(1, "b");
-        assert!(wait.try_recv().is_ok(), "the last answer releases the launch");
+        assert!(
+            wait.try_recv().is_ok(),
+            "the last answer releases the launch"
+        );
         assert!(state.package_updates.is_none());
     }
 
@@ -1034,7 +1069,10 @@ mod package_update_tests {
 
         state.open_package_updates(vec![group(&[])], Some(done));
 
-        assert!(wait.try_recv().is_ok(), "a modal that never opens cannot be answered");
+        assert!(
+            wait.try_recv().is_ok(),
+            "a modal that never opens cannot be answered"
+        );
         assert!(state.package_updates.is_none());
     }
 
@@ -1047,7 +1085,10 @@ mod package_update_tests {
         state.open_package_updates(vec![group(&["a"])], Some(first));
         state.open_package_updates(vec![group(&["b"])], Some(second));
 
-        assert!(first_wait.try_recv().is_ok(), "the replaced launch is let go");
+        assert!(
+            first_wait.try_recv().is_ok(),
+            "the replaced launch is let go"
+        );
         assert!(second_wait.try_recv().is_err(), "the new one still waits");
     }
 
@@ -1062,5 +1103,63 @@ mod package_update_tests {
 
         assert!(wait.try_recv().is_err());
         assert!(state.package_updates.is_some());
+    }
+
+    fn spec(title: &str) -> NotificationSpec {
+        NotificationSpec {
+            title: title.to_string(),
+            body: String::new(),
+            level: Level::Info,
+            icon: None,
+            progress: None,
+            actions: Vec::new(),
+            toast_only: false,
+        }
+    }
+
+    fn toast_only(title: &str) -> NotificationSpec {
+        NotificationSpec {
+            toast_only: true,
+            ..spec(title)
+        }
+    }
+
+    #[test]
+    fn a_normal_notice_survives_its_toast_expiring() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        let id = state.push_custom(&mut inbox, spec("kept"));
+        state.expire_toast(&mut inbox, id);
+
+        assert!(inbox.iter().any(|e| e.id == id), "the inbox entry must stay");
+    }
+
+    #[test]
+    fn a_toast_only_notice_is_dropped_when_its_toast_expires() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        let id = state.push_custom(&mut inbox, toast_only("gone"));
+        state.expire_toast(&mut inbox, id);
+
+        assert!(
+            inbox.iter().all(|e| e.id != id),
+            "a toast-only notice must not linger in the inbox"
+        );
+    }
+
+    #[test]
+    fn a_toast_only_notice_is_dropped_when_its_toast_is_dismissed() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        let id = state.push_custom(&mut inbox, toast_only("gone"));
+        state.dismiss_toast(&mut inbox, id);
+
+        assert!(
+            inbox.iter().all(|e| e.id != id),
+            "a toast-only notice must not linger in the inbox"
+        );
     }
 }

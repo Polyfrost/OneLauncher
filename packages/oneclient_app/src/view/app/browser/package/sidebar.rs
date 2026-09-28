@@ -51,14 +51,7 @@ pub(super) fn sidebar(
                     rect()
                         .width(Size::fill())
                         .overflow(Overflow::Clip)
-                        .child(PackageBanner::new(project.icon_url.clone(), 110.))
-                        .maybe_child(installed.as_ref().map(|installed| {
-                            rect()
-                                .position(Position::new_absolute().top(8.).left(8.))
-                                .layer(Layer::Relative(7))
-                                .child(installed_badge_overlay(installed.source))
-                                .into_element()
-                        })),
+                        .child(PackageBanner::new(project.icon_url.clone(), 110.)),
                 )
                 .child(
                     rect()

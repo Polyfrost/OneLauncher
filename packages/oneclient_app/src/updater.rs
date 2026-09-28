@@ -106,13 +106,15 @@ async fn run_check(auto_install: bool, events: EventBus) -> anyhow::Result<()> {
 }
 
 fn can_self_update() -> bool {
-	if cfg!(debug_assertions) {
-		return false;
-	}
+    if cfg!(debug_assertions) {
+        return false;
+    }
 
-	if std::env::var_os("ONECLIENT_DISABLE_AUTOUPDATE").is_some_and(|val| val.eq_ignore_ascii_case("1")) {
-		return false;
-	}
+    if std::env::var_os("ONECLIENT_DISABLE_AUTOUPDATE")
+        .is_some_and(|val| val.eq_ignore_ascii_case("1"))
+    {
+        return false;
+    }
 
     #[cfg(target_os = "linux")]
     {

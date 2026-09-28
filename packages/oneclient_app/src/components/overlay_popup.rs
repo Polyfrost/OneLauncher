@@ -8,6 +8,7 @@ use freya::{
 use crate::hooks::use_overlay_claim;
 
 const SCRIM_ALPHA: f32 = 90.;
+const SCRIM_MIN_ALPHA: u8 = 1;
 
 /// Overlay level of a top level popup. Its scrim sits two levels below it.
 pub const OVERLAY_BASE_LEVEL: u8 = 12;
@@ -116,7 +117,7 @@ impl Component for OverlayPopup {
         });
 
         let scrim_alpha = if self.backdrop { SCRIM_ALPHA } else { 0. };
-        let alpha = (fade.read().value() * scrim_alpha) as u8;
+        let alpha = ((fade.read().value() * scrim_alpha) as u8).max(SCRIM_MIN_ALPHA);
 
         rect()
             .layer(Layer::Overlay)
@@ -130,7 +131,7 @@ impl Component for OverlayPopup {
                     .height(Size::window_percent(100.))
                     .layer(Layer::OverlayLevel(self.overlay_level.saturating_sub(2)))
                     .background(Color::from_argb(alpha, 0, 0, 0))
-                    .on_press(move |_| {
+                    .on_all_press(move |_| {
                         if let Some(on_close) = scrim_close.as_ref() {
                             on_close.call(());
                         }

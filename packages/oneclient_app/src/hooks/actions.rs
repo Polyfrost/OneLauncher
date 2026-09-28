@@ -10,8 +10,9 @@ use std::time::{Duration, Instant};
 
 use freya::prelude::spawn_forever;
 use freya::radio::RadioStation;
+use oneclient_cluster::profiles::list_named_profiles;
 use oneclient_cluster::{
-    ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
+    Cluster, ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
 };
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_content::packages::{LiveSync, LocalImportReport};
@@ -23,12 +24,12 @@ use oneclient_events::{Answer, Level};
 use tokio::sync::mpsc;
 
 use crate::components::IconType;
-use crate::{invalidate_java_queries, launcher};
 use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef, OptionalModsGroup,
     PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{AppChannel, AppState, AsyncStatus, RelocationState};
+use crate::{invalidate_java_queries, launcher};
 
 /// Over-disabling is the cheaper mistake a dead button beats a second game
 const LAUNCH_HOLD: Duration = Duration::from_secs(2);
@@ -85,6 +86,26 @@ fn plan_launch_updates(
         PackageUpdateMode::Automatic => LaunchUpdatePlan::Apply(pending),
         PackageUpdateMode::Prompt => LaunchUpdatePlan::Prompt(pending),
     }
+}
+
+/// Names the clusters that pinned `java_path` to this runtime by hand
+fn clusters_pinned_to_java(
+    profiles: &[GameSettingsProfile],
+    clusters: &[Cluster],
+    absolute_path: &str,
+) -> Vec<String> {
+    profiles
+        .iter()
+        .filter(|profile| profile.java_path.as_deref() == Some(absolute_path))
+        .map(|profile| {
+            clusters
+                .iter()
+                .find(|cluster| {
+                    cluster.setting_profile_name.as_deref() == Some(profile.name.as_str())
+                })
+                .map_or_else(|| profile.name.clone(), |cluster| cluster.name.clone())
+        })
+        .collect()
 }
 
 /// The pump alone owns the toast timers so adding or removing a toast has to
@@ -151,7 +172,10 @@ impl Actions {
 
     fn with_engine(&self, mutate: impl FnOnce(&mut AppState)) {
         {
-            let mut guard = self.station.clone().write_channel(AppChannel::Notifications);
+            let mut guard = self
+                .station
+                .clone()
+                .write_channel(AppChannel::Notifications);
             mutate(&mut guard);
         }
         self.nudge(PumpSignal::Reconcile);
@@ -175,10 +199,8 @@ impl Actions {
                 guard.settings.error = None;
             }
 
-            let loaded = oneclient_core::settings::store::load_settings(Some(
-                &state.services.events,
-            ))
-            .await;
+            let loaded =
+                oneclient_core::settings::store::load_settings(Some(&state.services.events)).await;
             let discord_enabled = loaded.discord_enabled;
             *state.settings.write() = loaded.clone();
             state.discord.set_enabled(discord_enabled);
@@ -210,7 +232,10 @@ impl Actions {
         });
     }
 
-    fn mutate_settings(&self, mutate: impl FnOnce(&mut LauncherSettings)) -> Option<LauncherSettings> {
+    fn mutate_settings(
+        &self,
+        mutate: impl FnOnce(&mut LauncherSettings),
+    ) -> Option<LauncherSettings> {
         let state = launcher::state().ok()?;
         let updated = {
             let mut lock = state.settings.write();
@@ -234,8 +259,8 @@ impl Actions {
         });
     }
 
-    pub fn set_settings(&self, settings: LauncherSettings) {
-        let Some(updated) = self.mutate_settings(|s| *s = settings) else {
+    pub fn edit_settings(&self, edit: impl FnOnce(&mut LauncherSettings)) {
+        let Some(updated) = self.mutate_settings(edit) else {
             return;
         };
         if let Ok(state) = launcher::state() {
@@ -244,25 +269,14 @@ impl Actions {
         self.persist(updated);
     }
 
-    pub fn stage_settings(&self, edit: impl FnOnce(&mut LauncherSettings)) {
-        self.mutate_settings(edit);
-    }
-
-    pub fn edit_settings(&self, edit: impl FnOnce(&mut LauncherSettings)) {
-        let Some(updated) = self.mutate_settings(edit) else {
+    pub fn set_settings(&self, settings: LauncherSettings) {
+        let Some(updated) = self.mutate_settings(|s| *s = settings) else {
             return;
         };
         if let Ok(state) = launcher::state() {
             state.discord.set_enabled(updated.discord_enabled);
         }
-
-        let actions = self.clone();
-        spawn_forever(async move {
-            let Ok(state) = launcher::state() else { return };
-            if let Err(err) = save_settings_and_apply(&state.services, &updated).await {
-                actions.set_settings_error(Some(err.to_string()));
-            }
-        });
+        self.persist(updated);
     }
 
     /// Not persisted the next real save carries the seen versions along
@@ -292,6 +306,13 @@ impl Actions {
 
     pub fn mark_onboarding_seen(&self) {
         if let Some(updated) = self.mutate_settings(|settings| settings.seen_onboarding = true) {
+            self.persist(updated);
+        }
+    }
+
+    pub fn skip_microsoft_java(&self) {
+        if let Some(updated) = self.mutate_settings(|settings| settings.skip_microsoft_java = true)
+        {
             self.persist(updated);
         }
     }
@@ -544,14 +565,12 @@ impl Actions {
                 Ok(_) => {
                     events.signal(oneclient_events::Signal::JavaChanged);
                     invalidate_java_queries().await
-                },
-                Err(err) => {
-					events
+                }
+                Err(err) => events
                     .notify("Java install failed")
                     .body(err.to_string())
                     .error()
-                    .send()
-				}
+                    .send(),
             }
         });
     }
@@ -581,6 +600,29 @@ impl Actions {
         let path = path.into();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
+            let events = state.services.events.clone();
+
+            // Checks if the jdk is pinned to the cluster
+            match (
+                list_named_profiles(&state.services.db).await,
+                state.clusters.list().await,
+            ) {
+                (Ok(profiles), Ok(clusters)) => {
+                    let pinned = clusters_pinned_to_java(&profiles, &clusters, &path);
+                    if !pinned.is_empty() {
+                        events
+                            .notify("Cannot remove this JDK")
+                            .body(format!("It is used by cluster: {}", pinned.join(", ")))
+                            .error()
+                            .send();
+                        return;
+                    }
+                }
+                (Err(err), _) | (_, Err(err)) => {
+                    tracing::error!("could not check whether the java runtime is in use: {err:#}");
+                }
+            }
+
             match state.java.remove_runtime(&path).await {
                 Ok(()) => super::invalidate_java_queries().await,
                 Err(err) => tracing::error!("failed to remove java runtime: {err:#}"),
@@ -604,11 +646,40 @@ impl Actions {
             .account_switcher_open = !open;
     }
 
+    pub fn open_account_switcher(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::AccountSwitcher)
+            .account_switcher_open = true;
+    }
+
     pub fn close_account_switcher(&self) {
         self.station
             .clone()
             .write_channel(AppChannel::AccountSwitcher)
             .account_switcher_open = false;
+    }
+
+    pub fn toggle_control_center(&self) {
+        let open = self.station.peek().control_center_open;
+        self.station
+            .clone()
+            .write_channel(AppChannel::ControlCenter)
+            .control_center_open = !open;
+    }
+
+    pub fn open_control_center(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::ControlCenter)
+            .control_center_open = true;
+    }
+
+    pub fn close_control_center(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::ControlCenter)
+            .control_center_open = false;
     }
 
     pub fn close_notification_center(&self) {
@@ -623,7 +694,11 @@ impl Actions {
     }
 
     pub fn dismiss_toast(&self, entry_id: u64) {
-        self.with_engine(|state| state.notifications.dismiss_toast(&mut state.inbox, entry_id));
+        self.with_engine(|state| {
+            state
+                .notifications
+                .dismiss_toast(&mut state.inbox, entry_id)
+        });
     }
 
     pub fn mark_notification_read(&self, entry_id: u64) {
@@ -710,10 +785,8 @@ impl Actions {
             };
             let content = state.services.content();
             let events = state.services.events.clone();
-            let session = oneclient_events::GroupedProgressSession::start(
-                &events,
-                "Adding optional mods",
-            );
+            let session =
+                oneclient_events::GroupedProgressSession::start(&events, "Adding optional mods");
             let opt_in = session.child(
                 "Enabling mods",
                 mods.len() as u64,
@@ -764,6 +837,7 @@ impl Actions {
                     state.bundles.as_ref(),
                     &content,
                     Some(&session),
+                    None,
                 )
                 .await
                 {
@@ -816,6 +890,10 @@ impl Actions {
         });
     }
 
+    pub fn proceed_package_updates(&self, chosen: Vec<oneclient_core::BrowserPackageUpdate>) {
+        self.with_engine(move |state| state.notifications.proceed_package_updates(chosen));
+    }
+
     pub fn close_package_updates(&self) {
         self.with_engine(|state| state.notifications.close_package_updates());
     }
@@ -865,6 +943,7 @@ impl Actions {
                 icon: None,
                 progress: None,
                 actions: Vec::new(),
+                toast_only: false,
             },
         }
     }
@@ -929,15 +1008,16 @@ impl Actions {
             .error = None;
     }
 
-    pub fn import_local_file(&self, cluster_id: ClusterId, content_type: ContentType, path: PathBuf) {
+    pub fn import_local_file(
+        &self,
+        cluster_id: ClusterId,
+        content_type: ContentType,
+        path: PathBuf,
+    ) {
         self.import_local_files(cluster_id, vec![(path, content_type)]);
     }
 
-    pub fn import_local_files(
-        &self,
-        cluster_id: ClusterId,
-        files: Vec<(PathBuf, ContentType)>,
-    ) {
+    pub fn import_local_files(&self, cluster_id: ClusterId, files: Vec<(PathBuf, ContentType)>) {
         if files.is_empty() {
             return;
         }
@@ -966,7 +1046,11 @@ impl Actions {
                         deferred |= live == LiveSync::Deferred;
                     }
 
-                    notify_import(&events, &report, deferred && state.games.is_active(cluster_id));
+                    notify_import(
+                        &events,
+                        &report,
+                        deferred && state.games.is_active(cluster_id),
+                    );
                     super::invalidate_cluster_queries().await;
                 }
                 Err(err) => events
@@ -1033,6 +1117,7 @@ impl Actions {
                     icon: Some(IconType::Download01),
                     progress: None,
                     actions: Vec::new(),
+                    toast_only: false,
                 },
                 Err(err) => NotificationSpec {
                     title: "Install failed".to_string(),
@@ -1041,6 +1126,7 @@ impl Actions {
                     icon: None,
                     progress: None,
                     actions: Vec::new(),
+                    toast_only: false,
                 },
             };
 
@@ -1053,7 +1139,7 @@ impl Actions {
             if install.result.is_ok() {
                 // Before the refresh below so the version list never renders
                 // the moment where both copies read as active
-                if let Err(err) = oneclient_content::bundles::reconcile_duplicate_activity(
+                if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
                     cluster_id,
                     &state.services.content(),
                 )
@@ -1183,6 +1269,7 @@ impl Actions {
                 cluster_id,
                 state.bundles.as_ref(),
                 &state.services.content(),
+                None,
             )
             .await
             {
@@ -1199,7 +1286,9 @@ impl Actions {
                 }
             };
 
-            actions.record_bundle_checks([cluster_id]);
+            if result.settled() {
+                actions.record_bundle_checks([cluster_id]);
+            }
 
             super::invalidate_cluster_queries().await;
             if let Some(spec) =
@@ -1274,7 +1363,7 @@ impl Actions {
             .relocation = relocation;
     }
 
-	/// `syncing_bundles` gates every launch button so the readiness check must
+    /// `syncing_bundles` gates every launch button so the readiness check must
     /// happen before the flag is raised not inside the task
     pub fn sync_bundles(&self) {
         let state = match launcher::state() {
@@ -1293,39 +1382,14 @@ impl Actions {
             .syncing_bundles = true;
 
         spawn_forever(async move {
-
-            let synced = match state.bundles.sync(&state.services.content()).await {
-                Ok(_) => true,
-                Err(err) => {
-                    tracing::error!("bundle catalog sync failed: {err:#}");
-                    false
-                }
-            };
+            if let Err(err) = state.bundles.sync(&state.services.content()).await {
+                tracing::error!("bundle catalog sync failed: {err:#}");
+            }
             if let Err(err) = oneclient_core::clusters::apply_remote_migrations(&state).await {
                 tracing::error!("cluster migrations failed: {err:#}");
             }
             if let Err(err) = oneclient_core::clusters::ensure_from_bundles(&state).await {
                 tracing::error!("bundle cluster provisioning failed: {err:#}");
-            }
-
-            // One grouped session for the batch so all downloads surface as a
-            // single notification `detach` lets it be converted in place
-            let session = oneclient_events::GroupedProgressSession::start(
-                &state.services.events,
-                "Updating mods",
-            );
-            let changed = oneclient_content::bundles::sync_all_cluster_bundles(
-                state.bundles.as_ref(),
-                &state.services.content(),
-                Some(&session),
-            )
-            .await;
-            let session_id = session.detach();
-
-            if synced
-                && let Ok(clusters) = state.clusters.list().await
-            {
-                actions.record_bundle_checks(clusters.iter().map(|cluster| cluster.id));
             }
 
             actions
@@ -1335,12 +1399,6 @@ impl Actions {
                 .launcher
                 .syncing_bundles = false;
             super::invalidate_cluster_queries().await;
-
-            let spec = crate::install::combined_cluster_update_spec(&changed, &state.services).await;
-            actions.with_engine(|app| {
-                app.notifications
-                    .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
-            });
         });
     }
 
@@ -1361,34 +1419,28 @@ impl Actions {
             return;
         }
 
-        let mode = self.cluster_update_mode(state, cluster_id).await;
-
         self.station
             .clone()
             .write_channel(AppChannel::Launcher)
             .launcher
             .syncing_bundles = true;
 
-        let synced = match tokio::time::timeout(BUNDLE_SYNC_BUDGET, state.bundles.sync(&content))
-            .await
-        {
-            Ok(Ok(_)) => true,
-            Ok(Err(err)) => {
-                tracing::warn!(
-                    cluster_id,
-                    error = %err,
-                    "bundle catalog sync failed, launching against the cached catalog"
-                );
-                false
-            }
-            Err(_elapsed) => {
-                tracing::debug!(
-                    cluster_id,
-                    "bundle catalog sync exceeded its launch budget"
-                );
-                false
-            }
-        };
+        let synced =
+            match tokio::time::timeout(BUNDLE_SYNC_BUDGET, state.bundles.sync(&content)).await {
+                Ok(Ok(_)) => true,
+                Ok(Err(err)) => {
+                    tracing::warn!(
+                        cluster_id,
+                        error = %err,
+                        "bundle catalog sync failed, launching against the cached catalog"
+                    );
+                    false
+                }
+                Err(_elapsed) => {
+                    tracing::debug!(cluster_id, "bundle catalog sync exceeded its launch budget");
+                    false
+                }
+            };
 
         self.station
             .clone()
@@ -1396,32 +1448,16 @@ impl Actions {
             .launcher
             .syncing_bundles = false;
 
-        // No prompt for bundles the package manager's markers carry them instead
-        if !matches!(mode, PackageUpdateMode::Automatic) {
-            tracing::debug!(cluster_id, "bundle updates left for the user to apply");
-            if synced {
-                self.record_bundle_checks([cluster_id]);
-            }
-            return;
-        }
-
-        let applied = match tokio::time::timeout(
-            BUNDLE_APPLY_BUDGET,
-            oneclient_core::apply_bundle_updates(cluster_id, state.bundles.as_ref(), &content),
+        // Bundle content is forced, so the update mode never gates it and the
+        // modal never lists it
+        let result = match oneclient_core::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &content,
+            Some(Instant::now() + BUNDLE_APPLY_BUDGET),
         )
         .await
         {
-            Ok(applied) => applied,
-            Err(_elapsed) => {
-                tracing::warn!(
-                    cluster_id,
-                    "bundle updates exceeded their launch budget, launching anyway"
-                );
-                return;
-            }
-        };
-
-        let result = match applied {
             Ok(result) => result,
             Err(err) => {
                 tracing::warn!(
@@ -1433,7 +1469,14 @@ impl Actions {
             }
         };
 
-        if synced {
+        if result.stopped_early {
+            tracing::warn!(
+                cluster_id,
+                "bundle updates ran out of their launch budget; the rest go at the next launch"
+            );
+        }
+
+        if synced && result.settled() {
             self.record_bundle_checks([cluster_id]);
         }
 
@@ -1445,12 +1488,6 @@ impl Actions {
         }
 
         super::invalidate_cluster_queries().await;
-
-        if let Some(spec) =
-            crate::install::cluster_update_notification(cluster_id, &result, &state.services).await
-        {
-            self.push_notification(spec);
-        }
     }
 
     /// The check runs and the cache is written whatever the mode says keeping
@@ -1506,7 +1543,10 @@ impl Actions {
                 else {
                     return;
                 };
-                self.prompt_package_updates(group).await;
+                let chosen = self.prompt_package_updates(group).await;
+                if !chosen.is_empty() {
+                    self.apply_updates_for_launch(state, &chosen).await;
+                }
             }
         }
     }
@@ -1582,12 +1622,15 @@ impl Actions {
             icon: Some(IconType::DownloadCloud02),
             progress: None,
             actions: Vec::new(),
+            toast_only: false,
         });
 
         self.with_engine(|app| {
             app.notifications
                 .finish_grouped_as_actions(&mut app.inbox, session_id, spec);
         });
+
+        super::invalidate_cluster_queries().await;
 
         if applied > 0 {
             super::invalidate_cluster_queries().await;
@@ -1627,22 +1670,29 @@ impl Actions {
 
         let (done, wait) = tokio::sync::oneshot::channel();
         self.with_engine(move |state| {
-            state.notifications.open_optional_mods(vec![group], Some(done));
+            state
+                .notifications
+                .open_optional_mods(vec![group], Some(done));
             state.center_open = false;
         });
 
         let _ = wait.await;
     }
 
-    async fn prompt_package_updates(&self, group: PackageUpdateGroup) {
+    async fn prompt_package_updates(
+        &self,
+        group: PackageUpdateGroup,
+    ) -> Vec<oneclient_core::BrowserPackageUpdate> {
         let (done, wait) = tokio::sync::oneshot::channel();
 
         self.with_engine(move |state| {
-            state.notifications.open_package_updates(vec![group], Some(done));
+            state
+                .notifications
+                .open_package_updates(vec![group], Some(done));
             state.center_open = false;
         });
 
-        let _ = wait.await;
+        wait.await.unwrap_or_default()
     }
 
     pub fn apply_package_update(&self, update: oneclient_core::BrowserPackageUpdate) {
@@ -1682,6 +1732,7 @@ impl Actions {
                     icon: Some(IconType::DownloadCloud02),
                     progress: None,
                     actions: Vec::new(),
+                    toast_only: false,
                 },
                 Err(err) => NotificationSpec {
                     title: "Update failed".to_string(),
@@ -1690,6 +1741,7 @@ impl Actions {
                     icon: None,
                     progress: None,
                     actions: Vec::new(),
+                    toast_only: false,
                 },
             };
 
@@ -1769,6 +1821,8 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         return;
     };
 
+    crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
+
     // Before the game process never after Minecraft reads its mods once at
     // startup
     actions
@@ -1847,10 +1901,10 @@ fn notify_import(events: &oneclient_events::EventBus, report: &LocalImportReport
         [only] => Some(format!("Added {}", only.file_name)),
         rows => Some(format!("Added {} files", rows.len())),
     }) else {
-        let reason = report
-            .failed
-            .first()
-            .map_or_else(|| "Nothing could be read".to_string(), |(_, err)| err.to_string());
+        let reason = report.failed.first().map_or_else(
+            || "Nothing could be read".to_string(),
+            |(_, err)| err.to_string(),
+        );
 
         events.notify("Import failed").body(reason).error().send();
         return;
@@ -1914,6 +1968,13 @@ impl NotificationBuilder {
 
     pub fn actions(mut self, actions: impl IntoIterator<Item = NotificationAction>) -> Self {
         self.spec.actions = actions.into_iter().collect();
+        self
+    }
+
+    /// Marks the notice as ephemeral: it shows as a toast but never sticks
+    /// around in the notification center
+    pub fn toast_only(mut self) -> Self {
+        self.spec.toast_only = true;
         self
     }
 
@@ -2010,5 +2071,92 @@ mod tests {
                 "{mode:?} must not hold a launch up over an empty list",
             );
         }
+    }
+
+    const JDK_25: &str = r"C:\jdk-25\bin\javaw.exe";
+
+    fn profile(name: &str, java_path: Option<&str>) -> GameSettingsProfile {
+        GameSettingsProfile {
+            name: name.into(),
+            java_path: java_path.map(Into::into),
+            ..GameSettingsProfile::default_global_profile()
+        }
+    }
+
+    fn cluster(id: i64, name: &str, profile_name: Option<&str>) -> Cluster {
+        Cluster {
+            id,
+            name: name.into(),
+            folder_name: name.into(),
+            setting_profile_name: profile_name.map(Into::into),
+            mc_version: "26.2".into(),
+            mc_loader: oneclient_common::domain::GameLoader::default(),
+            mc_loader_version: None,
+            stage: ClusterStage::default(),
+            created_at: None,
+            last_played: None,
+            overall_played: Duration::ZERO,
+            linked_modpack_hash: None,
+        }
+    }
+
+    #[test]
+    fn a_runtime_nobody_pinned_is_free_to_go() {
+        let profiles = vec![profile("26.2 Fabric", None)];
+        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"))];
+
+        assert!(clusters_pinned_to_java(&profiles, &clusters, JDK_25).is_empty());
+    }
+
+    #[test]
+    fn a_pinned_runtime_is_reported_under_its_cluster_name() {
+        let profiles = vec![profile("26.2 Fabric", Some(JDK_25))];
+        let clusters = vec![cluster(1, "26.2 Fabric", Some("26.2 Fabric"))];
+
+        assert_eq!(
+            clusters_pinned_to_java(&profiles, &clusters, JDK_25),
+            vec!["26.2 Fabric".to_string()],
+        );
+    }
+
+    #[test]
+    fn only_the_runtime_being_removed_counts() {
+        let profiles = vec![
+            profile("21 pinned", Some(r"C:\jdk-21\bin\javaw.exe")),
+            profile("25 pinned", Some(JDK_25)),
+        ];
+        let clusters = vec![
+            cluster(1, "Old pack", Some("21 pinned")),
+            cluster(2, "New pack", Some("25 pinned")),
+        ];
+
+        assert_eq!(
+            clusters_pinned_to_java(&profiles, &clusters, JDK_25),
+            vec!["New pack".to_string()],
+        );
+    }
+
+    #[test]
+    fn every_cluster_holding_the_runtime_is_named() {
+        let profiles = vec![profile("a", Some(JDK_25)), profile("b", Some(JDK_25))];
+        let clusters = vec![
+            cluster(1, "Alpha", Some("a")),
+            cluster(2, "Beta", Some("b")),
+        ];
+
+        assert_eq!(
+            clusters_pinned_to_java(&profiles, &clusters, JDK_25),
+            vec!["Alpha".to_string(), "Beta".to_string()],
+        );
+    }
+
+    #[test]
+    fn a_profile_no_cluster_claims_falls_back_to_its_own_name() {
+        let profiles = vec![profile("orphaned", Some(JDK_25))];
+
+        assert_eq!(
+            clusters_pinned_to_java(&profiles, &[], JDK_25),
+            vec!["orphaned".to_string()],
+        );
     }
 }

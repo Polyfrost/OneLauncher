@@ -9,13 +9,13 @@ use oneclient_net::status::{self, ServiceStatus};
 
 use crate::Actions;
 use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialog, toggle};
-use crate::hooks::use_dispatch;
+use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch};
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
     OptionalModsGroup,
 };
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{self, colors};
 use crate::ui::border_all_color;
 
 type SqlResult = Option<Result<ConsoleQueryResult, String>>;
@@ -25,7 +25,7 @@ pub struct Debug;
 
 impl Component for Debug {
     fn render(&self) -> impl IntoElement {
-		let dispatch = use_dispatch();
+        let dispatch = use_dispatch();
         let log_debug_info = use_state(|| false);
         let show_dev_stuff = use_state(|| false);
         let seen_onboarding = use_state(|| true);
@@ -97,18 +97,109 @@ impl Component for Debug {
                         vec![CorruptionSimulator.into_element()],
                     ))
                     .child(divider())
+                    .child(section("Clusters", vec![ClusterList.into_element()]))
+                    .child(divider())
                     .child(section("SQL Console", vec![SqlConsole.into_element()]))
                     .child(divider())
                     .child(section(
                         "Other",
-                        vec![action_row(&dispatch, vec![
-                            ("Open Dev Tools", IconType::CodeSnippet02),
-                            ("Open Onboarding", IconType::Rocket02),
-                            ("Open Launcher Data", IconType::Folder),
-                            ("Log Running Processes", IconType::Terminal),
-                        ])],
+                        vec![action_row(
+                            &dispatch,
+                            vec![
+                                ("Open Dev Tools", IconType::CodeSnippet02),
+                                ("Open Onboarding", IconType::Rocket02),
+                                ("Open Launcher Data", IconType::Folder),
+                                ("Log Running Processes", IconType::Terminal),
+                            ],
+                        )],
                     )),
             )
+    }
+}
+
+#[derive(PartialEq)]
+struct ClusterList;
+
+impl Component for ClusterList {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let active_id = use_active_cluster_id();
+        let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
+
+        let mut list = rect().vertical().width(Size::fill()).spacing(8.);
+
+        if clusters.is_empty() {
+            return list.child(
+                label()
+                    .text("No clusters in the database.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            );
+        }
+
+        for cluster in clusters {
+            let cluster_id = cluster.id;
+            let launch = dispatch.clone();
+            let mut active_id = active_id;
+            let loader_version = cluster
+                .mc_loader_version
+                .as_deref()
+                .map_or_else(String::new, |version| format!(" {version}"));
+
+            list = list.child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .main_align(Alignment::SpaceBetween)
+                    .spacing(12.)
+                    .padding(Gaps::new_symmetric(10., 14.))
+                    .corner_radius(CornerRadius::new_all(10.))
+                    .background(colors::page_elevated())
+                    .child(
+                        rect()
+                            .vertical()
+                            .child(
+                                label()
+                                    .text(cluster.name.clone())
+                                    .font_size(14.)
+                                    .color(colors::fg_primary()),
+                            )
+                            .child(
+                                label()
+                                    .text(format!(
+                                        "#{cluster_id} · {} · {}{loader_version} · {:?}",
+                                        cluster.mc_version, cluster.mc_loader, cluster.stage
+                                    ))
+                                    .font_size(12.)
+                                    .color(colors::fg_secondary()),
+                            ),
+                    )
+                    .child(
+                        rect()
+                            .horizontal()
+                            .spacing(8.)
+                            .child(
+                                Button::new()
+                                    .primary()
+                                    .on_press(move |_| launch.launch_cluster(cluster_id))
+                                    .text("Launch"),
+                            )
+                            .child(
+                                Button::new()
+                                    .secondary()
+                                    .on_press(move |_| {
+                                        *active_id.write() = Some(cluster_id);
+                                        let _ = RouterContext::get()
+                                            .push(Route::ClusterOverview { cluster_id });
+                                    })
+                                    .text("View"),
+                            ),
+                    ),
+            );
+        }
+
+        list
     }
 }
 
@@ -344,52 +435,50 @@ const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 7] = [
                 &[],
             ),
             preset_summary(2, "Skyblock", &[], &[], &["OptiFine", "Skytils"], &[]),
-            preset_summary(3, "Vanilla+", &[], &["Sodium", "Iris", "FerriteCore"], &[], &[]),
+            preset_summary(
+                3,
+                "Vanilla+",
+                &[],
+                &["Sodium", "Iris", "FerriteCore"],
+                &[],
+                &[],
+            ),
         ]
     }),
     ("2 clusters · removals only", IconType::Trash01, || {
         vec![
             preset_summary(1, "PolyBlock", &[], &[], &["OptiFine"], &[]),
-            preset_summary(2, "Skyblock", &[], &[], &["Skytils", "NotEnoughUpdates"], &[]),
+            preset_summary(
+                2,
+                "Skyblock",
+                &[],
+                &[],
+                &["Skytils", "NotEnoughUpdates"],
+                &[],
+            ),
         ]
     }),
     ("6 clusters · long names", IconType::Database01, || {
         (1..=6)
-            .map(|i| {
-                ClusterUpdateSummary {
-                    cluster_id: i,
-                    cluster_name: format!(
-                        "Cluster {i} with a deliberately overlong name that has to truncate"
-                    ),
-                    updated: cluster_update_items(&[
-                        format!("Sodium 0.{i} → 0.{}", i + 1),
-                        format!("Iris 1.{i} → 1.{}", i + 1),
-                    ]),
-                    added: cluster_update_items(&[format!("Lithium {i}")]),
-                    removed: Vec::new(),
-                    optional: Vec::new(),
-                }
+            .map(|i| ClusterUpdateSummary {
+                cluster_id: i,
+                cluster_name: format!(
+                    "Cluster {i} with a deliberately overlong name that has to truncate"
+                ),
+                updated: cluster_update_items(&[
+                    format!("Sodium 0.{i} → 0.{}", i + 1),
+                    format!("Iris 1.{i} → 1.{}", i + 1),
+                ]),
+                added: cluster_update_items(&[format!("Lithium {i}")]),
+                removed: Vec::new(),
+                optional: Vec::new(),
             })
             .collect()
     }),
     ("2 clusters · offers only", IconType::Plus, || {
         vec![
-            preset_summary(
-                1,
-                "PolyBlock",
-                &[],
-                &[],
-                &[],
-                &["Lithium", "FerriteCore"],
-            ),
-            preset_summary(
-                2,
-                "Skyblock",
-                &[],
-                &["Skytils"],
-                &[],
-                &["Skytils"],
-            ),
+            preset_summary(1, "PolyBlock", &[], &[], &[], &["Lithium", "FerriteCore"]),
+            preset_summary(2, "Skyblock", &[], &["Skytils"], &[], &["Skytils"]),
         ]
     }),
 ];
@@ -431,7 +520,7 @@ fn preset_summary(
         updated: cluster_update_items(updated),
         added: cluster_update_items(added),
         removed: cluster_update_items(removed),
-        optional: cluster_update_items(optional)
+        optional: cluster_update_items(optional),
     }
 }
 
@@ -948,9 +1037,11 @@ fn run_damage(dispatch: &crate::Actions, kind: DamageKind, cluster_id: i64) {
     let dispatch = dispatch.clone();
     spawn(async move {
         let result = match kind {
-            DamageKind::Assets(count, damage) => oneclient_core::simulate::damage_assets(count, damage)
-                .await
-                .map(|report| (report, damage.verb())),
+            DamageKind::Assets(count, damage) => {
+                oneclient_core::simulate::damage_assets(count, damage)
+                    .await
+                    .map(|report| (report, damage.verb()))
+            }
             DamageKind::Libraries(count, damage) => {
                 oneclient_core::simulate::damage_libraries(count, damage)
                     .await
@@ -1003,24 +1094,36 @@ impl Component for SqlConsole {
             .width(Size::fill())
             .spacing(10.)
             .child(
+                TextInput::new(query)
+                    .multiline(true)
+                    .placeholder("SELECT * FROM …")
+                    .font_family(theme::MONO_FONT)
+                    .width(Size::fill())
+                    .height(Size::px(140.))
+                    .on_submit(move |_| run_sql(query, result, running)),
+            )
+            .child(
                 rect()
                     .horizontal()
                     .width(Size::fill())
                     .cross_align(Alignment::Center)
                     .spacing(12.)
                     .child(
-                        rect().width(Size::flex(1.0)).child(
-                            TextInput::new(query)
-                                .placeholder("SELECT * FROM …")
-                                .on_submit(move |_| run_sql(query, result, running)),
-                        ),
-                    )
-                    .child(
                         Button::new()
                             .primary()
                             .child(Icon::new(IconType::Terminal).size(16.))
                             .text(if *running.read() { "Running…" } else { "Run" })
                             .on_press(move |_| run_sql(query, result, running)),
+                    )
+                    .child(
+                        label()
+                            .text(if cfg!(target_os = "macos") {
+                                "⌘ Enter"
+                            } else {
+                                "Ctrl+Enter"
+                            })
+                            .font_size(12.)
+                            .color(colors::fg_secondary()),
                     ),
             )
             .child(sql_result(&result.read()))
@@ -1212,9 +1315,9 @@ fn action_row(dispatch: &Actions, buttons: Vec<(&'static str, IconType)>) -> Ele
             .text(text);
 
         if text == "Open Onboarding" {
-			let dispatch = dispatch.clone();
-			button = button.on_press(move |_| {
-				dispatch.reset_onboarding();
+            let dispatch = dispatch.clone();
+            button = button.on_press(move |_| {
+                dispatch.reset_onboarding();
                 let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
             });
         }

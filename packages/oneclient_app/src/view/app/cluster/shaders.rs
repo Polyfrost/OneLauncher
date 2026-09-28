@@ -7,10 +7,10 @@ use crate::hooks::{
 };
 use crate::layout::cluster_content;
 
+use super::cluster_not_found;
 use super::package_manager::{
     PackageManager, bundle_categories, bundle_packages, use_content_meta,
 };
-use super::cluster_not_found;
 use crate::hooks::use_cluster;
 
 #[derive(PartialEq)]

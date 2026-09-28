@@ -182,6 +182,7 @@ impl Component for ScreenshotViewer {
                                                     .body("Screenshot copied to your clipboard.")
                                                     .info()
                                                     .icon(IconType::ClipboardCheck)
+                                                    .toast_only()
                                                     .send();
                                             })
                                             .child(Icon::new(IconType::Copy01).size(14.))
@@ -235,6 +236,7 @@ pub fn screenshot_context_menu(
                 .body("Screenshot copied to your clipboard.")
                 .info()
                 .icon(IconType::ClipboardCheck)
+                .toast_only()
                 .send();
         })
         .separator()
@@ -324,6 +326,7 @@ fn header_row(
             Button::new()
                 .ghost()
                 .icon()
+                .tooltip("Close")
                 .on_press(on_close)
                 .child(Icon::new(IconType::XClose).size(18.)),
         )

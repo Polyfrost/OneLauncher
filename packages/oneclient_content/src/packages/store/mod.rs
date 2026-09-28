@@ -16,21 +16,24 @@ pub use link::{
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 
 use oneclient_db::dao::{
-    artifact as artifact_dao, cluster as cluster_dao, package_metadata as meta_dao,
+    artifact as artifact_dao, cluster as cluster_dao, cluster_bundle as bundle_dao,
+    package_metadata as meta_dao,
 };
 use oneclient_db::models::{ArtifactRow, ClusterRow, SeenStatus};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 // `paths` alone is this module's own cache-path helpers
-use oneclient_common::paths as common_paths;
 use super::error::PackageError;
 use super::file_identity::FileIdentity;
+use super::types::{
+    CachedArtifact, LinkedArtifactInfo, ProjectDetail, ProviderReleaseInfo, VersionDetail,
+};
 use super::{local_manifest, metadata_cache};
-use super::types::{CachedArtifact, ProjectDetail, ProviderReleaseInfo, VersionDetail, LinkedArtifactInfo};
-use polyio::{normalize_hash, sha1_file};
-use oneclient_events::GroupedProgressChild;
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
+use oneclient_common::paths as common_paths;
+use oneclient_events::GroupedProgressChild;
+use polyio::{normalize_hash, sha1_file};
 use std::path::{Path, PathBuf};
 
 pub struct PackageStore;
@@ -45,10 +48,7 @@ pub struct LocalImportReport {
 
 impl PackageStore {
     #[tracing::instrument(level = "debug", skip(ctx))]
-    pub async fn get_cluster(
-        cluster_id: i64,
-        ctx: &ContentCtx,
-    ) -> ContentResult<ClusterRow> {
+    pub async fn get_cluster(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<ClusterRow> {
         cluster_dao::get_by_id(&ctx.db, cluster_id)
             .await?
             .ok_or(PackageError::ClusterNotFound(cluster_id).into())
@@ -90,7 +90,7 @@ impl PackageStore {
         .await
     }
 
-	#[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)]
     #[tracing::instrument(skip(project, version, child, ctx), fields(project_id = %project.id, version_id = %version.version_id))]
     pub async fn install_to_cluster(
         provider_id: ProviderId,
@@ -109,17 +109,14 @@ impl PackageStore {
             ensure_compatible(project, version, &cluster)?;
         }
 
-        let artifact = Self::download_and_cache(
-            provider_id,
-            project,
-            version,
-            force_download,
-            child,
-            ctx,
-        )
-        .await?;
+        let artifact =
+            Self::download_and_cache(provider_id, project, version, force_download, child, ctx)
+                .await?;
 
         let enabled = Self::link_artifact(&artifact, &cluster, None, ctx).await?;
+
+        Self::replace_other_versions(cluster_id, provider_id, &project.id, &artifact.hash, ctx)
+            .await?;
 
         let live = if enabled {
             link::try_link_materialized(&cluster, &artifact, &artifact.file_name).await
@@ -128,6 +125,76 @@ impl PackageStore {
         };
 
         Ok((artifact, live))
+    }
+
+    /// Bundle-owned copies are stepped over
+    /// unlinking one here would have the next bundle sync put it straight back
+    #[tracing::instrument(level = "debug", skip(ctx))]
+    pub async fn replace_other_versions(
+        cluster_id: i64,
+        provider: ProviderId,
+        project_id: &str,
+        keep_hash: &str,
+        ctx: &ContentCtx,
+    ) -> ContentResult<()> {
+        let others = artifact_dao::list_cluster_artifacts_for_project(
+            &ctx.db,
+            cluster_id,
+            provider as i64,
+            project_id,
+            keep_hash,
+        )
+        .await?;
+
+        for link in others {
+            if bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, &link.hash)
+                .await?
+                .is_some()
+            {
+                tracing::debug!(
+                    hash = %link.hash,
+                    "leaving a bundle-owned version of the project in place"
+                );
+                continue;
+            }
+
+            tracing::info!(
+                cluster_id,
+                project_id,
+                hash = %link.hash,
+                "dropping a superseded version of the project"
+            );
+            Self::unlink_superseded(cluster_id, &link.hash, ctx).await?;
+        }
+
+        Ok(())
+    }
+
+    /// Not `bundles::remove_artifact_from_cluster`
+    /// `packages` must not depend on `bundles` and its override reconciliation
+    /// does not apply here
+    #[tracing::instrument(level = "debug", skip(ctx))]
+    async fn unlink_superseded(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
+        let cluster = Self::get_cluster(cluster_id, ctx).await?;
+        let content_type = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+            .await?
+            .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
+        let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+
+        artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+
+        if let (Some(content_type), Some(link)) = (content_type, link)
+            && link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await
+                == LiveSync::Deferred
+        {
+            return Ok(());
+        }
+
+        if let Err(err) = gc::evict_if_unused(hash, ctx).await {
+            tracing::warn!(hash, error = %err, "failed to evict the superseded artifact");
+        }
+
+        Ok(())
     }
 
     #[tracing::instrument(level = "debug", skip(artifact, cluster, ctx))]
@@ -262,9 +329,11 @@ impl PackageStore {
             .await?
             .ok_or(PackageError::ArtifactMissing(hash.to_string()))?;
 
-        let content_type = ContentType::from_repr(artifact.content_type as u8)
-            .ok_or_else(|| ContentError::InvalidData {
-                reason: format!("unknown content type {}", artifact.content_type),
+        let content_type =
+            ContentType::from_repr(artifact.content_type as u8).ok_or_else(|| {
+                ContentError::InvalidData {
+                    reason: format!("unknown content type {}", artifact.content_type),
+                }
             })?;
 
         let enabled = target.unwrap_or(link.enabled == 0);
@@ -281,6 +350,10 @@ impl PackageStore {
             i64::from(enabled),
         )
         .await?;
+
+        if content_type.is_global() {
+            artifact_dao::set_enabled_for_hash(&ctx.db, hash, i64::from(enabled)).await?;
+        }
 
         // Only the enable side has an outcome to report; a pack that is not in
         // the running folder needs no removing from it
@@ -355,9 +428,7 @@ impl PackageStore {
     ) -> ContentResult<ArtifactRow> {
         let provider = ctx.providers.get(provider_id)?;
 
-        let version = provider
-            .get_version(project_id, version_id, ctx)
-            .await?;
+        let version = provider.get_version(project_id, version_id, ctx).await?;
 
         let project = provider.get_project(project_id, ctx).await?;
 
@@ -489,7 +560,7 @@ async fn already_described(row: &ArtifactRow, ctx: &ContentCtx) -> bool {
 
 /// Written exactly as a download would have so the row joins the update flow
 /// rather than sitting outside it
-async fn record_release(
+pub(crate) async fn record_release(
     provider: ProviderId,
     version: &VersionDetail,
     hash: &str,
@@ -575,10 +646,7 @@ async fn store_local_icon(hash: &str, jar: &std::path::Path, entry: &str) -> Opt
 }
 
 #[tracing::instrument(level = "debug", skip(row, ctx), fields(hash = %row.hash))]
-async fn row_to_cached(
-    row: ArtifactRow,
-    ctx: &ContentCtx,
-) -> ContentResult<CachedArtifact> {
+async fn row_to_cached(row: ArtifactRow, ctx: &ContentCtx) -> ContentResult<CachedArtifact> {
     let path = artifact_absolute_path(&row.path)?;
     let release = artifact_dao::get_release_by_hash(&ctx.db, &row.hash)
         .await?
@@ -625,12 +693,10 @@ fn ensure_compatible(
         }
     }
 
-    if !version.game_versions.is_empty()
-        && !version
-            .game_versions
-            .iter()
-            .any(|v| cluster.mc_version.contains(v))
-    {
+    if !crate::packages::dependencies::supports_game_version(
+        &version.game_versions,
+        &cluster.mc_version,
+    ) {
         return Err(PackageError::IncompatibleMcVersion.into());
     }
 

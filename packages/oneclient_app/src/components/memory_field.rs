@@ -4,14 +4,17 @@ use crate::components::{Dropdown, TextInput, validate_memory};
 use crate::theme::colors;
 use crate::utils::{format_memory_gb, memory_presets_mb};
 
-const UNSET_LABEL: &str = "Default";
 const CUSTOM_LABEL: &str = "Custom";
 
 /// Presets picker with an input for memory allocation
-pub fn memory_field(mut memory: State<String>) -> impl IntoElement {
+pub fn memory_field(
+    mut memory: State<String>,
+    unset_label: &str,
+    placeholder: u32,
+) -> impl IntoElement {
     let presets = memory_presets_mb();
     let selected = match memory.read().trim() {
-        "" => UNSET_LABEL.to_string(),
+        "" => unset_label.to_string(),
         value => value
             .parse::<u32>()
             .ok()
@@ -20,7 +23,8 @@ pub fn memory_field(mut memory: State<String>) -> impl IntoElement {
             .unwrap_or_else(|| CUSTOM_LABEL.to_string()),
     };
 
-    let options: Vec<String> = presets.iter().copied().map(format_memory_gb).collect();
+    let mut options: Vec<String> = vec![unset_label.to_string()];
+    options.extend(presets.iter().copied().map(format_memory_gb));
 
     rect()
         .horizontal()
@@ -31,7 +35,9 @@ pub fn memory_field(mut memory: State<String>) -> impl IntoElement {
                 .width(Size::px(100.))
                 .height(Size::px(34.))
                 .on_select(move |idx: usize| {
-                    if let Some(mb) = presets.get(idx).copied() {
+                    if idx == 0 {
+                        memory.set(String::new());
+                    } else if let Some(mb) = presets.get(idx - 1).copied() {
                         memory.set(mb.to_string());
                     }
                 }),
@@ -39,7 +45,7 @@ pub fn memory_field(mut memory: State<String>) -> impl IntoElement {
         .child(
             TextInput::new(memory)
                 .width(Size::px(90.))
-                .placeholder(oneclient_common::default_mem_max().to_string())
+                .placeholder(placeholder.to_string())
                 .on_validate(validate_memory)
                 .trailing(
                     label()

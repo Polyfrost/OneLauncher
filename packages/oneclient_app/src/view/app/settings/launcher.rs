@@ -3,12 +3,14 @@ use std::path::{Path, PathBuf};
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::relocate::RelocationPlan;
-use oneclient_core::settings::{LauncherSettings, data_dir};
+use oneclient_core::settings::{LaunchBehaviour, LauncherSettings, data_dir};
 use oneclient_core::storage::format_bytes;
 
 use super::{resettable, section_header, settings_page, settings_row};
 use crate::Route;
-use crate::components::{Button, Icon, IconType, OverlayPopup, open_folder_button, toggle};
+use crate::components::{
+    Button, Dropdown, Icon, IconType, OverlayPopup, open_folder_button, toggle,
+};
 use crate::hooks::{
     Actions, DiscardLeftoversKeys, mutation_error, mutation_is_running, try_leftovers,
     use_discard_leftovers, use_dispatch, use_launcher, use_leftovers, use_settings_snapshot,
@@ -40,6 +42,16 @@ impl Component for SettingsLauncher {
             move || v
         });
 
+        let run_in_background = use_state({
+            let v = settings.run_in_background;
+            move || v
+        });
+
+        let show_tray_icon = use_state({
+            let v = settings.show_tray_icon;
+            move || v
+        });
+
         let mut first = use_state(|| true);
         {
             let dispatch = dispatch.clone();
@@ -47,14 +59,18 @@ impl Component for SettingsLauncher {
                 let discord = *discord_rpc.read();
                 let crash = *crash_reporting.read();
                 let maximized = *start_maximized.read();
+                let background = *run_in_background.read();
+                let tray = *show_tray_icon.read();
                 if *first.peek() {
                     first.set(false);
                     return;
                 }
-                dispatch.edit_settings(|settings| {
-                    settings.discord_enabled = discord;
-                    settings.crash_reporting = crash;
-                    settings.start_maximized = maximized;
+                dispatch.edit_settings(|next| {
+                    next.discord_enabled = discord;
+                    next.crash_reporting = crash;
+                    next.start_maximized = maximized;
+                    next.run_in_background = background;
+                    next.show_tray_icon = tray;
                 });
             });
         }
@@ -107,10 +123,45 @@ impl Component for SettingsLauncher {
                 consent_summary,
                 review_terms,
             ))
+            .child(section_header("SYSTEM"))
+            .child(settings_row(
+                IconType::Eye,
+                "While Playing",
+                "What the launcher window does once a game is running.",
+                launch_behaviour_field(settings.launch_behaviour, dispatch),
+            ))
+            .child(settings_row(
+                IconType::Moon01,
+                "Run in Background",
+                "Closing the window keeps OneClient running. Open it again from the tray icon or by launching it.",
+                toggle(run_in_background),
+            ))
+            .child(settings_row(
+                IconType::LayoutTop,
+                "Show Tray Icon",
+                "Show OneClient in the system tray or menu bar. Applies on restart.",
+                toggle(show_tray_icon),
+            ))
             .child(section_header("FOLDERS AND FILES"))
             .child(DataFolder.into_element())
             .into_element()
     }
+}
+
+fn launch_behaviour_field(selected: LaunchBehaviour, dispatch: Actions) -> impl IntoElement {
+    let options: Vec<String> = LaunchBehaviour::ALL
+        .iter()
+        .map(|behaviour| behaviour.label().to_string())
+        .collect();
+
+    Dropdown::new(selected.label(), options)
+        .width(Size::px(220.))
+        .height(Size::px(34.))
+        .on_select(move |idx: usize| {
+            if let Some(behaviour) = LaunchBehaviour::ALL.get(idx).copied() {
+                dispatch.edit_settings(|settings| settings.launch_behaviour = behaviour);
+            }
+        })
 }
 
 #[derive(PartialEq)]
@@ -134,7 +185,11 @@ impl Component for DataFolder {
             .small()
             .disabled(checking_now)
             .on_press(move |_| browse(pending, error, checking))
-            .text(if checking_now { "Checking…" } else { "Change…" });
+            .text(if checking_now {
+                "Checking…"
+            } else {
+                "Change…"
+            });
 
         let mut buttons = Vec::new();
 

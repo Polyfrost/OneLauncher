@@ -6,8 +6,8 @@ use std::time::Duration;
 use bytes::Bytes;
 use freya::prelude::{spawn, use_hook};
 use freya::query::{
-    Mutation, MutationCapability, QueriesStorage, Query, QueryCapability,
-    UseMutation, UseQuery, use_mutation, use_query,
+    Mutation, MutationCapability, QueriesStorage, Query, QueryCapability, UseMutation, UseQuery,
+    use_mutation, use_query,
 };
 use notify::{EventKind, RecursiveMode, Watcher};
 use oneclient_core::{LauncherError, ScreenshotInfo};
@@ -119,15 +119,14 @@ async fn watch_folder(
     std::fs::create_dir_all(folder)?;
 
     let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-        match event {
+    let mut watcher =
+        notify::recommended_watcher(move |event: notify::Result<notify::Event>| match event {
             Ok(event) if touches_image(&event) => {
                 let _ = tx.send(());
             }
             Ok(_) => {}
             Err(err) => tracing::debug!(error = %err, "screenshot watcher reported an error"),
-        }
-    })?;
+        })?;
     watcher.watch(folder, RecursiveMode::NonRecursive)?;
 
     let mut pending = false;

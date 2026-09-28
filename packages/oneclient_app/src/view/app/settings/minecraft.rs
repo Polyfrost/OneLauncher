@@ -3,9 +3,7 @@ use oneclient_common::Patch;
 use oneclient_core::settings::{
     GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution,
 };
-#[cfg(windows)]
-use oneclient_core::settings::LauncherSettings;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 use oneclient_core::settings::SettingsOsExtra;
 
 use super::settings_page;
@@ -69,18 +67,9 @@ impl Component for SettingsMinecraft {
             move || v
         });
 
-        #[cfg(windows)]
+        #[cfg(any(target_os = "linux", windows))]
         let discrete_gpu = use_state({
-            let v = settings.use_discrete_gpu;
-            move || v
-        });
-        #[cfg(target_os = "linux")]
-        let discrete_gpu = use_state({
-            let v = profile
-                .os_extra
-                .as_ref()
-                .and_then(|extra| extra.use_discrete_gpu)
-                .unwrap_or(false);
+            let v = profile.use_discrete_gpu();
             move || v
         });
 
@@ -99,25 +88,21 @@ impl Component for SettingsMinecraft {
                     &post_exit_command.read(),
                     *update_mode.read(),
                 );
-                #[cfg(any(windows, target_os = "linux"))]
+                #[cfg(any(target_os = "linux", windows))]
                 let gpu = *discrete_gpu.read();
                 if *first.peek() {
                     first.set(false);
                     return;
                 }
 
-                #[cfg(windows)]
-                dispatch.stage_settings(move |settings| settings.use_discrete_gpu = gpu);
-                #[cfg(target_os = "linux")]
+                #[cfg(any(target_os = "linux", windows))]
                 let update = with_discrete_gpu(update, gpu);
 
                 dispatch.update_global_profile(update);
             });
         }
 
-        #[cfg(windows)]
-        let discrete_gpu_default = LauncherSettings::default().use_discrete_gpu;
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         let discrete_gpu_default = SettingsOsExtra::default().use_discrete_gpu.unwrap_or(false);
 
         let page = settings_page()
@@ -161,7 +146,7 @@ impl Component for SettingsMinecraft {
                 "Memory",
                 "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
                 resettable(
-                    memory_field(memory),
+                    memory_field(memory, "Default", oneclient_common::default_mem_max()),
                     memory,
                     defaults.mem_max.map(|m| m.to_string()).unwrap_or_default(),
                 ),
@@ -173,6 +158,7 @@ impl Component for SettingsMinecraft {
                 resettable(
                     TextInput::new(jvm_args)
                         .placeholder("-XX:+UseG1GC")
+                        .expandable(true)
                         .width(Size::px(220.)),
                     jvm_args,
                     defaults.launch_args.clone().unwrap_or_default(),
@@ -197,6 +183,7 @@ impl Component for SettingsMinecraft {
                 resettable(
                     TextInput::new(pre_launch_command)
                         .placeholder("echo 'Game started'")
+                        .expandable(true)
                         .width(Size::px(220.)),
                     pre_launch_command,
                     defaults.hook_pre.clone().unwrap_or_default(),
@@ -209,6 +196,7 @@ impl Component for SettingsMinecraft {
                 resettable(
                     TextInput::new(wrapper_command)
                         .placeholder("gamescope")
+                        .expandable(true)
                         .width(Size::px(220.)),
                     wrapper_command,
                     defaults.hook_wrapper.clone().unwrap_or_default(),
@@ -221,21 +209,14 @@ impl Component for SettingsMinecraft {
                 resettable(
                     TextInput::new(post_exit_command)
                         .placeholder("echo 'Game exited'")
+                        .expandable(true)
                         .width(Size::px(220.)),
                     post_exit_command,
                     defaults.hook_post.clone().unwrap_or_default(),
                 ),
             ));
 
-        #[cfg(windows)]
-        let page = page.child(settings_row(
-            IconType::Rocket02,
-            "Prefer Dedicated GPU",
-            "Ask Windows to run Java on the high-performance GPU.",
-            resettable(toggle(discrete_gpu), discrete_gpu, discrete_gpu_default),
-        ));
-
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", windows))]
         let page = page
             .child(section_header("GRAPHICS"))
             .child(settings_row(
@@ -249,7 +230,7 @@ impl Component for SettingsMinecraft {
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", windows))]
 fn with_discrete_gpu(mut update: ProfileUpdate, on: bool) -> ProfileUpdate {
     let base = crate::launcher::state()
         .ok()

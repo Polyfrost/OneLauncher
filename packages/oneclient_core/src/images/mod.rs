@@ -5,13 +5,15 @@ use bytes::Bytes;
 use reqwest::Method;
 use tokio::sync::Mutex;
 
-use polyio::sha1_bytes;
-use oneclient_net::RequestError;
+use crate::{LauncherError, LauncherResult};
 use oneclient_common::paths;
 use oneclient_net::RequestClient;
-use crate::{LauncherError, LauncherResult};
+use oneclient_net::RequestError;
+use polyio::sha1_bytes;
 
 pub const DEFAULT_IMAGE_EDGE: u32 = 1200;
+
+pub const BACKGROUND_IMAGE_EDGE: u32 = 2560;
 
 /// Image urls come from untrusted remote descriptions, so cap what is fetched and decoded.
 const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
@@ -135,6 +137,10 @@ static DECODE_LIMIT: std::sync::LazyLock<tokio::sync::Semaphore> =
     std::sync::LazyLock::new(|| tokio::sync::Semaphore::new(2));
 
 async fn downscale_if_oversized(bytes: Bytes, max_edge: u32) -> Bytes {
+    if max_edge == 0 {
+        return bytes;
+    }
+
     let _permit = DECODE_LIMIT.acquire().await;
     let candidate = bytes.clone();
     match tokio::task::spawn_blocking(move || downscale(&candidate, max_edge)).await {
@@ -172,7 +178,9 @@ fn downscale(bytes: &[u8], max_edge: u32) -> Option<Bytes> {
     let mut out = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut out);
     if resized.color().has_alpha() {
-        resized.write_to(&mut cursor, image::ImageFormat::Png).ok()?;
+        resized
+            .write_to(&mut cursor, image::ImageFormat::Png)
+            .ok()?;
     } else {
         image::codecs::jpeg::JpegEncoder::new_with_quality(&mut cursor, 85)
             .encode_image(&resized)
@@ -189,7 +197,10 @@ async fn download(net: &RequestClient, url: &str) -> LauncherResult<Bytes> {
     if !matches!(parsed.scheme(), "http" | "https") {
         return Err(refused(url, "unsupported scheme"));
     }
-    if !is_public_host(&parsed) {
+    // SSRF guard: refuse non-public hosts unless the user deliberately
+    // configured that host as the custom API endpoint / meta URL base,
+    // which is what makes `localhost` dev backends reachable
+    if !is_public_host(&parsed) && !net.config().allows_host(&parsed) {
         return Err(refused(url, "host is not public"));
     }
 

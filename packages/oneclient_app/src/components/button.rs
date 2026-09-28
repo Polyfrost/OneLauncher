@@ -4,7 +4,7 @@ use std::borrow::Cow;
 use freya::prelude::*;
 
 use crate::{
-    components::{Icon, IconTint, IconType},
+    components::{Icon, IconTint, IconType, TooltipPlacement, tooltip::use_tooltip_anchor},
     theme::colors,
 };
 
@@ -53,7 +53,10 @@ pub struct Button {
     enabled: bool,
     focusable: bool,
     alt: Option<Box<str>>,
+    tooltip: Option<Box<str>>,
+    tooltip_placement: TooltipPlacement,
     on_press: Option<EventHandler<Event<PressEventData>>>,
+    overflow: Overflow,
 
     elements: Vec<Element>,
     key: DiffKey,
@@ -111,8 +114,11 @@ impl Button {
             enabled: true,
             focusable: true,
             alt: None,
+            tooltip: None,
+            tooltip_placement: TooltipPlacement::default(),
             on_press: None,
             elements: Vec::new(),
+            overflow: Overflow::Clip,
             key: DiffKey::None,
             cursor_icon: CursorIcon::Pointer,
         }
@@ -149,6 +155,11 @@ impl Button {
         self.style.corner_radius = corner_radius;
         self.text_style.font_size = Some(font_size.into());
 
+        self
+    }
+
+    pub fn overflow(mut self, overflow: Overflow) -> Self {
+        self.overflow = overflow;
         self
     }
 
@@ -203,6 +214,20 @@ impl Button {
         self
     }
 
+    pub fn tooltip(mut self, tooltip: impl Into<Box<str>>) -> Self {
+        let tooltip = tooltip.into();
+        if self.alt.is_none() {
+            self.alt = Some(tooltip.clone());
+        }
+        self.tooltip = Some(tooltip);
+        self
+    }
+
+    pub fn tooltip_placement(mut self, placement: TooltipPlacement) -> Self {
+        self.tooltip_placement = placement;
+        self
+    }
+
     pub fn cursor_icon(mut self, cursor_icon: CursorIcon) -> Self {
         self.cursor_icon = cursor_icon;
         self
@@ -246,6 +271,8 @@ impl Component for Button {
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
+
+        let tooltip = use_tooltip_anchor(self.tooltip.clone(), self.tooltip_placement);
 
         let enabled = use_reactive(&self.enabled);
 
@@ -294,7 +321,7 @@ impl Component for Button {
             .a11y_focusable(enabled() && self.focusable)
             .a11y_role(AccessibilityRole::Button)
             .map(self.alt.clone(), |rect, alt| rect.a11y_alt(alt))
-            .overflow(Overflow::Clip)
+            .overflow(self.overflow)
             .layout(self.layout.clone())
             .text_style(self.text_style.clone())
             .children(self.elements.clone());
@@ -335,7 +362,7 @@ impl Component for Button {
             rect = rect.cursor(CursorIcon::NotAllowed);
         }
 
-        rect
+        tooltip.attach(rect)
     }
 
     fn render_key(&self) -> DiffKey {
@@ -444,6 +471,7 @@ pub fn open_folder_button(folder: std::path::PathBuf) -> Button {
     Button::new()
         .secondary()
         .icon()
+        .tooltip("Open folder")
         .on_press(move |_| {
             std::fs::create_dir_all(&folder).ok();
             crate::platform::open_path(&folder.to_string_lossy());

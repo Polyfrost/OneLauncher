@@ -1,6 +1,5 @@
 use std::{path::PathBuf, str::FromStr};
 
-
 use oneclient_events::{EventBus, GroupedProgressSession};
 use oneclient_net::RequestClient;
 
@@ -10,16 +9,19 @@ use crate::error::JavaResult;
 mod adoptium;
 mod corretto;
 mod liberica;
+mod microsoft;
 mod zulu;
 
 pub use adoptium::AdoptiumRuntimeProvider;
 pub use corretto::CorrettoRuntimeProvider;
 pub use liberica::LibericaRuntimeProvider;
+pub use microsoft::MicrosoftRuntimeProvider;
 use serde::{Deserialize, Deserializer, Serialize};
 pub use zulu::ZuluRuntimeProvider;
 
 pub fn runtime_providers() -> Vec<Box<dyn JavaRuntimeProvider>> {
     vec![
+        Box::new(MicrosoftRuntimeProvider),
         Box::new(ZuluRuntimeProvider),
         Box::new(AdoptiumRuntimeProvider),
         Box::new(CorrettoRuntimeProvider),
@@ -27,15 +29,24 @@ pub fn runtime_providers() -> Vec<Box<dyn JavaRuntimeProvider>> {
     ]
 }
 
+// For making sure microsoft jdk provider is first
+#[must_use]
+pub fn default_vendor() -> JavaVendor {
+    runtime_providers()
+        .first()
+        .expect("the provider list is never empty")
+        .vendor()
+}
+
 #[async_trait::async_trait]
 pub trait JavaRuntimeProvider: Send + Sync {
-	fn vendor(&self) -> JavaVendor;
+    fn vendor(&self) -> JavaVendor;
 
-	async fn list_packages(
-		&self,
-		major: Option<u32>,
-		net: &RequestClient,
-	) -> JavaResult<Vec<JavaPackage>>;
+    async fn list_packages(
+        &self,
+        major: Option<u32>,
+        net: &RequestClient,
+    ) -> JavaResult<Vec<JavaPackage>>;
 
     #[tracing::instrument(level = "debug", skip(self, net))]
     async fn latest_package_by_major(
@@ -44,31 +55,33 @@ pub trait JavaRuntimeProvider: Send + Sync {
         net: &RequestClient,
     ) -> JavaResult<Option<JavaPackage>> {
         let packages = self.list_packages(Some(major), net).await?;
-        Ok(packages.into_iter().find(|p| p.java_version.first() == Some(&major)))
+        Ok(packages
+            .into_iter()
+            .find(|p| p.java_version.first() == Some(&major)))
     }
 
-	#[tracing::instrument(level = "debug", skip_all)]
-	async fn install_package(
-		&self,
-		package: &JavaPackage,
-		net: &RequestClient,
-		events: &EventBus,
-		progress: Option<&GroupedProgressSession>,
-	) -> JavaResult<PathBuf> {
+    #[tracing::instrument(level = "debug", skip_all)]
+    async fn install_package(
+        &self,
+        package: &JavaPackage,
+        net: &RequestClient,
+        events: &EventBus,
+        progress: Option<&GroupedProgressSession>,
+    ) -> JavaResult<PathBuf> {
         crate::install::install_package(package, net, events, progress).await
     }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq, Hash)]
 pub enum JavaVendor {
-	Zulu,
-	Corretto,
-	Oracle,
-	Microsoft,
-	Adoptium,
-	Liberica,
-	OpenJDK,
-	Other(String),
+    Zulu,
+    Corretto,
+    Oracle,
+    Microsoft,
+    Adoptium,
+    Liberica,
+    OpenJDK,
+    Other(String),
 }
 
 impl std::fmt::Display for JavaVendor {
@@ -87,37 +100,39 @@ impl std::fmt::Display for JavaVendor {
 }
 
 impl FromStr for JavaVendor {
-	type Err = ();
+    type Err = ();
 
-	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let v = s.to_lowercase();
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let v = s.to_lowercase();
 
-		Ok(if v.contains("adoptium") || v.contains("adoptopenjdk") || v.contains("temurin") {
-			Self::Adoptium
-		} else if v.contains("liberica") || v.contains("bellsoft") {
-			Self::Liberica
-		} else if v.contains("microsoft") {
-			Self::Microsoft
-		} else if v.contains("openjdk") {
-			Self::OpenJDK
-		} else if v.contains("oracle") {
-			Self::Oracle
-		} else if v.contains("amazon") || v.contains("corretto") {
-			Self::Corretto
-		} else if v.contains("azul") || v.contains("zulu") {
-			Self::Zulu
-		} else {
-			Self::Other(s.to_string())
-		})
-	}
+        Ok(
+            if v.contains("adoptium") || v.contains("adoptopenjdk") || v.contains("temurin") {
+                Self::Adoptium
+            } else if v.contains("liberica") || v.contains("bellsoft") {
+                Self::Liberica
+            } else if v.contains("microsoft") {
+                Self::Microsoft
+            } else if v.contains("openjdk") {
+                Self::OpenJDK
+            } else if v.contains("oracle") {
+                Self::Oracle
+            } else if v.contains("amazon") || v.contains("corretto") {
+                Self::Corretto
+            } else if v.contains("azul") || v.contains("zulu") {
+                Self::Zulu
+            } else {
+                Self::Other(s.to_string())
+            },
+        )
+    }
 }
 
 impl<'de> Deserialize<'de> for JavaVendor {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		let s = String::deserialize(deserializer)?;
-		Ok(Self::from_str(&s).unwrap())
-	}
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Ok(Self::from_str(&s).unwrap())
+    }
 }

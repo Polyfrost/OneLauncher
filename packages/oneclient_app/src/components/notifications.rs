@@ -5,13 +5,13 @@ use freya::{
 use oneclient_events::Level;
 
 use crate::{
-    ui::{divider, relative_time},
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
     hooks::{use_dispatch, use_notifications_snapshot},
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
     transfer::TransferStats,
-    utils::{format_duration_hms, format_size},
+    ui::{divider, relative_time},
+    utils::{format_durations, format_size},
 };
 
 #[derive(PartialEq)]
@@ -48,9 +48,13 @@ impl Component for NotificationPanel {
 
         let progress = intro.read().value();
 
-        let entries = inbox.len();
         let mut rows: Vec<Element> = Vec::new();
-        if entries == 0 {
+        // Toast-only notices are ephemeral: never surface them in the center
+        let visible: Vec<InboxEntry> = inbox
+            .into_iter()
+            .filter(|entry| !entry.toast_only)
+            .collect();
+        if visible.is_empty() {
             rows.push(
                 label()
                     .text("No notifications")
@@ -59,8 +63,8 @@ impl Component for NotificationPanel {
                     .into_element(),
             );
         } else {
-            let last = entries - 1;
-            for (i, entry) in inbox.into_iter().enumerate() {
+            let last = visible.len() - 1;
+            for (i, entry) in visible.into_iter().enumerate() {
                 let id = entry.id;
                 rows.push(NotifEntryRow::new(entry, i != last).key(id).into_element());
             }
@@ -212,7 +216,9 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
                     let now = !*expanded.peek();
                     expanded.set(now);
                 })
-                .child(ChevronToggle { expanded: is_expanded })
+                .child(ChevronToggle {
+                    expanded: is_expanded,
+                })
                 .child(
                     label()
                         .text(if is_expanded {
@@ -445,7 +451,7 @@ fn transfer_footer(stats: TransferStats) -> Element {
     let speed = format!("{}/s", format_size(stats.speed_bps as u64));
     let eta = stats
         .eta_secs
-        .map(|secs| format!("{} left", format_duration_hms(secs as i64)));
+        .map(|secs| format!("{} left", format_durations(secs as i64)));
 
     rect()
         .horizontal()
@@ -525,4 +531,3 @@ fn level_color(level: &Level) -> Color {
         Level::Error => colors::danger(),
     }
 }
-

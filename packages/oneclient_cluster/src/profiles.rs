@@ -76,9 +76,7 @@ pub async fn create_profile_from_global(
     let mut profile = global.clone();
 
     profile.name = name.to_string();
-    if let Some(mem) = mem_max {
-        profile.mem_max = Some(mem);
-    }
+    profile.mem_max = mem_max;
 
     if let Some(fullscreen) = force_fullscreen {
         profile.force_fullscreen = Some(fullscreen);
@@ -164,4 +162,3 @@ pub async fn update_named_profile(
 
     upsert_named_profile(pool, &profile).await
 }
-

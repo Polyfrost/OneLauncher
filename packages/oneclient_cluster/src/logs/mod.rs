@@ -110,7 +110,7 @@ mod tests {
         );
         assert_eq!(parse_level("[ERROR] boom"), Some(LogLevel::Error));
         assert_eq!(parse_level("[main/FATAL]"), Some(LogLevel::Fatal));
-        
+
         assert_eq!(parse_level("\tat java.base/java.lang.Thread.run"), None);
         assert_eq!(parse_level("[12:34:56] just a timestamp"), None);
     }

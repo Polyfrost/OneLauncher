@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::bundles::Bundle;
-use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use crate::packages::types::ExternalFile;
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
 #[derive(Debug, Clone)]
 pub struct BundleArchive {
@@ -150,6 +150,17 @@ pub struct ApplyBundleUpdatesResult {
     pub updates_failed: Vec<String>,
     pub removals_failed: Vec<String>,
     pub additions_failed: Vec<String>,
+    pub stopped_early: bool,
+}
+
+impl ApplyBundleUpdatesResult {
+    #[must_use]
+    pub fn settled(&self) -> bool {
+        !self.stopped_early
+            && self.updates_failed.is_empty()
+            && self.removals_failed.is_empty()
+            && self.additions_failed.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

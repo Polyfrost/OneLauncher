@@ -5,9 +5,9 @@ use oneclient_db::dao::{applied_migration as migration_dao, cluster as cluster_d
 use oneclient_db::models::ClusterRow;
 
 use crate::LauncherResult;
-use oneclient_common::domain::GameLoader;
 use crate::state::LauncherState;
 use crate::versions::RemoteMigration;
+use oneclient_common::domain::GameLoader;
 
 #[tracing::instrument(skip(state))]
 pub async fn apply_remote_migrations(state: &LauncherState) -> LauncherResult<usize> {

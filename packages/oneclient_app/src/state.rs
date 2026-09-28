@@ -20,8 +20,10 @@ pub enum AppChannel {
     Notifications,
     Game,
     AccountSwitcher,
+    ControlCenter,
     MicrosoftLogin,
     Installs,
+    StorageScan,
     Relocation,
     PendingLaunch,
 }
@@ -41,8 +43,10 @@ pub struct AppState {
     pub center_open: bool,
     pub game: GameState,
     pub account_switcher_open: bool,
+    pub control_center_open: bool,
     pub microsoft_login: Option<LoginProgress>,
     pub installs: InstallState,
+    pub storage_scan: Option<StorageScanProgress>,
     pub relocation: RelocationState,
     pub pending_launch: Option<String>,
 }
@@ -116,6 +120,13 @@ pub struct SettingsState {
 /// as ordinary progress and has no opinion about where it is shown
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct LoginProgress {
+    pub label: String,
+    pub current: u64,
+    pub total: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct StorageScanProgress {
     pub label: String,
     pub current: u64,
     pub total: u64,
@@ -201,6 +212,13 @@ impl GameState {
     #[must_use]
     pub fn is_busy(&self, cluster_id: i64) -> bool {
         self.stage(cluster_id).is_some_and(LaunchStage::is_busy)
+    }
+
+    pub fn running_clusters(&self) -> impl Iterator<Item = i64> + '_ {
+        self.stages
+            .iter()
+            .filter(|(_, stage)| **stage == LaunchStage::Running)
+            .map(|(id, _)| *id)
     }
 
     #[must_use]

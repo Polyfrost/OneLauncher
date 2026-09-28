@@ -189,6 +189,25 @@ pub async fn remove_override(
     Ok(())
 }
 
+pub async fn clear_disabled_overrides(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    package_id: &str,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        DELETE FROM cluster_bundle_overrides
+        WHERE cluster_id = ? AND package_id = ? AND override_type = 'disabled'
+        "#,
+        cluster_id,
+        package_id
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
+
 /// Opt-in (`enabled`) rows are left alone they say the opposite thing
 pub async fn clear_suppressing_overrides(
     pool: &SqlitePool,

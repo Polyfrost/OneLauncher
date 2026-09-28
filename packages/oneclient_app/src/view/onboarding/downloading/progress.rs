@@ -3,7 +3,7 @@ use super::*;
 use crate::components::{Button, progress_track};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::utils::{format_duration_hms, format_size};
+use crate::utils::{format_durations, format_size};
 
 pub(super) fn failure_panel(
     failures: &[InstallFailure],
@@ -244,17 +244,14 @@ fn build_stats(view: StatsView) -> Option<Element> {
     let elapsed = elapsed_secs?;
     let finished = !running && done >= total && total > 0;
 
-    let mut parts: Vec<String> = vec![format!("Elapsed {}", format_duration_hms(elapsed as i64))];
+    let mut parts: Vec<String> = vec![format!("Elapsed {}", format_durations(elapsed as i64))];
 
     if finished {
         parts.push("Complete".to_string());
     } else {
         // Both readings come off the same smoothed rate so they always agree
         match transfer.and_then(|t| t.eta_secs) {
-            Some(remaining) => parts.push(format!(
-                "~{} left",
-                format_duration_hms(remaining as i64)
-            )),
+            Some(remaining) => parts.push(format!("~{} left", format_durations(remaining as i64))),
             None => parts.push("~- left".to_string()),
         }
 

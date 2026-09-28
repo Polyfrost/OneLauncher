@@ -4,17 +4,18 @@ use freya::prelude::*;
 use crate::theme::colors;
 
 const LAZY_OVERSCAN: i64 = 3;
+const SCROLLBAR_GUTTER: f32 = 14.;
 
 pub(crate) fn normalize_wheel_delta(delta: f64, scale_factor: f64) -> f32 {
     if delta == 0.0 {
         return 0.0;
     }
 
-	const FREYA_LINE_SPEED: f64 = 53.0;
-	const FREYA_PIXEL_SPEED: f64 = 2.0;
-	const LINE_DELTA_TOLERANCE: f64 = 1e-6;
-	const LINE_SCROLL: f64 = 53.0;
-	const PIXEL_SCROLL: f64 = 1.0;
+    const FREYA_LINE_SPEED: f64 = 53.0;
+    const FREYA_PIXEL_SPEED: f64 = 2.0;
+    const LINE_DELTA_TOLERANCE: f64 = 1e-6;
+    const LINE_SCROLL: f64 = 53.0;
+    const PIXEL_SCROLL: f64 = 1.0;
 
     let lines = (delta / FREYA_LINE_SPEED).round();
     if lines != 0.0 && (delta - lines * FREYA_LINE_SPEED).abs() <= LINE_DELTA_TOLERANCE {
@@ -86,6 +87,7 @@ pub struct ScrollArea {
     padding: Gaps,
     spacing: f32,
     show_scrollbar: bool,
+    scrollbar_gutter: bool,
     horizontal: bool,
     content_width: f32,
     stick_bottom: bool,
@@ -111,6 +113,7 @@ impl ScrollArea {
             padding: Gaps::default(),
             spacing: 0.,
             show_scrollbar: true,
+            scrollbar_gutter: false,
             horizontal: false,
             content_width: 0.,
             stick_bottom: false,
@@ -145,6 +148,11 @@ impl ScrollArea {
 
     pub fn show_scrollbar(mut self, show: bool) -> Self {
         self.show_scrollbar = show;
+        self
+    }
+
+    pub fn scrollbar_gutter(mut self, gutter: bool) -> Self {
+        self.scrollbar_gutter = gutter;
         self
     }
 
@@ -238,12 +246,68 @@ impl ScrollArea {
         self
     }
 
+    pub fn lazy_grid(
+        mut self,
+        count: usize,
+        item_height: f32,
+        gap: f32,
+        min_width: f32,
+        max_cols: usize,
+        render: impl Fn(usize) -> Element + 'static,
+    ) -> Self {
+        let slot = (item_height + gap).max(1.);
+        self.builder = Some(Box::new(move |ctx: ScrollAreaCtx| {
+            let cols = (((ctx.viewport_w + gap) / (min_width + gap)).floor() as usize)
+                .clamp(1, max_cols.max(1));
+            let rows_total = count.div_ceil(cols);
+
+            let first =
+                (((-ctx.corrected_y) / slot).floor() as i64 - LAZY_OVERSCAN).max(0) as usize;
+            let span = ((ctx.viewport_h / slot).ceil() as i64 + 2 * LAZY_OVERSCAN).max(0) as usize;
+            let last = (first + span).min(rows_total);
+
+            let top_pad = first as f32 * slot;
+            let bottom_pad = rows_total.saturating_sub(last) as f32 * slot;
+
+            let mut container = rect().vertical().width(Size::fill());
+            if top_pad > 0. {
+                container = container.child(rect().width(Size::fill()).height(Size::px(top_pad)));
+            }
+            for r in first..last {
+                let mut row = rect()
+                    .key(r)
+                    .horizontal()
+                    .width(Size::fill())
+                    .height(Size::px(slot))
+                    .spacing(gap)
+                    .content(Content::Flex);
+                for c in 0..cols {
+                    let idx = r * cols + c;
+                    let cell = rect().width(Size::flex(1.0)).height(Size::px(item_height));
+                    row = row.child(if idx < count {
+                        cell.child(render(idx))
+                    } else {
+                        cell
+                    });
+                }
+                container = container.child(row);
+            }
+            if bottom_pad > 0. {
+                container =
+                    container.child(rect().width(Size::fill()).height(Size::px(bottom_pad)));
+            }
+            container.into_element()
+        }));
+        self
+    }
+
     fn view(&self) -> impl IntoElement {
         let horizontal = self.horizontal;
         let content_w = self.content_width;
         let spacing = self.spacing;
         let padding = self.padding;
         let show_scrollbar = self.show_scrollbar;
+        let scrollbar_gutter = self.scrollbar_gutter;
         let stick_bottom = self.stick_bottom;
         let on_user_scroll = self.on_user_scroll.clone();
 
@@ -293,10 +357,26 @@ impl ScrollArea {
         let pressing_v = use_memo(move || drag_start.read().is_some());
         let pressing_h = use_memo(move || drag_start_x.read().is_some());
 
+        let gutter = if show_v && scrollbar_gutter {
+            SCROLLBAR_GUTTER
+        } else {
+            0.
+        };
+        let padding = if gutter > 0. {
+            Gaps::new(
+                padding.top(),
+                padding.right() + gutter,
+                padding.bottom(),
+                padding.left(),
+            )
+        } else {
+            padding
+        };
+
         let ctx = ScrollAreaCtx {
             corrected_x,
             corrected_y,
-            viewport_w: vp_w,
+            viewport_w: (vp_w - gutter).max(0.),
             viewport_h: vp_h,
             viewport_top: vp_top,
             viewport_left: vp_left,
@@ -536,6 +616,7 @@ impl PartialEq for ScrollArea {
             && self.padding == other.padding
             && self.spacing == other.spacing
             && self.show_scrollbar == other.show_scrollbar
+            && self.scrollbar_gutter == other.scrollbar_gutter
             && self.horizontal == other.horizontal
             && self.content_width == other.content_width
             && self.stick_bottom == other.stick_bottom

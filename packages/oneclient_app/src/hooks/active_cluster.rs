@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
 use oneclient_content::packages::ProviderId;
+use oneclient_content::packages::types::SearchSort;
 use oneclient_db::models::ClusterId;
 
 #[derive(Clone)]
@@ -58,6 +59,17 @@ pub fn use_browser_compat() -> State<bool> {
 }
 
 #[derive(Clone)]
+pub struct BrowserTypeState(pub State<String>);
+
+pub fn use_provide_browser_type(state: BrowserTypeState) {
+    use_hook(move || provide_root_context(state));
+}
+
+pub fn use_browser_type() -> State<String> {
+    consume_root_context::<BrowserTypeState>().0
+}
+
+#[derive(Clone)]
 pub struct LinkConfirmState(pub State<Option<String>>);
 
 pub fn use_provide_link_confirm(state: LinkConfirmState) {
@@ -73,6 +85,7 @@ pub struct BrowserUiState {
     pub query: String,
     pub provider: ProviderId,
     pub categories: Vec<String>,
+    pub sort: SearchSort,
     pub page: usize,
 }
 
@@ -82,6 +95,7 @@ impl Default for BrowserUiState {
             query: String::new(),
             provider: ProviderId::Modrinth,
             categories: Vec::new(),
+            sort: SearchSort::Relevance,
             page: 0,
         }
     }

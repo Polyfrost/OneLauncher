@@ -1,16 +1,16 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
 use oneclient_db::dao::artifact as artifact_dao;
-use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::bundle as bundle_catalog_dao;
+use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::dao::cluster_optional_mod as optional_dao;
 use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{
-    BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType,
-    SeenStatus,
+    BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType, SeenStatus,
 };
 use tokio::sync::Mutex as AsyncMutex;
 
@@ -28,11 +28,11 @@ use crate::bundles::types::{
     BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate, BundleUpdateCheckResult,
     BundleWithUpdateStatus, FileUpdateStatus, external_bundle_key, managed_bundle_key,
 };
-use oneclient_common::domain::{GameLoader, ProviderId};
-use crate::packages::store::PackageStore;
-use crate::packages::types::LinkedArtifactInfo;
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
+use crate::packages::store::PackageStore;
+use crate::packages::types::LinkedArtifactInfo;
+use oneclient_common::domain::{GameLoader, ProviderId};
 
 static CLUSTER_UPDATE_LOCKS: OnceLock<Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>> = OnceLock::new();
 
@@ -418,14 +418,18 @@ pub async fn apply_bundle_updates(
     cluster_id: i64,
     bundles: &BundlesManager,
     ctx: &ContentCtx,
+    deadline: Option<Instant>,
 ) -> ContentResult<ApplyBundleUpdatesResult> {
-    let session = oneclient_events::GroupedProgressSession::start(
-        &ctx.events,
-        "Updating bundle content",
-    );
-    let result = apply_bundle_updates_with(cluster_id, bundles, ctx, Some(&session)).await;
+    let session =
+        oneclient_events::GroupedProgressSession::start(&ctx.events, "Updating bundle content");
+    let result =
+        apply_bundle_updates_with(cluster_id, bundles, ctx, Some(&session), deadline).await;
     session.finish();
     result
+}
+
+fn past(deadline: Option<Instant>) -> bool {
+    deadline.is_some_and(|deadline| Instant::now() >= deadline)
 }
 
 /// The caller owns `session`'s lifetime
@@ -436,6 +440,7 @@ pub async fn apply_bundle_updates_with(
     bundles: &BundlesManager,
     ctx: &ContentCtx,
     session: Option<&oneclient_events::GroupedProgressSession>,
+    deadline: Option<Instant>,
 ) -> ContentResult<ApplyBundleUpdatesResult> {
     let lock = cluster_lock(cluster_id);
     let _guard = lock.lock().await;
@@ -465,6 +470,11 @@ pub async fn apply_bundle_updates_with(
     let mut result = ApplyBundleUpdatesResult::default();
 
     for removal in check.removals_available {
+        if past(deadline) {
+            result.stopped_early = true;
+            break;
+        }
+
         match remove_artifact_from_cluster(cluster_id, &removal.hash, false, ctx).await {
             Ok(()) => result.removals_applied.push(removal),
             Err(err) => result
@@ -481,16 +491,23 @@ pub async fn apply_bundle_updates_with(
             .updates_available
             .iter()
             .map(|u| u.new_file.size.max(1))
-            .chain(check.additions_available.iter().map(|a| a.new_file.size.max(1)))
+            .chain(
+                check
+                    .additions_available
+                    .iter()
+                    .map(|a| a.new_file.size.max(1)),
+            )
             .sum();
         s.expect(oneclient_events::TaskCategory::Packages, count, bytes);
     }
 
-    // Fetch concurrently reconcile in order
-    // splitting the two keeps the fan-out safe since no artifact is unlinked
-    // while another download still needs it
+    let overrides_ref = &overrides;
     let fetched_updates = futures_util::stream::iter(check.updates_available.into_iter().map(
         |update| async move {
+            if past(deadline) {
+                return (update, None);
+            }
+
             let child = session.map(|s| {
                 let c = s.child(
                     update.new_file.display_name(),
@@ -509,29 +526,37 @@ pub async fn apply_bundle_updates_with(
                 ctx,
             )
             .await;
-            if let Some(child) = child {
+            if let Some(child) = &child {
                 child.set_phase(oneclient_events::TaskPhase::Installing);
+            }
+            let applied = match installed {
+                Ok(hash) => reconcile_update(&update, &hash, overrides_ref, ctx).await,
+                Err(err) => Err(err),
+            };
+            if let Some(child) = child {
                 child.finish();
             }
-            (update, installed)
+            (update, Some(applied))
         },
     ))
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
     .collect::<Vec<_>>()
     .await;
 
-    for (update, installed) in fetched_updates {
-        match installed {
-            Ok(hash) => match reconcile_update(&update, &hash, &overrides, ctx).await {
-                Ok(()) => result.updates_applied.push(update),
-                Err(err) => result.updates_failed.push(err.to_string()),
-            },
-            Err(err) => result.updates_failed.push(err.to_string()),
+    for (update, applied) in fetched_updates {
+        match applied {
+            Some(Ok(())) => result.updates_applied.push(update),
+            Some(Err(err)) => result.updates_failed.push(err.to_string()),
+            None => result.stopped_early = true,
         }
     }
 
     let fetched_additions = futures_util::stream::iter(check.additions_available.into_iter().map(
         |addition| async move {
+            if past(deadline) {
+                return (addition, None);
+            }
+
             let child = session.map(|s| {
                 let c = s.child(
                     addition.new_file.display_name(),
@@ -550,27 +575,31 @@ pub async fn apply_bundle_updates_with(
                 ctx,
             )
             .await;
-            if let Some(child) = child {
+            if let Some(child) = &child {
                 child.set_phase(oneclient_events::TaskPhase::Installing);
+            }
+            let applied = match installed {
+                Ok(hash) => reconcile_addition(&addition, &hash, overrides_ref, ctx).await,
+                Err(err) => Err(err),
+            };
+            if let Some(child) = child {
                 child.finish();
             }
-            (addition, installed)
+            (addition, Some(applied))
         },
     ))
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
     .collect::<Vec<_>>()
     .await;
 
-    for (addition, installed) in fetched_additions {
-        let file_id = addition.new_file.kind.package_id();
-        match installed {
-            Ok(hash) => {
-                match reconcile_addition(&addition, &hash, &overrides, ctx).await {
-                    Ok(()) => result.additions_applied.push(addition),
-                    Err(err) => result.additions_failed.push(format!("{file_id}: {err:#}")),
-                }
+    for (addition, applied) in fetched_additions {
+        match applied {
+            Some(Ok(())) => result.additions_applied.push(addition),
+            Some(Err(err)) => {
+                let file_id = addition.new_file.kind.package_id();
+                result.additions_failed.push(format!("{file_id}: {err:#}"));
             }
-            Err(err) => result.additions_failed.push(format!("{file_id}: {err:#}")),
+            None => result.stopped_early = true,
         }
     }
 
@@ -582,10 +611,7 @@ pub async fn apply_bundle_updates_with(
     {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
-        if let Ok(archives) = bundles
-            .archives_for(ctx, &cluster.mc_version, loader)
-            .await
-        {
+        if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
             for archive in archives {
                 if let Err(err) = overrides::sync_bundle_overrides(
                     &archive.bundle.path,
@@ -706,7 +732,8 @@ async fn reconcile_update(
     set_artifact_enabled_to(update.cluster_id, hash, enabled, ctx).await?;
 
     if hash != update.installed_hash {
-        artifact_dao::set_seen_status(&ctx.db, update.cluster_id, hash, SeenStatus::Updated).await?;
+        artifact_dao::set_seen_status(&ctx.db, update.cluster_id, hash, SeenStatus::Updated)
+            .await?;
         remove_artifact_from_cluster(update.cluster_id, &update.installed_hash, false, ctx).await?;
     }
 
@@ -874,34 +901,6 @@ pub async fn get_bundles_with_update_status(
     }
 
     Ok(results)
-}
-
-#[tracing::instrument(level = "debug", skip_all)]
-pub async fn apply_bundle_updates_for_all_clusters(
-    bundles: &BundlesManager,
-    ctx: &ContentCtx,
-    session: Option<&oneclient_events::GroupedProgressSession>,
-) -> ContentResult<Vec<(i64, ApplyBundleUpdatesResult)>> {
-    let mut changed = Vec::new();
-    for cluster in cluster_dao::list_all(&ctx.db).await? {
-        match apply_bundle_updates_with(cluster.id, bundles, ctx, session).await {
-            Ok(result) => {
-                if !result.updates_applied.is_empty()
-                    || !result.additions_applied.is_empty()
-                    || !result.removals_applied.is_empty()
-                    || !result.optional_available.is_empty()
-                {
-                    changed.push((cluster.id, result));
-                }
-            }
-            Err(err) => tracing::warn!(
-                cluster_id = cluster.id,
-                error = %err,
-                "bundle update apply failed for cluster"
-            ),
-        }
-    }
-    Ok(changed)
 }
 
 fn bundle_package_key(

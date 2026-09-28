@@ -14,7 +14,7 @@ use views::{ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, tool
 
 const CARD_H: f32 = 84.;
 const CARD_SPACING: f32 = 8.;
-const LAZY_OVERSCAN: i64 = 2;
+const GRID_MAX_COLS: usize = 5;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
@@ -74,10 +74,7 @@ pub fn use_content_meta(
         }
     }
 
-    let local = use_package_meta_batch(
-        ProviderId::Local,
-        local_project_ids(content, content_type),
-    );
+    let local = use_package_meta_batch(ProviderId::Local, local_project_ids(content, content_type));
     for (hash, meta) in package_meta_batch(&local) {
         out.insert((ProviderId::Local, hash), meta);
     }
@@ -230,14 +227,10 @@ fn make_row(
         .map(|p| p.author.clone())
         .filter(|s| !s.is_empty())
         .unwrap_or_default();
+    let version = installed_info.and_then(|i| i.display_version.clone());
     let description = m
         .map(|p| p.summary.clone())
         .filter(|s| !s.is_empty())
-        .or_else(|| {
-            installed_info
-                .and_then(|i| i.display_version.clone())
-                .map(|v| format!("Version {v}"))
-        })
         .unwrap_or_default();
 
     PackageEntry {
@@ -247,6 +240,7 @@ fn make_row(
         name,
         file_name,
         author,
+        version,
         description,
         icon_url: m.and_then(|p| p.icon_url.clone()),
         size,
@@ -257,9 +251,7 @@ fn make_row(
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
         hidden,
-        seen_status: installed_info
-            .map(|i| i.seen_status)
-            .unwrap_or_default(),
+        seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
     }
 }
 
@@ -405,7 +397,10 @@ impl Component for PackageManager {
                 .await
                 {
                     Ok(cleared) if cleared > 0 => {
-                        tracing::debug!(cleared, "retired package badges after the list was viewed");
+                        tracing::debug!(
+                            cleared,
+                            "retired package badges after the list was viewed"
+                        );
                     }
                     Ok(_) => {}
                     Err(err) => tracing::warn!(%err, "failed to retire package badges"),
@@ -419,10 +414,10 @@ impl Component for PackageManager {
         let search = use_state(String::new);
         let enabled_filter = use_state(|| EnabledFilter::All);
         let hidden_filter = use_state(|| HiddenFilter::Hide);
+        let toolbar_width = use_state(|| 0f32);
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
-        let grid_columns = view.columns;
         let query = SearchQuery::new(&search.read());
         let sort_mode = sort
             .read()
@@ -475,10 +470,15 @@ impl Component for PackageManager {
                 enabled_filter,
                 hidden_filter,
                 layout,
-                grid_columns,
                 cluster_id,
                 package_type,
+                toolbar_width,
             ))
+            .maybe_child(
+                content_type
+                    .is_global()
+                    .then(|| views::global_notice(noun_plural)),
+            )
             .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
             .child(ContentBox::new(
                 filtered,
@@ -488,7 +488,6 @@ impl Component for PackageManager {
                 cluster_id,
                 content_kind,
                 card_layout,
-                *grid_columns.read(),
             ))
     }
 }

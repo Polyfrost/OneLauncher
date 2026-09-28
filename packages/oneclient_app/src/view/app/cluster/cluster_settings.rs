@@ -1,10 +1,8 @@
 use freya::prelude::*;
 use oneclient_common::Patch;
-use oneclient_java::JavaRuntime;
 use oneclient_common::domain::GameLoader;
-use oneclient_core::settings::{
-    GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution,
-};
+use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
+use oneclient_java::JavaRuntime;
 
 use crate::components::{
     Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle,
@@ -69,6 +67,7 @@ impl Component for ClusterSettings {
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::fill())
+                    .scrollbar_gutter(true)
                     .spacing(4.)
                     .child(section_header("GAME"))
                     .child(
@@ -184,6 +183,11 @@ fn reset_button(overridden: bool, on_reset: EventHandler<()>) -> impl IntoElemen
         .small()
         .ghost()
         .icon()
+        .tooltip(if overridden {
+            "Reset to the global setting"
+        } else {
+            "Already using the global setting"
+        })
         .corner_radius(CornerRadius::new_all(7.))
         .maybe(overridden, |el| el.on_press(move |_| on_reset.call(())))
         .enabled(overridden)
@@ -303,7 +307,11 @@ impl Component for VerifyFilesRow {
             .secondary()
             .enabled(!running)
             .maybe(!running, |el| el.on_press(on_press))
-            .text(if running { "Verifying..." } else { "Verify Files" });
+            .text(if running {
+                "Verifying..."
+            } else {
+                "Verify Files"
+            });
 
         settings_row(
             IconType::ClipboardCheck,
@@ -357,8 +365,8 @@ impl Component for MemoryRow {
         let overridden = self.value.is_some();
         let dispatch = use_dispatch();
 
-        let global = self.global.to_string();
-        let initial = self.value.unwrap_or(self.global).to_string();
+        let global = self.global;
+        let initial = self.value.map(|v| v.to_string()).unwrap_or_default();
         let mut memory = use_state({
             let v = initial.clone();
             move || v
@@ -387,13 +395,13 @@ impl Component for MemoryRow {
         }
 
         let on_reset: EventHandler<()> = (move |()| {
-            last.set(global.clone());
-            memory.set(global.clone());
+            last.set(String::new());
+            memory.set(String::new());
             dispatch.update_cluster_profile(cluster_id, clear_update(Field::MemMax));
         })
         .into();
 
-        let control = memory_field(memory);
+        let control = memory_field(memory, "Global", global);
 
         settings_row(
             IconType::Database01,
@@ -619,6 +627,7 @@ impl Component for TextRow {
 
         let control = TextInput::new(text)
             .placeholder(placeholder)
+            .expandable(true)
             .width(Size::px(220.));
 
         settings_row(

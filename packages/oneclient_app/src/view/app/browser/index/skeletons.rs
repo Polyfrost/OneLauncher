@@ -27,9 +27,7 @@ fn use_skeleton_pulse() -> f32 {
 }
 
 #[derive(PartialEq)]
-struct SkeletonCard {
-    metrics: GridMetrics,
-}
+struct SkeletonCard;
 
 impl Component for SkeletonCard {
     fn render(&self) -> impl IntoElement {
@@ -37,26 +35,36 @@ impl Component for SkeletonCard {
         rect()
             .vertical()
             .width(Size::flex(1.0))
-            .height(Size::px(self.metrics.card_h))
-            .corner_radius(CornerRadius::new_all(10.))
-            .background(CARD_BG)
+            .height(Size::px(CARD_H))
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .overflow(Overflow::Clip)
             .opacity(pulse)
-            .child(skeleton_block(Size::fill(), self.metrics.banner_h))
+            .child(skeleton_block(Size::fill(), BANNER_H))
+            .child(
+                rect()
+                    .position(
+                        Position::new_absolute()
+                            .top(BANNER_H - CARD_ICON + CARD_ICON_OVERHANG)
+                            .left(14.),
+                    )
+                    .layer(Layer::Relative(7))
+                    .child(skeleton_block(Size::px(CARD_ICON), CARD_ICON)),
+            )
             .child(
                 rect()
                     .vertical()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
-                    .padding(Gaps::new_all(12.))
-                    .spacing(8.)
-                    .child(skeleton_block(Size::percent(70.), 16.))
-                    .child(skeleton_block(Size::percent(40.), 10.))
-                    .child(skeleton_block(Size::fill(), 10.))
+                    .padding(Gaps::new(CARD_ICON_OVERHANG + 6., 14., 12., 14.))
+                    .spacing(6.)
+                    .child(skeleton_block(Size::percent(60.), 14.))
                     .child(skeleton_block(Size::percent(85.), 10.))
+                    .child(skeleton_block(Size::fill(), 10.))
+                    .child(skeleton_block(Size::percent(70.), 10.))
                     .child(rect().width(Size::fill()).height(Size::flex(1.0)))
-                    .child(skeleton_block(Size::percent(30.), 10.)),
+                    .child(skeleton_block(Size::px(76.), 28.)),
             )
     }
 }
@@ -74,8 +82,8 @@ impl Component for SkeletonListRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_all(10.))
-            .corner_radius(CornerRadius::new_all(10.))
-            .background(CARD_BG)
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .opacity(pulse)
             .child(skeleton_block(Size::px(48.), 48.))
@@ -90,13 +98,13 @@ impl Component for SkeletonListRow {
     }
 }
 
-pub(super) fn skeleton_grid_row(metrics: GridMetrics) -> impl IntoElement {
+pub(super) fn skeleton_grid_row(cols: usize) -> impl IntoElement {
     rect()
         .horizontal()
         .width(Size::fill())
-        .height(Size::px(metrics.card_h))
+        .height(Size::px(CARD_H))
         .spacing(GRID_SPACING)
         .content(Content::Flex)
-        .children((0..metrics.cols).map(move |_| SkeletonCard { metrics }.into_element()))
+        .children((0..cols).map(|_| SkeletonCard.into_element()))
         .into_element()
 }

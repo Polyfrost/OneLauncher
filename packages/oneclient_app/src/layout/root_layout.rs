@@ -2,14 +2,14 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::components::{
-    AccountSwitcher, ClusterUpdatePopup, GenericPromptOverlay, JavaPromptOverlay, OptionalModsPopup,
-    NotificationCenter, PackageUpdatePopup, SplashCurtain, StatusBar, Toasts,
-    UpdatePromptOverlay,
+    AccountSwitcher, ClusterUpdatePopup, ControlCenter, GenericPromptOverlay, JavaPromptOverlay,
+    MicrosoftJavaPromptOverlay, NotificationCenter, OptionalModsPopup, PackageUpdatePopup,
+    SplashCurtain, StatusBar, Toasts, TooltipHost, UpdatePromptOverlay, use_provide_tooltips,
 };
-use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
 #[cfg(not(target_os = "macos"))]
 use crate::hooks::use_start_maximized;
-use crate::layout::{HomeArtPrefetch, PendingLaunchDriver};
+use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
+use crate::layout::{HomeArtPrefetch, PendingLaunchDriver, use_ipc_commands};
 use crate::motion::AnimationClockDriver;
 use crate::routes::Route;
 use crate::theme;
@@ -24,38 +24,8 @@ impl Component for RootLayout {
         let home_ready = use_state(|| false);
         use_provide_splash(SplashState { active, home_ready });
         use_provide_overlay_claims();
-
-        // macOS rounds the window natively so Freya must not round on top of it
-        #[cfg(target_os = "macos")]
-        let corner = 0.;
-
-        // Elsewhere the window is borderless and squared when maximized
-        // No reactive maximized signal exists so root_size changes stand in as the trigger
-        #[cfg(not(target_os = "macos"))]
-        let corner = {
-            let root_size = Platform::get().root_size;
-            // Seeded because the query below only answers after the window is visible
-            // which would round the corners of the first frames of a maximized launch
-            let start_maximized = use_start_maximized();
-            let mut maximized = use_state(move || start_maximized);
-            let size = *root_size.read();
-            let dep = (size.width as i32, size.height as i32);
-            use_side_effect_with_deps(&dep, move |_| {
-                spawn(async move {
-                    let is_max = Platform::get()
-                        .post_callback(|id, ctx| {
-                            ctx.windows.get(&id).map(|w| w.window().is_maximized())
-                        })
-                        .await;
-                    if let Ok(Some(is_max)) = is_max {
-                        if *maximized.peek() != is_max {
-                            maximized.set(is_max);
-                        }
-                    }
-                });
-            });
-            if *maximized.read() { 0. } else { 12. }
-        };
+        use_provide_tooltips();
+        use_ipc_commands();
 
         rect()
             .width(Size::fill())
@@ -63,7 +33,6 @@ impl Component for RootLayout {
             .background(colors::page())
             .color(colors::fg_primary())
             .font_family(theme::DEFAULT_FONT)
-            .corner_radius(CornerRadius::new_all(corner))
             .overflow(Overflow::Clip)
             .child(
                 rect()
@@ -73,15 +42,18 @@ impl Component for RootLayout {
             )
             .child(NotificationCenter)
             .child(AccountSwitcher)
+            .child(ControlCenter)
             .child(Toasts)
             .child(UpdatePromptOverlay)
             .child(JavaPromptOverlay)
+            .child(MicrosoftJavaPromptOverlay)
             // Must stay last it renders whatever the overlays above did not claim
             .child(GenericPromptOverlay)
             .child(ClusterUpdatePopup)
             .child(OptionalModsPopup)
             .child(PackageUpdatePopup)
             .child(StatusBar)
+            .child(TooltipHost)
             .child(SplashCurtain)
             .child(AnimationClockDriver)
             .child(HomeArtPrefetch)

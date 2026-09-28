@@ -6,10 +6,10 @@ use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, ScrollAreaCtx,
-    Segment, SegmentedControl, TabBar, TabItem, TextInput, grid_columns_picker, resolved_columns,
+    Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, Segment,
+    SegmentedControl, TextInput, package_context_menu,
 };
-use crate::hooks::{use_dispatch, use_overlay_claim};
+use crate::hooks::{use_cluster_mutation, use_dispatch, use_overlay_claim};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::{Actions, utils};
@@ -122,6 +122,17 @@ impl HiddenFilter {
 
 const FILTER_PANEL_W: f32 = 172.;
 const FILTER_BTN_W: f32 = 34.;
+const TOOLBAR_STACK_W: f32 = 640.;
+const TABS_ROW_H: f32 = 34.;
+
+fn tabs_scrollbar_theme() -> ScrollBarThemePartial {
+    ScrollBarThemePartial {
+        thumb_background: Some(colors::fg_secondary().with_a(120).into()),
+        hover_thumb_background: Some(colors::fg_secondary().with_a(190).into()),
+        active_thumb_background: Some(colors::fg_primary().into()),
+        ..Default::default()
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn toolbar_bar(
@@ -134,82 +145,199 @@ pub(super) fn toolbar_bar(
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
     layout: State<ViewLayout>,
-    grid_columns: State<u8>,
     cluster_id: i64,
     package_type: &'static str,
+    mut toolbar_width: State<f32>,
 ) -> impl IntoElement {
-    let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
+    let chips = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
-        TabItem::new(tab.label(), i == active_idx).on_press(move |_| *active.write() = i)
+        CategoryChip {
+            label: tab.label(),
+            selected: i == active_idx,
+            on_press: (move |_| *active.write() = i).into(),
+        }
+        .into_element()
     });
 
     let mut top_corners = CornerRadius::new_all(0.);
     top_corners.fill_top(12.);
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(8.)
-        .content(Content::Flex)
-        .overflow(Overflow::Clip)
-        .padding(Gaps::new_symmetric(8., 12.))
-        .corner_radius(top_corners)
-        .background(colors::page_elevated())
+    let measured = *toolbar_width.read();
+    let stacked = measured > 0. && measured < TOOLBAR_STACK_W;
+
+    let filter_tabs = ScrollView::new()
+        .direction(Direction::Horizontal)
+        .invert_scroll_wheel(true)
+        .show_scrollbar(true)
+        .scrollbar_theme(tabs_scrollbar_theme())
+        .width(if stacked {
+            Size::fill()
+        } else {
+            Size::flex(1.0)
+        })
+        .height(Size::px(TABS_ROW_H))
         .child(
-            ScrollView::new()
-                .direction(Direction::Horizontal)
-                .show_scrollbar(false)
-                .width(Size::flex(1.0))
-                .height(Size::auto())
-                .child(
-                    TabBar::new()
-                        .width(Size::auto())
-                        .height(Size::auto())
-                        .spacing(20.)
-                        .font_size(12.)
-                        .tabs(tab_items),
-                ),
+            rect()
+                .horizontal()
+                .width(Size::auto())
+                .height(Size::fill())
+                .cross_align(Alignment::Center)
+                .spacing(6.)
+                .children(chips),
         )
-        .child(
-            TextInput::new(search)
-                .placeholder("Search...")
-                .width(Size::px(180.))
-                .leading(
-                    Icon::new(IconType::SearchMd)
-                        .size(14.)
-                        .color(colors::fg_secondary())
-                        .into_element(),
-                ),
-        )
-        .child(FilterButton {
+        .into_element();
+
+    let mut controls: Vec<Element> = vec![
+        TextInput::new(search)
+            .placeholder("Search...")
+            .width(Size::px(180.))
+            .leading(
+                Icon::new(IconType::SearchMd)
+                    .size(14.)
+                    .color(colors::fg_secondary())
+                    .into_element(),
+            )
+            .into_element(),
+        FilterButton {
             sort,
             current_sort,
             enabled_filter,
             hidden_filter,
+        }
+        .into_element(),
+    ];
+
+    controls.push(
+        SegmentedControl::new(layout)
+            .height(34.)
+            .icon_size(15.)
+            .equal_width(34.)
+            .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
+            .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
+            .into_element(),
+    );
+    controls.push(
+        Button::new()
+            .primary()
+            .height(Size::px(34.))
+            .font_size(12.)
+            .on_press(move |_| open_browser(cluster_id, package_type))
+            .child(Icon::new(IconType::Plus).size(15.))
+            .text("Add Content")
+            .into_element(),
+    );
+
+    let inner = if stacked {
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(8.)
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .height(Size::px(TABS_ROW_H))
+                    .cross_align(Alignment::Center)
+                    .child(filter_tabs),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(8.)
+                    .content(Content::Flex)
+                    .children(controls),
+            )
+            .into_element()
+    } else {
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .content(Content::Flex)
+            .child(filter_tabs)
+            .children(controls)
+            .into_element()
+    };
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .overflow(Overflow::Clip)
+        .padding(Gaps::new_symmetric(8., 12.))
+        .corner_radius(top_corners)
+        .background(colors::page_elevated())
+        .on_sized(move |event: Event<SizedEventData>| {
+            let next = event.data().area.width();
+            if (*toolbar_width.peek() - next).abs() > 0.5 {
+                toolbar_width.set(next);
+            }
         })
-        .maybe_child(
-            (*layout.read() == ViewLayout::Grid)
-                .then(|| grid_columns_picker(grid_columns, 34.).into_element()),
-        )
-        .child(
-            SegmentedControl::new(layout)
-                .height(34.)
-                .icon_size(15.)
-                .equal_width(34.)
-                .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
-                .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid)),
-        )
-        .child(
-            Button::new()
-                .primary()
-                .height(Size::px(34.))
-                .font_size(12.)
-                .on_press(move |_| open_browser(cluster_id, package_type))
-                .child(Icon::new(IconType::Plus).size(15.))
-                .text("Add Content"),
-        )
+        .child(inner)
         .into_element()
+}
+
+#[derive(PartialEq)]
+struct CategoryChip {
+    label: String,
+    selected: bool,
+    on_press: EventHandler<Event<PressEventData>>,
+}
+
+impl Component for CategoryChip {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let selected = self.selected;
+
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
+        let background = if selected {
+            colors::brand()
+        } else if *hovered.read() {
+            colors::component_bg_hover()
+        } else {
+            colors::component_bg()
+        };
+
+        rect()
+            .horizontal()
+            .height(Size::px(32.))
+            .center()
+            .padding(Gaps::new_symmetric(0., 12.))
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(background)
+            .border(crate::ui::border_all_color(
+                1.,
+                if selected || focused {
+                    colors::brand()
+                } else {
+                    colors::component_border()
+                },
+            ))
+            .cursor(CursorIcon::Pointer)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Tab)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
+            .on_press(self.on_press.clone())
+            .child(
+                label()
+                    .text(self.label.clone())
+                    .font_size(12.)
+                    .font_weight(FontWeight::MEDIUM)
+                    .max_lines(1)
+                    .color(if selected {
+                        Color::WHITE
+                    } else {
+                        colors::fg_primary()
+                    }),
+            )
+    }
 }
 
 pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {
@@ -225,6 +353,16 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
         ),
     };
 
+    notice_bar(text)
+}
+
+pub(super) fn global_notice(noun_plural: &'static str) -> Element {
+    notice_bar(format!(
+        "These {noun_plural} are shared across all your clusters. Adding one here makes it available everywhere, and turning one off removes it everywhere."
+    ))
+}
+
+fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -286,6 +424,7 @@ impl Component for FilterButton {
                 Button::new()
                     .secondary()
                     .icon()
+                    .tooltip("Sort and filter")
                     .width(Size::px(FILTER_BTN_W))
                     .height(Size::px(34.))
                     .on_press(move |e: Event<PressEventData>| {
@@ -565,7 +704,6 @@ pub(super) struct ContentBox {
     cluster_id: i64,
     kind: ContentKind,
     layout: CardLayout,
-    grid_columns: u8,
 }
 
 impl ContentBox {
@@ -578,7 +716,6 @@ impl ContentBox {
         cluster_id: i64,
         kind: ContentKind,
         layout: CardLayout,
-        grid_columns: u8,
     ) -> Self {
         Self {
             items,
@@ -588,7 +725,6 @@ impl ContentBox {
             cluster_id,
             kind,
             layout,
-            grid_columns,
         }
     }
 }
@@ -602,34 +738,44 @@ impl Component for ContentBox {
         let noun_plural = self.noun_plural;
         let kind = &self.kind;
         let layout = self.layout;
-        let grid_columns = self.grid_columns;
 
         let dispatch = use_dispatch();
+        let cluster = use_cluster_mutation();
+        let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
 
-        let count = items.len();
-        let scroll = (count > 0).then(|| match layout {
-            CardLayout::List => {
-                let items = items.clone();
-                ScrollArea::new()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .lazy(count, CARD_H, CARD_SPACING, move |i| {
-                        let item = items[i].clone();
-                        let key = item.package_id.clone();
-                        PackageRow::new(item, cluster_id, package_type)
-                            .layout(CardLayout::List)
-                            .key(key)
-                            .into_element()
-                    })
+        let row = {
+            let items = items.clone();
+            move |i: usize| {
+                let item: PackageEntry = items[i].clone();
+                let key = item.package_id.clone();
+                let for_menu = item.clone();
+                PackageRow::new(item, cluster_id, package_type)
+                    .layout(layout)
+                    .on_context(move |(x, y)| menu.set(Some((x, y, for_menu.clone()))))
+                    .key(key)
                     .into_element()
             }
-            CardLayout::Grid => ScrollArea::new()
+        };
+
+        let count = items.len();
+        let scroll = (count > 0).then(|| {
+            let area = ScrollArea::new()
                 .width(Size::fill())
                 .height(Size::fill())
-                .content(move |ctx: ScrollAreaCtx| {
-                    grid_content(&items, package_type, cluster_id, grid_columns, ctx).into_element()
-                })
-                .into_element(),
+                .scrollbar_gutter(true);
+            match layout {
+                CardLayout::List => area.lazy(count, CARD_H, CARD_SPACING, row),
+                CardLayout::Grid => {
+                    area.lazy_grid(count, CARD_GRID_H, GRID_GAP, GRID_MIN_W, GRID_MAX_COLS, row)
+                }
+            }
+            .into_element()
+        });
+
+        let menu_overlay = menu.read().clone().map(|(x, y, item)| {
+            package_context_menu(x, y, &item, cluster_id, package_type, cluster)
+                .on_close(move |_| menu.set(None))
+                .into_element()
         });
 
         let empty = (count == 0).then(|| match kind {
@@ -667,14 +813,14 @@ impl Component for ContentBox {
             .vertical()
             .width(Size::fill())
             .height(Size::flex(1.0))
-            .spacing(8.)
-            .padding(Gaps::new_all(8.))
+            .padding(Gaps::new(0., 12., 12., 12.))
             .corner_radius(bottom_corners)
             .background(colors::page_elevated())
             .overflow(Overflow::Clip)
             .maybe_child(header)
             .maybe_child(scroll)
             .maybe_child(empty)
+            .maybe_child(menu_overlay)
     }
 }
 
@@ -686,62 +832,6 @@ fn action_header(button: impl IntoElement) -> impl IntoElement {
         .content(Content::Flex)
         .child(rect().width(Size::flex(1.0)))
         .child(button)
-}
-
-fn grid_content(
-    items: &[PackageEntry],
-    package_type: &'static str,
-    cluster_id: i64,
-    grid_columns: u8,
-    ctx: ScrollAreaCtx,
-) -> impl IntoElement {
-    let count = items.len();
-    let fits = ((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize;
-    let cols = resolved_columns(grid_columns).min(fits.max(1));
-    let rows_total = count.div_ceil(cols);
-    let slot = CARD_GRID_H + GRID_GAP;
-
-    let first_row = (((-ctx.corrected_y) / slot).floor() as i64 - LAZY_OVERSCAN).max(0) as usize;
-    let span = ((ctx.viewport_h / slot).ceil() as i64 + 2 * LAZY_OVERSCAN).max(0) as usize;
-    let last_row = (first_row + span).min(rows_total);
-
-    let top_pad = first_row as f32 * slot;
-    let bottom_pad = rows_total.saturating_sub(last_row) as f32 * slot;
-
-    let mut container = rect().vertical().width(Size::fill());
-    if top_pad > 0. {
-        container = container.child(rect().width(Size::fill()).height(Size::px(top_pad)));
-    }
-    for r in first_row..last_row {
-        let mut row = rect()
-            .key(r)
-            .horizontal()
-            .width(Size::fill())
-            .height(Size::px(slot))
-            .spacing(GRID_GAP)
-            .content(Content::Flex);
-        for c in 0..cols {
-            let idx = r * cols + c;
-            let cell = rect().width(Size::flex(1.0)).height(Size::px(CARD_GRID_H));
-            row = row.child(if idx < count {
-                let item = items[idx].clone();
-                let key = item.package_id.clone();
-                cell.child(
-                    PackageRow::new(item, cluster_id, package_type)
-                        .layout(CardLayout::Grid)
-                        .key(key)
-                        .into_element(),
-                )
-            } else {
-                cell
-            });
-        }
-        container = container.child(row);
-    }
-    if bottom_pad > 0. {
-        container = container.child(rect().width(Size::fill()).height(Size::px(bottom_pad)));
-    }
-    container.into_element()
 }
 
 fn empty_shell(icon: IconType) -> Rect {

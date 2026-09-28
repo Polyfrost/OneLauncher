@@ -1,6 +1,6 @@
 use freya::prelude::*;
-use oneclient_java::{JAVA_CHOICE_DOWNLOAD, JAVA_CHOICE_FOLDER, JavaVendor};
 use oneclient_events::Answer;
+use oneclient_java::{JAVA_CHOICE_DOWNLOAD, JAVA_CHOICE_FOLDER, JavaVendor};
 
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
@@ -65,9 +65,8 @@ impl Component for JavaPromptOverlay {
                     .pick_folder()
                     .await
                 {
-                    dispatch.answer_prompt(
-                        Answer::new(JAVA_CHOICE_FOLDER).with_folder(handle.path()),
-                    );
+                    dispatch
+                        .answer_prompt(Answer::new(JAVA_CHOICE_FOLDER).with_folder(handle.path()));
                 }
             });
         };
@@ -124,9 +123,7 @@ impl Component for JavaPromptOverlay {
                                     .child(
                                         Button::new()
                                             .secondary()
-                                            .on_press(move |_| {
-                                                cancel.dismiss_prompt()
-                                            })
+                                            .on_press(move |_| cancel.dismiss_prompt())
                                             .text("Cancel"),
                                     )
                                     .child(

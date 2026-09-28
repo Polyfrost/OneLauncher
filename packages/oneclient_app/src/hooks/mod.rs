@@ -1,6 +1,6 @@
+mod actions;
 mod active_cluster;
 mod debounce;
-mod actions;
 mod overlay_claims;
 mod queries;
 mod shortcut_actions;
@@ -15,10 +15,11 @@ pub use view_state::{PersistedView, use_view_state};
 
 pub use active_cluster::{
     ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
-    BrowserUiState, LinkConfirmState,
-    OnboardingSelectionState, SplashState, StartMaximizedState, use_active_cluster_id,
-    use_browser_compat, use_browser_state_store, use_link_confirm, use_onboarding_selection,
-    use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
+    BrowserTypeState, BrowserUiState,
+    LinkConfirmState, OnboardingSelectionState, SplashState, StartMaximizedState,
+    use_active_cluster_id, use_browser_compat, use_browser_state_store, use_browser_type,
+    use_link_confirm, use_onboarding_selection, use_provide_active_cluster,
+    use_provide_browser_compat, use_provide_browser_state, use_provide_browser_type,
     use_provide_link_confirm, use_provide_onboarding_selection, use_provide_splash,
     use_provide_start_maximized, use_splash, use_start_maximized,
 };
@@ -27,50 +28,46 @@ pub use actions::{Actions, NotificationBuilder, PumpSignal};
 pub use queries::{
     AddOfflineAccountKeys, BROWSE_PAGE_SIZE, BeginMicrosoftLoginMutation, CachedImageQuery,
     CancelMicrosoftLoginKeys, CancelMicrosoftLoginMutation, ClusterAction, ClusterBundles,
-    ClusterLogsQuery, FinishMicrosoftLoginMutation, LogAction, LogContentQuery, MigrationQuery,
+    ClusterLogsQuery, ClusterMutation, DiscardLeftoversKeys, DiscardLeftoversMutation,
+    FinishMicrosoftLoginMutation, LeftoversQuery, LogAction, LogContentQuery, MigrationQuery,
     OnboardingBundlesQuery, RefreshAccountKeys, RemoveAccountKeys, ScreenshotAction,
     SetDefaultAccountKeys, StorageAction, StorageActionMutation, StorageReportQuery, TermsQuery,
-    UploadLogKeys, UploadLogMutation, UseLogAction,
-    UseRefreshAccount, UseRemoveAccount, UseScreenshotAction, UseSetDefaultAccount,
-    UseStorageAction, UseUploadLog,
+    UploadLogKeys, UploadLogMutation, UseDiscardLeftovers, UseLogAction, UseRefreshAccount,
+    UseRemoveAccount, UseScreenshotAction, UseSetDefaultAccount, UseStorageAction, UseUploadLog,
     VERSIONS_PAGE_SIZE, accounts_have_microsoft, bundle_overrides_map, bundles_with_status_items,
     category_list, changelog_error, changelog_groups, changelog_is_loading, cluster_content_items,
     content_type_for_slug, has_migration_data, invalidate_cluster_content_queries,
-    invalidate_cluster_queries, invalidate_java_queries,
+    invalidate_cluster_queries, invalidate_java_queries, invalidate_leftovers_queries,
     invalidate_logs_queries, invalidate_profile_queries, invalidate_screenshots_queries,
-    invalidate_storage_queries, try_storage_report, use_storage_action, use_storage_report,
-    DiscardLeftoversKeys, DiscardLeftoversMutation, LeftoversQuery,
-    UseDiscardLeftovers, invalidate_leftovers_queries, mutation_ok, try_leftovers,
-    use_discard_leftovers, use_leftovers,
-    java_runtimes, latest_changelog_version, loaded_image, loader_versions,
-    login_code_already_handled, migration_detection,
-    mutation_error, mutation_is_pending, mutation_is_running, onboarding_bundles_items, package_meta_batch,
-    package_updates, pick_version_metadata, project_detail, provider_versions, query_error,
-    query_is_busy, stale_hashes, use_package_updates,
-    query_is_loading, reset_login_code_dedup, search_items, search_pending, search_total,
-    settled_or_loading, terms_document, terms_error, terms_is_loading, try_account,
-    try_accounts, try_cluster_analytics, try_cluster_logs, try_cluster_screenshots,
-    try_default_account, try_game_profile, try_global_analytics, try_log_content, use_account,
-    use_accounts, use_add_microsoft_account, use_add_offline_account, use_begin_microsoft_login,
+    invalidate_storage_queries, java_runtimes, latest_changelog_version, loaded_image,
+    loader_versions, login_code_already_handled, migration_detection, mutation_error,
+    mutation_is_pending, mutation_is_running, mutation_ok, onboarding_bundles_items,
+    package_meta_batch, package_updates, pick_version_metadata, project_detail, provider_versions,
+    query_error, query_is_busy, query_is_loading, reset_login_code_dedup, search_items,
+    search_pending, search_total, settled_or_loading, stale_hashes, terms_document, terms_error,
+    terms_is_loading, try_account, try_accounts, try_cluster_analytics, try_cluster_logs,
+    try_cluster_screenshots, try_default_account, try_game_profile, try_global_analytics,
+    try_leftovers, try_log_content, try_storage_report, use_account, use_accounts,
+    use_add_microsoft_account, use_add_offline_account, use_begin_microsoft_login,
     use_bundle_overrides, use_bundle_updates, use_bundles_with_status, use_cached_image,
-    use_cancel_microsoft_login, use_changelog, use_cluster_analytics, use_cluster_content,
-    use_cluster_logs, use_cluster_mutation, use_cluster_profile, use_cluster_screenshots,
-    use_cluster, use_cluster_settings, use_clusters, use_current_account, use_default_account,
-    use_finish_microsoft_login, use_game_profile, use_global_analytics, use_java_runtimes,
-    use_loader_versions, use_local_image, use_log_action, use_log_content, use_migration,
-    use_named_profiles, use_onboarding_bundles, use_package_categories, use_package_meta_batch,
-    use_package_project, use_package_search, use_package_versions, use_package_versions_when,
-    use_player_profile,
+    use_cancel_microsoft_login, use_changelog, use_cluster, use_cluster_analytics,
+    use_cluster_content, use_cluster_logs, use_cluster_mutation, use_cluster_profile,
+    use_cluster_screenshots, use_cluster_settings, use_clusters, use_current_account,
+    use_default_account, use_discard_leftovers, use_finish_microsoft_login, use_game_profile,
+    use_global_analytics, use_java_runtimes, use_leftovers, use_loader_versions, use_local_image,
+    use_log_action, use_log_content, use_migration, use_named_profiles, use_onboarding_bundles,
+    use_package_categories, use_package_meta_batch, use_package_project, use_package_search,
+    use_package_updates, use_package_versions, use_package_versions_when, use_player_profile,
     use_player_skin, use_provider_versions, use_refresh_account, use_refresh_all_accounts,
-    use_remove_account, use_screenshot_action, use_screenshot_folder_watch, use_set_default_account,
-    use_terms, use_upload_log,
+    use_remove_account, use_screenshot_action, use_screenshot_folder_watch,
+    use_set_default_account, use_storage_action, use_storage_report, use_terms, use_upload_log,
     use_version_metadata, use_versions, version_list, versions_metadata, versions_total,
 };
 
 use crate::notifications::NotificationSnapshot;
 use crate::state::{
     AppChannel, GameState, InstallState, LauncherInit, LoginProgress, RelocationState,
-    SettingsState,
+    SettingsState, StorageScanProgress,
 };
 use freya::prelude::*;
 use freya::radio::use_radio;
@@ -116,6 +113,12 @@ pub fn use_account_switcher_open() -> bool {
         .account_switcher_open
 }
 
+pub fn use_control_center_open() -> bool {
+    use_radio(AppChannel::ControlCenter)
+        .read()
+        .control_center_open
+}
+
 pub fn use_game_snapshot() -> GameState {
     use_radio(AppChannel::Game).read().game.clone()
 }
@@ -126,6 +129,13 @@ pub fn use_game_active() -> bool {
 
 pub fn use_installs_snapshot() -> InstallState {
     use_radio(AppChannel::Installs).read().installs.clone()
+}
+
+pub fn use_storage_scan_progress() -> Option<StorageScanProgress> {
+    use_radio(AppChannel::StorageScan)
+        .read()
+        .storage_scan
+        .clone()
 }
 
 pub fn use_pending_launch() -> Option<String> {
@@ -141,4 +151,3 @@ pub fn use_microsoft_login_status() -> Option<LoginProgress> {
         .microsoft_login
         .clone()
 }
-

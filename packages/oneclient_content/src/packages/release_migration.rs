@@ -631,8 +631,20 @@ pub async fn process_waitlist(
 			);
 			continue;
 		}
-		let target = PackageStore::get_cluster(cluster_id, ctx).await?;
-		let present = target_projects(cluster_id, bundles, ctx).await?;
+		let target = match PackageStore::get_cluster(cluster_id, ctx).await {
+			Ok(target) => target,
+			Err(err) => {
+				tracing::warn!(cluster_id, %err, "could not read a waitlisted cluster, skipping it");
+				continue;
+			}
+		};
+		let present = match target_projects(cluster_id, bundles, ctx).await {
+			Ok(present) => present,
+			Err(err) => {
+				tracing::warn!(cluster_id, %err, "could not read a waitlisted cluster's packages, skipping it");
+				continue;
+			}
+		};
 
 		let mut candidates = Vec::new();
 		for row in rows {

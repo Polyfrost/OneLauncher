@@ -1,10 +1,8 @@
 use freya::prelude::*;
 use oneclient_common::Patch;
-use oneclient_core::settings::{
-    GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution,
-};
 #[cfg(any(target_os = "linux", windows))]
 use oneclient_core::settings::SettingsOsExtra;
+use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
 
 use super::settings_page;
 use crate::components::{

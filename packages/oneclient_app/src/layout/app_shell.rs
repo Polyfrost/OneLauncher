@@ -22,8 +22,7 @@ use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
     ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
-    BrowserTypeState,
-    use_active_cluster_id, use_clusters, use_game_snapshot, use_launcher,
+    BrowserTypeState, use_active_cluster_id, use_clusters, use_game_snapshot, use_launcher,
     use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
     use_provide_browser_type, use_splash,
 };

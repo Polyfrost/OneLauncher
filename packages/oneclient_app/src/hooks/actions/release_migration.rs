@@ -648,7 +648,11 @@ impl Actions {
                     .filter(|dependency| dependency.is_needed_by(&chosen))
                     .map(|dependency| (dependency.clone(), dependency.enabled_for(&packages)))
                     .collect(),
-                plan.unavailable.clone(),
+                plan.unavailable
+                    .iter()
+                    .filter(|skip| skip.reason == SkipReason::NoCompatibleVersion)
+                    .cloned()
+                    .collect(),
             ),
             _ => (Vec::new(), Vec::new()),
         };
@@ -672,6 +676,7 @@ impl Actions {
             );
 
             let mut migrated = 0usize;
+            let mut blocked: HashSet<String> = HashSet::new();
             for (dependency, enabled) in &dependencies {
                 let child = session.child(
                     dependency.project.name.clone(),
@@ -680,11 +685,14 @@ impl Actions {
                 );
                 match apply_release_migration_dependency(target.id, dependency, *enabled, Some(&child), &content).await {
                     Ok(_) => migrated += 1,
-                    Err(err) => tracing::warn!(
-                        dependency = %dependency.project.name,
-                        error = %err,
-                        "release migration failed for dependency"
-                    ),
+                    Err(err) => {
+                        tracing::warn!(
+                            dependency = %dependency.project.name,
+                            error = %err,
+                            "release migration failed for dependency"
+                        );
+                        blocked.extend(dependency.required_by.iter().cloned());
+                    }
                 }
                 child.finish();
             }
@@ -695,6 +703,14 @@ impl Actions {
                     1,
                     oneclient_events::TaskCategory::Packages,
                 );
+                if blocked.contains(&package.source_hash) {
+                    tracing::warn!(
+                        package = %package.display_name,
+                        "skipping release migration for a package whose dependency failed"
+                    );
+                    child.finish();
+                    continue;
+                }
                 match apply_release_migration_package(target.id, package, Some(&child), &content).await {
                     Ok(_) => migrated += 1,
                     Err(err) => tracing::warn!(

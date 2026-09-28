@@ -12,7 +12,9 @@ use crate::hooks::{
     package_meta_batch, use_cached_image, use_dispatch, use_notifications_snapshot,
     use_package_meta_batch,
 };
-use crate::notifications::{ClusterUpdateItem, OptionalModRef, OptionalModsGroup};
+use crate::notifications::{
+    ClusterUpdateItem, OptionalModRef, OptionalModsGroup, OptionalModsOutcome,
+};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -21,6 +23,8 @@ const DIALOG_W: f32 = 720.;
 const DIALOG_PAD: f32 = 22.;
 const LIST_MAX_H: f32 = 306.;
 const ICON_SIZE: f32 = 40.;
+const SKIP_NOTE: &str =
+    "Anything you don't pick won't be offered again, but you can add it later from the Mods tab.";
 
 type MetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
@@ -33,7 +37,7 @@ impl Component for OptionalModsPopup {
     fn render(&self) -> impl IntoElement {
         let snapshot = use_notifications_snapshot();
         let dispatch = use_dispatch();
-        let picked = use_state(Picked::new);
+        let mut picked = use_state(Picked::new);
 
         let groups = snapshot.optional_mods.clone();
 
@@ -57,11 +61,12 @@ impl Component for OptionalModsPopup {
         };
 
         let close = dispatch.clone();
-        let dismissed: Vec<(i64, OptionalModRef)> =
-            groups.iter().flat_map(|group| group.offers()).collect();
 
         OverlayPopup::new()
-            .on_close(move |_| close.decline_optional_mods(dismissed.clone()))
+            .on_close(move |_| {
+                picked.set(Picked::new());
+                close.close_optional_mods(OptionalModsOutcome::Cancel);
+            })
             .child(
                 rect()
                     .width(Size::window_percent(100.))
@@ -150,7 +155,7 @@ fn dialog(
 fn content(
     groups: &[OptionalModsGroup],
     meta: &MetaMap,
-    picked: State<Picked>,
+    mut picked: State<Picked>,
     dispatch: crate::Actions,
 ) -> impl IntoElement {
     let total: usize = groups.iter().map(|group| group.mods.len()).sum();
@@ -168,24 +173,23 @@ fn content(
     let plural = if total == 1 { "" } else { "s" };
     let subtitle = match groups {
         [only] => format!(
-            "{} includes {total} optional mod{plural} that {} off by default. Pick the {} to turn on.",
+            "{} includes {total} optional mod{plural} that {} off by default. Pick the {} to turn on. {SKIP_NOTE}",
             only.cluster_name,
             if total == 1 { "is" } else { "are" },
             if total == 1 { "one" } else { "ones" }
         ),
         _ => format!(
-            "Your bundles include {total} optional mod{plural} across {} clusters that are off by default. Pick the ones to turn on.",
+            "Your bundles include {total} optional mod{plural} across {} clusters that are off by default. Pick the ones to turn on. {SKIP_NOTE}",
             groups.len()
         ),
     };
 
     let cancel = dispatch.clone();
-    let declined = offers.clone();
 
-    let enable_text = if enable.is_empty() {
-        "Enable".to_string()
+    let primary_text = if enable.is_empty() {
+        "Launch".to_string()
     } else {
-        format!("Enable {}", enable.len())
+        format!("Install {} & launch", enable.len())
     };
 
     rect()
@@ -210,7 +214,7 @@ fn content(
                     label()
                         .text(subtitle)
                         .font_size(12.5)
-                        .max_lines(3)
+                        .max_lines(4)
                         .color(colors::fg_secondary()),
                 ),
         )
@@ -225,22 +229,25 @@ fn content(
                 .child(
                     Button::new()
                         .ghost()
-                        .on_press(move |_| cancel.decline_optional_mods(declined.clone()))
+                        .on_press(move |_| {
+                            picked.set(Picked::new());
+                            cancel.close_optional_mods(OptionalModsOutcome::Cancel);
+                        })
                         .text("Cancel"),
                 )
-                .maybe_child((!offers.is_empty()).then(|| {
+                .child({
                     let apply = dispatch.clone();
+                    let install = !enable.is_empty();
                     Button::new()
                         .primary()
-                        .disabled(enable.is_empty())
                         .on_press(move |_| {
+                            picked.set(Picked::new());
                             apply.record_skipped_optional_mods(skip.clone());
                             apply.enable_optional_mods(enable.clone());
                         })
-                        .child(Icon::new(IconType::Check).size(15.))
-                        .text(enable_text.clone())
-                        .into_element()
-                })),
+                        .maybe_child(install.then(|| Icon::new(IconType::Check).size(15.)))
+                        .text(primary_text)
+                }),
         )
 }
 

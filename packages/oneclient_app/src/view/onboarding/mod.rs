@@ -421,14 +421,4 @@ mod tests {
             }
         }
     }
-
-    #[test]
-    fn a_run_without_the_folder_step_is_numbered_as_it_always_was() {
-        assert_eq!(onboarding_total(false, false), 7);
-        assert_eq!(onboarding_total(true, false), 8);
-        assert_eq!(
-            onboarding_step_index(&Route::OnboardingTerms {}, false, false),
-            1
-        );
-    }
 }

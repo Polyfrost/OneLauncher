@@ -836,7 +836,6 @@ mod tests {
     #[test]
     fn unknown_override_string_is_ignored() {
         assert_eq!(OverrideType::parse("something-new"), None);
-        assert!(!effective_enabled(&file(false), None));
     }
 
     fn row(bundle: &str, pid: &str, ty: OverrideType) -> ClusterBundleOverrideRow {

@@ -113,7 +113,7 @@ pub fn bundle_packages(
 
     let opted_in_ids: HashSet<String> = bundles
         .iter()
-        .filter(|b| b.opted_in)
+        .filter(|b| b.opted_in_types.contains(&content_type))
         .flat_map(|b| b.files.iter().map(|(file, _)| file.kind.package_id()))
         .collect();
 
@@ -518,7 +518,11 @@ mod tests {
                 .collect(),
             archive: archive(category, true, files),
             has_updates: false,
-            opted_in,
+            opted_in_types: if opted_in {
+                [ContentType::Mod].into()
+            } else {
+                HashSet::new()
+            },
         }
     }
 

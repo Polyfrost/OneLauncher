@@ -847,10 +847,25 @@ pub async fn get_bundles_with_update_status(
         .collect();
 
     let live_bundles = live_bundle_names(&bundle_packages, &overrides);
+    let (installed_managed_keys, installed_external_hashes) =
+        installed_bundle_keys(ctx, &all_linked).await?;
+    let installed_keys: HashSet<String> = installed_managed_keys
+        .into_iter()
+        .chain(
+            installed_external_hashes
+                .iter()
+                .map(|h| external_bundle_key(h)),
+        )
+        .collect();
 
     let archives = bundles
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
+    let shared_keys = keys_shipped_by_several_bundles(
+        archives
+            .iter()
+            .filter(|a| live_bundles.contains(&a.manifest.name)),
+    );
     let mut results = Vec::new();
 
     for archive in archives {
@@ -904,8 +919,22 @@ pub async fn get_bundles_with_update_status(
             files.push((file.clone(), status));
         }
 
+        let opted_in_types = if live_bundles.contains(&archive.manifest.name) {
+            let suppressed =
+                suppressed_content_types(&archive, &overrides_map, &installed_keys, &shared_keys);
+            archive
+                .manifest
+                .files
+                .iter()
+                .map(|f| f.content_type())
+                .filter(|ct| !suppressed.contains(ct))
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
         results.push(BundleWithUpdateStatus {
-            opted_in: live_bundles.contains(&archive.manifest.name),
+            opted_in_types,
             archive,
             files,
             has_updates,

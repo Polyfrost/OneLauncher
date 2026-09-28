@@ -1,6 +1,7 @@
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleManifest, check_bundle_updates,
+    get_bundles_with_update_status,
 };
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
@@ -568,6 +569,23 @@ async fn disabling_every_mod_stops_new_mods_while_a_resource_pack_stays_on() {
             .iter()
             .any(|o| o.package_id == "newcomer"),
         "the new mod is still offered so the user can take it if they want it"
+    );
+
+    let status = get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let types = &status
+        .iter()
+        .find(|b| b.archive.manifest.name == BUNDLE)
+        .unwrap()
+        .opted_in_types;
+    assert!(
+        !types.contains(&ContentType::Mod) && types.contains(&ContentType::ResourcePack),
+        "the package list must agree with the update path on which side is opted out: {types:?}"
     );
 }
 

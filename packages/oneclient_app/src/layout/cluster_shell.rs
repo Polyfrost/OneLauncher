@@ -13,7 +13,7 @@ use crate::ui::entrance_motion_layer;
 use crate::view::app::launch_button_state;
 
 const HEADER_HEIGHT: f32 = 64.;
-const TABS_HEIGHT: f32 = 44.;
+const TABS_HEIGHT: f32 = 38.;
 const BAR_SPACING: f32 = 16.;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -330,15 +330,22 @@ fn cluster_tabs(
         .width(Size::fill())
         .height(Size::px(TABS_HEIGHT))
         .cross_align(Alignment::Center)
-        .padding(Gaps::new(0., 24., 0., 24.))
-        .background(colors::page_elevated())
-        .corner_radius(CornerRadius::new_all(12.))
+        .border(
+            Border::new()
+                .fill(colors::component_border())
+                .width(BorderWidth {
+                    top: 0.,
+                    right: 0.,
+                    bottom: 1.,
+                    left: 0.,
+                }),
+        )
         .child(
             TabBar::new()
-                .width(Size::fill())
+                .width(Size::auto())
                 .height(Size::fill())
-                .spacing(24.)
-                .font_size(12.)
+                .spacing(22.)
+                .font_size(13.)
                 .tabs(tab_items),
         )
 }

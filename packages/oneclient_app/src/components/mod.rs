@@ -79,7 +79,7 @@ pub use notifications::NotificationCenter;
 pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub(crate) use package_row::{CARD_GRID_H, GRID_GAP, GRID_MIN_W, grid_card, package_icon};
-pub use package_row::{CardLayout, PackageEntry, PackageRow, provider_badge};
+pub use package_row::{CardLayout, PackageEntry, PackageRow, package_context_menu, provider_badge};
 pub use package_update_popup::PackageUpdatePopup;
 pub use pagination::Pagination;
 pub use player_model::PlayerModel;

@@ -264,7 +264,7 @@ fn version_row(
                         .max_lines(1)
                         .color(colors::fg_primary()),
                 )
-                .maybe(has_chips, |el| el.child(pill_flow(&chips, 8, 10)))
+                .maybe(has_chips, |el| el.child(pill_flow(&chips, 10)))
                 .child(
                     label()
                         .text(stats)

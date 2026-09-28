@@ -84,16 +84,14 @@ fn navbar_left(show_logo: bool) -> impl IntoElement {
             Size::auto()
         })
         .cross_align(Alignment::Center)
+		.spacing(NAV_LINK_SPACING_PX / 2.)
         .maybe(!show_logo, |el| {
             el.padding(Gaps::new(0., NAV_LINK_SPACING_PX, 0., 0.))
         })
-        .child(if show_logo {
-            NavbarLogo.into_element()
-        } else {
-            Icon::new(IconType::IconLogo)
+		.child(Icon::new(IconType::IconLogo)
                 .size(COMPACT_LOGO_PX)
-                .into_element()
-        })
+                .into_element())
+		.maybe(show_logo, |rect| rect.child(NavbarLogo.into_element()))
 }
 
 #[derive(PartialEq)]
@@ -124,11 +122,7 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             Alignment::Center
         })
         .cross_align(Alignment::Center)
-        .spacing(if is_small {
-            NAV_LINK_SPACING_PX
-        } else {
-            NAV_LINK_SPACING_PX / 2.
-        })
+        .spacing(if is_small { 12. } else { 4. })
         .child(NavLink {
             active: route == Route::Home {},
             target: NavTarget::Route(Route::Home {}),
@@ -206,22 +200,30 @@ impl Component for NavLink {
             theme::colors::fg_secondary()
         };
 
-        let underline_width = if active {
-            27.
+        let background = if active {
+            theme::colors::ghost_overlay()
         } else if hovering() || focused().is_focused() {
-            18.
+            theme::colors::ghost_overlay_hover()
         } else {
-            0.
+			Color::TRANSPARENT
         };
 
         rect()
-            .vertical()
+            .horizontal()
+            .main_align(Alignment::Center)
             .cross_align(Alignment::Center)
-            .spacing(2.)
-            .width(Size::px(nav_label.len() as f32 * 10. + 10.))
-            // TODO workaround for a Freya measurement bug a fully transparent background
-            // measures wrongly so give it alpha 0 red to keep pointer events working
-            .background(Color::RED.with_a(0))
+            .height(Size::px(36.))
+            .width(Size::px(nav_label.len() as f32 * 10. + 34.))
+            .corner_radius(CornerRadius::new_all(10.))
+            .background(background)
+            .maybe(active, |el| {
+                el.border(
+                    Border::new()
+                        .fill(theme::colors::component_border())
+                        .width(1.)
+                        .alignment(BorderAlignment::Inner),
+                )
+            })
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
@@ -247,17 +249,6 @@ impl Component for NavLink {
                         FontWeight::NORMAL
                     })
                     .color(color),
-            )
-            .child(
-                rect()
-                    .height(Size::px(2.))
-                    .width(Size::px(underline_width))
-                    .corner_radius(CornerRadius::new_all(2.))
-                    .background(if active {
-                        theme::colors::fg_primary()
-                    } else {
-                        theme::colors::fg_secondary()
-                    }),
             )
     }
 }

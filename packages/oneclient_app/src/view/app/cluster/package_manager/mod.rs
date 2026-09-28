@@ -14,7 +14,7 @@ use views::{ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, tool
 
 const CARD_H: f32 = 84.;
 const CARD_SPACING: f32 = 8.;
-const LAZY_OVERSCAN: i64 = 2;
+const GRID_MAX_COLS: usize = 5;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
@@ -227,14 +227,10 @@ fn make_row(
         .map(|p| p.author.clone())
         .filter(|s| !s.is_empty())
         .unwrap_or_default();
+    let version = installed_info.and_then(|i| i.display_version.clone());
     let description = m
         .map(|p| p.summary.clone())
         .filter(|s| !s.is_empty())
-        .or_else(|| {
-            installed_info
-                .and_then(|i| i.display_version.clone())
-                .map(|v| format!("Version {v}"))
-        })
         .unwrap_or_default();
 
     PackageEntry {
@@ -244,6 +240,7 @@ fn make_row(
         name,
         file_name,
         author,
+        version,
         description,
         icon_url: m.and_then(|p| p.icon_url.clone()),
         size,

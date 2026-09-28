@@ -246,6 +246,61 @@ impl ScrollArea {
         self
     }
 
+    pub fn lazy_grid(
+        mut self,
+        count: usize,
+        item_height: f32,
+        gap: f32,
+        min_width: f32,
+        max_cols: usize,
+        render: impl Fn(usize) -> Element + 'static,
+    ) -> Self {
+        let slot = (item_height + gap).max(1.);
+        self.builder = Some(Box::new(move |ctx: ScrollAreaCtx| {
+            let cols = (((ctx.viewport_w + gap) / (min_width + gap)).floor() as usize)
+                .clamp(1, max_cols.max(1));
+            let rows_total = count.div_ceil(cols);
+
+            let first =
+                (((-ctx.corrected_y) / slot).floor() as i64 - LAZY_OVERSCAN).max(0) as usize;
+            let span = ((ctx.viewport_h / slot).ceil() as i64 + 2 * LAZY_OVERSCAN).max(0) as usize;
+            let last = (first + span).min(rows_total);
+
+            let top_pad = first as f32 * slot;
+            let bottom_pad = rows_total.saturating_sub(last) as f32 * slot;
+
+            let mut container = rect().vertical().width(Size::fill());
+            if top_pad > 0. {
+                container = container.child(rect().width(Size::fill()).height(Size::px(top_pad)));
+            }
+            for r in first..last {
+                let mut row = rect()
+                    .key(r)
+                    .horizontal()
+                    .width(Size::fill())
+                    .height(Size::px(slot))
+                    .spacing(gap)
+                    .content(Content::Flex);
+                for c in 0..cols {
+                    let idx = r * cols + c;
+                    let cell = rect().width(Size::flex(1.0)).height(Size::px(item_height));
+                    row = row.child(if idx < count {
+                        cell.child(render(idx))
+                    } else {
+                        cell
+                    });
+                }
+                container = container.child(row);
+            }
+            if bottom_pad > 0. {
+                container =
+                    container.child(rect().width(Size::fill()).height(Size::px(bottom_pad)));
+            }
+            container.into_element()
+        }));
+        self
+    }
+
     fn view(&self) -> impl IntoElement {
         let horizontal = self.horizontal;
         let content_w = self.content_width;

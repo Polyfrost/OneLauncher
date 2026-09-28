@@ -69,7 +69,7 @@ pub use logs::{
 };
 pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
 pub use mutations::{
-    ClusterAction, invalidate_cluster_content_queries, invalidate_cluster_queries,
+    ClusterAction, ClusterMutation, invalidate_cluster_content_queries, invalidate_cluster_queries,
     invalidate_profile_queries, use_cluster_mutation,
 };
 pub use package_updates::{package_updates, stale_hashes, use_package_updates};

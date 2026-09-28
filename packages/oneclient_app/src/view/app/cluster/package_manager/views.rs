@@ -6,8 +6,8 @@ use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, Icon, IconType, LazySection, PackageEntry, PackageRow, ScrollArea, Segment,
-    SegmentedControl, TextInput, package_context_menu, use_shared_delete,
+    Button, CardLayout, ChevronToggle, Icon, IconType, LazySection, PackageEntry, PackageRow,
+    ScrollArea, Segment, SegmentedControl, TextInput, package_context_menu, use_shared_delete,
 };
 use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch, use_overlay_claim};
 use crate::routes::Route;
@@ -743,15 +743,7 @@ impl Component for SectionHeader {
                     .on_pointer_leave(move |_| hovered.set(false))
                     .on_press(move |_| open.toggle())
             })
-            .child(
-                Icon::new(if expanded {
-                    IconType::ChevronDown
-                } else {
-                    IconType::ChevronRight
-                })
-                .size(14.)
-                .color(colors::fg_secondary()),
-            )
+            .child(ChevronToggle { expanded })
             .child(
                 label()
                     .text(self.label)

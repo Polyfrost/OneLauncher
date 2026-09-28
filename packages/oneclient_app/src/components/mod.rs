@@ -78,7 +78,7 @@ pub(crate) use microsoft_login::login_dialog;
 pub use microsoft_login::use_microsoft_login;
 pub(crate) use navbar::window_controls;
 pub use navbar::{AppNavbar, OnboardingNavbar};
-pub use notifications::NotificationCenter;
+pub use notifications::{ChevronToggle, NotificationCenter};
 pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub use package_delete_dialog::use_shared_delete;

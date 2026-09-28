@@ -15,7 +15,8 @@ pub async fn upsert(
     expires_at: &str,
     enabled: bool,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(
+    let enabled = i64::from(enabled);
+    sqlx::query!(
         r"
 		INSERT INTO release_migration_waitlist (
 			target_cluster_id, provider, project_id, content_type,
@@ -30,27 +31,28 @@ pub async fn upsert(
 			expires_at = excluded.expires_at,
 			enabled = excluded.enabled
 		",
+        target_cluster_id,
+        provider,
+        project_id,
+        content_type,
+        source_hash,
+        display_name,
+        added_at,
+        expires_at,
+        enabled
     )
-    .bind(target_cluster_id)
-    .bind(provider)
-    .bind(project_id)
-    .bind(content_type)
-    .bind(source_hash)
-    .bind(display_name)
-    .bind(added_at)
-    .bind(expires_at)
-    .bind(i64::from(enabled))
     .execute(pool)
     .await?;
     Ok(())
 }
 
 pub async fn list_all(pool: &SqlitePool) -> Result<Vec<ReleaseMigrationWaitlistRow>, sqlx::Error> {
-    sqlx::query_as::<_, ReleaseMigrationWaitlistRow>(
+    sqlx::query_as!(
+        ReleaseMigrationWaitlistRow,
         r"
 		SELECT
 			target_cluster_id, provider, project_id, content_type,
-			source_hash, display_name, added_at, expires_at, enabled
+			source_hash, display_name, expires_at, enabled
 		FROM release_migration_waitlist
 		",
     )
@@ -64,21 +66,23 @@ pub async fn delete(
     provider: i64,
     project_id: &str,
 ) -> Result<(), sqlx::Error> {
-    sqlx::query(
-		"DELETE FROM release_migration_waitlist WHERE target_cluster_id = ? AND provider = ? AND project_id = ?",
-	)
-	.bind(target_cluster_id)
-	.bind(provider)
-	.bind(project_id)
-	.execute(pool)
-	.await?;
+    sqlx::query!(
+        "DELETE FROM release_migration_waitlist WHERE target_cluster_id = ? AND provider = ? AND project_id = ?",
+        target_cluster_id,
+        provider,
+        project_id
+    )
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
 pub async fn delete_expired(pool: &SqlitePool, now: &str) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query("DELETE FROM release_migration_waitlist WHERE expires_at <= ?")
-        .bind(now)
-        .execute(pool)
-        .await?;
+    let result = sqlx::query!(
+        "DELETE FROM release_migration_waitlist WHERE expires_at <= ?",
+        now
+    )
+    .execute(pool)
+    .await?;
     Ok(result.rows_affected())
 }

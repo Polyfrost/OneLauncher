@@ -8,7 +8,6 @@ pub struct ReleaseMigrationWaitlistRow {
     pub content_type: i64,
     pub source_hash: String,
     pub display_name: String,
-    pub added_at: String,
     pub expires_at: String,
     pub enabled: i64,
 }

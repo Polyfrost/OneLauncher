@@ -23,6 +23,8 @@ const DIALOG_W: f32 = 720.;
 const DIALOG_PAD: f32 = 22.;
 const LIST_MAX_H: f32 = 306.;
 const ICON_SIZE: f32 = 40.;
+const SKIP_NOTE: &str =
+    "Anything you don't pick won't be offered again, but you can add it later from the Mods tab.";
 
 type MetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
@@ -171,13 +173,13 @@ fn content(
     let plural = if total == 1 { "" } else { "s" };
     let subtitle = match groups {
         [only] => format!(
-            "{} includes {total} optional mod{plural} that {} off by default. Pick the {} to turn on.",
+            "{} includes {total} optional mod{plural} that {} off by default. Pick the {} to turn on. {SKIP_NOTE}",
             only.cluster_name,
             if total == 1 { "is" } else { "are" },
             if total == 1 { "one" } else { "ones" }
         ),
         _ => format!(
-            "Your bundles include {total} optional mod{plural} across {} clusters that are off by default. Pick the ones to turn on.",
+            "Your bundles include {total} optional mod{plural} across {} clusters that are off by default. Pick the ones to turn on. {SKIP_NOTE}",
             groups.len()
         ),
     };
@@ -187,7 +189,7 @@ fn content(
     let primary_text = if enable.is_empty() {
         "Launch".to_string()
     } else {
-        format!("Install {}", enable.len())
+        format!("Install {} & launch", enable.len())
     };
 
     rect()
@@ -212,7 +214,7 @@ fn content(
                     label()
                         .text(subtitle)
                         .font_size(12.5)
-                        .max_lines(3)
+                        .max_lines(4)
                         .color(colors::fg_secondary()),
                 ),
         )

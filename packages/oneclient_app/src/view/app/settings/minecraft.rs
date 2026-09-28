@@ -2,17 +2,15 @@ use freya::prelude::*;
 use oneclient_common::Patch;
 #[cfg(any(target_os = "linux", windows))]
 use oneclient_core::settings::SettingsOsExtra;
-use oneclient_core::settings::{PackageUpdateMode, ProfileUpdate, Resolution};
+use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
 
 use super::settings_page;
-#[cfg(any(target_os = "linux", windows))]
-use crate::components::toggle_controlled;
 use crate::components::{
     Dropdown, Icon, IconType, TextInput, memory_field, toggle, validate_number,
 };
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
-use crate::view::app::settings::{section_header, settings_row};
+use crate::view::app::settings::{resettable, resettable_all, section_header, settings_row};
 
 #[derive(PartialEq)]
 pub struct SettingsMinecraft;
@@ -21,6 +19,7 @@ impl Component for SettingsMinecraft {
     fn render(&self) -> impl IntoElement {
         let settings = use_settings_snapshot().settings;
         let profile = settings.global_game_settings.clone();
+        let defaults = GameSettingsProfile::default_global_profile();
         let dispatch = use_dispatch();
 
         let fullscreen = use_state({
@@ -61,9 +60,18 @@ impl Component for SettingsMinecraft {
             let v = profile.hook_post.clone().unwrap_or_default();
             move || v
         });
+        let update_mode = use_state({
+            let v = profile.browser_update_mode.unwrap_or_default();
+            move || v
+        });
+
+        #[cfg(any(target_os = "linux", windows))]
+        let discrete_gpu = use_state({
+            let v = profile.use_discrete_gpu();
+            move || v
+        });
 
         let mut first = use_state(|| true);
-        let batched = dispatch.clone();
         use_side_effect(move || {
             let update = build_update(
                 *fullscreen.read(),
@@ -74,13 +82,23 @@ impl Component for SettingsMinecraft {
                 &pre_launch_command.read(),
                 &wrapper_command.read(),
                 &post_exit_command.read(),
+                *update_mode.read(),
             );
+            #[cfg(any(target_os = "linux", windows))]
+            let gpu = *discrete_gpu.read();
             if *first.peek() {
                 first.set(false);
                 return;
             }
-            batched.update_global_profile(update);
+
+            #[cfg(any(target_os = "linux", windows))]
+            let update = with_discrete_gpu(update, gpu);
+
+            dispatch.update_global_profile(update);
         });
+
+        #[cfg(any(target_os = "linux", windows))]
+        let discrete_gpu_default = SettingsOsExtra::default().use_discrete_gpu.unwrap_or(true);
 
         let page = settings_page()
             .child(section_header("GAME"))
@@ -88,37 +106,68 @@ impl Component for SettingsMinecraft {
                 IconType::Maximize01,
                 "Force Fullscreen",
                 "Force Minecraft to start in fullscreen mode.",
-                toggle(fullscreen),
+                resettable(
+                    toggle(fullscreen),
+                    fullscreen,
+                    defaults.force_fullscreen.unwrap_or(false),
+                ),
             ))
             .child(settings_row(
                 IconType::LayoutTop,
                 "Resolution",
                 "The game window resolution in pixels.",
-                resolution_field(width, height),
+                resettable_all(
+                    resolution_field(width, height),
+                    vec![
+                        (
+                            width,
+                            defaults
+                                .resolution
+                                .map(|r| r.width.to_string())
+                                .unwrap_or_default(),
+                        ),
+                        (
+                            height,
+                            defaults
+                                .resolution
+                                .map(|r| r.height.to_string())
+                                .unwrap_or_default(),
+                        ),
+                    ],
+                ),
             ))
             .child(settings_row(
                 IconType::Database01,
                 "Memory",
                 "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
-                memory_field(memory, "Default", oneclient_common::default_mem_max()),
+                resettable(
+                    memory_field(memory, "Default", oneclient_common::default_mem_max()),
+                    memory,
+                    String::new(),
+                ),
             ))
             .child(settings_row(
                 IconType::Terminal,
                 "JVM Arguments",
                 "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",
-                TextInput::new(jvm_args)
-                    .placeholder("-XX:+UseG1GC")
-                    .expandable(true)
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(jvm_args)
+                        .placeholder("-XX:+UseG1GC")
+                        .expandable(true)
+                        .width(Size::px(220.)),
+                    jvm_args,
+                    defaults.launch_args.clone().unwrap_or_default(),
+                ),
             ))
             .child(section_header("CONTENT"))
             .child(settings_row(
                 IconType::RefreshCw01,
                 "Browser Package Updates",
                 "What to do when content you installed from the browser has a newer version. Packs from bundles are not affected.",
-                update_mode_field(
-                    profile.browser_update_mode.unwrap_or_default(),
-                    dispatch.clone(),
+                resettable(
+                    update_mode_field(update_mode),
+                    update_mode,
+                    defaults.browser_update_mode.unwrap_or_default(),
                 ),
             ))
             .child(section_header("PROCESS"))
@@ -126,64 +175,68 @@ impl Component for SettingsMinecraft {
                 IconType::FilePlus02,
                 "Pre-Launch Command",
                 "Command to run before launching the game.",
-                TextInput::new(pre_launch_command)
-                    .placeholder("echo 'Game started'")
-                    .expandable(true)
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(pre_launch_command)
+                        .placeholder("echo 'Game started'")
+                        .expandable(true)
+                        .width(Size::px(220.)),
+                    pre_launch_command,
+                    defaults.hook_pre.clone().unwrap_or_default(),
+                ),
             ))
             .child(settings_row(
                 IconType::ParagraphWrap,
                 "Wrapper Command",
                 "Command to run when launching the game.",
-                TextInput::new(wrapper_command)
-                    .placeholder("gamescope")
-                    .expandable(true)
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(wrapper_command)
+                        .placeholder("gamescope")
+                        .expandable(true)
+                        .width(Size::px(220.)),
+                    wrapper_command,
+                    defaults.hook_wrapper.clone().unwrap_or_default(),
+                ),
             ))
             .child(settings_row(
                 IconType::FileX02,
                 "Post-Exit Command",
                 "Command to run after exiting the game.",
-                TextInput::new(post_exit_command)
-                    .placeholder("echo 'Game exited'")
-                    .expandable(true)
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(post_exit_command)
+                        .placeholder("echo 'Game exited'")
+                        .expandable(true)
+                        .width(Size::px(220.)),
+                    post_exit_command,
+                    defaults.hook_post.clone().unwrap_or_default(),
+                ),
             ));
 
         #[cfg(any(target_os = "linux", windows))]
         let page = page
             .child(section_header("GRAPHICS"))
-            .child(discrete_gpu_row(profile.os_extra.clone(), dispatch));
+            .child(settings_row(
+                IconType::Rocket02,
+                "Use Discrete GPU",
+                "Render the game on the dedicated graphics card. Does nothing on a machine with only one GPU, and draws noticeably more power on a laptop.",
+                resettable(toggle(discrete_gpu), discrete_gpu, discrete_gpu_default),
+            ));
 
         page.into_element()
     }
 }
 
 #[cfg(any(target_os = "linux", windows))]
-fn discrete_gpu_row(
-    os_extra: Option<SettingsOsExtra>,
-    dispatch: crate::Actions,
-) -> impl IntoElement {
-    let current = os_extra.unwrap_or_default();
-    let on = current.use_discrete_gpu.unwrap_or(false);
+fn with_discrete_gpu(mut update: ProfileUpdate, on: bool) -> ProfileUpdate {
+    let base = crate::launcher::state()
+        .ok()
+        .and_then(|state| state.settings.read().global_game_settings.os_extra.clone())
+        .unwrap_or_default();
 
-    let on_toggle: EventHandler<()> = (move |()| {
-        dispatch.update_global_profile(ProfileUpdate {
-            os_extra: Patch::Set(SettingsOsExtra {
-                use_discrete_gpu: Some(!on),
-                ..current.clone()
-            }),
-            ..Default::default()
-        });
-    })
-    .into();
-
-    settings_row(
-        IconType::Rocket02,
-        "Use Discrete GPU",
-        "Render the game on the dedicated graphics card. Does nothing on a machine with only one GPU, and draws noticeably more power on a laptop.",
-        toggle_controlled(on, on_toggle),
-    )
+    update.os_extra = Patch::Set(SettingsOsExtra {
+        use_discrete_gpu: Some(on),
+        ..base
+    });
+    update
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -196,6 +249,7 @@ fn build_update(
     pre: &str,
     wrapper: &str,
     post: &str,
+    update_mode: PackageUpdateMode,
 ) -> ProfileUpdate {
     let resolution = match (width.trim(), height.trim()) {
         ("", "") => Patch::Clear,
@@ -218,26 +272,23 @@ fn build_update(
         hook_pre: command_patch(pre),
         hook_wrapper: command_patch(wrapper),
         hook_post: command_patch(post),
+        browser_update_mode: Patch::Set(update_mode),
         ..Default::default()
     }
 }
 
-/// Dispatched separately from [`build_update`] which debounces keystrokes a dropdown has no intermediate states
-fn update_mode_field(selected: PackageUpdateMode, dispatch: crate::Actions) -> impl IntoElement {
+fn update_mode_field(mut selected: State<PackageUpdateMode>) -> impl IntoElement {
     let options: Vec<String> = PackageUpdateMode::ALL
         .iter()
         .map(|mode| mode.label().to_string())
         .collect();
 
-    Dropdown::new(selected.label(), options)
+    Dropdown::new(selected.read().label(), options)
         .width(Size::px(220.))
         .height(Size::px(34.))
         .on_select(move |idx: usize| {
             if let Some(mode) = PackageUpdateMode::ALL.get(idx).copied() {
-                dispatch.update_global_profile(ProfileUpdate {
-                    browser_update_mode: Patch::Set(mode),
-                    ..Default::default()
-                });
+                selected.set(mode);
             }
         })
 }

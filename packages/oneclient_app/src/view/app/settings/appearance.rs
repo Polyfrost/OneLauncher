@@ -1,11 +1,12 @@
 use freya::prelude::*;
+use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
 use crate::components::{Icon, IconType, toggle};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::view::app::settings::{settings_row, settings_row_disabled};
+use crate::view::app::settings::{resettable, settings_row, settings_row_disabled};
 
 #[derive(Clone, Copy)]
 struct ThemePreview {
@@ -52,6 +53,7 @@ impl Component for SettingsAppearance {
         let selected_theme = use_state(|| 0usize);
 
         let settings = use_settings_snapshot().settings;
+        let defaults = LauncherSettings::default();
         let dispatch = use_dispatch();
 
         let dynamic_bg = use_state({
@@ -72,10 +74,10 @@ impl Component for SettingsAppearance {
                 first.set(false);
                 return;
             }
-            let mut next = settings.clone();
-            next.dynamic_background_enabled = parallax;
-            next.animations_enabled = animations;
-            dispatch.set_settings(next);
+            dispatch.edit_settings(|settings| {
+                settings.dynamic_background_enabled = parallax;
+                settings.animations_enabled = animations;
+            });
         });
 
         settings_page()
@@ -88,8 +90,11 @@ impl Component for SettingsAppearance {
                     .padding(Gaps::new(8., 0., 0., 0.))
                     .child(accent_color_row())
                     .child(custom_theme_row())
-                    .child(dynamic_background_row(dynamic_bg))
-                    .child(animations_row(animations_on)),
+                    .child(dynamic_background_row(
+                        dynamic_bg,
+                        defaults.dynamic_background_enabled,
+                    ))
+                    .child(animations_row(animations_on, defaults.animations_enabled)),
             )
             .child(
                 rect().padding(Gaps::new(8., 0., 0., 0.)).child(
@@ -245,20 +250,20 @@ fn custom_theme_row() -> impl IntoElement {
     )
 }
 
-fn dynamic_background_row(enabled: State<bool>) -> impl IntoElement {
+fn dynamic_background_row(enabled: State<bool>, default: bool) -> impl IntoElement {
     settings_row(
         IconType::Eye,
         "Parallax background",
         "Make the home screen background drift with your cursor. Turning it off keeps the background but disables the motion.",
-        toggle(enabled),
+        resettable(toggle(enabled), enabled, default),
     )
 }
 
-fn animations_row(animations_on: State<bool>) -> impl IntoElement {
+fn animations_row(animations_on: State<bool>, default: bool) -> impl IntoElement {
     settings_row(
         IconType::Play,
         "Animations",
         "Disable all launcher animations and transitions.",
-        toggle(animations_on),
+        resettable(toggle(animations_on), animations_on, default),
     )
 }

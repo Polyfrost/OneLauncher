@@ -1,5 +1,5 @@
 use std::collections::HashSet;
-use std::sync::Arc;
+use std::sync::{Arc, PoisonError, RwLock};
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Deserializer};
@@ -188,20 +188,27 @@ pub async fn fetch_bad_mods(ctx: &ContentCtx) -> ContentResult<BadModList> {
     Ok(fetched.json()?)
 }
 
-static BAD_MODS: tokio::sync::OnceCell<Arc<BadModList>> = tokio::sync::OnceCell::const_new();
+static BAD_MODS: RwLock<Option<Arc<BadModList>>> = RwLock::new(None);
+
+pub async fn refresh_bad_mods(ctx: &ContentCtx) -> ContentResult<Arc<BadModList>> {
+    let list = Arc::new(fetch_bad_mods(ctx).await?);
+    *BAD_MODS.write().unwrap_or_else(PoisonError::into_inner) = Some(Arc::clone(&list));
+    Ok(list)
+}
 
 pub async fn load_bad_mods(ctx: &ContentCtx) -> Arc<BadModList> {
     let loaded = BAD_MODS
-        .get_or_try_init(|| async { fetch_bad_mods(ctx).await.map(Arc::new) })
-        .await;
-
-    match loaded {
-        Ok(list) => Arc::clone(list),
-        Err(err) => {
-            tracing::warn!(%err, "bad mods list unavailable, installs are not screened");
-            Arc::default()
-        }
+        .read()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
+    if let Some(list) = loaded {
+        return list;
     }
+
+    refresh_bad_mods(ctx).await.unwrap_or_else(|err| {
+        tracing::warn!(%err, "bad mods list unavailable, installs are not screened");
+        Arc::default()
+    })
 }
 
 const EXPLANATIONS_DIR: &str = "/oneclient/bad_mods_mds/";

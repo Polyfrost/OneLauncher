@@ -1878,6 +1878,13 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
 
+    let content = state.services.content();
+    tokio::spawn(async move {
+        if let Err(err) = oneclient_content::packages::refresh_bad_mods(&content).await {
+            tracing::warn!(%err, "bad mods list refresh failed, keeping the last one");
+        }
+    });
+
     // Before the game process never after Minecraft reads its mods once at
     // startup
     actions

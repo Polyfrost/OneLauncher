@@ -837,11 +837,18 @@ pub async fn get_bundles_with_update_status(
         })
         .collect();
 
-    let live_bundles = live_bundle_names(&bundle_packages, &overrides);
-
     let archives = bundles
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
+
+    // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
+    let (live_managed_keys, _) =
+        installed_bundle_keys(ctx, all_linked.iter().filter(|item| item.enabled)).await?;
+    let mut live_bundles = live_bundle_names(&bundle_packages, &overrides);
+    live_bundles.extend(infer_subscribed_from_archives(
+        &archives,
+        &live_managed_keys,
+    ));
     let mut results = Vec::new();
 
     for archive in archives {

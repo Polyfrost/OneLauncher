@@ -123,10 +123,6 @@ pub fn use_game_snapshot() -> GameState {
     use_radio(AppChannel::Game).read().game.clone()
 }
 
-pub fn use_game_active() -> bool {
-    use_radio(AppChannel::Game).read().game.any_active()
-}
-
 pub fn use_installs_snapshot() -> InstallState {
     use_radio(AppChannel::Installs).read().installs.clone()
 }

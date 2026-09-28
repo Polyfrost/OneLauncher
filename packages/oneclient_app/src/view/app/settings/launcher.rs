@@ -52,6 +52,11 @@ impl Component for SettingsLauncher {
             move || v
         });
 
+        let launch_behaviour = use_state({
+            let v = settings.launch_behaviour;
+            move || v
+        });
+
         let mut first = use_state(|| true);
         {
             let dispatch = dispatch.clone();
@@ -61,6 +66,7 @@ impl Component for SettingsLauncher {
                 let maximized = *start_maximized.read();
                 let background = *run_in_background.read();
                 let tray = *show_tray_icon.read();
+                let behaviour = *launch_behaviour.read();
                 if *first.peek() {
                     first.set(false);
                     return;
@@ -71,6 +77,7 @@ impl Component for SettingsLauncher {
                     next.start_maximized = maximized;
                     next.run_in_background = background;
                     next.show_tray_icon = tray;
+                    next.launch_behaviour = behaviour;
                 });
             });
         }
@@ -128,19 +135,31 @@ impl Component for SettingsLauncher {
                 IconType::Eye,
                 "While Playing",
                 "What the launcher window does once a game is running.",
-                launch_behaviour_field(settings.launch_behaviour, dispatch),
+                resettable(
+                    launch_behaviour_field(launch_behaviour),
+                    launch_behaviour,
+                    defaults.launch_behaviour,
+                ),
             ))
             .child(settings_row(
                 IconType::Moon01,
                 "Run in Background",
                 "Closing the window keeps OneClient running. Open it again from the tray icon or by launching it.",
-                toggle(run_in_background),
+                resettable(
+                    toggle(run_in_background),
+                    run_in_background,
+                    defaults.run_in_background,
+                ),
             ))
             .child(settings_row(
                 IconType::LayoutTop,
                 "Show Tray Icon",
                 "Show OneClient in the system tray or menu bar. Applies on restart.",
-                toggle(show_tray_icon),
+                resettable(
+                    toggle(show_tray_icon),
+                    show_tray_icon,
+                    defaults.show_tray_icon,
+                ),
             ))
             .child(section_header("FOLDERS AND FILES"))
             .child(DataFolder.into_element())
@@ -148,18 +167,18 @@ impl Component for SettingsLauncher {
     }
 }
 
-fn launch_behaviour_field(selected: LaunchBehaviour, dispatch: Actions) -> impl IntoElement {
+fn launch_behaviour_field(mut selected: State<LaunchBehaviour>) -> impl IntoElement {
     let options: Vec<String> = LaunchBehaviour::ALL
         .iter()
         .map(|behaviour| behaviour.label().to_string())
         .collect();
 
-    Dropdown::new(selected.label(), options)
+    Dropdown::new(selected.read().label(), options)
         .width(Size::px(220.))
         .height(Size::px(34.))
         .on_select(move |idx: usize| {
             if let Some(behaviour) = LaunchBehaviour::ALL.get(idx).copied() {
-                dispatch.edit_settings(|settings| settings.launch_behaviour = behaviour);
+                selected.set(behaviour);
             }
         })
 }

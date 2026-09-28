@@ -13,13 +13,17 @@ pub fn file(package_id: &str, enabled: bool, hidden: bool) -> BundleFile {
         path: format!("mods/{package_id}.jar"),
         size: 1,
         file_type: BundleFileType::Normal,
-        kind: BundleFileKind::External(ExternalFile {
-            name: format!("{package_id}.jar"),
-            url: format!("https://example.invalid/{package_id}.jar"),
-            sha1: package_id.to_string(),
-            size: 1,
-            content_type: ContentType::Mod,
-        }),
+        kind: BundleFileKind::External {
+            file: ExternalFile {
+                name: format!("{package_id}.jar"),
+                url: format!("https://example.invalid/{package_id}.jar"),
+                sha1: package_id.to_string(),
+                size: 1,
+                content_type: ContentType::Mod,
+            },
+            id: None,
+            meta: None,
+        },
     }
 }
 

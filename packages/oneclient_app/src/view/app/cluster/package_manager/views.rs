@@ -7,9 +7,9 @@ use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, CardLayout, Icon, IconType, LazySection, PackageEntry, PackageRow, ScrollArea, Segment,
-    SegmentedControl, TextInput, package_context_menu,
+    SegmentedControl, TextInput, package_context_menu, use_shared_delete,
 };
-use crate::hooks::{use_cluster_mutation, use_dispatch, use_overlay_claim};
+use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch, use_overlay_claim};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::{Actions, utils};
@@ -828,6 +828,9 @@ impl Component for ContentBox {
         let dispatch = use_dispatch();
         let cluster = use_cluster_mutation();
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
+        let (on_delete, delete_dialog) = use_shared_delete(move |(_, hash)| {
+            cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
+        });
 
         let row = {
             let items = items.clone();
@@ -884,7 +887,7 @@ impl Component for ContentBox {
         });
 
         let menu_overlay = menu.read().clone().map(|(x, y, item)| {
-            package_context_menu(x, y, &item, cluster_id, package_type, cluster)
+            package_context_menu(x, y, &item, cluster_id, package_type, on_delete)
                 .on_close(move |_| menu.set(None))
                 .into_element()
         });
@@ -932,6 +935,7 @@ impl Component for ContentBox {
             .maybe_child(scroll)
             .maybe_child(empty)
             .maybe_child(menu_overlay)
+            .maybe_child(delete_dialog)
     }
 }
 

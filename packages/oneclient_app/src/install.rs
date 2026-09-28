@@ -46,14 +46,16 @@ pub fn item_from_bundle_file(file: &oneclient_core::BundleFile) -> ClusterUpdate
             ..
         } => ClusterUpdateItem {
             provider: *provider,
+            github_hosted: false,
             project_id: Some(project_id.clone()),
             fallback: file.display_name(),
             offer: None,
             status: None,
         },
-        oneclient_core::BundleFileKind::External(_) => ClusterUpdateItem {
+        oneclient_core::BundleFileKind::External { .. } => ClusterUpdateItem {
             provider: oneclient_content::packages::ProviderId::Local,
-            project_id: None,
+            github_hosted: file.is_github_hosted(),
+            project_id: Some(file.kind.metadata_id()),
             fallback: file.display_name(),
             offer: None,
             status: None,
@@ -90,6 +92,7 @@ async fn cluster_update_summary(
             provider: r
                 .provider
                 .unwrap_or(oneclient_content::packages::ProviderId::Local),
+            github_hosted: false,
             project_id: r.project_id.clone(),
             fallback: r
                 .display_name
@@ -204,6 +207,13 @@ pub struct PackageInstall {
     pub live_deferred: bool,
 }
 
+pub struct FlaggedInstall {
+    pub name: String,
+    pub mc_version: String,
+    pub explanation: Option<String>,
+    pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
+}
+
 pub fn install_body(
     name: &str,
     dependencies: &[String],
@@ -244,13 +254,46 @@ impl PackageInstall {
     }
 }
 
+async fn flagged_install(
+    name: String,
+    entry: &oneclient_content::packages::BadMod,
+    cluster_id: i64,
+    content: &oneclient_content::ContentCtx,
+) -> FlaggedInstall {
+    let resolve = async {
+        match PackageStore::get_cluster(cluster_id, content).await {
+            Ok(cluster) => {
+                let alternatives =
+                    oneclient_content::packages::resolve_alternatives(entry, &cluster, content)
+                        .await;
+                (cluster.mc_version, alternatives)
+            }
+            Err(err) => {
+                tracing::warn!(%err, cluster_id, "cannot resolve alternatives without the cluster");
+                (String::new(), Vec::new())
+            }
+        }
+    };
+    let ((mc_version, alternatives), explanation) = tokio::join!(
+        resolve,
+        oneclient_content::packages::fetch_explanation(entry, content),
+    );
+    FlaggedInstall {
+        name,
+        mc_version,
+        explanation,
+        alternatives,
+    }
+}
+
 pub async fn install_package(
     state: &Arc<LauncherState>,
     provider: oneclient_content::packages::ProviderId,
     project_id: &str,
     version_id: &str,
     cluster_id: i64,
-) -> PackageInstall {
+    allow_flagged: bool,
+) -> Result<PackageInstall, FlaggedInstall> {
     let lookup = async {
         let provider_impl = state.services.packages.get(provider)?;
         let project = provider_impl
@@ -265,8 +308,16 @@ pub async fn install_package(
 
     let (project, version) = match lookup {
         Ok(found) => found,
-        Err(err) => return PackageInstall::failed(err),
+        Err(err) => return Ok(PackageInstall::failed(err)),
     };
+
+    let content = state.services.content();
+    let bad_mods = oneclient_content::packages::load_bad_mods(&content).await;
+
+    if !allow_flagged && let Some(entry) = bad_mods.check(&project, &version) {
+        tracing::warn!(project = %project.name, version = %version.version_number, "refusing to install flagged mod");
+        return Err(flagged_install(project.name, entry, cluster_id, &content).await);
+    }
 
     // Resolved before the session starts so its children can be announced up front
     let mut resolution = oneclient_content::packages::DependencyResolution::default();
@@ -284,6 +335,18 @@ pub async fn install_package(
                 tracing::warn!(%err, "dependency resolution failed, installing package alone");
             }
         }
+    }
+
+    if !allow_flagged
+        && let Some((dependency, entry)) = resolution.install.iter().find_map(|dependency| {
+            bad_mods
+                .check(&dependency.project, &dependency.version)
+                .map(|entry| (dependency, entry))
+        })
+    {
+        tracing::warn!(dependency = %dependency.project.name, project = %project.name, "refusing to install flagged dependency");
+        let name = format!("{} (required by {})", dependency.project.name, project.name);
+        return Err(flagged_install(name, entry, cluster_id, &content).await);
     }
 
     let session = oneclient_events::GroupedProgressSession::start(
@@ -377,13 +440,13 @@ pub async fn install_package(
         mark_new(cluster_id, &artifact.hash, state).await;
     }
 
-    PackageInstall {
+    Ok(PackageInstall {
         session_id: Some(session.detach()),
         result: result.map(|_| project.name).map_err(anyhow::Error::from),
         dependencies: installed_dependencies,
         missing_dependencies,
         live_deferred,
-    }
+    })
 }
 
 async fn mark_new(cluster_id: i64, hash: &str, state: &LauncherState) {

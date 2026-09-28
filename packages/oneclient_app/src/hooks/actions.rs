@@ -26,9 +26,9 @@ use tokio::sync::mpsc;
 use crate::components::IconType;
 use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef, OptionalModsGroup,
-    PackageUpdateGroup, PendingPrompt,
+    OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
 };
-use crate::state::{AppChannel, AppState, AsyncStatus, RelocationState};
+use crate::state::{AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, RelocationState};
 use crate::{invalidate_java_queries, launcher};
 
 /// Over-disabling is the cheaper mistake a dead button beats a second game
@@ -727,18 +727,13 @@ impl Actions {
     pub fn open_optional_mods(
         &self,
         groups: Vec<OptionalModsGroup>,
-        done: Option<tokio::sync::oneshot::Sender<()>>,
+        done: Option<tokio::sync::oneshot::Sender<OptionalModsOutcome>>,
     ) {
         self.with_engine(move |state| state.notifications.open_optional_mods(groups, done));
     }
 
-    pub fn close_optional_mods(&self) {
-        self.with_engine(|state| state.notifications.finish_optional_mods());
-    }
-
-    pub fn decline_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
-        self.close_optional_mods();
-        self.record_skipped_optional_mods(mods);
+    pub fn close_optional_mods(&self, outcome: OptionalModsOutcome) {
+        self.with_engine(move |state| state.notifications.finish_optional_mods(outcome));
     }
 
     pub fn record_skipped_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
@@ -768,7 +763,7 @@ impl Actions {
     /// `mods/` once at startup, so finishing after the process starts is useless
     pub fn enable_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
         if mods.is_empty() {
-            self.close_optional_mods();
+            self.close_optional_mods(OptionalModsOutcome::Launch);
             return;
         }
 
@@ -780,7 +775,7 @@ impl Actions {
 
         spawn_forever(async move {
             let Ok(state) = launcher::state() else {
-                actions.close_optional_mods();
+                actions.close_optional_mods(OptionalModsOutcome::Launch);
                 return;
             };
             let content = state.services.content();
@@ -886,7 +881,7 @@ impl Actions {
                     .send();
             }
 
-            actions.close_optional_mods();
+            actions.close_optional_mods(OptionalModsOutcome::Launch);
         });
     }
 
@@ -1069,7 +1064,42 @@ impl Actions {
         project_id: impl Into<String>,
         version_id: impl Into<String>,
     ) {
-        let (project_id, version_id) = (project_id.into(), version_id.into());
+        self.start_install(
+            cluster_id,
+            provider,
+            project_id.into(),
+            version_id.into(),
+            false,
+        );
+    }
+
+    pub fn install_flagged_anyway(&self, prompt: FlaggedInstallPrompt) {
+        self.dismiss_flagged_install();
+        self.start_install(
+            prompt.cluster_id,
+            prompt.provider,
+            prompt.project_id,
+            prompt.version_id,
+            true,
+        );
+    }
+
+    pub fn dismiss_flagged_install(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Installs)
+            .installs
+            .flagged = None;
+    }
+
+    fn start_install(
+        &self,
+        cluster_id: ClusterId,
+        provider: ProviderId,
+        project_id: String,
+        version_id: String,
+        allow_flagged: bool,
+    ) {
         let actions = self.clone();
 
         self.station
@@ -1093,14 +1123,34 @@ impl Actions {
                 return;
             };
 
-            let install = crate::install::install_package(
+            let install = match crate::install::install_package(
                 &state,
                 provider,
                 &project_id,
                 &version_id,
                 cluster_id,
+                allow_flagged,
             )
-            .await;
+            .await
+            {
+                Ok(install) => install,
+                Err(flagged) => {
+                    let mut station = actions.station;
+                    let mut app = station.write_channel(AppChannel::Installs);
+                    app.installs.flagged = Some(FlaggedInstallPrompt {
+                        cluster_id,
+                        provider,
+                        project_id: project_id.clone(),
+                        version_id: version_id.clone(),
+                        name: flagged.name,
+                        mc_version: flagged.mc_version,
+                        explanation: flagged.explanation,
+                        alternatives: flagged.alternatives,
+                    });
+                    app.installs.finish(cluster_id, provider, &project_id);
+                    return;
+                }
+            };
 
             // Replaces the download's progress notification in place rather
             // than arriving as a second one
@@ -1199,13 +1249,8 @@ impl Actions {
             };
 
             let events = state.services.events.clone();
-            match oneclient_core::remove_artifact_from_cluster(
-                cluster_id,
-                &hash,
-                true,
-                &state.services.content(),
-            )
-            .await
+            match oneclient_core::delete_artifact(cluster_id, &hash, &state.services.content())
+                .await
             {
                 Ok(()) => {
                     events.notify("Removed").body(display_name).send();
@@ -1641,7 +1686,7 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
-    ) {
+    ) -> OptionalModsOutcome {
         let pending = match oneclient_core::pending_optional_mods(
             cluster_id,
             state.bundles.as_ref(),
@@ -1656,7 +1701,7 @@ impl Actions {
                     error = %err,
                     "could not read queued optional mods, launching anyway"
                 );
-                return;
+                return OptionalModsOutcome::Launch;
             }
         };
 
@@ -1665,7 +1710,7 @@ impl Actions {
         let Some(group) =
             crate::install::pending_optional_group(cluster_id, &pending, &state.services).await
         else {
-            return;
+            return OptionalModsOutcome::Launch;
         };
 
         let (done, wait) = tokio::sync::oneshot::channel();
@@ -1676,7 +1721,7 @@ impl Actions {
             state.center_open = false;
         });
 
-        let _ = wait.await;
+        wait.await.unwrap_or(OptionalModsOutcome::Launch)
     }
 
     async fn prompt_package_updates(
@@ -1823,6 +1868,13 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
 
+    let content = state.services.content();
+    tokio::spawn(async move {
+        if let Err(err) = oneclient_content::packages::refresh_bad_mods(&content).await {
+            tracing::warn!(%err, "bad mods list refresh failed, keeping the last one");
+        }
+    });
+
     // Before the game process never after Minecraft reads its mods once at
     // startup
     actions
@@ -1833,9 +1885,14 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         .await;
 
     // After the updates so the player never faces two modals at once
-    actions
+    if actions
         .resolve_optional_mods_before_launch(&state, cluster_id)
-        .await;
+        .await
+        == OptionalModsOutcome::Cancel
+    {
+        events.game_stage(cluster_id, oneclient_events::LaunchStage::Exited);
+        return;
+    }
 
     if let Err(err) = oneclient_core::launch_cluster(&state, cluster_id, &account, true).await {
         // A missing file is the one failure the launcher can fix itself and a

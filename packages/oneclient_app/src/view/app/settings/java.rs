@@ -305,9 +305,9 @@ fn confirm_remove_modal(
     let remove_path = path.clone();
 
     let consequence = if managed {
-        "This runtime is managed by OneClient. It's files WILL be deleted."
+        "This runtime is managed by OneClient. Its files WILL be deleted."
     } else {
-        "This runtime is not managed by OneClient. It's files will not be deleted."
+        "This runtime is not managed by OneClient. Its files will not be deleted."
     };
 
     let confirm = if managed {

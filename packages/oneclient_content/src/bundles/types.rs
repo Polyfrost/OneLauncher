@@ -45,17 +45,13 @@ impl BundleFile {
         let BundleFileKind::External { file, .. } = &self.kind else {
             return false;
         };
-        let host = file
-            .url
-            .split_once("://")
-            .map_or(file.url.as_str(), |(_, rest)| rest)
-            .split(['/', '?', '#'])
-            .next()
-            .unwrap_or_default()
-            .to_ascii_lowercase();
-        host == "github.com"
-            || host.ends_with(".github.com")
-            || host.ends_with(".githubusercontent.com")
+        url::Url::parse(&file.url).is_ok_and(|url| {
+            url.host_str().is_some_and(|host| {
+                host == "github.com"
+                    || host.ends_with(".github.com")
+                    || host.ends_with(".githubusercontent.com")
+            })
+        })
     }
 
     pub fn display_name(&self) -> String {

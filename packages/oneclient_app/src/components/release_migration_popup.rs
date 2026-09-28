@@ -1090,7 +1090,9 @@ impl PartialEq for MigrationRow {
     fn eq(&self, other: &Self) -> bool {
         self.name == other.name
             && self.icon_url == other.icon_url
-            && self.package == other.package
+            && self.package.source_hash == other.package.source_hash
+            && self.package.version.version_id == other.package.version.version_id
+            && self.package.enabled == other.package.enabled
             && self.selected == other.selected
             && self.selection == other.selection
     }

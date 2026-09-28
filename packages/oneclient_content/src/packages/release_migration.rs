@@ -30,7 +30,7 @@ const DEPENDENCY_DEPTH: usize = 4;
 const SOURCE_CONCURRENCY: usize = 3;
 const DEPENDENCY_CONCURRENCY: usize = 6;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct ReleaseMigrationPackage {
 	pub source_hash: String,
 	pub enabled: bool,
@@ -38,7 +38,7 @@ pub struct ReleaseMigrationPackage {
 	pub project_id: String,
 	pub content_type: ContentType,
 	pub display_name: String,
-	pub version_id: String,
+	pub version: VersionDetail,
 	pub version_name: String,
 	pub size: u64,
 }
@@ -397,7 +397,7 @@ async fn evaluate_candidates(
 		by_provider.entry(candidate.provider).or_default().push(candidate);
 	}
 
-	let mut offered: Vec<(ReleaseMigrationPackage, VersionDetail)> = Vec::new();
+	let mut offered: Vec<ReleaseMigrationPackage> = Vec::new();
 
 	for (provider_id, candidates) in by_provider {
 		let installed: Vec<InstalledPackage> = candidates
@@ -446,20 +446,17 @@ async fn evaluate_candidates(
 				.filter(|version| fits_target(version, candidate.content_type, &target.mc_version, loader));
 
 			match version {
-				Some(version) => offered.push((
-					ReleaseMigrationPackage {
-						source_hash: candidate.hash,
-						enabled: candidate.enabled,
-						provider: provider_id,
-						project_id: candidate.project_id,
-						content_type: candidate.content_type,
-						display_name: candidate.display_name,
-						version_id: version.version_id.clone(),
-						version_name: version_label(version),
-						size: version.primary_file().map_or(0, |file| file.size),
-					},
-					version.clone(),
-				)),
+				Some(version) => offered.push(ReleaseMigrationPackage {
+					source_hash: candidate.hash,
+					enabled: candidate.enabled,
+					provider: provider_id,
+					project_id: candidate.project_id,
+					content_type: candidate.content_type,
+					display_name: candidate.display_name,
+					version: version.clone(),
+					version_name: version_label(version),
+					size: version.primary_file().map_or(0, |file| file.size),
+				}),
 				None => evaluation.unavailable.push(ReleaseMigrationSkip {
 					source_hash: candidate.hash,
 					enabled: candidate.enabled,
@@ -477,11 +474,11 @@ async fn evaluate_candidates(
 		return evaluation;
 	}
 
-	let resolved_packages = futures_util::stream::iter(offered.into_iter().map(|(package, version)| {
+	let resolved_packages = futures_util::stream::iter(offered.into_iter().map(|package| {
 		async move {
 			let resolved = if resolves_dependencies(package.content_type) {
 				cache
-					.resolve(package.provider, &version, target, present, ctx)
+					.resolve(package.provider, &package.version, target, present, ctx)
 					.await
 			} else {
 				Ok(Some(Vec::new()))
@@ -820,16 +817,16 @@ pub async fn apply_release_migration_package(
 	child: Option<&GroupedProgressChild>,
 	ctx: &ContentCtx,
 ) -> ContentResult<String> {
-	let provider = ctx.providers.get(package.provider)?;
-	let project = provider.get_project(&package.project_id, ctx).await?;
-	let version = provider
-		.get_version(&package.project_id, &package.version_id, ctx)
+	let project = ctx
+		.providers
+		.get(package.provider)?
+		.get_project(&package.project_id, ctx)
 		.await?;
 
 	let (installed, _) = PackageStore::install_to_cluster(
 		package.provider,
 		&project,
-		&version,
+		&package.version,
 		target_cluster_id,
 		true,
 		false,

@@ -85,6 +85,29 @@ async fn plan_sources(
     }
 }
 
+fn fake_version(name: &str, project_id: &str, size: u64) -> VersionDetail {
+    VersionDetail {
+        version_id: format!("fake-version-{project_id}"),
+        project_id: project_id.to_string(),
+        name: name.to_string(),
+        version_number: "1.0.0".to_string(),
+        changelog: None,
+        game_versions: Vec::new(),
+        loaders: vec![GameLoader::Fabric],
+        published: chrono::Utc::now(),
+        downloads: 0,
+        files: vec![VersionFile {
+            sha1: format!("fake-{project_id}"),
+            url: String::new(),
+            file_name: format!("{project_id}.jar"),
+            primary: true,
+            size,
+            fingerprint: None,
+        }],
+        dependencies: Vec::new(),
+    }
+}
+
 fn fake_package(
     name: &str,
     project_id: &str,
@@ -98,7 +121,7 @@ fn fake_package(
         project_id: project_id.to_string(),
         content_type,
         display_name: name.to_string(),
-        version_id: format!("fake-version-{project_id}"),
+        version: fake_version(name, project_id, 2_400_000),
         version_name: "1.0.0".to_string(),
         size: 2_400_000,
     }
@@ -145,26 +168,7 @@ fn fake_dependency(
             updated: now,
             downloads: 0,
         },
-        version: VersionDetail {
-            version_id: format!("fake-version-{project_id}"),
-            project_id: project_id.to_string(),
-            name: name.to_string(),
-            version_number: "1.0.0".to_string(),
-            changelog: None,
-            game_versions: Vec::new(),
-            loaders: vec![GameLoader::Fabric],
-            published: now,
-            downloads: 0,
-            files: vec![VersionFile {
-                sha1: format!("fake-{project_id}"),
-                url: String::new(),
-                file_name: format!("{project_id}.jar"),
-                primary: true,
-                size: 900_000,
-                fingerprint: None,
-            }],
-            dependencies: Vec::new(),
-        },
+        version: fake_version(name, project_id, 900_000),
         required_by,
     }
 }

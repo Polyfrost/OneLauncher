@@ -209,9 +209,11 @@ pub fn package_context_menu(
     }
 
     if let Some(hash) = item.hash.clone() {
-        menu = menu.action(IconType::Folder, "View in folder", move |()| {
-            reveal_in_store(hash.clone());
-        });
+        menu = menu.action(
+            IconType::Folder,
+            "View in folder",
+            EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
+        );
     }
 
     if item.installed && !item.in_bundle() {

@@ -3,7 +3,9 @@ use std::collections::{HashMap, HashSet};
 use freya::prelude::*;
 use oneclient_common::search::{MatchScore, SearchQuery};
 use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
-use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
+use oneclient_core::{
+    BundleFileKind, BundleWithUpdateStatus, FileUpdateStatus, LinkedArtifactInfo,
+};
 use oneclient_db::models::OverrideType;
 
 use crate::components::{CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry};
@@ -131,7 +133,7 @@ pub fn bundle_packages(
     for bundle in bundles {
         let bundle_name = &bundle.archive.manifest.name;
         let category = bundle.archive.manifest.category.clone();
-        for (file, _status) in &bundle.files {
+        for (file, status) in &bundle.files {
             if file.content_type() != content_type {
                 continue;
             }
@@ -150,8 +152,15 @@ pub fn bundle_packages(
                     .get(pid.as_str())
                     .or_else(|| by_hash.get(pid.as_str())),
                 BundleFileKind::External { file: ext, .. } => {
-                    seen.insert(ext.sha1.clone());
-                    by_hash.get(ext.sha1.as_str())
+                    let hash = match status {
+                        FileUpdateStatus::UpdateAvailable {
+                            installed_version_id,
+                            ..
+                        } => installed_version_id,
+                        _ => &ext.sha1,
+                    };
+                    seen.insert(hash.clone());
+                    by_hash.get(hash.as_str())
                 }
             }
             .copied();

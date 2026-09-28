@@ -38,7 +38,11 @@ impl Component for OptionalModsPopup {
         let groups = snapshot.optional_mods.clone();
 
         let mut meta = MetaMap::new();
-        for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {
+        for provider in ProviderId::REMOTE_PROVIDERS
+            .iter()
+            .copied()
+            .chain([ProviderId::Local])
+        {
             let ids: Vec<String> = groups
                 .iter()
                 .flatten()
@@ -95,6 +99,7 @@ fn entry_from_item(
         package_id,
         bundle_name: item.offer.as_ref().map(|(bundle, _)| bundle.clone()),
         provider: item.provider,
+        github_hosted: item.github_hosted,
         name: cached
             .map(|cached| cached.name.clone())
             .filter(|name| !name.is_empty())

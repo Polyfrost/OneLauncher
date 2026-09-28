@@ -52,11 +52,22 @@ fn provider_project_ids(
     ids
 }
 
-fn local_project_ids(content: &[LinkedArtifactInfo], content_type: ContentType) -> Vec<String> {
+fn local_project_ids(
+    content: &[LinkedArtifactInfo],
+    bundles: &[BundleWithUpdateStatus],
+    content_type: ContentType,
+) -> Vec<String> {
+    let bundled = bundles
+        .iter()
+        .flat_map(|bundle| &bundle.files)
+        .filter(|(file, _status)| file.content_type() == content_type)
+        .filter(|(file, _status)| matches!(file.kind, BundleFileKind::External { .. }))
+        .map(|(file, _status)| file.kind.metadata_id());
     content
         .iter()
         .filter(|info| info.content_type == content_type && info.provider.is_none())
         .map(|info| info.hash.clone())
+        .chain(bundled)
         .collect()
 }
 
@@ -74,7 +85,10 @@ pub fn use_content_meta(
         }
     }
 
-    let local = use_package_meta_batch(ProviderId::Local, local_project_ids(content, content_type));
+    let local = use_package_meta_batch(
+        ProviderId::Local,
+        local_project_ids(content, bundles, content_type),
+    );
     for (hash, meta) in package_meta_batch(&local) {
         out.insert((ProviderId::Local, hash), meta);
     }
@@ -130,14 +144,17 @@ pub fn bundle_packages(
                 continue;
             }
 
-            let provider = match &file.kind {
-                BundleFileKind::Managed { provider, .. } => *provider,
-                BundleFileKind::External(_) => ProviderId::Local,
-            };
-            let installed_info = by_project
-                .get(pid.as_str())
-                .or_else(|| by_hash.get(pid.as_str()))
-                .copied();
+            let provider = file.kind.metadata_provider();
+            let installed_info = match &file.kind {
+                BundleFileKind::Managed { .. } => by_project
+                    .get(pid.as_str())
+                    .or_else(|| by_hash.get(pid.as_str())),
+                BundleFileKind::External { file: ext, .. } => {
+                    seen.insert(ext.sha1.clone());
+                    by_hash.get(ext.sha1.as_str())
+                }
+            }
+            .copied();
             let ov = overrides
                 .get(&(bundle_name.clone(), pid.clone()))
                 .map(String::as_str);
@@ -160,8 +177,9 @@ pub fn bundle_packages(
                 categories,
                 enabled,
                 file.enabled,
+                file.is_github_hosted(),
                 installed_info,
-                meta,
+                meta.get(&(provider, file.kind.metadata_id())),
                 file.display_name(),
                 false,
                 // Flagged rather than dropped `HiddenFilter` filters on the row and the seen id stops the loose-content pass resurrecting it as a local file
@@ -179,6 +197,7 @@ pub fn bundle_packages(
         let provider = info.provider.unwrap_or(ProviderId::Local);
         let pid = info.project_id.clone().unwrap_or_else(|| info.hash.clone());
         let outdated = stale.contains(&info.hash);
+        let row_meta = meta.get(&(provider, pid.clone()));
         rows.push(make_row(
             pid,
             None,
@@ -187,8 +206,9 @@ pub fn bundle_packages(
             Vec::new(),
             info.enabled,
             true,
+            false,
             Some(info),
-            meta,
+            row_meta,
             info.display_name
                 .clone()
                 .unwrap_or_else(|| info.file_name.clone()),
@@ -209,13 +229,13 @@ fn make_row(
     categories: Vec<String>,
     enabled: bool,
     manifest_default: bool,
+    github_hosted: bool,
     installed_info: Option<&LinkedArtifactInfo>,
-    meta: &PackageMetaMap,
+    m: Option<&CachedPackageMeta>,
     fallback_name: String,
     update_available: bool,
     hidden: bool,
 ) -> PackageEntry {
-    let m = meta.get(&(provider, package_id.clone()));
     let name = m
         .map(|p| p.name.clone())
         .filter(|s| !s.is_empty())
@@ -237,6 +257,7 @@ fn make_row(
         package_id,
         bundle_name,
         provider,
+        github_hosted,
         name,
         file_name,
         author,
@@ -278,7 +299,7 @@ impl Tab {
             Tab::All => true,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
             Tab::Browser => p.is_remote() && !p.in_bundle(),
-            Tab::Local => !p.is_remote(),
+            Tab::Local => !p.is_remote() && !p.github_hosted,
         }
     }
 }

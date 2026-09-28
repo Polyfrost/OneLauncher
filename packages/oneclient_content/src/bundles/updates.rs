@@ -144,14 +144,7 @@ async fn check_bundle_updates_inner(
         let mut shipped_keys = HashSet::new();
 
         for file in &archive.manifest.files {
-            shipped_keys.insert(match &file.kind {
-                BundleFileKind::Managed {
-                    provider,
-                    project_id,
-                    ..
-                } => managed_bundle_key(*provider, project_id),
-                BundleFileKind::External(ext) => external_bundle_key(&ext.sha1),
-            });
+            shipped_keys.insert(file.kind.bundle_key());
 
             let user_override = overrides_map
                 .get(&(archive.manifest.name.clone(), file.kind.package_id()))
@@ -159,26 +152,10 @@ async fn check_bundle_updates_inner(
             if !crate::bundles::effective_enabled(file, user_override) {
                 continue;
             }
-            match &file.kind {
-                BundleFileKind::Managed {
-                    provider,
-                    project_id,
-                    version_id,
-                    ..
-                } => {
-                    let key = managed_bundle_key(*provider, project_id);
-                    files_map.insert(key.clone(), (version_id.clone(), file.clone()));
-                    if file.hidden {
-                        hidden_explicit_keys.insert(key);
-                    }
-                }
-                BundleFileKind::External(ext) => {
-                    let key = external_bundle_key(&ext.sha1);
-                    files_map.insert(key.clone(), (ext.sha1.clone(), file.clone()));
-                    if file.hidden {
-                        hidden_explicit_keys.insert(key);
-                    }
-                }
+            let key = file.kind.bundle_key();
+            files_map.insert(key.clone(), (file.kind.bundle_version_id(), file.clone()));
+            if file.hidden {
+                hidden_explicit_keys.insert(key);
             }
         }
 
@@ -230,6 +207,7 @@ async fn check_bundle_updates_inner(
         .map(|a| a.manifest.name.as_str())
         .collect();
 
+    let external_ids = shipped_external_ids(&archives);
     let mut updates_available = Vec::new();
     let mut removals_available = Vec::new();
 
@@ -241,7 +219,8 @@ async fn check_bundle_updates_inner(
             continue;
         };
 
-        let installed_key = bundle_package_key(bundle_pkg, &all_linked_by_hash, pkg_id);
+        let installed_key =
+            bundle_package_key(bundle_pkg, &all_linked_by_hash, &external_ids, pkg_id);
 
         let Some(bundle_name) = &bundle_pkg.bundle_name else {
             continue;
@@ -343,8 +322,15 @@ async fn check_bundle_updates_inner(
     let mut additions_available = Vec::new();
     let mut optional_available: Vec<(String, BundleOptionalPackage)> = Vec::new();
     let mut planned_addition_keys = all_installed_managed_keys.clone();
-    for hash in all_installed_external_hashes {
-        planned_addition_keys.insert(external_bundle_key(&hash));
+    let tracked_package_by_hash: HashMap<&str, &str> = bundle_packages
+        .iter()
+        .filter_map(|bp| Some((bp.hash.as_str(), bp.package_id.as_deref()?)))
+        .collect();
+    for hash in &all_installed_external_hashes {
+        planned_addition_keys.insert(external_bundle_key(hash));
+        if let Some(package_id) = tracked_package_by_hash.get(hash.as_str()) {
+            planned_addition_keys.insert(external_bundle_key(package_id));
+        }
     }
 
     for archive in &archives {
@@ -358,15 +344,13 @@ async fn check_bundle_updates_inner(
                 .get(&(archive.manifest.name.clone(), file_id.clone()))
                 .copied();
 
-            let file_key = match &file.kind {
-                BundleFileKind::Managed {
-                    provider,
-                    project_id,
-                    ..
-                } => managed_bundle_key(*provider, project_id),
-                BundleFileKind::External(ext) => external_bundle_key(&ext.sha1),
-            };
-            if planned_addition_keys.contains(&file_key) {
+            let file_key = file.kind.bundle_key();
+            let exact_file_installed = matches!(
+                &file.kind,
+                BundleFileKind::External { file: ext, .. }
+                    if planned_addition_keys.contains(&external_bundle_key(&ext.sha1))
+            );
+            if planned_addition_keys.contains(&file_key) || exact_file_installed {
                 continue;
             }
 
@@ -819,12 +803,17 @@ pub async fn get_bundles_with_update_status(
     let all_linked_by_hash: HashMap<String, &LinkedArtifactInfo> =
         all_linked.iter().map(|a| (a.hash.clone(), a)).collect();
 
+    let archives = bundles
+        .archives_for(ctx, &cluster.mc_version, loader)
+        .await?;
+    let external_ids = shipped_external_ids(&archives);
+
     let mut installed_map: HashMap<String, &BundleTrackedArtifactRow> = HashMap::new();
     for bundle_pkg in &bundle_packages {
         let Some(pkg_id) = &bundle_pkg.package_id else {
             continue;
         };
-        let key = bundle_package_key(bundle_pkg, &all_linked_by_hash, pkg_id);
+        let key = bundle_package_key(bundle_pkg, &all_linked_by_hash, &external_ids, pkg_id);
         installed_map.insert(key, bundle_pkg);
     }
 
@@ -837,9 +826,6 @@ pub async fn get_bundles_with_update_status(
         })
         .collect();
 
-    let archives = bundles
-        .archives_for(ctx, &cluster.mc_version, loader)
-        .await?;
     let mut results = Vec::new();
 
     for archive in archives {
@@ -847,48 +833,25 @@ pub async fn get_bundles_with_update_status(
         let mut has_updates = false;
 
         for file in &archive.manifest.files {
-            let status = match &file.kind {
-                BundleFileKind::Managed {
-                    provider,
-                    project_id,
-                    version_id,
-                    ..
-                } => {
-                    let key = managed_bundle_key(*provider, project_id);
-                    if let Some(installed) = installed_map.get(&key) {
-                        let installed_version =
-                            installed.bundle_version_id.as_deref().unwrap_or("");
-                        if installed_version == version_id.as_str() {
-                            FileUpdateStatus::UpToDate
-                        } else {
-                            has_updates = true;
-                            FileUpdateStatus::UpdateAvailable {
-                                installed_version_id: installed_version.to_string(),
-                                new_version_id: version_id.clone(),
-                            }
-                        }
-                    } else if matches!(
-                        overrides_map.get(&(archive.manifest.name.clone(), project_id.clone())),
-                        Some(OverrideType::Removed)
-                    ) {
-                        FileUpdateStatus::RemovedByUser
-                    } else {
-                        FileUpdateStatus::NotInstalled
+            let new_version_id = file.kind.bundle_version_id();
+            let status = if let Some(installed) = installed_map.get(&file.kind.bundle_key()) {
+                let installed_version = installed.bundle_version_id.as_deref().unwrap_or("");
+                if installed_version == new_version_id {
+                    FileUpdateStatus::UpToDate
+                } else {
+                    has_updates = true;
+                    FileUpdateStatus::UpdateAvailable {
+                        installed_version_id: installed_version.to_string(),
+                        new_version_id,
                     }
                 }
-                BundleFileKind::External(ext) => {
-                    let key = external_bundle_key(&ext.sha1);
-                    if installed_map.contains_key(&key) {
-                        FileUpdateStatus::UpToDate
-                    } else if matches!(
-                        overrides_map.get(&(archive.manifest.name.clone(), ext.sha1.clone())),
-                        Some(OverrideType::Removed)
-                    ) {
-                        FileUpdateStatus::RemovedByUser
-                    } else {
-                        FileUpdateStatus::NotInstalled
-                    }
-                }
+            } else if matches!(
+                overrides_map.get(&(archive.manifest.name.clone(), file.kind.package_id())),
+                Some(OverrideType::Removed)
+            ) {
+                FileUpdateStatus::RemovedByUser
+            } else {
+                FileUpdateStatus::NotInstalled
             };
             files.push((file.clone(), status));
         }
@@ -906,15 +869,26 @@ pub async fn get_bundles_with_update_status(
 fn bundle_package_key(
     bundle_pkg: &BundleTrackedArtifactRow,
     linked: &HashMap<String, &LinkedArtifactInfo>,
+    external_ids: &HashSet<String>,
     package_id: &str,
 ) -> String {
-    if package_id == bundle_pkg.hash {
-        external_bundle_key(&bundle_pkg.hash)
-    } else if let Some(info) = linked.get(&bundle_pkg.hash) {
-        managed_bundle_key(info.provider.unwrap_or(ProviderId::Modrinth), package_id)
+    let provider = linked.get(&bundle_pkg.hash).and_then(|info| info.provider);
+    if package_id == bundle_pkg.hash || (provider.is_none() && external_ids.contains(package_id)) {
+        external_bundle_key(package_id)
     } else {
-        managed_bundle_key(ProviderId::Modrinth, package_id)
+        managed_bundle_key(provider.unwrap_or(ProviderId::Modrinth), package_id)
     }
+}
+
+fn shipped_external_ids(archives: &[BundleArchive]) -> HashSet<String> {
+    archives
+        .iter()
+        .flat_map(|archive| &archive.manifest.files)
+        .filter_map(|file| match &file.kind {
+            BundleFileKind::External { id: Some(id), .. } => Some(id.clone()),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Stricter than subscription

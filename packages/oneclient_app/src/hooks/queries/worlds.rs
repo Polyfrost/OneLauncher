@@ -4,10 +4,7 @@ use std::path::{Path, PathBuf};
 use freya::prelude::spawn_forever;
 use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
 use notify::{Event, EventKind, RecursiveMode};
-use oneclient_core::{ClusterError, DataPackInfo, LauncherError, WorldInfo};
-
-const LEVEL_DAT: &str = "level.dat";
-const WORLD_ICON: &str = "icon.png";
+use oneclient_core::{ClusterError, DataPackInfo, LEVEL_DAT, LauncherError, WORLD_ICON, WorldInfo};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ClusterWorldsKeys {
@@ -35,13 +32,17 @@ pub struct WorldSizeKeys {
     pub world: String,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct WorldSizeQuery;
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct WorldSizeQuery(WorldSizeKeys);
 
 impl QueryCapability for WorldSizeQuery {
     type Ok = u64;
     type Err = LauncherError;
     type Keys = WorldSizeKeys;
+
+    fn matches(&self, keys: &Self::Keys) -> bool {
+        self.0 == *keys
+    }
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
@@ -76,7 +77,7 @@ impl QueryCapability for WorldDataPacksQuery {
             async move { oneclient_core::list_world_datapacks(&cluster, &world).await },
         )
         .await
-        .map_err(|e| LauncherError::Minecraft(e.to_string()))??)
+        .map_err(std::io::Error::other)??)
     }
 }
 
@@ -88,10 +89,8 @@ pub fn use_cluster_worlds(cluster_id: i64) -> UseQuery<ClusterWorldsQuery> {
 }
 
 pub fn use_world_size(cluster_id: i64, world: String) -> UseQuery<WorldSizeQuery> {
-    use_query(Query::new(
-        WorldSizeKeys { cluster_id, world },
-        WorldSizeQuery,
-    ))
+    let keys = WorldSizeKeys { cluster_id, world };
+    use_query(Query::new(keys.clone(), WorldSizeQuery(keys)))
 }
 
 pub fn try_world_size(query: &UseQuery<WorldSizeQuery>) -> Option<u64> {
@@ -153,10 +152,10 @@ pub fn spawn_world_task(
     });
 }
 
-pub async fn invalidate_worlds_queries() {
-    QueriesStorage::<ClusterWorldsQuery>::invalidate_all().await;
+pub async fn invalidate_world_contents(cluster_id: i64, world: String) {
     QueriesStorage::<WorldDataPacksQuery>::invalidate_all().await;
-    QueriesStorage::<WorldSizeQuery>::invalidate_all().await;
+    QueriesStorage::<WorldSizeQuery>::invalidate_matching(WorldSizeKeys { cluster_id, world })
+        .await;
 }
 
 async fn run_blocking<T: Send + 'static>(
@@ -164,7 +163,7 @@ async fn run_blocking<T: Send + 'static>(
 ) -> Result<T, LauncherError> {
     Ok(tokio::task::spawn_blocking(task)
         .await
-        .map_err(|e| LauncherError::Minecraft(e.to_string()))??)
+        .map_err(std::io::Error::other)??)
 }
 
 pub async fn add_world_datapacks(
@@ -175,7 +174,7 @@ pub async fn add_world_datapacks(
     let state = crate::launcher::state()?;
     let cluster = state.clusters.get(cluster_id).await?;
     let result = oneclient_core::add_world_datapacks(&cluster, &world, &files).await;
-    invalidate_worlds_queries().await;
+    invalidate_world_contents(cluster_id, world).await;
     Ok(result?)
 }
 
@@ -183,7 +182,7 @@ pub async fn delete_world(cluster_id: i64, world: String) -> Result<(), Launcher
     let state = crate::launcher::state()?;
     let cluster = state.clusters.get(cluster_id).await?;
     let result = run_blocking(move || oneclient_core::delete_world(&cluster, &world)).await;
-    invalidate_worlds_queries().await;
+    QueriesStorage::<ClusterWorldsQuery>::invalidate_all().await;
     result
 }
 
@@ -194,9 +193,10 @@ pub async fn delete_world_datapack(
 ) -> Result<(), LauncherError> {
     let state = crate::launcher::state()?;
     let cluster = state.clusters.get(cluster_id).await?;
+    let target = world.clone();
     let result =
-        run_blocking(move || oneclient_core::delete_world_datapack(&cluster, &world, &file_name))
+        run_blocking(move || oneclient_core::delete_world_datapack(&cluster, &target, &file_name))
             .await;
-    invalidate_worlds_queries().await;
+    invalidate_world_contents(cluster_id, world).await;
     result
 }

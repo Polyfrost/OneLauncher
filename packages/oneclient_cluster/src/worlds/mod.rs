@@ -9,8 +9,8 @@ use crate::error::ClusterResult;
 
 const SAVES_DIR: &str = "saves";
 const DATAPACKS_DIR: &str = "datapacks";
-const LEVEL_DAT: &str = "level.dat";
-const WORLD_ICON: &str = "icon.png";
+pub const LEVEL_DAT: &str = "level.dat";
+pub const WORLD_ICON: &str = "icon.png";
 const PACK_META: &str = "pack.mcmeta";
 const PACK_ICON: &str = "pack.png";
 

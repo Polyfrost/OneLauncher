@@ -1151,8 +1151,8 @@ impl Actions {
                 }
 
                 super::invalidate_cluster_content_queries().await;
-                if world.is_some() {
-                    super::invalidate_worlds_queries().await;
+                if let Some(world) = world {
+                    super::invalidate_world_contents(cluster_id, world).await;
                 }
 
                 state

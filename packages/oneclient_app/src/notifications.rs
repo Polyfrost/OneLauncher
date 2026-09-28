@@ -47,6 +47,7 @@ pub enum OptionalModsOutcome {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClusterUpdateItem {
     pub provider: ProviderId,
+    pub github_hosted: bool,
     pub project_id: Option<String>,
     /// Used when the meta cache has no entry (file name / package id)
     pub fallback: String,
@@ -58,6 +59,7 @@ impl ClusterUpdateItem {
     pub fn from_name(name: impl Into<String>) -> Self {
         Self {
             provider: ProviderId::Local,
+            github_hosted: false,
             project_id: None,
             fallback: name.into(),
             offer: None,

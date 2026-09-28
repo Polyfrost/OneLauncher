@@ -120,7 +120,7 @@ pub async fn install_package_from_bundle(
             .await?;
             artifact.hash
         }
-        BundleFileKind::External(ext) => {
+        BundleFileKind::External { file: ext, .. } => {
             install_external(ext, &cluster, skip_compatibility, child, ctx).await?
         }
     };
@@ -239,6 +239,74 @@ async fn clear_reconciler_disables(
     Ok(())
 }
 
+pub(crate) fn external_ids_by_sha1(
+    archives: &[BundleArchive],
+) -> std::collections::HashMap<String, String> {
+    archives
+        .iter()
+        .flat_map(|archive| &archive.manifest.files)
+        .filter_map(|file| match &file.kind {
+            BundleFileKind::External {
+                file: ext,
+                id: Some(id),
+                ..
+            } => Some((ext.sha1.clone(), id.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+async fn adopt_external_ids(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let ids = external_ids_by_sha1(archives);
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    for row in bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await? {
+        let (Some(bundle_name), Some(version_id), Some(package_id)) =
+            (&row.bundle_name, &row.bundle_version_id, &row.package_id)
+        else {
+            continue;
+        };
+        if *package_id != row.hash {
+            continue;
+        }
+        let Some(id) = ids.get(package_id) else {
+            continue;
+        };
+        bundle_dao::track_bundle_artifact(
+            &ctx.db,
+            cluster_id,
+            &row.hash,
+            bundle_name,
+            version_id,
+            id,
+        )
+        .await?;
+    }
+
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    for row in &overrides {
+        let Some(id) = ids.get(&row.package_id) else {
+            continue;
+        };
+        let superseded = overrides
+            .iter()
+            .any(|other| other.bundle_name == row.bundle_name && other.package_id == *id);
+        if !superseded && let Some(override_type) = OverrideType::parse(&row.override_type) {
+            bundle_dao::save_override(&ctx.db, cluster_id, &row.bundle_name, id, override_type)
+                .await?;
+        }
+        bundle_dao::remove_override(&ctx.db, cluster_id, &row.bundle_name, &row.package_id).await?;
+    }
+
+    Ok(())
+}
+
 #[tracing::instrument(level = "debug", skip(archives, ctx))]
 pub async fn heal_bundle_activity(
     cluster_id: i64,
@@ -246,6 +314,7 @@ pub async fn heal_bundle_activity(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     clear_reconciler_disables(cluster_id, archives, ctx).await?;
+    adopt_external_ids(cluster_id, archives, ctx).await?;
 
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     if tracked.iter().all(|row| row.enabled != 0) {
@@ -332,18 +401,10 @@ pub async fn install_enabled_bundle_files(
     let bundle_name = archive.manifest.name.clone();
     let mut installed = Vec::new();
 
-    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
-    let mut linked_projects: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    let mut linked_hashes: std::collections::HashSet<&str> = std::collections::HashSet::new();
     // "Already installed" means the database not disk
     // content lives in the cache between sessions so probing the folder would
     // reinstall everything
-    for info in &linked {
-        if let Some(pid) = &info.project_id {
-            linked_projects.insert(pid.as_str());
-        }
-        linked_hashes.insert(info.hash.as_str());
-    }
+    let present = PresentContent::load(cluster_id, ctx).await?;
 
     let to_install: Vec<BundleFile> = archive
         .manifest
@@ -351,16 +412,8 @@ pub async fn install_enabled_bundle_files(
         .iter()
         .filter(|file| {
             let package_id = file.kind.package_id();
-            if !effective_enabled(file, find_override(&overrides, &bundle_name, &package_id)) {
-                return false;
-            }
-            let already_installed = match &file.kind {
-                BundleFileKind::Managed { project_id, .. } => {
-                    linked_projects.contains(project_id.as_str())
-                }
-                BundleFileKind::External(ext) => linked_hashes.contains(ext.sha1.as_str()),
-            };
-            !already_installed
+            effective_enabled(file, find_override(&overrides, &bundle_name, &package_id))
+                && !present.contains(file)
         })
         .cloned()
         .collect();
@@ -425,6 +478,42 @@ pub async fn install_enabled_bundle_files(
     Ok(installed)
 }
 
+struct PresentContent {
+    projects: std::collections::HashSet<String>,
+    hashes: std::collections::HashSet<String>,
+    tracked_ids: std::collections::HashSet<String>,
+}
+
+impl PresentContent {
+    async fn load(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<Self> {
+        let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+        let tracked_ids = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
+            .await?
+            .into_iter()
+            .filter_map(|row| row.package_id)
+            .collect();
+
+        Ok(Self {
+            projects: linked
+                .iter()
+                .filter_map(|info| info.project_id.clone())
+                .collect(),
+            hashes: linked.into_iter().map(|info| info.hash).collect(),
+            tracked_ids,
+        })
+    }
+
+    fn contains(&self, file: &BundleFile) -> bool {
+        match &file.kind {
+            BundleFileKind::Managed { project_id, .. } => self.projects.contains(project_id),
+            BundleFileKind::External { file: ext, id, .. } => {
+                self.hashes.contains(&ext.sha1)
+                    || id.as_ref().is_some_and(|id| self.tracked_ids.contains(id))
+            }
+        }
+    }
+}
+
 /// Kept modest each fetch also costs a provider API call rate limited per-minute
 pub(crate) const BUNDLE_INSTALL_CONCURRENCY: usize = 6;
 
@@ -445,32 +534,16 @@ pub async fn enabled_bundle_bytes(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
-    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
-
-    let mut linked_projects: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    let mut linked_hashes: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    for info in &linked {
-        if let Some(pid) = &info.project_id {
-            linked_projects.insert(pid.as_str());
-        }
-        linked_hashes.insert(info.hash.as_str());
-    }
+    let present = PresentContent::load(cluster_id, ctx).await?;
 
     let mut total = 0u64;
     for archive in &archives {
         let bundle_name = &archive.manifest.name;
         for file in &archive.manifest.files {
             let package_id = file.kind.package_id();
-            if !effective_enabled(file, find_override(&overrides, bundle_name, &package_id)) {
-                continue;
-            }
-            let already_installed = match &file.kind {
-                BundleFileKind::Managed { project_id, .. } => {
-                    linked_projects.contains(project_id.as_str())
-                }
-                BundleFileKind::External(ext) => linked_hashes.contains(ext.sha1.as_str()),
-            };
-            if already_installed {
+            if !effective_enabled(file, find_override(&overrides, bundle_name, &package_id))
+                || present.contains(file)
+            {
                 continue;
             }
             total += file.size;
@@ -832,13 +905,17 @@ mod tests {
             hidden: false,
             path: "mods/example.jar".to_string(),
             size: 1,
-            kind: BundleFileKind::External(ExternalFile {
-                name: "example.jar".to_string(),
-                url: "https://example.invalid/example.jar".to_string(),
-                sha1: "abc123".to_string(),
-                size: 1,
-                content_type: ContentType::Mod,
-            }),
+            kind: BundleFileKind::External {
+                file: ExternalFile {
+                    name: "example.jar".to_string(),
+                    url: "https://example.invalid/example.jar".to_string(),
+                    sha1: "abc123".to_string(),
+                    size: 1,
+                    content_type: ContentType::Mod,
+                },
+                id: None,
+                meta: None,
+            },
         }
     }
 

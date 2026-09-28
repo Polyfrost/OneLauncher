@@ -37,6 +37,7 @@ pub struct PackageEntry {
     pub package_id: String,
     pub bundle_name: Option<String>,
     pub provider: ProviderId,
+    pub github_hosted: bool,
     pub name: String,
     pub file_name: String,
     pub author: String,
@@ -398,7 +399,9 @@ fn grid_meta(
 ) -> Element {
     let muted = CARD_NAME.with_a(scale_a(alpha, 0.5));
 
-    let source = if item.is_remote() && navigable {
+    let source = if item.github_hosted {
+        meta_text("GitHub".to_string(), muted)
+    } else if item.is_remote() && navigable {
         SourceLink {
             provider: item.provider,
             package_id: item.package_id.clone(),
@@ -615,7 +618,9 @@ fn package_info(
                                 .max_width(Size::percent(60.))
                                 .color(CARD_NAME),
                         )
-                        .child(if remote {
+                        .child(if item.github_hosted {
+                            github_badge()
+                        } else if remote {
                             provider_badge(item.provider)
                         } else {
                             local_badge()
@@ -701,6 +706,13 @@ pub fn provider_badge(provider: ProviderId) -> Element {
     badge(
         Icon::new(provider).size(12.).into_element(),
         provider.to_string(),
+    )
+}
+
+pub fn github_badge() -> Element {
+    badge(
+        Icon::new(IconType::Github).size(12.).into_element(),
+        "GitHub".to_string(),
     )
 }
 

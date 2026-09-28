@@ -134,21 +134,31 @@ pub fn is_launcher_managed(executable: &Path) -> bool {
 pub(crate) fn restore_executable_bits(executable: &Path) {
     use std::os::unix::fs::PermissionsExt;
 
-    if !is_launcher_managed(executable) {
+    let Ok(executable) = polyio::canonicalize(executable) else {
+        return;
+    };
+    if !is_launcher_managed(&executable) {
         return;
     }
     let Some(home) = executable.parent().and_then(Path::parent) else {
         return;
     };
+    let jre = home.join("jre");
 
-    let tools = std::fs::read_dir(home.join("bin"))
-        .into_iter()
-        .flatten()
-        .flatten()
-        .map(|entry| entry.path());
+    let entries = |dir: PathBuf| {
+        std::fs::read_dir(dir)
+            .into_iter()
+            .flatten()
+            .flatten()
+            .map(|entry| entry.path())
+    };
+    let tools = entries(home.join("bin")).chain(entries(jre.join("bin")));
     let helpers = ["jspawnhelper", "jexec"].map(|name| home.join("lib").join(name));
+    let jre_helpers = std::iter::once(jre.join("lib"))
+        .chain(entries(jre.join("lib")))
+        .map(|dir| dir.join("jspawnhelper"));
 
-    for path in tools.chain(helpers) {
+    for path in tools.chain(helpers).chain(jre_helpers) {
         let Ok(metadata) = std::fs::metadata(&path) else {
             continue;
         };

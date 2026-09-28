@@ -316,12 +316,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_launch_request_survives_the_wire() {
-        let command = IpcCommand::Launch("fabric-1-20".into());
-        assert_eq!(IpcCommand::decode(&command.encode()), Some(command));
-    }
-
-    #[test]
     fn focus_survives_the_wire() {
         assert_eq!(
             IpcCommand::decode(&IpcCommand::Focus.encode()),

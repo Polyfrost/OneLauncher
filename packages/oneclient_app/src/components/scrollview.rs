@@ -83,15 +83,12 @@ pub struct ScrollAreaCtx {
 
 #[derive(Clone, Copy)]
 pub struct LazySection {
-    pub header_height: Option<f32>,
+    pub header: bool,
     pub count: usize,
 }
 
 enum LazyRow {
-    Header {
-        section: usize,
-        height: f32,
-    },
+    Header(usize),
     Items {
         section: usize,
         row: usize,
@@ -273,10 +270,12 @@ impl ScrollArea {
         gap: f32,
         min_width: f32,
         max_cols: usize,
+        header_height: f32,
         render: impl Fn(usize) -> Element + 'static,
         render_header: impl Fn(usize) -> Element + 'static,
     ) -> Self {
         let slot = (item_height + gap).max(1.);
+        let header_slot = header_height + gap;
         self.builder = Some(Box::new(move |ctx: ScrollAreaCtx| {
             let cols = (((ctx.viewport_w + gap) / (min_width + gap)).floor() as usize)
                 .clamp(1, max_cols.max(1));
@@ -284,11 +283,8 @@ impl ScrollArea {
             let mut rows = Vec::new();
             let mut offset = 0;
             for (s, section) in sections.iter().enumerate() {
-                if let Some(header_height) = section.header_height {
-                    rows.push(LazyRow::Header {
-                        section: s,
-                        height: header_height,
-                    });
+                if section.header {
+                    rows.push(LazyRow::Header(s));
                 }
                 for r in 0..section.count.div_ceil(cols) {
                     let start = offset + r * cols;
@@ -303,7 +299,7 @@ impl ScrollArea {
             }
 
             let row_slot = |row: &LazyRow| match row {
-                LazyRow::Header { height, .. } => height + gap,
+                LazyRow::Header(_) => header_slot,
                 LazyRow::Items { .. } => slot,
             };
 
@@ -333,14 +329,14 @@ impl ScrollArea {
             }
             for row in visible {
                 let el = match *row {
-                    LazyRow::Header { section, height } => rect()
+                    LazyRow::Header(section) => rect()
                         .key(("h", section))
                         .width(Size::fill())
-                        .height(Size::px(height + gap))
+                        .height(Size::px(header_slot))
                         .child(
                             rect()
                                 .width(Size::fill())
-                                .height(Size::px(height))
+                                .height(Size::px(header_height))
                                 .child(render_header(section)),
                         ),
                     LazyRow::Items {

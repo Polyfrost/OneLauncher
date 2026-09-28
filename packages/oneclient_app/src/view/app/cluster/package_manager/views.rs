@@ -846,12 +846,12 @@ impl Component for ContentBox {
         let count = normal_count + advanced_count;
         let scroll = (count > 0).then(|| {
             let mut sections = vec![LazySection {
-                header_height: None,
+                header: false,
                 count: normal_count,
             }];
             if advanced_count > 0 {
                 sections.push(LazySection {
-                    header_height: Some(SECTION_HEADER_H),
+                    header: true,
                     count: if expanded { advanced_count } else { 0 },
                 });
             }
@@ -869,6 +869,7 @@ impl Component for ContentBox {
                     gap,
                     min_width,
                     max_cols,
+                    SECTION_HEADER_H,
                     row,
                     move |_| {
                         SectionHeader {

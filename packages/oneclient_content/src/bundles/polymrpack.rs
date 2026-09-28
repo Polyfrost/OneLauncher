@@ -189,11 +189,19 @@ fn parse_bundle_file(file: &PolyMrpackFile) -> Option<BundleFile> {
                 size: file.file_size,
                 content_type: content_type_from_bundle_path(&file.path),
             },
-            id: non_blank(file.id.as_deref()),
+            id: non_blank(file.id.as_deref()).map(|id| {
+                if id.starts_with(EXTERNAL_ID_PREFIX) {
+                    id
+                } else {
+                    format!("{EXTERNAL_ID_PREFIX}{id}")
+                }
+            }),
             meta: file.overrides.as_ref().and_then(external_meta),
         },
     })
 }
+
+const EXTERNAL_ID_PREFIX: &str = "ext:";
 
 fn non_blank(value: Option<&str>) -> Option<String> {
     value

@@ -555,10 +555,10 @@ impl Component for AccountRow {
                     .enabled(false)
                     .tooltip("Edit")
                     .child(
-                    Icon::new(IconType::Pencil01)
-                        .size(18.)
-                        .color(colors::fg_secondary()),
-                ),
+                        Icon::new(IconType::Pencil01)
+                            .size(18.)
+                            .color(colors::fg_secondary()),
+                    ),
             )
             .child(
                 Button::new()

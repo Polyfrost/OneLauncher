@@ -729,6 +729,7 @@ impl Actions {
                 icon: Some(IconType::DownloadCloud02),
                 progress: None,
                 actions: Vec::new(),
+                toast_only: false,
             });
 
             actions.with_engine(|app| {

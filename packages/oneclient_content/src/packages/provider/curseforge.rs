@@ -7,17 +7,17 @@ use url::Url;
 
 use super::PackageProvider;
 use super::http::fetch_json;
+use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
-use oneclient_common::constants::{CURSEFORGE_API_URL, CURSEFORGE_GAME_ID};
-use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use crate::packages::dependencies::base_game_version;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
-    DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary,
-    ReleaseType, SearchFilters, VersionDependency, VersionDetail, VersionFile, VersionLookup,
-    VersionSummary,
+    DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail,
+    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
+    VersionFile, VersionLookup, VersionSummary,
 };
-use crate::ctx::ContentCtx;
+use oneclient_common::constants::{CURSEFORGE_API_URL, CURSEFORGE_GAME_ID};
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
 pub struct CurseForgeProvider;
 
@@ -76,13 +76,8 @@ impl PackageProvider for CurseForgeProvider {
             }
         }
 
-        let response: CfPaged<Vec<CfMod>> = fetch_json(
-            &ctx.net,
-            Method::GET,
-            url.as_str(),
-            None,
-        )
-        .await?;
+        let response: CfPaged<Vec<CfMod>> =
+            fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
 
         Ok(Page {
             offset: response.pagination.index,
@@ -131,13 +126,8 @@ impl PackageProvider for CurseForgeProvider {
     ) -> ContentResult<Vec<ProjectDetail>> {
         let mod_ids: Vec<u32> = project_ids.iter().filter_map(|s| s.parse().ok()).collect();
         let body = serde_json::json!({ "modIds": mod_ids });
-        let response: CfData<Vec<CfMod>> = fetch_json(
-            &ctx.net,
-            Method::POST,
-            &api_url("/mods"),
-            Some(body),
-        )
-        .await?;
+        let response: CfData<Vec<CfMod>> =
+            fetch_json(&ctx.net, Method::POST, &api_url("/mods"), Some(body)).await?;
         Ok(response.data.into_iter().map(CfMod::into_detail).collect())
     }
 
@@ -161,13 +151,8 @@ impl PackageProvider for CurseForgeProvider {
                 params.append_pair("modLoaderType", &t.to_string());
             }
         }
-        let response: CfPaged<Vec<CfFile>> = fetch_json(
-            &ctx.net,
-            Method::GET,
-            url.as_str(),
-            None,
-        )
-        .await?;
+        let response: CfPaged<Vec<CfFile>> =
+            fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
 
         let total = response.data.len();
         let items = response
@@ -201,13 +186,8 @@ impl PackageProvider for CurseForgeProvider {
         url.query_pairs_mut()
             .append_pair("gameId", &CURSEFORGE_GAME_ID.to_string())
             .append_pair("classId", &cf_class_id(content_type).to_string());
-        let response: CfData<Vec<CfCategory>> = fetch_json(
-            &ctx.net,
-            Method::GET,
-            url.as_str(),
-            None,
-        )
-        .await?;
+        let response: CfData<Vec<CfCategory>> =
+            fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
         Ok(response.data.into_iter().map(|c| c.name).collect())
     }
 
@@ -236,13 +216,8 @@ impl PackageProvider for CurseForgeProvider {
     ) -> ContentResult<Vec<VersionDetail>> {
         let file_ids: Vec<u32> = version_ids.iter().filter_map(|s| s.parse().ok()).collect();
         let body = serde_json::json!({ "fileIds": file_ids });
-        let response: CfData<Vec<CfFile>> = fetch_json(
-            &ctx.net,
-            Method::POST,
-            &api_url("/mods/files"),
-            Some(body),
-        )
-        .await?;
+        let response: CfData<Vec<CfFile>> =
+            fetch_json(&ctx.net, Method::POST, &api_url("/mods/files"), Some(body)).await?;
         Ok(response.data.into_iter().map(Into::into).collect())
     }
 
@@ -339,7 +314,8 @@ impl PackageProvider for CurseForgeProvider {
             let Some(files) = indexes.get(&package.project_id) else {
                 continue;
             };
-            if let Some(file_id) = pick_file_index(files, package.content_type, mc_version, loader) {
+            if let Some(file_id) = pick_file_index(files, package.content_type, mc_version, loader)
+            {
                 picks.push((package.hash.clone(), file_id));
             }
         }
@@ -432,11 +408,7 @@ struct CfPaged<T> {
 }
 
 #[tracing::instrument(level = "debug", skip(detail, ctx))]
-async fn fetch_body(
-    project_id: &str,
-    detail: &ProjectDetail,
-    ctx: &ContentCtx,
-) -> PackageBody {
+async fn fetch_body(project_id: &str, detail: &ProjectDetail, ctx: &ContentCtx) -> PackageBody {
     let fallback = || {
         detail
             .links
@@ -475,7 +447,10 @@ fn html_to_markdown(html: &str) -> Option<String> {
 
 fn absolutize_links(markdown: &str) -> String {
     markdown
-        .replace("](/linkout?remoteUrl=", "](https://www.curseforge.com/linkout?remoteUrl=")
+        .replace(
+            "](/linkout?remoteUrl=",
+            "](https://www.curseforge.com/linkout?remoteUrl=",
+        )
         .replace("](/", "](https://www.curseforge.com/")
 }
 
@@ -695,11 +670,7 @@ impl CfMod {
                 })
                 .collect(),
             license: None,
-            links: self
-                .links
-                .as_ref()
-                .map(cf_links)
-                .unwrap_or_default(),
+            links: self.links.as_ref().map(cf_links).unwrap_or_default(),
             body: PackageBody::Raw(String::new()),
             version_ids: Vec::new(),
             game_versions: Vec::new(),
@@ -843,7 +814,6 @@ fn cf_loader_type(loader: GameLoader) -> Option<u8> {
         _ => None,
     }
 }
-
 
 #[cfg(test)]
 mod tests {

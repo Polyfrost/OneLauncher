@@ -4,14 +4,14 @@ use std::str::FromStr;
 
 use serde::Deserialize;
 
-use crate::error::ContentResult;
 use crate::bundles::error::BundleError;
 use crate::bundles::types::{
     BundleFile, BundleFileKind, BundleManifest, content_type_from_bundle_path,
 };
+use crate::error::ContentResult;
+use crate::packages::types::ExternalFile;
 use oneclient_common::constants::MODRINTH_CDN_PREFIX;
 use oneclient_common::domain::{GameLoader, ProviderId};
-use crate::packages::types::ExternalFile;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PolyMrpackMeta {

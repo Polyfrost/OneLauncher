@@ -14,6 +14,7 @@ pub struct Dropdown {
     selected: String,
     options: Vec<String>,
     on_select: Option<EventHandler<usize>>,
+    leading: Option<Element>,
     width: Size,
     height: Size,
     outlined: bool,
@@ -26,6 +27,7 @@ impl Dropdown {
             selected: selected.into(),
             options,
             on_select: None,
+            leading: None,
             width: Size::px(72.),
             height: Size::px(24.),
             outlined: false,
@@ -47,6 +49,11 @@ impl Dropdown {
 
     pub fn outlined(mut self) -> Self {
         self.outlined = true;
+        self
+    }
+
+    pub fn leading(mut self, leading: impl IntoElement) -> Self {
+        self.leading = Some(leading.into_element());
         self
     }
 
@@ -74,6 +81,7 @@ impl Component for Dropdown {
         let mut list_size = use_state(|| None::<Size2D>);
 
         let selected = self.selected.clone();
+        let leading = self.leading.clone();
         let options = self.options.clone();
         let on_select = self.on_select.clone();
         let outlined = self.outlined;
@@ -155,6 +163,7 @@ impl Component for Dropdown {
                         e.stop_propagation();
                         open.toggle();
                     })
+                    .maybe_child(leading)
                     .child(
                         label()
                             .text(selected)

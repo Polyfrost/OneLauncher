@@ -1,8 +1,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::bundles::Bundle;
-use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use crate::packages::types::ExternalFile;
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
 #[derive(Debug, Clone)]
 pub struct BundleArchive {

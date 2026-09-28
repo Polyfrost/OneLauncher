@@ -15,12 +15,18 @@ impl QueryCapability for VersionsMetadataQuery {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let metadata = state.versions.metadata(&state.services.requester.config().meta_url_base).await;
+        let metadata = state
+            .versions
+            .metadata(&state.services.requester.config().meta_url_base)
+            .await;
         if !metadata.is_empty() {
             return Ok(metadata);
         }
         state.versions.sync(&state.services).await?;
-        Ok(state.versions.metadata(&state.services.requester.config().meta_url_base).await)
+        Ok(state
+            .versions
+            .metadata(&state.services.requester.config().meta_url_base)
+            .await)
     }
 }
 

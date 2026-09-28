@@ -10,13 +10,13 @@ use reqwest::Method;
 use crate::download::{download_to_path, fetch_bytes_verified};
 use crate::rules::validate_rules;
 
-use crate::manifest::MetadataStore;
-use oneclient_common::os_ext::OsExt;
-use oneclient_common::domain::GameLoader;
-use oneclient_events::{Choice, GroupedProgressSession, Prompt, TaskCategory, TaskPhase};
-use oneclient_common::paths;
 use crate::McCtx;
 use crate::error::{McError, McResult};
+use crate::manifest::MetadataStore;
+use oneclient_common::domain::GameLoader;
+use oneclient_common::os_ext::OsExt;
+use oneclient_common::paths;
+use oneclient_events::{Choice, GroupedProgressSession, Prompt, TaskCategory, TaskPhase};
 
 /// Asset objects are tiny (median ~10 KiB) and latency-bound so throughput
 /// scales with how many are in flight not with bandwidth
@@ -315,10 +315,7 @@ async fn inspect_jar(path: &Path, java_arch: &str) -> JarVerdict {
         }
     };
 
-    let natives: Vec<&String> = names
-        .iter()
-        .filter(|name| is_native_file(name))
-        .collect();
+    let natives: Vec<&String> = names.iter().filter(|name| is_native_file(name)).collect();
 
     if natives.is_empty() {
         return JarVerdict::WrongArch;
@@ -503,7 +500,9 @@ pub async fn verify_game_files(
             }
 
             match polyio::sha1_file_sync(path) {
-                Ok(actual) if polyio::normalize_hash(&actual) == polyio::normalize_hash(expected) => {
+                Ok(actual)
+                    if polyio::normalize_hash(&actual) == polyio::normalize_hash(expected) =>
+                {
                     report.checked += 1;
                 }
                 Ok(actual) => {
@@ -601,27 +600,20 @@ pub async fn download_minecraft(
         plan.libraries.len() as u64,
         plan.library_bytes,
     );
-    progress.expect(TaskCategory::Client, u64::from(plan.client), plan.client_bytes);
+    progress.expect(
+        TaskCategory::Client,
+        u64::from(plan.client),
+        plan.client_bytes,
+    );
 
     let DownloadPlan {
         assets, libraries, ..
     } = plan;
 
     let (failed_assets, _client, failed_libraries) = tokio::try_join!(
-        download_assets(
-            ctx,
-            progress,
-            uses_legacy_assets(&version.assets),
-            assets,
-        ),
+        download_assets(ctx, progress, uses_legacy_assets(&version.assets), assets,),
         download_client(ctx, progress, version, force),
-        download_libraries(
-            ctx,
-            progress,
-            version.id.clone(),
-            libraries,
-            java_arch,
-        ),
+        download_libraries(ctx, progress, version.id.clone(), libraries, java_arch,),
     )?;
 
     confirm_incomplete_install(ctx, failed_assets, failed_libraries).await?;
@@ -751,17 +743,18 @@ pub async fn download_version_info(
                     1,
                     TaskCategory::Metadata,
                     |child| {
-                    let requester = requester.clone();
-                    async move {
-                        child.set_progress(0, Some(1));
-                        let result = requester
-                            .send_json(Method::GET, version_url, None, &[])
-                            .await
-                            .map_err(McError::from)?;
-                        child.set_progress(1, Some(1));
-                        Ok::<VersionInfo, McError>(result)
-                    }
-                })
+                        let requester = requester.clone();
+                        async move {
+                            child.set_progress(0, Some(1));
+                            let result = requester
+                                .send_json(Method::GET, version_url, None, &[])
+                                .await
+                                .map_err(McError::from)?;
+                            child.set_progress(1, Some(1));
+                            Ok::<VersionInfo, McError>(result)
+                        }
+                    },
+                )
                 .await?
         }
         None => requester
@@ -781,19 +774,18 @@ pub async fn download_version_info(
                         1,
                         TaskCategory::Metadata,
                         |child| {
-                        let requester = requester.clone();
-                        async move {
-                            child.set_progress(0, Some(1));
-                            let result = requester
-                                .send_json(Method::GET, loader_url, None, &[])
-                                .await
-                                .map_err(McError::from)?;
-                            child.set_progress(1, Some(1));
-                            Ok::<interfrost::api::modded::PartialVersionInfo, McError>(
-                                result,
-                            )
-                        }
-                    })
+                            let requester = requester.clone();
+                            async move {
+                                child.set_progress(0, Some(1));
+                                let result = requester
+                                    .send_json(Method::GET, loader_url, None, &[])
+                                    .await
+                                    .map_err(McError::from)?;
+                                child.set_progress(1, Some(1));
+                                Ok::<interfrost::api::modded::PartialVersionInfo, McError>(result)
+                            }
+                        },
+                    )
                     .await?
             }
             None => requester
@@ -1396,10 +1388,9 @@ pub async fn get_loader_version(
         return Ok(None);
     }
 
-    let resolve_from_manifest =
-        |manifest: &interfrost::api::modded::Manifest| {
-            resolve_loader_from_manifest(manifest, mc_version, loader_version)
-        };
+    let resolve_from_manifest = |manifest: &interfrost::api::modded::Manifest| {
+        resolve_loader_from_manifest(manifest, mc_version, loader_version)
+    };
 
     let mut manifest = metadata.get_modded_or_fetch(ctx, loader).await?;
     let (mut saw_matching, mut resolved) = resolve_from_manifest(manifest);
@@ -1486,10 +1477,8 @@ mod tests {
     use super::*;
 
     fn scratch(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "oneclient-install-{tag}-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("oneclient-install-{tag}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -1646,7 +1635,10 @@ mod tests {
 
     /// The bus is drained by the test so `ask` has somebody to talk to no
     /// request is ever sent through the client
-    fn test_ctx() -> (McCtx, tokio::sync::mpsc::UnboundedReceiver<oneclient_events::Event>) {
+    fn test_ctx() -> (
+        McCtx,
+        tokio::sync::mpsc::UnboundedReceiver<oneclient_events::Event>,
+    ) {
         let (events, rx) = oneclient_events::EventBus::channel();
         let net = oneclient_net::RequestClient::new(oneclient_net::NetConfig::default())
             .expect("a client");
@@ -1673,9 +1665,9 @@ mod tests {
 
         let asking = tokio::spawn(async move { confirm_incomplete_install(&ctx, 3, 0).await });
 
-        let Some(oneclient_events::Event::Notification(
-            oneclient_events::Notification::Prompt(request),
-        )) = rx.recv().await
+        let Some(oneclient_events::Event::Notification(oneclient_events::Notification::Prompt(
+            request,
+        ))) = rx.recv().await
         else {
             panic!("expected a prompt");
         };
@@ -1694,17 +1686,13 @@ mod tests {
 
         let asking = tokio::spawn(async move { confirm_incomplete_install(&ctx, 0, 2).await });
 
-        let Some(oneclient_events::Event::Notification(
-            oneclient_events::Notification::Prompt(request),
-        )) = rx.recv().await
+        let Some(oneclient_events::Event::Notification(oneclient_events::Notification::Prompt(
+            request,
+        ))) = rx.recv().await
         else {
             panic!("expected a prompt");
         };
-        assert!(
-            request.body.contains("fail to start"),
-            "{}",
-            request.body
-        );
+        assert!(request.body.contains("fail to start"), "{}", request.body);
         request.reply.send(None).unwrap();
 
         let err = asking.await.unwrap().expect_err("dismissal must cancel");

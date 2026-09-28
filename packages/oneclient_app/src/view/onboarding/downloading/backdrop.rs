@@ -121,7 +121,6 @@ impl Component for LoadingBackdrop {
         let pan_x = cx * sw * PARALLAX_STRENGTH;
         let pan_y = cy * sh * PARALLAX_STRENGTH;
 
-        // Default edge on purpose home shows the same art next so the same variant avoids a second fetch
         let art = match clusters.get(current) {
             Some(cluster) => DynamicArt::for_cluster(cluster),
             None => DynamicArt::fallback(),

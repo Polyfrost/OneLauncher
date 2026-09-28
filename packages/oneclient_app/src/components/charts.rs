@@ -368,7 +368,7 @@ impl Component for BarChart {
                         rect()
                             .width(Size::fill())
                             .height(Size::px(h))
-							.corner_radius(CornerRadius::new(4., 4., 0., 0.))
+                            .corner_radius(CornerRadius::new(4., 4., 0., 0.))
                             .background(color),
                     ),
             );

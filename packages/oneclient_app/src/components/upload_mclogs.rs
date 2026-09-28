@@ -14,10 +14,7 @@ pub struct UploadToMclogs {
 
 impl UploadToMclogs {
     pub fn new(has_log: bool, confirm: State<Option<Confirm>>) -> Self {
-        Self {
-            has_log,
-            confirm
-        }
+        Self { has_log, confirm }
     }
 }
 

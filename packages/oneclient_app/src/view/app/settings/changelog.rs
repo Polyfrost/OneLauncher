@@ -137,7 +137,11 @@ impl Component for ReleaseCard {
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
-                    .child(Icon::new(IconType::ChevronDown).size(18.).rotate(chevron_deg)),
+                    .child(
+                        Icon::new(IconType::ChevronDown)
+                            .size(18.)
+                            .rotate(chevron_deg),
+                    ),
             )
             .maybe_child(is_open.then(|| {
                 rect()

@@ -421,24 +421,46 @@ mod tests {
             ),
             (
                 "the same laptop on nouveau gets DRI_PRIME and no ICD filter",
-                vec![igpu(), Gpu { driver: Driver::Nouveau, ..dgpu() }],
+                vec![
+                    igpu(),
+                    Gpu {
+                        driver: Driver::Nouveau,
+                        ..dgpu()
+                    },
+                ],
                 vec![("DRI_PRIME", "pci-0000_01_00_0".to_string())],
             ),
             (
                 "an nvidia card without a render node is still a target",
-                vec![igpu(), Gpu { render_node: None, ..dgpu() }],
+                vec![
+                    igpu(),
+                    Gpu {
+                        render_node: None,
+                        ..dgpu()
+                    },
+                ],
                 nvidia_offload(),
             ),
             (
                 "an unbound card is never the target",
-                vec![igpu(), Gpu { driver: Driver::Other, render_node: None, ..dgpu() }],
+                vec![
+                    igpu(),
+                    Gpu {
+                        driver: Driver::Other,
+                        render_node: None,
+                        ..dgpu()
+                    },
+                ],
                 vec![],
             ),
             (
                 "a bmc display adapter is skipped for the real card behind it",
                 vec![
                     igpu(),
-                    Gpu { render_node: None, ..gpu("0000:03:00.0", Driver::Other, Some(false)) },
+                    Gpu {
+                        render_node: None,
+                        ..gpu("0000:03:00.0", Driver::Other, Some(false))
+                    },
                     gpu("0000:c1:00.0", Driver::AmdGpu, Some(false)),
                 ],
                 dri_prime("pci-0000_c1_00_0", amd),
@@ -447,7 +469,10 @@ mod tests {
                 "the discrete card wins over a renderable card at a lower address",
                 vec![
                     igpu(),
-                    Gpu { discrete: false, ..gpu("0000:03:00.0", Driver::AmdGpu, Some(false)) },
+                    Gpu {
+                        discrete: false,
+                        ..gpu("0000:03:00.0", Driver::AmdGpu, Some(false))
+                    },
                     gpu("0000:c1:00.0", Driver::AmdGpu, Some(false)),
                 ],
                 dri_prime("pci-0000_c1_00_0", amd),
@@ -486,7 +511,11 @@ mod tests {
     #[test]
     fn pci_tags_match_the_shape_mesa_builds() {
         assert_eq!(pci_tag("0000:01:00.0").as_deref(), Some("pci-0000_01_00_0"));
-        assert_eq!(pci_tag("10000:af:1f.7").as_deref(), None, "domain is 4 wide");
+        assert_eq!(
+            pci_tag("10000:af:1f.7").as_deref(),
+            None,
+            "domain is 4 wide"
+        );
         assert_eq!(pci_tag("0000:1:00.0"), None, "bus is 2 wide");
         assert_eq!(pci_tag("0000:01:00"), None, "no function");
         assert_eq!(pci_tag("0000:0g:00.0"), None, "not hex");
@@ -510,8 +539,16 @@ mod tests {
 
     #[test]
     fn the_cards_we_can_place_without_asking_the_driver() {
-        assert!(probe_discrete(&gpu("0000:01:00.0", Driver::Nvidia, Some(false))));
-        assert!(!probe_discrete(&gpu(INTEL_INTEGRATED, Driver::I915, Some(true))));
+        assert!(probe_discrete(&gpu(
+            "0000:01:00.0",
+            Driver::Nvidia,
+            Some(false)
+        )));
+        assert!(!probe_discrete(&gpu(
+            INTEL_INTEGRATED,
+            Driver::I915,
+            Some(true)
+        )));
         assert!(
             probe_discrete(&gpu("0000:03:00.0", Driver::I915, Some(false))),
             "an arc board does not sit at the integrated address"

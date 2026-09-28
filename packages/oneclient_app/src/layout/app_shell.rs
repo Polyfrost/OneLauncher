@@ -17,6 +17,7 @@ use crate::layout::AnimatedAppOutlet;
 use crate::theme;
 use crate::use_settings_snapshot;
 use oneclient_core::clusters::Cluster;
+use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
 use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
@@ -77,7 +78,7 @@ impl Component for AppShell {
             .on_global_file_hover_cancelled(move |_| drop_hovering.set(false))
             .on_file_drop(move |e: Event<FileEventData>| {
                 drop_hovering.set(false);
-				drop_pending.write().extend_from_slice(&e.file_paths);
+                drop_pending.write().extend_from_slice(&e.file_paths);
             })
             .child(AppNavbar)
             .child(AppHomeBackground)
@@ -218,6 +219,7 @@ fn copy_error_button(message: &str, dispatch: crate::Actions) -> impl IntoElemen
                     .notify("Copy failed")
                     .body("Could not copy the error to the clipboard.")
                     .error()
+                    .toast_only()
                     .send();
             } else {
                 dispatch
@@ -225,6 +227,7 @@ fn copy_error_button(message: &str, dispatch: crate::Actions) -> impl IntoElemen
                     .body("Error message copied to your clipboard.")
                     .info()
                     .icon(IconType::ClipboardCheck)
+                    .toast_only()
                     .send();
             }
         })
@@ -272,6 +275,7 @@ fn home_cluster(clusters: &[Cluster], active: Option<ClusterId>) -> Option<&Clus
 fn home_art(cluster: Option<&Cluster>) -> DynamicArt {
     cluster
         .map_or_else(DynamicArt::fallback, DynamicArt::for_cluster)
+        .max_edge(BACKGROUND_IMAGE_EDGE)
         .preview_edge(ART_PREVIEW_EDGE)
 }
 

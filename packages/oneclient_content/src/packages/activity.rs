@@ -12,8 +12,8 @@ use oneclient_db::dao::cluster_bundle as bundle_dao;
 
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
-use crate::packages::dependencies::base_game_version;
 use crate::packages::FileIdentity;
+use crate::packages::dependencies::base_game_version;
 use crate::packages::store::{PackageStore, record_release};
 use crate::packages::types::LinkedArtifactInfo;
 
@@ -71,9 +71,7 @@ fn duplicates_to_disable(linked: &[LinkedArtifactInfo]) -> Vec<String> {
 /// Local files and a bundle's external files have no project to group on so
 /// they are left out
 /// two of those are two packages not two copies
-fn group_duplicates(
-    linked: &[LinkedArtifactInfo],
-) -> Vec<((ProviderId, String), Vec<Copy>)> {
+fn group_duplicates(linked: &[LinkedArtifactInfo]) -> Vec<((ProviderId, String), Vec<Copy>)> {
     let mut by_project: HashMap<(ProviderId, String), Vec<Copy>> = HashMap::new();
 
     for info in linked {
@@ -130,7 +128,9 @@ pub async fn disable_foreign_game_versions(
     let candidates: Vec<&LinkedArtifactInfo> = linked
         .iter()
         .filter(|info| {
-            info.enabled && info.content_type == ContentType::Mod && !from_bundle.contains(&info.hash)
+            info.enabled
+                && info.content_type == ContentType::Mod
+                && !from_bundle.contains(&info.hash)
         })
         .collect();
 
@@ -173,7 +173,12 @@ async fn refresh_stated_game_versions(
     let mut stale = Vec::new();
 
     for info in candidates {
-        match migration_dao::is_applied(&ctx.db, &foreign_repair_id(cluster_id, mc_version, &info.hash)).await {
+        match migration_dao::is_applied(
+            &ctx.db,
+            &foreign_repair_id(cluster_id, mc_version, &info.hash),
+        )
+        .await
+        {
             Ok(true) => continue,
             Ok(false) => {}
             Err(err) => {
@@ -187,7 +192,9 @@ async fn refresh_stated_game_versions(
                 stale.push(FileIdentity::from_sha1(&info.hash));
             }
             Ok(_) => {}
-            Err(err) => tracing::debug!(hash = %info.hash, %err, "could not read the stated game versions"),
+            Err(err) => {
+                tracing::debug!(hash = %info.hash, %err, "could not read the stated game versions")
+            }
         }
     }
 
@@ -316,7 +323,11 @@ mod tests {
             ("middle", false, Some("2026-03-01T00:00:00Z")),
         ]));
 
-        assert_eq!(picked.as_deref(), Some("new"), "being enabled does not win it");
+        assert_eq!(
+            picked.as_deref(),
+            Some("new"),
+            "being enabled does not win it"
+        );
     }
 
     #[test]
@@ -333,7 +344,10 @@ mod tests {
     fn an_undated_group_still_picks_one() {
         let picked = newest(&copies(&[("a", false, None), ("b", false, None)]));
 
-        assert!(picked.is_some(), "a group with no dates must not go unresolved");
+        assert!(
+            picked.is_some(),
+            "a group with no dates must not go unresolved"
+        );
     }
 
     #[test]
@@ -345,9 +359,18 @@ mod tests {
             )
         };
 
-        assert!(!foreign(&[]), "a jar no provider ever described is left alone");
-        assert!(!foreign(&["[]"]), "an empty list is the provider saying nothing");
-        assert!(!foreign(&["[\"1.21.11"]), "a list that will not parse says nothing");
+        assert!(
+            !foreign(&[]),
+            "a jar no provider ever described is left alone"
+        );
+        assert!(
+            !foreign(&["[]"]),
+            "an empty list is the provider saying nothing"
+        );
+        assert!(
+            !foreign(&["[\"1.21.11"]),
+            "a list that will not parse says nothing"
+        );
         assert!(!foreign(&["[\"26.1.2\"]"]));
         assert!(
             !foreign(&["[\"1.21.11\",\"26.1.2\"]"]),
@@ -440,7 +463,12 @@ mod tests {
     fn the_user_disabling_the_newest_copy_is_left_standing() {
         let disable = duplicates_to_disable(&[
             info(Some("sodium"), "chosen", true, Some("2026-01-01T00:00:00Z")),
-            info(Some("sodium"), "newest", false, Some("2026-06-01T00:00:00Z")),
+            info(
+                Some("sodium"),
+                "newest",
+                false,
+                Some("2026-06-01T00:00:00Z"),
+            ),
         ]);
 
         assert!(

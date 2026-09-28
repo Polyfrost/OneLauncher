@@ -35,10 +35,8 @@ impl Component for RecentsRow {
 
         let sorted: Vec<Cluster> = sort_clusters_for_home(clusters);
 
-        let slots = recent_card_slots_for_window(
-            root_size.read().width,
-            *scale_factor.read() as f32,
-        );
+        let slots =
+            recent_card_slots_for_window(root_size.read().width, *scale_factor.read() as f32);
 
         // Budget off cluster count not slot count an offset-only change makes the layout
         // engine reuse a card's cached area freezing survivors at pre-resize widths
@@ -255,7 +253,10 @@ impl Component for ClusterCard {
                                     .height(Size::fill())
                                     .position(Position::new_absolute())
                                     .layer(Layer::Relative(1))
-                                    .child(DynamicArt::for_cluster(&self.cluster).max_edge(ART_PREVIEW_EDGE)),
+                                    .child(
+                                        DynamicArt::for_cluster(&self.cluster)
+                                            .max_edge(ART_PREVIEW_EDGE),
+                                    ),
                             )
                             .child(
                                 rect()

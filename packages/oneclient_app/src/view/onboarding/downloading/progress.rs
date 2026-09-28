@@ -251,10 +251,7 @@ fn build_stats(view: StatsView) -> Option<Element> {
     } else {
         // Both readings come off the same smoothed rate so they always agree
         match transfer.and_then(|t| t.eta_secs) {
-            Some(remaining) => parts.push(format!(
-                "~{} left",
-                format_durations(remaining as i64)
-            )),
+            Some(remaining) => parts.push(format!("~{} left", format_durations(remaining as i64))),
             None => parts.push("~- left".to_string()),
         }
 

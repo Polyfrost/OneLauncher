@@ -26,12 +26,12 @@ use oneclient_events::{Answer, Level};
 use tokio::sync::mpsc;
 
 use crate::components::IconType;
-use crate::{invalidate_java_queries, launcher};
 use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef, OptionalModsGroup,
     PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{AppChannel, AppState, AsyncStatus, RelocationState};
+use crate::{invalidate_java_queries, launcher};
 
 /// Over-disabling is the cheaper mistake a dead button beats a second game
 const LAUNCH_HOLD: Duration = Duration::from_secs(2);
@@ -174,7 +174,10 @@ impl Actions {
 
     fn with_engine(&self, mutate: impl FnOnce(&mut AppState)) {
         {
-            let mut guard = self.station.clone().write_channel(AppChannel::Notifications);
+            let mut guard = self
+                .station
+                .clone()
+                .write_channel(AppChannel::Notifications);
             mutate(&mut guard);
         }
         self.nudge(PumpSignal::Reconcile);
@@ -198,10 +201,8 @@ impl Actions {
                 guard.settings.error = None;
             }
 
-            let loaded = oneclient_core::settings::store::load_settings(Some(
-                &state.services.events,
-            ))
-            .await;
+            let loaded =
+                oneclient_core::settings::store::load_settings(Some(&state.services.events)).await;
             let discord_enabled = loaded.discord_enabled;
             *state.settings.write() = loaded.clone();
             state.discord.set_enabled(discord_enabled);
@@ -233,7 +234,10 @@ impl Actions {
         });
     }
 
-    fn mutate_settings(&self, mutate: impl FnOnce(&mut LauncherSettings)) -> Option<LauncherSettings> {
+    fn mutate_settings(
+        &self,
+        mutate: impl FnOnce(&mut LauncherSettings),
+    ) -> Option<LauncherSettings> {
         let state = launcher::state().ok()?;
         let updated = {
             let mut lock = state.settings.write();
@@ -322,7 +326,7 @@ impl Actions {
             self.persist(updated);
         }
     }
-  
+
     pub fn reset_onboarding(&self) {
         if let Some(updated) = self.mutate_settings(|settings| {
             settings.seen_onboarding = false;
@@ -571,14 +575,12 @@ impl Actions {
                 Ok(_) => {
                     events.signal(oneclient_events::Signal::JavaChanged);
                     invalidate_java_queries().await
-                },
-                Err(err) => {
-					events
+                }
+                Err(err) => events
                     .notify("Java install failed")
                     .body(err.to_string())
                     .error()
-                    .send()
-				}
+                    .send(),
             }
         });
     }
@@ -702,7 +704,11 @@ impl Actions {
     }
 
     pub fn dismiss_toast(&self, entry_id: u64) {
-        self.with_engine(|state| state.notifications.dismiss_toast(&mut state.inbox, entry_id));
+        self.with_engine(|state| {
+            state
+                .notifications
+                .dismiss_toast(&mut state.inbox, entry_id)
+        });
     }
 
     pub fn mark_notification_read(&self, entry_id: u64) {
@@ -789,10 +795,8 @@ impl Actions {
             };
             let content = state.services.content();
             let events = state.services.events.clone();
-            let session = oneclient_events::GroupedProgressSession::start(
-                &events,
-                "Adding optional mods",
-            );
+            let session =
+                oneclient_events::GroupedProgressSession::start(&events, "Adding optional mods");
             let opt_in = session.child(
                 "Enabling mods",
                 mods.len() as u64,
@@ -897,9 +901,7 @@ impl Actions {
     }
 
     pub fn proceed_package_updates(&self, chosen: Vec<oneclient_core::BrowserPackageUpdate>) {
-        self.with_engine(move |state| {
-            state.notifications.proceed_package_updates(chosen)
-        });
+        self.with_engine(move |state| state.notifications.proceed_package_updates(chosen));
     }
 
     pub fn close_package_updates(&self) {
@@ -951,6 +953,7 @@ impl Actions {
                 icon: None,
                 progress: None,
                 actions: Vec::new(),
+                toast_only: false,
             },
         }
     }
@@ -1015,15 +1018,16 @@ impl Actions {
             .error = None;
     }
 
-    pub fn import_local_file(&self, cluster_id: ClusterId, content_type: ContentType, path: PathBuf) {
+    pub fn import_local_file(
+        &self,
+        cluster_id: ClusterId,
+        content_type: ContentType,
+        path: PathBuf,
+    ) {
         self.import_local_files(cluster_id, vec![(path, content_type)]);
     }
 
-    pub fn import_local_files(
-        &self,
-        cluster_id: ClusterId,
-        files: Vec<(PathBuf, ContentType)>,
-    ) {
+    pub fn import_local_files(&self, cluster_id: ClusterId, files: Vec<(PathBuf, ContentType)>) {
         if files.is_empty() {
             return;
         }
@@ -1052,7 +1056,11 @@ impl Actions {
                         deferred |= live == LiveSync::Deferred;
                     }
 
-                    notify_import(&events, &report, deferred && state.games.is_active(cluster_id));
+                    notify_import(
+                        &events,
+                        &report,
+                        deferred && state.games.is_active(cluster_id),
+                    );
                     super::invalidate_cluster_queries().await;
                 }
                 Err(err) => events
@@ -1119,6 +1127,7 @@ impl Actions {
                     icon: Some(IconType::Download01),
                     progress: None,
                     actions: Vec::new(),
+                    toast_only: false,
                 },
                 Err(err) => NotificationSpec {
                     title: "Install failed".to_string(),
@@ -1127,6 +1136,7 @@ impl Actions {
                     icon: None,
                     progress: None,
                     actions: Vec::new(),
+                    toast_only: false,
                 },
             };
 
@@ -1363,7 +1373,7 @@ impl Actions {
             .relocation = relocation;
     }
 
-	/// `syncing_bundles` gates every launch button so the readiness check must
+    /// `syncing_bundles` gates every launch button so the readiness check must
     /// happen before the flag is raised not inside the task
     pub fn sync_bundles(&self) {
         let state = match launcher::state() {
@@ -1382,7 +1392,6 @@ impl Actions {
             .syncing_bundles = true;
 
         spawn_forever(async move {
-
             if let Err(err) = state.bundles.sync(&state.services.content()).await {
                 tracing::error!("bundle catalog sync failed: {err:#}");
             }
@@ -1426,26 +1435,22 @@ impl Actions {
             .launcher
             .syncing_bundles = true;
 
-        let synced = match tokio::time::timeout(BUNDLE_SYNC_BUDGET, state.bundles.sync(&content))
-            .await
-        {
-            Ok(Ok(_)) => true,
-            Ok(Err(err)) => {
-                tracing::warn!(
-                    cluster_id,
-                    error = %err,
-                    "bundle catalog sync failed, launching against the cached catalog"
-                );
-                false
-            }
-            Err(_elapsed) => {
-                tracing::debug!(
-                    cluster_id,
-                    "bundle catalog sync exceeded its launch budget"
-                );
-                false
-            }
-        };
+        let synced =
+            match tokio::time::timeout(BUNDLE_SYNC_BUDGET, state.bundles.sync(&content)).await {
+                Ok(Ok(_)) => true,
+                Ok(Err(err)) => {
+                    tracing::warn!(
+                        cluster_id,
+                        error = %err,
+                        "bundle catalog sync failed, launching against the cached catalog"
+                    );
+                    false
+                }
+                Err(_elapsed) => {
+                    tracing::debug!(cluster_id, "bundle catalog sync exceeded its launch budget");
+                    false
+                }
+            };
 
         self.station
             .clone()
@@ -1627,6 +1632,7 @@ impl Actions {
             icon: Some(IconType::DownloadCloud02),
             progress: None,
             actions: Vec::new(),
+            toast_only: false,
         });
 
         self.with_engine(|app| {
@@ -1674,7 +1680,9 @@ impl Actions {
 
         let (done, wait) = tokio::sync::oneshot::channel();
         self.with_engine(move |state| {
-            state.notifications.open_optional_mods(vec![group], Some(done));
+            state
+                .notifications
+                .open_optional_mods(vec![group], Some(done));
             state.center_open = false;
         });
 
@@ -1688,11 +1696,79 @@ impl Actions {
         let (done, wait) = tokio::sync::oneshot::channel();
 
         self.with_engine(move |state| {
-            state.notifications.open_package_updates(vec![group], Some(done));
+            state
+                .notifications
+                .open_package_updates(vec![group], Some(done));
             state.center_open = false;
         });
 
         wait.await.unwrap_or_default()
+    }
+
+    pub fn apply_package_update(&self, update: oneclient_core::BrowserPackageUpdate) {
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            let events = state.services.events.clone();
+
+            let session = oneclient_events::GroupedProgressSession::start(
+                &events,
+                format!("Updating {}", update.display_name),
+            );
+            let child = session.child(
+                update.display_name.clone(),
+                1,
+                oneclient_events::TaskCategory::Packages,
+            );
+
+            let result = oneclient_core::apply_browser_package_update(
+                &update,
+                Some(&child),
+                &state.services.content(),
+            )
+            .await;
+
+            child.finish();
+            let session_id = session.detach();
+
+            let spec = match &result {
+                Ok(_) => NotificationSpec {
+                    title: "Updated".to_string(),
+                    body: format!(
+                        "{} is now on {}",
+                        update.display_name, update.latest_version_name
+                    ),
+                    level: Level::Info,
+                    icon: Some(IconType::DownloadCloud02),
+                    progress: None,
+                    actions: Vec::new(),
+                    toast_only: false,
+                },
+                Err(err) => NotificationSpec {
+                    title: "Update failed".to_string(),
+                    body: err.to_string(),
+                    level: Level::Error,
+                    icon: None,
+                    progress: None,
+                    actions: Vec::new(),
+                    toast_only: false,
+                },
+            };
+
+            actions.with_engine(|app| {
+                app.notifications
+                    .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
+            });
+
+            // A failed update stays in the list so the user can retry
+            if result.is_ok() {
+                actions.with_engine(|app| {
+                    app.notifications
+                        .resolve_package_update(update.cluster_id, &update.hash);
+                });
+                super::invalidate_cluster_queries().await;
+            }
+        });
     }
 
     /// The package stays marked out of date only the modal stops asking and
@@ -1835,10 +1911,10 @@ fn notify_import(events: &oneclient_events::EventBus, report: &LocalImportReport
         [only] => Some(format!("Added {}", only.file_name)),
         rows => Some(format!("Added {} files", rows.len())),
     }) else {
-        let reason = report
-            .failed
-            .first()
-            .map_or_else(|| "Nothing could be read".to_string(), |(_, err)| err.to_string());
+        let reason = report.failed.first().map_or_else(
+            || "Nothing could be read".to_string(),
+            |(_, err)| err.to_string(),
+        );
 
         events.notify("Import failed").body(reason).error().send();
         return;
@@ -1902,6 +1978,13 @@ impl NotificationBuilder {
 
     pub fn actions(mut self, actions: impl IntoIterator<Item = NotificationAction>) -> Self {
         self.spec.actions = actions.into_iter().collect();
+        self
+    }
+
+    /// Marks the notice as ephemeral: it shows as a toast but never sticks
+    /// around in the notification center
+    pub fn toast_only(mut self) -> Self {
+        self.spec.toast_only = true;
         self
     }
 
@@ -2066,7 +2149,10 @@ mod tests {
     #[test]
     fn every_cluster_holding_the_runtime_is_named() {
         let profiles = vec![profile("a", Some(JDK_25)), profile("b", Some(JDK_25))];
-        let clusters = vec![cluster(1, "Alpha", Some("a")), cluster(2, "Beta", Some("b"))];
+        let clusters = vec![
+            cluster(1, "Alpha", Some("a")),
+            cluster(2, "Beta", Some("b")),
+        ];
 
         assert_eq!(
             clusters_pinned_to_java(&profiles, &clusters, JDK_25),

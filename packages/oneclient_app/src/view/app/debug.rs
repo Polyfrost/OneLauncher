@@ -15,7 +15,7 @@ use crate::notifications::{
     OptionalModsGroup,
 };
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{self, colors};
 use crate::ui::border_all_color;
 
 type SqlResult = Option<Result<ConsoleQueryResult, String>>;
@@ -25,7 +25,7 @@ pub struct Debug;
 
 impl Component for Debug {
     fn render(&self) -> impl IntoElement {
-		let dispatch = use_dispatch();
+        let dispatch = use_dispatch();
         let log_debug_info = use_state(|| false);
         let show_dev_stuff = use_state(|| false);
         let seen_onboarding = use_state(|| true);
@@ -108,12 +108,15 @@ impl Component for Debug {
                     .child(divider())
                     .child(section(
                         "Other",
-                        vec![action_row(&dispatch, vec![
-                            ("Open Dev Tools", IconType::CodeSnippet02),
-                            ("Open Onboarding", IconType::Rocket02),
-                            ("Open Launcher Data", IconType::Folder),
-                            ("Log Running Processes", IconType::Terminal),
-                        ])],
+                        vec![action_row(
+                            &dispatch,
+                            vec![
+                                ("Open Dev Tools", IconType::CodeSnippet02),
+                                ("Open Onboarding", IconType::Rocket02),
+                                ("Open Launcher Data", IconType::Folder),
+                                ("Log Running Processes", IconType::Terminal),
+                            ],
+                        )],
                     )),
             )
     }
@@ -437,52 +440,50 @@ const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 7] = [
                 &[],
             ),
             preset_summary(2, "Skyblock", &[], &[], &["OptiFine", "Skytils"], &[]),
-            preset_summary(3, "Vanilla+", &[], &["Sodium", "Iris", "FerriteCore"], &[], &[]),
+            preset_summary(
+                3,
+                "Vanilla+",
+                &[],
+                &["Sodium", "Iris", "FerriteCore"],
+                &[],
+                &[],
+            ),
         ]
     }),
     ("2 clusters · removals only", IconType::Trash01, || {
         vec![
             preset_summary(1, "PolyBlock", &[], &[], &["OptiFine"], &[]),
-            preset_summary(2, "Skyblock", &[], &[], &["Skytils", "NotEnoughUpdates"], &[]),
+            preset_summary(
+                2,
+                "Skyblock",
+                &[],
+                &[],
+                &["Skytils", "NotEnoughUpdates"],
+                &[],
+            ),
         ]
     }),
     ("6 clusters · long names", IconType::Database01, || {
         (1..=6)
-            .map(|i| {
-                ClusterUpdateSummary {
-                    cluster_id: i,
-                    cluster_name: format!(
-                        "Cluster {i} with a deliberately overlong name that has to truncate"
-                    ),
-                    updated: cluster_update_items(&[
-                        format!("Sodium 0.{i} → 0.{}", i + 1),
-                        format!("Iris 1.{i} → 1.{}", i + 1),
-                    ]),
-                    added: cluster_update_items(&[format!("Lithium {i}")]),
-                    removed: Vec::new(),
-                    optional: Vec::new(),
-                }
+            .map(|i| ClusterUpdateSummary {
+                cluster_id: i,
+                cluster_name: format!(
+                    "Cluster {i} with a deliberately overlong name that has to truncate"
+                ),
+                updated: cluster_update_items(&[
+                    format!("Sodium 0.{i} → 0.{}", i + 1),
+                    format!("Iris 1.{i} → 1.{}", i + 1),
+                ]),
+                added: cluster_update_items(&[format!("Lithium {i}")]),
+                removed: Vec::new(),
+                optional: Vec::new(),
             })
             .collect()
     }),
     ("2 clusters · offers only", IconType::Plus, || {
         vec![
-            preset_summary(
-                1,
-                "PolyBlock",
-                &[],
-                &[],
-                &[],
-                &["Lithium", "FerriteCore"],
-            ),
-            preset_summary(
-                2,
-                "Skyblock",
-                &[],
-                &["Skytils"],
-                &[],
-                &["Skytils"],
-            ),
+            preset_summary(1, "PolyBlock", &[], &[], &[], &["Lithium", "FerriteCore"]),
+            preset_summary(2, "Skyblock", &[], &["Skytils"], &[], &["Skytils"]),
         ]
     }),
 ];
@@ -524,7 +525,7 @@ fn preset_summary(
         updated: cluster_update_items(updated),
         added: cluster_update_items(added),
         removed: cluster_update_items(removed),
-        optional: cluster_update_items(optional)
+        optional: cluster_update_items(optional),
     }
 }
 
@@ -1151,9 +1152,11 @@ fn run_damage(dispatch: &crate::Actions, kind: DamageKind, cluster_id: i64) {
     let dispatch = dispatch.clone();
     spawn(async move {
         let result = match kind {
-            DamageKind::Assets(count, damage) => oneclient_core::simulate::damage_assets(count, damage)
-                .await
-                .map(|report| (report, damage.verb())),
+            DamageKind::Assets(count, damage) => {
+                oneclient_core::simulate::damage_assets(count, damage)
+                    .await
+                    .map(|report| (report, damage.verb()))
+            }
             DamageKind::Libraries(count, damage) => {
                 oneclient_core::simulate::damage_libraries(count, damage)
                     .await
@@ -1206,24 +1209,36 @@ impl Component for SqlConsole {
             .width(Size::fill())
             .spacing(10.)
             .child(
+                TextInput::new(query)
+                    .multiline(true)
+                    .placeholder("SELECT * FROM …")
+                    .font_family(theme::MONO_FONT)
+                    .width(Size::fill())
+                    .height(Size::px(140.))
+                    .on_submit(move |_| run_sql(query, result, running)),
+            )
+            .child(
                 rect()
                     .horizontal()
                     .width(Size::fill())
                     .cross_align(Alignment::Center)
                     .spacing(12.)
                     .child(
-                        rect().width(Size::flex(1.0)).child(
-                            TextInput::new(query)
-                                .placeholder("SELECT * FROM …")
-                                .on_submit(move |_| run_sql(query, result, running)),
-                        ),
-                    )
-                    .child(
                         Button::new()
                             .primary()
                             .child(Icon::new(IconType::Terminal).size(16.))
                             .text(if *running.read() { "Running…" } else { "Run" })
                             .on_press(move |_| run_sql(query, result, running)),
+                    )
+                    .child(
+                        label()
+                            .text(if cfg!(target_os = "macos") {
+                                "⌘ Enter"
+                            } else {
+                                "Ctrl+Enter"
+                            })
+                            .font_size(12.)
+                            .color(colors::fg_secondary()),
                     ),
             )
             .child(sql_result(&result.read()))
@@ -1415,9 +1430,9 @@ fn action_row(dispatch: &Actions, buttons: Vec<(&'static str, IconType)>) -> Ele
             .text(text);
 
         if text == "Open Onboarding" {
-			let dispatch = dispatch.clone();
-			button = button.on_press(move |_| {
-				dispatch.reset_onboarding();
+            let dispatch = dispatch.clone();
+            button = button.on_press(move |_| {
+                dispatch.reset_onboarding();
                 let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
             });
         }

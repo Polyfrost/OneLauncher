@@ -1,13 +1,16 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_common::VersionKey;
-use oneclient_core::clusters::Cluster;
 use oneclient_common::domain::GameLoader;
+use oneclient_core::clusters::Cluster;
 
 use crate::components::{
     Button, ClusterLandscapeArt, Dropdown, Icon, IconType, ScrollArea, VersionCard,
 };
-use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata};
+use crate::hooks::{
+    settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
+    use_launcher, use_version_metadata,
+};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -294,7 +297,12 @@ impl Component for DetailSidebar {
                                             .color(colors::fg_secondary()),
                                     ),
                             )
-                            .children(version_rows(self.line, &keys, version_value, self.selected_version))
+                            .children(version_rows(
+                                self.line,
+                                &keys,
+                                version_value,
+                                self.selected_version,
+                            ))
                             .children(loader_rows(&loaders, loader_value, self.selected_loader)),
                     )
                     .child(

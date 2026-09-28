@@ -107,7 +107,11 @@ mod tests {
 
         assert!(mods_folder_argument(GameLoader::Fabric, Some("0.16.5"), "-Xmx4G", dir).is_some());
 
-        assert!(!uses_cluster_mods_folder(GameLoader::Fabric, Some("0.16.5"), mine));
+        assert!(!uses_cluster_mods_folder(
+            GameLoader::Fabric,
+            Some("0.16.5"),
+            mine
+        ));
         assert!(mods_folder_argument(GameLoader::Fabric, Some("0.16.5"), mine, dir).is_none());
     }
 }

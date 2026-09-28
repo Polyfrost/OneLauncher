@@ -150,16 +150,6 @@ pub(crate) fn installed_badge(installed: InstallSource, font_size: f32) -> impl 
     badge(installed, font_size, installed.color().with_a(38), None)
 }
 
-/// Brings its own backdrop and outline so it stays legible over card artwork
-pub(crate) fn installed_badge_overlay(installed: InstallSource) -> impl IntoElement {
-    badge(
-        installed,
-        10.,
-        BANNER_BG.with_a(225),
-        Some(installed.color().with_a(110)),
-    )
-}
-
 /// Which of several installed versions the game actually loads
 pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
     let (text, color) = if active {
@@ -175,13 +165,7 @@ pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
         .padding(Gaps::new_symmetric(2., 8.))
         .corner_radius(CornerRadius::new_all(999.))
         .background(color.with_a(38))
-        .child(
-            label()
-                .text(text)
-                .font_size(11.)
-                .max_lines(1)
-                .color(color),
-        )
+        .child(label().text(text).font_size(11.).max_lines(1).color(color))
 }
 
 fn badge(
@@ -285,6 +269,7 @@ fn thumbnail_placeholder(size: f32, radius: f32, icon_ratio: f32) -> Element {
 pub(crate) struct PackageBanner {
     icon_url: Option<String>,
     height: f32,
+    backdrop_only: bool,
     key: DiffKey,
 }
 
@@ -293,8 +278,15 @@ impl PackageBanner {
         Self {
             icon_url,
             height,
+            backdrop_only: false,
             key: DiffKey::None,
         }
+    }
+
+    /// Drops the centred icon so a caller can place its own artwork over the blur
+    pub fn backdrop_only(mut self) -> Self {
+        self.backdrop_only = true;
+        self
     }
 }
 
@@ -319,6 +311,7 @@ impl Component for PackageBanner {
             .background(BANNER_BG);
 
         let icon_placeholder = thumbnail_placeholder(icon, 10., 0.45);
+        let backdrop_only = self.backdrop_only;
 
         match loaded {
             Some((url, bytes)) => banner
@@ -348,7 +341,7 @@ impl Component for PackageBanner {
                         .overflow(Overflow::Clip)
                         .layer(Layer::Relative(3)),
                 )
-                .child(
+                .maybe_child((!backdrop_only).then(|| {
                     rect()
                         .width(Size::px(icon))
                         .height(Size::px(icon))
@@ -358,10 +351,12 @@ impl Component for PackageBanner {
                                 .height(Size::px(icon))
                                 .aspect_ratio(AspectRatio::Min)
                                 .corner_radius(CornerRadius::new_all(10.))
-                                .fallback(icon_placeholder),
+                                .fallback(icon_placeholder.clone()),
                         )
-                        .layer(Layer::Relative(5)),
-                ),
+                        .layer(Layer::Relative(5))
+                        .into_element()
+                })),
+            None if backdrop_only => banner,
             None => banner.child(icon_placeholder),
         }
     }
@@ -444,7 +439,10 @@ mod tests {
         );
 
         let sodium = entry(&map, "sodium");
-        assert!(sodium.is_version("v1"), "the older version is still in there");
+        assert!(
+            sodium.is_version("v1"),
+            "the older version is still in there"
+        );
         assert!(sodium.is_version("v2"));
         assert_eq!(
             sodium.find_version("v2").and_then(|v| v.hash.clone()),
@@ -464,7 +462,11 @@ mod tests {
         );
 
         let sodium = entry(&map, "sodium");
-        assert_eq!(sodium.source, InstallSource::Bundled, "the bundle owns the project");
+        assert_eq!(
+            sodium.source,
+            InstallSource::Bundled,
+            "the bundle owns the project"
+        );
         assert_eq!(
             sodium.find_version("v1").map(|v| v.source),
             Some(InstallSource::Bundled)

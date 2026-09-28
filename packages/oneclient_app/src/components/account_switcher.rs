@@ -6,7 +6,6 @@ use freya::{
 use oneclient_auth::MinecraftAccount;
 
 use crate::{
-    ui::{divider},
     Route,
     components::{Avatar, Button, Icon, IconType, OverlayPopup},
     hooks::{
@@ -14,6 +13,7 @@ use crate::{
         use_accounts, use_current_account, use_dispatch, use_set_default_account,
     },
     theme::colors,
+    ui::divider,
 };
 
 #[derive(PartialEq)]

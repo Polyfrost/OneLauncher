@@ -17,8 +17,8 @@ use crate::ui::border_all_color;
 
 type InstalledMap = HashMap<(ProviderId, String), Installed>;
 
-/// Diameter of the round install button
-const INSTALL_BUTTON: f32 = 30.;
+/// Height of the install control, matched by the installed pill that replaces it
+const INSTALL_BUTTON_H: f32 = 28.;
 
 fn installed_for(installed: &InstalledMap, item: &ProjectSummary) -> Option<InstallSource> {
     installed
@@ -111,8 +111,8 @@ impl Component for PackageCard {
             .vertical()
             .width(Size::flex(1.0))
             .height(Size::px(CARD_H))
-            .corner_radius(CornerRadius::new_all(10.))
-            .background(CARD_BG)
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(colors::component_bg())
             .border(border_all_color(
                 1.,
                 if focused {
@@ -129,37 +129,28 @@ impl Component for PackageCard {
             .on_press(move |_| open_package(cluster_id, &package_type, provider, &id))
             .child(
                 rect()
-                    .margin(Gaps::new_all(1.))
-                    .corner_radius(CornerRadius::new(10., 10., 0., 0.))
+                    .width(Size::fill())
+                    .height(Size::px(BANNER_H))
                     .overflow(Overflow::Clip)
-                    .child(PackageBanner::new(icon_url, BANNER_H))
-                    // Top-left of the banner the first thing worth knowing about a result and the opposite corner is the install button's
-                    .maybe_child(self.installed.map(|installed| {
-                        rect()
-                            .position(Position::new_absolute().top(8.).left(8.))
-                            .layer(Layer::Relative(7))
-                            .child(installed_badge_overlay(installed))
-                            .into_element()
-                    }))
-                    .maybe_child(self.installed.is_none().then(|| {
-                        rect()
-                            .position(Position::new_absolute().top(8.).right(8.))
-                            .layer(Layer::Relative(7))
-                            .child(InstallButton::new(
-                                &self.item,
-                                self.cluster_id,
-                                &self.package_type,
-                                false,
-                            ))
-                            .into_element()
-                    })),
+                    // No installed badge, the control at the foot of the card already states it
+                    .child(PackageBanner::new(icon_url.clone(), BANNER_H).backdrop_only()),
+            )
+            .child(
+                rect()
+                    .position(
+                        Position::new_absolute()
+                            .top(BANNER_H - CARD_ICON + CARD_ICON_OVERHANG)
+                            .left(14.),
+                    )
+                    .layer(Layer::Relative(7))
+                    .child(Thumbnail::new(icon_url, CARD_ICON).radius(6.)),
             )
             .child(
                 rect()
                     .vertical()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
-                    .padding(Gaps::new_all(12.))
+                    .padding(Gaps::new(CARD_ICON_OVERHANG + 6., 14., 12., 14.))
                     .main_align(Alignment::SpaceBetween)
                     .child(
                         rect()
@@ -169,35 +160,45 @@ impl Component for PackageCard {
                             .child(
                                 label()
                                     .text(self.item.name.clone())
-                                    .font_size(16.)
-                                    .font_weight(FontWeight::MEDIUM)
+                                    .font_size(14.)
+                                    .font_weight(FontWeight::SEMI_BOLD)
                                     .max_lines(1)
-                                    .color(CARD_NAME),
+                                    .color(colors::fg_primary()),
                             )
                             .child(
                                 rect()
                                     .horizontal()
                                     .cross_align(Alignment::Center)
-                                    .spacing(4.)
+                                    .spacing(5.)
                                     .child(
                                         label()
-                                            .text(format!("by {}", self.item.author))
+                                            .text(format!(
+                                                "by {} · {} downloads",
+                                                self.item.author,
+                                                abbreviate_number(self.item.downloads)
+                                            ))
                                             .font_size(10.)
                                             .max_lines(1)
-                                            .color(colors::fg_secondary()),
+                                            .color(colors::fg_primary().with_a(140)),
                                     )
-                                    .child(Icon::new(self.item.provider).size(12.)),
+                                    .child(Icon::new(self.item.provider).size(11.)),
                             )
                             .child(
                                 label()
                                     .text(self.item.summary.clone())
                                     .font_size(11.)
+                                    .line_height(1.45)
                                     .max_lines(2)
                                     .width(Size::fill())
-                                    .color(colors::fg_secondary()),
+                                    .color(colors::fg_primary().with_a(184)),
                             ),
                     )
-                    .child(downloads_row(self.item.downloads)),
+                    .child(InstallButton::new(
+                        &self.item,
+                        self.cluster_id,
+                        &self.package_type,
+                        self.installed,
+                    )),
             )
     }
 }
@@ -243,8 +244,8 @@ impl Component for ListRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_all(16.))
-            .corner_radius(CornerRadius::new_all(10.))
-            .background(CARD_BG)
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(colors::component_bg())
             .border(border_all_color(
                 1.,
                 if focused {
@@ -260,7 +261,7 @@ impl Component for ListRow {
             .a11y_role(AccessibilityRole::Button)
             .cursor(CursorIcon::Pointer)
             .on_press(move |_| open_package(cluster_id, &package_type, provider, &id))
-            .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(8.))
+            .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(6.))
             .child(
                 rect()
                     .vertical()
@@ -275,24 +276,18 @@ impl Component for ListRow {
                                 label()
                                     .text(item.name.clone())
                                     .font_size(15.)
-                                    .font_weight(FontWeight::MEDIUM)
+                                    .font_weight(FontWeight::SEMI_BOLD)
                                     .max_lines(1)
-                                    .color(CARD_NAME),
+                                    .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
                                     .text(format!("by {}", item.author))
                                     .font_size(10.)
                                     .max_lines(1)
-                                    .color(colors::fg_secondary()),
+                                    .color(colors::fg_primary().with_a(140)),
                             )
-                            .child(Icon::new(item.provider).size(12.))
-                            // Beside the attribution rather than far right where it drifted from the package and crowded the install button
-                            .maybe_child(
-                                self.installed.map(|installed| {
-                                    installed_badge(installed, 10.).into_element()
-                                }),
-                            ),
+                            .child(Icon::new(item.provider).size(12.)),
                     )
                     .child(
                         label()
@@ -300,7 +295,7 @@ impl Component for ListRow {
                             .font_size(11.)
                             .max_lines(2)
                             .width(Size::fill())
-                            .color(colors::fg_secondary()),
+                            .color(colors::fg_primary().with_a(184)),
                     ),
             )
             .child(downloads_row(item.downloads))
@@ -308,7 +303,7 @@ impl Component for ListRow {
                 &self.item,
                 self.cluster_id,
                 &self.package_type,
-                self.installed.is_some(),
+                self.installed,
             ))
     }
 }
@@ -319,12 +314,17 @@ struct InstallButton {
     project_id: String,
     cluster_id: i64,
     content_type: ContentType,
-    /// Cluster already has this one callers that hide the button entirely pass `false`
-    installed: bool,
+    /// Cluster already has this one, so the control becomes a static pill
+    installed: Option<InstallSource>,
 }
 
 impl InstallButton {
-    fn new(item: &ProjectSummary, cluster_id: i64, package_type: &str, installed: bool) -> Self {
+    fn new(
+        item: &ProjectSummary,
+        cluster_id: i64,
+        package_type: &str,
+        installed: Option<InstallSource>,
+    ) -> Self {
         Self {
             provider: item.provider,
             project_id: item.id.clone(),
@@ -354,10 +354,8 @@ impl Component for InstallButton {
             _ => (None, None),
         };
 
-        let installed = self.installed;
-
         let versions = version_list(&use_package_versions_when(
-            !installed,
+            self.installed.is_none(),
             provider,
             project_id.clone(),
             game_version,
@@ -369,24 +367,39 @@ impl Component for InstallButton {
         // Nothing to start twice while an install is running or before versions arrive
         let installing = use_installs_snapshot().is_installing(cluster_id, provider, &project_id);
 
+        if let Some(installed) = self.installed {
+            let color = installed.color();
+            return rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .height(Size::px(INSTALL_BUTTON_H))
+                .spacing(6.)
+                .padding(Gaps::new_symmetric(0., 10.))
+                .corner_radius(CornerRadius::new_all(6.))
+                .background(color.with_a(36))
+                .border(border_all_color(1., color.with_a(115)))
+                .child(Icon::new(IconType::CheckCircle).size(12.).color(color))
+                .child(
+                    label()
+                        .text(installed.label())
+                        .font_size(11.)
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .max_lines(1)
+                        .color(color),
+                )
+                .into_element();
+        }
+
         rect()
             // The card behind is one big press target stop here so the package page doesn't open on top of the install
             .on_press(|e: Event<PressEventData>| e.stop_propagation())
             .child(
                 Button::new()
                     .primary()
-                    .width(Size::px(INSTALL_BUTTON))
-                    .height(Size::px(INSTALL_BUTTON))
-                    .padding(Gaps::new_all(0.))
-                    .corner_radius(CornerRadius::new_all(INSTALL_BUTTON / 2.))
-                    .alt(if installed {
-                        "Already installed"
-                    } else if installing {
-                        "Installing"
-                    } else {
-                        "Install"
-                    })
-                    .enabled(!installed && latest.is_some() && !installing)
+                    .small()
+                    .height(Size::px(INSTALL_BUTTON_H))
+                    .padding(Gaps::new_symmetric(0., 11.))
+                    .enabled(latest.is_some() && !installing)
                     .on_press(move |_| {
                         if let Some(version_id) = latest.clone() {
                             dispatch.install_package(
@@ -401,12 +414,21 @@ impl Component for InstallButton {
                         Icon::new(if installing {
                             IconType::Loading02
                         } else {
-                            IconType::Download01
+                            IconType::Plus
                         })
-                        .size(15.)
+                        .size(12.)
                         .color(colors::fg_primary()),
+                    )
+                    .child(
+                        label()
+                            .text(if installing { "Installing" } else { "Install" })
+                            .font_size(11.)
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .max_lines(1)
+                            .color(colors::fg_primary()),
                     ),
             )
+            .into_element()
     }
 }
 
@@ -418,13 +440,13 @@ fn downloads_row(downloads: u64) -> impl IntoElement {
         .child(
             Icon::new(IconType::Download01)
                 .size(12.)
-                .color(colors::fg_secondary()),
+                .color(colors::fg_primary().with_a(140)),
         )
         .child(
             label()
                 .text(abbreviate_number(downloads))
                 .font_size(11.)
-                .color(colors::fg_secondary()),
+                .color(colors::fg_primary().with_a(140)),
         )
 }
 

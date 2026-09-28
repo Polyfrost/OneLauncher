@@ -202,7 +202,6 @@ pub struct PackageInstall {
     /// The game is open but could not take the package, so the toast must not
     /// claim it is there now
     pub live_deferred: bool,
-    pub flagged: Option<FlaggedInstall>,
 }
 
 pub struct FlaggedInstall {
@@ -248,22 +247,39 @@ impl PackageInstall {
             dependencies: Vec::new(),
             missing_dependencies: Vec::new(),
             live_deferred: false,
-            flagged: None,
         }
     }
+}
 
-    fn flagged(flagged: FlaggedInstall) -> Self {
-        Self {
-            session_id: None,
-            result: Err(anyhow::anyhow!(
-                "{} is flagged as a problematic mod",
-                flagged.name
-            )),
-            dependencies: Vec::new(),
-            missing_dependencies: Vec::new(),
-            live_deferred: false,
-            flagged: Some(flagged),
+async fn flagged_install(
+    name: String,
+    entry: &oneclient_content::packages::BadMod,
+    cluster_id: i64,
+    content: &oneclient_content::ContentCtx,
+) -> FlaggedInstall {
+    let resolve = async {
+        match PackageStore::get_cluster(cluster_id, content).await {
+            Ok(cluster) => {
+                let alternatives =
+                    oneclient_content::packages::resolve_alternatives(entry, &cluster, content)
+                        .await;
+                (cluster.mc_version, alternatives)
+            }
+            Err(err) => {
+                tracing::warn!(%err, cluster_id, "cannot resolve alternatives without the cluster");
+                (String::new(), Vec::new())
+            }
         }
+    };
+    let ((mc_version, alternatives), explanation) = tokio::join!(
+        resolve,
+        oneclient_content::packages::fetch_explanation(entry, content),
+    );
+    FlaggedInstall {
+        name,
+        mc_version,
+        explanation,
+        alternatives,
     }
 }
 
@@ -274,7 +290,7 @@ pub async fn install_package(
     version_id: &str,
     cluster_id: i64,
     allow_flagged: bool,
-) -> PackageInstall {
+) -> Result<PackageInstall, FlaggedInstall> {
     let lookup = async {
         let provider_impl = state.services.packages.get(provider)?;
         let project = provider_impl
@@ -289,7 +305,7 @@ pub async fn install_package(
 
     let (project, version) = match lookup {
         Ok(found) => found,
-        Err(err) => return PackageInstall::failed(err),
+        Err(err) => return Ok(PackageInstall::failed(err)),
     };
 
     let content = state.services.content();
@@ -297,30 +313,7 @@ pub async fn install_package(
 
     if !allow_flagged && let Some(entry) = bad_mods.check(&project, &version) {
         tracing::warn!(project = %project.name, version = %version.version_number, "refusing to install flagged mod");
-        let resolve = async {
-            match PackageStore::get_cluster(cluster_id, &content).await {
-                Ok(cluster) => {
-                    let alternatives =
-                        oneclient_content::packages::resolve_alternatives(entry, &cluster, &content)
-                            .await;
-                    (cluster.mc_version, alternatives)
-                }
-                Err(err) => {
-                    tracing::warn!(%err, cluster_id, "cannot resolve alternatives without the cluster");
-                    (String::new(), Vec::new())
-                }
-            }
-        };
-        let ((mc_version, alternatives), explanation) = tokio::join!(
-            resolve,
-            oneclient_content::packages::fetch_explanation(entry, &content),
-        );
-        return PackageInstall::flagged(FlaggedInstall {
-            name: project.name,
-            mc_version,
-            explanation,
-            alternatives,
-        });
+        return Err(flagged_install(project.name, entry, cluster_id, &content).await);
     }
 
     // Resolved before the session starts so its children can be announced up front
@@ -341,16 +334,16 @@ pub async fn install_package(
         }
     }
 
-    let (flagged_dependencies, clean_dependencies): (Vec<_>, Vec<_>) =
-        std::mem::take(&mut resolution.install)
-            .into_iter()
-            .partition(|dependency| {
-                bad_mods.is_flagged(&dependency.project, &dependency.version)
-            });
-    resolution.install = clean_dependencies;
-    for dependency in flagged_dependencies {
-        tracing::warn!(dependency = %dependency.project.name, "skipping flagged dependency");
-        resolution.unresolved.push(dependency.project.name);
+    if !allow_flagged
+        && let Some((dependency, entry)) = resolution.install.iter().find_map(|dependency| {
+            bad_mods
+                .check(&dependency.project, &dependency.version)
+                .map(|entry| (dependency, entry))
+        })
+    {
+        tracing::warn!(dependency = %dependency.project.name, project = %project.name, "refusing to install flagged dependency");
+        let name = format!("{} (required by {})", dependency.project.name, project.name);
+        return Err(flagged_install(name, entry, cluster_id, &content).await);
     }
 
     let session = oneclient_events::GroupedProgressSession::start(
@@ -444,14 +437,13 @@ pub async fn install_package(
         mark_new(cluster_id, &artifact.hash, state).await;
     }
 
-    PackageInstall {
+    Ok(PackageInstall {
         session_id: Some(session.detach()),
         result: result.map(|_| project.name).map_err(anyhow::Error::from),
         dependencies: installed_dependencies,
         missing_dependencies,
         live_deferred,
-        flagged: None,
-    }
+    })
 }
 
 async fn mark_new(cluster_id: i64, hash: &str, state: &LauncherState) {

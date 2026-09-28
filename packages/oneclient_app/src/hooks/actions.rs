@@ -1128,7 +1128,7 @@ impl Actions {
                 return;
             };
 
-            let install = crate::install::install_package(
+            let install = match crate::install::install_package(
                 &state,
                 provider,
                 &project_id,
@@ -1136,24 +1136,26 @@ impl Actions {
                 cluster_id,
                 allow_flagged,
             )
-            .await;
-
-            if let Some(flagged) = install.flagged {
-                let mut station = actions.station.clone();
-                let mut app = station.write_channel(AppChannel::Installs);
-                app.installs.flagged = Some(FlaggedInstallPrompt {
-                    cluster_id,
-                    provider,
-                    project_id: project_id.clone(),
-                    version_id: version_id.clone(),
-                    name: flagged.name,
-                    mc_version: flagged.mc_version,
-                    explanation: flagged.explanation,
-                    alternatives: flagged.alternatives,
-                });
-                app.installs.finish(cluster_id, provider, &project_id);
-                return;
-            }
+            .await
+            {
+                Ok(install) => install,
+                Err(flagged) => {
+                    let mut station = actions.station;
+                    let mut app = station.write_channel(AppChannel::Installs);
+                    app.installs.flagged = Some(FlaggedInstallPrompt {
+                        cluster_id,
+                        provider,
+                        project_id: project_id.clone(),
+                        version_id: version_id.clone(),
+                        name: flagged.name,
+                        mc_version: flagged.mc_version,
+                        explanation: flagged.explanation,
+                        alternatives: flagged.alternatives,
+                    });
+                    app.installs.finish(cluster_id, provider, &project_id);
+                    return;
+                }
+            };
 
             // Replaces the download's progress notification in place rather
             // than arriving as a second one

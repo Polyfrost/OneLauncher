@@ -285,8 +285,8 @@ fn task_row(task: &crate::notifications::TaskView) -> impl IntoElement {
 }
 
 #[derive(PartialEq)]
-struct ChevronToggle {
-    expanded: bool,
+pub struct ChevronToggle {
+    pub expanded: bool,
 }
 
 impl Component for ChevronToggle {

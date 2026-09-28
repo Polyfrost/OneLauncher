@@ -35,7 +35,7 @@ impl Component for OptionalModsPopup {
     fn render(&self) -> impl IntoElement {
         let snapshot = use_notifications_snapshot();
         let dispatch = use_dispatch();
-        let picked = use_state(Picked::new);
+        let mut picked = use_state(Picked::new);
 
         let groups = snapshot.optional_mods.clone();
 
@@ -61,7 +61,10 @@ impl Component for OptionalModsPopup {
         let close = dispatch.clone();
 
         OverlayPopup::new()
-            .on_close(move |_| close.close_optional_mods(OptionalModsOutcome::Cancel))
+            .on_close(move |_| {
+                picked.set(Picked::new());
+                close.close_optional_mods(OptionalModsOutcome::Cancel);
+            })
             .child(
                 rect()
                     .width(Size::window_percent(100.))
@@ -150,7 +153,7 @@ fn dialog(
 fn content(
     groups: &[OptionalModsGroup],
     meta: &MetaMap,
-    picked: State<Picked>,
+    mut picked: State<Picked>,
     dispatch: crate::Actions,
 ) -> impl IntoElement {
     let total: usize = groups.iter().map(|group| group.mods.len()).sum();
@@ -224,7 +227,10 @@ fn content(
                 .child(
                     Button::new()
                         .ghost()
-                        .on_press(move |_| cancel.close_optional_mods(OptionalModsOutcome::Cancel))
+                        .on_press(move |_| {
+                            picked.set(Picked::new());
+                            cancel.close_optional_mods(OptionalModsOutcome::Cancel);
+                        })
                         .text("Cancel"),
                 )
                 .child({
@@ -233,6 +239,7 @@ fn content(
                     Button::new()
                         .primary()
                         .on_press(move |_| {
+                            picked.set(Picked::new());
                             apply.record_skipped_optional_mods(skip.clone());
                             apply.enable_optional_mods(enable.clone());
                         })

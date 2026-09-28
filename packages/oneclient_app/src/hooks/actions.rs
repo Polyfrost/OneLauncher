@@ -733,20 +733,8 @@ impl Actions {
         self.with_engine(move |state| state.notifications.open_optional_mods(groups, done));
     }
 
-    pub fn close_optional_mods(&self) {
-        self.with_engine(|state| {
-            state
-                .notifications
-                .finish_optional_mods(OptionalModsOutcome::Launch)
-        });
-    }
-
-    pub fn cancel_optional_mods(&self) {
-        self.with_engine(|state| {
-            state
-                .notifications
-                .finish_optional_mods(OptionalModsOutcome::Cancel)
-        });
+    pub fn close_optional_mods(&self, outcome: OptionalModsOutcome) {
+        self.with_engine(move |state| state.notifications.finish_optional_mods(outcome));
     }
 
     pub fn record_skipped_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
@@ -776,7 +764,7 @@ impl Actions {
     /// `mods/` once at startup, so finishing after the process starts is useless
     pub fn enable_optional_mods(&self, mods: Vec<(ClusterId, OptionalModRef)>) {
         if mods.is_empty() {
-            self.close_optional_mods();
+            self.close_optional_mods(OptionalModsOutcome::Launch);
             return;
         }
 
@@ -788,7 +776,7 @@ impl Actions {
 
         spawn_forever(async move {
             let Ok(state) = launcher::state() else {
-                actions.close_optional_mods();
+                actions.close_optional_mods(OptionalModsOutcome::Launch);
                 return;
             };
             let content = state.services.content();
@@ -894,7 +882,7 @@ impl Actions {
                     .send();
             }
 
-            actions.close_optional_mods();
+            actions.close_optional_mods(OptionalModsOutcome::Launch);
         });
     }
 

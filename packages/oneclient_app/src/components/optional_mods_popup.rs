@@ -12,7 +12,9 @@ use crate::hooks::{
     package_meta_batch, use_cached_image, use_dispatch, use_notifications_snapshot,
     use_package_meta_batch,
 };
-use crate::notifications::{ClusterUpdateItem, OptionalModRef, OptionalModsGroup};
+use crate::notifications::{
+    ClusterUpdateItem, OptionalModRef, OptionalModsGroup, OptionalModsOutcome,
+};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -59,7 +61,7 @@ impl Component for OptionalModsPopup {
         let close = dispatch.clone();
 
         OverlayPopup::new()
-            .on_close(move |_| close.cancel_optional_mods())
+            .on_close(move |_| close.close_optional_mods(OptionalModsOutcome::Cancel))
             .child(
                 rect()
                     .width(Size::window_percent(100.))
@@ -222,7 +224,7 @@ fn content(
                 .child(
                     Button::new()
                         .ghost()
-                        .on_press(move |_| cancel.cancel_optional_mods())
+                        .on_press(move |_| cancel.close_optional_mods(OptionalModsOutcome::Cancel))
                         .text("Cancel"),
                 )
                 .child({

@@ -419,6 +419,7 @@ mod tests {
                 .collect(),
             archive: archive("performance", true, files),
             has_updates: false,
+            opted_in: true,
         }]
     }
 

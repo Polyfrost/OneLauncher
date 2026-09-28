@@ -837,6 +837,8 @@ pub async fn get_bundles_with_update_status(
         })
         .collect();
 
+    let live_bundles = live_bundle_names(&bundle_packages, &overrides);
+
     let archives = bundles
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
@@ -894,6 +896,7 @@ pub async fn get_bundles_with_update_status(
         }
 
         results.push(BundleWithUpdateStatus {
+            opted_in: live_bundles.contains(&archive.manifest.name),
             archive,
             files,
             has_updates,
@@ -931,25 +934,30 @@ async fn addition_eligible_bundles(
     let (live_managed_keys, _) =
         installed_bundle_keys(ctx, all_linked.iter().filter(|item| item.enabled)).await?;
 
-    let mut eligible: HashSet<String> = bundle_packages
-        .iter()
-        .filter(|bp| bp.enabled != 0)
-        .filter_map(|bp| bp.bundle_name.clone())
-        .collect();
-
+    let mut eligible = live_bundle_names(bundle_packages, overrides);
     eligible.extend(infer_bundle_names_from_unique_installed_keys(
         candidate_keys_by_bundle,
         &live_managed_keys,
     ));
 
-    eligible.extend(
-        overrides
-            .iter()
-            .filter(|o| OverrideType::parse(&o.override_type) == Some(OverrideType::Enabled))
-            .map(|o| o.bundle_name.clone()),
-    );
-
     Ok(eligible)
+}
+
+fn live_bundle_names(
+    bundle_packages: &[BundleTrackedArtifactRow],
+    overrides: &[ClusterBundleOverrideRow],
+) -> HashSet<String> {
+    bundle_packages
+        .iter()
+        .filter(|bp| bp.enabled != 0)
+        .filter_map(|bp| bp.bundle_name.clone())
+        .chain(
+            overrides
+                .iter()
+                .filter(|o| OverrideType::parse(&o.override_type) == Some(OverrideType::Enabled))
+                .map(|o| o.bundle_name.clone()),
+        )
+        .collect()
 }
 
 #[tracing::instrument(level = "debug", skip_all)]

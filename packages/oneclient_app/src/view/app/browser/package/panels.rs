@@ -1,6 +1,5 @@
 use super::*;
 
-use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::markdown::normalize_markdown;
 use oneclient_content::packages::types::{PackageBody, ProjectDetail, ReleaseType, VersionSummary};
 
@@ -106,9 +105,9 @@ pub(super) fn versions_panel(
     versions: Vec<VersionSummary>,
     total_versions: usize,
     versions_page: State<usize>,
-    provider: ProviderId,
     project_id: String,
     installer: Installer,
+    on_remove: EventHandler<(String, String)>,
     installed: Option<Installed>,
     installing: bool,
 ) -> impl IntoElement {
@@ -142,9 +141,9 @@ pub(super) fn versions_panel(
                     .is_some_and(|installed| installed.is_duplicated());
                 version_row(
                     v,
-                    provider,
                     project_id.clone(),
                     installer.clone(),
+                    on_remove.clone(),
                     tag,
                     duplicated,
                     installing,
@@ -214,9 +213,9 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
 
 fn version_row(
     v: VersionSummary,
-    provider: ProviderId,
     project_id: String,
     installer: Installer,
+    on_remove: EventHandler<(String, String)>,
     installed: Option<InstalledVersion>,
     // Saying which version is live only tells the user anything when there are several
     duplicated: bool,
@@ -280,7 +279,7 @@ fn version_row(
                 .map(|installed| activity_badge(installed.enabled).into_element()),
         )
         .child(version_button(
-            installed, v.name, provider, project_id, version_id, installer, installing,
+            installed, v.name, project_id, version_id, installer, on_remove, installing,
         ))
 }
 
@@ -288,10 +287,10 @@ fn version_row(
 fn version_button(
     installed: Option<InstalledVersion>,
     version_name: String,
-    provider: ProviderId,
     project_id: String,
     version_id: String,
     installer: Installer,
+    on_remove: EventHandler<(String, String)>,
     busy: bool,
 ) -> impl IntoElement {
     let Some(installed) = installed else {
@@ -302,7 +301,6 @@ fn version_button(
             .on_press(move |_| installer.install(project_id.clone(), version_id.clone()))
             .text("Install");
     };
-    let (cluster_id, dispatch) = (installer.cluster_id, installer.dispatch);
 
     let Some(hash) = installed.hash else {
         return Button::new()
@@ -316,15 +314,7 @@ fn version_button(
         .danger()
         .small()
         .enabled(!busy)
-        .on_press(move |_| {
-            dispatch.remove_package_version(
-                cluster_id,
-                provider,
-                project_id.clone(),
-                hash.clone(),
-                version_name.clone(),
-            );
-        })
+        .on_press(move |_| on_remove.call((version_name.clone(), hash.clone())))
         .text("Remove")
 }
 

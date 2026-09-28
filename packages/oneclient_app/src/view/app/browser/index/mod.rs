@@ -91,7 +91,7 @@ fn type_title(package_type: &str) -> &'static str {
         .map_or("Mods", |(_, title)| *title)
 }
 
-fn encode_package_id(provider: ProviderId, id: &str) -> String {
+pub(crate) fn encode_package_id(provider: ProviderId, id: &str) -> String {
     format!("{}:{}", provider as u8, id)
 }
 

@@ -2,7 +2,7 @@ mod index;
 mod package;
 
 pub use index::Browser;
-pub(crate) use index::browsable_type;
+pub(crate) use index::{browsable_type, encode_package_id};
 
 mod world_prompt;
 use world_prompt::WorldInstallPrompt;

@@ -3,7 +3,9 @@ use std::collections::{HashMap, HashSet};
 use freya::prelude::*;
 use oneclient_common::search::{MatchScore, SearchQuery};
 use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
-use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
+use oneclient_core::{
+    BundleFileKind, BundleWithUpdateStatus, FileUpdateStatus, LinkedArtifactInfo,
+};
 use oneclient_db::models::OverrideType;
 
 use crate::components::{CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry};
@@ -53,11 +55,22 @@ fn provider_project_ids(
     ids
 }
 
-fn local_project_ids(content: &[LinkedArtifactInfo], content_type: ContentType) -> Vec<String> {
+fn local_project_ids(
+    content: &[LinkedArtifactInfo],
+    bundles: &[BundleWithUpdateStatus],
+    content_type: ContentType,
+) -> Vec<String> {
+    let bundled = bundles
+        .iter()
+        .flat_map(|bundle| &bundle.files)
+        .filter(|(file, _status)| file.content_type() == content_type)
+        .filter(|(file, _status)| matches!(file.kind, BundleFileKind::External { .. }))
+        .map(|(file, _status)| file.kind.metadata_id());
     content
         .iter()
         .filter(|info| info.content_type == content_type && info.provider.is_none())
         .map(|info| info.hash.clone())
+        .chain(bundled)
         .collect()
 }
 
@@ -75,7 +88,10 @@ pub fn use_content_meta(
         }
     }
 
-    let local = use_package_meta_batch(ProviderId::Local, local_project_ids(content, content_type));
+    let local = use_package_meta_batch(
+        ProviderId::Local,
+        local_project_ids(content, bundles, content_type),
+    );
     for (hash, meta) in package_meta_batch(&local) {
         out.insert((ProviderId::Local, hash), meta);
     }
@@ -118,7 +134,7 @@ pub fn bundle_packages(
     for bundle in bundles {
         let bundle_name = &bundle.archive.manifest.name;
         let category = bundle.archive.manifest.category.clone();
-        for (file, _status) in &bundle.files {
+        for (file, status) in &bundle.files {
             if file.content_type() != content_type {
                 continue;
             }
@@ -131,14 +147,24 @@ pub fn bundle_packages(
                 continue;
             }
 
-            let provider = match &file.kind {
-                BundleFileKind::Managed { provider, .. } => *provider,
-                BundleFileKind::External(_) => ProviderId::Local,
-            };
-            let installed_info = by_project
-                .get(pid.as_str())
-                .or_else(|| by_hash.get(pid.as_str()))
-                .copied();
+            let provider = file.kind.metadata_provider();
+            let installed_info = match &file.kind {
+                BundleFileKind::Managed { .. } => by_project
+                    .get(pid.as_str())
+                    .or_else(|| by_hash.get(pid.as_str())),
+                BundleFileKind::External { file: ext, .. } => {
+                    let hash = match status {
+                        FileUpdateStatus::UpdateAvailable {
+                            installed_version_id,
+                            ..
+                        } => installed_version_id,
+                        _ => &ext.sha1,
+                    };
+                    seen.insert(hash.clone());
+                    by_hash.get(hash.as_str())
+                }
+            }
+            .copied();
             let ov = overrides
                 .get(&(bundle_name.clone(), pid.clone()))
                 .map(String::as_str);
@@ -161,8 +187,9 @@ pub fn bundle_packages(
                 categories,
                 enabled,
                 file.enabled,
+                file.is_github_hosted(),
                 installed_info,
-                meta,
+                meta.get(&(provider, file.kind.metadata_id())),
                 file.display_name(),
                 false,
                 // Flagged rather than dropped `HiddenFilter` filters on the row and the seen id stops the loose-content pass resurrecting it as a local file
@@ -180,6 +207,7 @@ pub fn bundle_packages(
         let provider = info.provider.unwrap_or(ProviderId::Local);
         let pid = info.project_id.clone().unwrap_or_else(|| info.hash.clone());
         let outdated = stale.contains(&info.hash);
+        let row_meta = meta.get(&(provider, pid.clone()));
         rows.push(make_row(
             pid,
             None,
@@ -188,8 +216,9 @@ pub fn bundle_packages(
             Vec::new(),
             info.enabled,
             true,
+            false,
             Some(info),
-            meta,
+            row_meta,
             info.display_name
                 .clone()
                 .unwrap_or_else(|| info.file_name.clone()),
@@ -210,13 +239,13 @@ fn make_row(
     categories: Vec<String>,
     enabled: bool,
     manifest_default: bool,
+    github_hosted: bool,
     installed_info: Option<&LinkedArtifactInfo>,
-    meta: &PackageMetaMap,
+    m: Option<&CachedPackageMeta>,
     fallback_name: String,
     update_available: bool,
     hidden: bool,
 ) -> PackageEntry {
-    let m = meta.get(&(provider, package_id.clone()));
     let name = m
         .map(|p| p.name.clone())
         .filter(|s| !s.is_empty())
@@ -238,6 +267,7 @@ fn make_row(
         package_id,
         bundle_name,
         provider,
+        github_hosted,
         name,
         file_name,
         author,
@@ -269,7 +299,7 @@ impl Tab {
         match self {
             Tab::All => "All".to_string(),
             Tab::Category(c) => c.clone(),
-            Tab::Browser => "Browser".to_string(),
+            Tab::Browser => "Online".to_string(),
             Tab::Local => "Local".to_string(),
         }
     }
@@ -278,8 +308,8 @@ impl Tab {
         match self {
             Tab::All => true,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
-            Tab::Browser => p.is_remote() && !p.in_bundle(),
-            Tab::Local => !p.is_remote(),
+            Tab::Browser => (p.is_remote() || p.github_hosted) && !p.in_bundle(),
+            Tab::Local => !p.is_remote() && !p.github_hosted,
         }
     }
 }
@@ -332,7 +362,7 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
         }
     }
 
-    // Category tabs are hidden when empty All + Browser + Local are always shown
+    // Category tabs are hidden when empty All + Online + Local are always shown
     let mut tabs: Vec<Tab> = vec![Tab::All];
     tabs.extend(
         cats.into_iter()

@@ -24,9 +24,6 @@ pub struct RemoteCluster {
     pub long_description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
-    /// Default for every entry in this cluster an entry's own key wins
-    #[serde(default)]
-    pub predownload: Option<bool>,
     #[serde(default)]
     pub entries: Vec<RemoteEntry>,
 }
@@ -46,8 +43,6 @@ pub struct RemoteEntry {
     pub long_description: Option<String>,
     #[serde(default)]
     pub tags: Option<Vec<String>>,
-    #[serde(default)]
-    pub predownload: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -107,8 +102,6 @@ pub struct VersionMetadata {
     pub art_url: Option<String>,
     pub long_description: Option<String>,
     pub tags: Vec<String>,
-    /// Fetched up front during onboarding rather than on first launch
-    pub predownload: bool,
 }
 
 impl VersionMetadata {
@@ -151,7 +144,6 @@ impl VersionsManifest {
                 art_url: art_url(&cluster.art, meta_url_base),
                 long_description: cluster.long_description.clone(),
                 tags: cluster.tags.clone(),
-                predownload: cluster.predownload.unwrap_or(false),
             });
 
             for entry in &cluster.entries {
@@ -168,7 +160,6 @@ impl VersionsManifest {
                         .clone()
                         .or_else(|| cluster.long_description.clone()),
                     tags: entry.tags.clone().unwrap_or_else(|| cluster.tags.clone()),
-                    predownload: entry.predownload.or(cluster.predownload).unwrap_or(false),
                 });
             }
         }
@@ -213,39 +204,6 @@ mod tests {
             .expect("entry present");
         assert_eq!(entry.patch_version, Some(2));
         assert_eq!(entry.key(), Some((1, Some(2))));
-    }
-
-    #[test]
-    fn predownload_inherits_from_cluster_and_entry_overrides() {
-        let manifest: VersionsManifest = serde_json::from_str(
-            r#"{"clusters":[
-                {"major_version":26,"predownload":true,"entries":[
-                    {"minor_version":1},
-                    {"minor_version":2,"predownload":false}
-                ]},
-                {"major_version":21,"entries":[
-                    {"minor_version":1},
-                    {"minor_version":11,"predownload":true}
-                ]}
-            ]}"#,
-        )
-        .expect("should parse");
-
-        let metadata = manifest.metadata("https://example.test");
-        let flag = |major: u32, minor: Option<u32>| {
-            metadata
-                .iter()
-                .find(|m| m.major_version == major && m.minor_version == minor)
-                .expect("row present")
-                .predownload
-        };
-
-        assert!(flag(26, None));
-        assert!(flag(26, Some(1)));
-        assert!(!flag(26, Some(2)));
-        assert!(flag(21, Some(11)));
-        assert!(!flag(21, None));
-        assert!(!flag(21, Some(1)));
     }
 
     #[test]

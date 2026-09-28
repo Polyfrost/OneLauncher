@@ -14,14 +14,14 @@ pub use overlay_claims::{
 pub use view_state::{PersistedView, use_view_state};
 
 pub use active_cluster::{
-    ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserTypeState, BrowserUiState,
-    DataPackWorldState, LinkConfirmState, OnboardingSelectionState, SplashState,
-    StartMaximizedState, use_active_cluster_id, use_browser_compat, use_browser_state_store,
-    use_browser_type, use_datapack_world, use_link_confirm, use_onboarding_selection,
-    use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
-    use_provide_browser_type, use_provide_datapack_world, use_provide_link_confirm,
-    use_provide_onboarding_selection, use_provide_splash, use_provide_start_maximized, use_splash,
-    use_start_maximized,
+    ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
+    BrowserTypeState, BrowserUiState, DataPackWorldState, LinkConfirmState,
+    OnboardingSelectionState, SplashState, StartMaximizedState, use_active_cluster_id,
+    use_browser_compat, use_browser_state_store, use_browser_type, use_datapack_world,
+    use_link_confirm, use_onboarding_selection, use_provide_active_cluster,
+    use_provide_browser_compat, use_provide_browser_state, use_provide_browser_type,
+    use_provide_datapack_world, use_provide_link_confirm, use_provide_onboarding_selection,
+    use_provide_splash, use_provide_start_maximized, use_splash, use_start_maximized,
 };
 
 pub use actions::{Actions, NotificationBuilder, PumpSignal};

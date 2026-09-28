@@ -17,9 +17,9 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, disable_was_deliberate, find_user_suppression,
-    heal_bundle_activity, install_package_from_bundle, remove_artifact_from_cluster,
-    set_artifact_enabled_to,
+    BUNDLE_INSTALL_CONCURRENCY, disable_was_deliberate, external_ids_by_sha1,
+    find_user_suppression, heal_bundle_activity, install_package_from_bundle,
+    remove_artifact_from_cluster, set_artifact_enabled_to,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -207,7 +207,7 @@ async fn check_bundle_updates_inner(
         .map(|a| a.manifest.name.as_str())
         .collect();
 
-    let external_ids = shipped_external_ids(&archives);
+    let external_ids = external_ids_by_sha1(&archives);
     let mut updates_available = Vec::new();
     let mut removals_available = Vec::new();
 
@@ -806,7 +806,7 @@ pub async fn get_bundles_with_update_status(
     let archives = bundles
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
-    let external_ids = shipped_external_ids(&archives);
+    let external_ids = external_ids_by_sha1(&archives);
 
     let mut installed_map: HashMap<String, &BundleTrackedArtifactRow> = HashMap::new();
     for bundle_pkg in &bundle_packages {
@@ -869,26 +869,22 @@ pub async fn get_bundles_with_update_status(
 fn bundle_package_key(
     bundle_pkg: &BundleTrackedArtifactRow,
     linked: &HashMap<String, &LinkedArtifactInfo>,
-    external_ids: &HashSet<String>,
+    external_ids: &HashMap<String, String>,
     package_id: &str,
 ) -> String {
+    if package_id == bundle_pkg.hash {
+        return external_bundle_key(
+            external_ids
+                .get(package_id)
+                .map_or(package_id, String::as_str),
+        );
+    }
     let provider = linked.get(&bundle_pkg.hash).and_then(|info| info.provider);
-    if package_id == bundle_pkg.hash || (provider.is_none() && external_ids.contains(package_id)) {
+    if provider.is_none() && external_ids.values().any(|id| id == package_id) {
         external_bundle_key(package_id)
     } else {
         managed_bundle_key(provider.unwrap_or(ProviderId::Modrinth), package_id)
     }
-}
-
-fn shipped_external_ids(archives: &[BundleArchive]) -> HashSet<String> {
-    archives
-        .iter()
-        .flat_map(|archive| &archive.manifest.files)
-        .filter_map(|file| match &file.kind {
-            BundleFileKind::External { id: Some(id), .. } => Some(id.clone()),
-            _ => None,
-        })
-        .collect()
 }
 
 /// Stricter than subscription

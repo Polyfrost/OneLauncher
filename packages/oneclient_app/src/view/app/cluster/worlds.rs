@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::WorldInfo;
@@ -7,9 +9,9 @@ use crate::components::{
     on_secondary,
 };
 use crate::hooks::{
-    delete_world, query_is_loading, settled_or_loading, spawn_world_task, try_cluster_worlds,
-    try_world_size, use_cluster, use_cluster_worlds, use_clusters, use_dispatch, use_game_snapshot,
-    use_saves_folder_watch, use_view_state, use_world_size,
+    delete_world, query_is_loading, spawn_world_task, try_cluster_worlds, try_world_size,
+    use_cluster, use_cluster_worlds, use_datapack_world, use_dispatch, use_saves_folder_watch,
+    use_view_state, use_world_size,
 };
 use crate::layout::cluster_content;
 use crate::routes::Route;
@@ -20,7 +22,8 @@ use crate::utils::format_size;
 use super::cluster_not_found;
 use super::folder_list::{
     CardIcon, RowHeights, card_icon, confirm_dialog, content_box, folder_button, layout_toggle,
-    matches_search, search_input, supports_datapacks, toolbar_panel,
+    matches_search, notify_in_use, search_input, supports_datapacks, toolbar_panel,
+    use_game_folder_in_use,
 };
 use super::package_manager::{empty_hint, empty_shell, empty_title};
 
@@ -41,42 +44,35 @@ pub struct ClusterWorlds {
     pub cluster_id: i64,
 }
 
-fn notify_in_use(dispatch: &crate::Actions) {
-    dispatch
-        .notify("Close Minecraft first")
-        .body("Worlds can't be deleted while a version using this game folder is running.")
-        .error()
-        .send();
-}
-
-fn open_datapacks(cluster_id: i64, world: String) {
-    let _ = RouterContext::get().push(Route::ClusterDataPacks { cluster_id, world });
+fn open_datapacks(cluster_id: i64, world: String, mut remembered: State<HashMap<i64, String>>) {
+    remembered.write().insert(cluster_id, world);
+    let _ = RouterContext::get().push(Route::ClusterDataPacks { cluster_id });
 }
 
 impl Component for ClusterWorlds {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
-        let Some(cluster) = use_cluster(cluster_id) else {
-            return cluster_not_found();
-        };
-        let saves = cluster.game_dir().ok().map(|d| d.join("saves"));
-        let shared = !cluster.uses_dedicated_dir();
-        let datapacks = supports_datapacks(&cluster.mc_version);
+        let cluster = use_cluster(cluster_id);
+        let saves = cluster
+            .as_ref()
+            .and_then(|c| c.game_dir().ok())
+            .map(|d| d.join("saves"));
 
         let query = use_cluster_worlds(cluster_id);
         use_saves_folder_watch(saves.clone(), query);
         let dispatch = use_dispatch();
-        let game = use_game_snapshot();
-        let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
-        let in_use = game.is_active(cluster_id)
-            || (shared
-                && clusters
-                    .iter()
-                    .any(|c| game.is_active(c.id) && !c.uses_dedicated_dir()));
+        let in_use = use_game_folder_in_use(cluster.as_ref());
+        let remembered = use_datapack_world();
         let search = use_state(String::new);
         let layout = use_view_state("cluster.worlds").layout;
         let mut menu = use_state(|| None::<(f32, f32, WorldInfo)>);
         let mut pending_delete = use_state(|| None::<String>);
+
+        let Some(cluster) = cluster else {
+            return cluster_not_found();
+        };
+        let shared = !cluster.uses_dedicated_dir();
+        let datapacks = supports_datapacks(&cluster.mc_version);
 
         let all = try_cluster_worlds(&query).unwrap_or_default();
         let needle = search.read().trim().to_lowercase();
@@ -98,7 +94,8 @@ impl Component for ClusterWorlds {
                     info,
                     layout: card_layout,
                     on_press: datapacks.then(|| {
-                        (move |()| open_datapacks(cluster_id, press_world.clone())).into()
+                        (move |()| open_datapacks(cluster_id, press_world.clone(), remembered))
+                            .into()
                     }),
                     on_context: (move |(x, y)| menu.set(Some((x, y, menu_info.clone())))).into(),
                 }
@@ -137,7 +134,7 @@ impl Component for ClusterWorlds {
             let mut context = ContextMenu::new(x, y).title(info.folder_name.clone());
             if datapacks {
                 context = context.action(IconType::Database01, "Data packs", move |()| {
-                    open_datapacks(cluster_id, open_world.clone())
+                    open_datapacks(cluster_id, open_world.clone(), remembered)
                 });
             }
             context
@@ -149,7 +146,7 @@ impl Component for ClusterWorlds {
                     let dispatch = dispatch.clone();
                     move |()| {
                         if in_use {
-                            notify_in_use(&dispatch);
+                            notify_in_use(&dispatch, "Worlds");
                         } else {
                             pending_delete.set(Some(target_world.clone()));
                         }
@@ -175,7 +172,7 @@ impl Component for ClusterWorlds {
                     move || {
                         pending_delete.set(None);
                         if in_use {
-                            notify_in_use(&dispatch);
+                            notify_in_use(&dispatch, "Worlds");
                             return;
                         }
                         spawn_world_task(

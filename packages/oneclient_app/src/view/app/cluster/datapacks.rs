@@ -18,7 +18,8 @@ use crate::{Actions, Route};
 use super::cluster_not_found;
 use super::folder_list::{
     CardIcon, FolderCard, PACKAGE_ROWS, confirm_dialog, content_box, folder_button, layout_toggle,
-    matches_search, search_input, toolbar_action, toolbar_panel,
+    matches_search, notify_in_use, search_input, toolbar_action, toolbar_panel,
+    use_game_folder_in_use,
 };
 use super::package_manager::{empty_hint, empty_shell, empty_title};
 
@@ -27,7 +28,6 @@ const WORLD_PICKER_W: f32 = 220.;
 #[derive(PartialEq)]
 pub struct ClusterDataPacks {
     pub cluster_id: i64,
-    pub world: String,
 }
 
 fn pick_and_add(cluster_id: i64, world: String, dispatch: Actions) {
@@ -61,23 +61,23 @@ fn browse(cluster_id: i64, world: String, mut remembered: State<HashMap<i64, Str
 impl Component for ClusterDataPacks {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
-        let requested_world = self.world.clone();
         let cluster = use_cluster(cluster_id);
 
         let worlds_query = use_cluster_worlds(cluster_id);
         let worlds = try_cluster_worlds(&worlds_query).unwrap_or_default();
         let names: Vec<String> = worlds.iter().map(|w| w.folder_name.clone()).collect();
 
-        let mut picked = use_state(|| None::<String>);
-        let current = [picked.read().clone(), Some(requested_world)]
-            .into_iter()
-            .flatten()
-            .find(|name| names.contains(name))
+        let mut remembered = use_datapack_world();
+        let current = remembered
+            .read()
+            .get(&cluster_id)
+            .filter(|name| names.contains(name))
+            .cloned()
             .or_else(|| names.first().cloned());
 
         let packs_query = use_world_datapacks(cluster_id, current.clone().unwrap_or_default());
         let dispatch = use_dispatch();
-        let remembered = use_datapack_world();
+        let in_use = use_game_folder_in_use(cluster.as_ref());
         let search = use_state(String::new);
         let layout = use_view_state("cluster.datapacks").layout;
         let mut menu = use_state(|| None::<(f32, f32, DataPackInfo)>);
@@ -216,7 +216,7 @@ impl Component for ClusterDataPacks {
             )
             .on_select(move |idx: usize| {
                 if let Some(name) = picker_names.get(idx) {
-                    picked.set(Some(name.clone()));
+                    remembered.write().insert(cluster_id, name.clone());
                 }
             })
             .into_element();
@@ -251,8 +251,15 @@ impl Component for ClusterDataPacks {
                     }
                 })
                 .separator()
-                .danger_action(IconType::Trash01, "Delete", move |()| {
-                    pending_delete.set(Some(delete_name.clone()))
+                .danger_action(IconType::Trash01, "Delete", {
+                    let dispatch = dispatch.clone();
+                    move |()| {
+                        if in_use {
+                            notify_in_use(&dispatch, "Data packs");
+                        } else {
+                            pending_delete.set(Some(delete_name.clone()));
+                        }
+                    }
                 })
                 .on_close(move |_| menu.set(None))
                 .into_element()
@@ -270,6 +277,10 @@ impl Component for ClusterDataPacks {
                     let dispatch = dispatch.clone();
                     move || {
                         pending_delete.set(None);
+                        if in_use {
+                            notify_in_use(&dispatch, "Data packs");
+                            return;
+                        }
                         spawn_world_task(
                             dispatch.clone(),
                             "Couldn't delete data pack",

@@ -15,7 +15,7 @@ use crate::Route;
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{
     add_world_datapacks, settled_or_loading, spawn_world_task, try_cluster_worlds,
-    use_active_cluster_id, use_cluster_worlds, use_clusters, use_dispatch,
+    use_active_cluster_id, use_cluster_worlds, use_clusters, use_datapack_world, use_dispatch,
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -79,14 +79,7 @@ fn route_target(route: &Route) -> Option<(ClusterId, ContentType)> {
         Route::ClusterMods { cluster_id } => Some((*cluster_id, ContentType::Mod)),
         Route::ClusterShaders { cluster_id } => Some((*cluster_id, ContentType::Shader)),
         Route::ClusterTextures { cluster_id } => Some((*cluster_id, ContentType::ResourcePack)),
-        Route::ClusterDataPacks { cluster_id, .. } => Some((*cluster_id, ContentType::DataPack)),
-        _ => None,
-    }
-}
-
-fn route_world(route: &Route) -> Option<String> {
-    match route {
-        Route::ClusterDataPacks { world, .. } if !world.is_empty() => Some(world.clone()),
+        Route::ClusterDataPacks { cluster_id } => Some((*cluster_id, ContentType::DataPack)),
         _ => None,
     }
 }
@@ -207,8 +200,7 @@ impl Component for DropPrompt {
         let target = route_target(&route);
         let initial_cluster = target.map(|(id, _)| id).or(*active_cluster.peek());
         let selected_cluster = use_state(move || initial_cluster);
-        let initial_world = route_world(&route);
-        let selected_world = use_state(move || initial_world);
+        let remembered_world = use_datapack_world();
         // Absent entries fall back to the inferred type covering drops landing mid-prompt
         let overrides = use_state(HashMap::<PathBuf, ContentType>::new);
 
@@ -236,7 +228,7 @@ impl Component for DropPrompt {
                 target.map(|(_, ct)| ct),
                 selected_cluster,
                 &worlds,
-                selected_world,
+                remembered_world,
                 overrides,
                 dispatch,
                 pending,
@@ -338,7 +330,7 @@ fn prompt_body(
     route_type: Option<ContentType>,
     selected_cluster: State<Option<ClusterId>>,
     worlds: &[String],
-    selected_world: State<Option<String>>,
+    remembered_world: State<HashMap<ClusterId, String>>,
     overrides: State<HashMap<PathBuf, ContentType>>,
     dispatch: crate::Actions,
     mut pending: State<Vec<PathBuf>>,
@@ -361,10 +353,11 @@ fn prompt_body(
         .collect();
 
     let has_datapacks = resolved.iter().any(|(_, ct)| *ct == ContentType::DataPack);
-    let world = selected_world
+    let world = remembered_world
         .read()
-        .clone()
+        .get(&cluster_id)
         .filter(|name| worlds.contains(name))
+        .cloned()
         .or_else(|| worlds.first().cloned());
     let can_import = !has_datapacks || world.is_some();
 
@@ -408,7 +401,10 @@ fn prompt_body(
             "Pick a cluster, then check what each one gets installed as.".to_string(),
         ))
         .child(cluster_field(clusters, cluster_idx, selected_cluster))
-        .maybe_child(has_datapacks.then(|| world_field(worlds, world.as_deref(), selected_world)))
+        .maybe_child(
+            has_datapacks
+                .then(|| world_field(worlds, world.as_deref(), cluster_id, remembered_world)),
+        )
         .child(file_field(&resolved, overrides))
         .child(
             rect()
@@ -481,7 +477,8 @@ fn cluster_field(
 fn world_field(
     worlds: &[String],
     current: Option<&str>,
-    mut selected: State<Option<String>>,
+    cluster_id: ClusterId,
+    mut remembered: State<HashMap<ClusterId, String>>,
 ) -> Element {
     let Some(current) = current else {
         return field(
@@ -502,7 +499,7 @@ fn world_field(
             .height(Size::px(32.))
             .on_select(move |idx: usize| {
                 if let Some(name) = names.get(idx) {
-                    selected.set(Some(name.clone()));
+                    remembered.write().insert(cluster_id, name.clone());
                 }
             }),
     )

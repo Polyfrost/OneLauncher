@@ -56,10 +56,7 @@ impl ClusterViewShellTab {
             Self::Shaders => Some(Route::ClusterShaders { cluster_id }),
             Self::Textures => Some(Route::ClusterTextures { cluster_id }),
             Self::Worlds => Some(Route::ClusterWorlds { cluster_id }),
-            Self::DataPacks => Some(Route::ClusterDataPacks {
-                cluster_id,
-                world: String::new(),
-            }),
+            Self::DataPacks => Some(Route::ClusterDataPacks { cluster_id }),
             Self::Settings => Some(Route::ClusterSettings { cluster_id }),
         }
     }
@@ -96,7 +93,7 @@ fn route_cluster(route: &Route) -> Option<(i64, ClusterViewShellTab)> {
         Route::ClusterShaders { cluster_id } => (*cluster_id, ClusterViewShellTab::Shaders),
         Route::ClusterTextures { cluster_id } => (*cluster_id, ClusterViewShellTab::Textures),
         Route::ClusterWorlds { cluster_id } => (*cluster_id, ClusterViewShellTab::Worlds),
-        Route::ClusterDataPacks { cluster_id, .. } => (*cluster_id, ClusterViewShellTab::DataPacks),
+        Route::ClusterDataPacks { cluster_id } => (*cluster_id, ClusterViewShellTab::DataPacks),
         Route::ClusterSettings { cluster_id } => (*cluster_id, ClusterViewShellTab::Settings),
         _ => return None,
     })

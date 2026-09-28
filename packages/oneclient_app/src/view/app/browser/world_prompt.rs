@@ -34,15 +34,12 @@ impl Component for WorldInstallPrompt {
             .map(|w| w.folder_name)
             .collect();
 
-        let mut picked = use_state(|| None::<String>);
-        let world = [
-            picked.read().clone(),
-            remembered.peek().get(&cluster_id).cloned(),
-        ]
-        .into_iter()
-        .flatten()
-        .find(|name| names.contains(name))
-        .or_else(|| names.first().cloned());
+        let world = remembered
+            .read()
+            .get(&cluster_id)
+            .filter(|name| names.contains(name))
+            .cloned()
+            .or_else(|| names.first().cloned());
 
         let control = match &world {
             Some(current) => {
@@ -57,7 +54,7 @@ impl Component for WorldInstallPrompt {
                     )
                     .on_select(move |idx: usize| {
                         if let Some(name) = options.get(idx) {
-                            picked.set(Some(name.clone()));
+                            remembered.write().insert(cluster_id, name.clone());
                         }
                     })
                     .into_element()

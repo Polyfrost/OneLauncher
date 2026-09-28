@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use freya::prelude::*;
 use oneclient_common::parse_mc_version;
+use oneclient_core::clusters::Cluster;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
@@ -9,7 +10,9 @@ use crate::components::{
     IconType, LocalImage, OverlayPopup, ScrollArea, Segment, SegmentedControl, TextInput, badge,
     icon_box, kebab_button, meta_size, meta_text, on_secondary, open_folder_button,
 };
-use crate::hooks::{loaded_image, use_cached_image};
+use crate::hooks::{
+    loaded_image, settled_or_loading, use_cached_image, use_clusters, use_game_snapshot,
+};
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 
@@ -33,6 +36,29 @@ pub(super) const PACKAGE_ROWS: RowHeights = RowHeights {
 
 pub(crate) fn supports_datapacks(mc_version: &str) -> bool {
     parse_mc_version(mc_version).is_none_or(|p| p.major >= FIRST_DATAPACK_MAJOR)
+}
+
+pub(super) fn use_game_folder_in_use(cluster: Option<&Cluster>) -> bool {
+    let game = use_game_snapshot();
+    let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
+
+    cluster.is_some_and(|cluster| {
+        game.is_active(cluster.id)
+            || (!cluster.uses_dedicated_dir()
+                && clusters
+                    .iter()
+                    .any(|c| game.is_active(c.id) && !c.uses_dedicated_dir()))
+    })
+}
+
+pub(super) fn notify_in_use(dispatch: &crate::Actions, what: &str) {
+    dispatch
+        .notify("Close Minecraft first")
+        .body(format!(
+            "{what} can't be deleted while a version using this game folder is running."
+        ))
+        .error()
+        .send();
 }
 
 pub(super) fn matches_search(needle: &str, fields: &[&str]) -> bool {

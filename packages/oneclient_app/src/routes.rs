@@ -82,8 +82,8 @@ pub enum Route {
                 ClusterTextures { cluster_id: i64 },
                 #[route("/app/clusters/:cluster_id/worlds")]
                 ClusterWorlds { cluster_id: i64 },
-                #[route("/app/clusters/:cluster_id/datapacks?:world")]
-                ClusterDataPacks { cluster_id: i64, world: String },
+                #[route("/app/clusters/:cluster_id/datapacks")]
+                ClusterDataPacks { cluster_id: i64 },
                 #[route("/app/clusters/:cluster_id/settings")]
                 ClusterSettings { cluster_id: i64 },
             #[end_layout]

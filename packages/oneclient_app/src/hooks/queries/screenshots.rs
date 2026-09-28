@@ -7,7 +7,7 @@ use freya::query::{
     Mutation, MutationCapability, QueriesStorage, Query, QueryCapability, UseMutation, UseQuery,
     use_mutation, use_query,
 };
-use notify::{Event, EventKind, RecursiveMode};
+use notify::{Event, EventKind};
 use oneclient_core::{LauncherError, ScreenshotInfo};
 use tokio::sync::Semaphore;
 
@@ -90,12 +90,7 @@ pub fn use_screenshot_folder_watch(
     folder: Option<PathBuf>,
     query: UseQuery<ClusterScreenshotsQuery>,
 ) {
-    super::folder_watch::use_folder_watch(
-        folder,
-        RecursiveMode::NonRecursive,
-        touches_image,
-        move || query.invalidate(),
-    );
+    super::folder_watch::use_folder_watch(folder, false, touches_image, move || query.invalidate());
 }
 
 fn touches_image(_root: &Path, event: &Event) -> bool {

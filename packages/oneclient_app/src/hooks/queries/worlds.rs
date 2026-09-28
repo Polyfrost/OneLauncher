@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use freya::prelude::spawn_forever;
 use freya::query::{QueriesStorage, Query, QueryCapability, UseQuery, use_query};
-use notify::{Event, EventKind, RecursiveMode};
+use notify::{Event, EventKind};
 use oneclient_core::{ClusterError, DataPackInfo, LEVEL_DAT, LauncherError, WORLD_ICON, WorldInfo};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -105,12 +105,9 @@ pub fn use_world_datapacks(cluster_id: i64, world: String) -> UseQuery<WorldData
 }
 
 pub fn use_saves_folder_watch(folder: Option<PathBuf>, query: UseQuery<ClusterWorldsQuery>) {
-    super::folder_watch::use_folder_watch(
-        folder,
-        RecursiveMode::Recursive,
-        touches_world_list,
-        move || query.invalidate(),
-    );
+    super::folder_watch::use_folder_watch(folder, true, touches_world_list, move || {
+        query.invalidate()
+    });
 }
 
 fn touches_world_list(saves: &Path, event: &Event) -> bool {

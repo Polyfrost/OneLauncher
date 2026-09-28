@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
@@ -9,7 +10,7 @@ const WATCH_QUIET: Duration = Duration::from_millis(400);
 
 pub(super) fn use_folder_watch(
     folder: Option<PathBuf>,
-    mode: RecursiveMode,
+    watch_children: bool,
     relevant: fn(&Path, &Event) -> bool,
     on_change: impl Fn() + 'static,
 ) {
@@ -19,7 +20,7 @@ pub(super) fn use_folder_watch(
         };
 
         spawn(async move {
-            if let Err(err) = watch_folder(&folder, mode, relevant, on_change).await {
+            if let Err(err) = watch_folder(&folder, watch_children, relevant, on_change).await {
                 tracing::warn!(
                     folder = %folder.display(),
                     error = %err,
@@ -32,7 +33,7 @@ pub(super) fn use_folder_watch(
 
 async fn watch_folder(
     folder: &Path,
-    mode: RecursiveMode,
+    watch_children: bool,
     relevant: fn(&Path, &Event) -> bool,
     on_change: impl Fn(),
 ) -> notify::Result<()> {
@@ -48,7 +49,12 @@ async fn watch_folder(
             Ok(_) => {}
             Err(err) => tracing::debug!(error = %err, "folder watcher reported an error"),
         })?;
-    watcher.watch(folder, mode)?;
+    watcher.watch(folder, RecursiveMode::NonRecursive)?;
+
+    let mut children = HashSet::new();
+    if watch_children {
+        sync_children(&mut watcher, folder, &mut children);
+    }
 
     let mut pending = false;
     loop {
@@ -64,10 +70,40 @@ async fn watch_folder(
 
             () = quiet_period(pending) => {
                 pending = false;
+                if watch_children {
+                    sync_children(&mut watcher, folder, &mut children);
+                }
                 on_change();
             }
         }
     }
+}
+
+fn sync_children(watcher: &mut impl Watcher, folder: &Path, watched: &mut HashSet<PathBuf>) {
+    let current: HashSet<PathBuf> = std::fs::read_dir(folder)
+        .map(|entries| {
+            entries
+                .flatten()
+                .map(|entry| entry.path())
+                .filter(|path| path.is_dir())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let mut paths = watcher.paths_mut();
+    for gone in watched.difference(&current) {
+        let _ = paths.remove(gone);
+    }
+    for added in current.difference(watched) {
+        if let Err(err) = paths.add(added, RecursiveMode::NonRecursive) {
+            tracing::debug!(path = %added.display(), error = %err, "could not watch subfolder");
+        }
+    }
+    if let Err(err) = paths.commit() {
+        tracing::debug!(error = %err, "could not update subfolder watches");
+    }
+
+    *watched = current;
 }
 
 async fn quiet_period(pending: bool) {

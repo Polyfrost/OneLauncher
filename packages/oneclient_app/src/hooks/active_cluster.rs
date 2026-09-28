@@ -5,7 +5,6 @@ use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::SearchSort;
 use oneclient_db::models::ClusterId;
 
-use crate::essential::EssentialPackage;
 use crate::hooks::ClusterAction;
 
 #[derive(Clone)]
@@ -89,7 +88,8 @@ pub enum EssentialGuardKind {
 
 #[derive(Clone, PartialEq)]
 pub struct PendingEssential {
-    pub package: &'static EssentialPackage,
+    pub name: String,
+    pub body: String,
     pub kind: EssentialGuardKind,
     pub action: ClusterAction,
 }

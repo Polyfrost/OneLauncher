@@ -7,8 +7,9 @@ use oneclient_core::SeenStatus;
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
 use crate::essential::EssentialPackage;
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, ClusterMutation, PendingEssential, loaded_image, use_cached_image,
-    use_cluster_mutation, use_essential_guard,
+    ClusterAction, EssentialGuardKind, ClusterMutation, PendingEssential, disable_warnings,
+    loaded_image, use_cached_image, use_cluster_mutation, use_disable_warnings,
+    use_essential_guard,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -21,6 +22,10 @@ pub(crate) const CARD_H: f32 = 84.;
 pub(crate) const CARD_GRID_H: f32 = 112.;
 pub(crate) const GRID_GAP: f32 = 12.;
 pub(crate) const GRID_MIN_W: f32 = 290.;
+const GRID_CARD_PADDING: f32 = 14.;
+const BADGE_STRIP_H: f32 = 20.;
+const BADGE_STRIP_LIFT: f32 = 2.;
+const TAG_LETTER_SPACING: f32 = 0.6;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -133,7 +138,10 @@ impl Component for PackageRow {
         let layout = self.layout;
         let cluster = use_cluster_mutation();
         let guard = use_essential_guard();
+        let warnings_query = use_disable_warnings();
         let hovered = use_state(|| false);
+
+        let warning_body = disable_warning_body(&item, disable_warnings(&warnings_query));
 
         let icon_size = match layout {
             CardLayout::List => 44.,
@@ -148,7 +156,7 @@ impl Component for PackageRow {
             let package_id = item.package_id.clone();
             let enabled_now = item.enabled;
             let manifest_default = item.manifest_default;
-            let essential = item.essential;
+            let name = item.name.clone();
             let mut guard = guard;
             (move |()| {
                 let action = if let Some(h) = &hash {
@@ -169,9 +177,10 @@ impl Component for PackageRow {
                     return;
                 };
 
-                match essential.filter(|_| enabled_now) {
-                    Some(package) => guard.set(Some(PendingEssential {
-                        package,
+                match warning_body.clone().filter(|_| enabled_now) {
+                    Some(body) => guard.set(Some(PendingEssential {
+                        name: name.clone(),
+                        body,
                         kind: EssentialGuardKind::Disable,
                         action,
                     })),
@@ -196,6 +205,18 @@ impl Component for PackageRow {
                 hovered,
             ),
         }
+    }
+}
+
+fn disable_warning_body(
+    item: &PackageEntry,
+    warnings: Option<oneclient_core::DisableWarnings>,
+) -> Option<String> {
+    let bundled = item.in_bundle() && item.provider == ProviderId::Modrinth;
+
+    match warnings {
+        Some(warnings) if bundled => warnings.body_for(&item.package_id).map(str::to_string),
+        _ => item.essential.map(|package| package.disable_body.to_string()),
     }
 }
 
@@ -367,7 +388,13 @@ pub(crate) fn grid_card(
     let floating = (item.is_outdated() || item.recency_badge().is_some()).then(|| {
         rect()
             .horizontal()
-            .position(Position::new_absolute().bottom(10.).right(10.))
+            .width(Size::fill())
+            .height(Size::px(BADGE_STRIP_H))
+            .position(
+                Position::new_absolute()
+                    .bottom(-(GRID_CARD_PADDING + BADGE_STRIP_H / 2.) + BADGE_STRIP_LIFT),
+            )
+            .main_align(Alignment::End)
             .cross_align(Alignment::Center)
             .spacing(4.)
             .maybe_child(item.is_outdated().then(outdated_badge))
@@ -380,11 +407,10 @@ pub(crate) fn grid_card(
         .width(Size::fill())
         .height(Size::fill())
         .spacing(9.)
-        .padding(Gaps::new_all(14.))
+        .padding(Gaps::new_all(GRID_CARD_PADDING))
         .corner_radius(CornerRadius::new_all(6.))
         .background(bg.with_a(alpha))
         .border(border_all_color(1., border))
-        .overflow(Overflow::Clip)
         .content(Content::Flex)
         .cursor(CursorIcon::Pointer)
         .on_pointer_enter(move |_| hovered.set(true))
@@ -397,6 +423,7 @@ pub(crate) fn grid_card(
                 .vertical()
                 .width(Size::fill())
                 .height(Size::flex(1.0))
+                .overflow(Overflow::Clip)
                 .maybe_child(description),
         )
         .maybe_child(floating)
@@ -723,36 +750,37 @@ pub fn provider_badge(provider: ProviderId) -> Element {
 }
 
 fn outdated_badge() -> Element {
-    accent_badge(
-        Icon::new(IconType::RefreshCw01)
-            .size(12.)
-            .color(colors::brand())
-            .into_element(),
-        "Update available".to_string(),
-        colors::brand(),
-    )
+    status_tag("Update available", colors::brand())
 }
 
 fn new_badge() -> Element {
-    accent_badge(
-        Icon::new(IconType::Plus)
-            .size(12.)
-            .color(colors::success())
-            .into_element(),
-        "New".to_string(),
-        colors::success(),
-    )
+    status_tag("New", colors::success())
 }
 
 fn updated_badge() -> Element {
-    accent_badge(
-        Icon::new(IconType::RefreshCcw02)
-            .size(12.)
-            .color(colors::success())
-            .into_element(),
-        "Updated".to_string(),
-        colors::success(),
-    )
+    status_tag("Updated", colors::success())
+}
+
+fn status_tag(text: &str, accent: Color) -> Element {
+    rect()
+        .corner_radius(CornerRadius::new_all(4.))
+        .background(colors::component_bg())
+        .child(
+            rect()
+                .padding(Gaps::new(1., 6., 3., 6. + TAG_LETTER_SPACING))
+                .corner_radius(CornerRadius::new_all(4.))
+                .background(accent.with_a(38))
+                .border(border_all_color(1., accent.with_a(96)))
+                .child(
+                    label()
+                        .text(text.to_uppercase())
+                        .font_size(9.)
+                        .font_weight(FontWeight::BOLD)
+                        .letter_spacing(TAG_LETTER_SPACING)
+                        .color(accent),
+                ),
+        )
+        .into_element()
 }
 
 fn local_badge() -> Element {

@@ -355,7 +355,7 @@ impl Component for PackageBanner {
                         .position(Position::new_absolute().top(0.).left(0.))
                         .width(Size::fill())
                         .height(Size::fill())
-                        .blur(12.)
+                        .backdrop_blur(12.)
                         .background(BANNER_BG.with_a(120))
                         .overflow(Overflow::Clip)
                         .layer(Layer::Relative(3)),

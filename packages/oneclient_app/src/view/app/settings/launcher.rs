@@ -319,7 +319,7 @@ fn plan(
         checking.set(true);
         error.set(None);
 
-        match plan_move(picked.as_deref()).await {
+        match crate::launcher::off_ui(async move { plan_move(picked.as_deref()).await }).await {
             Ok(planned) => pending.set(Some(planned)),
             Err(message) => error.set(Some(message)),
         }

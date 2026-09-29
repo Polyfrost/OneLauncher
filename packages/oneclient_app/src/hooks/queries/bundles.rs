@@ -10,6 +10,8 @@ use oneclient_core::{
 };
 use oneclient_db::models::ClusterId;
 
+use crate::launcher::off_ui;
+
 #[derive(Clone, Debug)]
 pub struct ClusterBundles {
     pub cluster: Cluster,
@@ -29,22 +31,25 @@ impl QueryCapability for OnboardingBundlesQuery {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let clusters = state.clusters.list().await?;
+        off_ui(async move {
+            let clusters = state.clusters.list().await?;
 
-        let mut out = Vec::with_capacity(clusters.len());
-        for cluster in clusters.into_iter().filter(|cluster| !cluster.user_created) {
-            let archives = state
-                .bundles
-                .archives_for(
-                    &state.services.content(),
-                    &cluster.mc_version,
-                    cluster.mc_loader,
-                )
-                .await
-                .unwrap_or_default();
-            out.push(ClusterBundles { cluster, archives });
-        }
-        Ok(out)
+            let mut out = Vec::with_capacity(clusters.len());
+            for cluster in clusters.into_iter().filter(|cluster| !cluster.user_created) {
+                let archives = state
+                    .bundles
+                    .archives_for(
+                        &state.services.content(),
+                        &cluster.mc_version,
+                        cluster.mc_loader,
+                    )
+                    .await
+                    .unwrap_or_default();
+                out.push(ClusterBundles { cluster, archives });
+            }
+            Ok(out)
+        })
+        .await
     }
 }
 
@@ -76,11 +81,15 @@ impl QueryCapability for BundlesWithStatusQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
         let state = crate::launcher::state()?;
-        Ok(get_bundles_with_update_status(
-            self.cluster_id,
-            state.bundles.as_ref(),
-            &state.services.content(),
-        )
+        let cluster_id = self.cluster_id;
+        Ok(off_ui(async move {
+            get_bundles_with_update_status(
+                cluster_id,
+                state.bundles.as_ref(),
+                &state.services.content(),
+            )
+            .await
+        })
         .await?)
     }
 }
@@ -156,11 +165,15 @@ impl QueryCapability for BundleUpdatesQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
         let state = crate::launcher::state()?;
-        Ok(oneclient_core::check_bundle_updates(
-            self.cluster_id,
-            state.bundles.as_ref(),
-            &state.services.content(),
-        )
+        let cluster_id = self.cluster_id;
+        Ok(off_ui(async move {
+            oneclient_core::check_bundle_updates(
+                cluster_id,
+                state.bundles.as_ref(),
+                &state.services.content(),
+            )
+            .await
+        })
         .await?)
     }
 }

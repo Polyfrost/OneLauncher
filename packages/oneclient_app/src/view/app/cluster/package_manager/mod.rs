@@ -276,6 +276,7 @@ fn make_row(
         .unwrap_or_default();
 
     PackageEntry {
+        essential: crate::essential::lookup(provider, &package_id),
         package_id,
         bundle_name,
         provider,
@@ -479,6 +480,12 @@ impl Component for PackageManager {
         let hidden = *hidden_filter.read();
         let card_layout = CardLayout::from(*layout.read());
 
+        let disabled_essentials: Vec<&'static str> = items
+            .iter()
+            .filter(|package| !package.enabled)
+            .filter_map(|package| package.essential.map(|essential| essential.name))
+            .collect();
+
         let tabs = build_tabs(&self.categories, &items, hidden);
         let active_idx = (*active.read()).min(tabs.len().saturating_sub(1));
         let tab_filter = tabs.get(active_idx);
@@ -518,6 +525,9 @@ impl Component for PackageManager {
         }
         if session_live {
             notices.push(views::running_notice(noun_plural, content_type));
+        }
+        if !disabled_essentials.is_empty() {
+            notices.push(views::essential_notice(&disabled_essentials));
         }
 
         let (advanced, filtered): (Vec<_>, Vec<_>) = filtered.into_iter().partition(|p| p.advanced);

@@ -346,7 +346,7 @@ impl Component for Button {
         if enabled() {
             rect = rect
                 .on_pointer_down(move |_| pressing.set(true))
-                .on_global_pointer_press(move |_| pressing.set(false))
+                .on_global_pointer_up(move |_| pressing.set(false))
                 .on_pointer_over(move |_| hovering.set(true))
                 .on_pointer_out(move |_| {
                     hovering.set(false);

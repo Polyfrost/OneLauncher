@@ -170,7 +170,7 @@ pub(super) fn toolbar_bar(
         .direction(Direction::Horizontal)
         .invert_scroll_wheel(true)
         .show_scrollbar(true)
-        .scrollbar_theme(tabs_scrollbar_theme())
+        .scrollbar(|context| ScrollBar::new(context).theme(tabs_scrollbar_theme()).into())
         .width(if stacked {
             Size::fill()
         } else {
@@ -368,6 +368,16 @@ pub(super) fn instance_only_notice(noun_plural: &'static str) -> String {
     )
 }
 
+pub(super) fn essential_notice(names: &[&'static str]) -> String {
+    match names {
+        [only] => format!("{only} is turned off, so its features will not work in game."),
+        _ => format!(
+            "{} are turned off, so their features will not work in game.",
+            names.join(", ")
+        ),
+    }
+}
+
 pub(crate) fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()
@@ -497,7 +507,7 @@ impl Component for FilterPopover {
             .offset_y((progress - 1.0) * 6.)
             .corner_radius(CornerRadius::new_all(10.))
             .background(colors::page_elevated().with_a(230))
-            .blur(12.)
+            .backdrop_blur(12.)
             .border(crate::ui::border_all_color(1., colors::component_border()))
             .shadow(Shadow::from((
                 0.,

@@ -5,6 +5,8 @@ use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
 use oneclient_common::domain::GameLoader;
 use oneclient_core::{GameVersionKind, LauncherError, VersionArts, VersionMetadata};
 
+use crate::launcher::off_ui;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct VersionsMetadataQuery;
 
@@ -18,18 +20,21 @@ impl QueryCapability for VersionsMetadataQuery {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let metadata = state
-            .versions
-            .metadata(&state.services.requester.config().meta_url_base)
-            .await;
-        if !metadata.is_empty() {
-            return Ok(metadata);
-        }
-        state.versions.sync(&state.services).await?;
-        Ok(state
-            .versions
-            .metadata(&state.services.requester.config().meta_url_base)
-            .await)
+        off_ui(async move {
+            let metadata = state
+                .versions
+                .metadata(&state.services.requester.config().meta_url_base)
+                .await;
+            if !metadata.is_empty() {
+                return Ok(metadata);
+            }
+            state.versions.sync(&state.services).await?;
+            Ok(state
+                .versions
+                .metadata(&state.services.requester.config().meta_url_base)
+                .await)
+        })
+        .await
     }
 }
 
@@ -98,13 +103,17 @@ impl QueryCapability for LoaderVersionsQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let mut metadata = state.metadata.lock().await;
-        Ok(oneclient_core::get_loader_versions(
-            &mut metadata,
-            &state.services.mc(),
-            &keys.mc_version,
-            keys.loader,
-        )
+        let keys = keys.clone();
+        Ok(off_ui(async move {
+            let mut metadata = state.metadata.lock().await;
+            oneclient_core::get_loader_versions(
+                &mut metadata,
+                &state.services.mc(),
+                &keys.mc_version,
+                keys.loader,
+            )
+            .await
+        })
         .await?
         .into())
     }

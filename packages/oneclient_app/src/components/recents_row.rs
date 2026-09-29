@@ -358,7 +358,7 @@ impl Component for OtherVersionsTile {
             } else {
                 colors::ghost_overlay_hover()
             })
-            .blur(32.)
+            .backdrop_blur(32.)
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)

@@ -121,7 +121,7 @@ impl Component for Dropdown {
             .map(|b| Size::px(b.width()))
             .unwrap_or_else(|| self.width.clone());
 
-        let on_global_pointer_press = move |_: Event<PointerEventData>| {
+        let on_global_pointer_up = move |_: Event<PointerEventData>| {
             open.set_if_modified(false);
         };
 
@@ -154,7 +154,7 @@ impl Component for Dropdown {
                     })
                     .on_pointer_enter(move |_| hovering.set(true))
                     .on_pointer_leave(move |_| hovering.set(false))
-                    .on_global_pointer_press(on_global_pointer_press)
+                    .on_global_pointer_up(on_global_pointer_up)
                     .on_sized(move |e: Event<SizedEventData>| {
                         button_area.set_if_modified(Some(e.area));
                     })

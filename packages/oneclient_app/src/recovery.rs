@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use freya::prelude::spawn_forever;
 
 use crate::hooks::Actions;
+use crate::launcher::off_ui_blocking;
 
 pub fn database_path() -> Option<PathBuf> {
     oneclient_common::paths::database_file().ok()
@@ -29,19 +30,25 @@ pub fn restore_latest(actions: &Actions) {
         return;
     };
 
-    match oneclient_db::backup::restore(&path, &snapshot) {
-        Ok(_) => retry(actions),
-        Err(err) => set_error(actions, format!("Couldn't restore the snapshot: {err}")),
-    }
+    let actions = actions.clone();
+    spawn_forever(async move {
+        match off_ui_blocking(move || oneclient_db::backup::restore(&path, &snapshot)).await {
+            Ok(_) => retry(&actions),
+            Err(err) => set_error(&actions, format!("Couldn't restore the snapshot: {err}")),
+        }
+    });
 }
 
 pub fn reset(actions: &Actions) {
     let Some(path) = database_path() else { return };
 
-    match oneclient_db::backup::reset(&path) {
-        Ok(_) => retry(actions),
-        Err(err) => set_error(actions, format!("Couldn't reset the database: {err}")),
-    }
+    let actions = actions.clone();
+    spawn_forever(async move {
+        match off_ui_blocking(move || oneclient_db::backup::reset(&path)).await {
+            Ok(_) => retry(&actions),
+            Err(err) => set_error(&actions, format!("Couldn't reset the database: {err}")),
+        }
+    });
 }
 
 fn retry(actions: &Actions) {

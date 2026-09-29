@@ -660,7 +660,7 @@ impl ScrollArea {
             })
             .on_wheel(on_wheel)
             .on_capture_global_pointer_move(on_global_move)
-            .on_capture_global_pointer_press(on_global_release)
+            .on_capture_global_pointer_up(on_global_release)
             .on_global_key_down(move |e: Event<KeyboardEventData>| {
                 let held = e.modifiers.contains(Modifiers::SHIFT)
                     || matches!(e.code, Code::ShiftLeft | Code::ShiftRight);

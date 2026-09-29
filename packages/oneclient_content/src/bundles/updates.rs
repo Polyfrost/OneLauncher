@@ -915,8 +915,8 @@ async fn addition_eligible_bundles(
     candidate_keys_by_bundle: &HashMap<String, HashSet<String>>,
     overrides: &[ClusterBundleOverrideRow],
 ) -> ContentResult<HashSet<String>> {
-    let (live_managed_keys, _) =
-        installed_bundle_keys(ctx, all_linked.iter().filter(|item| item.enabled)).await?;
+    let live: Vec<_> = all_linked.iter().filter(|item| item.enabled).collect();
+    let (live_managed_keys, _) = installed_bundle_keys(ctx, live).await?;
 
     let mut eligible: HashSet<String> = bundle_packages
         .iter()

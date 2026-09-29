@@ -26,6 +26,7 @@ use oneclient_events::{Answer, Level};
 use tokio::sync::mpsc;
 
 use crate::components::IconType;
+use crate::launcher::off_ui;
 use crate::notifications::{
     ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef, OptionalModsGroup,
     OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
@@ -548,8 +549,14 @@ impl Actions {
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
             let events = state.services.events.clone();
-            match oneclient_core::import_migration_game_dir(&state, source, &folder_name, target)
-                .await
+            match off_ui({
+                let state = state.clone();
+                async move {
+                    oneclient_core::import_migration_game_dir(&state, source, &folder_name, target)
+                        .await
+                }
+            })
+            .await
             {
                 Ok(()) => {
                     events
@@ -571,7 +578,12 @@ impl Actions {
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
             let events = state.services.events.clone();
-            match state.java.install_runtime_from(&vendor, major).await {
+            match off_ui({
+                let state = state.clone();
+                async move { state.java.install_runtime_from(&vendor, major).await }
+            })
+            .await
+            {
                 Ok(_) => {
                     events.signal(oneclient_events::Signal::JavaChanged);
                     invalidate_java_queries().await
@@ -788,87 +800,95 @@ impl Actions {
                 actions.close_optional_mods(OptionalModsOutcome::Launch);
                 return;
             };
-            let content = state.services.content();
             let events = state.services.events.clone();
-            let session =
-                oneclient_events::GroupedProgressSession::start(&events, "Adding optional mods");
-            let opt_in = session.child(
-                "Enabling mods",
-                mods.len() as u64,
-                oneclient_events::TaskCategory::Packages,
-            );
-            opt_in.set_phase(oneclient_events::TaskPhase::Installing);
+            let (installed, failed) = off_ui(async move {
+                let content = state.services.content();
+                let session = oneclient_events::GroupedProgressSession::start(
+                    &state.services.events,
+                    "Adding optional mods",
+                );
+                let opt_in = session.child(
+                    "Enabling mods",
+                    mods.len() as u64,
+                    oneclient_events::TaskCategory::Packages,
+                );
+                opt_in.set_phase(oneclient_events::TaskPhase::Installing);
 
-            let mut clusters: Vec<ClusterId> = Vec::new();
-            let mut enabled: Vec<(ClusterId, OptionalModRef)> = Vec::new();
-            let mut failed = 0usize;
-            for (cluster_id, (bundle_name, package_id)) in &mods {
-                match oneclient_core::set_bundle_package_enabled(
-                    *cluster_id,
-                    bundle_name,
-                    package_id,
-                    true,
-                    false,
-                    &content,
-                )
-                .await
-                {
-                    Ok(()) => {
-                        if !clusters.contains(cluster_id) {
-                            clusters.push(*cluster_id);
+                let mut clusters: Vec<ClusterId> = Vec::new();
+                let mut enabled: Vec<(ClusterId, OptionalModRef)> = Vec::new();
+                let mut failed = 0usize;
+                for (cluster_id, (bundle_name, package_id)) in &mods {
+                    match oneclient_core::set_bundle_package_enabled(
+                        *cluster_id,
+                        bundle_name,
+                        package_id,
+                        true,
+                        false,
+                        &content,
+                    )
+                    .await
+                    {
+                        Ok(()) => {
+                            if !clusters.contains(cluster_id) {
+                                clusters.push(*cluster_id);
+                            }
+                            enabled.push((*cluster_id, (bundle_name.clone(), package_id.clone())));
                         }
-                        enabled.push((*cluster_id, (bundle_name.clone(), package_id.clone())));
-                    }
-                    Err(err) => {
-                        failed += 1;
-                        tracing::warn!(
-                            cluster_id,
-                            %bundle_name,
-                            %package_id,
-                            error = %err,
-                            "failed to opt in to an optional mod"
-                        );
-                    }
-                }
-            }
-
-            opt_in.finish();
-
-            let mut installed = 0usize;
-            let mut applied: Vec<ClusterId> = Vec::new();
-            for cluster_id in &clusters {
-                match oneclient_core::apply_bundle_updates_with(
-                    *cluster_id,
-                    state.bundles.as_ref(),
-                    &content,
-                    Some(&session),
-                    None,
-                )
-                .await
-                {
-                    Ok(result) => {
-                        installed += result.additions_applied.len();
-                        failed += result.additions_failed.len();
-                        applied.push(*cluster_id);
-                    }
-                    Err(err) => {
-                        tracing::warn!(cluster_id, error = %err, "failed to install optional mods");
+                        Err(err) => {
+                            failed += 1;
+                            tracing::warn!(
+                                cluster_id,
+                                %bundle_name,
+                                %package_id,
+                                error = %err,
+                                "failed to opt in to an optional mod"
+                            );
+                        }
                     }
                 }
-            }
 
-            // An offer only counts as answered once its mod really was enabled
-            // and installed otherwise the click is lost and never comes back
-            enabled.retain(|(cluster_id, _)| applied.contains(cluster_id));
-            for (cluster_id, package_ids) in group_by_cluster(&enabled) {
-                if let Err(err) =
-                    oneclient_core::resolve_optional_mods(cluster_id, &package_ids, &content).await
-                {
-                    tracing::warn!(cluster_id, error = %err, "failed to clear answered offers");
+                opt_in.finish();
+
+                let mut installed = 0usize;
+                let mut applied: Vec<ClusterId> = Vec::new();
+                for cluster_id in &clusters {
+                    match oneclient_core::apply_bundle_updates_with(
+                        *cluster_id,
+                        state.bundles.as_ref(),
+                        &content,
+                        Some(&session),
+                        None,
+                    )
+                    .await
+                    {
+                        Ok(result) => {
+                            installed += result.additions_applied.len();
+                            failed += result.additions_failed.len();
+                            applied.push(*cluster_id);
+                        }
+                        Err(err) => {
+                            tracing::warn!(cluster_id, error = %err, "failed to install optional mods");
+                        }
+                    }
                 }
-            }
 
-            session.finish();
+                // An offer only counts as answered once its mod really was enabled
+                // and installed otherwise the click is lost and never comes back
+                enabled.retain(|(cluster_id, _)| applied.contains(cluster_id));
+                for (cluster_id, package_ids) in group_by_cluster(&enabled) {
+                    if let Err(err) =
+                        oneclient_core::resolve_optional_mods(cluster_id, &package_ids, &content)
+                            .await
+                    {
+                        tracing::warn!(cluster_id, error = %err, "failed to clear answered offers");
+                    }
+                }
+
+                session.finish();
+                (installed, failed)
+            })
+            .await;
+
             super::invalidate_cluster_queries().await;
 
             if installed > 0 {
@@ -1030,14 +1050,16 @@ impl Actions {
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
             let events = state.services.events.clone();
-            match oneclient_content::packages::PackageStore::import_local_files(
-                &files,
-                cluster_id,
-                &state.services.content(),
-            )
-            .await
-            {
-                Ok(report) => {
+            let imported = off_ui({
+                let state = state.clone();
+                async move {
+                    let report = oneclient_content::packages::PackageStore::import_local_files(
+                        &files,
+                        cluster_id,
+                        &state.services.content(),
+                    )
+                    .await?;
+
                     let mut deferred = false;
                     for row in &report.imported {
                         let live = oneclient_content::packages::PackageStore::sync_live_content(
@@ -1050,7 +1072,13 @@ impl Actions {
 
                         deferred |= live == LiveSync::Deferred;
                     }
+                    Ok::<_, oneclient_content::ContentError>((report, deferred))
+                }
+            })
+            .await;
 
+            match imported {
+                Ok((report, deferred)) => {
                     notify_import(
                         &events,
                         &report,
@@ -1137,15 +1165,24 @@ impl Actions {
                 return;
             };
 
-            let install = match crate::install::install_package(
-                &state,
-                provider,
-                &project_id,
-                &version_id,
-                cluster_id,
-                world.clone(),
-                allow_flagged,
-            )
+            let install = match off_ui({
+                let state = state.clone();
+                let project_id = project_id.clone();
+                let version_id = version_id.clone();
+                let world = world.clone();
+                async move {
+                    crate::install::install_package(
+                        &state,
+                        provider,
+                        &project_id,
+                        &version_id,
+                        cluster_id,
+                        world,
+                        allow_flagged,
+                    )
+                    .await
+                }
+            })
             .await
             {
                 Ok(install) => install,
@@ -1299,13 +1336,20 @@ impl Actions {
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
             let events = state.services.events.clone();
-            match oneclient_core::install_bundle(
-                cluster_id,
-                &bundle_name,
-                skip_compatibility,
-                state.bundles.as_ref(),
-                &state.services.content(),
-            )
+            match off_ui({
+                let state = state.clone();
+                let bundle_name = bundle_name.clone();
+                async move {
+                    oneclient_core::install_bundle(
+                        cluster_id,
+                        &bundle_name,
+                        skip_compatibility,
+                        state.bundles.as_ref(),
+                        &state.services.content(),
+                    )
+                    .await
+                }
+            })
             .await
             {
                 Ok(_) => {
@@ -1328,12 +1372,18 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
-            let result = match oneclient_core::apply_bundle_updates(
-                cluster_id,
-                state.bundles.as_ref(),
-                &state.services.content(),
-                None,
-            )
+            let result = match off_ui({
+                let state = state.clone();
+                async move {
+                    oneclient_core::apply_bundle_updates(
+                        cluster_id,
+                        state.bundles.as_ref(),
+                        &state.services.content(),
+                        None,
+                    )
+                    .await
+                }
+            })
             .await
             {
                 Ok(result) => result,
@@ -1388,14 +1438,26 @@ impl Actions {
 
         let mut station = self.station;
         spawn_forever(async move {
-            // The copy is on this thread's executor, so it can write the count
-            // straight into the channel the move screen reads
-            let result = oneclient_core::relocate::relocate(&state, &plan, |copied, total| {
+            let (progress, mut seen) = tokio::sync::watch::channel((0, 0));
+            let mut copy = std::pin::pin!(off_ui(async move {
+                oneclient_core::relocate::relocate(&state, &plan, |copied, total| {
+                    let _ = progress.send((copied, total));
+                })
+                .await
+            }));
+
+            let mut show_progress = |(copied, total)| {
                 let mut guard = station.write_channel(AppChannel::Relocation);
                 guard.relocation.copied = copied;
                 guard.relocation.total = total;
-            })
-            .await;
+            };
+            let result = loop {
+                tokio::select! {
+                    result = &mut copy => break result,
+                    Ok(()) = seen.changed() => show_progress(*seen.borrow_and_update()),
+                }
+            };
+            show_progress(*seen.borrow());
 
             if let Err(message) = &result {
                 tracing::error!("moving the data folder failed: {message}");
@@ -1445,15 +1507,18 @@ impl Actions {
             .syncing_bundles = true;
 
         spawn_forever(async move {
-            if let Err(err) = state.bundles.sync(&state.services.content()).await {
-                tracing::error!("bundle catalog sync failed: {err:#}");
-            }
-            if let Err(err) = oneclient_core::clusters::apply_remote_migrations(&state).await {
-                tracing::error!("cluster migrations failed: {err:#}");
-            }
-            if let Err(err) = oneclient_core::clusters::ensure_from_bundles(&state).await {
-                tracing::error!("bundle cluster provisioning failed: {err:#}");
-            }
+            off_ui(async move {
+                if let Err(err) = state.bundles.sync(&state.services.content()).await {
+                    tracing::error!("bundle catalog sync failed: {err:#}");
+                }
+                if let Err(err) = oneclient_core::clusters::apply_remote_migrations(&state).await {
+                    tracing::error!("cluster migrations failed: {err:#}");
+                }
+                if let Err(err) = oneclient_core::clusters::ensure_from_bundles(&state).await {
+                    tracing::error!("bundle cluster provisioning failed: {err:#}");
+                }
+            })
+            .await;
 
             actions
                 .station
@@ -1488,22 +1553,28 @@ impl Actions {
             .launcher
             .syncing_bundles = true;
 
-        let synced =
-            match tokio::time::timeout(BUNDLE_SYNC_BUDGET, state.bundles.sync(&content)).await {
-                Ok(Ok(_)) => true,
-                Ok(Err(err)) => {
-                    tracing::warn!(
-                        cluster_id,
-                        error = %err,
-                        "bundle catalog sync failed, launching against the cached catalog"
-                    );
-                    false
-                }
-                Err(_elapsed) => {
-                    tracing::debug!(cluster_id, "bundle catalog sync exceeded its launch budget");
-                    false
-                }
-            };
+        let sync = {
+            let bundles = state.bundles.clone();
+            let content = content.clone();
+            off_ui(
+                async move { tokio::time::timeout(BUNDLE_SYNC_BUDGET, bundles.sync(&content)).await },
+            )
+        };
+        let synced = match sync.await {
+            Ok(Ok(_)) => true,
+            Ok(Err(err)) => {
+                tracing::warn!(
+                    cluster_id,
+                    error = %err,
+                    "bundle catalog sync failed, launching against the cached catalog"
+                );
+                false
+            }
+            Err(_elapsed) => {
+                tracing::debug!(cluster_id, "bundle catalog sync exceeded its launch budget");
+                false
+            }
+        };
 
         self.station
             .clone()
@@ -1513,12 +1584,19 @@ impl Actions {
 
         // Bundle content is forced, so the update mode never gates it and the
         // modal never lists it
-        let result = match oneclient_core::apply_bundle_updates(
-            cluster_id,
-            state.bundles.as_ref(),
-            &content,
-            Some(Instant::now() + BUNDLE_APPLY_BUDGET),
-        )
+        let deadline = Instant::now() + BUNDLE_APPLY_BUDGET;
+        let result = match off_ui({
+            let state = state.clone();
+            async move {
+                oneclient_core::apply_bundle_updates(
+                    cluster_id,
+                    state.bundles.as_ref(),
+                    &state.services.content(),
+                    Some(deadline),
+                )
+                .await
+            }
+        })
         .await
         {
             Ok(result) => result,
@@ -1567,10 +1645,13 @@ impl Actions {
 
         // Bounded a hanging network would otherwise hold the launch for
         // reqwest's much longer timeouts
-        let check = match tokio::time::timeout(
-            UPDATE_CHECK_BUDGET,
-            oneclient_core::refresh_browser_package_updates(cluster_id, &content),
-        )
+        let check = match off_ui(async move {
+            tokio::time::timeout(
+                UPDATE_CHECK_BUDGET,
+                oneclient_core::refresh_browser_package_updates(cluster_id, &content),
+            )
+            .await
+        })
         .await
         {
             Ok(Ok(check)) => check,
@@ -1642,39 +1723,45 @@ impl Actions {
         state: &Arc<oneclient_core::LauncherState>,
         updates: &[oneclient_core::BrowserPackageUpdate],
     ) {
-        let content = state.services.content();
-        let session = oneclient_events::GroupedProgressSession::start(
-            &state.services.events,
-            "Updating packages",
-        );
-        session.expect(
-            oneclient_events::TaskCategory::Packages,
-            updates.len() as u64,
-            updates.len() as u64,
-        );
-
-        let mut applied = 0usize;
-        for update in updates {
-            let child = session.child(
-                update.display_name.clone(),
-                1,
-                oneclient_events::TaskCategory::Packages,
+        let state = state.clone();
+        let updates = updates.to_vec();
+        let (applied, session_id) = off_ui(async move {
+            let content = state.services.content();
+            let session = oneclient_events::GroupedProgressSession::start(
+                &state.services.events,
+                "Updating packages",
             );
-            match oneclient_core::apply_browser_package_update(update, Some(&child), &content).await
-            {
-                Ok(_) => applied += 1,
-                // Not a reason to hold the game back the cache row survives
-                // so the next launch offers it again
-                Err(err) => tracing::warn!(
-                    package = %update.display_name,
-                    error = %err,
-                    "automatic package update failed"
-                ),
-            }
-            child.finish();
-        }
+            session.expect(
+                oneclient_events::TaskCategory::Packages,
+                updates.len() as u64,
+                updates.len() as u64,
+            );
 
-        let session_id = session.detach();
+            let mut applied = 0usize;
+            for update in &updates {
+                let child = session.child(
+                    update.display_name.clone(),
+                    1,
+                    oneclient_events::TaskCategory::Packages,
+                );
+                match oneclient_core::apply_browser_package_update(update, Some(&child), &content)
+                    .await
+                {
+                    Ok(_) => applied += 1,
+                    // Not a reason to hold the game back the cache row survives
+                    // so the next launch offers it again
+                    Err(err) => tracing::warn!(
+                        package = %update.display_name,
+                        error = %err,
+                        "automatic package update failed"
+                    ),
+                }
+                child.finish();
+            }
+
+            (applied, session.detach())
+        })
+        .await;
         let spec = (applied > 0).then(|| NotificationSpec {
             title: "Packages updated".to_string(),
             body: format!(
@@ -1705,11 +1792,17 @@ impl Actions {
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
     ) -> OptionalModsOutcome {
-        let pending = match oneclient_core::pending_optional_mods(
-            cluster_id,
-            state.bundles.as_ref(),
-            &state.services.content(),
-        )
+        let pending = match off_ui({
+            let state = state.clone();
+            async move {
+                oneclient_core::pending_optional_mods(
+                    cluster_id,
+                    state.bundles.as_ref(),
+                    &state.services.content(),
+                )
+                .await
+            }
+        })
         .await
         {
             Ok(pending) => pending,
@@ -1762,27 +1855,32 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
-            let events = state.services.events.clone();
 
-            let session = oneclient_events::GroupedProgressSession::start(
-                &events,
-                format!("Updating {}", update.display_name),
-            );
-            let child = session.child(
-                update.display_name.clone(),
-                1,
-                oneclient_events::TaskCategory::Packages,
-            );
+            let (result, session_id) = off_ui({
+                let update = update.clone();
+                async move {
+                    let session = oneclient_events::GroupedProgressSession::start(
+                        &state.services.events,
+                        format!("Updating {}", update.display_name),
+                    );
+                    let child = session.child(
+                        update.display_name.clone(),
+                        1,
+                        oneclient_events::TaskCategory::Packages,
+                    );
 
-            let result = oneclient_core::apply_browser_package_update(
-                &update,
-                Some(&child),
-                &state.services.content(),
-            )
+                    let result = oneclient_core::apply_browser_package_update(
+                        &update,
+                        Some(&child),
+                        &state.services.content(),
+                    )
+                    .await;
+
+                    child.finish();
+                    (result, session.detach())
+                }
+            })
             .await;
-
-            child.finish();
-            let session_id = session.detach();
 
             let spec = match &result {
                 Ok(_) => NotificationSpec {
@@ -1912,16 +2010,19 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         return;
     }
 
-    if let Err(err) = oneclient_core::launch_cluster(&state, cluster_id, &account, true).await {
-        // A missing file is the one failure the launcher can fix itself and a
-        // path inside our metadata folder gives the user nothing to act on
-        if err.indicates_missing_files() {
-            repair_and_relaunch(&state, cluster_id, &account, err).await;
-            return;
-        }
+    off_ui(async move {
+        if let Err(err) = oneclient_core::launch_cluster(&state, cluster_id, &account, true).await {
+            // A missing file is the one failure the launcher can fix itself and a
+            // path inside our metadata folder gives the user nothing to act on
+            if err.indicates_missing_files() {
+                repair_and_relaunch(&state, cluster_id, &account, err).await;
+                return;
+            }
 
-        events.game_failed(cluster_id, format!("{err:#}"));
-    }
+            events.game_failed(cluster_id, format!("{err:#}"));
+        }
+    })
+    .await;
 }
 
 /// Only ever one retry if the game still will not start after a full rehash and

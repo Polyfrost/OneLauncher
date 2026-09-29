@@ -261,7 +261,12 @@ impl MutationCapability for ClusterMutation {
             ClusterAction::VerifyFiles { cluster_id } => {
                 // Reports its own outcome not the generic failure toast a
                 // verify that finds nothing wrong is still a useful result
-                match oneclient_core::verify_cluster_files(&state, *cluster_id).await {
+                let (state, cluster_id) = (state.clone(), *cluster_id);
+                match crate::launcher::off_ui(async move {
+                    oneclient_core::verify_cluster_files(&state, cluster_id).await
+                })
+                .await
+                {
                     Ok(report) => {
                         let notify = services.events.notify("Verification complete");
                         let notify = notify.body(report.summary());

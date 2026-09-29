@@ -5,6 +5,7 @@ pub mod dev;
 
 pub mod changelog;
 pub mod clusters;
+pub mod disable_warnings;
 mod error;
 pub mod game;
 pub mod images;
@@ -28,6 +29,7 @@ pub use clusters::{
     apply_bundle_java_override, ensure_from_bundles, ensure_from_versions,
     estimate_cluster_download, required_java_major,
 };
+pub use disable_warnings::{DisableWarnings, fetch_disable_warnings};
 pub use error::{LauncherError, LauncherResult, SentryExclusion};
 pub use game::{
     GameError, GameVersionInfo, GameVersionKind, LaunchedGame, get_loader_versions,

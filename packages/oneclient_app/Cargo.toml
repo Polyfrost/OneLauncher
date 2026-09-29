@@ -49,8 +49,10 @@ percent-encoding.workspace = true
 
 cargo-packager-updater = "=0.2.3"
 
-rfd = "=0.17.2"
-open = "=5.4.0"
+# rfd = "=0.17.2"
+# open = "=5.4.0"
+rfd.workspace = true
+open.workspace = true
 
 # clipboard image copy + decode for it
 arboard.workspace = true

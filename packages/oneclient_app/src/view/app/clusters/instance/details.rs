@@ -6,8 +6,8 @@ use oneclient_cluster::naming::{
 };
 
 use crate::components::{
-    ART_PREVIEW_EDGE, Button, GALLERY_COVER_EDGE, Icon, IconType, LocalImage, TextInput,
-    VersionArtGallery,
+    ART_PREVIEW_EDGE, Button, DynamicArt, GALLERY_COVER_EDGE, Icon, IconType, LocalImage,
+    TextInput, VersionArtGallery,
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -107,6 +107,7 @@ pub fn details_body(
     state: DetailsState,
     placeholder: String,
     existing_cover: Option<PathBuf>,
+    version_art: DynamicArt,
     name_problem: Option<NameProblem>,
 ) -> Element {
     let mut touched = state.name_touched;
@@ -158,7 +159,10 @@ pub fn details_body(
                 .into_element(),
         ))
         .child(field("Tags", tag_field(state, &tags, tag_open)))
-        .child(field("Background image", cover_field(state, preview)))
+        .child(field(
+            "Background image",
+            cover_field(state, preview, version_art),
+        ))
         .into_element()
 }
 
@@ -405,7 +409,11 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
         .into_element()
 }
 
-fn cover_field(state: DetailsState, preview: Option<(PathBuf, bool)>) -> Element {
+fn cover_field(
+    state: DetailsState,
+    preview: Option<(PathBuf, bool)>,
+    version_art: DynamicArt,
+) -> Element {
     let mut cover = state.cover;
     let mut cleared = state.cover_cleared;
 
@@ -504,11 +512,7 @@ fn cover_field(state: DetailsState, preview: Option<(PathBuf, bool)>) -> Element
                         .picked(picked)
                         .skeleton(true)
                         .into_element(),
-                    None => label()
-                        .text("Version art")
-                        .font_size(11.)
-                        .color(colors::fg_secondary())
-                        .into_element(),
+                    None => version_art.max_edge(ART_PREVIEW_EDGE).into_element(),
                 }),
         )
         .child(

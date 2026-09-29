@@ -116,7 +116,13 @@ impl Component for EditInstanceModal {
             title: "Edit the instance".to_string(),
             subtitle: "Only how it is presented changes here. The version, loader and installed content stay as they are."
                 .to_string(),
-            body: details_body(state, self.facts.name.clone(), existing, name_problem),
+            body: details_body(
+                state,
+                self.facts.name.clone(),
+                existing,
+                version_art(Some(&self.facts.mc_version), Some(self.facts.mc_loader)),
+                name_problem,
+            ),
             scrolls_itself: false,
             note: "Changes apply straight away.".to_string(),
             secondary_label: "Cancel".to_string(),

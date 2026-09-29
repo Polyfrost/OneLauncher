@@ -1,15 +1,15 @@
 use super::*;
 
-use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::router::RouterContext;
 use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, ChevronToggle, Icon, IconType, LazySection, PackageEntry, PackageRow,
-    ScrollArea, Segment, SegmentedControl, TextInput, package_context_menu, use_shared_delete,
+    Button, CardLayout, ChevronToggle, FilterMenu, FilterOption, Icon, IconType, LazySection,
+    PackageEntry, PackageRow, ScrollArea, Segment, SegmentedControl, TextInput,
+    package_context_menu, use_shared_delete,
 };
-use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch, use_overlay_claim};
+use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::{Actions, utils};
@@ -120,8 +120,6 @@ impl HiddenFilter {
     }
 }
 
-const FILTER_PANEL_W: f32 = 172.;
-const FILTER_BTN_W: f32 = 34.;
 const TOOLBAR_STACK_W: f32 = 640.;
 const TABS_ROW_H: f32 = 34.;
 
@@ -199,13 +197,13 @@ pub(super) fn toolbar_bar(
                     .into_element(),
             )
             .into_element(),
-        FilterButton {
+        filter_button(
             sort,
             current_sort,
             enabled_filter,
             hidden_filter,
             uses_bundles,
-        }
+        )
         .into_element(),
     ];
 
@@ -405,260 +403,50 @@ pub(crate) fn notice_bar(text: String) -> Element {
         .into_element()
 }
 
-#[derive(PartialEq)]
-struct FilterButton {
-    sort: State<Option<String>>,
+fn filter_button(
+    mut sort: State<Option<String>>,
     current_sort: SortMode,
-    enabled_filter: State<EnabledFilter>,
-    hidden_filter: State<HiddenFilter>,
+    mut enabled_filter: State<EnabledFilter>,
+    mut hidden_filter: State<HiddenFilter>,
     uses_bundles: bool,
-}
+) -> FilterMenu {
+    let show = *enabled_filter.read();
+    let hidden = *hidden_filter.read();
 
-impl Component for FilterButton {
-    fn render(&self) -> impl IntoElement {
-        let mut open = use_state(|| false);
+    // Hiding hidden packages is the default so it does not count as the filters being touched
+    let active = current_sort != SortMode::NameAsc
+        || show != EnabledFilter::All
+        || hidden != HiddenFilter::Hide;
 
-        let sort = self.sort;
-        let current_sort = self.current_sort;
-        let enabled_filter = self.enabled_filter;
-        let hidden_filter = self.hidden_filter;
-        let uses_bundles = self.uses_bundles;
-
-        // Hiding hidden packages is the default so it does not count as the filters being touched
-        let is_open = open();
-        let active = current_sort != SortMode::NameAsc
-            || *enabled_filter.read() != EnabledFilter::All
-            || *hidden_filter.read() != HiddenFilter::Hide;
-
-        let icon_color = if active {
-            colors::brand()
-        } else {
-            colors::fg_secondary()
-        };
-
-        rect()
-            .width(Size::px(FILTER_BTN_W))
-            .child(
-                Button::new()
-                    .secondary()
-                    .icon()
-                    .tooltip("Sort and filter")
-                    .width(Size::px(FILTER_BTN_W))
-                    .height(Size::px(34.))
-                    .on_press(move |e: Event<PressEventData>| {
-                        e.stop_propagation();
-                        open.toggle();
-                    })
-                    .child(Icon::new(IconType::Sliders04).size(16.).color(icon_color)),
-            )
-            .maybe_child(is_open.then(|| {
-                let on_close: EventHandler<()> = (move |()| open.set(false)).into();
-                FilterPopover {
-                    sort,
-                    current_sort,
-                    enabled_filter,
-                    hidden_filter,
-                    uses_bundles,
-                    on_close,
-                }
-                .into_element()
-            }))
-    }
-}
-
-#[derive(PartialEq)]
-struct FilterPopover {
-    sort: State<Option<String>>,
-    current_sort: SortMode,
-    enabled_filter: State<EnabledFilter>,
-    hidden_filter: State<HiddenFilter>,
-    uses_bundles: bool,
-    on_close: EventHandler<()>,
-}
-
-impl Component for FilterPopover {
-    fn render(&self) -> impl IntoElement {
-        use_overlay_claim();
-
-        let mut sort = self.sort;
-        let current_sort = self.current_sort;
-        let mut enabled_filter = self.enabled_filter;
-        let mut hidden_filter = self.hidden_filter;
-        let backdrop_close = self.on_close.clone();
-        let key_close = self.on_close.clone();
-
-        let a11y_id = use_a11y();
-
-        let fade = use_animation(|conf| {
-            conf.on_creation(OnCreation::Run);
-            AnimNum::new(0., 1.).time(160).ease(Ease::Out)
-        });
-        let progress = fade.read().value();
-
-        let show = *enabled_filter.read();
-        let hidden = *hidden_filter.read();
-
-        let mut panel = rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(4.)
-            .padding(Gaps::new_all(8.))
-            .opacity(progress)
-            .offset_y((progress - 1.0) * 6.)
-            .corner_radius(CornerRadius::new_all(10.))
-            .background(colors::page_elevated().with_a(230))
-            .backdrop_blur(12.)
-            .border(crate::ui::border_all_color(1., colors::component_border()))
-            .shadow(Shadow::from((
-                0.,
-                8.,
-                32.,
-                0.,
-                Color::from_argb(120, 0, 0, 0),
-            )))
-            .a11y_id(a11y_id)
-            .a11y_role(AccessibilityRole::Dialog)
-            .on_global_key_down(move |e: Event<KeyboardEventData>| {
-                if e.key == Key::Named(NamedKey::Escape) {
-                    key_close.call(());
-                }
-            })
-            .child(section_label("Sort by"));
-
-        for mode in SortMode::ALL {
-            let selected = mode == current_sort;
-            let on_press: EventHandler<Event<PressEventData>> = (move |_| {
-                sort.set(Some(mode.key().to_string()));
-            })
-            .into();
-            panel = panel.child(ChoiceRow {
-                text: mode.label(),
-                selected,
-                on_press,
-            });
-        }
-
-        panel = panel.child(section_label("Show"));
-        for filter in EnabledFilter::ALL {
-            let selected = filter == show;
-            let on_press: EventHandler<Event<PressEventData>> = (move |_| {
-                enabled_filter.set(filter);
-            })
-            .into();
-            panel = panel.child(ChoiceRow {
-                text: filter.label(),
-                selected,
-                on_press,
-            });
-        }
-
-        if self.uses_bundles {
-            panel = panel.child(section_label("Hidden packages"));
-            for filter in HiddenFilter::ALL {
-                let selected = filter == hidden;
-                let on_press: EventHandler<Event<PressEventData>> = (move |_| {
-                    hidden_filter.set(filter);
+    let menu = FilterMenu::new(active)
+        .section(
+            "Sort by",
+            SortMode::ALL.map(|mode| {
+                FilterOption::new(mode.label(), mode == current_sort, move |()| {
+                    sort.set(Some(mode.key().to_string()));
                 })
-                .into();
-                panel = panel.child(ChoiceRow {
-                    text: filter.label(),
-                    selected,
-                    on_press,
-                });
-            }
-        }
+            }),
+        )
+        .section(
+            "Show",
+            EnabledFilter::ALL.map(|filter| {
+                FilterOption::new(filter.label(), filter == show, move |()| {
+                    enabled_filter.set(filter);
+                })
+            }),
+        );
 
-        rect()
-            .height(Size::px(0.))
-            .width(Size::px(FILTER_PANEL_W))
-            .layer(Layer::Overlay)
-            .child(
-                rect()
-                    .layer(Layer::OverlayLevel(10))
-                    .position(Position::new_global().top(0.).left(0.))
-                    .width(Size::window_percent(100.))
-                    .height(Size::window_percent(100.))
-                    .on_press(move |_| backdrop_close.call(())),
-            )
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .layer(Layer::OverlayLevel(12))
-                    .margin(Gaps::new(6., 0., 0., -(FILTER_PANEL_W - FILTER_BTN_W)))
-                    .child(panel),
-            )
+    if !uses_bundles {
+        return menu;
     }
-}
-
-fn section_label(text: &'static str) -> impl IntoElement {
-    label()
-        .text(text)
-        .font_size(10.)
-        .font_weight(FontWeight::SEMI_BOLD)
-        .color(colors::fg_secondary())
-}
-
-#[derive(PartialEq)]
-struct ChoiceRow {
-    text: &'static str,
-    selected: bool,
-    on_press: EventHandler<Event<PressEventData>>,
-}
-
-impl Component for ChoiceRow {
-    fn render(&self) -> impl IntoElement {
-        let text = self.text;
-        let selected = self.selected;
-
-        let a11y_id = use_a11y();
-        let focus = use_focus(a11y_id);
-        let focused = focus().is_focused();
-
-        let color = if selected {
-            colors::fg_primary()
-        } else {
-            colors::fg_secondary()
-        };
-
-        let bg = if selected {
-            colors::component_bg()
-        } else if focused {
-            colors::ghost_overlay_hover()
-        } else {
-            Color::TRANSPARENT
-        };
-
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .cross_align(Alignment::Center)
-            .spacing(8.)
-            .padding(Gaps::new_symmetric(5., 8.))
-            .corner_radius(CornerRadius::new_all(6.))
-            .background(bg)
-            .content(Content::Flex)
-            .a11y_id(a11y_id)
-            .a11y_focusable(true)
-            .a11y_role(AccessibilityRole::MenuItemRadio)
-            .maybe(focused, |el| {
-                el.border(crate::ui::border_all_color(1., colors::brand()))
+    menu.section(
+        "Hidden packages",
+        HiddenFilter::ALL.map(|filter| {
+            FilterOption::new(filter.label(), filter == hidden, move |()| {
+                hidden_filter.set(filter);
             })
-            .cursor(CursorIcon::Pointer)
-            .on_press(self.on_press.clone())
-            .child(
-                label()
-                    .text(text)
-                    .font_size(12.)
-                    .width(Size::flex(1.0))
-                    .color(color),
-            )
-            .maybe_child(selected.then(|| {
-                Icon::new(IconType::Check)
-                    .size(14.)
-                    .color(colors::brand())
-                    .into_element()
-            }))
-    }
+        }),
+    )
 }
 
 fn add_from_file_button(

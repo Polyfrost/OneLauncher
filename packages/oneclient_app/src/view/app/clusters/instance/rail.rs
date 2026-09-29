@@ -200,7 +200,7 @@ pub fn rail(parts: Rail) -> Element {
                 .spacing(18.)
                 .background(
                     LinearGradient::new()
-                        .angle(180.)
+                        .angle(0.)
                         .stop((Color::from_argb(77, 11, 16, 19), 0.))
                         .stop((Color::from_argb(26, 11, 16, 19), 20.))
                         .stop((Color::from_argb(204, 11, 16, 19), 56.))

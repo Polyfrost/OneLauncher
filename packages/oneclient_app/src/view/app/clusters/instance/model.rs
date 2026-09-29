@@ -3,11 +3,25 @@ use std::sync::Arc;
 
 use freya::prelude::*;
 use oneclient_common::domain::GameLoader;
+use oneclient_core::GameVersionKind;
 
 use super::details::DetailsState;
 use crate::hooks::GameVersion;
 
-pub const FILTERS: [&str; 5] = ["Releases", "Snapshots", "Beta", "Alpha", "All versions"];
+pub const VERSION_KINDS: [(&str, GameVersionKind); 4] = [
+    ("Releases", GameVersionKind::Release),
+    ("Snapshots", GameVersionKind::Snapshot),
+    ("Beta", GameVersionKind::Beta),
+    ("Alpha", GameVersionKind::Alpha),
+];
+
+pub fn kind_bit(kind: GameVersionKind) -> u8 {
+    let index = VERSION_KINDS
+        .iter()
+        .position(|(_, k)| *k == kind)
+        .unwrap_or(0);
+    1 << index
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum TypeChoice {
@@ -111,7 +125,7 @@ impl Step {
 }
 
 const ONECLIENT_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Bundles, Step::Customize];
-const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Loader, Step::Version, Step::Customize];
+const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Loader, Step::Customize];
 
 pub fn step_order(choice: TypeChoice) -> &'static [Step] {
     match choice {
@@ -170,7 +184,7 @@ pub struct Wizard {
     pub step: State<usize>,
     pub choice: State<TypeChoice>,
     pub version: State<Option<String>>,
-    pub filter: State<usize>,
+    pub filter: State<u8>,
     pub query: State<String>,
     pub loader: State<LoaderChoice>,
     pub loader_version: State<Option<String>>,

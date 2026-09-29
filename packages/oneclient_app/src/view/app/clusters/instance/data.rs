@@ -10,10 +10,10 @@ use oneclient_core::{BundleArchive, GameVersionKind};
 use super::model::*;
 use super::package_names;
 use crate::hooks::{
-    GameVersion, LoaderVersionSet, available_bundles, game_versions, java_majors,
-    loader_game_versions, loader_versions, package_meta_batch, query_error, use_available_bundles,
-    use_game_versions, use_java_majors, use_loader_game_versions, use_loader_versions,
-    use_package_meta_batch, use_version_loaders, use_versions, version_loaders, versions_metadata,
+    GameVersion, available_bundles, game_versions, java_majors, loader_versions,
+    package_meta_batch, query_error, settled_or_loading, use_available_bundles, use_game_versions,
+    use_java_majors, use_loader_versions, use_package_meta_batch, use_version_loaders,
+    use_versions, versions_metadata,
 };
 use crate::utils::version_sort_key;
 
@@ -22,11 +22,12 @@ pub struct VersionPicks {
     pub list: VersionList,
     pub loaded: bool,
     pub error: Option<String>,
-    pub filter: usize,
+    pub filter: u8,
 }
 
 pub struct LoaderPicks {
     pub chosen: Option<GameLoader>,
+    pub available: Option<Vec<GameLoader>>,
     pub version: Option<String>,
     pub versions: Arc<[String]>,
 }
@@ -82,14 +83,8 @@ impl Picks {
     }
 }
 
-fn matches_filter(kind: GameVersionKind, filter: usize) -> bool {
-    match filter {
-        0 => kind == GameVersionKind::Release,
-        1 => kind == GameVersionKind::Snapshot,
-        2 => kind == GameVersionKind::Beta,
-        3 => kind == GameVersionKind::Alpha,
-        _ => true,
-    }
+fn matches_filter(kind: GameVersionKind, filter: u8) -> bool {
+    filter & kind_bit(kind) != 0
 }
 
 struct OneClientVersion {
@@ -161,35 +156,6 @@ fn use_catalogue(choice: TypeChoice) -> Catalogue {
     }
 }
 
-struct LoaderScope {
-    choice: LoaderChoice,
-    allowed: Option<LoaderVersionSet>,
-    error: Option<String>,
-}
-
-impl LoaderScope {
-    fn settled(&self) -> bool {
-        self.allowed.is_some()
-    }
-
-    fn permits(&self, id: &str) -> bool {
-        match &self.allowed {
-            Some(Some(ids)) => ids.contains(id),
-            _ => true,
-        }
-    }
-}
-
-fn use_loader_scope(choice: LoaderChoice) -> LoaderScope {
-    let query = use_loader_game_versions(choice.primary(), choice == LoaderChoice::Fabric);
-
-    LoaderScope {
-        choice,
-        allowed: loader_game_versions(&query),
-        error: query_error(&query),
-    }
-}
-
 struct BundleContext {
     archives: Arc<[BundleArchive]>,
     settled: bool,
@@ -242,8 +208,7 @@ fn use_bundle_context(
 fn build_version_list(
     choice: TypeChoice,
     catalogue: &Catalogue,
-    scope: &LoaderScope,
-    filter: usize,
+    filter: u8,
     needle: &str,
 ) -> VersionList {
     let matches_needle = |id: &str| needle.is_empty() || id.to_lowercase().contains(needle);
@@ -271,7 +236,7 @@ fn build_version_list(
     let visible = all
         .iter()
         .enumerate()
-        .filter(|(_, entry)| in_scope(entry, scope, filter))
+        .filter(|(_, entry)| matches_filter(entry.kind, filter))
         .filter(|(_, entry)| matches_needle(&entry.id))
         .map(|(index, _)| index as u32)
         .collect();
@@ -279,22 +244,15 @@ fn build_version_list(
     VersionList::Catalogue { all, visible }
 }
 
-fn in_scope(entry: &GameVersion, scope: &LoaderScope, filter: usize) -> bool {
-    matches_filter(entry.kind, filter) && scope.permits(&entry.id)
-}
-
-fn default_version(
-    choice: TypeChoice,
-    catalogue: &Catalogue,
-    scope: &LoaderScope,
-    filter: usize,
-) -> Option<String> {
+fn default_version(choice: TypeChoice, catalogue: &Catalogue, filter: u8) -> Option<String> {
     if choice == TypeChoice::OneClient {
         return catalogue.oneclient.first().map(|entry| entry.id.clone());
     }
 
     let all = catalogue.vanilla.as_deref().unwrap_or(&[]);
-    let mut scoped = all.iter().filter(|entry| in_scope(entry, scope, filter));
+    let mut scoped = all
+        .iter()
+        .filter(|entry| matches_filter(entry.kind, filter));
     let first = scoped.clone().next();
     scoped
         .find(|entry| entry.kind.is_release())
@@ -345,19 +303,18 @@ pub fn resolve(w: Wizard) -> Picks {
     let step = steps[index];
 
     let catalogue = use_catalogue(choice);
-    let scope = use_loader_scope(*w.loader.read());
 
     let filter = *w.filter.read();
     let needle = w.query.read().trim().to_lowercase();
-    let versions = build_version_list(choice, &catalogue, &scope, filter, &needle);
+    let versions = build_version_list(choice, &catalogue, filter, &needle);
 
     let oneclient = choice == TypeChoice::OneClient;
     let versions_settled = if oneclient {
         catalogue.oneclient_settled
     } else {
-        catalogue.vanilla.is_some() && scope.settled()
+        catalogue.vanilla.is_some()
     };
-    let versions_error = catalogue.error.clone().or_else(|| scope.error.clone());
+    let versions_error = catalogue.error.clone();
 
     let still_offered = |chosen: &String| {
         if oneclient {
@@ -367,17 +324,20 @@ pub fn resolve(w: Wizard) -> Picks {
                 .vanilla
                 .iter()
                 .flat_map(|all| all.iter())
-                .any(|entry: &GameVersion| &entry.id == chosen && in_scope(entry, &scope, filter))
+                .any(|entry: &GameVersion| {
+                    &entry.id == chosen && matches_filter(entry.kind, filter)
+                })
         }
     };
     let version = (w.version.read().clone())
         .filter(still_offered)
-        .or_else(|| default_version(choice, &catalogue, &scope, filter));
+        .or_else(|| default_version(choice, &catalogue, filter));
 
-    let available = version_loaders(&use_version_loaders(version.clone().unwrap_or_default()));
+    let available_query = use_version_loaders(version.clone().unwrap_or_default());
+    let available = settled_or_loading(&available_query);
     let loader = match choice {
         TypeChoice::OneClient => version.as_ref().and_then(|id| catalogue.loader_for(id)),
-        TypeChoice::Scratch => scope.choice.resolve(&available),
+        TypeChoice::Scratch => w.loader.read().resolve(available.as_deref().unwrap_or(&[])),
     };
 
     let loader_versions = loader_versions(&use_loader_versions(
@@ -423,6 +383,7 @@ pub fn resolve(w: Wizard) -> Picks {
         },
         loader: LoaderPicks {
             chosen: loader,
+            available,
             version: loader_version,
             versions: loader_versions,
         },

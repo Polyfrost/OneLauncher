@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use freya::prelude::*;
+use oneclient_core::GameVersionKind;
 use oneclient_core::clusters::ClusterKind;
 
 use super::copy::{footer_note, heading, is_ready, step_value};
@@ -112,7 +113,7 @@ impl Component for CreateInstanceModal {
             step: use_state(|| 0usize),
             choice: use_state(|| TypeChoice::OneClient),
             version: use_state(|| None::<String>),
-            filter: use_state(|| 0usize),
+            filter: use_state(|| kind_bit(GameVersionKind::Release)),
             query: use_state(String::new),
             loader: use_state(|| LoaderChoice::Fabric),
             loader_version: use_state(|| None::<String>),

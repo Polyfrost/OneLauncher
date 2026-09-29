@@ -360,6 +360,16 @@ pub(super) fn global_notice(noun_plural: &'static str) -> String {
     )
 }
 
+pub(super) fn essential_notice(names: &[&'static str]) -> String {
+    match names {
+        [only] => format!("{only} is turned off, so its features will not work in game."),
+        _ => format!(
+            "{} are turned off, so their features will not work in game.",
+            names.join(", ")
+        ),
+    }
+}
+
 pub(crate) fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()

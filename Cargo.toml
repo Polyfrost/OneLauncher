@@ -116,7 +116,7 @@ indicatif = {version = "=0.18.6", features = ["tokio"]}
 junction = {version = "=2.1.0"}
 libc = {version = "=0.2.189"}
 notify = {version = "=8.2.0"}
-open = {version = "=5.4.4"}
+open = {version = "=5.4.4", features = ["shellexecute-on-windows"]}
 parking_lot = {version = "=0.12.5"}
 pulldown-cmark = {version = "=0.13.4", default-features = false}
 rand = {version = "=0.10.3"}

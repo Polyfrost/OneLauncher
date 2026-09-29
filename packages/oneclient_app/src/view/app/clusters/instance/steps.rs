@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 
 use freya::prelude::*;
+use oneclient_cluster::naming::validate_instance_name;
+use oneclient_common::domain::GameLoader;
 use oneclient_core::BundleArchive;
 
 use super::cards::{
-    BUNDLE_CARD_H, BUNDLE_COLUMNS, CARD_RADIUS, CellCard, LOADER_CARD_H, LOADER_COLUMNS,
-    LOADER_MARK_SIZE, LOADER_ROW_MARK_SIZE, SelectCard, VERSION_ROW_H, VERSION_ROW_SPACING,
-    WideCard, cell_card, loader_mark, marker, version_row, wide_card,
+    BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, LOADER_CARD_H, LOADER_COLUMNS, LOADER_MARK_SIZE,
+    LOADER_ROW_MARK_SIZE, SelectCard, VERSION_ROW_H, VERSION_ROW_SPACING, WideCard, cell_card,
+    loader_mark, marker, version_row, wide_card,
 };
 use super::data::Picks;
 use super::details::details_body;
@@ -16,17 +18,22 @@ use crate::components::{
     Dropdown, GRID_GAP, Icon, IconType, ScrollArea, TextInput, centered_spinner,
 };
 use crate::theme::colors;
-use crate::ui::{border_all_color, centered_note, fixed_grid, note};
+use crate::ui::{centered_note, fixed_grid, note};
 
 pub fn body(wizard: Wizard, picks: &Picks) -> Element {
     let (key, inner) = match picks.step {
         Step::Type => ("step-type", type_step(wizard, picks)),
-        Step::Loader => ("step-loader", loader_step(wizard, picks)),
+        Step::Loader => ("step-loader", loader_step(wizard)),
         Step::Version => ("step-version", version_step(wizard, picks)),
         Step::Bundles => ("step-bundles", bundles_step(wizard, picks)),
         Step::Customize => (
             "step-details",
-            details_body(wizard.details, picks.suggested.clone(), None),
+            details_body(
+                wizard.details,
+                picks.suggested.clone(),
+                None,
+                validate_instance_name(&picks.name).err(),
+            ),
         ),
     };
 
@@ -89,7 +96,7 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
         .into_element()
 }
 
-fn loader_step(mut wizard: Wizard, picks: &Picks) -> Element {
+fn loader_step(mut wizard: Wizard) -> Element {
     let chosen = *wizard.loader.read();
 
     let cards: Vec<Element> = LoaderChoice::MODDED
@@ -113,8 +120,6 @@ fn loader_step(mut wizard: Wizard, picks: &Picks) -> Element {
         })
         .collect();
 
-    let shows_versions = chosen != LoaderChoice::Vanilla && !picks.loader.versions.is_empty();
-
     rect()
         .vertical()
         .width(Size::fill())
@@ -130,65 +135,6 @@ fn loader_step(mut wizard: Wizard, picks: &Picks) -> Element {
                 .key("loader-vanilla")
                 .width(Size::fill())
                 .child(loader_row(wizard, LoaderChoice::Vanilla, chosen)),
-        )
-        .maybe_child(shows_versions.then(|| {
-            rect()
-                .key("loader-version")
-                .width(Size::fill())
-                .child(loader_version_card(wizard, picks, chosen))
-                .into_element()
-        }))
-        .into_element()
-}
-
-fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) -> Element {
-    let options = picks.loader.versions.to_vec();
-    let selected = picks
-        .loader
-        .version
-        .clone()
-        .or_else(|| options.first().cloned())
-        .unwrap_or_default();
-
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(16.)
-        .padding(Gaps::new_all(16.))
-        .corner_radius(CornerRadius::new_all(CARD_RADIUS))
-        .background(colors::component_bg())
-        .border(border_all_color(1., colors::component_border()))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(4.)
-                .child(
-                    label()
-                        .text(format!("{} version", chosen.name()))
-                        .font_size(14.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text("The newest build is picked for you. Change it if a package needs an older one.")
-                        .font_size(12.)
-                        .line_height(1.4)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(
-            Dropdown::new(selected, options.clone())
-                .width(Size::px(200.))
-                .height(Size::px(32.))
-                .on_select(move |index: usize| {
-                    if let Some(chosen) = options.get(index) {
-                        wizard.loader_version.set(Some(chosen.clone()));
-                    }
-                }),
         )
         .into_element()
 }
@@ -319,7 +265,50 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                 )
                 .into_element()
         }))
+        .maybe_child(loader_version_picker(wizard, picks))
         .into_element()
+}
+
+fn loader_version_picker(mut wizard: Wizard, picks: &Picks) -> Option<Element> {
+    let loader = picks
+        .loader
+        .chosen
+        .filter(|loader| *loader != GameLoader::Vanilla)?;
+    if picks.choice != Some(TypeChoice::Scratch) || picks.loader.versions.is_empty() {
+        return None;
+    }
+
+    let options = picks.loader.versions.to_vec();
+    let selected = picks
+        .loader
+        .version
+        .clone()
+        .or_else(|| options.first().cloned())
+        .unwrap_or_default();
+
+    Some(
+        rect()
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(10.)
+            .child(
+                label()
+                    .text(format!("{loader} version"))
+                    .font_size(12.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                Dropdown::new(selected, options.clone())
+                    .width(Size::px(168.))
+                    .height(Size::px(32.))
+                    .on_select(move |index: usize| {
+                        if let Some(chosen) = options.get(index) {
+                            wizard.loader_version.set(Some(chosen.clone()));
+                        }
+                    }),
+            )
+            .into_element(),
+    )
 }
 
 fn version_list(mut wizard: Wizard, picks: &Picks) -> Element {

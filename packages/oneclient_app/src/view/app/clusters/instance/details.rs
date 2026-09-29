@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
 use freya::prelude::*;
+use oneclient_cluster::naming::{
+    MAX_NAME_CHARS, MAX_TAG_CHARS, NameProblem, is_allowed_name_char, validate_tag,
+};
 
 use crate::components::{
     ART_PREVIEW_EDGE, Button, GALLERY_COVER_EDGE, Icon, IconType, LocalImage, TextInput,
@@ -111,8 +114,10 @@ pub fn details_body(
     state: DetailsState,
     placeholder: String,
     existing_cover: Option<PathBuf>,
+    name_problem: Option<NameProblem>,
 ) -> Element {
     let mut touched = state.name_touched;
+    let name = state.name;
     let tags = state.tags.read().clone();
     let tag_open = *state.tag_open.read();
     let preview = state.preview_cover(existing_cover);
@@ -123,12 +128,31 @@ pub fn details_body(
         .spacing(18.)
         .child(field(
             "Name",
-            TextInput::new(state.name)
-                .placeholder(placeholder)
+            rect()
+                .vertical()
                 .width(Size::fill())
-                .on_validate(move |_| {
-                    touched.set(true);
-                })
+                .spacing(6.)
+                .child(
+                    TextInput::new(state.name)
+                        .placeholder(placeholder)
+                        .width(Size::fill())
+                        .on_validate(move |validator: InputValidator| {
+                            touched.set(true);
+                            let next = validator.text();
+                            let current = name.peek();
+                            validator.set_valid(
+                                within_limit(&next, &current, MAX_NAME_CHARS)
+                                    && no_new_forbidden(&next, &current),
+                            );
+                        }),
+                )
+                .maybe_child(name_problem.map(|problem| {
+                    label()
+                        .text(problem.message())
+                        .font_size(12.)
+                        .color(colors::danger())
+                        .into_element()
+                }))
                 .into_element(),
         ))
         .child(field(
@@ -145,11 +169,21 @@ pub fn details_body(
         .into_element()
 }
 
+fn no_new_forbidden(next: &str, current: &str) -> bool {
+    let forbidden = |text: &str| text.chars().filter(|c| !is_allowed_name_char(*c)).count();
+    forbidden(next) <= forbidden(current)
+}
+
+fn within_limit(next: &str, current: &str, limit: usize) -> bool {
+    let count = next.chars().count();
+    count <= limit || count < current.chars().count()
+}
+
 fn add_tag(state: DetailsState, tag: &str) {
     let mut all_tags = state.tags;
 
     let tag = tag.trim();
-    if tag.is_empty() || already_taken(&all_tags.read(), tag) {
+    if validate_tag(tag).is_err() || already_taken(&all_tags.read(), tag) {
         return;
     }
 
@@ -286,6 +320,7 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
     let mut tag_draft = state.tag_draft;
     let mut tag_open = state.tag_open;
     let mut all_tags = state.tags;
+    let draft_valid = validate_tag(&tag_draft.read()).is_ok();
 
     rect()
         .horizontal()
@@ -336,6 +371,14 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
                             .auto_focus(true)
                             .width(Size::fill())
                             .height(Size::px(TAG_ROW_H))
+                            .on_validate(move |validator: InputValidator| {
+                                let fits = within_limit(
+                                    &validator.text(),
+                                    &tag_draft.peek(),
+                                    MAX_TAG_CHARS,
+                                );
+                                validator.set_valid(fits);
+                            })
                             .on_submit(move |_| commit_tag(state))
                             .into_element(),
                     ),
@@ -347,6 +390,7 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
                         .alt("Add this tag")
                         .width(Size::px(TAG_ROW_H))
                         .height(Size::px(TAG_ROW_H))
+                        .enabled(draft_valid)
                         .on_press(move |_| commit_tag(state))
                         .child(Icon::new(IconType::Check).size(13.)),
                 )

@@ -1,3 +1,5 @@
+use oneclient_cluster::naming::validate_instance_name;
+
 use super::data::Picks;
 use super::model::{Step, TypeChoice, Wizard};
 
@@ -103,6 +105,6 @@ pub fn is_ready(picks: &Picks) -> bool {
         Step::Type => picks.choice.is_some(),
         Step::Loader | Step::Bundles => true,
         Step::Version => picks.versions.chosen.is_some() && picks.loader.chosen.is_some(),
-        Step::Customize => !picks.name.trim().is_empty(),
+        Step::Customize => validate_instance_name(&picks.name).is_ok(),
     }
 }

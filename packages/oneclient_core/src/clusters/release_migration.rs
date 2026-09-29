@@ -1,5 +1,4 @@
 use std::cmp::Reverse;
-use std::str::FromStr;
 
 use oneclient_common::domain::GameLoader;
 
@@ -48,8 +47,8 @@ pub fn can_migrate_manually(source: GameLoader, target: GameLoader) -> bool {
 
 fn is_migration_destination(target: &ReleaseTarget, rules: &[RemoteMigration]) -> bool {
     rules.iter().any(|rule| {
-        rule.to.mc_version == target.mc_version
-            && GameLoader::from_str(&rule.from.loader).is_ok_and(|loader| loader == target.loader)
+        rule.endpoints()
+            .is_some_and(|(_, to)| to.mc_version == target.mc_version && to.loader == target.loader)
     })
 }
 
@@ -277,6 +276,33 @@ mod tests {
         assert!(is_migration_destination(&moved, &rules));
         assert!(!is_migration_destination(&released, &rules));
         assert!(!is_migration_destination(&other_loader, &rules));
+    }
+
+    #[test]
+    fn a_loader_switch_destination_uses_the_target_loader() {
+        let rules = vec![RemoteMigration {
+            id: "x".into(),
+            from: crate::versions::MigrationSource {
+                mc_version: "1.20.1".into(),
+                loader: "forge".into(),
+            },
+            to: crate::versions::MigrationTarget {
+                mc_version: "1.20.1".into(),
+                loader: Some("neoforge".into()),
+            },
+            allow_without_bundles: false,
+        }];
+        let destination = ReleaseTarget {
+            mc_version: "1.20.1".into(),
+            loader: GameLoader::NeoForge,
+        };
+        let source = ReleaseTarget {
+            mc_version: "1.20.1".into(),
+            loader: GameLoader::Forge,
+        };
+
+        assert!(is_migration_destination(&destination, &rules));
+        assert!(!is_migration_destination(&source, &rules));
     }
 
     #[test]

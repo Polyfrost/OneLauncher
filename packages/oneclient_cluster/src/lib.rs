@@ -11,6 +11,7 @@ mod stage;
 
 pub mod identity;
 pub mod logs;
+pub mod naming;
 pub mod profiles;
 pub mod screenshots;
 pub mod worlds;

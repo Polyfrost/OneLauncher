@@ -21,6 +21,8 @@ pub async fn apply_remote_migrations(state: &LauncherState) -> LauncherResult<us
         return Ok(0);
     }
 
+    let _guard = state.clusters.provisioning_guard().await;
+
     let cyclic = cyclic_migration_ids(&rules);
     let mut migrated = 0;
 
@@ -123,7 +125,9 @@ async fn apply_rule(state: &LauncherState, rule: &RemoteMigration) -> LauncherRe
         return Ok(false);
     }
 
-    migrate_cluster(state, rule, &source, &from, &to).await?;
+    if !migrate_cluster(state, rule, &source, &from, &to).await? {
+        return Ok(false);
+    }
 
     migration_dao::mark_applied(db, &rule.id).await?;
     tracing::info!(
@@ -207,7 +211,20 @@ async fn migrate_cluster(
     source: &ClusterRow,
     from: &MigrationNode,
     to: &MigrationNode,
-) -> LauncherResult<()> {
+) -> LauncherResult<bool> {
+    let current = cluster_dao::get_by_id(&state.services.db, source.id).await?;
+    if !current
+        .as_ref()
+        .is_some_and(|row| row_unchanged(source, row))
+    {
+        tracing::info!(
+            migration_id = %rule.id,
+            cluster_id = source.id,
+            "cluster changed since the migration pass read it; skipping"
+        );
+        return Ok(false);
+    }
+
     let clusters_dir = oneclient_common::paths::clusters_dir()?;
     let old_dir = clusters_dir.join(&source.folder_name);
 
@@ -260,20 +277,31 @@ async fn migrate_cluster(
         }
     };
 
-    if let Err(err) = cluster_dao::migrate_version(&state.services.db, source.id, migration).await {
-        if let Some((old_dir, new_dir)) = renamed
-            && let Err(rollback) = polyio::rename(&new_dir, &old_dir).await
-        {
-            tracing::error!(
+    match cluster_dao::migrate_version_if_unchanged(&state.services.db, source, migration).await {
+        Ok(Some(_)) => {}
+        outcome => {
+            if let Some((old_dir, new_dir)) = renamed
+                && let Err(rollback) = polyio::rename(&new_dir, &old_dir).await
+            {
+                tracing::error!(
+                    migration_id = %rule.id,
+                    cluster_id = source.id,
+                    from = ?new_dir,
+                    to = ?old_dir,
+                    error = %rollback,
+                    "failed to roll back cluster directory rename"
+                );
+            }
+            if let Err(err) = outcome {
+                return Err(err.into());
+            }
+            tracing::info!(
                 migration_id = %rule.id,
                 cluster_id = source.id,
-                from = ?new_dir,
-                to = ?old_dir,
-                error = %rollback,
-                "failed to roll back cluster directory rename after database error"
+                "cluster changed while migrating; rolled back"
             );
+            return Ok(false);
         }
-        return Err(err.into());
     }
 
     if let Err(err) = state.clusters.refresh_identity(source.id).await {
@@ -302,7 +330,13 @@ async fn migrate_cluster(
         }
     }
 
-    Ok(())
+    Ok(true)
+}
+
+fn row_unchanged(expected: &ClusterRow, current: &ClusterRow) -> bool {
+    current.mc_version == expected.mc_version
+        && current.mc_loader == expected.mc_loader
+        && current.folder_name == expected.folder_name
 }
 
 fn keeps_mods(from: GameLoader, to: GameLoader) -> bool {

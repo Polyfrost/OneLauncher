@@ -95,6 +95,7 @@ impl Component for ClusterSettings {
                     loader,
                     selected: cluster.mc_loader_version.clone(),
                     versions,
+                    locked: cluster.user_created,
                 }
                 .into_element(),
             ]
@@ -952,6 +953,7 @@ struct LoaderRow {
     loader: GameLoader,
     selected: Option<String>,
     versions: Vec<String>,
+    locked: bool,
 }
 
 impl Component for LoaderRow {
@@ -963,6 +965,19 @@ impl Component for LoaderRow {
             .selected
             .clone()
             .unwrap_or_else(|| versions.first().cloned().unwrap_or_else(|| "Latest".into()));
+
+        if self.locked {
+            return settings_row_disabled(
+                IconType::Rocket02,
+                "Loader Version",
+                "Set when the instance was created.",
+                label()
+                    .text(format!("{} {selected}", self.loader))
+                    .font_size(12.)
+                    .color(colors::fg_secondary()),
+            )
+            .into_element();
+        }
 
         let control: Element = if versions.is_empty() {
             label()
@@ -992,5 +1007,6 @@ impl Component for LoaderRow {
             ),
             control,
         )
+        .into_element()
     }
 }

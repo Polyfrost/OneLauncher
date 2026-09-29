@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
+use oneclient_cluster::naming::{MAX_NAME_CHARS, validate_instance_name};
 use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::ProviderId;
 use oneclient_core::clusters::ClusterKind;
@@ -311,12 +312,22 @@ fn suggested_name(
         return String::new();
     };
 
-    match (choice, kind, loader) {
+    let full = match (choice, kind, loader) {
         (Some(TypeChoice::OneClient), _, _) => version.clone(),
         (_, ClusterKind::Vanilla, _) => format!("{version} Vanilla"),
         (_, _, Some(loader)) => format!("{version} {loader}"),
         (_, _, None) => version.clone(),
+    };
+    if validate_instance_name(&full).is_ok() {
+        return full;
     }
+
+    version
+        .chars()
+        .take(MAX_NAME_CHARS)
+        .collect::<String>()
+        .trim()
+        .to_string()
 }
 
 pub fn resolve(w: Wizard) -> Picks {
@@ -351,9 +362,14 @@ pub fn resolve(w: Wizard) -> Picks {
                 .any(|entry: &GameVersion| &entry.id == chosen && in_scope(entry, &scope, filter))
         }
     };
+    let default_version = if needle.is_empty() {
+        versions.default_id()
+    } else {
+        build_version_list(choice, &catalogue, &scope, filter, "").default_id()
+    };
     let version = (w.version.read().clone())
         .filter(still_offered)
-        .or_else(|| versions.default_id());
+        .or(default_version);
 
     let available = version_loaders(&use_version_loaders(version.clone().unwrap_or_default()));
     let loader = match choice {

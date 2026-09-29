@@ -70,7 +70,10 @@ impl Component for Clusters {
                                 .font_size(16.)
                                 .color(colors::fg_secondary()),
                         ),
-                );
+                )
+                .maybe_child(show_create.read().then(|| {
+                    CreateInstanceModal::new(move |()| show_create.set(false)).into_element()
+                }));
         }
 
         let active_cluster = active_id

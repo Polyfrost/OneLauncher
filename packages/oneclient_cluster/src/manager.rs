@@ -69,9 +69,7 @@ impl ClusterManager {
 
     pub fn sanitize_name(name: &str) -> String {
         let mut name = name.to_string();
-        name.retain(|c| {
-            c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ' ' | '.' | '(' | ')')
-        });
+        name.retain(crate::naming::is_allowed_name_char);
         let name = name.trim().trim_end_matches(['.', ' ']);
 
         let stem_len = name.find('.').unwrap_or(name.len());
@@ -148,6 +146,14 @@ impl ClusterManager {
         global: &GameSettingsProfile,
         options: CreateClusterOptions,
     ) -> ClusterResult<Cluster> {
+        if options.user_created {
+            crate::naming::validate_instance_name(&options.name)
+                .map_err(ClusterError::InvalidName)?;
+            for tag in &options.tags {
+                crate::naming::validate_tag(tag).map_err(ClusterError::InvalidName)?;
+            }
+        }
+
         let folder_stem = Self::sanitize_name(&options.name);
         if folder_stem.is_empty() {
             return Err(ClusterError::EmptyName);
@@ -194,6 +200,22 @@ impl ClusterManager {
 
         if let Patch::Set(ref profile_name) = update.setting_profile_name {
             ensure_profile_exists(&self.db, profile_name).await?;
+        }
+
+        if existing.user_created {
+            if matches!(update.mc_loader_version, Patch::Set(_)) {
+                return Err(ClusterError::LoaderLocked);
+            }
+            if let Some(raw) = update.name.as_deref()
+                && raw.trim() != existing.name
+            {
+                crate::naming::validate_instance_name(raw).map_err(ClusterError::InvalidName)?;
+            }
+            for tag in update.tags.iter().flatten() {
+                if !existing.tags.contains(tag) {
+                    crate::naming::validate_tag(tag).map_err(ClusterError::InvalidName)?;
+                }
+            }
         }
 
         let name = match update.name.as_deref() {
@@ -329,37 +351,52 @@ impl ClusterManager {
             .await
             .map_err(|err| ClusterError::StdIo(std::io::Error::other(err)))?;
 
-        self.clear_cover_files(&dir).await;
-
         let extension = if shrunk {
             "png".to_string()
         } else {
             original_extension
         };
-        let file_name = format!("{COVER_STEM}.{extension}");
-        polyio::write(dir.join(&file_name), &bytes).await?;
+        let file_name = format!(
+            "{COVER_STEM}-{}.{extension}",
+            chrono::Utc::now().timestamp_millis()
+        );
+        let path = dir.join(&file_name);
+        polyio::write(&path, &bytes).await?;
+
+        let patch = ClusterPatch {
+            cover_path: Some(Some(file_name.clone())),
+            ..Default::default()
+        };
+        let row = match cluster_dao::update(&self.db, cluster_id, &patch).await {
+            Ok(row) => row,
+            Err(err) => {
+                polyio::remove_file(&path).await.ok();
+                return Err(err.into());
+            }
+        };
+        let cluster = Cluster::try_from_row(row)?;
+        crate::identity::write(&dir, &identity_of(&cluster)).await;
+
+        self.clear_cover_files(&dir, Some(&file_name)).await;
         Ok(file_name)
     }
 
     pub async fn clear_cover(&self, cluster_id: ClusterId) -> ClusterResult<()> {
         let cluster = self.get(cluster_id).await?;
         if let Ok(dir) = cluster.dir() {
-            self.clear_cover_files(&dir).await;
+            self.clear_cover_files(&dir, None).await;
         }
         Ok(())
     }
 
-    async fn clear_cover_files(&self, dir: &std::path::Path) {
+    async fn clear_cover_files(&self, dir: &std::path::Path, keep: Option<&str>) {
         let Ok(mut entries) = polyio::read_dir(dir).await else {
             return;
         };
         while let Ok(Some(entry)) = entries.next_entry().await {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name
-                .rsplit_once('.')
-                .is_some_and(|(stem, _)| stem == COVER_STEM)
-            {
+            if keep != Some(name.as_ref()) && is_cover_file(&name) {
                 polyio::remove_file(entry.path()).await.ok();
             }
         }
@@ -612,6 +649,15 @@ async fn move_to_trash(cluster: &Cluster) -> Option<std::path::PathBuf> {
     }
 }
 
+fn is_cover_file(name: &str) -> bool {
+    name.rsplit_once('.').is_some_and(|(stem, _)| {
+        stem == COVER_STEM
+            || stem
+                .strip_prefix(COVER_STEM)
+                .is_some_and(|rest| rest.starts_with('-'))
+    })
+}
+
 fn identity_of(cluster: &Cluster) -> crate::identity::InstanceIdentity {
     crate::identity::InstanceIdentity {
         name: cluster.name.clone(),
@@ -672,7 +718,7 @@ async fn ensure_content_dirs(cluster_path: &std::path::Path) -> ClusterResult<()
 
 #[cfg(test)]
 mod tests {
-    use super::{COVER_MAX_EDGE, shrink_cover};
+    use super::{COVER_MAX_EDGE, is_cover_file, shrink_cover};
 
     fn png(width: u32, height: u32) -> Vec<u8> {
         let mut out = Vec::new();
@@ -713,5 +759,14 @@ mod tests {
 
         assert!(!shrunk);
         assert_eq!(bytes, b"not an image");
+    }
+
+    #[test]
+    fn legacy_and_unique_cover_names_are_both_cleared() {
+        assert!(is_cover_file("cover.png"));
+        assert!(is_cover_file("cover-1759140000000.webp"));
+        assert!(!is_cover_file("covers.png"));
+        assert!(!is_cover_file("cover"));
+        assert!(!is_cover_file("instance.json"));
     }
 }

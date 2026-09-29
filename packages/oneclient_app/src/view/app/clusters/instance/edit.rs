@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use freya::prelude::*;
+use oneclient_cluster::naming::validate_instance_name;
 use oneclient_common::domain::GameLoader;
 use oneclient_core::clusters::ClusterKind;
 
@@ -59,7 +60,12 @@ impl Component for EditInstanceModal {
         let preview = state.preview_cover(existing.clone());
         let tags = state.tags.read().clone();
         let typed = state.typed_name();
-        let ready = !typed.is_empty();
+        let name_problem = if typed == self.facts.name {
+            None
+        } else {
+            validate_instance_name(&typed).err()
+        };
+        let ready = !typed.is_empty() && name_problem.is_none();
 
         let description = state.description.read().trim().to_string();
         let subtitle = if description.is_empty() {
@@ -114,7 +120,7 @@ impl Component for EditInstanceModal {
             title: "Edit the instance".to_string(),
             subtitle: "Only how it is presented changes here. The version, loader and installed content stay as they are."
                 .to_string(),
-            body: details_body(state, self.facts.name.clone(), existing),
+            body: details_body(state, self.facts.name.clone(), existing, name_problem),
             scrolls_itself: false,
             note: "Changes apply straight away.".to_string(),
             secondary_label: "Cancel".to_string(),

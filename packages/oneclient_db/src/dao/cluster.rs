@@ -214,6 +214,41 @@ pub async fn migrate_version(
     .await
 }
 
+pub async fn migrate_version_if_unchanged(
+    pool: &SqlitePool,
+    expected: &ClusterRow,
+    migration: ClusterMigration<'_>,
+) -> Result<Option<ClusterRow>, sqlx::Error> {
+    sqlx::query_as::<_, ClusterRow>(
+        r#"
+		UPDATE clusters
+		SET mc_version = ?,
+		    mc_loader = ?,
+		    mc_loader_version = ?,
+		    stage = ?,
+		    name = COALESCE(?, name),
+		    folder_name = ?
+		WHERE id = ? AND mc_version = ? AND mc_loader = ? AND folder_name = ?
+		RETURNING
+			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
+		"#,
+    )
+    .bind(migration.mc_version)
+    .bind(migration.mc_loader)
+    .bind(migration.mc_loader_version)
+    .bind(migration.stage)
+    .bind(migration.name)
+    .bind(migration.folder_name)
+    .bind(expected.id)
+    .bind(&expected.mc_version)
+    .bind(expected.mc_loader)
+    .bind(&expected.folder_name)
+    .fetch_optional(pool)
+    .await
+}
+
 pub async fn set_stage(pool: &SqlitePool, id: i64, stage: i64) -> Result<ClusterRow, sqlx::Error> {
     sqlx::query_as!(
         ClusterRow,
@@ -413,6 +448,50 @@ mod tests {
                 .id,
             cluster.id
         );
+    }
+
+    #[tokio::test]
+    async fn conditional_migration_skips_a_row_that_already_moved() {
+        let pool = pool().await;
+        let cluster = seed(&pool, "1.20.1", "1.20.1 Forge").await;
+        let stale = cluster.clone();
+
+        let first = migrate_version_if_unchanged(
+            &pool,
+            &cluster,
+            ClusterMigration {
+                mc_version: "1.20.1",
+                mc_loader: 2,
+                mc_loader_version: None,
+                stage: 0,
+                name: Some("1.20.1 NeoForge"),
+                folder_name: "1.20.1 NeoForge",
+            },
+        )
+        .await
+        .expect("migrate")
+        .expect("row matched");
+        assert_eq!(first.folder_name, "1.20.1 NeoForge");
+
+        let second = migrate_version_if_unchanged(
+            &pool,
+            &stale,
+            ClusterMigration {
+                mc_version: "1.20.1",
+                mc_loader: 2,
+                mc_loader_version: None,
+                stage: 0,
+                name: None,
+                folder_name: "1.20.1 Forge",
+            },
+        )
+        .await
+        .expect("migrate");
+        assert!(second.is_none());
+
+        let row = get_by_id(&pool, cluster.id).await.unwrap().unwrap();
+        assert_eq!(row.folder_name, "1.20.1 NeoForge");
+        assert_eq!(row.name, "1.20.1 NeoForge");
     }
 
     #[tokio::test]

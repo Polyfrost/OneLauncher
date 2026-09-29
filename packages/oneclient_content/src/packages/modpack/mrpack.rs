@@ -1,8 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
-use futures_lite::AsyncReadExt;
 use oneclient_db::models::ClusterRow;
 use serde::Deserialize;
 use uuid::Uuid;
@@ -51,23 +49,19 @@ impl MrpackInstaller {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let cluster_root = oneclient_common::paths::clusters_dir()?.join(&cluster.folder_name);
 
-        let bytes = Arc::new(polyio::read(archive_path).await?);
-
-        let mut manifest_bytes: Option<Vec<u8>> = None;
-
-        polyio::read_zip_entries_bytes(bytes.to_vec(), async |_, entry, reader| {
-            let entry_name = entry.filename().as_str().map_err(io_err)?;
-
-            if entry_name == "modrinth.index.json" {
-                let mut buf = Vec::new();
-                reader.read_to_end(&mut buf).await.map_err(io_err)?;
-                manifest_bytes = Some(buf);
+        let file = tokio::fs::File::open(&archive_path).await?;
+        let manifest_bytes = match polyio::try_read_zip_entry_bytes(
+            tokio::io::BufReader::new(file),
+            "modrinth.index.json",
+        )
+        .await
+        {
+            Err(polyio::IOError::FileNotFoundInZip { .. }) => {
+                return Err(PackageError::UnsupportedModpackFormat.into());
             }
-            Ok(())
-        })
-        .await?;
+            result => result?,
+        };
 
-        let manifest_bytes = manifest_bytes.ok_or(PackageError::UnsupportedModpackFormat)?;
         let manifest: MrpackManifest = serde_json::from_slice(&manifest_bytes)?;
 
         let mut failed = 0u64;
@@ -99,26 +93,15 @@ impl MrpackInstaller {
         ctx.events
             .progress(progress_id, "Installing Modpack Files", total, total);
 
-        polyio::read_zip_entries_bytes(bytes.to_vec(), async |_, entry, reader| {
-            let name = entry.filename().as_str().map_err(io_err)?;
-
-            let Some(rest) = name.strip_prefix("overrides/") else {
-                return Ok(());
-            };
-            if rest.is_empty() || name.ends_with('/') {
-                return Ok(());
-            }
-
-            let dest = cluster_root.join(rest);
-            if let Some(parent) = dest.parent() {
-                polyio::create_dir_all(parent).await.map_err(io_err)?;
-            }
-
-            let mut file_bytes = Vec::new();
-            reader.read_to_end(&mut file_bytes).await.map_err(io_err)?;
-            polyio::write(&dest, &file_bytes).await.map_err(io_err)?;
-            Ok(())
-        })
+        polyio::extract_zip_filtered(
+            &archive_path,
+            &cluster_root,
+            Some(|name: &str| {
+                name.strip_prefix("overrides/")
+                    .is_some_and(|rest| !rest.is_empty())
+            }),
+            Some(|name: &str| name.strip_prefix("overrides/").unwrap_or(name).to_string()),
+        )
         .await?;
 
         if failed > 0 {
@@ -181,13 +164,6 @@ async fn install_mrpack_file(
 fn content_type_from_path(path: &str) -> ContentType {
     let top = path.split('/').next().unwrap_or("");
     ContentType::from_folder_name(top).unwrap_or(ContentType::Mod)
-}
-
-fn io_err(err: impl std::error::Error + Send + Sync + 'static) -> polyio::IOError {
-    polyio::IOError::PathIOError {
-        source: std::io::Error::other(err),
-        path: String::new(),
-    }
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]

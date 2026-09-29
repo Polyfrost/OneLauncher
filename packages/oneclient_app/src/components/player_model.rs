@@ -189,7 +189,7 @@ impl Component for PlayerModel {
                 Platform::get().send(UserEvent::RequestRedraw);
             })
             // Global so a release outside the widget still ends the drag
-            .on_global_pointer_press(move |_: Event<PointerEventData>| {
+            .on_global_pointer_up(move |_: Event<PointerEventData>| {
                 if drag.peek().is_some() {
                     drag.set(None);
                 }

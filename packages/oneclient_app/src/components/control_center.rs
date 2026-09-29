@@ -57,7 +57,7 @@ impl Component for ControlPanel {
             .opacity(progress)
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
-            .blur(12.)
+            .backdrop_blur(12.)
             .corner_radius(CornerRadius::new_all(14.))
             .border(
                 Border::new()

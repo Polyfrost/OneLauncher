@@ -1,13 +1,16 @@
 use freya::prelude::*;
+use std::collections::HashMap;
+
+use oneclient_content::packages::types::DependencyKind;
 use oneclient_content::packages::{ContentType, ProviderId};
 
 use crate::components::{ScrollArea, use_shared_delete};
 use crate::hooks::use_cluster;
 use crate::hooks::{
-    bundles_with_status_items, cluster_content_items, content_type_for_slug, project_detail,
-    use_browser_compat, use_bundles_with_status, use_cluster_content, use_dispatch,
-    use_installs_snapshot, use_link_confirm, use_package_project, use_package_versions,
-    version_list, versions_total,
+    bundles_with_status_items, cluster_content_items, content_type_for_slug, package_meta_batch,
+    project_detail, use_browser_compat, use_bundles_with_status, use_cluster_content,
+    use_dispatch, use_installs_snapshot, use_link_confirm, use_package_meta_batch,
+    use_package_project, use_package_versions, version_list, versions_total,
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -197,6 +200,17 @@ impl Component for BrowserPackage {
 
         let versions = version_list(&versions_query);
         let total_versions = versions_total(&versions_query);
+        let dependency_ids: Vec<String> = versions
+            .iter()
+            .flat_map(|v| &v.dependencies)
+            .filter(|d| d.kind == DependencyKind::Required)
+            .filter_map(|d| d.project_id.clone())
+            .collect();
+        let dependency_names: HashMap<String, String> =
+            package_meta_batch(&use_package_meta_batch(provider, dependency_ids))
+                .into_iter()
+                .map(|(id, meta)| (id, meta.name))
+                .collect();
         let latest_version =
             preferred_version(&versions, content_type).map(|v| v.version_id.clone());
 
@@ -215,6 +229,7 @@ impl Component for BrowserPackage {
                 versions,
                 total_versions,
                 versions_page,
+                dependency_names,
                 project.id.clone(),
                 installer.clone(),
                 on_remove,

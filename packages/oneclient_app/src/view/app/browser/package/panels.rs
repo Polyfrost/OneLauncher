@@ -1,7 +1,9 @@
 use super::*;
 
 use oneclient_content::packages::markdown::normalize_markdown;
-use oneclient_content::packages::types::{PackageBody, ProjectDetail, ReleaseType, VersionSummary};
+use oneclient_content::packages::types::{
+    DependencyKind, PackageBody, ProjectDetail, ReleaseType, VersionSummary,
+};
 
 use crate::components::{
     Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl,
@@ -105,6 +107,7 @@ pub(super) fn versions_panel(
     versions: Vec<VersionSummary>,
     total_versions: usize,
     versions_page: State<usize>,
+    dependency_names: HashMap<String, String>,
     project_id: String,
     installer: Installer,
     on_remove: EventHandler<(String, String)>,
@@ -141,6 +144,7 @@ pub(super) fn versions_panel(
                     .is_some_and(|installed| installed.is_duplicated());
                 version_row(
                     v,
+                    &dependency_names,
                     project_id.clone(),
                     installer.clone(),
                     on_remove.clone(),
@@ -211,8 +215,10 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
         .into_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn version_row(
     v: VersionSummary,
+    dependency_names: &HashMap<String, String>,
     project_id: String,
     installer: Installer,
     on_remove: EventHandler<(String, String)>,
@@ -233,6 +239,13 @@ fn version_row(
         parts.join("  ·  ")
     };
     let has_chips = !chips.is_empty();
+    let requires: Vec<&str> = v
+        .dependencies
+        .iter()
+        .filter(|d| d.kind == DependencyKind::Required)
+        .filter_map(|d| d.project_id.as_deref())
+        .map(|id| dependency_names.get(id).map_or(id, String::as_str))
+        .collect();
 
     rect()
         .horizontal()
@@ -259,6 +272,15 @@ fn version_row(
                         .color(colors::fg_primary()),
                 )
                 .maybe(has_chips, |el| el.child(pill_flow(&chips, 10)))
+                .maybe(!requires.is_empty(), |el| {
+                    el.child(
+                        label()
+                            .text(format!("Requires {}", requires.join(", ")))
+                            .font_size(11.)
+                            .max_lines(2)
+                            .color(colors::fg_secondary()),
+                    )
+                })
                 .child(
                     label()
                         .text(stats)

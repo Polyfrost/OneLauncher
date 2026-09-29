@@ -707,6 +707,7 @@ impl From<CfFile> for VersionSummary {
                 .collect(),
             downloads: f.download_count,
             file_size: f.file_length,
+            dependencies: f.dependencies.into_iter().map(Into::into).collect(),
         }
     }
 }

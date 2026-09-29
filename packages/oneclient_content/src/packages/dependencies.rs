@@ -299,6 +299,7 @@ mod tests {
             loaders,
             downloads: 0,
             file_size: 0,
+            dependencies: Vec::new(),
         }
     }
 

@@ -90,13 +90,7 @@ pub fn list_cluster_screenshots(cluster: &Cluster) -> ClusterResult<Vec<Screensh
 
 #[tracing::instrument(level = "debug")]
 pub fn load_screenshot(path: &Path, max_edge: Option<u32>) -> ClusterResult<Bytes> {
-    let path = ensure_in_clusters(path)?;
-    let raw = std::fs::read(&path).map_err(ScreenshotsError::Io)?;
-    let bytes = match max_edge {
-        Some(edge) => thumbnail(&raw, edge).unwrap_or_else(|| Bytes::from(raw)),
-        None => Bytes::from(raw),
-    };
-    Ok(bytes)
+    load_picked_image(&ensure_in_clusters(path)?, max_edge)
 }
 
 pub fn load_picked_image(path: &Path, max_edge: Option<u32>) -> ClusterResult<Bytes> {
@@ -107,7 +101,7 @@ pub fn load_picked_image(path: &Path, max_edge: Option<u32>) -> ClusterResult<By
     })
 }
 
-fn thumbnail(raw: &[u8], max_edge: u32) -> Option<Bytes> {
+pub(crate) fn thumbnail(raw: &[u8], max_edge: u32) -> Option<Bytes> {
     let img = image::load_from_memory(raw).ok()?;
     if img.width().max(img.height()) <= max_edge {
         return None;

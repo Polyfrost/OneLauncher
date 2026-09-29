@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
-use oneclient_core::{BundleArchive, BundleFile, BundleFileKind};
+use oneclient_core::BundleArchive;
 
 mod cards;
 mod copy;
@@ -16,13 +16,6 @@ mod steps;
 
 pub use create::CreateInstanceModal;
 pub use edit::{EditInstanceModal, InstanceFacts};
-
-pub fn file_provider(file: &BundleFile) -> ProviderId {
-    match &file.kind {
-        BundleFileKind::Managed { provider, .. } => *provider,
-        BundleFileKind::External { .. } => ProviderId::Local,
-    }
-}
 
 pub fn tidy_file_name(raw: &str) -> String {
     let stem = raw
@@ -50,7 +43,7 @@ pub fn package_names(
 
     for file in archives.iter().flat_map(|archive| &archive.manifest.files) {
         let package_id = file.kind.package_id();
-        let meta = match file_provider(file) {
+        let meta = match file.kind.metadata_provider() {
             ProviderId::Modrinth => modrinth.get(&package_id),
             ProviderId::CurseForge => curseforge.get(&package_id),
             ProviderId::Local => None,

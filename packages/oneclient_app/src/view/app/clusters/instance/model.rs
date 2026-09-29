@@ -44,23 +44,17 @@ impl LoaderChoice {
         }
     }
 
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::Fabric => "Fabric",
-            Self::Forge => "Forge",
-            Self::NeoForge => "NeoForge",
-            Self::Quilt => "Quilt",
-            Self::Vanilla => "Vanilla",
-        }
+    pub fn name(self) -> String {
+        self.primary().to_string()
     }
 
-    pub fn mark(self) -> Option<LoaderMark> {
+    pub fn mark(self) -> LoaderMark {
         match self {
-            Self::Fabric => Some(LoaderMark::Image("icons/fabric.png")),
-            Self::Forge => Some(LoaderMark::Image("icons/forge.png")),
-            Self::NeoForge => Some(LoaderMark::Image("icons/neo-forge.png")),
-            Self::Quilt => Some(LoaderMark::Tinted(IconType::Quilt)),
-            Self::Vanilla => Some(LoaderMark::Image("icons/vanilla.png")),
+            Self::Fabric => LoaderMark::Image("icons/fabric.png"),
+            Self::Forge => LoaderMark::Image("icons/forge.png"),
+            Self::NeoForge => LoaderMark::Image("icons/neo-forge.png"),
+            Self::Quilt => LoaderMark::Tinted(IconType::Quilt),
+            Self::Vanilla => LoaderMark::Image("icons/vanilla.png"),
         }
     }
 
@@ -130,16 +124,15 @@ impl Step {
 
 const ONECLIENT_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Bundles, Step::Customize];
 const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Loader, Step::Version, Step::Customize];
-const UNCHOSEN_STEPS: [Step; 3] = [Step::Type, Step::Version, Step::Customize];
 
-pub fn step_order(choice: Option<TypeChoice>) -> &'static [Step] {
+pub fn step_order(choice: TypeChoice) -> &'static [Step] {
     match choice {
-        Some(TypeChoice::OneClient) => &ONECLIENT_STEPS,
-        Some(TypeChoice::Scratch) => &SCRATCH_STEPS,
-        None => &UNCHOSEN_STEPS,
+        TypeChoice::OneClient => &ONECLIENT_STEPS,
+        TypeChoice::Scratch => &SCRATCH_STEPS,
     }
 }
 
+#[derive(Clone)]
 pub struct VersionRow {
     pub id: String,
     pub meta: String,
@@ -170,12 +163,7 @@ impl VersionList {
 
     pub fn row(&self, index: usize) -> Option<VersionRow> {
         match self {
-            Self::Curated(rows) => rows.get(index).map(|row| VersionRow {
-                id: row.id.clone(),
-                meta: row.meta.clone(),
-                badge: row.badge.clone(),
-                date: row.date.clone(),
-            }),
+            Self::Curated(rows) => rows.get(index).cloned(),
             Self::Catalogue { all, visible } => {
                 let entry = all.get(*visible.get(index)? as usize)?;
                 Some(VersionRow {
@@ -187,27 +175,12 @@ impl VersionList {
             }
         }
     }
-
-    pub fn default_id(&self) -> Option<String> {
-        match self {
-            Self::Curated(rows) => rows.first().map(|row| row.id.clone()),
-            Self::Catalogue { all, visible } => {
-                let release = visible
-                    .iter()
-                    .map(|index| &all[*index as usize])
-                    .find(|entry| entry.kind.is_release());
-                release
-                    .or_else(|| visible.first().map(|index| &all[*index as usize]))
-                    .map(|entry| entry.id.clone())
-            }
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
 pub struct Wizard {
     pub step: State<usize>,
-    pub choice: State<Option<TypeChoice>>,
+    pub choice: State<TypeChoice>,
     pub version: State<Option<String>>,
     pub filter: State<usize>,
     pub query: State<String>,

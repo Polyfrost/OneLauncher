@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use freya::prelude::*;
 use oneclient_common::Patch;
 use oneclient_common::domain::GameLoader;
@@ -62,7 +64,7 @@ impl Component for ClusterSettings {
             return cluster_content().child(centered_note(&note)).into_element();
         };
 
-        let versions = loader_versions(&versions_query).to_vec();
+        let versions = loader_versions(&versions_query);
         let runtimes = java_runtimes(&runtimes_query);
 
         let instance_section: Vec<Element> = if cluster.user_created {
@@ -86,7 +88,7 @@ impl Component for ClusterSettings {
             Vec::new()
         };
 
-        let mod_loader = !super::lacks_mod_loader(&cluster);
+        let mod_loader = !cluster.lacks_mod_loader();
         let loader_section: Vec<Element> = if mod_loader {
             vec![
                 section_header("LOADER").into_element(),
@@ -952,7 +954,7 @@ struct LoaderRow {
     cluster_id: i64,
     loader: GameLoader,
     selected: Option<String>,
-    versions: Vec<String>,
+    versions: Arc<[String]>,
     locked: bool,
 }
 
@@ -986,7 +988,7 @@ impl Component for LoaderRow {
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
-            let options = versions.clone();
+            let options = versions.to_vec();
             Dropdown::new(selected, options.clone())
                 .width(Size::px(220.))
                 .height(Size::px(34.))

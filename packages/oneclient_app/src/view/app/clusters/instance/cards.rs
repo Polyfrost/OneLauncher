@@ -74,15 +74,13 @@ impl Component for SelectCard {
 }
 
 pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<Element> {
-    let mark = choice.mark()?;
-
-    let drawn = match mark {
-        LoaderMark::Tinted(icon) => {
-            AppAssets::get_bytes(icon.path()).map(|_| Icon::new(icon).size(size).into_element())
-        }
-        LoaderMark::Image(path) => {
-            AppAssets::get_bytes(path).map(|_| AssetImage::new(path, size).into_element())
-        }
+    let drawn = match choice.mark() {
+        LoaderMark::Tinted(icon) => AppAssets::get(icon.path())
+            .is_some()
+            .then(|| Icon::new(icon).size(size).into_element()),
+        LoaderMark::Image(path) => AppAssets::get(path)
+            .is_some()
+            .then(|| AssetImage::new(path, size).into_element()),
     };
 
     if let Some(drawn) = drawn {

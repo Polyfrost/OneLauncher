@@ -306,23 +306,11 @@ impl MutationCapability for ClusterMutation {
                             .events
                             .signal(oneclient_events::Signal::ClustersChanged);
 
-                        if let Some(source) = cover_source {
-                            match state.clusters.set_cover_from_file(cluster.id, source).await {
-                                Ok(file_name) => {
-                                    let update = oneclient_core::clusters::ClusterUpdate {
-                                        cover_path: oneclient_common::Patch::Set(file_name),
-                                        ..Default::default()
-                                    };
-                                    if let Err(err) =
-                                        state.clusters.update(cluster.id, update).await
-                                    {
-                                        tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the instance cover");
-                                    }
-                                }
-                                Err(err) => {
-                                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to store the instance cover");
-                                }
-                            }
+                        if let Some(source) = cover_source
+                            && let Err(err) =
+                                state.clusters.set_cover_from_file(cluster.id, source).await
+                        {
+                            tracing::warn!(cluster_id = cluster.id, error = %err, "failed to store the instance cover");
                         }
 
                         if cluster.uses_bundles() {
@@ -389,7 +377,7 @@ impl MutationCapability for ClusterMutation {
                     oneclient_common::Patch::Clear
                 } else if let Some(source) = cover_source {
                     match state.clusters.set_cover_from_file(*cluster_id, source).await {
-                        Ok(file_name) => oneclient_common::Patch::Set(file_name),
+                        Ok(_) => oneclient_common::Patch::Unchanged,
                         Err(err) => {
                             tracing::warn!(cluster_id, error = %err, "failed to store the instance cover");
                             oneclient_common::Patch::Unchanged

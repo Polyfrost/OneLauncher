@@ -102,12 +102,6 @@ impl RemoteMigration {
             },
         ))
     }
-
-    #[must_use]
-    pub fn changes_loader(&self) -> bool {
-        self.endpoints()
-            .is_some_and(|(from, to)| from.loader != to.loader)
-    }
 }
 
 #[must_use]
@@ -600,15 +594,17 @@ mod tests {
         let (from, to) = rule("a", "26.1", "forge", "26.1.2").endpoints().unwrap();
         assert_eq!(from.loader, GameLoader::Forge);
         assert_eq!(to.loader, GameLoader::Forge);
-        assert!(!rule("a", "26.1", "forge", "26.1.2").changes_loader());
-        assert!(loader_rule("a", "1.20.1", "forge", "neoforge").changes_loader());
+        let (from, to) = loader_rule("a", "1.20.1", "forge", "neoforge")
+            .endpoints()
+            .unwrap();
+        assert_eq!(from.loader, GameLoader::Forge);
+        assert_eq!(to.loader, GameLoader::NeoForge);
     }
 
     #[test]
     fn unknown_target_loader_invalidates_the_rule() {
         let broken = loader_rule("a", "1.20.1", "forge", "rift");
         assert!(broken.endpoints().is_none());
-        assert!(!broken.changes_loader());
     }
 
     #[test]

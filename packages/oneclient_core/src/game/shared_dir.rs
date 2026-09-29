@@ -5,7 +5,6 @@ use std::path::{Path, PathBuf};
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
-use oneclient_db::models::ClusterKind;
 
 use crate::LauncherResult;
 use crate::clusters::Cluster;
@@ -1298,29 +1297,9 @@ async fn is_stale_launcher_content(services: &LauncherServices, path: &Path) -> 
     };
     let hash = polyio::normalize_hash(&hash);
 
-    if !matches!(
-        artifact_dao::get_artifact_by_hash(&services.db, &hash).await,
-        Ok(Some(_))
-    ) {
-        return false;
-    }
-
-    let Ok(linked) = artifact_dao::list_clusters_linking(&services.db, &hash).await else {
-        return true;
-    };
-    if linked.is_empty() {
-        return true;
-    }
-
-    for cluster_id in linked {
-        match cluster_dao::get_by_id(&services.db, cluster_id).await {
-            Ok(Some(row)) if row.kind() == ClusterKind::OneClient => return true,
-            Ok(Some(_)) => {}
-            _ => return true,
-        }
-    }
-
-    false
+    artifact_dao::is_launcher_owned(&services.db, &hash)
+        .await
+        .unwrap_or(false)
 }
 
 fn has_content_extension(content_type: ContentType, name: &str) -> bool {

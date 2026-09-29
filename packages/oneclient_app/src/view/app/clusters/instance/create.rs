@@ -42,12 +42,11 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
 
     let subtitle = if description.is_empty() {
         match picks.choice {
-            None => "Pick a type to get started".to_string(),
-            Some(TypeChoice::OneClient) => match &picks.versions.chosen {
+            TypeChoice::OneClient => match &picks.versions.chosen {
                 Some(version) => format!("OneClient · {version}"),
                 None => "OneClient".to_string(),
             },
-            Some(TypeChoice::Scratch) => match &picks.versions.chosen {
+            TypeChoice::Scratch => match &picks.versions.chosen {
                 Some(version) => format!("{version} · {}", picks.loader_label()),
                 None => picks.loader_label(),
             },
@@ -111,7 +110,7 @@ impl Component for CreateInstanceModal {
         let mutation = use_cluster_mutation();
         let wizard = Wizard {
             step: use_state(|| 0usize),
-            choice: use_state(|| Some(TypeChoice::OneClient)),
+            choice: use_state(|| TypeChoice::OneClient),
             version: use_state(|| None::<String>),
             filter: use_state(|| 0usize),
             query: use_state(String::new),

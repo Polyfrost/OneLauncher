@@ -40,7 +40,9 @@ pub struct LocalImageKeys {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct LocalImageQuery;
+pub struct LocalImageQuery {
+    picked: bool,
+}
 
 impl QueryCapability for LocalImageQuery {
     type Ok = Bytes;
@@ -68,11 +70,20 @@ impl QueryCapability for LocalImageQuery {
             None
         };
 
-        Ok(
-            tokio::task::spawn_blocking(move || oneclient_core::load_screenshot(&path, max_edge))
-                .await
-                .map_err(|e| LauncherError::Minecraft(e.to_string()))??,
-        )
+        let picked = self.picked;
+        Ok(tokio::task::spawn_blocking(move || {
+            if picked {
+                oneclient_core::load_picked_image(&path, max_edge)
+            } else {
+                oneclient_core::load_screenshot(&path, max_edge)
+            }
+        })
+        .await
+        .map_err(|e| LauncherError::Minecraft(e.to_string()))??)
+    }
+
+    fn matches(&self, _keys: &Self::Keys) -> bool {
+        !self.picked
     }
 }
 
@@ -83,54 +94,10 @@ pub fn use_cluster_screenshots(cluster_id: i64) -> UseQuery<ClusterScreenshotsQu
     ))
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct PickedImageQuery;
-
-impl QueryCapability for PickedImageQuery {
-    type Ok = Bytes;
-    type Err = LauncherError;
-    type Keys = LocalImageKeys;
-
-    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        if keys.path.as_os_str().is_empty() {
-            return Ok(Bytes::new());
-        }
-
-        let path = keys.path.clone();
-        let max_edge = (keys.max_edge != 0).then_some(keys.max_edge);
-
-        let _permit = if max_edge.is_some() {
-            let sem = LOCAL_IMAGE_SEMAPHORE
-                .get_or_init(|| Arc::new(Semaphore::new(1)))
-                .clone();
-            Some(
-                sem.acquire_owned()
-                    .await
-                    .map_err(|_| LauncherError::Minecraft("local image semaphore closed".into()))?,
-            )
-        } else {
-            None
-        };
-
-        Ok(
-            tokio::task::spawn_blocking(move || oneclient_core::load_picked_image(&path, max_edge))
-                .await
-                .map_err(|e| LauncherError::Minecraft(e.to_string()))??,
-        )
-    }
-}
-
-pub fn use_picked_image(path: PathBuf, max_edge: u32) -> UseQuery<PickedImageQuery> {
+pub fn use_local_image(path: PathBuf, max_edge: u32, picked: bool) -> UseQuery<LocalImageQuery> {
     use_query(Query::new(
         LocalImageKeys { path, max_edge },
-        PickedImageQuery,
-    ))
-}
-
-pub fn use_local_image(path: PathBuf, max_edge: u32) -> UseQuery<LocalImageQuery> {
-    use_query(Query::new(
-        LocalImageKeys { path, max_edge },
-        LocalImageQuery,
+        LocalImageQuery { picked },
     ))
 }
 
@@ -163,7 +130,11 @@ pub fn try_cluster_screenshots(
 
 pub async fn invalidate_screenshots_queries() {
     QueriesStorage::<ClusterScreenshotsQuery>::invalidate_all().await;
-    QueriesStorage::<LocalImageQuery>::invalidate_all().await;
+    QueriesStorage::<LocalImageQuery>::invalidate_matching(LocalImageKeys {
+        path: PathBuf::new(),
+        max_edge: 0,
+    })
+    .await;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]

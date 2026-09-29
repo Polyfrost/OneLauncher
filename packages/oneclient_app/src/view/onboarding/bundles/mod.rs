@@ -15,6 +15,7 @@ type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::{border_all_color, fixed_grid};
+use crate::utils::bundle_display_name;
 use crate::view::onboarding::{
     archive_selected, choice_row_sized, is_default_bundle, onboarding_nav, onboarding_slide,
     pkg_key, set_archive_selected, step_heading, version_chip,
@@ -64,15 +65,6 @@ fn fps_warning_banner() -> impl IntoElement {
         .border(border_all_color(1., colors::code_warn()))
         .padding(Gaps::new_all(8.))
         .child(text)
-}
-
-fn bundle_display_name(archive: &BundleArchive) -> String {
-    let category = archive.manifest.category.trim();
-    if category.is_empty() {
-        archive.manifest.name.clone()
-    } else {
-        category.to_string()
-    }
 }
 
 #[derive(Clone)]

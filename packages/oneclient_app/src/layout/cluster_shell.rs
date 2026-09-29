@@ -121,9 +121,7 @@ impl Component for ClusterShell {
         let show_datapacks = cluster
             .as_ref()
             .is_none_or(|c| crate::view::app::cluster::supports_datapacks(&c.mc_version));
-        let show_mod_tabs = cluster
-            .as_ref()
-            .is_none_or(|c| !crate::view::app::cluster::lacks_mod_loader(c));
+        let show_mod_tabs = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
         let launch_state = launch_button_state(&game, cluster_id, syncing);
 
         let hidden_tab = !show_mod_tabs

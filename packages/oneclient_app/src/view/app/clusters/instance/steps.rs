@@ -2,13 +2,12 @@ use std::collections::HashMap;
 
 use freya::prelude::*;
 use oneclient_cluster::naming::validate_instance_name;
-use oneclient_common::domain::GameLoader;
 use oneclient_core::BundleArchive;
 
 use super::cards::{
-    BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, LOADER_CARD_H, LOADER_COLUMNS, LOADER_MARK_SIZE,
-    LOADER_ROW_MARK_SIZE, SelectCard, VERSION_ROW_H, VERSION_ROW_SPACING, WideCard, cell_card,
-    loader_mark, marker, version_row, wide_card,
+    BUNDLE_CARD_H, BUNDLE_COLUMNS, CARD_RADIUS, CellCard, LOADER_CARD_H, LOADER_COLUMNS,
+    LOADER_MARK_SIZE, LOADER_ROW_MARK_SIZE, SelectCard, VERSION_ROW_H, VERSION_ROW_SPACING,
+    WideCard, cell_card, loader_mark, marker, version_row, wide_card,
 };
 use super::data::Picks;
 use super::details::details_body;
@@ -18,12 +17,13 @@ use crate::components::{
     Dropdown, GRID_GAP, Icon, IconType, ScrollArea, TextInput, centered_spinner,
 };
 use crate::theme::colors;
-use crate::ui::{centered_note, fixed_grid, note};
+use crate::ui::{border_all_color, centered_note, fixed_grid, note};
+use crate::utils::bundle_display_name;
 
 pub fn body(wizard: Wizard, picks: &Picks) -> Element {
     let (key, inner) = match picks.step {
         Step::Type => ("step-type", type_step(wizard, picks)),
-        Step::Loader => ("step-loader", loader_step(wizard)),
+        Step::Loader => ("step-loader", loader_step(wizard, picks)),
         Step::Version => ("step-version", version_step(wizard, picks)),
         Step::Bundles => ("step-bundles", bundles_step(wizard, picks)),
         Step::Customize => (
@@ -83,9 +83,9 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
                         badge: badge.map(str::to_string),
                         blurb: blurb.to_string(),
                         meta: meta.to_string(),
-                        selected: picks.choice == Some(choice),
+                        selected: picks.choice == choice,
                         on_press: (move |()| {
-                            wizard.choice.set(Some(choice));
+                            wizard.choice.set(choice);
                             wizard.version.set(None);
                             wizard.declined.set(None);
                         })
@@ -96,29 +96,32 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
         .into_element()
 }
 
-fn loader_step(mut wizard: Wizard) -> Element {
+fn select_loader(mut wizard: Wizard, choice: LoaderChoice) {
+    wizard.loader.set(choice);
+    wizard.loader_version.set(None);
+    wizard.version.set(None);
+}
+
+fn loader_step(wizard: Wizard, picks: &Picks) -> Element {
     let chosen = *wizard.loader.read();
 
     let cards: Vec<Element> = LoaderChoice::MODDED
         .into_iter()
         .map(|choice| {
             cell_card(CellCard {
-                id: choice.name().to_string(),
-                title: choice.name().to_string(),
+                id: choice.name(),
+                title: choice.name(),
                 blurb: choice.blurb().to_string(),
                 meta: None,
                 corner: loader_mark(choice, chosen == choice, LOADER_MARK_SIZE),
                 selected: chosen == choice,
                 checkbox: false,
-                on_press: (move |()| {
-                    wizard.loader.set(choice);
-                    wizard.loader_version.set(None);
-                    wizard.version.set(None);
-                })
-                .into(),
+                on_press: (move |()| select_loader(wizard, choice)).into(),
             })
         })
         .collect();
+
+    let shows_versions = chosen != LoaderChoice::Vanilla && !picks.loader.versions.is_empty();
 
     rect()
         .vertical()
@@ -136,10 +139,64 @@ fn loader_step(mut wizard: Wizard) -> Element {
                 .width(Size::fill())
                 .child(loader_row(wizard, LoaderChoice::Vanilla, chosen)),
         )
+        .maybe_child(shows_versions.then(|| {
+            rect()
+                .key("loader-version")
+                .width(Size::fill())
+                .child(loader_version_card(wizard, picks, chosen))
+                .into_element()
+        }))
         .into_element()
 }
 
-fn loader_row(mut wizard: Wizard, choice: LoaderChoice, chosen: LoaderChoice) -> Element {
+fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) -> Element {
+    let options = picks.loader.versions.to_vec();
+    let selected = picks.loader.version.clone().unwrap_or_default();
+
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(16.)
+        .padding(Gaps::new_all(16.))
+        .corner_radius(CornerRadius::new_all(CARD_RADIUS))
+        .background(colors::component_bg())
+        .border(border_all_color(1., colors::component_border()))
+        .child(
+            rect()
+                .vertical()
+                .width(Size::flex(1.0))
+                .spacing(4.)
+                .child(
+                    label()
+                        .text(format!("{} version", chosen.name()))
+                        .font_size(14.)
+                        .font_weight(FontWeight::MEDIUM)
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    label()
+                        .text("The newest build is picked for you. Change it if a package needs an older one.")
+                        .font_size(12.)
+                        .line_height(1.4)
+                        .color(colors::fg_secondary()),
+                ),
+        )
+        .child(
+            Dropdown::new(selected, options.clone())
+                .width(Size::px(200.))
+                .height(Size::px(32.))
+                .on_select(move |index: usize| {
+                    if let Some(chosen) = options.get(index) {
+                        wizard.loader_version.set(Some(chosen.clone()));
+                    }
+                }),
+        )
+        .into_element()
+}
+
+fn loader_row(wizard: Wizard, choice: LoaderChoice, chosen: LoaderChoice) -> Element {
     let selected = chosen == choice;
 
     let content = rect()
@@ -185,17 +242,12 @@ fn loader_row(mut wizard: Wizard, choice: LoaderChoice, chosen: LoaderChoice) ->
         .into_element();
 
     SelectCard {
-        id: choice.name().to_string(),
+        id: choice.name(),
         selected,
         height: None,
         padding: Gaps::new_symmetric(14., 14.),
         content,
-        on_press: (move |()| {
-            wizard.loader.set(choice);
-            wizard.loader_version.set(None);
-            wizard.version.set(None);
-        })
-        .into(),
+        on_press: (move |()| select_loader(wizard, choice)).into(),
     }
     .into_element()
 }
@@ -240,7 +292,7 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                     .leading(Icon::new(IconType::SearchMd).size(14.)),
             ),
         )
-        .maybe_child((picks.choice != Some(TypeChoice::OneClient)).then(|| {
+        .maybe_child((picks.choice != TypeChoice::OneClient).then(|| {
             rect()
                 .horizontal()
                 .cross_align(Alignment::Center)
@@ -265,50 +317,7 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                 )
                 .into_element()
         }))
-        .maybe_child(loader_version_picker(wizard, picks))
         .into_element()
-}
-
-fn loader_version_picker(mut wizard: Wizard, picks: &Picks) -> Option<Element> {
-    let loader = picks
-        .loader
-        .chosen
-        .filter(|loader| *loader != GameLoader::Vanilla)?;
-    if picks.choice != Some(TypeChoice::Scratch) || picks.loader.versions.is_empty() {
-        return None;
-    }
-
-    let options = picks.loader.versions.to_vec();
-    let selected = picks
-        .loader
-        .version
-        .clone()
-        .or_else(|| options.first().cloned())
-        .unwrap_or_default();
-
-    Some(
-        rect()
-            .horizontal()
-            .cross_align(Alignment::Center)
-            .spacing(10.)
-            .child(
-                label()
-                    .text(format!("{loader} version"))
-                    .font_size(12.)
-                    .color(colors::fg_secondary()),
-            )
-            .child(
-                Dropdown::new(selected, options.clone())
-                    .width(Size::px(168.))
-                    .height(Size::px(32.))
-                    .on_select(move |index: usize| {
-                        if let Some(chosen) = options.get(index) {
-                            wizard.loader_version.set(Some(chosen.clone()));
-                        }
-                    }),
-            )
-            .into_element(),
-    )
 }
 
 fn version_list(mut wizard: Wizard, picks: &Picks) -> Element {
@@ -341,11 +350,7 @@ fn version_list(mut wizard: Wizard, picks: &Picks) -> Element {
             version_row(
                 &row,
                 is_selected,
-                (move |()| {
-                    wizard.version.set(Some(id.clone()));
-                    wizard.loader_version.set(None);
-                })
-                .into(),
+                (move |()| wizard.version.set(Some(id.clone()))).into(),
             )
         })
         .into_element()
@@ -368,7 +373,7 @@ fn list_reset_key(picks: &Picks, needle: &str) -> u64 {
     use std::hash::{Hash, Hasher};
 
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    matches!(picks.choice, Some(TypeChoice::OneClient)).hash(&mut hasher);
+    matches!(picks.choice, TypeChoice::OneClient).hash(&mut hasher);
     picks.versions.filter.hash(&mut hasher);
     needle.hash(&mut hasher);
     hasher.finish()
@@ -400,15 +405,6 @@ fn bundle_blurb(archive: &BundleArchive, names: &HashMap<String, String>) -> Str
     }
 }
 
-fn bundle_title(archive: &BundleArchive) -> String {
-    let category = archive.manifest.category.trim();
-    if category.is_empty() {
-        archive.manifest.name.clone()
-    } else {
-        category.to_string()
-    }
-}
-
 fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
     if picks.bundles.archives.is_empty() {
         return centered_note(if picks.bundles.loaded {
@@ -433,7 +429,7 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
 
             cell_card(CellCard {
                 id: name.clone(),
-                title: bundle_title(archive),
+                title: bundle_display_name(archive),
                 blurb: bundle_blurb(archive, &picks.bundles.names),
                 meta: Some(match count {
                     1 => "1 package".to_string(),

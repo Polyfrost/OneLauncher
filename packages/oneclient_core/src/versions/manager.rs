@@ -1,3 +1,4 @@
+use serde::de::DeserializeOwned;
 use tokio::sync::{Mutex, RwLock};
 
 use crate::LauncherResult;
@@ -42,24 +43,20 @@ impl VersionsManager {
     }
 
     async fn cached_arts() -> Option<ArtsManifest> {
-        let path = paths::caches_dir().ok()?.join("version-arts.json");
-        let bytes = polyio::read(&path).await.ok()?;
-        match serde_json::from_slice(&bytes) {
-            Ok(arts) => Some(arts),
-            Err(err) => {
-                tracing::warn!("cached version arts are unreadable: {err}");
-                None
-            }
-        }
+        Self::cached_json("version-arts.json", "version arts are").await
     }
 
     async fn cached_manifest() -> Option<VersionsManifest> {
-        let path = paths::caches_dir().ok()?.join("versions.json");
+        Self::cached_json("versions.json", "versions manifest is").await
+    }
+
+    async fn cached_json<T: DeserializeOwned>(file_name: &str, what: &str) -> Option<T> {
+        let path = paths::caches_dir().ok()?.join(file_name);
         let bytes = polyio::read(&path).await.ok()?;
         match serde_json::from_slice(&bytes) {
-            Ok(manifest) => Some(manifest),
+            Ok(value) => Some(value),
             Err(err) => {
-                tracing::warn!("cached versions manifest is unreadable: {err}");
+                tracing::warn!("cached {what} unreadable: {err}");
                 None
             }
         }
@@ -133,38 +130,29 @@ impl VersionsManager {
     async fn fetch_manifest(
         services: &LauncherServices,
     ) -> LauncherResult<Option<(VersionsManifest, bool)>> {
-        let manifest_path = paths::caches_dir()?.join("versions.json");
-        let url = format!(
-            "{}/oneclient/versions/metadata.json",
-            services.requester.config().meta_url_base
-        );
-
-        let Some(fetched) = fetch_cached(
-            &services.requester,
-            &url,
-            &manifest_path,
-            EtagPolicy::CommitNow,
-        )
-        .await?
-        else {
-            return Ok(None);
-        };
-
-        Ok(Some((fetched.json()?, fetched.changed)))
+        Self::fetch_json(services, "versions.json", "metadata.json").await
     }
 
     #[tracing::instrument(level = "debug", skip(services))]
     async fn fetch_arts(
         services: &LauncherServices,
     ) -> LauncherResult<Option<(ArtsManifest, bool)>> {
-        let arts_path = paths::caches_dir()?.join("version-arts.json");
+        Self::fetch_json(services, "version-arts.json", "arts.json").await
+    }
+
+    async fn fetch_json<T: DeserializeOwned>(
+        services: &LauncherServices,
+        file_name: &str,
+        remote_name: &str,
+    ) -> LauncherResult<Option<(T, bool)>> {
+        let path = paths::caches_dir()?.join(file_name);
         let url = format!(
-            "{}/oneclient/versions/arts.json",
+            "{}/oneclient/versions/{remote_name}",
             services.requester.config().meta_url_base
         );
 
         let Some(fetched) =
-            fetch_cached(&services.requester, &url, &arts_path, EtagPolicy::CommitNow).await?
+            fetch_cached(&services.requester, &url, &path, EtagPolicy::CommitNow).await?
         else {
             return Ok(None);
         };

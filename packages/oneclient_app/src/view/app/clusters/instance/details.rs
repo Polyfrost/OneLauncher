@@ -46,29 +46,22 @@ pub struct DetailsState {
 
 impl DetailsState {
     pub fn blank() -> Self {
-        Self {
-            name: use_state(String::new),
-            name_touched: use_state(|| false),
-            description: use_state(String::new),
-            tags: use_state(Vec::new),
-            tag_draft: use_state(String::new),
-            tag_open: use_state(|| false),
-            cover: use_state(|| None::<PathBuf>),
-            cover_cleared: use_state(|| false),
-            gallery_open: use_state(|| false),
-            gallery_pending: use_state(|| None::<String>),
-            gallery_error: use_state(|| None::<String>),
-        }
+        Self::init(String::new(), String::new(), Vec::new(), false)
     }
 
     pub fn seeded(name: &str, description: Option<&str>, tags: &[String]) -> Self {
-        let name = name.to_string();
-        let description = description.unwrap_or_default().to_string();
-        let tags = tags.to_vec();
+        Self::init(
+            name.to_string(),
+            description.unwrap_or_default().to_string(),
+            tags.to_vec(),
+            true,
+        )
+    }
 
+    fn init(name: String, description: String, tags: Vec<String>, touched: bool) -> Self {
         Self {
             name: use_state(move || name.clone()),
-            name_touched: use_state(|| true),
+            name_touched: use_state(move || touched),
             description: use_state(move || description.clone()),
             tags: use_state(move || tags.clone()),
             tag_draft: use_state(String::new),

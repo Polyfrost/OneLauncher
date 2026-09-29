@@ -11,7 +11,6 @@ pub struct InstanceCard {
     id: i64,
     title: String,
     tags: Vec<String>,
-    cover: Option<std::path::PathBuf>,
     art: DynamicArt,
     selected: bool,
     on_press: EventHandler<Event<PressEventData>>,
@@ -27,7 +26,6 @@ impl InstanceCard {
             id: cluster.id,
             title: cluster.name.clone(),
             tags: cluster.tags.clone(),
-            cover: cluster.cover_file(),
             art: DynamicArt::for_cluster(cluster).max_edge(ART_PREVIEW_EDGE),
             selected,
             on_press: on_press.into(),
@@ -40,7 +38,7 @@ impl PartialEq for InstanceCard {
         self.id == other.id
             && self.title == other.title
             && self.tags == other.tags
-            && self.cover == other.cover
+            && self.art == other.art
             && self.selected == other.selected
     }
 }
@@ -57,8 +55,10 @@ impl Component for InstanceCard {
         let focused = focus().is_focused();
         let on_press = self.on_press.clone();
 
-        let opacity = if selected || hovered || focused {
-            if selected { 1.0 } else { 0.85 }
+        let opacity = if selected {
+            1.0
+        } else if hovered || focused {
+            0.85
         } else {
             0.6
         };

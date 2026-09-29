@@ -91,11 +91,7 @@ impl Component for EditInstanceModal {
             None => art,
         };
 
-        let loader = if self.facts.mc_loader == GameLoader::Vanilla {
-            "Vanilla".to_string()
-        } else {
-            self.facts.mc_loader.to_string()
-        };
+        let loader = self.facts.mc_loader.to_string();
 
         let close_x = self.on_close.clone();
         let close_cancel = self.on_close.clone();

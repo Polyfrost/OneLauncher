@@ -323,6 +323,31 @@ pub async fn list_clusters_linking(pool: &SqlitePool, hash: &str) -> Result<Vec<
         .await
 }
 
+pub async fn is_launcher_owned(pool: &SqlitePool, hash: &str) -> Result<bool, sqlx::Error> {
+    let owned: i64 = sqlx::query_scalar(
+        r#"
+		SELECT EXISTS (
+			SELECT 1 FROM artifacts a
+			WHERE a.hash = ?
+			AND (
+				NOT EXISTS (SELECT 1 FROM cluster_artifacts ca WHERE ca.hash = a.hash)
+				OR EXISTS (
+					SELECT 1 FROM cluster_artifacts ca
+					LEFT JOIN clusters c ON c.id = ca.cluster_id
+					WHERE ca.hash = a.hash AND (c.id IS NULL OR c.kind = ?)
+				)
+			)
+		)
+		"#,
+    )
+    .bind(hash)
+    .bind(ClusterKind::OneClient.as_i64())
+    .fetch_one(pool)
+    .await?;
+
+    Ok(owned != 0)
+}
+
 pub async fn unlink_cluster_artifact(
     pool: &SqlitePool,
     cluster_id: i64,

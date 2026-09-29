@@ -28,7 +28,7 @@ use crate::hooks::{
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::grid_columns_for_width;
-use crate::view::app::cluster::{lacks_mod_loader, supports_datapacks};
+use crate::view::app::cluster::supports_datapacks;
 
 use super::{
     InstallSource, Installed, PackageBanner, Thumbnail, WorldInstallPrompt, installed_map,
@@ -79,7 +79,7 @@ const TEXTURE_SLUG: &str = "texture";
 const LOADER_SLUGS: [&str; 2] = ["mod", "shader"];
 
 pub(crate) fn browsable_type(package_type: &str, cluster: &Cluster) -> String {
-    if lacks_mod_loader(cluster) {
+    if cluster.lacks_mod_loader() {
         let unsupported = LOADER_SLUGS.contains(&package_type)
             || (package_type == DATAPACK_SLUG && !supports_datapacks(&cluster.mc_version));
         return if unsupported { TEXTURE_SLUG } else { package_type }.to_string();
@@ -118,7 +118,7 @@ impl Component for Browser {
         });
 
         let redirect = use_cluster(self.cluster_id)
-            .filter(lacks_mod_loader)
+            .filter(Cluster::lacks_mod_loader)
             .map(|c| browsable_type(&self.package_type, &c))
             .filter(|package_type| *package_type != self.package_type)
             .map(|package_type| Route::Browser {
@@ -614,7 +614,7 @@ impl Component for TypePicker {
         let datapacks = cluster
             .as_ref()
             .is_none_or(|c| supports_datapacks(&c.mc_version));
-        let mod_loader = cluster.as_ref().is_none_or(|c| !lacks_mod_loader(c));
+        let mod_loader = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
 
         let types: Vec<(&str, &str)> = BROWSE_TYPES
             .into_iter()

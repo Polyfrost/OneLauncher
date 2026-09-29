@@ -13,7 +13,7 @@ use oneclient_core::images::{DEFAULT_IMAGE_EDGE, PREVIEW_IMAGE_EDGE};
 use crate::AppAssets;
 use crate::hooks::{
     loaded_image, resolve_art_url, settled_or_loading, use_cached_image, use_local_image,
-    use_picked_image, use_version_art, use_version_metadata,
+    use_version_art, use_version_metadata,
 };
 use crate::layout::HOME_BACKGROUND_ASSET;
 use crate::theme::colors;
@@ -40,12 +40,7 @@ impl DynamicArt {
             major: Some(major),
             key,
             loader,
-            cover: None,
-            cover_picked: false,
-            max_edge: DEFAULT_IMAGE_EDGE,
-            preview_edge: None,
-            url: None,
-            skeleton: false,
+            ..Self::fallback()
         }
     }
 
@@ -56,25 +51,14 @@ impl DynamicArt {
             key: parsed.and_then(|p| p.key()),
             loader: Some(cluster.mc_loader),
             cover: cluster.cover_file(),
-            cover_picked: false,
-            max_edge: DEFAULT_IMAGE_EDGE,
-            preview_edge: None,
-            url: None,
-            skeleton: false,
+            ..Self::fallback()
         }
     }
 
     pub fn for_url(url: String) -> Self {
         Self {
-            major: None,
-            key: None,
-            loader: None,
-            cover: None,
-            cover_picked: false,
-            max_edge: DEFAULT_IMAGE_EDGE,
-            preview_edge: None,
             url: Some(url),
-            skeleton: false,
+            ..Self::fallback()
         }
     }
 
@@ -163,19 +147,12 @@ fn use_resolved_art(art: &DynamicArt) -> Option<(String, Bytes)> {
         skeleton: _,
     } = art.clone();
 
-    let stored = cover.clone().filter(|_| !cover_picked).unwrap_or_default();
-    let chosen = cover.clone().filter(|_| cover_picked).unwrap_or_default();
-    let stored_query = use_local_image(stored, max_edge);
-    let picked_query = use_picked_image(chosen, max_edge);
+    let cover_query = use_local_image(cover.clone().unwrap_or_default(), max_edge, cover_picked);
 
     let cover_bytes = cover.as_ref().and_then(|path| {
-        if cover_picked {
-            settled_or_loading(&picked_query)
-        } else {
-            settled_or_loading(&stored_query)
-        }
-        .filter(|bytes: &Bytes| !bytes.is_empty())
-        .map(|bytes| (format!("{max_edge}|{}", path.display()), bytes))
+        settled_or_loading(&cover_query)
+            .filter(|bytes: &Bytes| !bytes.is_empty())
+            .map(|bytes| (format!("{max_edge}|{}", path.display()), bytes))
     });
 
     let curated = use_version_metadata(major, key, loader);

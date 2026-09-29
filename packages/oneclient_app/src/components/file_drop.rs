@@ -37,14 +37,10 @@ const IMPORTABLE: [ContentType; 4] = [
 const SHADER_HINTS: [&str; 5] = ["shader", "bsl", "seus", "complementary", "sildur"];
 const DATAPACK_HINTS: [&str; 4] = ["datapack", "data pack", "data_pack", "data-pack"];
 
-fn needs_mod_loader(content_type: ContentType) -> bool {
-    matches!(content_type, ContentType::Mod | ContentType::Shader)
-}
-
 fn importable(mod_loader: bool) -> Vec<ContentType> {
     IMPORTABLE
         .into_iter()
-        .filter(|ct| mod_loader || !needs_mod_loader(*ct))
+        .filter(|ct| mod_loader || !ct.needs_mod_loader())
         .collect()
 }
 
@@ -77,7 +73,7 @@ fn infer_content_type(
         return mod_loader.then_some(ContentType::Mod);
     }
     if let Some(route_type) = route_type {
-        if mod_loader || !needs_mod_loader(route_type) {
+        if mod_loader || !route_type.needs_mod_loader() {
             return Some(route_type);
         }
         if route_type == ContentType::Shader {
@@ -361,8 +357,7 @@ fn prompt_body(
         .unwrap_or_default();
 
     let destination = clusters.get(cluster_idx);
-    let mod_loader =
-        destination.is_none_or(|c| !crate::view::app::cluster::lacks_mod_loader(c));
+    let mod_loader = destination.is_none_or(|c| !c.lacks_mod_loader());
 
     let mut rejected: Vec<PathBuf> = Vec::new();
     let resolved: Vec<(PathBuf, ContentType)> = files
@@ -372,7 +367,7 @@ fn prompt_body(
                 .read()
                 .get(path)
                 .copied()
-                .filter(|ct| mod_loader || !needs_mod_loader(*ct))
+                .filter(|ct| mod_loader || !ct.needs_mod_loader())
                 .or_else(|| infer_content_type(path, route_type, mod_loader));
             match content_type {
                 Some(content_type) => Some((path.clone(), content_type)),

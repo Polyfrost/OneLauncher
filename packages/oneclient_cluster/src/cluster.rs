@@ -33,6 +33,10 @@ pub async fn remove_mods_link(folder_name: &str) {
     }
 }
 
+pub fn encode_tags(tags: &[String]) -> String {
+    serde_json::to_string(tags).unwrap_or_else(|_| "[]".to_string())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cluster {
     pub id: ClusterId,
@@ -116,11 +120,15 @@ impl Cluster {
     }
 
     pub fn is_isolated(&self) -> bool {
-        self.kind != ClusterKind::OneClient
+        self.kind.is_isolated()
     }
 
     pub fn uses_bundles(&self) -> bool {
-        self.kind == ClusterKind::OneClient
+        self.kind.uses_bundles()
+    }
+
+    pub fn lacks_mod_loader(&self) -> bool {
+        self.is_isolated() && self.mc_loader == oneclient_common::domain::GameLoader::Vanilla
     }
 
     pub fn shares_content(&self, content_type: oneclient_common::domain::ContentType) -> bool {

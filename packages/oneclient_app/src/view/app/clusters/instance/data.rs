@@ -8,13 +8,14 @@ use oneclient_core::clusters::ClusterKind;
 use oneclient_core::{BundleArchive, GameVersionKind};
 
 use super::model::*;
-use super::{file_provider, package_names};
+use super::package_names;
 use crate::hooks::{
     GameVersion, LoaderVersionSet, available_bundles, game_versions, java_majors,
     loader_game_versions, loader_versions, package_meta_batch, query_error, use_available_bundles,
     use_game_versions, use_java_majors, use_loader_game_versions, use_loader_versions,
     use_package_meta_batch, use_version_loaders, use_versions, version_loaders, versions_metadata,
 };
+use crate::utils::version_sort_key;
 
 pub struct VersionPicks {
     pub chosen: Option<String>,
@@ -58,7 +59,7 @@ pub struct Picks {
     pub steps: &'static [Step],
     pub index: usize,
     pub step: Step,
-    pub choice: Option<TypeChoice>,
+    pub choice: TypeChoice,
     pub kind: ClusterKind,
     pub name: String,
     pub suggested: String,
@@ -79,18 +80,6 @@ impl Picks {
     pub fn progress(&self) -> String {
         format!("Step {} of {}", self.index + 1, self.steps.len())
     }
-}
-
-fn version_sort_key(version: &str) -> (u32, u32, u32) {
-    oneclient_common::parse_mc_version(version)
-        .map(|parsed| {
-            (
-                parsed.major,
-                parsed.minor.unwrap_or(0),
-                parsed.patch.unwrap_or(0),
-            )
-        })
-        .unwrap_or((0, 0, 0))
 }
 
 fn matches_filter(kind: GameVersionKind, filter: usize) -> bool {
@@ -129,7 +118,7 @@ impl Catalogue {
     }
 }
 
-fn use_catalogue(choice: Option<TypeChoice>) -> Catalogue {
+fn use_catalogue(choice: TypeChoice) -> Catalogue {
     let oneclient_query = use_versions();
     let vanilla_query = use_game_versions();
 
@@ -151,13 +140,13 @@ fn use_catalogue(choice: Option<TypeChoice>) -> Catalogue {
         .collect();
     oneclient.sort_by_key(|entry| std::cmp::Reverse(version_sort_key(&entry.id)));
 
-    let java_query = use_java_majors(if choice == Some(TypeChoice::OneClient) {
+    let java_query = use_java_majors(if choice == TypeChoice::OneClient {
         oneclient.iter().map(|entry| entry.id.clone()).collect()
     } else {
         Vec::new()
     });
 
-    let error = if choice == Some(TypeChoice::OneClient) {
+    let error = if choice == TypeChoice::OneClient {
         query_error(&oneclient_query)
     } else {
         query_error(&vanilla_query)
@@ -225,7 +214,7 @@ fn use_bundle_context(
     let mut modrinth_ids = Vec::new();
     let mut curseforge_ids = Vec::new();
     for file in archives.iter().flat_map(|archive| &archive.manifest.files) {
-        match file_provider(file) {
+        match file.kind.metadata_provider() {
             ProviderId::Modrinth => modrinth_ids.push(file.kind.package_id()),
             ProviderId::CurseForge => curseforge_ids.push(file.kind.package_id()),
             ProviderId::Local => {}
@@ -251,7 +240,7 @@ fn use_bundle_context(
 }
 
 fn build_version_list(
-    choice: Option<TypeChoice>,
+    choice: TypeChoice,
     catalogue: &Catalogue,
     scope: &LoaderScope,
     filter: usize,
@@ -259,7 +248,7 @@ fn build_version_list(
 ) -> VersionList {
     let matches_needle = |id: &str| needle.is_empty() || id.to_lowercase().contains(needle);
 
-    if choice == Some(TypeChoice::OneClient) {
+    if choice == TypeChoice::OneClient {
         return VersionList::Curated(
             catalogue
                 .oneclient
@@ -294,17 +283,36 @@ fn in_scope(entry: &GameVersion, scope: &LoaderScope, filter: usize) -> bool {
     matches_filter(entry.kind, filter) && scope.permits(&entry.id)
 }
 
-fn kind_for(choice: Option<TypeChoice>, loader: Option<GameLoader>) -> ClusterKind {
+fn default_version(
+    choice: TypeChoice,
+    catalogue: &Catalogue,
+    scope: &LoaderScope,
+    filter: usize,
+) -> Option<String> {
+    if choice == TypeChoice::OneClient {
+        return catalogue.oneclient.first().map(|entry| entry.id.clone());
+    }
+
+    let all = catalogue.vanilla.as_deref().unwrap_or(&[]);
+    let mut scoped = all.iter().filter(|entry| in_scope(entry, scope, filter));
+    let first = scoped.clone().next();
+    scoped
+        .find(|entry| entry.kind.is_release())
+        .or(first)
+        .map(|entry| entry.id.clone())
+}
+
+fn kind_for(choice: TypeChoice, loader: Option<GameLoader>) -> ClusterKind {
     match (choice, loader) {
-        (Some(TypeChoice::OneClient) | None, _) => ClusterKind::OneClient,
-        (Some(TypeChoice::Scratch), Some(GameLoader::Vanilla) | None) => ClusterKind::Vanilla,
-        (Some(TypeChoice::Scratch), Some(_)) => ClusterKind::Modded,
+        (TypeChoice::OneClient, _) => ClusterKind::OneClient,
+        (TypeChoice::Scratch, Some(GameLoader::Vanilla) | None) => ClusterKind::Vanilla,
+        (TypeChoice::Scratch, Some(_)) => ClusterKind::Modded,
     }
 }
 
 fn suggested_name(
     version: Option<&String>,
-    choice: Option<TypeChoice>,
+    choice: TypeChoice,
     kind: ClusterKind,
     loader: Option<GameLoader>,
 ) -> String {
@@ -313,7 +321,7 @@ fn suggested_name(
     };
 
     let full = match (choice, kind, loader) {
-        (Some(TypeChoice::OneClient), _, _) => version.clone(),
+        (TypeChoice::OneClient, _, _) => version.clone(),
         (_, ClusterKind::Vanilla, _) => format!("{version} Vanilla"),
         (_, _, Some(loader)) => format!("{version} {loader}"),
         (_, _, None) => version.clone(),
@@ -343,7 +351,7 @@ pub fn resolve(w: Wizard) -> Picks {
     let needle = w.query.read().trim().to_lowercase();
     let versions = build_version_list(choice, &catalogue, &scope, filter, &needle);
 
-    let oneclient = choice == Some(TypeChoice::OneClient);
+    let oneclient = choice == TypeChoice::OneClient;
     let versions_settled = if oneclient {
         catalogue.oneclient_settled
     } else {
@@ -362,20 +370,14 @@ pub fn resolve(w: Wizard) -> Picks {
                 .any(|entry: &GameVersion| &entry.id == chosen && in_scope(entry, &scope, filter))
         }
     };
-    let default_version = if needle.is_empty() {
-        versions.default_id()
-    } else {
-        build_version_list(choice, &catalogue, &scope, filter, "").default_id()
-    };
     let version = (w.version.read().clone())
         .filter(still_offered)
-        .or(default_version);
+        .or_else(|| default_version(choice, &catalogue, &scope, filter));
 
     let available = version_loaders(&use_version_loaders(version.clone().unwrap_or_default()));
     let loader = match choice {
-        Some(TypeChoice::OneClient) => version.as_ref().and_then(|id| catalogue.loader_for(id)),
-        Some(TypeChoice::Scratch) => scope.choice.resolve(&available),
-        None => None,
+        TypeChoice::OneClient => version.as_ref().and_then(|id| catalogue.loader_for(id)),
+        TypeChoice::Scratch => scope.choice.resolve(&available),
     };
 
     let loader_versions = loader_versions(&use_loader_versions(
@@ -383,7 +385,7 @@ pub fn resolve(w: Wizard) -> Picks {
         loader.unwrap_or(GameLoader::Vanilla),
     ));
     let loader_version = match (choice, loader) {
-        (Some(TypeChoice::Scratch), Some(loader)) if loader != GameLoader::Vanilla => {
+        (TypeChoice::Scratch, Some(loader)) if loader != GameLoader::Vanilla => {
             (w.loader_version.read().clone())
                 .filter(|chosen| loader_versions.contains(chosen))
                 .or_else(|| loader_versions.first().cloned())

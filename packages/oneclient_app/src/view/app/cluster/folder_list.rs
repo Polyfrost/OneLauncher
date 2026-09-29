@@ -1,7 +1,6 @@
 use std::path::PathBuf;
 
 use freya::prelude::*;
-use oneclient_common::domain::GameLoader;
 use oneclient_common::parse_mc_version;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::settings::ViewLayout;
@@ -37,10 +36,6 @@ pub(super) const PACKAGE_ROWS: RowHeights = RowHeights {
 
 pub(crate) fn supports_datapacks(mc_version: &str) -> bool {
     parse_mc_version(mc_version).is_none_or(|p| p.major >= FIRST_DATAPACK_MAJOR)
-}
-
-pub(crate) fn lacks_mod_loader(cluster: &Cluster) -> bool {
-    cluster.is_isolated() && cluster.mc_loader == GameLoader::Vanilla
 }
 
 pub(super) fn use_game_folder_in_use(cluster: Option<&Cluster>) -> bool {

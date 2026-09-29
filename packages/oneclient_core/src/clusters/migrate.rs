@@ -1,13 +1,13 @@
 use std::path::{Path, PathBuf};
 
-use oneclient_common::domain::{ContentType, GameLoader};
+use oneclient_common::domain::ContentType;
 use oneclient_content::packages::PackageStore;
 use oneclient_db::dao::cluster::ClusterMigration;
 use oneclient_db::dao::{
     applied_migration as migration_dao, bundle as bundle_catalog_dao, cluster as cluster_dao,
     cluster_bundle as bundle_dao,
 };
-use oneclient_db::models::{ClusterKind, ClusterRow};
+use oneclient_db::models::ClusterRow;
 
 use crate::LauncherResult;
 use crate::clusters::ClusterStage;
@@ -181,7 +181,7 @@ async fn target_has_bundles(
     source: &ClusterRow,
     to: &MigrationNode,
 ) -> LauncherResult<bool> {
-    if rule.allow_without_bundles || source.kind() != ClusterKind::OneClient {
+    if rule.allow_without_bundles || source.is_isolated() {
         return Ok(true);
     }
 
@@ -313,7 +313,7 @@ async fn migrate_cluster(
         );
     }
 
-    if changes_loader && !keeps_mods(from.loader, to.loader) {
+    if changes_loader && !to.loader.compatible_with(from.loader) {
         match disable_mods(state, source.id).await {
             Ok(disabled) => tracing::info!(
                 migration_id = %rule.id,
@@ -337,10 +337,6 @@ fn row_unchanged(expected: &ClusterRow, current: &ClusterRow) -> bool {
     current.mc_version == expected.mc_version
         && current.mc_loader == expected.mc_loader
         && current.folder_name == expected.folder_name
-}
-
-fn keeps_mods(from: GameLoader, to: GameLoader) -> bool {
-    from == to || (from == GameLoader::Fabric && to == GameLoader::Quilt)
 }
 
 async fn disable_mods(state: &LauncherState, cluster_id: i64) -> LauncherResult<usize> {
@@ -434,6 +430,7 @@ fn retarget_version_prefix(value: &str, from: &str, to: &str) -> Option<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneclient_common::domain::GameLoader;
 
     #[test]
     fn retargets_generated_folder() {
@@ -529,10 +526,10 @@ mod tests {
 
     #[test]
     fn only_fabric_to_quilt_keeps_mods() {
-        assert!(keeps_mods(GameLoader::Fabric, GameLoader::Quilt));
-        assert!(!keeps_mods(GameLoader::Quilt, GameLoader::Fabric));
-        assert!(!keeps_mods(GameLoader::Forge, GameLoader::NeoForge));
-        assert!(!keeps_mods(GameLoader::Fabric, GameLoader::Vanilla));
+        assert!(GameLoader::Quilt.compatible_with(GameLoader::Fabric));
+        assert!(!GameLoader::Fabric.compatible_with(GameLoader::Quilt));
+        assert!(!GameLoader::NeoForge.compatible_with(GameLoader::Forge));
+        assert!(!GameLoader::Vanilla.compatible_with(GameLoader::Fabric));
     }
 
     #[test]

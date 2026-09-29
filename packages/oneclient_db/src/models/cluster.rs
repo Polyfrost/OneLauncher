@@ -26,6 +26,14 @@ impl ClusterKind {
             _ => None,
         }
     }
+
+    pub fn is_isolated(self) -> bool {
+        self != Self::OneClient
+    }
+
+    pub fn uses_bundles(self) -> bool {
+        self == Self::OneClient
+    }
 }
 
 #[derive(Debug, Clone, FromRow)]
@@ -54,8 +62,12 @@ impl ClusterRow {
         ClusterKind::from_repr(self.kind).unwrap_or(ClusterKind::Modded)
     }
 
-    pub fn is_user_created(&self) -> bool {
-        self.user_created != 0
+    pub fn is_isolated(&self) -> bool {
+        self.kind().is_isolated()
+    }
+
+    pub fn uses_bundles(&self) -> bool {
+        self.kind().uses_bundles()
     }
 }
 

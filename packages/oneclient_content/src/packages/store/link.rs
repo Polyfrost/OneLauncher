@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use oneclient_db::DbPool;
 use oneclient_db::dao::game_session as session_dao;
-use oneclient_db::models::{ArtifactRow, ClusterKind, ClusterRow};
+use oneclient_db::models::{ArtifactRow, ClusterRow};
 
 use crate::error::ContentResult;
 use oneclient_common::domain::ContentType;
@@ -15,11 +15,7 @@ use super::paths::artifact_absolute_path;
 const STAGING_SUFFIX: &str = ".oneclient-tmp";
 
 pub(crate) fn shares_content(cluster: &ClusterRow, content_type: ContentType) -> bool {
-    content_type.is_global() && !is_isolated(cluster)
-}
-
-fn is_isolated(cluster: &ClusterRow) -> bool {
-    cluster.kind() != ClusterKind::OneClient
+    content_type.is_global() && !cluster.is_isolated()
 }
 
 /// What a live add actually did, so a caller can say so instead of promising
@@ -114,13 +110,13 @@ async fn materialized_root(
         return Some((dir, manifest::MODS_MANIFEST_NAME));
     }
 
-    paths::cluster_game_dir(&cluster.folder_name, is_isolated(cluster))
+    paths::cluster_game_dir(&cluster.folder_name, cluster.is_isolated())
         .ok()
         .map(|dir| (dir, manifest::MANIFEST_NAME))
 }
 
 async fn session_owns(cluster: &ClusterRow, db: &DbPool) -> bool {
-    let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name, is_isolated(cluster)) else {
+    let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name, cluster.is_isolated()) else {
         return false;
     };
 
@@ -128,7 +124,7 @@ async fn session_owns(cluster: &ClusterRow, db: &DbPool) -> bool {
         .await
         .is_some_and(|session| session.cluster_id == cluster.id);
 
-    if !owned || !is_isolated(cluster) {
+    if !owned || !cluster.is_isolated() {
         return owned;
     }
 

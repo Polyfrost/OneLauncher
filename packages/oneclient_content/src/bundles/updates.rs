@@ -8,7 +8,6 @@ use oneclient_db::dao::bundle as bundle_catalog_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::dao::cluster_optional_mod as optional_dao;
-use oneclient_db::models::ClusterKind;
 use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{
     BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType, SeenStatus,
@@ -18,9 +17,9 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, disable_was_deliberate, external_ids_by_sha1,
+    BUNDLE_INSTALL_CONCURRENCY, bundle_cluster, disable_was_deliberate, external_ids_by_sha1,
     find_user_suppression, heal_bundle_activity, install_package_from_bundle,
-    remove_artifact_from_cluster, set_artifact_enabled_to, takes_bundles,
+    remove_artifact_from_cluster, set_artifact_enabled_to,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -59,7 +58,7 @@ pub async fn check_bundle_updates(
 /// update so the catalog never has to be fetched for it
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn cluster_has_bundle_content(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<bool> {
-    if !takes_bundles(cluster_id, ctx).await? {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
         return Ok(false);
     }
 
@@ -83,7 +82,7 @@ async fn check_bundle_updates_inner(
     overrides: &[ClusterBundleOverrideRow],
 ) -> ContentResult<BundleUpdateCheckResult> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
-    if cluster.kind() != ClusterKind::OneClient {
+    if !cluster.uses_bundles() {
         return Ok(BundleUpdateCheckResult {
             cluster_id,
             ..Default::default()
@@ -437,7 +436,7 @@ pub async fn apply_bundle_updates_with(
     session: Option<&oneclient_events::GroupedProgressSession>,
     deadline: Option<Instant>,
 ) -> ContentResult<ApplyBundleUpdatesResult> {
-    if !takes_bundles(cluster_id, ctx).await? {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
         return Ok(ApplyBundleUpdatesResult::default());
     }
 
@@ -812,7 +811,7 @@ pub async fn get_bundles_with_update_status(
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<BundleWithUpdateStatus>> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
-    if cluster.kind() != ClusterKind::OneClient {
+    if !cluster.uses_bundles() {
         return Ok(Vec::new());
     }
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);

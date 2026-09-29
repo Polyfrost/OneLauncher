@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use chrono::{Datelike, NaiveDate};
 use oneclient_common::domain::GameLoader;
 use oneclient_common::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_version};
+use oneclient_core::BundleArchive;
 use oneclient_core::clusters::Cluster;
 
 use oneclient_common::MEMORY_HEADROOM_GB;
@@ -84,18 +85,18 @@ pub enum GridSelection {
 }
 
 pub fn split_clusters(clusters: &[Cluster]) -> (ClusterGroups, Vec<Cluster>) {
-    let (instances, provisioned): (Vec<Cluster>, Vec<Cluster>) = clusters
-        .iter()
-        .cloned()
-        .partition(|cluster| cluster.user_created);
+    let (instances, provisioned): (Vec<&Cluster>, Vec<&Cluster>) =
+        clusters.iter().partition(|cluster| cluster.user_created);
 
     (
-        group_clusters_by_release(&provisioned),
-        sort_clusters_for_home(instances),
+        group_clusters_by_release(provisioned),
+        sort_clusters_for_home(instances.into_iter().cloned().collect()),
     )
 }
 
-pub fn group_clusters_by_release(clusters: &[Cluster]) -> ClusterGroups {
+pub fn group_clusters_by_release<'a>(
+    clusters: impl IntoIterator<Item = &'a Cluster>,
+) -> ClusterGroups {
     let mut groups: ClusterGroups = BTreeMap::new();
 
     for cluster in clusters {
@@ -338,6 +339,15 @@ pub fn format_day(date: NaiveDate) -> String {
     format!("{} {}", MONTHS[date.month0() as usize], date.day())
 }
 
+pub fn bundle_display_name(archive: &BundleArchive) -> String {
+    let category = archive.manifest.category.trim();
+    if category.is_empty() {
+        archive.manifest.name.clone()
+    } else {
+        category.to_string()
+    }
+}
+
 pub fn sort_clusters_for_home(mut clusters: Vec<Cluster>) -> Vec<Cluster> {
     clusters.sort_by(compare_last_played);
     clusters
@@ -350,12 +360,12 @@ fn compare_last_played(a: &Cluster, b: &Cluster) -> Ordering {
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
         // Never played latest version first (major then minor)
-        (None, None) => version_sort_key(b).cmp(&version_sort_key(a)),
+        (None, None) => version_sort_key(&b.mc_version).cmp(&version_sort_key(&a.mc_version)),
     }
 }
 
-fn version_sort_key(cluster: &Cluster) -> (u32, u32, u32) {
-    parse_mc_version(&cluster.mc_version)
+pub fn version_sort_key(version: &str) -> (u32, u32, u32) {
+    parse_mc_version(version)
         .map(|v| (v.major, v.minor.unwrap_or(0), v.patch.unwrap_or(0)))
         .unwrap_or((0, 0, 0))
 }

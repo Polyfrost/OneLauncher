@@ -11,38 +11,20 @@ use oneclient_common::patch::Patch;
 use oneclient_db::DbPool;
 use tokio::sync::Mutex;
 
-use crate::cluster::{Cluster, remove_mods_link};
+use crate::cluster::{Cluster, encode_tags, remove_mods_link};
 use crate::error::ClusterError;
 use crate::options::{ClusterUpdate, CreateClusterOptions};
+use crate::screenshots::thumbnail;
 use crate::stage::ClusterStage;
 
 const COVER_STEM: &str = "cover";
 const COVER_MAX_EDGE: u32 = 1200;
 
 fn shrink_cover(raw: Vec<u8>) -> (Vec<u8>, bool) {
-    let Ok(image) = image::load_from_memory(&raw) else {
-        return (raw, false);
-    };
-
-    if image.width().max(image.height()) <= COVER_MAX_EDGE {
-        return (raw, false);
+    match thumbnail(&raw, COVER_MAX_EDGE) {
+        Some(out) => (Vec::from(out), true),
+        None => (raw, false),
     }
-
-    let resized = image.resize(
-        COVER_MAX_EDGE,
-        COVER_MAX_EDGE,
-        image::imageops::FilterType::Triangle,
-    );
-
-    let mut out = Vec::new();
-    if resized
-        .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
-        .is_err()
-    {
-        return (raw, false);
-    }
-
-    (out, true)
 }
 
 pub struct ClusterManager {
@@ -233,9 +215,7 @@ impl ClusterManager {
             mc_loader_version: update.mc_loader_version.into_db_patch(),
             linked_modpack_hash: update.linked_modpack_hash.into_db_patch(),
             description: update.description.into_db_patch(),
-            tags: update
-                .tags
-                .map(|tags| serde_json::to_string(&tags).unwrap_or_else(|_| "[]".to_string())),
+            tags: update.tags.as_deref().map(encode_tags),
             cover_path: update.cover_path.into_db_patch(),
         };
 
@@ -556,7 +536,7 @@ async fn create_inner(
     polyio::create_dir_all(cluster_path).await?;
     ensure_content_dirs(cluster_path).await?;
 
-    if options.kind != ClusterKind::OneClient {
+    if options.kind.is_isolated() {
         polyio::write(
             cluster_path.join(oneclient_common::paths::DEDICATED_MARKER),
             b"",
@@ -584,7 +564,7 @@ async fn create_inner(
     let profile =
         create_profile_from_global(db, global, folder_name, options.mem_max, None).await?;
 
-    let tags = serde_json::to_string(&options.tags).unwrap_or_else(|_| "[]".to_string());
+    let tags = encode_tags(&options.tags);
 
     let row = cluster_dao::insert(
         db,

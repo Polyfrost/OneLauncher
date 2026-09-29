@@ -9,7 +9,6 @@ pub use gc::{
     GcReport, collect_unused_artifacts, evict_if_unused, find_unreferenced_files,
     remove_unreferenced_files,
 };
-pub(crate) use link::shares_content;
 pub use link::{
     LiveSync, link_or_copy, remove_entry, sweep_staging_files, try_link_materialized,
     try_unlink_materialized,
@@ -20,7 +19,7 @@ use oneclient_db::dao::{
     artifact as artifact_dao, cluster as cluster_dao, cluster_bundle as bundle_dao,
     package_metadata as meta_dao,
 };
-use oneclient_db::models::{ArtifactRow, ClusterKind, ClusterRow, SeenStatus};
+use oneclient_db::models::{ArtifactRow, ClusterRow, SeenStatus};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 // `paths` alone is this module's own cache-path helpers
@@ -724,7 +723,7 @@ fn ensure_takes_mods(content_type: ContentType, cluster: &ClusterRow) -> Content
     let vanilla = GameLoader::from_repr(cluster.mc_loader as u8)
         .is_none_or(|loader| loader == GameLoader::Vanilla);
 
-    if content_type == ContentType::Mod && vanilla && cluster.kind() != ClusterKind::OneClient {
+    if content_type == ContentType::Mod && vanilla && cluster.is_isolated() {
         return Err(PackageError::IncompatibleLoader.into());
     }
 

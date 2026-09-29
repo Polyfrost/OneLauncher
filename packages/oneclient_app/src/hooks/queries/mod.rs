@@ -85,8 +85,7 @@ pub use packages::{
 pub use player_profile::use_player_profile;
 pub use screenshots::{
     ScreenshotAction, UseScreenshotAction, invalidate_screenshots_queries, try_cluster_screenshots,
-    use_cluster_screenshots, use_local_image, use_picked_image, use_screenshot_action,
-    use_screenshot_folder_watch,
+    use_cluster_screenshots, use_local_image, use_screenshot_action, use_screenshot_folder_watch,
 };
 pub use settings_profiles::{
     try_game_profile, use_cluster_profile, use_cluster_settings, use_game_profile,

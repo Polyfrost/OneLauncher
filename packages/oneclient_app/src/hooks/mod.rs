@@ -61,7 +61,7 @@ pub use queries::{
     use_leftovers, use_loader_game_versions, use_loader_versions, use_local_image, use_log_action,
     use_log_content, use_migration, use_named_profiles, use_onboarding_bundles,
     use_package_categories, use_package_meta_batch, use_package_project, use_package_search,
-    use_package_updates, use_package_versions, use_package_versions_when, use_picked_image,
+    use_package_updates, use_package_versions, use_package_versions_when,
     use_player_profile, use_player_skin, use_provider_versions, use_refresh_account,
     use_refresh_all_accounts, use_remove_account, use_screenshot_action,
     use_screenshot_folder_watch, use_set_default_account, use_storage_action, use_storage_report,

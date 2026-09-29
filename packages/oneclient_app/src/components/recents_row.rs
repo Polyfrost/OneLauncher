@@ -181,7 +181,7 @@ impl Component for ClusterCard {
         };
 
         let cluster_id = self.cluster.id;
-        let mod_tabs = !crate::view::app::cluster::lacks_mod_loader(&self.cluster);
+        let mod_tabs = !self.cluster.lacks_mod_loader();
         let on_press = move |_| {
             *active_id.write() = Some(cluster_id);
         };

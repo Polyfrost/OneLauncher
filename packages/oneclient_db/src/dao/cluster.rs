@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sqlx::SqlitePool;
 
-use crate::models::{ClusterPatch, ClusterRow, NewCluster};
+use crate::models::{ClusterKind, ClusterPatch, ClusterRow, NewCluster};
 
 pub async fn get_by_id(pool: &SqlitePool, id: i64) -> Result<Option<ClusterRow>, sqlx::Error> {
     sqlx::query_as!(
@@ -54,6 +54,13 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<ClusterRow>, sqlx::Error>
     )
     .fetch_all(pool)
     .await
+}
+
+pub async fn list_oneclient_ids(pool: &SqlitePool) -> Result<Vec<i64>, sqlx::Error> {
+    sqlx::query_scalar("SELECT id FROM clusters WHERE kind = ?")
+        .bind(ClusterKind::OneClient.as_i64())
+        .fetch_all(pool)
+        .await
 }
 
 pub async fn find_by_version_loader(
@@ -175,43 +182,6 @@ pub struct ClusterMigration<'a> {
     pub stage: i64,
     pub name: Option<&'a str>,
     pub folder_name: &'a str,
-}
-
-pub async fn migrate_version(
-    pool: &SqlitePool,
-    id: i64,
-    migration: ClusterMigration<'_>,
-) -> Result<ClusterRow, sqlx::Error> {
-    let existing = get_by_id(pool, id).await?.ok_or(sqlx::Error::RowNotFound)?;
-
-    let name = migration.name.unwrap_or(&existing.name);
-
-    sqlx::query_as!(
-        ClusterRow,
-        r#"
-		UPDATE clusters
-		SET mc_version = ?,
-		    mc_loader = ?,
-		    mc_loader_version = ?,
-		    stage = ?,
-		    name = ?,
-		    folder_name = ?
-		WHERE id = ?
-		RETURNING
-			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
-			kind, user_created, description, tags, cover_path
-		"#,
-        migration.mc_version,
-        migration.mc_loader,
-        migration.mc_loader_version,
-        migration.stage,
-        name,
-        migration.folder_name,
-        id
-    )
-    .fetch_one(pool)
-    .await
 }
 
 pub async fn migrate_version_if_unchanged(
@@ -346,9 +316,9 @@ mod tests {
             .await
             .expect("record playtime");
 
-        let migrated = migrate_version(
+        let migrated = migrate_version_if_unchanged(
             &pool,
-            cluster.id,
+            &cluster,
             ClusterMigration {
                 mc_version: "26.1.2",
                 mc_loader: 1,
@@ -359,7 +329,8 @@ mod tests {
             },
         )
         .await
-        .expect("migrate");
+        .expect("migrate")
+        .expect("row unchanged");
 
         assert_eq!(migrated.id, cluster.id, "must move the row, not replace it");
         assert_eq!(migrated.mc_version, "26.1.2");
@@ -389,9 +360,9 @@ mod tests {
         let pool = pool().await;
         let cluster = seed(&pool, "26.1", "my cool pack").await;
 
-        let migrated = migrate_version(
+        let migrated = migrate_version_if_unchanged(
             &pool,
-            cluster.id,
+            &cluster,
             ClusterMigration {
                 mc_version: "26.1.2",
                 mc_loader: 1,
@@ -402,7 +373,8 @@ mod tests {
             },
         )
         .await
-        .expect("migrate");
+        .expect("migrate")
+        .expect("row unchanged");
 
         assert_eq!(migrated.mc_version, "26.1.2");
         assert_eq!(migrated.name, "26.1 fabric", "custom name must survive");
@@ -415,9 +387,9 @@ mod tests {
         let cluster = seed(&pool, "1.20.1", "1.20.1 Forge").await;
         set_stage(&pool, cluster.id, 3).await.expect("mark ready");
 
-        let migrated = migrate_version(
+        let migrated = migrate_version_if_unchanged(
             &pool,
-            cluster.id,
+            &cluster,
             ClusterMigration {
                 mc_version: "1.20.1",
                 mc_loader: 2,
@@ -428,7 +400,8 @@ mod tests {
             },
         )
         .await
-        .expect("migrate");
+        .expect("migrate")
+        .expect("row unchanged");
 
         assert_eq!(migrated.id, cluster.id);
         assert_eq!(migrated.mc_loader, 2);

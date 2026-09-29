@@ -39,7 +39,6 @@ impl Component for Clusters {
         let active_id = use_active_cluster_id();
         let mut show_create = use_state(|| false);
         let mut selected = use_state(|| None::<GridSelection>);
-        let mut selected_line = use_state(|| None::<ReleaseLine>);
         let mut selected_version = use_state(|| None::<VersionKey>);
         let mut selected_loader = use_state(|| None::<GameLoader>);
         let mut grid_columns = use_state(|| 2_usize);
@@ -112,10 +111,6 @@ impl Component for Clusters {
             Some(GridSelection::Line(line)) => Some(line),
             _ => None,
         };
-
-        if *selected_line.read() != line {
-            *selected_line.write() = line;
-        }
 
         let clusters_for_line = line
             .and_then(|line| groups.get(&line).cloned())

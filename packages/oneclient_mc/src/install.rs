@@ -1501,12 +1501,11 @@ pub async fn get_version_ids(
 ) -> McResult<Vec<GameVersionInfo>> {
     use interfrost::api::minecraft::VersionType;
 
-    let manifest = metadata.get_vanilla_or_fetch(ctx).await?;
-    Ok(manifest
-        .versions
-        .iter()
+    Ok(get_game_versions(metadata, ctx)
+        .await?
+        .into_iter()
         .map(|version| GameVersionInfo {
-            id: version.id.clone(),
+            id: version.id,
             kind: match version.type_ {
                 VersionType::Release => GameVersionKind::Release,
                 VersionType::Snapshot => GameVersionKind::Snapshot,

@@ -3,7 +3,6 @@ use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::models::ClusterKind;
 use oneclient_db::models::ClusterRow;
 use oneclient_db::models::OverrideType;
 
@@ -14,9 +13,7 @@ use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
-use crate::packages::store::{
-    LiveSync, PackageStore, evict_if_unused, shares_content, try_unlink_materialized,
-};
+use crate::packages::store::{LiveSync, PackageStore, evict_if_unused, try_unlink_materialized};
 use crate::packages::types::ExternalFile;
 use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
@@ -177,7 +174,7 @@ pub async fn install_bundle(
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<String>> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
-    if cluster.kind() != ClusterKind::OneClient {
+    if !cluster.uses_bundles() {
         return Ok(Vec::new());
     }
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
@@ -529,11 +526,10 @@ pub async fn enabled_bundle_bytes(
     bundles: &BundlesManager,
     ctx: &ContentCtx,
 ) -> ContentResult<u64> {
-    if !takes_bundles(cluster_id, ctx).await? {
+    let Some(cluster) = bundle_cluster(cluster_id, ctx).await? else {
         return Ok(0);
-    }
+    };
 
-    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),
@@ -571,7 +567,7 @@ pub async fn set_bundle_package_override(
     override_type: Option<OverrideType>,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
-    if !takes_bundles(cluster_id, ctx).await? {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
         return Ok(());
     }
 
@@ -627,7 +623,7 @@ pub async fn set_bundle_package_overrides(
     overrides: &[(String, String, OverrideType)],
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
-    if !takes_bundles(cluster_id, ctx).await? {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
         return Ok(());
     }
 
@@ -670,7 +666,7 @@ pub async fn enabled_bundle_projects(
     ctx: &ContentCtx,
 ) -> ContentResult<std::collections::HashSet<String>> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
-    if cluster.kind() != ClusterKind::OneClient {
+    if !cluster.uses_bundles() {
         return Ok(std::collections::HashSet::new());
     }
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
@@ -700,8 +696,12 @@ pub async fn enabled_bundle_projects(
     Ok(projects)
 }
 
-pub(crate) async fn takes_bundles(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<bool> {
-    Ok(PackageStore::get_cluster(cluster_id, ctx).await?.kind() == ClusterKind::OneClient)
+pub(crate) async fn bundle_cluster(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<ClusterRow>> {
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    Ok(cluster.uses_bundles().then_some(cluster))
 }
 
 #[tracing::instrument(skip(bundles, progress, ctx))]
@@ -712,7 +712,7 @@ pub async fn install_cluster_bundles(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
-    if cluster.kind() != ClusterKind::OneClient {
+    if !cluster.uses_bundles() {
         tracing::debug!(cluster_id, "instance does not take bundle content");
         return Ok(());
     }
@@ -911,20 +911,15 @@ async fn sharing_scope(
     hash: &str,
     ctx: &ContentCtx,
 ) -> ContentResult<Option<Vec<i64>>> {
-    let Some(content_type) = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+    let global = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
         .await?
         .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8))
-        .filter(|content_type| content_type.is_global())
-    else {
+        .is_some_and(|content_type| content_type.is_global());
+    if !global {
         return Ok(None);
-    };
+    }
 
-    let sharing: Vec<i64> = cluster_dao::list_all(&ctx.db)
-        .await?
-        .into_iter()
-        .filter(|row| shares_content(row, content_type))
-        .map(|row| row.id)
-        .collect();
+    let sharing = cluster_dao::list_oneclient_ids(&ctx.db).await?;
 
     Ok(sharing.contains(&cluster_id).then_some(sharing))
 }

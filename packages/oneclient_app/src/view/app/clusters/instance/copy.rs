@@ -17,10 +17,10 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
         Step::Version => (
             "Choose a version",
             match picks.choice {
-                Some(TypeChoice::OneClient) => {
+                TypeChoice::OneClient => {
                     "Only versions OneClient ships a build for are listed.".to_string()
                 }
-                _ => format!(
+                TypeChoice::Scratch => format!(
                     "Versions {} can run. Switch the release type to reach snapshots, betas and alphas.",
                     picks.loader_label()
                 ),
@@ -41,12 +41,11 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
 pub fn footer_note(picks: &Picks) -> String {
     match picks.step {
         Step::Type => match picks.choice {
-            Some(TypeChoice::OneClient) => {
+            TypeChoice::OneClient => {
                 "Shares its game folder, worlds and packs with your other OneClient instances."
                     .to_string()
             }
-            Some(TypeChoice::Scratch) => "Keeps its own game folder, worlds and packs.".to_string(),
-            None => "Pick a type to continue.".to_string(),
+            TypeChoice::Scratch => "Keeps its own game folder, worlds and packs.".to_string(),
         },
         Step::Loader => picks.loader_label(),
         Step::Version => match (&picks.versions.chosen, picks.loader.chosen) {
@@ -74,9 +73,8 @@ pub fn footer_note(picks: &Picks) -> String {
 pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
     match step {
         Step::Type => match picks.choice {
-            Some(TypeChoice::OneClient) => "OneClient".to_string(),
-            Some(TypeChoice::Scratch) => "From scratch".to_string(),
-            None => String::new(),
+            TypeChoice::OneClient => "OneClient".to_string(),
+            TypeChoice::Scratch => "From scratch".to_string(),
         },
         Step::Loader => picks.loader_label(),
         Step::Version => picks
@@ -102,8 +100,7 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
 
 pub fn is_ready(picks: &Picks) -> bool {
     match picks.step {
-        Step::Type => picks.choice.is_some(),
-        Step::Loader | Step::Bundles => true,
+        Step::Type | Step::Loader | Step::Bundles => true,
         Step::Version => picks.versions.chosen.is_some() && picks.loader.chosen.is_some(),
         Step::Customize => validate_instance_name(&picks.name).is_ok(),
     }

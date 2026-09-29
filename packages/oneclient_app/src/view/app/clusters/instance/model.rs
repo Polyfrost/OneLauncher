@@ -5,7 +5,6 @@ use freya::prelude::*;
 use oneclient_common::domain::GameLoader;
 
 use super::details::DetailsState;
-use crate::components::IconType;
 use crate::hooks::GameVersion;
 
 pub const FILTERS: [&str; 5] = ["Releases", "Snapshots", "Beta", "Alpha", "All versions"];
@@ -16,30 +15,22 @@ pub enum TypeChoice {
     Scratch,
 }
 
-#[derive(Clone, Copy, PartialEq)]
-pub enum LoaderMark {
-    Tinted(IconType),
-    Image(&'static str),
-}
-
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LoaderChoice {
     Fabric,
     Forge,
     NeoForge,
-    Quilt,
     Vanilla,
 }
 
 impl LoaderChoice {
-    pub const MODDED: [Self; 4] = [Self::Fabric, Self::Forge, Self::NeoForge, Self::Quilt];
+    pub const ALL: [Self; 4] = [Self::Fabric, Self::Forge, Self::NeoForge, Self::Vanilla];
 
     pub fn primary(self) -> GameLoader {
         match self {
             Self::Fabric => GameLoader::Fabric,
             Self::Forge => GameLoader::Forge,
             Self::NeoForge => GameLoader::NeoForge,
-            Self::Quilt => GameLoader::Quilt,
             Self::Vanilla => GameLoader::Vanilla,
         }
     }
@@ -48,13 +39,12 @@ impl LoaderChoice {
         self.primary().to_string()
     }
 
-    pub fn mark(self) -> LoaderMark {
+    pub fn mark(self) -> &'static str {
         match self {
-            Self::Fabric => LoaderMark::Image("icons/fabric.png"),
-            Self::Forge => LoaderMark::Image("icons/forge.png"),
-            Self::NeoForge => LoaderMark::Image("icons/neo-forge.png"),
-            Self::Quilt => LoaderMark::Tinted(IconType::Quilt),
-            Self::Vanilla => LoaderMark::Image("icons/vanilla.png"),
+            Self::Fabric => "icons/fabric.png",
+            Self::Forge => "icons/forge.png",
+            Self::NeoForge => "icons/neo-forge.png",
+            Self::Vanilla => "icons/vanilla.png",
         }
     }
 
@@ -63,7 +53,6 @@ impl LoaderChoice {
             Self::Fabric => "FA",
             Self::Forge => "FO",
             Self::NeoForge => "NF",
-            Self::Quilt => "QL",
             Self::Vanilla => "MC",
         }
     }
@@ -75,7 +64,6 @@ impl LoaderChoice {
             }
             Self::Forge => "The oldest loader. Most 1.12.2 and 1.8.9 packages need it.",
             Self::NeoForge => "Forge's successor, for 1.20.2 and newer.",
-            Self::Quilt => "A Fabric-compatible fork with extra loader features.",
             Self::Vanilla => {
                 "Minecraft exactly as Mojang ships it. Packages cannot be installed without a loader."
             }

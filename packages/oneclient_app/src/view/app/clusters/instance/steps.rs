@@ -6,8 +6,8 @@ use oneclient_core::BundleArchive;
 
 use super::cards::{
     BUNDLE_CARD_H, BUNDLE_COLUMNS, CARD_RADIUS, CellCard, LOADER_CARD_H, LOADER_COLUMNS,
-    LOADER_MARK_SIZE, LOADER_ROW_MARK_SIZE, SelectCard, VERSION_ROW_H, VERSION_ROW_SPACING,
-    WideCard, cell_card, loader_mark, marker, version_row, wide_card,
+    LOADER_MARK_SIZE, VERSION_ROW_H, VERSION_ROW_SPACING, WideCard, cell_card, loader_mark,
+    version_row, wide_card,
 };
 use super::data::Picks;
 use super::details::details_body;
@@ -65,7 +65,7 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
             "Start from scratch",
             None,
             "Pick a loader and a version and build the instance yourself. Packages can be added once it exists.",
-            "Fabric, Forge, NeoForge, Quilt, or no loader at all. Keeps its own game folder.",
+            "Fabric, Forge, NeoForge, or no loader at all. Keeps its own game folder.",
         ),
     ];
 
@@ -105,7 +105,7 @@ fn select_loader(mut wizard: Wizard, choice: LoaderChoice) {
 fn loader_step(wizard: Wizard, picks: &Picks) -> Element {
     let chosen = *wizard.loader.read();
 
-    let cards: Vec<Element> = LoaderChoice::MODDED
+    let cards: Vec<Element> = LoaderChoice::ALL
         .into_iter()
         .map(|choice| {
             cell_card(CellCard {
@@ -132,12 +132,6 @@ fn loader_step(wizard: Wizard, picks: &Picks) -> Element {
                 .key("loader-grid")
                 .width(Size::fill())
                 .child(fixed_grid(cards, LOADER_COLUMNS, LOADER_CARD_H, GRID_GAP)),
-        )
-        .child(
-            rect()
-                .key("loader-vanilla")
-                .width(Size::fill())
-                .child(loader_row(wizard, LoaderChoice::Vanilla, chosen)),
         )
         .maybe_child(shows_versions.then(|| {
             rect()
@@ -194,62 +188,6 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
                 }),
         )
         .into_element()
-}
-
-fn loader_row(wizard: Wizard, choice: LoaderChoice, chosen: LoaderChoice) -> Element {
-    let selected = chosen == choice;
-
-    let content = rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(12.)
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(8.)
-                .child(
-                    rect()
-                        .horizontal()
-                        .width(Size::fill())
-                        .content(Content::Flex)
-                        .cross_align(Alignment::Center)
-                        .spacing(10.)
-                        .child(marker(selected, false))
-                        .child(
-                            label()
-                                .text(choice.name())
-                                .width(Size::flex(1.0))
-                                .font_size(14.)
-                                .font_weight(FontWeight::MEDIUM)
-                                .max_lines(1)
-                                .color(colors::fg_primary()),
-                        ),
-                )
-                .child(
-                    label()
-                        .text(choice.blurb())
-                        .width(Size::fill())
-                        .font_size(12.)
-                        .line_height(1.4)
-                        .max_lines(2)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .maybe_child(loader_mark(choice, selected, LOADER_ROW_MARK_SIZE))
-        .into_element();
-
-    SelectCard {
-        id: choice.name(),
-        selected,
-        height: None,
-        padding: Gaps::new_symmetric(14., 14.),
-        content,
-        on_press: (move |()| select_loader(wizard, choice)).into(),
-    }
-    .into_element()
 }
 
 fn version_step(wizard: Wizard, picks: &Picks) -> Element {

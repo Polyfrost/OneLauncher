@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use super::model::{LoaderChoice, LoaderMark, VersionRow};
+use super::model::{LoaderChoice, VersionRow};
 use crate::AppAssets;
 use crate::components::{AssetImage, Icon, IconType, filled_pill, pill};
 use crate::theme::colors;
@@ -10,7 +10,6 @@ pub const CARD_RADIUS: f32 = 12.;
 pub const VERSION_ROW_H: f32 = 48.;
 pub const VERSION_ROW_SPACING: f32 = 4.;
 pub const LOADER_MARK_SIZE: f32 = 22.;
-pub const LOADER_ROW_MARK_SIZE: f32 = 34.;
 pub const BUNDLE_COLUMNS: usize = 3;
 pub const BUNDLE_CARD_H: f32 = 132.;
 pub const LOADER_COLUMNS: usize = 2;
@@ -74,14 +73,10 @@ impl Component for SelectCard {
 }
 
 pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<Element> {
-    let drawn = match choice.mark() {
-        LoaderMark::Tinted(icon) => AppAssets::get(icon.path())
-            .is_some()
-            .then(|| Icon::new(icon).size(size).into_element()),
-        LoaderMark::Image(path) => AppAssets::get(path)
-            .is_some()
-            .then(|| AssetImage::new(path, size).into_element()),
-    };
+    let path = choice.mark();
+    let drawn = AppAssets::get(path)
+        .is_some()
+        .then(|| AssetImage::new(path, size).into_element());
 
     if let Some(drawn) = drawn {
         return Some(

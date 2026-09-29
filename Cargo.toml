@@ -116,10 +116,12 @@ indicatif = {version = "=0.18.4", features = ["tokio"]}
 junction = {version = "=2.0.0"}
 libc = {version = "=0.2.189"}
 notify = {version = "=8.2.0"}
+open = {version = "=5.4.4"}
 parking_lot = {version = "=0.12.5"}
 pulldown-cmark = {version = "=0.13.4", default-features = false}
 rand = {version = "=0.10.1"}
 regex = {version = "=1.12.3"}
+rfd = {version = "=0.17.2"}
 rust-embed = {version = "=8.12.0", features = ["include-exclude", "compression", "debug-embed"]}
 sanitize-filename = {version = "=0.6.0"}
 serde = {version = "=1.0.228"}

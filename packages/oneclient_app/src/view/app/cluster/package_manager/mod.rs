@@ -15,10 +15,11 @@ mod views;
 use views::{
     AdvancedSection, ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, toolbar_bar,
 };
+pub(super) use views::{empty_hint, empty_shell, empty_title, notice_bar};
 
 const CARD_H: f32 = 84.;
-const CARD_SPACING: f32 = 8.;
-const GRID_MAX_COLS: usize = 5;
+pub(super) const CARD_SPACING: f32 = 8.;
+pub(super) const GRID_MAX_COLS: usize = 5;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
@@ -275,6 +276,7 @@ fn make_row(
         .unwrap_or_default();
 
     PackageEntry {
+        essential: crate::essential::lookup(provider, &package_id),
         package_id,
         bundle_name,
         provider,
@@ -473,6 +475,12 @@ impl Component for PackageManager {
         let hidden = *hidden_filter.read();
         let card_layout = CardLayout::from(*layout.read());
 
+        let disabled_essentials: Vec<&'static str> = items
+            .iter()
+            .filter(|package| !package.enabled)
+            .filter_map(|package| package.essential.map(|essential| essential.name))
+            .collect();
+
         let tabs = build_tabs(&self.categories, &items, hidden);
         let active_idx = (*active.read()).min(tabs.len().saturating_sub(1));
         let tab_filter = tabs.get(active_idx);
@@ -500,6 +508,17 @@ impl Component for PackageManager {
             }
         };
 
+        let mut notices = Vec::new();
+        if content_type.is_global() {
+            notices.push(views::global_notice(noun_plural));
+        }
+        if session_live {
+            notices.push(views::running_notice(noun_plural, content_type));
+        }
+        if !disabled_essentials.is_empty() {
+            notices.push(views::essential_notice(&disabled_essentials));
+        }
+
         let (advanced, filtered): (Vec<_>, Vec<_>) = filtered.into_iter().partition(|p| p.advanced);
 
         rect()
@@ -520,25 +539,22 @@ impl Component for PackageManager {
                 package_type,
                 toolbar_width,
             ))
-            .maybe_child(
-                content_type
-                    .is_global()
-                    .then(|| views::global_notice(noun_plural)),
+            .child(
+                ContentBox::new(
+                    filtered,
+                    advanced,
+                    AdvancedSection {
+                        open: advanced_open,
+                        forced: !query.is_empty(),
+                    },
+                    noun_plural,
+                    package_type,
+                    content_type,
+                    cluster_id,
+                    content_kind,
+                    card_layout,
+                )
+                .notices(notices),
             )
-            .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
-            .child(ContentBox::new(
-                filtered,
-                advanced,
-                AdvancedSection {
-                    open: advanced_open,
-                    forced: !query.is_empty(),
-                },
-                noun_plural,
-                package_type,
-                content_type,
-                cluster_id,
-                content_kind,
-                card_layout,
-            ))
     }
 }

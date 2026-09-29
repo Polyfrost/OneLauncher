@@ -276,45 +276,22 @@ pub fn processor_arguments<T: AsRef<str>, S: std::hash::BuildHasher>(
 
 #[tracing::instrument(skip_all, level = "debug")]
 pub async fn main_class(path: impl AsRef<std::path::Path>) -> McResult<Option<String>> {
-    let data = polyio::read(path.as_ref()).await?;
-    let mut class_name = None;
+    let file = tokio::fs::File::open(path.as_ref()).await?;
+    let manifest = match polyio::try_read_zip_entry_bytes(
+        tokio::io::BufReader::new(file),
+        "META-INF/MANIFEST.MF",
+    )
+    .await
+    {
+        Err(polyio::IOError::FileNotFoundInZip { .. }) => return Ok(None),
+        result => result?,
+    };
 
-    use futures_util::TryStreamExt;
-
-    let stream = polyio::stream_zip_entries_bytes(data);
-    let mut stream = std::pin::pin!(stream);
-
-    while let Some(item) = stream.try_next().await? {
-        let (index, entry, reader) = item;
-        if entry.dir().map_err(polyio::IOError::from)? {
-            continue;
-        }
-
-        if entry.filename().as_str().map_err(polyio::IOError::from)? != "META-INF/MANIFEST.MF" {
-            continue;
-        }
-
-        let mut buf = String::new();
-        let mut entry_reader = reader
-            .reader_without_entry(index)
-            .await
-            .map_err(polyio::IOError::from)?;
-        futures_util::AsyncReadExt::read_to_string(&mut entry_reader, &mut buf)
-            .await
-            .map_err(polyio::IOError::from)?;
-
-        for line in buf.lines() {
-            let line = line.trim();
-            if line.starts_with("Main-Class:")
-                && let Some(class) = line.split(':').nth(1)
-            {
-                class_name = Some(class.trim().to_string());
-                break;
-            }
-        }
-    }
-
-    Ok(class_name)
+    Ok(String::from_utf8_lossy(&manifest).lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("Main-Class:")
+            .map(|class| class.trim().to_string())
+    }))
 }
 
 #[allow(clippy::too_many_arguments)]

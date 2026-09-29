@@ -86,7 +86,7 @@ impl Component for NotificationPanel {
             .opacity(progress)
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
-            .blur(12.)
+            .backdrop_blur(12.)
             .corner_radius(CornerRadius::new_all(12.))
             .border(
                 Border::new()
@@ -285,8 +285,8 @@ fn task_row(task: &crate::notifications::TaskView) -> impl IntoElement {
 }
 
 #[derive(PartialEq)]
-struct ChevronToggle {
-    expanded: bool,
+pub struct ChevronToggle {
+    pub expanded: bool,
 }
 
 impl Component for ChevronToggle {

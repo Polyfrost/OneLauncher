@@ -292,6 +292,7 @@ pub async fn install_package(
     project_id: &str,
     version_id: &str,
     cluster_id: i64,
+    world: Option<String>,
     allow_flagged: bool,
 ) -> Result<PackageInstall, FlaggedInstall> {
     let lookup = async {
@@ -310,6 +311,14 @@ pub async fn install_package(
         Ok(found) => found,
         Err(err) => return Ok(PackageInstall::failed(err)),
     };
+
+    if let Some(world) = world {
+        let project = oneclient_content::packages::types::ProjectDetail {
+            content_type: oneclient_content::packages::ContentType::DataPack,
+            ..project
+        };
+        return Ok(install_datapack(state, provider, &project, &version, cluster_id, world).await);
+    }
 
     let content = state.services.content();
     let bad_mods = oneclient_content::packages::load_bad_mods(&content).await;
@@ -447,6 +456,62 @@ pub async fn install_package(
         missing_dependencies,
         live_deferred,
     })
+}
+
+async fn install_datapack(
+    state: &Arc<LauncherState>,
+    provider: oneclient_content::packages::ProviderId,
+    project: &oneclient_content::packages::types::ProjectDetail,
+    version: &oneclient_content::packages::types::VersionDetail,
+    cluster_id: i64,
+    world: String,
+) -> PackageInstall {
+    let Some(file) = version.primary_file() else {
+        return PackageInstall::failed(anyhow::anyhow!("This version has no file to download"));
+    };
+    if !file.file_name.to_lowercase().ends_with(".zip") {
+        return PackageInstall::failed(anyhow::anyhow!(
+            "This version is a mod, not a data pack. Pick a .zip version instead"
+        ));
+    }
+
+    let session = oneclient_events::GroupedProgressSession::start(
+        &state.services.events,
+        format!("Installing {}", project.name),
+    );
+    session.expect(oneclient_events::TaskCategory::Packages, 1, file.size);
+    let child = session.child(
+        project.name.clone(),
+        file.size,
+        oneclient_events::TaskCategory::Packages,
+    );
+
+    let result = async {
+        let artifact = PackageStore::download_and_cache(
+            provider,
+            project,
+            version,
+            false,
+            Some(&child),
+            &state.services.content(),
+        )
+        .await?;
+        let path = oneclient_content::packages::store::artifact_absolute_path(&artifact.path)?;
+        let cluster = state.clusters.get(cluster_id).await?;
+        oneclient_core::add_world_datapacks(&cluster, &world, &[path]).await?;
+        anyhow::Ok(())
+    }
+    .await;
+
+    child.finish();
+
+    PackageInstall {
+        session_id: Some(session.detach()),
+        result: result.map(|()| format!("{} to {world}", project.name)),
+        dependencies: Vec::new(),
+        missing_dependencies: Vec::new(),
+        live_deferred: false,
+    }
 }
 
 async fn mark_new(cluster_id: i64, hash: &str, state: &LauncherState) {

@@ -5,6 +5,7 @@ pub mod dev;
 
 pub mod changelog;
 pub mod clusters;
+pub mod disable_warnings;
 mod error;
 pub mod game;
 pub mod images;
@@ -27,6 +28,7 @@ pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
     ensure_from_bundles, ensure_from_versions, estimate_cluster_download, required_java_major,
 };
+pub use disable_warnings::{DisableWarnings, fetch_disable_warnings};
 pub use error::{LauncherError, LauncherResult, SentryExclusion};
 pub use game::{GameError, LaunchedGame, get_loader_versions, launch_cluster};
 pub use images::ImageCacheStore;
@@ -40,6 +42,10 @@ pub use oneclient_cluster::logs::{
 };
 pub use oneclient_cluster::screenshots::{
     ScreenshotInfo, ScreenshotsError, delete_screenshot, list_cluster_screenshots, load_screenshot,
+};
+pub use oneclient_cluster::worlds::{
+    DataPackInfo, LEVEL_DAT, PackIcon, WORLD_ICON, WorldInfo, WorldsError, add_world_datapacks,
+    delete_world, delete_world_datapack, list_cluster_worlds, list_world_datapacks, world_size,
 };
 pub use oneclient_content::bundles::{
     ApplyBundleUpdatesResult, Bundle, BundleArchive, BundleError, BundleFile, BundleFileKind,
@@ -70,5 +76,6 @@ pub use state::shutdown;
 pub use tos::{TermsDocument, fetch_terms};
 pub use verify::{ClusterVerifyReport, verify_cluster_files};
 pub use versions::{
-    RemoteMigration, VersionMetadata, VersionsManager, VersionsManifest, resolve_migration_chain,
+    ReleaseTarget, RemoteMigration, VersionMetadata, VersionsManager, VersionsManifest,
+    resolve_migration_chain,
 };

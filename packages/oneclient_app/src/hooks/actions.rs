@@ -3,6 +3,8 @@
 //! Always `spawn_forever` never `spawn` Freya's `spawn` cancels the task when
 //! the calling component unmounts this work is app-scoped not component-scoped
 
+mod release_migration;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
@@ -260,6 +262,10 @@ impl Actions {
         });
     }
 
+    pub fn refresh_settings_from_core(&self) {
+        self.mutate_settings(|_| {});
+    }
+
     pub fn edit_settings(&self, edit: impl FnOnce(&mut LauncherSettings)) {
         let Some(updated) = self.mutate_settings(edit) else {
             return;
@@ -271,7 +277,11 @@ impl Actions {
     }
 
     pub fn set_settings(&self, settings: LauncherSettings) {
-        let Some(updated) = self.mutate_settings(|s| *s = settings) else {
+        let Some(updated) = self.mutate_settings(|s| {
+            let pending = std::mem::take(&mut s.pending_release_migrations);
+            *s = settings;
+            s.pending_release_migrations = pending;
+        }) else {
             return;
         };
         if let Ok(state) = launcher::state() {
@@ -1091,12 +1101,14 @@ impl Actions {
         provider: ProviderId,
         project_id: impl Into<String>,
         version_id: impl Into<String>,
+        world: Option<String>,
     ) {
         self.start_install(
             cluster_id,
             provider,
             project_id.into(),
             version_id.into(),
+            world,
             false,
         );
     }
@@ -1108,6 +1120,7 @@ impl Actions {
             prompt.provider,
             prompt.project_id,
             prompt.version_id,
+            None,
             true,
         );
     }
@@ -1126,6 +1139,7 @@ impl Actions {
         provider: ProviderId,
         project_id: String,
         version_id: String,
+        world: Option<String>,
         allow_flagged: bool,
     ) {
         let actions = self.clone();
@@ -1155,6 +1169,7 @@ impl Actions {
                 let state = state.clone();
                 let project_id = project_id.clone();
                 let version_id = version_id.clone();
+                let world = world.clone();
                 async move {
                     crate::install::install_package(
                         &state,
@@ -1162,6 +1177,7 @@ impl Actions {
                         &project_id,
                         &version_id,
                         cluster_id,
+                        world,
                         allow_flagged,
                     )
                     .await
@@ -1235,6 +1251,9 @@ impl Actions {
                 }
 
                 super::invalidate_cluster_content_queries().await;
+                if let Some(world) = world {
+                    super::invalidate_world_contents(cluster_id, world).await;
+                }
 
                 state
                     .services

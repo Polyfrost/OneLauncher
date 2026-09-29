@@ -9,8 +9,9 @@ use freya::radio::use_init_radio_station;
 use oneclient_app::ipc::{self, Claim};
 use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
-    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, StartMaximizedState, cli, constants,
-    events, microsoft_java, platform, router, theme, use_provide_actions, use_provide_link_confirm,
+    Actions, ConfirmLinkOverlay, EssentialConfirmOverlay, EssentialGuardState, EventPump,
+    LinkConfirmState, StartMaximizedState, cli, constants, events, microsoft_java, platform,
+    router, theme, use_provide_actions, use_provide_essential_guard, use_provide_link_confirm,
     use_provide_start_maximized,
 };
 use std::cell::Cell;
@@ -82,12 +83,16 @@ impl App for OneClientApp {
         let link_confirm = use_state(|| None::<String>);
         use_provide_link_confirm(LinkConfirmState(link_confirm));
 
+        let essential_guard = use_state(|| None);
+        use_provide_essential_guard(EssentialGuardState(essential_guard));
+
         use_provide_start_maximized(StartMaximizedState(self.start_maximized));
 
         rect()
             .width(Size::fill())
             .height(Size::fill())
             .child(ConfirmLinkOverlay)
+            .child(EssentialConfirmOverlay)
             .child(router())
     }
 }

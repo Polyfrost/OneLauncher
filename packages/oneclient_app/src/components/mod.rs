@@ -11,6 +11,7 @@ mod control_center;
 mod date_range_picker;
 mod dropdown;
 mod dynamic_art;
+mod essential_confirm;
 mod file_drop;
 mod flagged_install_popup;
 mod generic_prompt;
@@ -35,6 +36,7 @@ mod pagination;
 mod player_model;
 mod progress_track;
 mod recents_row;
+mod release_migration_popup;
 mod screenshot_viewer;
 mod scrollview;
 mod segmented_control;
@@ -62,6 +64,7 @@ pub use control_center::ControlCenter;
 pub use date_range_picker::{DateRange, DateRangePicker};
 pub use dropdown::Dropdown;
 pub use dynamic_art::{ART_PREVIEW_EDGE, DynamicArt};
+pub use essential_confirm::EssentialConfirmOverlay;
 pub use file_drop::FileDropOverlay;
 pub use flagged_install_popup::FlaggedInstallPopup;
 pub use generic_prompt::GenericPromptOverlay;
@@ -78,12 +81,13 @@ pub(crate) use microsoft_login::login_dialog;
 pub use microsoft_login::use_microsoft_login;
 pub(crate) use navbar::window_controls;
 pub use navbar::{AppNavbar, OnboardingNavbar};
-pub use notifications::NotificationCenter;
+pub use notifications::{ChevronToggle, NotificationCenter};
 pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
-    CARD_GRID_H, GRID_GAP, GRID_MIN_W, grid_card, package_icon, remote_icon,
+    CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, grid_card, icon_box,
+    kebab_button, meta_size, meta_text, on_secondary, package_icon, remote_icon,
 };
 pub use package_row::{
     CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,
@@ -93,6 +97,7 @@ pub use pagination::Pagination;
 pub use player_model::PlayerModel;
 pub use progress_track::progress_track;
 pub use recents_row::RecentsRow;
+pub use release_migration_popup::ReleaseMigrationPopup;
 pub use screenshot_viewer::{ScreenshotViewer, screenshot_context_menu};
 pub(crate) use scrollview::corrected_scroll;
 pub use scrollview::{LazySection, ScrollArea, ScrollAreaCtx};

@@ -28,8 +28,12 @@ use crate::hooks::{
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::grid_columns_for_width;
+use crate::view::app::cluster::supports_datapacks;
 
-use super::{InstallSource, Installed, PackageBanner, Thumbnail, installed_map};
+use super::{
+    InstallSource, Installed, PackageBanner, Thumbnail, WorldInstallPrompt, installed_map,
+    preferred_version,
+};
 use crate::utils::{abbreviate_number, sort_clusters_for_home};
 
 mod cards;
@@ -63,11 +67,22 @@ const SORTS: [(SearchSort, &str); 4] = [
     (SearchSort::Updated, "Updated"),
 ];
 
-const BROWSE_TYPES: [(&str, &str); 3] = [
+const BROWSE_TYPES: [(&str, &str); 4] = [
     ("mod", "Mods"),
     ("texture", "Textures"),
     ("shader", "Shaders"),
+    ("datapack", "Data packs"),
 ];
+
+const DATAPACK_SLUG: &str = "datapack";
+
+pub(crate) fn browsable_type(package_type: &str, mc_version: &str) -> String {
+    if package_type == DATAPACK_SLUG && !supports_datapacks(mc_version) {
+        BROWSE_TYPES[0].0.to_string()
+    } else {
+        package_type.to_string()
+    }
+}
 
 fn type_title(package_type: &str) -> &'static str {
     BROWSE_TYPES
@@ -208,6 +223,11 @@ impl Component for BrowserBody {
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
         );
+        let installed = if content_type == ContentType::DataPack {
+            Default::default()
+        } else {
+            installed
+        };
 
         let packages = search_items(&search);
         let total = search_total(&search);
@@ -565,8 +585,13 @@ impl Component for TypePicker {
         let cluster_id = self.cluster_id;
         let pick_cluster = self.pick_cluster;
         let current = self.package_type.clone();
+        let datapacks = use_cluster(cluster_id).is_none_or(|c| supports_datapacks(&c.mc_version));
 
-        let labels: Vec<String> = BROWSE_TYPES
+        let types: Vec<(&str, &str)> = BROWSE_TYPES
+            .into_iter()
+            .filter(|(slug, _)| datapacks || *slug != DATAPACK_SLUG)
+            .collect();
+        let labels: Vec<String> = types
             .iter()
             .map(|(_, title)| (*title).to_string())
             .collect();
@@ -576,7 +601,7 @@ impl Component for TypePicker {
             .width(Size::px(CATEGORY_SIDEBAR_W))
             .height(Size::px(30.))
             .on_select(move |idx: usize| {
-                let picked = BROWSE_TYPES.get(idx).filter(|(slug, _)| *slug != current);
+                let picked = types.get(idx).filter(|(slug, _)| *slug != current);
                 if let Some((slug, _)) = picked {
                     let _ = RouterContext::get().push(Route::Browser {
                         cluster_id,
@@ -606,6 +631,7 @@ impl Component for ClusterPicker {
             .map(|c| format!("{} · {}", c.name, version_name(&metadata, c)))
             .collect();
         let ids: Vec<i64> = clusters.iter().map(|c| c.id).collect();
+        let versions: Vec<String> = clusters.iter().map(|c| c.mc_version.clone()).collect();
 
         let selected = ids
             .iter()
@@ -625,10 +651,12 @@ impl Component for ClusterPicker {
                     .width(Size::px(240.))
                     .height(Size::px(28.))
                     .on_select(move |idx: usize| {
-                        if let Some(cluster_id) = ids.get(idx).copied() {
+                        if let (Some(cluster_id), Some(mc_version)) =
+                            (ids.get(idx).copied(), versions.get(idx))
+                        {
                             let _ = RouterContext::get().replace(Route::Browser {
                                 cluster_id,
-                                package_type: package_type.clone(),
+                                package_type: browsable_type(&package_type, mc_version),
                                 pick_cluster: true,
                             });
                         }

@@ -6,8 +6,8 @@ use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, Icon, IconType, LazySection, PackageEntry, PackageRow, ScrollArea, Segment,
-    SegmentedControl, TextInput, package_context_menu, use_shared_delete,
+    Button, CardLayout, ChevronToggle, Icon, IconType, LazySection, PackageEntry, PackageRow,
+    ScrollArea, Segment, SegmentedControl, TextInput, package_context_menu, use_shared_delete,
 };
 use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch, use_overlay_claim};
 use crate::routes::Route;
@@ -169,7 +169,7 @@ pub(super) fn toolbar_bar(
         .direction(Direction::Horizontal)
         .invert_scroll_wheel(true)
         .show_scrollbar(true)
-        .scrollbar_theme(tabs_scrollbar_theme())
+        .scrollbar(|context| ScrollBar::new(context).theme(tabs_scrollbar_theme()).into())
         .width(if stacked {
             Size::fill()
         } else {
@@ -340,8 +340,8 @@ impl Component for CategoryChip {
     }
 }
 
-pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {
-    let text = match content_type {
+pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> String {
+    match content_type {
         ContentType::ResourcePack => format!(
             "Minecraft is running. New {noun_plural} usually go in right away, open Options → Resource Packs in game to turn them on. OneClient tells you when one has to wait for the next launch."
         ),
@@ -351,25 +351,33 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
         _ => format!(
             "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
         ),
-    };
-
-    notice_bar(text)
+    }
 }
 
-pub(super) fn global_notice(noun_plural: &'static str) -> Element {
-    notice_bar(format!(
+pub(super) fn global_notice(noun_plural: &'static str) -> String {
+    format!(
         "These {noun_plural} are shared across all your clusters. Adding one here makes it available everywhere, and turning one off removes it everywhere."
-    ))
+    )
 }
 
-fn notice_bar(text: String) -> Element {
+pub(super) fn essential_notice(names: &[&'static str]) -> String {
+    match names {
+        [only] => format!("{only} is turned off, so its features will not work in game."),
+        _ => format!(
+            "{} are turned off, so their features will not work in game.",
+            names.join(", ")
+        ),
+    }
+}
+
+pub(crate) fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .content(Content::Flex)
         .spacing(10.)
-        .margin(Gaps::new(8., 0., 0., 0.))
+        .margin(Gaps::new(0., 0., 8., 0.))
         .padding(Gaps::new_symmetric(9., 12.))
         .corner_radius(CornerRadius::new_all(10.))
         .background(colors::brand().with_a(30))
@@ -487,7 +495,7 @@ impl Component for FilterPopover {
             .offset_y((progress - 1.0) * 6.)
             .corner_radius(CornerRadius::new_all(10.))
             .background(colors::page_elevated().with_a(230))
-            .blur(12.)
+            .backdrop_blur(12.)
             .border(crate::ui::border_all_color(1., colors::component_border()))
             .shadow(Shadow::from((
                 0.,
@@ -743,15 +751,7 @@ impl Component for SectionHeader {
                     .on_pointer_leave(move |_| hovered.set(false))
                     .on_press(move |_| open.toggle())
             })
-            .child(
-                Icon::new(if expanded {
-                    IconType::ChevronDown
-                } else {
-                    IconType::ChevronRight
-                })
-                .size(14.)
-                .color(colors::fg_secondary()),
-            )
+            .child(ChevronToggle { expanded })
             .child(
                 label()
                     .text(self.label)
@@ -779,6 +779,7 @@ pub(super) struct ContentBox {
     cluster_id: i64,
     kind: ContentKind,
     layout: CardLayout,
+    notices: Vec<String>,
 }
 
 impl ContentBox {
@@ -804,7 +805,13 @@ impl ContentBox {
             cluster_id,
             kind,
             layout,
+            notices: Vec::new(),
         }
+    }
+
+    pub(super) fn notices(mut self, notices: Vec<String>) -> Self {
+        self.notices = notices;
+        self
     }
 }
 
@@ -864,7 +871,7 @@ impl Component for ContentBox {
             };
             ScrollArea::new()
                 .width(Size::fill())
-                .height(Size::fill())
+                .height(Size::flex(1.0))
                 .scrollbar_gutter(true)
                 .lazy_sections(
                     sections,
@@ -931,9 +938,16 @@ impl Component for ContentBox {
             .corner_radius(bottom_corners)
             .background(colors::page_elevated())
             .overflow(Overflow::Clip)
+            .content(Content::Flex)
+            .children(self.notices.iter().map(|text| notice_bar(text.clone())))
             .maybe_child(header)
             .maybe_child(scroll)
-            .maybe_child(empty)
+            .maybe_child(empty.map(|empty| {
+                rect()
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .child(empty)
+            }))
             .maybe_child(menu_overlay)
             .maybe_child(delete_dialog)
     }
@@ -949,7 +963,7 @@ fn action_header(button: impl IntoElement) -> impl IntoElement {
         .child(button)
 }
 
-fn empty_shell(icon: IconType) -> Rect {
+pub(crate) fn empty_shell(icon: IconType) -> Rect {
     rect()
         .vertical()
         .width(Size::fill())
@@ -960,14 +974,14 @@ fn empty_shell(icon: IconType) -> Rect {
         .child(Icon::new(icon).size(28.).color(colors::fg_secondary()))
 }
 
-fn empty_title(text: impl Into<String>) -> impl IntoElement {
+pub(crate) fn empty_title(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
         .font_size(14.)
         .color(colors::fg_secondary())
 }
 
-fn empty_hint(text: impl Into<String>) -> impl IntoElement {
+pub(crate) fn empty_hint(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
         .font_size(12.)

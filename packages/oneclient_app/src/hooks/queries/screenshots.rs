@@ -11,6 +11,8 @@ use notify::{Event, EventKind};
 use oneclient_core::{LauncherError, ScreenshotInfo};
 use tokio::sync::Semaphore;
 
+use crate::launcher::off_ui_blocking;
+
 static LOCAL_IMAGE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -29,7 +31,7 @@ impl QueryCapability for ClusterScreenshotsQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
         let cluster = state.clusters.get(keys.cluster_id).await?;
-        Ok(oneclient_core::list_cluster_screenshots(&cluster)?)
+        Ok(off_ui_blocking(move || oneclient_core::list_cluster_screenshots(&cluster)).await?)
     }
 }
 
@@ -133,7 +135,10 @@ impl MutationCapability for ScreenshotActionMutation {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         match keys {
-            ScreenshotAction::Delete { path } => Ok(oneclient_core::delete_screenshot(path)?),
+            ScreenshotAction::Delete { path } => {
+                let path = path.clone();
+                Ok(off_ui_blocking(move || oneclient_core::delete_screenshot(&path)).await?)
+            }
         }
     }
 

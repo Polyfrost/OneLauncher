@@ -217,17 +217,23 @@ impl QueryCapability for PackageVersionsQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let provider = state.services.packages.get(keys.provider)?;
-        Ok(provider
-            .list_versions(
-                &keys.project_id,
-                keys.game_version.as_deref(),
-                keys.loader,
-                keys.page * VERSIONS_PAGE_SIZE,
-                VERSIONS_PAGE_SIZE,
-                &state.services.content(),
-            )
-            .await?)
+        let keys = keys.clone();
+        crate::launcher::off_ui(async move {
+            Ok(state
+                .services
+                .packages
+                .get(keys.provider)?
+                .list_versions(
+                    &keys.project_id,
+                    keys.game_version.as_deref(),
+                    keys.loader,
+                    keys.page * VERSIONS_PAGE_SIZE,
+                    VERSIONS_PAGE_SIZE,
+                    &state.services.content(),
+                )
+                .await?)
+        })
+        .await
     }
 }
 

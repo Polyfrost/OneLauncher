@@ -81,6 +81,22 @@ pub struct ScrollAreaCtx {
     pub viewport_left: f32,
 }
 
+#[derive(Clone, Copy)]
+pub struct LazySection {
+    pub header: bool,
+    pub count: usize,
+}
+
+enum LazyRow {
+    Header(usize),
+    Items {
+        section: usize,
+        row: usize,
+        start: usize,
+        end: usize,
+    },
+}
+
 pub struct ScrollArea {
     width: Size,
     height: Size,
@@ -197,6 +213,11 @@ impl ScrollArea {
         self
     }
 
+    pub fn append_children(mut self, children: impl IntoIterator<Item = Element>) -> Self {
+        self.children.extend(children);
+        self
+    }
+
     pub fn content(mut self, builder: impl Fn(ScrollAreaCtx) -> Element + 'static) -> Self {
         self.builder = Some(Box::new(builder));
         self
@@ -236,6 +257,173 @@ impl ScrollArea {
                                 .child(render(i)),
                         ),
                 );
+            }
+            if bottom_pad > 0. {
+                container =
+                    container.child(rect().width(Size::fill()).height(Size::px(bottom_pad)));
+            }
+            container.into_element()
+        }));
+        self
+    }
+
+    pub fn lazy_grid(
+        mut self,
+        count: usize,
+        item_height: f32,
+        gap: f32,
+        min_width: f32,
+        max_cols: usize,
+        render: impl Fn(usize) -> Element + 'static,
+    ) -> Self {
+        let slot = (item_height + gap).max(1.);
+        self.builder = Some(Box::new(move |ctx: ScrollAreaCtx| {
+            let cols = (((ctx.viewport_w + gap) / (min_width + gap)).floor() as usize)
+                .clamp(1, max_cols.max(1));
+            let rows_total = count.div_ceil(cols);
+
+            let first =
+                (((-ctx.corrected_y) / slot).floor() as i64 - LAZY_OVERSCAN).max(0) as usize;
+            let span = ((ctx.viewport_h / slot).ceil() as i64 + 2 * LAZY_OVERSCAN).max(0) as usize;
+            let last = (first + span).min(rows_total);
+
+            let top_pad = first as f32 * slot;
+            let bottom_pad = rows_total.saturating_sub(last) as f32 * slot;
+
+            let mut container = rect().vertical().width(Size::fill());
+            if top_pad > 0. {
+                container = container.child(rect().width(Size::fill()).height(Size::px(top_pad)));
+            }
+            for r in first..last {
+                let mut row = rect()
+                    .key(r)
+                    .horizontal()
+                    .width(Size::fill())
+                    .height(Size::px(slot))
+                    .spacing(gap)
+                    .content(Content::Flex);
+                for c in 0..cols {
+                    let idx = r * cols + c;
+                    let cell = rect().width(Size::flex(1.0)).height(Size::px(item_height));
+                    row = row.child(if idx < count {
+                        cell.child(render(idx))
+                    } else {
+                        cell
+                    });
+                }
+                container = container.child(row);
+            }
+            if bottom_pad > 0. {
+                container =
+                    container.child(rect().width(Size::fill()).height(Size::px(bottom_pad)));
+            }
+            container.into_element()
+        }));
+        self
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn lazy_sections(
+        mut self,
+        sections: Vec<LazySection>,
+        item_height: f32,
+        gap: f32,
+        min_width: f32,
+        max_cols: usize,
+        header_height: f32,
+        render: impl Fn(usize) -> Element + 'static,
+        render_header: impl Fn(usize) -> Element + 'static,
+    ) -> Self {
+        let slot = (item_height + gap).max(1.);
+        let header_slot = header_height + gap;
+        self.builder = Some(Box::new(move |ctx: ScrollAreaCtx| {
+            let cols = (((ctx.viewport_w + gap) / (min_width + gap)).floor() as usize)
+                .clamp(1, max_cols.max(1));
+
+            let mut rows = Vec::new();
+            let mut offset = 0;
+            for (s, section) in sections.iter().enumerate() {
+                if section.header {
+                    rows.push(LazyRow::Header(s));
+                }
+                for r in 0..section.count.div_ceil(cols) {
+                    let start = offset + r * cols;
+                    rows.push(LazyRow::Items {
+                        section: s,
+                        row: r,
+                        start,
+                        end: (start + cols).min(offset + section.count),
+                    });
+                }
+                offset += section.count;
+            }
+
+            let row_slot = |row: &LazyRow| match row {
+                LazyRow::Header(_) => header_slot,
+                LazyRow::Items { .. } => slot,
+            };
+
+            let overscan = LAZY_OVERSCAN as f32 * slot;
+            let visible_top = -ctx.corrected_y - overscan;
+            let visible_bottom = -ctx.corrected_y + ctx.viewport_h + overscan;
+
+            let mut top_pad = 0.;
+            let mut bottom_pad = 0.;
+            let mut visible = Vec::new();
+            let mut y = 0.;
+            for row in &rows {
+                let h = row_slot(row);
+                if y + h <= visible_top {
+                    top_pad += h;
+                } else if y >= visible_bottom {
+                    bottom_pad += h;
+                } else {
+                    visible.push(row);
+                }
+                y += h;
+            }
+
+            let mut container = rect().vertical().width(Size::fill());
+            if top_pad > 0. {
+                container = container.child(rect().width(Size::fill()).height(Size::px(top_pad)));
+            }
+            for row in visible {
+                let el = match *row {
+                    LazyRow::Header(section) => rect()
+                        .key(("h", section))
+                        .width(Size::fill())
+                        .height(Size::px(header_slot))
+                        .child(
+                            rect()
+                                .width(Size::fill())
+                                .height(Size::px(header_height))
+                                .child(render_header(section)),
+                        ),
+                    LazyRow::Items {
+                        section,
+                        row,
+                        start,
+                        end,
+                    } => {
+                        let mut items = rect()
+                            .key(("r", section, row))
+                            .horizontal()
+                            .width(Size::fill())
+                            .height(Size::px(slot))
+                            .spacing(gap)
+                            .content(Content::Flex);
+                        for idx in start..start + cols {
+                            let cell = rect().width(Size::flex(1.0)).height(Size::px(item_height));
+                            items = items.child(if idx < end {
+                                cell.child(render(idx))
+                            } else {
+                                cell
+                            });
+                        }
+                        items
+                    }
+                };
+                container = container.child(el);
             }
             if bottom_pad > 0. {
                 container =

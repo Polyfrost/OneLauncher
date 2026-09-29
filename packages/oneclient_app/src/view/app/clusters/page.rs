@@ -20,7 +20,7 @@ use crate::utils::{
     loaders_for_line, resolve_cluster, split_clusters, version_keys, version_label,
 };
 use crate::view::app::clusters::CreateInstanceModal;
-use crate::view::app::launch_button_state;
+use crate::view::app::{launch_button_state, launch_syncing};
 
 const GRID_GAP_PX: f32 = 12.;
 const MIN_CARD_WIDTH_PX: f32 = 280.;
@@ -252,6 +252,7 @@ impl Component for Clusters {
                             cover: instance.cover_file(),
                             mc_version: instance.mc_version.clone(),
                             mc_loader: instance.mc_loader,
+                            uses_bundles: instance.uses_bundles(),
                         }
                         .into_element(),
                         (None, Some(line), Some(cluster)) => DetailSidebar {
@@ -416,6 +417,7 @@ struct InstanceSidebar {
     cover: Option<std::path::PathBuf>,
     mc_version: String,
     mc_loader: GameLoader,
+    uses_bundles: bool,
 }
 
 impl Component for InstanceSidebar {
@@ -426,7 +428,7 @@ impl Component for InstanceSidebar {
         let game = use_game_snapshot();
         let launcher = use_launcher();
 
-        let syncing = launcher.fetching || launcher.syncing_bundles;
+        let syncing = launch_syncing(&launcher, self.uses_bundles);
         let art_height = art_height_for(*sidebar_height.read());
         let cover = self.cover.clone();
 

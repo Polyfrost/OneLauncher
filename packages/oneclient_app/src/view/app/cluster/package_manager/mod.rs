@@ -3,18 +3,23 @@ use std::collections::{HashMap, HashSet};
 use freya::prelude::*;
 use oneclient_common::search::{MatchScore, SearchQuery};
 use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
-use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
+use oneclient_core::{
+    BundleFileKind, BundleFileType, BundleWithUpdateStatus, FileUpdateStatus, LinkedArtifactInfo,
+};
 use oneclient_db::models::OverrideType;
 
 use crate::components::{CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry};
 use crate::hooks::{package_meta_batch, use_game_snapshot, use_package_meta_batch, use_view_state};
 
 mod views;
-use views::{ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, toolbar_bar};
+use views::{
+    AdvancedSection, ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, toolbar_bar,
+};
+pub(super) use views::{empty_hint, empty_shell, empty_title, notice_bar};
 
 const CARD_H: f32 = 84.;
-const CARD_SPACING: f32 = 8.;
-const LAZY_OVERSCAN: i64 = 2;
+pub(super) const CARD_SPACING: f32 = 8.;
+pub(super) const GRID_MAX_COLS: usize = 5;
 
 pub type PackageMetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
@@ -52,11 +57,22 @@ fn provider_project_ids(
     ids
 }
 
-fn local_project_ids(content: &[LinkedArtifactInfo], content_type: ContentType) -> Vec<String> {
+fn local_project_ids(
+    content: &[LinkedArtifactInfo],
+    bundles: &[BundleWithUpdateStatus],
+    content_type: ContentType,
+) -> Vec<String> {
+    let bundled = bundles
+        .iter()
+        .flat_map(|bundle| &bundle.files)
+        .filter(|(file, _status)| file.content_type() == content_type)
+        .filter(|(file, _status)| matches!(file.kind, BundleFileKind::External { .. }))
+        .map(|(file, _status)| file.kind.metadata_id());
     content
         .iter()
         .filter(|info| info.content_type == content_type && info.provider.is_none())
         .map(|info| info.hash.clone())
+        .chain(bundled)
         .collect()
 }
 
@@ -74,7 +90,10 @@ pub fn use_content_meta(
         }
     }
 
-    let local = use_package_meta_batch(ProviderId::Local, local_project_ids(content, content_type));
+    let local = use_package_meta_batch(
+        ProviderId::Local,
+        local_project_ids(content, bundles, content_type),
+    );
     for (hash, meta) in package_meta_batch(&local) {
         out.insert((ProviderId::Local, hash), meta);
     }
@@ -103,10 +122,14 @@ pub fn bundle_packages(
 
     // Hidden is per-bundle so one bundle carrying a mod as a private dependency must not suppress a bundle that offers it openly
     let mut shown_elsewhere: HashSet<String> = HashSet::new();
+    let mut normal_elsewhere: HashSet<String> = HashSet::new();
     for bundle in bundles {
         for (file, _status) in &bundle.files {
             if !file.hidden && file.content_type() == content_type {
                 shown_elsewhere.insert(file.kind.package_id());
+                if file.file_type == BundleFileType::Normal {
+                    normal_elsewhere.insert(file.kind.package_id());
+                }
             }
         }
     }
@@ -117,7 +140,7 @@ pub fn bundle_packages(
     for bundle in bundles {
         let bundle_name = &bundle.archive.manifest.name;
         let category = bundle.archive.manifest.category.clone();
-        for (file, _status) in &bundle.files {
+        for (file, status) in &bundle.files {
             if file.content_type() != content_type {
                 continue;
             }
@@ -130,14 +153,24 @@ pub fn bundle_packages(
                 continue;
             }
 
-            let provider = match &file.kind {
-                BundleFileKind::Managed { provider, .. } => *provider,
-                BundleFileKind::External(_) => ProviderId::Local,
-            };
-            let installed_info = by_project
-                .get(pid.as_str())
-                .or_else(|| by_hash.get(pid.as_str()))
-                .copied();
+            let provider = file.kind.metadata_provider();
+            let installed_info = match &file.kind {
+                BundleFileKind::Managed { .. } => by_project
+                    .get(pid.as_str())
+                    .or_else(|| by_hash.get(pid.as_str())),
+                BundleFileKind::External { file: ext, .. } => {
+                    let hash = match status {
+                        FileUpdateStatus::UpdateAvailable {
+                            installed_version_id,
+                            ..
+                        } => installed_version_id,
+                        _ => &ext.sha1,
+                    };
+                    seen.insert(hash.clone());
+                    by_hash.get(hash.as_str())
+                }
+            }
+            .copied();
             let ov = overrides
                 .get(&(bundle_name.clone(), pid.clone()))
                 .map(String::as_str);
@@ -146,13 +179,17 @@ pub fn bundle_packages(
                 None => oneclient_core::effective_enabled(file, ov.and_then(OverrideType::parse)),
             };
 
+            let advanced = content_type == ContentType::Mod
+                && file.file_type == BundleFileType::Advanced
+                && !normal_elsewhere.contains(&pid);
+
             let categories = if category.is_empty() {
                 Vec::new()
             } else {
                 vec![category.clone()]
             };
 
-            rows.push(make_row(
+            let mut row = make_row(
                 pid,
                 Some(bundle_name.clone()),
                 provider,
@@ -160,13 +197,16 @@ pub fn bundle_packages(
                 categories,
                 enabled,
                 file.enabled,
+                file.is_github_hosted(),
                 installed_info,
-                meta,
+                meta.get(&(provider, file.kind.metadata_id())),
                 file.display_name(),
                 false,
                 // Flagged rather than dropped `HiddenFilter` filters on the row and the seen id stops the loose-content pass resurrecting it as a local file
                 file.hidden,
-            ));
+            );
+            row.advanced = advanced;
+            rows.push(row);
         }
     }
 
@@ -179,6 +219,7 @@ pub fn bundle_packages(
         let provider = info.provider.unwrap_or(ProviderId::Local);
         let pid = info.project_id.clone().unwrap_or_else(|| info.hash.clone());
         let outdated = stale.contains(&info.hash);
+        let row_meta = meta.get(&(provider, pid.clone()));
         rows.push(make_row(
             pid,
             None,
@@ -187,8 +228,9 @@ pub fn bundle_packages(
             Vec::new(),
             info.enabled,
             true,
+            false,
             Some(info),
-            meta,
+            row_meta,
             info.display_name
                 .clone()
                 .unwrap_or_else(|| info.file_name.clone()),
@@ -209,13 +251,13 @@ fn make_row(
     categories: Vec<String>,
     enabled: bool,
     manifest_default: bool,
+    github_hosted: bool,
     installed_info: Option<&LinkedArtifactInfo>,
-    meta: &PackageMetaMap,
+    m: Option<&CachedPackageMeta>,
     fallback_name: String,
     update_available: bool,
     hidden: bool,
 ) -> PackageEntry {
-    let m = meta.get(&(provider, package_id.clone()));
     let name = m
         .map(|p| p.name.clone())
         .filter(|s| !s.is_empty())
@@ -227,23 +269,21 @@ fn make_row(
         .map(|p| p.author.clone())
         .filter(|s| !s.is_empty())
         .unwrap_or_default();
+    let version = installed_info.and_then(|i| i.display_version.clone());
     let description = m
         .map(|p| p.summary.clone())
         .filter(|s| !s.is_empty())
-        .or_else(|| {
-            installed_info
-                .and_then(|i| i.display_version.clone())
-                .map(|v| format!("Version {v}"))
-        })
         .unwrap_or_default();
 
     PackageEntry {
         package_id,
         bundle_name,
         provider,
+        github_hosted,
         name,
         file_name,
         author,
+        version,
         description,
         icon_url: m.and_then(|p| p.icon_url.clone()),
         size,
@@ -254,6 +294,7 @@ fn make_row(
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
         hidden,
+        advanced: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
     }
 }
@@ -271,7 +312,7 @@ impl Tab {
         match self {
             Tab::All => "All".to_string(),
             Tab::Category(c) => c.clone(),
-            Tab::Browser => "Browser".to_string(),
+            Tab::Browser => "Online".to_string(),
             Tab::Local => "Local".to_string(),
         }
     }
@@ -280,8 +321,8 @@ impl Tab {
         match self {
             Tab::All => true,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
-            Tab::Browser => p.is_remote() && !p.in_bundle(),
-            Tab::Local => !p.is_remote(),
+            Tab::Browser => (p.is_remote() || p.github_hosted) && !p.in_bundle(),
+            Tab::Local => !p.is_remote() && !p.github_hosted,
         }
     }
 }
@@ -334,7 +375,7 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
         }
     }
 
-    // Category tabs are hidden when empty All + Browser + Local are always shown
+    // Category tabs are hidden when empty All + Online + Local are always shown
     let mut tabs: Vec<Tab> = vec![Tab::All];
     tabs.extend(
         cats.into_iter()
@@ -412,13 +453,17 @@ impl Component for PackageManager {
         });
 
         let session_live = use_game_snapshot().is_active(cluster_id);
-        let shares_content = crate::hooks::use_cluster(cluster_id)
-            .is_none_or(|cluster| cluster.shares_content(content_type));
+        let cluster = crate::hooks::use_cluster(cluster_id);
+        let shares_content = cluster
+            .as_ref()
+            .map(|cluster| cluster.shares_content(content_type));
+        let uses_bundles = cluster.as_ref().is_none_or(|cluster| cluster.uses_bundles());
         let active = use_state(|| 0usize);
 
         let search = use_state(String::new);
         let enabled_filter = use_state(|| EnabledFilter::All);
         let hidden_filter = use_state(|| HiddenFilter::Hide);
+        let advanced_open = use_state(|| false);
         let toolbar_width = use_state(|| 0f32);
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
@@ -461,6 +506,22 @@ impl Component for PackageManager {
             }
         };
 
+        let mut notices = Vec::new();
+        if content_type.is_global()
+            && let Some(shares_content) = shares_content
+        {
+            notices.push(if shares_content {
+                views::global_notice(noun_plural)
+            } else {
+                views::instance_only_notice(noun_plural)
+            });
+        }
+        if session_live {
+            notices.push(views::running_notice(noun_plural, content_type));
+        }
+
+        let (advanced, filtered): (Vec<_>, Vec<_>) = filtered.into_iter().partition(|p| p.advanced);
+
         rect()
             .vertical()
             .width(Size::fill())
@@ -474,27 +535,28 @@ impl Component for PackageManager {
                 sort_mode,
                 enabled_filter,
                 hidden_filter,
+                uses_bundles,
                 layout,
                 cluster_id,
                 package_type,
                 toolbar_width,
             ))
-            .maybe_child(content_type.is_global().then(|| {
-                if shares_content {
-                    views::global_notice(noun_plural)
-                } else {
-                    views::instance_only_notice(noun_plural)
-                }
-            }))
-            .maybe_child(session_live.then(|| views::running_notice(noun_plural, content_type)))
-            .child(ContentBox::new(
-                filtered,
-                noun_plural,
-                package_type,
-                content_type,
-                cluster_id,
-                content_kind,
-                card_layout,
-            ))
+            .child(
+                ContentBox::new(
+                    filtered,
+                    advanced,
+                    AdvancedSection {
+                        open: advanced_open,
+                        forced: !query.is_empty(),
+                    },
+                    noun_plural,
+                    package_type,
+                    content_type,
+                    cluster_id,
+                    content_kind,
+                    card_layout,
+                )
+                .notices(notices),
+            )
     }
 }

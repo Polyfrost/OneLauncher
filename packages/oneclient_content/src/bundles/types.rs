@@ -32,24 +32,59 @@ pub struct BundleFile {
     pub path: String,
     #[serde(default)]
     pub size: u64,
+    #[serde(default)]
+    pub file_type: BundleFileType,
     pub kind: BundleFileKind,
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BundleFileType {
+    Advanced,
+    #[default]
+    #[serde(other)]
+    Normal,
+}
+
 impl BundleFile {
+    pub fn is_optional_offer(&self) -> bool {
+        !self.enabled && !self.hidden && self.file_type == BundleFileType::Normal
+    }
+
     pub fn content_type(&self) -> ContentType {
-        if let BundleFileKind::External(ext) = &self.kind {
-            return ext.content_type;
+        if let BundleFileKind::External { file, .. } = &self.kind {
+            return file.content_type;
         }
         content_type_from_bundle_path(&self.path)
     }
 
+    pub fn is_github_hosted(&self) -> bool {
+        let BundleFileKind::External { file, .. } = &self.kind else {
+            return false;
+        };
+        url::Url::parse(&file.url).is_ok_and(|url| {
+            url.host_str().is_some_and(|host| {
+                host == "github.com"
+                    || host.ends_with(".github.com")
+                    || host.ends_with(".githubusercontent.com")
+            })
+        })
+    }
+
     pub fn display_name(&self) -> String {
+        if let BundleFileKind::External {
+            meta: Some(meta), ..
+        } = &self.kind
+            && let Some(name) = &meta.name
+        {
+            return name.clone();
+        }
         let from_path = self.path.rsplit('/').next().filter(|s| !s.is_empty());
         if let Some(name) = from_path {
             return name.to_string();
         }
         match &self.kind {
-            BundleFileKind::External(ext) => ext.name.clone(),
+            BundleFileKind::External { file, .. } => file.name.clone(),
             BundleFileKind::Managed { project_id, .. } => project_id.clone(),
         }
     }
@@ -63,21 +98,58 @@ pub enum BundleFileKind {
         version_id: String,
         sha1: String,
     },
-    External(ExternalFile),
+    External {
+        file: ExternalFile,
+        id: Option<String>,
+        meta: Option<ExternalFileMeta>,
+    },
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExternalFileMeta {
+    pub name: Option<String>,
+    pub description: Option<String>,
+    pub authors: Vec<String>,
+    pub icon_url: Option<String>,
 }
 
 impl BundleFileKind {
     pub fn package_id(&self) -> String {
         match self {
             Self::Managed { project_id, .. } => project_id.clone(),
-            Self::External(ext) => ext.sha1.clone(),
+            Self::External { file, id, .. } => id.clone().unwrap_or_else(|| file.sha1.clone()),
         }
     }
 
     pub fn bundle_version_id(&self) -> String {
         match self {
             Self::Managed { version_id, .. } => version_id.clone(),
-            Self::External(ext) => ext.sha1.clone(),
+            Self::External { file, .. } => file.sha1.clone(),
+        }
+    }
+
+    pub fn metadata_id(&self) -> String {
+        match self {
+            Self::Managed { project_id, .. } => project_id.clone(),
+            Self::External { file, .. } => file.sha1.clone(),
+        }
+    }
+
+    pub fn metadata_provider(&self) -> ProviderId {
+        match self {
+            Self::Managed { provider, .. } => *provider,
+            Self::External { .. } => ProviderId::Local,
+        }
+    }
+
+    pub fn bundle_key(&self) -> String {
+        match self {
+            Self::Managed {
+                provider,
+                project_id,
+                ..
+            } => managed_bundle_key(*provider, project_id),
+            Self::External { .. } => external_bundle_key(&self.package_id()),
         }
     }
 }
@@ -86,8 +158,8 @@ pub fn managed_bundle_key(provider: ProviderId, package_id: &str) -> String {
     format!("m:{}:{package_id}", provider.dir_name())
 }
 
-pub fn external_bundle_key(sha1: &str) -> String {
-    format!("e:{sha1}")
+pub fn external_bundle_key(package_id: &str) -> String {
+    format!("e:{package_id}")
 }
 
 pub fn content_type_from_bundle_path(path: &str) -> ContentType {

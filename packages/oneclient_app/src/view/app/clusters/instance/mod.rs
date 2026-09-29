@@ -20,7 +20,7 @@ pub use edit::{EditInstanceModal, InstanceFacts};
 pub fn file_provider(file: &BundleFile) -> ProviderId {
     match &file.kind {
         BundleFileKind::Managed { provider, .. } => *provider,
-        BundleFileKind::External(_) => ProviderId::Local,
+        BundleFileKind::External { .. } => ProviderId::Local,
     }
 }
 

@@ -6,10 +6,10 @@ use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, ScrollAreaCtx,
-    Segment, SegmentedControl, TabBar, TabItem, TextInput,
+    Button, CardLayout, ChevronToggle, Icon, IconType, LazySection, PackageEntry, PackageRow,
+    ScrollArea, Segment, SegmentedControl, TextInput, package_context_menu, use_shared_delete,
 };
-use crate::hooks::{use_dispatch, use_overlay_claim};
+use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch, use_overlay_claim};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::{Actions, utils};
@@ -144,14 +144,20 @@ pub(super) fn toolbar_bar(
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
+    uses_bundles: bool,
     layout: State<ViewLayout>,
     cluster_id: i64,
     package_type: &'static str,
     mut toolbar_width: State<f32>,
 ) -> impl IntoElement {
-    let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
+    let chips = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
-        TabItem::new(tab.label(), i == active_idx).on_press(move |_| *active.write() = i)
+        CategoryChip {
+            label: tab.label(),
+            selected: i == active_idx,
+            on_press: (move |_| *active.write() = i).into(),
+        }
+        .into_element()
     });
 
     let mut top_corners = CornerRadius::new_all(0.);
@@ -163,21 +169,22 @@ pub(super) fn toolbar_bar(
     let filter_tabs = ScrollView::new()
         .direction(Direction::Horizontal)
         .invert_scroll_wheel(true)
-        .show_scrollbar(stacked)
+        .show_scrollbar(true)
         .scrollbar_theme(tabs_scrollbar_theme())
         .width(if stacked {
             Size::fill()
         } else {
             Size::flex(1.0)
         })
-        .height(if stacked { Size::fill() } else { Size::auto() })
+        .height(Size::px(TABS_ROW_H))
         .child(
-            TabBar::new()
+            rect()
+                .horizontal()
                 .width(Size::auto())
-                .height(if stacked { Size::fill() } else { Size::auto() })
-                .spacing(20.)
-                .font_size(12.)
-                .tabs(tab_items),
+                .height(Size::fill())
+                .cross_align(Alignment::Center)
+                .spacing(6.)
+                .children(chips),
         )
         .into_element();
 
@@ -197,6 +204,7 @@ pub(super) fn toolbar_bar(
             current_sort,
             enabled_filter,
             hidden_filter,
+            uses_bundles,
         }
         .into_element(),
     ];
@@ -273,8 +281,69 @@ pub(super) fn toolbar_bar(
         .into_element()
 }
 
-pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {
-    let text = match content_type {
+#[derive(PartialEq)]
+struct CategoryChip {
+    label: String,
+    selected: bool,
+    on_press: EventHandler<Event<PressEventData>>,
+}
+
+impl Component for CategoryChip {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let selected = self.selected;
+
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
+        let background = if selected {
+            colors::brand()
+        } else if *hovered.read() {
+            colors::component_bg_hover()
+        } else {
+            colors::component_bg()
+        };
+
+        rect()
+            .horizontal()
+            .height(Size::px(32.))
+            .center()
+            .padding(Gaps::new_symmetric(0., 12.))
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(background)
+            .border(crate::ui::border_all_color(
+                1.,
+                if selected || focused {
+                    colors::brand()
+                } else {
+                    colors::component_border()
+                },
+            ))
+            .cursor(CursorIcon::Pointer)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Tab)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
+            .on_press(self.on_press.clone())
+            .child(
+                label()
+                    .text(self.label.clone())
+                    .font_size(12.)
+                    .font_weight(FontWeight::MEDIUM)
+                    .max_lines(1)
+                    .color(if selected {
+                        Color::WHITE
+                    } else {
+                        colors::fg_primary()
+                    }),
+            )
+    }
+}
+
+pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> String {
+    match content_type {
         ContentType::ResourcePack => format!(
             "Minecraft is running. New {noun_plural} usually go in right away, open Options → Resource Packs in game to turn them on. OneClient tells you when one has to wait for the next launch."
         ),
@@ -284,31 +353,29 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
         _ => format!(
             "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
         ),
-    };
-
-    notice_bar(text)
+    }
 }
 
-pub(super) fn global_notice(noun_plural: &'static str) -> Element {
-    notice_bar(format!(
-        "These {noun_plural} are shared across all your clusters. Adding one here makes it available everywhere, and turning one off removes it everywhere."
-    ))
+pub(super) fn global_notice(noun_plural: &'static str) -> String {
+    format!(
+        "These {noun_plural} are shared across all your OneClient clusters. Adding one here makes it available in all of them, and turning one off removes it from all of them."
+    )
 }
 
-pub(super) fn instance_only_notice(noun_plural: &'static str) -> Element {
-    notice_bar(format!(
+pub(super) fn instance_only_notice(noun_plural: &'static str) -> String {
+    format!(
         "These {noun_plural} belong to this instance alone. Adding one here does not touch your other instances."
-    ))
+    )
 }
 
-fn notice_bar(text: String) -> Element {
+pub(crate) fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .content(Content::Flex)
         .spacing(10.)
-        .margin(Gaps::new(8., 0., 0., 0.))
+        .margin(Gaps::new(0., 0., 8., 0.))
         .padding(Gaps::new_symmetric(9., 12.))
         .corner_radius(CornerRadius::new_all(10.))
         .background(colors::brand().with_a(30))
@@ -334,6 +401,7 @@ struct FilterButton {
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
+    uses_bundles: bool,
 }
 
 impl Component for FilterButton {
@@ -344,6 +412,7 @@ impl Component for FilterButton {
         let current_sort = self.current_sort;
         let enabled_filter = self.enabled_filter;
         let hidden_filter = self.hidden_filter;
+        let uses_bundles = self.uses_bundles;
 
         // Hiding hidden packages is the default so it does not count as the filters being touched
         let is_open = open();
@@ -379,6 +448,7 @@ impl Component for FilterButton {
                     current_sort,
                     enabled_filter,
                     hidden_filter,
+                    uses_bundles,
                     on_close,
                 }
                 .into_element()
@@ -392,6 +462,7 @@ struct FilterPopover {
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
+    uses_bundles: bool,
     on_close: EventHandler<()>,
 }
 
@@ -471,18 +542,20 @@ impl Component for FilterPopover {
             });
         }
 
-        panel = panel.child(section_label("Hidden packages"));
-        for filter in HiddenFilter::ALL {
-            let selected = filter == hidden;
-            let on_press: EventHandler<Event<PressEventData>> = (move |_| {
-                hidden_filter.set(filter);
-            })
-            .into();
-            panel = panel.child(ChoiceRow {
-                text: filter.label(),
-                selected,
-                on_press,
-            });
+        if self.uses_bundles {
+            panel = panel.child(section_label("Hidden packages"));
+            for filter in HiddenFilter::ALL {
+                let selected = filter == hidden;
+                let on_press: EventHandler<Event<PressEventData>> = (move |_| {
+                    hidden_filter.set(filter);
+                })
+                .into();
+                panel = panel.child(ChoiceRow {
+                    text: filter.label(),
+                    selected,
+                    on_press,
+                });
+            }
         }
 
         rect()
@@ -634,21 +707,91 @@ pub(super) enum ContentKind {
     },
 }
 
+const SECTION_HEADER_H: f32 = 36.;
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct AdvancedSection {
+    pub(super) open: State<bool>,
+    pub(super) forced: bool,
+}
+
+impl AdvancedSection {
+    fn expanded(self) -> bool {
+        self.forced || *self.open.read()
+    }
+}
+
+#[derive(PartialEq)]
+struct SectionHeader {
+    label: &'static str,
+    count: usize,
+    section: AdvancedSection,
+}
+
+impl Component for SectionHeader {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let section = self.section;
+        let mut open = section.open;
+        let expanded = section.expanded();
+        let interactive = !section.forced;
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .padding(Gaps::new_symmetric(0., 12.))
+            .corner_radius(CornerRadius::new_all(10.))
+            .background(if interactive && *hovered.read() {
+                colors::ghost_overlay_hover()
+            } else {
+                Color::TRANSPARENT
+            })
+            .maybe(interactive, |el| {
+                el.cursor(CursorIcon::Pointer)
+                    .on_pointer_enter(move |_| hovered.set(true))
+                    .on_pointer_leave(move |_| hovered.set(false))
+                    .on_press(move |_| open.toggle())
+            })
+            .child(ChevronToggle { expanded })
+            .child(
+                label()
+                    .text(self.label)
+                    .font_size(13.)
+                    .font_weight(FontWeight::SEMI_BOLD)
+                    .color(colors::fg_primary()),
+            )
+            .child(
+                label()
+                    .text(self.count.to_string())
+                    .font_size(12.)
+                    .color(colors::fg_secondary()),
+            )
+    }
+}
+
 #[derive(PartialEq)]
 pub(super) struct ContentBox {
     items: Vec<PackageEntry>,
+    advanced: Vec<PackageEntry>,
+    section: AdvancedSection,
     noun_plural: &'static str,
     package_type: &'static str,
     content_type: ContentType,
     cluster_id: i64,
     kind: ContentKind,
     layout: CardLayout,
+    notices: Vec<String>,
 }
 
 impl ContentBox {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         items: Vec<PackageEntry>,
+        advanced: Vec<PackageEntry>,
+        section: AdvancedSection,
         noun_plural: &'static str,
         package_type: &'static str,
         content_type: ContentType,
@@ -658,19 +801,34 @@ impl ContentBox {
     ) -> Self {
         Self {
             items,
+            advanced,
+            section,
             noun_plural,
             package_type,
             content_type,
             cluster_id,
             kind,
             layout,
+            notices: Vec::new(),
         }
+    }
+
+    pub(super) fn notices(mut self, notices: Vec<String>) -> Self {
+        self.notices = notices;
+        self
     }
 }
 
 impl Component for ContentBox {
     fn render(&self) -> impl IntoElement {
-        let items = self.items.clone();
+        let section = self.section;
+        let expanded = section.expanded();
+        let advanced_count = self.advanced.len();
+        let mut items = self.items.clone();
+        let normal_count = items.len();
+        if expanded {
+            items.extend(self.advanced.iter().cloned());
+        }
         let package_type = self.package_type;
         let content_type = self.content_type;
         let cluster_id = self.cluster_id;
@@ -679,33 +837,70 @@ impl Component for ContentBox {
         let layout = self.layout;
 
         let dispatch = use_dispatch();
+        let cluster = use_cluster_mutation();
+        let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
+        let (on_delete, delete_dialog) = use_shared_delete(cluster_id, move |(_, hash)| {
+            cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
+        });
 
-        let count = items.len();
-        let scroll = (count > 0).then(|| match layout {
-            CardLayout::List => {
-                let items = items.clone();
-                ScrollArea::new()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .scrollbar_gutter(true)
-                    .lazy(count, CARD_H, CARD_SPACING, move |i| {
-                        let item = items[i].clone();
-                        let key = item.package_id.clone();
-                        PackageRow::new(item, cluster_id, package_type)
-                            .layout(CardLayout::List)
-                            .key(key)
-                            .into_element()
-                    })
+        let row = {
+            let items = items.clone();
+            move |i: usize| {
+                let item: PackageEntry = items[i].clone();
+                let key = item.package_id.clone();
+                let for_menu = item.clone();
+                PackageRow::new(item, cluster_id, package_type)
+                    .layout(layout)
+                    .on_context(move |(x, y)| menu.set(Some((x, y, for_menu.clone()))))
+                    .key(key)
                     .into_element()
             }
-            CardLayout::Grid => ScrollArea::new()
+        };
+
+        let count = normal_count + advanced_count;
+        let scroll = (count > 0).then(|| {
+            let mut sections = vec![LazySection {
+                header: false,
+                count: normal_count,
+            }];
+            if advanced_count > 0 {
+                sections.push(LazySection {
+                    header: true,
+                    count: if expanded { advanced_count } else { 0 },
+                });
+            }
+            let (item_height, gap, min_width, max_cols) = match layout {
+                CardLayout::List => (CARD_H, CARD_SPACING, 0., 1),
+                CardLayout::Grid => (CARD_GRID_H, GRID_GAP, GRID_MIN_W, GRID_MAX_COLS),
+            };
+            ScrollArea::new()
                 .width(Size::fill())
-                .height(Size::fill())
+                .height(Size::flex(1.0))
                 .scrollbar_gutter(true)
-                .content(move |ctx: ScrollAreaCtx| {
-                    grid_content(&items, package_type, cluster_id, ctx).into_element()
-                })
-                .into_element(),
+                .lazy_sections(
+                    sections,
+                    item_height,
+                    gap,
+                    min_width,
+                    max_cols,
+                    SECTION_HEADER_H,
+                    row,
+                    move |_| {
+                        SectionHeader {
+                            label: "Advanced",
+                            count: advanced_count,
+                            section,
+                        }
+                        .into_element()
+                    },
+                )
+                .into_element()
+        });
+
+        let menu_overlay = menu.read().clone().map(|(x, y, item)| {
+            package_context_menu(x, y, &item, cluster_id, package_type, on_delete)
+                .on_close(move |_| menu.set(None))
+                .into_element()
         });
 
         let empty = (count == 0).then(|| match kind {
@@ -743,14 +938,22 @@ impl Component for ContentBox {
             .vertical()
             .width(Size::fill())
             .height(Size::flex(1.0))
-            .spacing(8.)
-            .padding(Gaps::new_all(8.))
+            .padding(Gaps::new(0., 12., 12., 12.))
             .corner_radius(bottom_corners)
             .background(colors::page_elevated())
             .overflow(Overflow::Clip)
+            .content(Content::Flex)
+            .children(self.notices.iter().map(|text| notice_bar(text.clone())))
             .maybe_child(header)
             .maybe_child(scroll)
-            .maybe_child(empty)
+            .maybe_child(empty.map(|empty| {
+                rect()
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .child(empty)
+            }))
+            .maybe_child(menu_overlay)
+            .maybe_child(delete_dialog)
     }
 }
 
@@ -764,62 +967,7 @@ fn action_header(button: impl IntoElement) -> impl IntoElement {
         .child(button)
 }
 
-fn grid_content(
-    items: &[PackageEntry],
-    package_type: &'static str,
-    cluster_id: i64,
-    ctx: ScrollAreaCtx,
-) -> impl IntoElement {
-    let count = items.len();
-    let cols =
-        (((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize).clamp(1, 5);
-    let rows_total = count.div_ceil(cols);
-    let slot = CARD_GRID_H + GRID_GAP;
-
-    let first_row = (((-ctx.corrected_y) / slot).floor() as i64 - LAZY_OVERSCAN).max(0) as usize;
-    let span = ((ctx.viewport_h / slot).ceil() as i64 + 2 * LAZY_OVERSCAN).max(0) as usize;
-    let last_row = (first_row + span).min(rows_total);
-
-    let top_pad = first_row as f32 * slot;
-    let bottom_pad = rows_total.saturating_sub(last_row) as f32 * slot;
-
-    let mut container = rect().vertical().width(Size::fill());
-    if top_pad > 0. {
-        container = container.child(rect().width(Size::fill()).height(Size::px(top_pad)));
-    }
-    for r in first_row..last_row {
-        let mut row = rect()
-            .key(r)
-            .horizontal()
-            .width(Size::fill())
-            .height(Size::px(slot))
-            .spacing(GRID_GAP)
-            .content(Content::Flex);
-        for c in 0..cols {
-            let idx = r * cols + c;
-            let cell = rect().width(Size::flex(1.0)).height(Size::px(CARD_GRID_H));
-            row = row.child(if idx < count {
-                let item = items[idx].clone();
-                let key = item.package_id.clone();
-                cell.child(
-                    PackageRow::new(item, cluster_id, package_type)
-                        .layout(CardLayout::Grid)
-                        .key(key)
-                        .into_element(),
-                )
-            } else {
-                cell
-            });
-        }
-        container = container.child(row);
-    }
-    if bottom_pad > 0. {
-        container = container.child(rect().width(Size::fill()).height(Size::px(bottom_pad)));
-    }
-    container.into_element()
-}
-
-fn empty_shell(icon: IconType) -> Rect {
+pub(crate) fn empty_shell(icon: IconType) -> Rect {
     rect()
         .vertical()
         .width(Size::fill())
@@ -830,14 +978,14 @@ fn empty_shell(icon: IconType) -> Rect {
         .child(Icon::new(icon).size(28.).color(colors::fg_secondary()))
 }
 
-fn empty_title(text: impl Into<String>) -> impl IntoElement {
+pub(crate) fn empty_title(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
         .font_size(14.)
         .color(colors::fg_secondary())
 }
 
-fn empty_hint(text: impl Into<String>) -> impl IntoElement {
+pub(crate) fn empty_hint(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
         .font_size(12.)

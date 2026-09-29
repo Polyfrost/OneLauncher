@@ -3,7 +3,9 @@ use tokio::sync::{Mutex, RwLock};
 use crate::LauncherResult;
 use crate::state::LauncherServices;
 use crate::versions::arts::{ArtsManifest, VersionArts};
-use crate::versions::manifest::{RemoteMigration, VersionMetadata, VersionsManifest};
+use crate::versions::manifest::{
+    ReleaseTarget, RemoteMigration, VersionMetadata, VersionsManifest, added_release_targets,
+};
 use oneclient_common::paths;
 use oneclient_net::{EtagPolicy, fetch_cached};
 
@@ -11,6 +13,7 @@ pub struct VersionsManager {
     manifest: RwLock<VersionsManifest>,
     arts: RwLock<ArtsManifest>,
     syncing: Mutex<()>,
+    added: std::sync::Mutex<Vec<ReleaseTarget>>,
 }
 
 impl VersionsManager {
@@ -20,6 +23,7 @@ impl VersionsManager {
             manifest: RwLock::new(VersionsManifest::default()),
             arts: RwLock::new(ArtsManifest::default()),
             syncing: Mutex::new(()),
+            added: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -33,6 +37,7 @@ impl VersionsManager {
             manifest: RwLock::new(manifest.unwrap_or_default()),
             arts: RwLock::new(arts.unwrap_or_default()),
             syncing: Mutex::new(()),
+            added: std::sync::Mutex::new(Vec::new()),
         }
     }
 
@@ -86,8 +91,20 @@ impl VersionsManager {
             tracing::debug!("skipping versions sync; no remote or cached manifest available");
             return Ok(changed);
         };
-        *self.manifest.write().await = manifest;
+        let mut current = self.manifest.write().await;
+        let added = added_release_targets(&current, &manifest);
+        *current = manifest;
+        drop(current);
 
+        if !added.is_empty() {
+            tracing::info!(added = ?added, "versions manifest gained new versions");
+            let mut pending = self.added.lock().unwrap();
+            for target in added {
+                if !pending.contains(&target) {
+                    pending.push(target);
+                }
+            }
+        }
         Ok(changed || manifest_changed)
     }
 
@@ -102,6 +119,14 @@ impl VersionsManager {
 
     pub async fn migrations(&self) -> Vec<RemoteMigration> {
         self.manifest.read().await.migrations.clone()
+    }
+
+    pub async fn shows_initial_migration(&self, target: &ReleaseTarget) -> bool {
+        self.manifest.read().await.shows_initial_migration(target)
+    }
+
+    pub fn take_added_versions(&self) -> Vec<ReleaseTarget> {
+        std::mem::take(&mut *self.added.lock().unwrap())
     }
 
     #[tracing::instrument(level = "debug", skip(services))]

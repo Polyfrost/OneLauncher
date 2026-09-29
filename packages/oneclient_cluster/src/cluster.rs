@@ -112,7 +112,7 @@ impl Cluster {
     }
 
     pub fn uses_dedicated_dir(&self) -> bool {
-        paths::cluster_uses_dedicated_dir(&self.folder_name)
+        self.is_isolated() || paths::cluster_uses_dedicated_dir(&self.folder_name)
     }
 
     pub fn is_isolated(&self) -> bool {
@@ -140,7 +140,10 @@ impl Cluster {
     }
 
     pub fn game_dir(&self) -> ClusterResult<PathBuf> {
-        Ok(paths::cluster_game_dir(&self.folder_name)?)
+        Ok(paths::cluster_game_dir(
+            &self.folder_name,
+            self.is_isolated(),
+        )?)
     }
 
     pub fn as_link_target(&self) -> ClusterLinkTarget<'_> {

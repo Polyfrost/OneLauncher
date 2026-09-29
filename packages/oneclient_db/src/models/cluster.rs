@@ -51,7 +51,7 @@ pub struct ClusterRow {
 
 impl ClusterRow {
     pub fn kind(&self) -> ClusterKind {
-        ClusterKind::from_repr(self.kind).unwrap_or_default()
+        ClusterKind::from_repr(self.kind).unwrap_or(ClusterKind::Modded)
     }
 
     pub fn is_user_created(&self) -> bool {

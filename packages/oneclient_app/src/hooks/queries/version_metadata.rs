@@ -127,7 +127,6 @@ mod tests {
             art_url: None,
             long_description: None,
             tags: Vec::new(),
-            predownload: false,
         }
     }
 

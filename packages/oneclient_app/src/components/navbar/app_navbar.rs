@@ -84,16 +84,14 @@ fn navbar_left(show_logo: bool) -> impl IntoElement {
             Size::auto()
         })
         .cross_align(Alignment::Center)
+		.spacing(NAV_LINK_SPACING_PX / 2.)
         .maybe(!show_logo, |el| {
             el.padding(Gaps::new(0., NAV_LINK_SPACING_PX, 0., 0.))
         })
-        .child(if show_logo {
-            NavbarLogo.into_element()
-        } else {
-            Icon::new(IconType::IconLogo)
+		.child(Icon::new(IconType::IconLogo)
                 .size(COMPACT_LOGO_PX)
-                .into_element()
-        })
+                .into_element())
+		.maybe(show_logo, |rect| rect.child(NavbarLogo.into_element()))
 }
 
 #[derive(PartialEq)]
@@ -124,11 +122,7 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             Alignment::Center
         })
         .cross_align(Alignment::Center)
-        .spacing(if is_small {
-            NAV_LINK_SPACING_PX
-        } else {
-            NAV_LINK_SPACING_PX / 2.
-        })
+        .spacing(if is_small { 12. } else { 4. })
         .child(NavLink {
             active: route == Route::Home {},
             target: NavTarget::Route(Route::Home {}),
@@ -163,14 +157,14 @@ fn browse_target() -> Route {
     let active = *use_active_cluster_id().read();
     let package_type = use_browser_type().read().clone();
 
-    let cluster_id = active
-        .filter(|id| clusters.iter().any(|cluster| cluster.id == *id))
-        .or_else(|| sort_clusters_for_home(clusters).first().map(|c| c.id));
+    let cluster = active
+        .and_then(|id| clusters.iter().find(|cluster| cluster.id == id).cloned())
+        .or_else(|| sort_clusters_for_home(clusters).into_iter().next());
 
-    match cluster_id {
-        Some(cluster_id) => Route::Browser {
-            cluster_id,
-            package_type,
+    match cluster {
+        Some(cluster) => Route::Browser {
+            cluster_id: cluster.id,
+            package_type: crate::view::app::browser::browsable_type(&package_type, &cluster),
             pick_cluster: true,
         },
         None => Route::Clusters {},
@@ -206,22 +200,30 @@ impl Component for NavLink {
             theme::colors::fg_secondary()
         };
 
-        let underline_width = if active {
-            27.
+        let background = if active {
+            theme::colors::ghost_overlay()
         } else if hovering() || focused().is_focused() {
-            18.
+            theme::colors::ghost_overlay_hover()
         } else {
-            0.
+			Color::TRANSPARENT
         };
 
         rect()
-            .vertical()
+            .horizontal()
+            .main_align(Alignment::Center)
             .cross_align(Alignment::Center)
-            .spacing(2.)
-            .width(Size::px(nav_label.len() as f32 * 10. + 10.))
-            // TODO workaround for a Freya measurement bug a fully transparent background
-            // measures wrongly so give it alpha 0 red to keep pointer events working
-            .background(Color::RED.with_a(0))
+            .height(Size::px(36.))
+            .width(Size::px(nav_label.len() as f32 * 10. + 34.))
+            .corner_radius(CornerRadius::new_all(10.))
+            .background(background)
+            .maybe(active, |el| {
+                el.border(
+                    Border::new()
+                        .fill(theme::colors::component_border())
+                        .width(1.)
+                        .alignment(BorderAlignment::Inner),
+                )
+            })
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
@@ -247,17 +249,6 @@ impl Component for NavLink {
                         FontWeight::NORMAL
                     })
                     .color(color),
-            )
-            .child(
-                rect()
-                    .height(Size::px(2.))
-                    .width(Size::px(underline_width))
-                    .corner_radius(CornerRadius::new_all(2.))
-                    .background(if active {
-                        theme::colors::fg_primary()
-                    } else {
-                        theme::colors::fg_secondary()
-                    }),
             )
     }
 }

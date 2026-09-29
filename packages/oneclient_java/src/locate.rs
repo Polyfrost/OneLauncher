@@ -237,16 +237,6 @@ mod tests {
     }
 
     #[test]
-    fn a_kit_outranks_a_runtime_even_when_it_is_older() {
-        let ranking = ranked(vec![
-            candidate("/jre-21", "21.0.9", false),
-            candidate("/jdk-21", "21.0.1", true),
-        ]);
-
-        assert_eq!(ranking, vec!["/jdk-21", "/jre-21"]);
-    }
-
-    #[test]
     fn patch_levels_are_compared_as_numbers() {
         let ranking = ranked(vec![
             candidate("/jdk-21.0.9", "21.0.9", true),

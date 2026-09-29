@@ -14,8 +14,10 @@ pub struct Dropdown {
     selected: String,
     options: Vec<String>,
     on_select: Option<EventHandler<usize>>,
+    leading: Option<Element>,
     width: Size,
     height: Size,
+    outlined: bool,
     key: DiffKey,
 }
 
@@ -25,8 +27,10 @@ impl Dropdown {
             selected: selected.into(),
             options,
             on_select: None,
+            leading: None,
             width: Size::px(72.),
             height: Size::px(24.),
+            outlined: false,
             key: DiffKey::None,
         }
     }
@@ -40,6 +44,16 @@ impl Dropdown {
     #[allow(dead_code)]
     pub fn height(mut self, height: impl Into<Size>) -> Self {
         self.height = height.into();
+        self
+    }
+
+    pub fn outlined(mut self) -> Self {
+        self.outlined = true;
+        self
+    }
+
+    pub fn leading(mut self, leading: impl IntoElement) -> Self {
+        self.leading = Some(leading.into_element());
         self
     }
 
@@ -67,8 +81,10 @@ impl Component for Dropdown {
         let mut list_size = use_state(|| None::<Size2D>);
 
         let selected = self.selected.clone();
+        let leading = self.leading.clone();
         let options = self.options.clone();
         let on_select = self.on_select.clone();
+        let outlined = self.outlined;
         let is_open = open();
 
         use_overlay_claim_when(is_open);
@@ -123,9 +139,13 @@ impl Component for Dropdown {
                     .horizontal()
                     .center()
                     .spacing(4.)
-                    .padding(Gaps::new_symmetric(0., 8.))
-                    .corner_radius(CornerRadius::new_all(6.))
+                    .padding(Gaps::new_symmetric(0., if outlined { 12. } else { 8. }))
+                    .corner_radius(CornerRadius::new_all(if outlined { 8. } else { 6. }))
                     .background(trigger_bg)
+                    .maybe(outlined, |el| {
+                        el.main_align(Alignment::SpaceBetween)
+                            .border(border_all_color(1., colors::component_border()))
+                    })
                     .a11y_id(a11y_id)
                     .a11y_focusable(true)
                     .a11y_role(AccessibilityRole::Button)
@@ -143,10 +163,11 @@ impl Component for Dropdown {
                         e.stop_propagation();
                         open.toggle();
                     })
+                    .maybe_child(leading)
                     .child(
                         label()
                             .text(selected)
-                            .font_size(12.)
+                            .font_size(if outlined { 13. } else { 12. })
                             .color(colors::fg_primary()),
                     )
                     .child(

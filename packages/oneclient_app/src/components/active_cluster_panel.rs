@@ -12,7 +12,7 @@ use crate::hooks::{
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::utils::sort_clusters_for_home;
-use crate::view::app::launch_button_state;
+use crate::view::app::{launch_button_state, launch_syncing};
 
 #[derive(PartialEq)]
 pub struct ActiveClusterPanel;
@@ -24,7 +24,6 @@ impl Component for ActiveClusterPanel {
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
         let launcher = use_launcher();
-        let syncing = launcher.fetching || launcher.syncing_bundles;
 
         let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
@@ -84,6 +83,7 @@ impl Component for ActiveClusterPanel {
                 .unwrap_or_else(|| cluster.name.clone())
         };
         let cluster_id = cluster.id;
+        let syncing = launch_syncing(&launcher, cluster.uses_bundles());
 
         rect()
             .vertical()

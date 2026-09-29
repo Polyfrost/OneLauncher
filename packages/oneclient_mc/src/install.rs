@@ -1681,10 +1681,10 @@ mod tests {
     }
 
     #[test]
-    fn a_deleted_assets_directory_asks_for_a_repair() {
-        let dir = scratch("assets-deleted");
+    fn a_deleted_objects_directory_asks_for_a_repair() {
+        let dir = scratch("assets-no-objects");
         let (index, objects) = install_assets(&dir);
-        std::fs::remove_dir_all(dir.join("assets")).unwrap();
+        std::fs::remove_dir_all(&objects).unwrap();
 
         assert!(assets_tree_missing(&index, &objects));
 

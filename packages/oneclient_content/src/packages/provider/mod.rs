@@ -8,8 +8,8 @@ pub use modrinth::ModrinthProvider;
 pub use registry::PackageProviderRegistry;
 
 use super::types::{
-    Page, ProjectDetail, ProjectSummary, SearchFilters, VersionDetail, VersionLookup,
-    VersionSummary,
+    InstalledPackage, Page, ProjectDetail, ProjectSummary, SearchFilters, VersionDetail,
+    VersionLookup, VersionSummary,
 };
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
@@ -74,6 +74,14 @@ pub trait PackageProvider: Send + Sync {
         identities: &[FileIdentity],
         ctx: &ContentCtx,
     ) -> ContentResult<VersionLookup>;
+
+    async fn latest_for_game_version(
+        &self,
+        packages: &[InstalledPackage],
+        mc_version: &str,
+        loader: oneclient_common::domain::GameLoader,
+        ctx: &ContentCtx,
+    ) -> ContentResult<std::collections::HashMap<String, VersionDetail>>;
 
     async fn list_categories(
         &self,

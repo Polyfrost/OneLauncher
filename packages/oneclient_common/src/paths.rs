@@ -114,6 +114,10 @@ pub fn clusters_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join("clusters"))
 }
 
+pub fn cluster_trash_dir() -> PathsResult<PathBuf> {
+    Ok(data_dir()?.join(".trash"))
+}
+
 pub fn shared_minecraft_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join(".minecraft"))
 }
@@ -133,8 +137,8 @@ pub fn cluster_uses_dedicated_dir(folder_name: &str) -> bool {
 
 /// Lives here not on `Cluster` so the content layer can resolve it from a bare
 /// `ClusterRow` without duplicating the marker-file rule
-pub fn cluster_game_dir(folder_name: &str) -> PathsResult<PathBuf> {
-    if cluster_uses_dedicated_dir(folder_name) {
+pub fn cluster_game_dir(folder_name: &str, isolated: bool) -> PathsResult<PathBuf> {
+    if isolated || cluster_uses_dedicated_dir(folder_name) {
         cluster_dir(folder_name)
     } else {
         shared_minecraft_dir()

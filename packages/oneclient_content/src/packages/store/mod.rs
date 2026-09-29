@@ -9,6 +9,7 @@ pub use gc::{
     GcReport, collect_unused_artifacts, evict_if_unused, find_unreferenced_files,
     remove_unreferenced_files,
 };
+pub(crate) use link::shares_content;
 pub use link::{
     LiveSync, link_or_copy, remove_entry, sweep_staging_files, try_link_materialized,
     try_unlink_materialized,
@@ -19,7 +20,7 @@ use oneclient_db::dao::{
     artifact as artifact_dao, cluster as cluster_dao, cluster_bundle as bundle_dao,
     package_metadata as meta_dao,
 };
-use oneclient_db::models::{ArtifactRow, ClusterRow, SeenStatus};
+use oneclient_db::models::{ArtifactRow, ClusterKind, ClusterRow, SeenStatus};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 // `paths` alone is this module's own cache-path helpers
@@ -184,7 +185,13 @@ impl PackageStore {
         artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
         if let (Some(content_type), Some(link)) = (content_type, link)
-            && link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await
+            && link::try_unlink_materialized(
+                &cluster,
+                content_type,
+                &link.cluster_file_name,
+                &ctx.db,
+            )
+            .await
                 == LiveSync::Deferred
         {
             return Ok(());
@@ -360,9 +367,15 @@ impl PackageStore {
         let live = if enabled {
             link::try_link_materialized(&cluster, &artifact, &file_name).await
         } else {
-            link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
+            link::try_unlink_materialized(
+                &cluster,
+                content_type,
+                &link.cluster_file_name,
+                &ctx.db,
+            )
+            .await;
             if link.cluster_file_name != file_name {
-                link::try_unlink_materialized(&cluster, content_type, &file_name).await;
+                link::try_unlink_materialized(&cluster, content_type, &file_name, &ctx.db).await;
             }
             LiveSync::Skipped
         };
@@ -444,6 +457,8 @@ async fn store_local_file(
     cluster: &ClusterRow,
     ctx: &ContentCtx,
 ) -> ContentResult<ArtifactRow> {
+    ensure_takes_mods(content_type, cluster)?;
+
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -675,6 +690,8 @@ fn ensure_compatible(
     version: &VersionDetail,
     cluster: &ClusterRow,
 ) -> ContentResult<()> {
+    ensure_takes_mods(project.content_type, cluster)?;
+
     if project.provider == ProviderId::Local {
         return Ok(());
     }
@@ -698,6 +715,17 @@ fn ensure_compatible(
         &cluster.mc_version,
     ) {
         return Err(PackageError::IncompatibleMcVersion.into());
+    }
+
+    Ok(())
+}
+
+fn ensure_takes_mods(content_type: ContentType, cluster: &ClusterRow) -> ContentResult<()> {
+    let vanilla = GameLoader::from_repr(cluster.mc_loader as u8)
+        .is_none_or(|loader| loader == GameLoader::Vanilla);
+
+    if content_type == ContentType::Mod && vanilla && cluster.kind() != ClusterKind::OneClient {
+        return Err(PackageError::IncompatibleLoader.into());
     }
 
     Ok(())

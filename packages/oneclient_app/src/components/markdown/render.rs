@@ -79,7 +79,9 @@ fn styled_span(span: &TextSpan, text_color: Color, code_color: Color) -> Span<'s
         styled = styled.font_slant(FontSlant::Italic);
     }
     if span.code {
-        styled.font_family("monospace").color(code_color)
+        styled
+            .font_family(crate::theme::MONO_FONT)
+            .color(code_color)
     } else {
         styled.color(text_color)
     }

@@ -1,6 +1,8 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+use oneclient_db::DbPool;
+use oneclient_db::dao::game_session as session_dao;
 use oneclient_db::models::{ArtifactRow, ClusterKind, ClusterRow};
 
 use crate::error::ContentResult;
@@ -13,7 +15,11 @@ use super::paths::artifact_absolute_path;
 const STAGING_SUFFIX: &str = ".oneclient-tmp";
 
 pub(crate) fn shares_content(cluster: &ClusterRow, content_type: ContentType) -> bool {
-    content_type.is_global() && cluster.kind() == ClusterKind::OneClient
+    content_type.is_global() && !is_isolated(cluster)
+}
+
+fn is_isolated(cluster: &ClusterRow) -> bool {
+    cluster.kind() != ClusterKind::OneClient
 }
 
 /// What a live add actually did, so a caller can say so instead of promising
@@ -108,28 +114,43 @@ async fn materialized_root(
         return Some((dir, manifest::MODS_MANIFEST_NAME));
     }
 
-    paths::cluster_game_dir(&cluster.folder_name)
+    paths::cluster_game_dir(&cluster.folder_name, is_isolated(cluster))
         .ok()
         .map(|dir| (dir, manifest::MANIFEST_NAME))
 }
 
-async fn session_owns(cluster: &ClusterRow) -> bool {
-    let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name) else {
+async fn session_owns(cluster: &ClusterRow, db: &DbPool) -> bool {
+    let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name, is_isolated(cluster)) else {
         return false;
     };
 
-    manifest::load(&game_dir, manifest::MANIFEST_NAME)
+    let owned = manifest::load(&game_dir, manifest::MANIFEST_NAME)
         .await
-        .is_some_and(|session| session.cluster_id == cluster.id)
+        .is_some_and(|session| session.cluster_id == cluster.id);
+
+    if !owned || !is_isolated(cluster) {
+        return owned;
+    }
+
+    match session_dao::unfinished_sessions(db).await {
+        Ok(sessions) => sessions
+            .iter()
+            .any(|session| session.cluster_id == cluster.id),
+        Err(err) => {
+            tracing::debug!(error = %err, "cannot tell whether the instance is running; treating it as running");
+            true
+        }
+    }
 }
 
-#[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
+#[tracing::instrument(level = "debug", skip(cluster, db), fields(cluster_id = cluster.id))]
 pub async fn try_unlink_materialized(
     cluster: &ClusterRow,
     content_type: ContentType,
     file_name: &str,
+    db: &DbPool,
 ) -> LiveSync {
-    if !content_type.reloads_in_game() && session_owns(cluster).await {
+    if !content_type.reloads_in_game() && session_owns(cluster, db).await {
         tracing::debug!(
             file = file_name,
             "file will be moved at next launch due to an active session"

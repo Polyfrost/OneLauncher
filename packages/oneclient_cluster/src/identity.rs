@@ -43,7 +43,12 @@ pub async fn write(cluster_dir: &Path, identity: &InstanceIdentity) {
         return;
     };
 
-    if let Err(err) = polyio::write(cluster_dir.join(paths::INSTANCE_FILE), &bytes).await {
+    if !polyio::try_exists(cluster_dir).await.unwrap_or(false) {
+        tracing::warn!(dir = %cluster_dir.display(), "cluster folder is missing; not writing the instance file");
+        return;
+    }
+
+    if let Err(err) = polyio::write_atomic(cluster_dir.join(paths::INSTANCE_FILE), &bytes).await {
         tracing::warn!(dir = %cluster_dir.display(), error = %err, "failed to write the instance file");
     }
 }

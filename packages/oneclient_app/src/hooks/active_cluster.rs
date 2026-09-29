@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
 use oneclient_content::packages::ProviderId;
+use oneclient_content::packages::types::SearchSort;
 use oneclient_db::models::ClusterId;
 
 #[derive(Clone)]
@@ -44,6 +45,8 @@ pub fn use_start_maximized() -> bool {
     consume_root_context::<StartMaximizedState>().0
 }
 
+pub const BROWSER_COMPAT_DEFAULT: bool = true;
+
 #[derive(Clone)]
 pub struct BrowserCompatState(pub State<bool>);
 
@@ -67,6 +70,17 @@ pub fn use_browser_type() -> State<String> {
 }
 
 #[derive(Clone)]
+pub struct DataPackWorldState(pub State<HashMap<ClusterId, String>>);
+
+pub fn use_provide_datapack_world(state: DataPackWorldState) {
+    use_hook(move || provide_root_context(state));
+}
+
+pub fn use_datapack_world() -> State<HashMap<ClusterId, String>> {
+    consume_root_context::<DataPackWorldState>().0
+}
+
+#[derive(Clone)]
 pub struct LinkConfirmState(pub State<Option<String>>);
 
 pub fn use_provide_link_confirm(state: LinkConfirmState) {
@@ -82,6 +96,7 @@ pub struct BrowserUiState {
     pub query: String,
     pub provider: ProviderId,
     pub categories: Vec<String>,
+    pub sort: SearchSort,
     pub page: usize,
 }
 
@@ -91,6 +106,7 @@ impl Default for BrowserUiState {
             query: String::new(),
             provider: ProviderId::Modrinth,
             categories: Vec::new(),
+            sort: SearchSort::Relevance,
             page: 0,
         }
     }
@@ -117,8 +133,6 @@ pub struct OnboardingSelectionState {
     pub migrated_categories: State<Option<Vec<String>>>,
     pub language: State<String>,
     pub reduce_motion: State<bool>,
-    pub predownload: State<bool>,
-    pub setup_started: State<bool>,
     /// `None` = don't import
     pub import_folder: State<Option<String>>,
     pub import_dedicated: State<bool>,

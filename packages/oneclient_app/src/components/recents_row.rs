@@ -153,6 +153,7 @@ impl PartialEq for ClusterCard {
         self.cluster.id == other.cluster.id
             && self.cluster.name == other.cluster.name
             && self.cluster.cover_path == other.cluster.cover_path
+            && self.cluster.mc_loader == other.cluster.mc_loader
             && self.index == other.index
             && self.items == other.items
             && self.progress == other.progress
@@ -180,6 +181,7 @@ impl Component for ClusterCard {
         };
 
         let cluster_id = self.cluster.id;
+        let mod_tabs = !crate::view::app::cluster::lacks_mod_loader(&self.cluster);
         let on_press = move |_| {
             *active_id.write() = Some(cluster_id);
         };
@@ -189,7 +191,17 @@ impl Component for ClusterCard {
                 .open_upwards()
                 .title(title.clone())
                 .on_close(move |_| menu.set(None));
-            for (icon, label, route) in cluster_menu_entries(cluster_id) {
+            for (icon, label, route) in
+                cluster_menu_entries(cluster_id)
+                    .into_iter()
+                    .filter(|(_, _, route)| {
+                        mod_tabs
+                            || !matches!(
+                                route,
+                                Route::ClusterMods { .. } | Route::ClusterShaders { .. }
+                            )
+                    })
+            {
                 context = context.action(icon, label, move |()| {
                     let _ = RouterContext::get().push(route.clone());
                 });

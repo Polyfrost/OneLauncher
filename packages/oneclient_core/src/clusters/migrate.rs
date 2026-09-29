@@ -276,6 +276,15 @@ async fn migrate_cluster(
         return Err(err.into());
     }
 
+    if let Err(err) = state.clusters.refresh_identity(source.id).await {
+        tracing::warn!(
+            migration_id = %rule.id,
+            cluster_id = source.id,
+            error = %err,
+            "could not update the instance file after migrating"
+        );
+    }
+
     if changes_loader && !keeps_mods(from.loader, to.loader) {
         match disable_mods(state, source.id).await {
             Ok(disabled) => tracing::info!(

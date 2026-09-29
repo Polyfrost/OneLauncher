@@ -15,6 +15,7 @@ mod bundles;
 mod changelog;
 mod cluster_content;
 mod clusters;
+mod folder_watch;
 mod image;
 mod java;
 mod logs;
@@ -31,6 +32,7 @@ mod storage;
 mod tos;
 mod version_metadata;
 mod versions;
+mod worlds;
 
 pub use analytics::{
     try_cluster_analytics, try_global_analytics, use_cluster_analytics, use_global_analytics,
@@ -70,7 +72,7 @@ pub use logs::{
 };
 pub use migration::{MigrationQuery, has_migration_data, migration_detection, use_migration};
 pub use mutations::{
-    ClusterAction, invalidate_cluster_content_queries, invalidate_cluster_queries,
+    ClusterAction, ClusterMutation, invalidate_cluster_content_queries, invalidate_cluster_queries,
     invalidate_profile_queries, use_cluster_mutation,
 };
 pub use package_updates::{package_updates, stale_hashes, use_package_updates};
@@ -108,4 +110,9 @@ pub use versions::{
     loader_game_versions, loader_versions, use_game_versions, use_java_majors,
     use_loader_game_versions, use_loader_versions, use_version_loaders, use_versions,
     version_loaders, versions_metadata,
+};
+pub use worlds::{
+    add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,
+    spawn_world_task, try_cluster_worlds, try_world_datapacks, try_world_size, use_cluster_worlds,
+    use_saves_folder_watch, use_world_datapacks, use_world_size,
 };

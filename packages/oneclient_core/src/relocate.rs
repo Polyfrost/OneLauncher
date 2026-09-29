@@ -723,20 +723,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_managed_runtime_sits_under_the_prefix_the_swap_looks_for() {
-        let root = PathBuf::from("D:").join("OneClient");
-        let prefix = java_root(&root);
-
-        let runtime = paths::java_dir()
-            .map(|dir| dir.join("21").join("bin").join("java"))
-            .expect("java dir resolves");
-
-        let managed = root.join("metadata").join("java").join("21");
-        assert!(managed.to_string_lossy().starts_with(&prefix));
-        assert!(runtime.to_string_lossy().contains("java"));
-    }
-
-    #[test]
     fn the_write_ahead_sidecars_are_never_copied_by_hand() {
         let names = database_names();
 

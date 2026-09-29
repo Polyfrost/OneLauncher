@@ -17,13 +17,14 @@ use crate::layout::AnimatedAppOutlet;
 use crate::theme;
 use crate::use_settings_snapshot;
 use oneclient_core::clusters::Cluster;
+use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
 use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
-    ActiveClusterState, BrowserCompatState, BrowserStateStore, BrowserTypeState,
-    use_active_cluster_id, use_clusters, use_game_snapshot, use_launcher,
-    use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
-    use_provide_browser_type, use_splash,
+    ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
+    BrowserTypeState, DataPackWorldState, use_active_cluster_id, use_clusters, use_game_snapshot,
+    use_launcher, use_provide_active_cluster, use_provide_browser_compat,
+    use_provide_browser_state, use_provide_browser_type, use_provide_datapack_world, use_splash,
 };
 use crate::theme::colors;
 use oneclient_events::LaunchStage;
@@ -38,7 +39,7 @@ impl Component for AppShell {
         let active_cluster = use_state(|| None::<ClusterId>);
         use_provide_active_cluster(ActiveClusterState(active_cluster));
 
-        let browser_compat = use_state(|| true);
+        let browser_compat = use_state(|| BROWSER_COMPAT_DEFAULT);
         use_provide_browser_compat(BrowserCompatState(browser_compat));
 
         let browser_state = use_state(HashMap::new);
@@ -46,6 +47,9 @@ impl Component for AppShell {
 
         let browser_type = use_state(|| "mod".to_string());
         use_provide_browser_type(BrowserTypeState(browser_type));
+
+        let datapack_world = use_state(HashMap::new);
+        use_provide_datapack_world(DataPackWorldState(datapack_world));
 
         // `FileDrop` bubbles so anything a drop zone doesn't `stop_propagation()` lands here
         let mut drop_hovering = use_state(|| false);
@@ -274,6 +278,7 @@ fn home_cluster(clusters: &[Cluster], active: Option<ClusterId>) -> Option<&Clus
 fn home_art(cluster: Option<&Cluster>) -> DynamicArt {
     cluster
         .map_or_else(DynamicArt::fallback, DynamicArt::for_cluster)
+        .max_edge(BACKGROUND_IMAGE_EDGE)
         .preview_edge(ART_PREVIEW_EDGE)
 }
 
@@ -575,7 +580,7 @@ half4 main(float2 fragCoord) {
 }
 "#;
 
-pub(crate) fn gradient_overlay_radial() -> impl IntoElement {
+fn gradient_overlay_radial() -> impl IntoElement {
     let effect = use_hook(|| {
         freya::engine::prelude::RuntimeEffect::make_for_shader(VIGNETTE_SPOTLIGHT_SHADER, None)
             .expect("Failed to compile vignette shader")

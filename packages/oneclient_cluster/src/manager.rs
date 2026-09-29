@@ -72,7 +72,15 @@ impl ClusterManager {
         name.retain(|c| {
             c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ' ' | '.' | '(' | ')')
         });
-        name.trim().to_string()
+        let name = name.trim().trim_end_matches(['.', ' ']);
+
+        let stem_len = name.find('.').unwrap_or(name.len());
+        let stem = name[..stem_len].trim_end();
+        if is_reserved_device_name(stem) {
+            return format!("{stem}_{}", &name[stem.len()..]);
+        }
+
+        name.to_string()
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -220,20 +228,83 @@ impl ClusterManager {
     }
 
     pub async fn ensure_dedicated_marker(&self, cluster: &Cluster) -> ClusterResult<()> {
-        if !cluster.is_isolated() || cluster.uses_dedicated_dir() {
+        if !cluster.is_isolated() {
             return Ok(());
         }
 
         let dir = cluster.dir()?;
-        polyio::create_dir_all(&dir).await?;
-        polyio::write(dir.join(oneclient_common::paths::DEDICATED_MARKER), b"")
-            .await
-            .ok();
-        tracing::info!(
-            cluster_id = cluster.id,
-            "restored the dedicated directory marker"
-        );
+        if !oneclient_common::paths::cluster_uses_dedicated_dir(&cluster.folder_name) {
+            polyio::create_dir_all(&dir).await?;
+            polyio::write(dir.join(oneclient_common::paths::DEDICATED_MARKER), b"")
+                .await
+                .ok();
+            tracing::info!(
+                cluster_id = cluster.id,
+                "restored the dedicated directory marker"
+            );
+        }
+
+        if crate::identity::read(&dir).await.is_none() {
+            crate::identity::write(&dir, &identity_of(cluster)).await;
+            tracing::info!(cluster_id = cluster.id, "restored the instance file");
+        }
         Ok(())
+    }
+
+    pub async fn refresh_identity(&self, cluster_id: ClusterId) -> ClusterResult<()> {
+        let cluster = self.get(cluster_id).await?;
+        let dir = cluster.dir()?;
+        let recorded = polyio::try_exists(dir.join(oneclient_common::paths::INSTANCE_FILE))
+            .await
+            .unwrap_or(false);
+
+        if recorded || cluster.is_isolated() {
+            crate::identity::write(&dir, &identity_of(&cluster)).await;
+        }
+        Ok(())
+    }
+
+    pub async fn sweep_trash(&self) {
+        let Ok(trash) = oneclient_common::paths::cluster_trash_dir() else {
+            return;
+        };
+        let Ok(mut entries) = polyio::read_dir(&trash).await else {
+            return;
+        };
+
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let parsed = name
+                .split_once('-')
+                .and_then(|(id, folder)| Some((id.parse::<ClusterId>().ok()?, folder)));
+
+            if let Some((id, folder)) = parsed
+                && let Ok(Some(row)) = cluster_dao::get_by_id(&self.db, id).await
+                && row.folder_name == folder
+            {
+                let Ok(home) = oneclient_common::paths::cluster_dir(folder) else {
+                    continue;
+                };
+                if polyio::symlink_metadata(&home).await.is_err()
+                    && let Err(err) = polyio::rename(&path, &home).await
+                {
+                    tracing::warn!(cluster_id = id, error = %err, "failed to return a trashed cluster folder whose cluster still exists");
+                }
+                continue;
+            }
+
+            let removed = match entry.file_type().await {
+                Ok(kind) if kind.is_dir() => polyio::remove_dir_all(&path).await,
+                _ => polyio::remove_file(&path).await,
+            };
+            match removed {
+                Ok(()) => tracing::info!(entry = %name, "cleared a leftover deleted cluster folder"),
+                Err(err) => {
+                    tracing::warn!(entry = %name, error = %err, "failed to clear a leftover deleted cluster folder")
+                }
+            }
+        }
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -298,13 +369,36 @@ impl ClusterManager {
     pub async fn delete(&self, cluster_id: ClusterId, remove_files: bool) -> ClusterResult<()> {
         let cluster = self.get(cluster_id).await?;
 
-        if !cluster_dao::delete_by_id(&self.db, cluster_id).await? {
+        let trashed = if remove_files && cluster.is_isolated() {
+            move_to_trash(&cluster).await
+        } else {
+            None
+        };
+
+        let deleted = cluster_dao::delete_by_id(&self.db, cluster_id).await;
+        if !matches!(deleted, Ok(true))
+            && let Some(trashed) = &trashed
+            && let Ok(home) = cluster.dir()
+            && let Err(err) = polyio::rename(trashed, &home).await
+        {
+            tracing::warn!(cluster_id, error = %err, "failed to put the cluster folder back after its row could not be deleted");
+        }
+        if !deleted? {
             return Err(ClusterError::NotFound(cluster_id));
         }
 
         remove_mods_link(&cluster.folder_name).await;
 
-        if remove_files {
+        if let Some(trashed) = trashed {
+            if let Err(err) = polyio::remove_dir_all(&trashed).await {
+                tracing::warn!(
+                    cluster_id,
+                    dir = %trashed.display(),
+                    error = %err,
+                    "failed to clear the deleted cluster's folder; it will be retried on the next start"
+                );
+            }
+        } else if remove_files {
             let path = cluster.dir()?;
             if path.exists() {
                 polyio::remove_dir_all(&path).await?;
@@ -432,6 +526,22 @@ async fn create_inner(
         )
         .await
         .ok();
+
+        crate::identity::write(
+            cluster_path,
+            &crate::identity::InstanceIdentity {
+                name: name.to_string(),
+                mc_version: options.mc_version.clone(),
+                mc_loader: options.mc_loader,
+                mc_loader_version: options.mc_loader_version.clone(),
+                kind: options.kind,
+                user_created: options.user_created,
+                description: options.description.clone(),
+                tags: options.tags.clone(),
+                cover_path: None,
+            },
+        )
+        .await;
     }
 
     let profile =
@@ -461,6 +571,45 @@ async fn create_inner(
     let cluster = Cluster::try_from_row(row)?;
     crate::identity::write(cluster_path, &identity_of(&cluster)).await;
     Ok(cluster)
+}
+
+fn is_reserved_device_name(stem: &str) -> bool {
+    let upper = stem.to_ascii_uppercase();
+    match upper.as_str() {
+        "CON" | "PRN" | "AUX" | "NUL" => true,
+        _ => {
+            upper.len() == 4
+                && (upper.starts_with("COM") || upper.starts_with("LPT"))
+                && matches!(upper.as_bytes()[3], b'1'..=b'9')
+        }
+    }
+}
+
+async fn move_to_trash(cluster: &Cluster) -> Option<std::path::PathBuf> {
+    let home = cluster.dir().ok()?;
+    if polyio::symlink_metadata(&home).await.is_err() {
+        return None;
+    }
+
+    let trash = oneclient_common::paths::cluster_trash_dir().ok()?;
+    polyio::create_dir_all(&trash).await.ok()?;
+
+    let dest = trash.join(format!("{}-{}", cluster.id, cluster.folder_name));
+    if polyio::symlink_metadata(&dest).await.is_ok() {
+        polyio::remove_dir_all(&dest).await.ok();
+    }
+
+    match polyio::rename(&home, &dest).await {
+        Ok(()) => Some(dest),
+        Err(err) => {
+            tracing::warn!(
+                cluster_id = cluster.id,
+                error = %err,
+                "could not move the cluster folder aside; deleting it in place"
+            );
+            None
+        }
+    }
 }
 
 fn identity_of(cluster: &Cluster) -> crate::identity::InstanceIdentity {

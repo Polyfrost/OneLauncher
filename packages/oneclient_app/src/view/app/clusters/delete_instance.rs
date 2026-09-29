@@ -2,7 +2,9 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 
 use crate::components::{Button, OverlayPopup};
-use crate::hooks::{ClusterAction, use_active_cluster_id, use_cluster_mutation, use_game_snapshot};
+use crate::hooks::{
+    ClusterAction, use_active_cluster_id, use_cluster, use_cluster_mutation, use_game_snapshot,
+};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -33,6 +35,18 @@ impl Component for DeleteInstanceModal {
         let game = use_game_snapshot();
         let cluster_id = self.cluster_id;
         let running = game.is_running(cluster_id);
+        let dedicated = use_cluster(cluster_id).is_none_or(|c| c.uses_dedicated_dir());
+        let warning = if dedicated {
+            format!(
+                "{} and its files will be deleted, including its worlds, settings and installed content. This cannot be undone.",
+                self.name
+            )
+        } else {
+            format!(
+                "{} and its files will be deleted, including its settings and installed content. Worlds and everything else in the shared game folder are kept. This cannot be undone.",
+                self.name
+            )
+        };
 
         let close_scrim = self.on_close.clone();
         let close_cancel = self.on_close.clone();
@@ -64,10 +78,7 @@ impl Component for DeleteInstanceModal {
                             )
                             .child(
                                 label()
-                                    .text(format!(
-                                        "{} and its files will be deleted, including its worlds, settings and installed content. This cannot be undone.",
-                                        self.name
-                                    ))
+                                    .text(warning)
                                     .font_size(13.)
                                     .color(colors::fg_secondary()),
                             )

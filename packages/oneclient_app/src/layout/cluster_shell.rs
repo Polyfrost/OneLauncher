@@ -10,10 +10,10 @@ use crate::hooks::{
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::entrance_motion_layer;
-use crate::view::app::launch_button_state;
+use crate::view::app::{launch_button_state, launch_syncing};
 
 const HEADER_HEIGHT: f32 = 64.;
-const TABS_HEIGHT: f32 = 44.;
+const TABS_HEIGHT: f32 = 38.;
 const BAR_SPACING: f32 = 16.;
 
 #[derive(PartialEq, Clone, Copy)]
@@ -25,6 +25,8 @@ pub enum ClusterViewShellTab {
     Mods,
     Shaders,
     Textures,
+    Worlds,
+    DataPacks,
     Settings,
 }
 
@@ -38,6 +40,8 @@ impl ClusterViewShellTab {
             Self::Mods => "Mods",
             Self::Shaders => "Shaders",
             Self::Textures => "Textures",
+            Self::Worlds => "Worlds",
+            Self::DataPacks => "Data packs",
             Self::Settings => "Settings",
         }
     }
@@ -51,6 +55,8 @@ impl ClusterViewShellTab {
             Self::Mods => Some(Route::ClusterMods { cluster_id }),
             Self::Shaders => Some(Route::ClusterShaders { cluster_id }),
             Self::Textures => Some(Route::ClusterTextures { cluster_id }),
+            Self::Worlds => Some(Route::ClusterWorlds { cluster_id }),
+            Self::DataPacks => Some(Route::ClusterDataPacks { cluster_id }),
             Self::Settings => Some(Route::ClusterSettings { cluster_id }),
         }
     }
@@ -63,8 +69,10 @@ impl ClusterViewShellTab {
             Self::Mods => 3,
             Self::Shaders => 4,
             Self::Textures => 5,
-            Self::Settings => 6,
-            Self::GameLog => 7,
+            Self::Worlds => 6,
+            Self::DataPacks => 7,
+            Self::Settings => 8,
+            Self::GameLog => 9,
         }
     }
 }
@@ -84,6 +92,8 @@ fn route_cluster(route: &Route) -> Option<(i64, ClusterViewShellTab)> {
         Route::ClusterMods { cluster_id } => (*cluster_id, ClusterViewShellTab::Mods),
         Route::ClusterShaders { cluster_id } => (*cluster_id, ClusterViewShellTab::Shaders),
         Route::ClusterTextures { cluster_id } => (*cluster_id, ClusterViewShellTab::Textures),
+        Route::ClusterWorlds { cluster_id } => (*cluster_id, ClusterViewShellTab::Worlds),
+        Route::ClusterDataPacks { cluster_id } => (*cluster_id, ClusterViewShellTab::DataPacks),
         Route::ClusterSettings { cluster_id } => (*cluster_id, ClusterViewShellTab::Settings),
         _ => return None,
     })
@@ -101,11 +111,34 @@ impl Component for ClusterShell {
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
         let launcher = use_launcher();
-        let syncing = launcher.fetching || launcher.syncing_bundles;
         let cluster = use_cluster(cluster_id);
+        let syncing = launch_syncing(
+            &launcher,
+            cluster.as_ref().is_none_or(|c| c.uses_bundles()),
+        );
 
         let show_game_log = game.is_active(cluster_id);
+        let show_datapacks = cluster
+            .as_ref()
+            .is_none_or(|c| crate::view::app::cluster::supports_datapacks(&c.mc_version));
+        let show_mod_tabs = cluster
+            .as_ref()
+            .is_none_or(|c| !crate::view::app::cluster::lacks_mod_loader(c));
         let launch_state = launch_button_state(&game, cluster_id, syncing);
+
+        let hidden_tab = !show_mod_tabs
+            && matches!(
+                active_tab,
+                ClusterViewShellTab::Mods | ClusterViewShellTab::Shaders
+            );
+        use_side_effect_with_deps(
+            &hidden_tab.then_some(cluster_id),
+            move |redirect: &Option<i64>| {
+                if let Some(cluster_id) = *redirect {
+                    let _ = RouterContext::get().replace(Route::ClusterOverview { cluster_id });
+                }
+            },
+        );
 
         // Queried unconditionally the shell can mount before the cluster list settles
         // and a conditional hook would change this component's hook count mid-life
@@ -119,10 +152,20 @@ impl Component for ClusterShell {
         );
 
         let header = cluster.as_ref().map(|cluster| {
-            let title = format!("{} {}", cluster.mc_loader, cluster.mc_version);
-            let subtitle = metadata
-                .and_then(|m| m.long_description)
-                .unwrap_or_else(|| cluster.name.clone());
+            let loader_version = format!("{} {}", cluster.mc_loader, cluster.mc_version);
+            let (title, subtitle) = if cluster.user_created {
+                let subtitle = cluster
+                    .description
+                    .clone()
+                    .filter(|d| !d.trim().is_empty())
+                    .unwrap_or(loader_version);
+                (cluster.name.clone(), subtitle)
+            } else {
+                let subtitle = metadata
+                    .and_then(|m| m.long_description)
+                    .unwrap_or_else(|| cluster.name.clone());
+                (loader_version, subtitle)
+            };
             cluster_header(
                 title,
                 subtitle,
@@ -152,7 +195,13 @@ impl Component for ClusterShell {
                     ))
                     .spacing(BAR_SPACING)
                     .maybe_child(header)
-                    .child(cluster_tabs(active_tab, cluster_id, show_game_log)),
+                    .child(cluster_tabs(
+                        active_tab,
+                        cluster_id,
+                        show_game_log,
+                        show_datapacks,
+                        show_mod_tabs,
+                    )),
             )
             .child(
                 rect()
@@ -302,14 +351,18 @@ fn cluster_tabs(
     active: ClusterViewShellTab,
     cluster_id: i64,
     show_game_log: bool,
+    show_datapacks: bool,
+    show_mod_tabs: bool,
 ) -> impl IntoElement {
     let tabs = [
         Some(ClusterViewShellTab::Overview),
         Some(ClusterViewShellTab::Logs),
         Some(ClusterViewShellTab::Screenshots),
-        Some(ClusterViewShellTab::Mods),
-        Some(ClusterViewShellTab::Shaders),
+        show_mod_tabs.then_some(ClusterViewShellTab::Mods),
+        show_mod_tabs.then_some(ClusterViewShellTab::Shaders),
         Some(ClusterViewShellTab::Textures),
+        Some(ClusterViewShellTab::Worlds),
+        show_datapacks.then_some(ClusterViewShellTab::DataPacks),
         Some(ClusterViewShellTab::Settings),
         show_game_log.then_some(ClusterViewShellTab::GameLog),
     ];
@@ -330,15 +383,22 @@ fn cluster_tabs(
         .width(Size::fill())
         .height(Size::px(TABS_HEIGHT))
         .cross_align(Alignment::Center)
-        .padding(Gaps::new(0., 24., 0., 24.))
-        .background(colors::page_elevated())
-        .corner_radius(CornerRadius::new_all(12.))
+        .border(
+            Border::new()
+                .fill(colors::component_border())
+                .width(BorderWidth {
+                    top: 0.,
+                    right: 0.,
+                    bottom: 1.,
+                    left: 0.,
+                }),
+        )
         .child(
             TabBar::new()
-                .width(Size::fill())
+                .width(Size::auto())
                 .height(Size::fill())
-                .spacing(24.)
-                .font_size(12.)
+                .spacing(22.)
+                .font_size(13.)
                 .tabs(tab_items),
         )
 }

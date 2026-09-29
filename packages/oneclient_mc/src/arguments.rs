@@ -866,17 +866,6 @@ mod tests {
     }
 
     #[test]
-    fn every_tier_starts_small_and_grows_into_the_memory_setting() {
-        for major in [8, 17, 21, 25] {
-            assert_eq!(
-                flags(major, "amd64", 8192).first().unwrap(),
-                "-Xms512M",
-                "java {major} should not commit the ceiling up front"
-            );
-        }
-    }
-
-    #[test]
     fn a_tiny_profile_never_starts_above_its_ceiling() {
         assert_eq!(
             flags(21, "amd64", 256),

@@ -32,7 +32,7 @@ impl QueryCapability for OnboardingBundlesQuery {
         let clusters = state.clusters.list().await?;
 
         let mut out = Vec::with_capacity(clusters.len());
-        for cluster in clusters {
+        for cluster in clusters.into_iter().filter(|cluster| !cluster.user_created) {
             let archives = state
                 .bundles
                 .archives_for(

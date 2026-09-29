@@ -38,6 +38,9 @@ pub enum ClusterError {
     Screenshots(#[from] crate::screenshots::ScreenshotsError),
 
     #[error(transparent)]
+    Worlds(#[from] crate::worlds::WorldsError),
+
+    #[error(transparent)]
     Request(#[from] oneclient_net::RequestError),
 
     #[error("cluster {0} not found")]

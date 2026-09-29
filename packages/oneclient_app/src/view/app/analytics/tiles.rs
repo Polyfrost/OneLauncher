@@ -28,7 +28,11 @@ struct TilesRow {
 impl Component for TilesRow {
     fn render(&self) -> impl IntoElement {
         let width = use_state(|| 0f32);
-        let cols = columns_for(*width.read(), TILE_MIN_W, 4, TILE_GAP);
+        let w = *width.read();
+        let cols = match columns_for(w, TILE_MIN_W, 4, TILE_GAP) {
+            3 => 2,
+            n => n,
+        };
 
         let stats = &self.analytics.playtime;
         let avg_session = if stats.session_count > 0 {
@@ -81,18 +85,19 @@ impl Component for TilesRow {
 
         if cols >= 3 {
             let alongside: Vec<Element> = rest.drain(..(cols - 2).min(rest.len())).collect();
+            let col_w = (w - TILE_GAP * (cols - 1) as f32) / cols as f32;
+            let hero_w = if col_w > 0. {
+                Size::px(col_w * 2. + TILE_GAP)
+            } else {
+                Size::flex(2.0)
+            };
             let mut lead = rect()
                 .horizontal()
                 .content(Content::Flex)
                 .width(Size::fill())
                 .height(Size::px(TILE_H))
                 .spacing(TILE_GAP)
-                .child(
-                    rect()
-                        .width(Size::flex(2.0))
-                        .height(Size::fill())
-                        .child(hero),
-                );
+                .child(rect().width(hero_w).height(Size::fill()).child(hero));
             for tile in alongside {
                 lead = lead.child(
                     rect()
@@ -145,8 +150,7 @@ fn hero_tile(icon: IconType, caption: &str, value: String, note: String) -> Elem
     card()
         .width(Size::fill())
         .height(Size::fill())
-        .padding(Gaps::new_symmetric(16., 20.))
-        .spacing(10.)
+        .main_align(Alignment::SpaceBetween)
         .background(colors::brand().with_a(18))
         .border(border_all_color(1., colors::brand().with_a(90)))
         .child(
@@ -193,7 +197,7 @@ fn stat_tile(icon: IconType, caption: &str, value: String) -> Element {
     card()
         .width(Size::fill())
         .height(Size::fill())
-        .spacing(10.)
+        .main_align(Alignment::SpaceBetween)
         .child(
             rect()
                 .horizontal()

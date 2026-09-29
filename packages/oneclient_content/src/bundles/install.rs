@@ -174,6 +174,9 @@ pub async fn install_bundle(
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<String>> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if !cluster.uses_bundles() {
+        return Ok(Vec::new());
+    }
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),
@@ -523,7 +526,10 @@ pub async fn enabled_bundle_bytes(
     bundles: &BundlesManager,
     ctx: &ContentCtx,
 ) -> ContentResult<u64> {
-    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let Some(cluster) = bundle_cluster(cluster_id, ctx).await? else {
+        return Ok(0);
+    };
+
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),
@@ -561,6 +567,10 @@ pub async fn set_bundle_package_override(
     override_type: Option<OverrideType>,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
+        return Ok(());
+    }
+
     match override_type {
         // The UI shows one row per package across bundles so an objection left
         // under another bundle would let the next pass undo this switch
@@ -613,6 +623,10 @@ pub async fn set_bundle_package_overrides(
     overrides: &[(String, String, OverrideType)],
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
+        return Ok(());
+    }
+
     bundle_dao::save_overrides(&ctx.db, cluster_id, overrides).await?;
     Ok(())
 }
@@ -652,6 +666,9 @@ pub async fn enabled_bundle_projects(
     ctx: &ContentCtx,
 ) -> ContentResult<std::collections::HashSet<String>> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if !cluster.uses_bundles() {
+        return Ok(std::collections::HashSet::new());
+    }
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),
@@ -679,6 +696,14 @@ pub async fn enabled_bundle_projects(
     Ok(projects)
 }
 
+pub(crate) async fn bundle_cluster(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<ClusterRow>> {
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    Ok(cluster.uses_bundles().then_some(cluster))
+}
+
 #[tracing::instrument(skip(bundles, progress, ctx))]
 pub async fn install_cluster_bundles(
     cluster_id: i64,
@@ -687,6 +712,11 @@ pub async fn install_cluster_bundles(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if !cluster.uses_bundles() {
+        tracing::debug!(cluster_id, "instance does not take bundle content");
+        return Ok(());
+    }
+
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),
@@ -748,21 +778,9 @@ pub async fn set_artifact_enabled_to(
 
 // which clusters have to record what the user just did
 async fn override_scope(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<Vec<i64>> {
-    if !is_shared_artifact(hash, ctx).await? {
-        return Ok(vec![cluster_id]);
-    }
-
-    let mut ids: Vec<i64> = cluster_dao::list_all(&ctx.db)
+    Ok(sharing_scope(cluster_id, hash, ctx)
         .await?
-        .into_iter()
-        .map(|row| row.id)
-        .collect();
-
-    if !ids.contains(&cluster_id) {
-        ids.push(cluster_id);
-    }
-
-    Ok(ids)
+        .unwrap_or_else(|| vec![cluster_id]))
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
@@ -849,7 +867,8 @@ pub async fn remove_artifact_from_cluster(
     // Best-effort folder cleanup failure here is not an error
     let deferred = match (target, link) {
         (Some(content_type), Some(link)) => {
-            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await
+            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db)
+                .await
                 == LiveSync::Deferred
         }
         _ => false,
@@ -887,37 +906,61 @@ pub async fn remove_artifact_from_cluster(
     Ok(())
 }
 
-async fn is_shared_artifact(hash: &str, ctx: &ContentCtx) -> ContentResult<bool> {
-    Ok(artifact_dao::get_artifact_by_hash(&ctx.db, hash)
-        .await?
-        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8))
-        .is_some_and(ContentType::is_global))
-}
-
-#[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn clusters_sharing_artifact(
+async fn sharing_scope(
+    cluster_id: i64,
     hash: &str,
     ctx: &ContentCtx,
-) -> ContentResult<Option<usize>> {
-    if !is_shared_artifact(hash, ctx).await? {
+) -> ContentResult<Option<Vec<i64>>> {
+    let global = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+        .await?
+        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8))
+        .is_some_and(|content_type| content_type.is_global());
+    if !global {
         return Ok(None);
     }
+
+    let sharing = cluster_dao::list_oneclient_ids(&ctx.db).await?;
+
+    Ok(sharing.contains(&cluster_id).then_some(sharing))
+}
+
+async fn sharing_clusters(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<Vec<i64>>> {
+    let Some(sharing) = sharing_scope(cluster_id, hash, ctx).await? else {
+        return Ok(None);
+    };
 
     Ok(Some(
         artifact_dao::list_clusters_linking(&ctx.db, hash)
             .await?
-            .len(),
+            .into_iter()
+            .filter(|id| sharing.contains(id))
+            .collect(),
     ))
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn clusters_sharing_artifact(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<usize>> {
+    Ok(sharing_clusters(cluster_id, hash, ctx)
+        .await?
+        .map(|clusters| clusters.len()))
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn delete_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
-    if !is_shared_artifact(hash, ctx).await? {
+    let Some(linked_clusters) = sharing_clusters(cluster_id, hash, ctx).await? else {
         return remove_artifact_from_cluster(cluster_id, hash, true, ctx).await;
-    }
+    };
 
     let mut first_error = None;
-    for linked_cluster in artifact_dao::list_clusters_linking(&ctx.db, hash).await? {
+    for linked_cluster in linked_clusters {
         if let Err(err) = remove_artifact_from_cluster(linked_cluster, hash, true, ctx).await {
             tracing::warn!(cluster_id = linked_cluster, hash, error = %err, "failed to delete shared package from a cluster");
             first_error.get_or_insert(err);

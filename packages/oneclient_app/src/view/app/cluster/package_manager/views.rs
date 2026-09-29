@@ -144,6 +144,7 @@ pub(super) fn toolbar_bar(
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
+    uses_bundles: bool,
     layout: State<ViewLayout>,
     cluster_id: i64,
     package_type: &'static str,
@@ -203,6 +204,7 @@ pub(super) fn toolbar_bar(
             current_sort,
             enabled_filter,
             hidden_filter,
+            uses_bundles,
         }
         .into_element(),
     ];
@@ -356,7 +358,13 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
 
 pub(super) fn global_notice(noun_plural: &'static str) -> String {
     format!(
-        "These {noun_plural} are shared across all your clusters. Adding one here makes it available everywhere, and turning one off removes it everywhere."
+        "These {noun_plural} are shared across all your OneClient clusters. Adding one here makes it available in all of them, and turning one off removes it from all of them."
+    )
+}
+
+pub(super) fn instance_only_notice(noun_plural: &'static str) -> String {
+    format!(
+        "These {noun_plural} belong to this instance alone. Adding one here does not touch your other instances."
     )
 }
 
@@ -403,6 +411,7 @@ struct FilterButton {
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
+    uses_bundles: bool,
 }
 
 impl Component for FilterButton {
@@ -413,6 +422,7 @@ impl Component for FilterButton {
         let current_sort = self.current_sort;
         let enabled_filter = self.enabled_filter;
         let hidden_filter = self.hidden_filter;
+        let uses_bundles = self.uses_bundles;
 
         // Hiding hidden packages is the default so it does not count as the filters being touched
         let is_open = open();
@@ -448,6 +458,7 @@ impl Component for FilterButton {
                     current_sort,
                     enabled_filter,
                     hidden_filter,
+                    uses_bundles,
                     on_close,
                 }
                 .into_element()
@@ -461,6 +472,7 @@ struct FilterPopover {
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
+    uses_bundles: bool,
     on_close: EventHandler<()>,
 }
 
@@ -540,18 +552,20 @@ impl Component for FilterPopover {
             });
         }
 
-        panel = panel.child(section_label("Hidden packages"));
-        for filter in HiddenFilter::ALL {
-            let selected = filter == hidden;
-            let on_press: EventHandler<Event<PressEventData>> = (move |_| {
-                hidden_filter.set(filter);
-            })
-            .into();
-            panel = panel.child(ChoiceRow {
-                text: filter.label(),
-                selected,
-                on_press,
-            });
+        if self.uses_bundles {
+            panel = panel.child(section_label("Hidden packages"));
+            for filter in HiddenFilter::ALL {
+                let selected = filter == hidden;
+                let on_press: EventHandler<Event<PressEventData>> = (move |_| {
+                    hidden_filter.set(filter);
+                })
+                .into();
+                panel = panel.child(ChoiceRow {
+                    text: filter.label(),
+                    selected,
+                    on_press,
+                });
+            }
         }
 
         rect()
@@ -835,7 +849,7 @@ impl Component for ContentBox {
         let dispatch = use_dispatch();
         let cluster = use_cluster_mutation();
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
-        let (on_delete, delete_dialog) = use_shared_delete(move |(_, hash)| {
+        let (on_delete, delete_dialog) = use_shared_delete(cluster_id, move |(_, hash)| {
             cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
         });
 

@@ -316,6 +316,11 @@ mod tests {
             last_played: None,
             overall_played: None,
             linked_modpack_hash: None,
+            kind: 0,
+            user_created: 0,
+            description: None,
+            tags: "[]".into(),
+            cover_path: None,
         }
     }
 

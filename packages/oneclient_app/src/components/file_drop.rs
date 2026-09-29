@@ -37,6 +37,13 @@ const IMPORTABLE: [ContentType; 4] = [
 const SHADER_HINTS: [&str; 5] = ["shader", "bsl", "seus", "complementary", "sildur"];
 const DATAPACK_HINTS: [&str; 4] = ["datapack", "data pack", "data_pack", "data-pack"];
 
+fn importable(mod_loader: bool) -> Vec<ContentType> {
+    IMPORTABLE
+        .into_iter()
+        .filter(|ct| mod_loader || !ct.needs_mod_loader())
+        .collect()
+}
+
 fn content_label(content_type: ContentType) -> &'static str {
     match content_type {
         ContentType::ResourcePack => "Textures",
@@ -57,20 +64,29 @@ fn file_name(path: &Path) -> String {
 }
 
 /// Precedence `.jar` is always a mod then the current route then a name sniff
-fn infer_content_type(path: &Path, route_type: Option<ContentType>) -> ContentType {
+fn infer_content_type(
+    path: &Path,
+    route_type: Option<ContentType>,
+    mod_loader: bool,
+) -> Option<ContentType> {
     if extension(path).as_deref() == Some("jar") {
-        return ContentType::Mod;
+        return mod_loader.then_some(ContentType::Mod);
     }
     if let Some(route_type) = route_type {
-        return route_type;
+        if mod_loader || !route_type.needs_mod_loader() {
+            return Some(route_type);
+        }
+        if route_type == ContentType::Shader {
+            return None;
+        }
     }
     let name = file_name(path).to_lowercase();
     if DATAPACK_HINTS.iter().any(|hint| name.contains(hint)) {
-        ContentType::DataPack
-    } else if SHADER_HINTS.iter().any(|hint| name.contains(hint)) {
-        ContentType::Shader
+        Some(ContentType::DataPack)
+    } else if mod_loader && SHADER_HINTS.iter().any(|hint| name.contains(hint)) {
+        Some(ContentType::Shader)
     } else {
-        ContentType::ResourcePack
+        Some(ContentType::ResourcePack)
     }
 }
 
@@ -340,15 +356,26 @@ fn prompt_body(
         .position(|c| c.id == cluster_id)
         .unwrap_or_default();
 
+    let destination = clusters.get(cluster_idx);
+    let mod_loader = destination.is_none_or(|c| !c.lacks_mod_loader());
+
+    let mut rejected: Vec<PathBuf> = Vec::new();
     let resolved: Vec<(PathBuf, ContentType)> = files
         .iter()
-        .map(|path| {
+        .filter_map(|path| {
             let content_type = overrides
                 .read()
                 .get(path)
                 .copied()
-                .unwrap_or_else(|| infer_content_type(path, route_type));
-            (path.clone(), content_type)
+                .filter(|ct| mod_loader || !ct.needs_mod_loader())
+                .or_else(|| infer_content_type(path, route_type, mod_loader));
+            match content_type {
+                Some(content_type) => Some((path.clone(), content_type)),
+                None => {
+                    rejected.push(path.clone());
+                    None
+                }
+            }
         })
         .collect();
 
@@ -359,7 +386,9 @@ fn prompt_body(
         .filter(|name| worlds.contains(name))
         .cloned()
         .or_else(|| worlds.first().cloned());
-    let can_import = !has_datapacks || world.is_some();
+    let can_import = !resolved.is_empty() && (!has_datapacks || world.is_some());
+    let skipped = rejected.len();
+    let destination_name = destination.map(|c| c.name.clone()).unwrap_or_default();
 
     let import_list = resolved.clone();
     let import_world = world.clone();
@@ -385,6 +414,16 @@ fn prompt_body(
                 ),
             );
         }
+        if skipped > 0 {
+            dispatch
+                .notify("Some files weren't added")
+                .body(format!(
+                    "{destination_name} has no mod loader, so {skipped} mod or shader file{} {} skipped.",
+                    if skipped == 1 { "" } else { "s" },
+                    if skipped == 1 { "was" } else { "were" },
+                ))
+                .send();
+        }
         pending.set(Vec::new());
     };
 
@@ -405,7 +444,7 @@ fn prompt_body(
             has_datapacks
                 .then(|| world_field(worlds, world.as_deref(), cluster_id, remembered_world)),
         )
-        .child(file_field(&resolved, overrides))
+        .child(file_field(&resolved, &rejected, mod_loader, overrides))
         .child(
             rect()
                 .horizontal()
@@ -508,12 +547,21 @@ fn world_field(
 
 fn file_field(
     resolved: &[(PathBuf, ContentType)],
+    rejected: &[PathBuf],
+    mod_loader: bool,
     overrides: State<HashMap<PathBuf, ContentType>>,
 ) -> impl IntoElement {
-    let visible = resolved.len().clamp(1, FILE_LIST_MAX_ROWS);
+    let visible = (resolved.len() + rejected.len()).clamp(1, FILE_LIST_MAX_ROWS);
     let rows = resolved
         .iter()
-        .map(|(path, content_type)| file_row(path, *content_type, overrides).into_element())
+        .map(|(path, content_type)| {
+            file_row(path, Some(*content_type), mod_loader, overrides).into_element()
+        })
+        .chain(
+            rejected
+                .iter()
+                .map(|path| file_row(path, None, mod_loader, overrides).into_element()),
+        )
         .collect::<Vec<_>>();
 
     field(
@@ -535,14 +583,33 @@ fn file_field(
 
 fn file_row(
     path: &Path,
-    content_type: ContentType,
+    content_type: Option<ContentType>,
+    mod_loader: bool,
     mut overrides: State<HashMap<PathBuf, ContentType>>,
 ) -> impl IntoElement {
     let key = path.to_path_buf();
-    let options: Vec<String> = IMPORTABLE
+    let types = importable(mod_loader);
+    let options: Vec<String> = types
         .iter()
         .map(|ct| content_label(*ct).to_string())
         .collect();
+    let control = match content_type {
+        Some(content_type) => Dropdown::new(content_label(content_type), options)
+            .width(Size::px(TYPE_DROPDOWN_W))
+            .height(Size::px(24.))
+            .on_select(move |idx: usize| {
+                if let Some(content_type) = types.get(idx) {
+                    overrides.write().insert(key.clone(), *content_type);
+                }
+            })
+            .into_element(),
+        None => label()
+            .text("Needs a mod loader")
+            .font_size(12.)
+            .max_lines(1)
+            .color(colors::fg_secondary())
+            .into_element(),
+    };
 
     rect()
         .horizontal()
@@ -565,14 +632,5 @@ fn file_row(
                 .width(Size::flex(1.0))
                 .color(colors::fg_primary()),
         )
-        .child(
-            Dropdown::new(content_label(content_type), options)
-                .width(Size::px(TYPE_DROPDOWN_W))
-                .height(Size::px(24.))
-                .on_select(move |idx: usize| {
-                    if let Some(content_type) = IMPORTABLE.get(idx) {
-                        overrides.write().insert(key.clone(), *content_type);
-                    }
-                }),
-        )
+        .child(control)
 }

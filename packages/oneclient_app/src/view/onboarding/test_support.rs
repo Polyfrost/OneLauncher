@@ -50,6 +50,7 @@ pub fn archive(category: &str, enabled: bool, files: Vec<BundleFile>) -> BundleA
             loader: GameLoader::Fabric,
             loader_version: "0.16.0".to_string(),
             enabled,
+            java_version_override: None,
             files,
         },
     }
@@ -69,5 +70,10 @@ pub fn cluster(id: i64) -> Cluster {
         last_played: None,
         overall_played: std::time::Duration::ZERO,
         linked_modpack_hash: None,
+        kind: oneclient_db::models::ClusterKind::OneClient,
+        user_created: false,
+        description: None,
+        tags: Vec::new(),
+        cover_path: None,
     }
 }

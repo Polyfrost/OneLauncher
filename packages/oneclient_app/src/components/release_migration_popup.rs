@@ -425,9 +425,13 @@ fn content_panel(
     let picker_dispatch = dispatch.clone();
     let source_title = prompt.source().map(cluster_title).unwrap_or_default();
 
+    let target_title = if prompt.target.user_created {
+        prompt.target.name.as_str()
+    } else {
+        prompt.target.mc_version.as_str()
+    };
     let subtitle = format!(
-        "Files are copied into {}. Your {source_title} cluster is left exactly as it is.",
-        prompt.target.mc_version
+        "Files are copied into {target_title}. Your {source_title} cluster is left exactly as it is."
     );
 
     rect()

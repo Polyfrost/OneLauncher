@@ -127,6 +127,7 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
     let background = Arc::clone(state);
     tokio::spawn(async move {
         sweep_java_scratch_files().await;
+        background.clusters.sweep_trash().await;
 
         let recovery = match crate::recovery::reconstruct_from_disk(&background).await {
             Ok(report) => report,
@@ -153,6 +154,11 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
         if let Err(err) = bundles_res {
             tracing::error!("bundle catalog sync failed: {err:#}");
         }
+
+        let art = Arc::clone(&background);
+        tokio::spawn(async move {
+            crate::versions::prefetch_version_art(&art).await;
+        });
 
         if recovery.did_recover()
             && let Err(err) = crate::recovery::restore_bundle_tracking(&background).await

@@ -213,6 +213,11 @@ impl ScrollArea {
         self
     }
 
+    pub fn append_children(mut self, children: impl IntoIterator<Item = Element>) -> Self {
+        self.children.extend(children);
+        self
+    }
+
     pub fn content(mut self, builder: impl Fn(ScrollAreaCtx) -> Element + 'static) -> Self {
         self.builder = Some(Box::new(builder));
         self

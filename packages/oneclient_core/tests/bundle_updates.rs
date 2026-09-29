@@ -55,6 +55,7 @@ fn manifest(files: Vec<BundleFile>) -> BundleManifest {
         loader: GameLoader::Fabric,
         loader_version: "0.16.0".to_string(),
         enabled: true,
+        java_version_override: None,
         files,
     }
 }

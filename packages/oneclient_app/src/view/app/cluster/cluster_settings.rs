@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use freya::prelude::*;
 use oneclient_common::Patch;
 use oneclient_common::domain::GameLoader;
@@ -17,7 +19,8 @@ use crate::hooks::{
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
-use crate::view::app::settings::{section_header, settings_row};
+use crate::view::app::clusters::{DeleteInstanceModal, EditInstanceModal, InstanceFacts};
+use crate::view::app::settings::{section_header, settings_row, settings_row_disabled};
 use oneclient_core::clusters::rank_migration_sources;
 
 use super::cluster_not_found;
@@ -64,6 +67,49 @@ impl Component for ClusterSettings {
         let versions = loader_versions(&versions_query);
         let runtimes = java_runtimes(&runtimes_query);
 
+        let instance_section: Vec<Element> = if cluster.user_created {
+            vec![
+                section_header("INSTANCE").into_element(),
+                InstanceRow {
+                    facts: InstanceFacts {
+                        cluster_id,
+                        name: cluster.name.clone(),
+                        description: cluster.description.clone(),
+                        tags: cluster.tags.clone(),
+                        cover: cluster.cover_file(),
+                        mc_version: cluster.mc_version.clone(),
+                        mc_loader: cluster.mc_loader,
+                        kind: cluster.kind,
+                    },
+                }
+                .into_element(),
+            ]
+        } else {
+            Vec::new()
+        };
+
+        let mod_loader = !cluster.lacks_mod_loader();
+        let loader_section: Vec<Element> = if mod_loader {
+            vec![
+                section_header("LOADER").into_element(),
+                LoaderRow {
+                    cluster_id,
+                    loader,
+                    selected: cluster.mc_loader_version.clone(),
+                    versions,
+                    locked: cluster.user_created,
+                }
+                .into_element(),
+            ]
+        } else {
+            Vec::new()
+        };
+        let migrate_row: Vec<Element> = if mod_loader {
+            vec![MigrateFromRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
+
         cluster_content()
             .child(
                 ScrollArea::new()
@@ -71,6 +117,7 @@ impl Component for ClusterSettings {
                     .height(Size::fill())
                     .scrollbar_gutter(true)
                     .spacing(4.)
+                    .children(instance_section)
                     .child(section_header("GAME"))
                     .child(
                         ToggleRow {
@@ -98,21 +145,13 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
-                    .child(section_header("LOADER"))
-                    .child(
-                        LoaderRow {
-                            cluster_id,
-                            loader,
-                            selected: cluster.mc_loader_version.clone(),
-                            versions,
-                        }
-                        .into_element(),
-                    )
+                    .append_children(loader_section)
                     .child(section_header("DIRECTORY"))
                     .child(
                         DedicatedDirRow {
                             cluster_id,
                             dedicated: cluster.uses_dedicated_dir(),
+                            locked: cluster.is_isolated(),
                         }
                         .into_element(),
                     )
@@ -142,7 +181,7 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
-                    .child(MigrateFromRow { cluster_id }.into_element())
+                    .append_children(migrate_row)
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element()),
             )
@@ -264,6 +303,57 @@ impl Component for ToggleRow {
 }
 
 #[derive(PartialEq)]
+struct InstanceRow {
+    facts: InstanceFacts,
+}
+
+impl Component for InstanceRow {
+    fn render(&self) -> impl IntoElement {
+        let mut editing = use_state(|| false);
+        let mut deleting = use_state(|| false);
+        let cluster_id = self.facts.cluster_id;
+        let name = self.facts.name.clone();
+        let facts = self.facts.clone();
+
+        let buttons = rect()
+            .horizontal()
+            .spacing(8.)
+            .child(
+                Button::new()
+                    .small()
+                    .secondary()
+                    .on_press(move |_| editing.set(true))
+                    .text("Edit"),
+            )
+            .child(
+                Button::new()
+                    .small()
+                    .danger()
+                    .on_press(move |_| deleting.set(true))
+                    .text("Delete"),
+            );
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .child(settings_row(
+                IconType::Pencil01,
+                "Instance Details",
+                "Change this instance's name, description, tags and cover image, or remove it from your list.",
+                buttons,
+            ))
+            .maybe_child(editing.read().then(|| {
+                EditInstanceModal::new(facts.clone(), move |()| editing.set(false))
+                .into_element()
+            }))
+            .maybe_child(deleting.read().then(|| {
+                DeleteInstanceModal::new(cluster_id, name.clone(), move |()| deleting.set(false))
+                    .into_element()
+            }))
+    }
+}
+
+#[derive(PartialEq)]
 struct ShortcutRow {
     cluster_id: i64,
 }
@@ -330,6 +420,7 @@ impl Component for VerifyFilesRow {
 struct DedicatedDirRow {
     cluster_id: i64,
     dedicated: bool,
+    locked: bool,
 }
 
 impl Component for DedicatedDirRow {
@@ -337,6 +428,16 @@ impl Component for DedicatedDirRow {
         let cluster_id = self.cluster_id;
         let dedicated = self.dedicated;
         let mutation = use_cluster_mutation();
+
+        if self.locked {
+            return settings_row_disabled(
+                IconType::Folder,
+                "Dedicated Directory",
+                "Vanilla and modded instances always run in their own folder, so their worlds, settings and packs stay separate.",
+                toggle_controlled(true, (|()| {}).into()),
+            )
+            .into_element();
+        }
 
         let on_toggle: EventHandler<()> = (move |()| {
             mutation.mutate(ClusterAction::SetDedicatedDir {
@@ -352,6 +453,7 @@ impl Component for DedicatedDirRow {
             "Run this cluster in its own .minecraft instead of the shared one.",
             toggle_controlled(dedicated, on_toggle),
         )
+        .into_element()
     }
 }
 
@@ -852,7 +954,8 @@ struct LoaderRow {
     cluster_id: i64,
     loader: GameLoader,
     selected: Option<String>,
-    versions: Vec<String>,
+    versions: Arc<[String]>,
+    locked: bool,
 }
 
 impl Component for LoaderRow {
@@ -865,6 +968,19 @@ impl Component for LoaderRow {
             .clone()
             .unwrap_or_else(|| versions.first().cloned().unwrap_or_else(|| "Latest".into()));
 
+        if self.locked {
+            return settings_row_disabled(
+                IconType::Rocket02,
+                "Loader Version",
+                "Set when the instance was created.",
+                label()
+                    .text(format!("{} {selected}", self.loader))
+                    .font_size(12.)
+                    .color(colors::fg_secondary()),
+            )
+            .into_element();
+        }
+
         let control: Element = if versions.is_empty() {
             label()
                 .text("No versions available")
@@ -872,7 +988,7 @@ impl Component for LoaderRow {
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
-            let options = versions.clone();
+            let options = versions.to_vec();
             Dropdown::new(selected, options.clone())
                 .width(Size::px(220.))
                 .height(Size::px(34.))
@@ -893,5 +1009,6 @@ impl Component for LoaderRow {
             ),
             control,
         )
+        .into_element()
     }
 }

@@ -14,7 +14,8 @@ use crate::hooks::{
 type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
 use crate::routes::Route;
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{border_all_color, fixed_grid};
+use crate::utils::bundle_display_name;
 use crate::view::onboarding::{
     archive_selected, choice_row_sized, is_default_bundle, onboarding_nav, onboarding_slide,
     pkg_key, set_archive_selected, step_heading, version_chip,
@@ -64,15 +65,6 @@ fn fps_warning_banner() -> impl IntoElement {
         .border(border_all_color(1., colors::code_warn()))
         .padding(Gaps::new_all(8.))
         .child(text)
-}
-
-fn bundle_display_name(archive: &BundleArchive) -> String {
-    let category = archive.manifest.category.trim();
-    if category.is_empty() {
-        archive.manifest.name.clone()
-    } else {
-        category.to_string()
-    }
 }
 
 #[derive(Clone)]
@@ -472,29 +464,6 @@ fn extras_section(
         })
         .collect();
 
-    let mut rows: Vec<Element> = Vec::new();
-    for (index, chunk) in cards.chunks(MOD_GRID_COLS).enumerate() {
-        let mut row = rect()
-            .key(index)
-            .horizontal()
-            .width(Size::fill())
-            .height(Size::px(CARD_GRID_H))
-            .spacing(GRID_GAP)
-            .content(Content::Flex);
-        for card in chunk {
-            row = row.child(
-                rect()
-                    .width(Size::flex(1.0))
-                    .height(Size::fill())
-                    .child(card.clone()),
-            );
-        }
-        for _ in chunk.len()..MOD_GRID_COLS {
-            row = row.child(rect().width(Size::flex(1.0)).height(Size::fill()));
-        }
-        rows.push(row.into_element());
-    }
-
     rect()
         .vertical()
         .width(Size::fill())
@@ -506,13 +475,7 @@ fn extras_section(
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
-        .child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .spacing(GRID_GAP)
-                .children(rows),
-        )
+        .child(fixed_grid(cards, MOD_GRID_COLS, CARD_GRID_H, GRID_GAP))
         .into_element()
 }
 

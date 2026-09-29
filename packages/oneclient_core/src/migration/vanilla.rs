@@ -92,6 +92,7 @@ pub async fn detect() -> LauncherResult<Option<MigrationDetection>> {
             mc_version: String::new(),
             target_mc_version: None,
             mc_loader: GameLoader::Vanilla,
+            target_mc_loader: None,
             categories: Vec::new(),
             has_game_dir: true,
         }],

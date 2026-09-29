@@ -1,5 +1,4 @@
 use std::cmp::Reverse;
-use std::str::FromStr;
 
 use oneclient_common::domain::GameLoader;
 
@@ -46,10 +45,20 @@ pub fn can_migrate_manually(source: GameLoader, target: GameLoader) -> bool {
     source == target || (source == GameLoader::Fabric && target == GameLoader::Ornithe)
 }
 
+fn is_migration_source(
+    candidate: &Cluster,
+    target: &Cluster,
+    loader_ok: impl Fn(GameLoader, GameLoader) -> bool,
+) -> bool {
+    candidate.id != target.id
+        && !candidate.user_created
+        && loader_ok(candidate.mc_loader, target.mc_loader)
+}
+
 fn is_migration_destination(target: &ReleaseTarget, rules: &[RemoteMigration]) -> bool {
     rules.iter().any(|rule| {
-        rule.to.mc_version == target.mc_version
-            && GameLoader::from_str(&rule.from.loader).is_ok_and(|loader| loader == target.loader)
+        rule.endpoints()
+            .is_some_and(|(_, to)| to.mc_version == target.mc_version && to.loader == target.loader)
     })
 }
 
@@ -100,7 +109,9 @@ pub async fn release_migration_offer(
     let Some(target) = clusters
         .iter()
         .filter(|cluster| {
-            cluster.mc_loader == release.loader && cluster.mc_version == release.mc_version
+            !cluster.user_created
+                && cluster.mc_loader == release.loader
+                && cluster.mc_version == release.mc_version
         })
         .min_by_key(|cluster| cluster.created_at)
     else {
@@ -130,8 +141,7 @@ pub async fn manual_migration_offer(
         return Ok(OfferLookup::MissingCluster);
     };
 
-    if source.id == target.id
-        || !can_migrate_manually(source.mc_loader, target.mc_loader)
+    if !is_migration_source(source, target, can_migrate_manually)
         || !has_migratable_packages(source.id, &content).await?
     {
         return Ok(OfferLookup::NoSources);
@@ -152,9 +162,7 @@ pub fn rank_migration_sources(target: &Cluster, clusters: &[Cluster]) -> Vec<Clu
     let target_order = version_order(&target.mc_version);
     let mut sources: Vec<Cluster> = clusters
         .iter()
-        .filter(|cluster| {
-            cluster.id != target.id && can_migrate_manually(cluster.mc_loader, target.mc_loader)
-        })
+        .filter(|cluster| is_migration_source(cluster, target, can_migrate_manually))
         .cloned()
         .collect();
     sources.sort_by_key(|cluster| {
@@ -180,7 +188,7 @@ async fn offer_for(
 
     let mut sources = Vec::new();
     for cluster in clusters {
-        if cluster.id == target.id || cluster.mc_loader != target.mc_loader {
+        if !is_migration_source(cluster, target, |from, to| from == to) {
             continue;
         }
         if !version_order(&cluster.mc_version).is_some_and(|order| order != target_order) {
@@ -249,7 +257,9 @@ mod tests {
             },
             to: crate::versions::MigrationTarget {
                 mc_version: "26.1.2".into(),
+                loader: None,
             },
+            allow_without_bundles: false,
         }];
         let moved = ReleaseTarget {
             mc_version: "26.1.2".into(),
@@ -267,6 +277,33 @@ mod tests {
         assert!(is_migration_destination(&moved, &rules));
         assert!(!is_migration_destination(&released, &rules));
         assert!(!is_migration_destination(&other_loader, &rules));
+    }
+
+    #[test]
+    fn a_loader_switch_destination_uses_the_target_loader() {
+        let rules = vec![RemoteMigration {
+            id: "x".into(),
+            from: crate::versions::MigrationSource {
+                mc_version: "1.20.1".into(),
+                loader: "forge".into(),
+            },
+            to: crate::versions::MigrationTarget {
+                mc_version: "1.20.1".into(),
+                loader: Some("neoforge".into()),
+            },
+            allow_without_bundles: false,
+        }];
+        let destination = ReleaseTarget {
+            mc_version: "1.20.1".into(),
+            loader: GameLoader::NeoForge,
+        };
+        let source = ReleaseTarget {
+            mc_version: "1.20.1".into(),
+            loader: GameLoader::Forge,
+        };
+
+        assert!(is_migration_destination(&destination, &rules));
+        assert!(!is_migration_destination(&source, &rules));
     }
 
     #[test]

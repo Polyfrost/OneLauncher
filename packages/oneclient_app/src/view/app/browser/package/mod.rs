@@ -183,7 +183,7 @@ impl Component for BrowserPackage {
 
         let remove_id = project.as_ref().map(|p| p.id.clone());
         let remove_dispatch = dispatch.clone();
-        let (on_remove, remove_dialog) = use_shared_delete(move |(name, hash)| {
+        let (on_remove, remove_dialog) = use_shared_delete(cluster_id, move |(name, hash)| {
             if let Some(project_id) = &remove_id {
                 remove_dispatch.remove_package_version(
                     cluster_id,

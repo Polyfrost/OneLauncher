@@ -454,6 +454,11 @@ impl Component for PackageManager {
         });
 
         let session_live = use_game_snapshot().is_active(cluster_id);
+        let cluster = crate::hooks::use_cluster(cluster_id);
+        let shares_content = cluster
+            .as_ref()
+            .map(|cluster| cluster.shares_content(content_type));
+        let uses_bundles = cluster.as_ref().is_none_or(|cluster| cluster.uses_bundles());
         let active = use_state(|| 0usize);
 
         let search = use_state(String::new);
@@ -509,8 +514,14 @@ impl Component for PackageManager {
         };
 
         let mut notices = Vec::new();
-        if content_type.is_global() {
-            notices.push(views::global_notice(noun_plural));
+        if content_type.is_global()
+            && let Some(shares_content) = shares_content
+        {
+            notices.push(if shares_content {
+                views::global_notice(noun_plural)
+            } else {
+                views::instance_only_notice(noun_plural)
+            });
         }
         if session_live {
             notices.push(views::running_notice(noun_plural, content_type));
@@ -534,6 +545,7 @@ impl Component for PackageManager {
                 sort_mode,
                 enabled_filter,
                 hidden_filter,
+                uses_bundles,
                 layout,
                 cluster_id,
                 package_type,

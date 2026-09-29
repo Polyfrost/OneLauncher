@@ -10,7 +10,7 @@ use crate::hooks::{
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::entrance_motion_layer;
-use crate::view::app::launch_button_state;
+use crate::view::app::{launch_button_state, launch_syncing};
 
 const HEADER_HEIGHT: f32 = 64.;
 const TABS_HEIGHT: f32 = 38.;
@@ -111,14 +111,32 @@ impl Component for ClusterShell {
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
         let launcher = use_launcher();
-        let syncing = launcher.fetching || launcher.syncing_bundles;
         let cluster = use_cluster(cluster_id);
+        let syncing = launch_syncing(
+            &launcher,
+            cluster.as_ref().is_none_or(|c| c.uses_bundles()),
+        );
 
         let show_game_log = game.is_active(cluster_id);
         let show_datapacks = cluster
             .as_ref()
             .is_none_or(|c| crate::view::app::cluster::supports_datapacks(&c.mc_version));
+        let show_mod_tabs = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
         let launch_state = launch_button_state(&game, cluster_id, syncing);
+
+        let hidden_tab = !show_mod_tabs
+            && matches!(
+                active_tab,
+                ClusterViewShellTab::Mods | ClusterViewShellTab::Shaders
+            );
+        use_side_effect_with_deps(
+            &hidden_tab.then_some(cluster_id),
+            move |redirect: &Option<i64>| {
+                if let Some(cluster_id) = *redirect {
+                    let _ = RouterContext::get().replace(Route::ClusterOverview { cluster_id });
+                }
+            },
+        );
 
         // Queried unconditionally the shell can mount before the cluster list settles
         // and a conditional hook would change this component's hook count mid-life
@@ -132,10 +150,20 @@ impl Component for ClusterShell {
         );
 
         let header = cluster.as_ref().map(|cluster| {
-            let title = format!("{} {}", cluster.mc_loader, cluster.mc_version);
-            let subtitle = metadata
-                .and_then(|m| m.long_description)
-                .unwrap_or_else(|| cluster.name.clone());
+            let loader_version = format!("{} {}", cluster.mc_loader, cluster.mc_version);
+            let (title, subtitle) = if cluster.user_created {
+                let subtitle = cluster
+                    .description
+                    .clone()
+                    .filter(|d| !d.trim().is_empty())
+                    .unwrap_or(loader_version);
+                (cluster.name.clone(), subtitle)
+            } else {
+                let subtitle = metadata
+                    .and_then(|m| m.long_description)
+                    .unwrap_or_else(|| cluster.name.clone());
+                (loader_version, subtitle)
+            };
             cluster_header(
                 title,
                 subtitle,
@@ -170,6 +198,7 @@ impl Component for ClusterShell {
                         cluster_id,
                         show_game_log,
                         show_datapacks,
+                        show_mod_tabs,
                     )),
             )
             .child(
@@ -321,13 +350,14 @@ fn cluster_tabs(
     cluster_id: i64,
     show_game_log: bool,
     show_datapacks: bool,
+    show_mod_tabs: bool,
 ) -> impl IntoElement {
     let tabs = [
         Some(ClusterViewShellTab::Overview),
         Some(ClusterViewShellTab::Logs),
         Some(ClusterViewShellTab::Screenshots),
-        Some(ClusterViewShellTab::Mods),
-        Some(ClusterViewShellTab::Shaders),
+        show_mod_tabs.then_some(ClusterViewShellTab::Mods),
+        show_mod_tabs.then_some(ClusterViewShellTab::Shaders),
         Some(ClusterViewShellTab::Textures),
         Some(ClusterViewShellTab::Worlds),
         show_datapacks.then_some(ClusterViewShellTab::DataPacks),

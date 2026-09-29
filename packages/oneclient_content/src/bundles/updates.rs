@@ -17,7 +17,7 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, disable_was_deliberate, external_ids_by_sha1,
+    BUNDLE_INSTALL_CONCURRENCY, bundle_cluster, disable_was_deliberate, external_ids_by_sha1,
     find_user_suppression, heal_bundle_activity, install_package_from_bundle,
     remove_artifact_from_cluster, set_artifact_enabled_to,
 };
@@ -58,6 +58,10 @@ pub async fn check_bundle_updates(
 /// update so the catalog never has to be fetched for it
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn cluster_has_bundle_content(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<bool> {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
+        return Ok(false);
+    }
+
     if !bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
         .await?
         .is_empty()
@@ -78,6 +82,12 @@ async fn check_bundle_updates_inner(
     overrides: &[ClusterBundleOverrideRow],
 ) -> ContentResult<BundleUpdateCheckResult> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if !cluster.uses_bundles() {
+        return Ok(BundleUpdateCheckResult {
+            cluster_id,
+            ..Default::default()
+        });
+    }
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),
@@ -426,6 +436,10 @@ pub async fn apply_bundle_updates_with(
     session: Option<&oneclient_events::GroupedProgressSession>,
     deadline: Option<Instant>,
 ) -> ContentResult<ApplyBundleUpdatesResult> {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
+        return Ok(ApplyBundleUpdatesResult::default());
+    }
+
     let lock = cluster_lock(cluster_id);
     let _guard = lock.lock().await;
 
@@ -797,6 +811,9 @@ pub async fn get_bundles_with_update_status(
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<BundleWithUpdateStatus>> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if !cluster.uses_bundles() {
+        return Ok(Vec::new());
+    }
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
     let bundle_packages = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     let all_linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;

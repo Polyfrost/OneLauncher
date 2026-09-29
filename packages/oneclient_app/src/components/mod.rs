@@ -1,5 +1,6 @@
 mod account_switcher;
 mod active_cluster_panel;
+mod asset_image;
 mod avatar;
 mod button;
 mod charts;
@@ -16,6 +17,7 @@ mod file_drop;
 mod flagged_install_popup;
 mod generic_prompt;
 mod icons;
+mod instance_card;
 mod java_install_manager;
 mod java_prompt;
 mod link_confirm;
@@ -40,6 +42,7 @@ mod release_migration_popup;
 mod screenshot_viewer;
 mod scrollview;
 mod segmented_control;
+mod spinner;
 mod splash_curtain;
 mod status_bar;
 mod tab_bar;
@@ -49,10 +52,12 @@ mod toggle;
 mod tooltip;
 mod update_prompt;
 pub mod upload_mclogs;
+mod version_art_gallery;
 mod version_card;
 
 pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
+pub use asset_image::AssetImage;
 pub use avatar::Avatar;
 pub use button::{Button, ButtonSize, ButtonVariant, link_button, open_folder_button};
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
@@ -69,6 +74,7 @@ pub use file_drop::FileDropOverlay;
 pub use flagged_install_popup::FlaggedInstallPopup;
 pub use generic_prompt::GenericPromptOverlay;
 pub use icons::{Icon, IconTint, IconType};
+pub use instance_card::InstanceCard;
 pub use java_install_manager::JavaInstallManager;
 pub use java_prompt::JavaPromptOverlay;
 pub use link_confirm::ConfirmLinkOverlay;
@@ -86,8 +92,8 @@ pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
-    CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, grid_card, icon_box,
-    kebab_button, meta_size, meta_text, on_secondary, package_icon, remote_icon,
+    CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, filled_pill, grid_card,
+    icon_box, kebab_button, meta_size, meta_text, on_secondary, package_icon, pill, remote_icon,
 };
 pub use package_row::{
     CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,
@@ -102,6 +108,7 @@ pub use screenshot_viewer::{ScreenshotViewer, screenshot_context_menu};
 pub(crate) use scrollview::corrected_scroll;
 pub use scrollview::{LazySection, ScrollArea, ScrollAreaCtx};
 pub use segmented_control::{Segment, SegmentedControl};
+pub use spinner::centered_spinner;
 pub use splash_curtain::SplashCurtain;
 pub use status_bar::StatusBar;
 pub use tab_bar::{TabBar, TabItem};
@@ -110,4 +117,5 @@ pub use toasts::Toasts;
 pub use toggle::{toggle, toggle_controlled};
 pub use tooltip::{TooltipHost, TooltipPlacement, use_provide_tooltips};
 pub use update_prompt::UpdatePromptOverlay;
+pub use version_art_gallery::{GALLERY_COVER_EDGE, VersionArtGallery};
 pub use version_card::VersionCard;

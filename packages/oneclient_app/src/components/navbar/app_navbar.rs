@@ -164,10 +164,7 @@ fn browse_target() -> Route {
     match cluster {
         Some(cluster) => Route::Browser {
             cluster_id: cluster.id,
-            package_type: crate::view::app::browser::browsable_type(
-                &package_type,
-                &cluster.mc_version,
-            ),
+            package_type: crate::view::app::browser::browsable_type(&package_type, &cluster),
             pick_cluster: true,
         },
         None => Route::Clusters {},

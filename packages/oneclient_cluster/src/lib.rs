@@ -9,14 +9,18 @@ mod options;
 mod profile;
 mod stage;
 
+pub mod identity;
 pub mod logs;
+pub mod naming;
 pub mod profiles;
 pub mod screenshots;
 pub mod worlds;
 
-pub use cluster::{Cluster, ClusterLinkTarget, remove_mods_link};
+pub use cluster::{Cluster, ClusterLinkTarget, encode_tags, remove_mods_link};
 pub use error::{ClusterError, ClusterResult};
+pub use identity::InstanceIdentity;
 pub use manager::ClusterManager;
+pub use oneclient_db::models::ClusterKind;
 pub use options::{ClusterUpdate, CreateClusterOptions};
 pub use profile::{GameSettingsProfile, PackageUpdateMode, SettingsOsExtra};
 pub use profiles::ProfileUpdate;

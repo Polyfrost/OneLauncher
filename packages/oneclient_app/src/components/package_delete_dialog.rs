@@ -7,6 +7,7 @@ use crate::ui::border_all_color;
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
 pub fn use_shared_delete(
+    cluster_id: i64,
     delete: impl Into<EventHandler<(String, String)>>,
 ) -> (EventHandler<(String, String)>, Option<Element>) {
     let mut pending = use_state(|| None::<(String, String, usize)>);
@@ -19,6 +20,7 @@ pub fn use_shared_delete(
             spawn(async move {
                 let clusters = match crate::launcher::state() {
                     Ok(state) => oneclient_core::clusters_sharing_artifact(
+                        cluster_id,
                         &hash,
                         &state.services.content(),
                     )

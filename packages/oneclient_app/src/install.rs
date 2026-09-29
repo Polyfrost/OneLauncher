@@ -322,8 +322,14 @@ pub async fn install_package(
 
     let content = state.services.content();
     let bad_mods = oneclient_content::packages::load_bad_mods(&content).await;
+    let screened = !allow_flagged
+        && !state
+            .clusters
+            .get(cluster_id)
+            .await
+            .is_ok_and(|cluster| cluster.user_created);
 
-    if !allow_flagged && let Some(entry) = bad_mods.check(&project, &version) {
+    if screened && let Some(entry) = bad_mods.check(&project, &version) {
         tracing::warn!(project = %project.name, version = %version.version_number, "refusing to install flagged mod");
         return Err(flagged_install(project.name, entry, cluster_id, &content).await);
     }
@@ -346,7 +352,7 @@ pub async fn install_package(
         }
     }
 
-    if !allow_flagged
+    if screened
         && let Some((dependency, entry)) = resolution.install.iter().find_map(|dependency| {
             bad_mods
                 .check(&dependency.project, &dependency.version)

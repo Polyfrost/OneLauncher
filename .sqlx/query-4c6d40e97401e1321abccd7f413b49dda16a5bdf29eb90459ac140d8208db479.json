@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tUPDATE clusters\n\t\tSET overall_played = COALESCE(overall_played, 0) + ?,\n\t\t    last_played = ?\n\t\tWHERE id = ?\n\t\tRETURNING\n\t\t\tid, name, folder_name, setting_profile_name, mc_version, mc_loader,\n\t\t\tstage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash\n\t\t",
+  "query": "\n\t\tUPDATE clusters\n\t\tSET overall_played = COALESCE(overall_played, 0) + ?,\n\t\t    last_played = ?\n\t\tWHERE id = ?\n\t\tRETURNING\n\t\t\tid, name, folder_name, setting_profile_name, mc_version, mc_loader,\n\t\t\tstage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,\n\t\t\tkind, user_created, description, tags, cover_path\n\t\t",
   "describe": {
     "columns": [
       {
@@ -134,6 +134,61 @@
             "name": "linked_modpack_hash"
           }
         }
+      },
+      {
+        "name": "kind",
+        "ordinal": 12,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "user_created",
+        "ordinal": 13,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "user_created"
+          }
+        }
+      },
+      {
+        "name": "description",
+        "ordinal": 14,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "description"
+          }
+        }
+      },
+      {
+        "name": "tags",
+        "ordinal": 15,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "tags"
+          }
+        }
+      },
+      {
+        "name": "cover_path",
+        "ordinal": 16,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "clusters",
+            "name": "cover_path"
+          }
+        }
       }
     ],
     "parameters": {
@@ -151,8 +206,13 @@
       true,
       true,
       true,
+      true,
+      false,
+      false,
+      true,
+      false,
       true
     ]
   },
-  "hash": "3fb91d89cb135d2af105a0f40f7150d03ab2fa9b955ba223066edf210e3556a1"
+  "hash": "4c6d40e97401e1321abccd7f413b49dda16a5bdf29eb90459ac140d8208db479"
 }

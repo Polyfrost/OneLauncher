@@ -140,6 +140,8 @@ pub struct VersionSummary {
     pub loaders: Vec<GameLoader>,
     pub downloads: u64,
     pub file_size: u64,
+    #[serde(default)]
+    pub dependencies: Vec<VersionDependency>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]

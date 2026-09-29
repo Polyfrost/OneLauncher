@@ -753,6 +753,7 @@ impl From<ModrinthVersion> for VersionSummary {
                 .collect(),
             downloads: v.downloads,
             file_size,
+            dependencies: v.dependencies.into_iter().map(Into::into).collect(),
         }
     }
 }

@@ -11,8 +11,12 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
         ),
         Step::Loader => (
             "Choose a mod loader",
-            "Loaders are what packages install into. Pick one, then the Minecraft version it runs on."
-                .to_string(),
+            match &picks.versions.chosen {
+                Some(version) => format!(
+                    "Loaders are what packages install into. Only the ones with a build for {version} can be picked."
+                ),
+                None => "Loaders are what packages install into.".to_string(),
+            },
         ),
         Step::Version => (
             "Choose a version",
@@ -20,10 +24,10 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
                 TypeChoice::OneClient => {
                     "Only versions OneClient ships a build for are listed.".to_string()
                 }
-                TypeChoice::Scratch => format!(
-                    "Versions {} can run. Switch the release type to reach snapshots, betas and alphas.",
-                    picks.loader_label()
-                ),
+                TypeChoice::Scratch => {
+                    "Every Minecraft version. Switch the release type to reach snapshots, betas and alphas."
+                        .to_string()
+                }
             },
         ),
         Step::Bundles => (
@@ -47,15 +51,13 @@ pub fn footer_note(picks: &Picks) -> String {
             }
             TypeChoice::Scratch => "Keeps its own game folder, worlds and packs.".to_string(),
         },
-        Step::Loader => picks.loader_label(),
-        Step::Version => match (&picks.versions.chosen, picks.loader.chosen) {
-            (Some(version), Some(_)) => {
-                format!("{version} downloads the first time you launch it.")
-            }
-            (Some(version), None) => {
-                format!("{} has no build for {version}.", picks.loader_label())
-            }
-            (None, _) => "Pick a version to continue.".to_string(),
+        Step::Loader => match (&picks.versions.chosen, picks.loader.chosen) {
+            (Some(version), None) => format!("Pick a loader with a build for {version}."),
+            _ => picks.loader_label(),
+        },
+        Step::Version => match &picks.versions.chosen {
+            Some(version) => format!("{version} downloads the first time you launch it."),
+            None => "Pick a version to continue.".to_string(),
         },
         Step::Bundles => {
             let taken = picks.bundles.taken_count();
@@ -100,8 +102,12 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
 
 pub fn is_ready(picks: &Picks) -> bool {
     match picks.step {
-        Step::Type | Step::Loader | Step::Bundles => true,
-        Step::Version => picks.versions.chosen.is_some() && picks.loader.chosen.is_some(),
+        Step::Type | Step::Bundles => true,
+        Step::Loader => picks.loader.chosen.is_some(),
+        Step::Version => {
+            picks.versions.chosen.is_some()
+                && (picks.choice == TypeChoice::Scratch || picks.loader.chosen.is_some())
+        }
         Step::Customize => validate_instance_name(&picks.name).is_ok(),
     }
 }

@@ -92,6 +92,21 @@ pub fn relative_time(created_at: Instant) -> String {
     }
 }
 
+pub fn last_played_label(ts: Option<chrono::DateTime<chrono::Utc>>) -> String {
+    let Some(ts) = ts else {
+        return "Never".to_string();
+    };
+    match (chrono::Utc::now() - ts).num_days() {
+        ..=0 => "Today".to_string(),
+        1 => "Yesterday".to_string(),
+        d @ 2..=6 => format!("{d} days ago"),
+        d @ 7..=13 => format!("{} week ago", d / 7),
+        d @ 14..=29 => format!("{} weeks ago", d / 7),
+        d @ 30..=59 => format!("{} month ago", d / 30),
+        d => format!("{} months ago", d / 30),
+    }
+}
+
 /// Gap the clamped menu keeps from the window edges
 pub const EDGE_MARGIN: f32 = 8.;
 

@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use freya::query::{Query, QueryCapability, QueryStateData, UseQuery, use_query};
@@ -214,72 +214,6 @@ pub fn use_version_loaders(mc_version: String) -> UseQuery<VersionLoadersQuery> 
         VersionLoadersKeys { mc_version },
         VersionLoadersQuery,
     ))
-}
-
-pub fn version_loaders(query: &UseQuery<VersionLoadersQuery>) -> Vec<GameLoader> {
-    super::state::settled_or_loading(query).unwrap_or_default()
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct LoaderGameVersionsQuery;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct LoaderGameVersionsKeys {
-    pub loader: GameLoader,
-    pub with_legacy: bool,
-}
-
-pub type LoaderVersionSet = Option<Arc<HashSet<String>>>;
-
-impl QueryCapability for LoaderGameVersionsQuery {
-    type Ok = LoaderVersionSet;
-    type Err = LauncherError;
-    type Keys = LoaderGameVersionsKeys;
-
-    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        let state = crate::launcher::state()?;
-        let keys = *keys;
-
-        tokio::spawn(async move {
-            let mc = state.services.mc();
-            let mut metadata = state.metadata.lock().await;
-
-            let Some(mut ids) =
-                oneclient_core::get_versions_for_loader(&mut metadata, &mc, keys.loader).await?
-            else {
-                return Ok(None);
-            };
-
-            if keys.with_legacy
-                && let Some(legacy) =
-                    oneclient_core::get_versions_for_loader(&mut metadata, &mc, GameLoader::Ornithe)
-                        .await?
-            {
-                ids.extend(legacy);
-            }
-
-            Ok(Some(Arc::new(ids.into_iter().collect::<HashSet<String>>())))
-        })
-        .await
-        .map_err(|err| LauncherError::Minecraft(err.to_string()))?
-    }
-}
-
-pub fn use_loader_game_versions(
-    loader: GameLoader,
-    with_legacy: bool,
-) -> UseQuery<LoaderGameVersionsQuery> {
-    use_query(Query::new(
-        LoaderGameVersionsKeys {
-            loader,
-            with_legacy,
-        },
-        LoaderGameVersionsQuery,
-    ))
-}
-
-pub fn loader_game_versions(query: &UseQuery<LoaderGameVersionsQuery>) -> Option<LoaderVersionSet> {
-    super::state::settled_or_loading(query)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

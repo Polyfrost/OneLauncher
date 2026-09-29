@@ -11,8 +11,9 @@ use super::cards::{
 };
 use super::data::Picks;
 use super::details::details_body;
-use super::model::FILTERS;
 use super::model::{LoaderChoice, Step, TypeChoice, Wizard};
+use super::model::{VERSION_KINDS, kind_bit};
+use super::rail::version_art;
 use crate::components::{
     Dropdown, GRID_GAP, Icon, IconType, ScrollArea, TextInput, centered_spinner,
 };
@@ -32,6 +33,7 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
                 wizard.details,
                 picks.suggested.clone(),
                 None,
+                version_art(picks.versions.chosen.as_deref(), picks.loader.chosen),
                 validate_instance_name(&picks.name).err(),
             ),
         ),
@@ -99,7 +101,6 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
 fn select_loader(mut wizard: Wizard, choice: LoaderChoice) {
     wizard.loader.set(choice);
     wizard.loader_version.set(None);
-    wizard.version.set(None);
 }
 
 fn loader_step(wizard: Wizard, picks: &Picks) -> Element {
@@ -108,15 +109,28 @@ fn loader_step(wizard: Wizard, picks: &Picks) -> Element {
     let cards: Vec<Element> = LoaderChoice::ALL
         .into_iter()
         .map(|choice| {
+            let offered = picks
+                .loader
+                .available
+                .as_ref()
+                .is_none_or(|available| choice.resolve(available).is_some());
             cell_card(CellCard {
                 id: choice.name(),
                 title: choice.name(),
                 blurb: choice.blurb().to_string(),
-                meta: None,
+                meta: (!offered).then(|| {
+                    let version = picks.versions.chosen.as_deref();
+                    format!("No build for {}", version.unwrap_or("this version"))
+                }),
                 corner: loader_mark(choice, chosen == choice, LOADER_MARK_SIZE),
-                selected: chosen == choice,
+                selected: offered && chosen == choice,
                 checkbox: false,
-                on_press: (move |()| select_loader(wizard, choice)).into(),
+                on_press: (move |()| {
+                    if offered {
+                        select_loader(wizard, choice);
+                    }
+                })
+                .into(),
             })
         })
         .collect();
@@ -243,19 +257,45 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                 )
                 .child(
                     Dropdown::new(
-                        FILTERS[filter.min(FILTERS.len() - 1)],
-                        FILTERS.iter().map(|f| (*f).to_string()).collect(),
+                        filter_summary(filter),
+                        VERSION_KINDS
+                            .iter()
+                            .map(|(name, _)| (*name).to_string())
+                            .collect(),
+                    )
+                    .checked(
+                        VERSION_KINDS
+                            .iter()
+                            .map(|(_, kind)| filter & kind_bit(*kind) != 0)
+                            .collect(),
                     )
                     .width(Size::px(168.))
                     .height(Size::px(32.))
                     .on_select(move |index: usize| {
-                        wizard.filter.set(index);
-                        wizard.version.set(None);
+                        if let Some((_, kind)) = VERSION_KINDS.get(index) {
+                            let mask = *wizard.filter.peek();
+                            wizard.filter.set(mask ^ kind_bit(*kind));
+                            wizard.version.set(None);
+                        }
                     }),
                 )
                 .into_element()
         }))
         .into_element()
+}
+
+fn filter_summary(filter: u8) -> String {
+    let picked: Vec<&str> = VERSION_KINDS
+        .iter()
+        .filter(|(_, kind)| filter & kind_bit(*kind) != 0)
+        .map(|(name, _)| *name)
+        .collect();
+    match picked.as_slice() {
+        [] => "None".to_string(),
+        [only] => (*only).to_string(),
+        all if all.len() == VERSION_KINDS.len() => "All versions".to_string(),
+        [first, rest @ ..] => format!("{first} +{}", rest.len()),
+    }
 }
 
 fn version_list(mut wizard: Wizard, picks: &Picks) -> Element {

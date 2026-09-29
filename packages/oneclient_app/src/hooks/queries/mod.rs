@@ -107,10 +107,10 @@ pub use version_metadata::{
     use_version_art_gallery, use_version_metadata,
 };
 pub use versions::{
-    GameVersion, JavaMajorsQuery, LoaderVersionSet, game_versions, java_majors,
-    loader_game_versions, loader_versions, use_game_versions, use_java_majors,
-    use_loader_game_versions, use_loader_versions, use_version_loaders, use_versions,
-    version_loaders, versions_metadata,
+    GameVersion, JavaMajorsQuery, game_versions, java_majors,
+    loader_versions, use_game_versions, use_java_majors,
+    use_loader_versions, use_version_loaders, use_versions,
+    versions_metadata,
 };
 pub use worlds::{
     add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,

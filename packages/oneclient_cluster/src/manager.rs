@@ -185,9 +185,6 @@ impl ClusterManager {
         }
 
         if existing.user_created {
-            if matches!(update.mc_loader_version, Patch::Set(_)) {
-                return Err(ClusterError::LoaderLocked);
-            }
             if let Some(raw) = update.name.as_deref()
                 && raw.trim() != existing.name
             {

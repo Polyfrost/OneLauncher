@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::LazyLock;
 
 use bytes::Bytes;
 use freya::animation::{
@@ -115,23 +116,14 @@ impl DynamicArt {
 
 pub fn use_art_bytes(art: &DynamicArt) -> (String, Bytes) {
     let max_edge = art.max_edge;
-    let fallback = use_bundled_art(false);
-    use_resolved_art(art).unwrap_or_else(|| {
-        (
-            format!("{max_edge}|{HOME_BACKGROUND_ASSET}"),
-            fallback.read().clone(),
-        )
-    })
+    use_resolved_art(art)
+        .unwrap_or_else(|| (format!("{max_edge}|{HOME_BACKGROUND_ASSET}"), bundled_art()))
 }
 
-fn use_bundled_art(skip: bool) -> Memo<Bytes> {
-    use_memo(move || {
-        if skip {
-            Bytes::new()
-        } else {
-            AppAssets::get_bytes(HOME_BACKGROUND_ASSET).unwrap_or_default()
-        }
-    })
+fn bundled_art() -> Bytes {
+    static ART: LazyLock<Bytes> =
+        LazyLock::new(|| AppAssets::get_bytes(HOME_BACKGROUND_ASSET).unwrap_or_default());
+    ART.clone()
 }
 
 fn use_resolved_art(art: &DynamicArt) -> Option<(String, Bytes)> {
@@ -180,7 +172,6 @@ fn use_resolved_art(art: &DynamicArt) -> Option<(String, Bytes)> {
 
 impl Component for DynamicArt {
     fn render(&self) -> impl IntoElement {
-        let fallback = use_bundled_art(self.skeleton);
         let resolved = use_resolved_art(self);
         let show_skeleton = self.skeleton && resolved.is_none();
 
@@ -209,12 +200,8 @@ impl Component for DynamicArt {
         }
 
         let max_edge = self.max_edge;
-        let (key, bytes) = resolved.unwrap_or_else(|| {
-            (
-                format!("{max_edge}|{HOME_BACKGROUND_ASSET}"),
-                fallback.read().clone(),
-            )
-        });
+        let (key, bytes) = resolved
+            .unwrap_or_else(|| (format!("{max_edge}|{HOME_BACKGROUND_ASSET}"), bundled_art()));
 
         ImageViewer::new((key, bytes))
             .width(Size::fill())

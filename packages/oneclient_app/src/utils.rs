@@ -113,20 +113,6 @@ pub fn group_clusters_by_release<'a>(
     groups
 }
 
-pub fn loader_tags(clusters: &[Cluster]) -> Vec<String> {
-    let mut tags = Vec::new();
-    for cluster in clusters {
-        if cluster.mc_loader.is_modded() {
-            let label = cluster.mc_loader.to_string();
-            if !tags.iter().any(|t| t == &label) {
-                tags.push(label);
-            }
-        }
-    }
-    tags.sort();
-    tags
-}
-
 pub fn version_keys(clusters: &[Cluster]) -> Vec<VersionKey> {
     let mut keys = Vec::new();
     for cluster in clusters {

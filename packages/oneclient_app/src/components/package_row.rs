@@ -99,6 +99,9 @@ pub struct PackageRow {
     package_type: &'static str,
     layout: CardLayout,
     on_context: EventHandler<(f32, f32)>,
+    selected: bool,
+    selecting: bool,
+    on_select: EventHandler<()>,
     key: DiffKey,
 }
 
@@ -110,6 +113,9 @@ impl PackageRow {
             package_type,
             layout: CardLayout::List,
             on_context: (|_| {}).into(),
+            selected: false,
+            selecting: false,
+            on_select: (|()| {}).into(),
             key: DiffKey::None,
         }
     }
@@ -121,6 +127,18 @@ impl PackageRow {
 
     pub fn on_context(mut self, on_context: impl Into<EventHandler<(f32, f32)>>) -> Self {
         self.on_context = on_context.into();
+        self
+    }
+
+    pub fn selection(
+        mut self,
+        selected: bool,
+        selecting: bool,
+        on_select: impl Into<EventHandler<()>>,
+    ) -> Self {
+        self.selected = selected;
+        self.selecting = selecting;
+        self.on_select = on_select.into();
         self
     }
 }
@@ -152,29 +170,12 @@ impl Component for PackageRow {
         let icon = package_icon(&item, &icon_query, icon_size);
 
         let on_toggle: EventHandler<()> = {
-            let hash = item.hash.clone();
-            let bundle_name = item.bundle_name.clone();
-            let package_id = item.package_id.clone();
+            let action = toggle_action(&item, cluster_id, !item.enabled);
             let enabled_now = item.enabled;
-            let manifest_default = item.manifest_default;
             let name = item.name.clone();
             let mut guard = guard;
             (move |()| {
-                let action = if let Some(h) = &hash {
-                    ClusterAction::SetArtifactEnabled {
-                        cluster_id,
-                        hash: h.clone(),
-                        enabled: !enabled_now,
-                    }
-                } else if let Some(bundle) = &bundle_name {
-                    ClusterAction::SetBundlePackageEnabled {
-                        cluster_id,
-                        bundle_name: bundle.clone(),
-                        package_id: package_id.clone(),
-                        enabled: !enabled_now,
-                        manifest_default,
-                    }
-                } else {
+                let Some(action) = action.clone() else {
                     return;
                 };
 
@@ -191,25 +192,80 @@ impl Component for PackageRow {
             .into()
         };
 
-        let on_context = has_menu(&item).then(|| self.on_context.clone());
+        let on_context = Some(self.on_context.clone());
 
-        match layout {
-            CardLayout::List => list_card(&item, package_type, cluster_id, icon, on_toggle, on_context),
-            CardLayout::Grid => grid_card(
-                &item,
-                package_type,
-                cluster_id,
-                icon,
-                on_toggle,
-                true,
-                on_context,
-                hovered,
+        let (card, radius) = match layout {
+            CardLayout::List => (
+                list_card(&item, package_type, cluster_id, icon, on_toggle, on_context.clone()),
+                8.,
             ),
-        }
+            CardLayout::Grid => (
+                grid_card(
+                    &item,
+                    package_type,
+                    cluster_id,
+                    icon,
+                    on_toggle,
+                    true,
+                    on_context.clone(),
+                    hovered,
+                ),
+                6.,
+            ),
+        };
+
+        let on_select = self.on_select.clone();
+        let overlay = self.selecting.then(|| {
+            rect()
+                .position(Position::new_absolute().top(0.).left(0.))
+                .width(Size::percent(100.))
+                .height(Size::percent(100.))
+                .layer(Layer::Relative(16))
+                .corner_radius(CornerRadius::new_all(radius))
+                .maybe(self.selected, |el| {
+                    el.background(colors::brand().with_a(28)).border(
+                        border_all_color(2., colors::brand()).alignment(BorderAlignment::Inner),
+                    )
+                })
+                .cursor(CursorIcon::Pointer)
+                .on_press(move |_| on_select.call(()))
+                .on_secondary_down(on_secondary(on_context))
+                .into_element()
+        });
+
+        rect()
+            .width(Size::fill())
+            .height(Size::fill())
+            .child(card)
+            .maybe_child(overlay)
     }
 }
 
-fn disable_warning_body(
+pub(crate) fn toggle_action(
+    item: &PackageEntry,
+    cluster_id: i64,
+    enabled: bool,
+) -> Option<ClusterAction> {
+    if let Some(hash) = &item.hash {
+        Some(ClusterAction::SetArtifactEnabled {
+            cluster_id,
+            hash: hash.clone(),
+            enabled,
+        })
+    } else {
+        item.bundle_name
+            .clone()
+            .map(|bundle_name| ClusterAction::SetBundlePackageEnabled {
+                cluster_id,
+                bundle_name,
+                package_id: item.package_id.clone(),
+                enabled,
+                manifest_default: item.manifest_default,
+            })
+    }
+}
+
+pub(crate) fn disable_warning_body(
     item: &PackageEntry,
     warnings: Option<oneclient_core::DisableWarnings>,
 ) -> Option<String> {
@@ -221,10 +277,6 @@ fn disable_warning_body(
     }
 }
 
-pub fn has_menu(item: &PackageEntry) -> bool {
-    item.is_remote() || item.hash.is_some()
-}
-
 pub fn package_context_menu(
     x: f32,
     y: f32,
@@ -232,8 +284,13 @@ pub fn package_context_menu(
     cluster_id: i64,
     package_type: &'static str,
     on_delete: EventHandler<(String, String)>,
+    on_select: EventHandler<()>,
 ) -> ContextMenu {
-    let mut menu = ContextMenu::new(x, y).title(item.name.clone());
+    let mut menu = ContextMenu::new(x, y).title(item.name.clone()).action(
+        IconType::Check,
+        "Select",
+        on_select,
+    );
 
     if item.is_remote() {
         let provider = item.provider;

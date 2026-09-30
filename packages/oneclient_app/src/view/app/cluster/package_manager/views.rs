@@ -5,11 +5,11 @@ use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, ChevronToggle, FilterMenu, FilterOption, Icon, IconType, LazySection,
-    PackageEntry, PackageRow, ScrollArea, Segment, SegmentedControl, TextInput,
+    Button, CardLayout, ChevronToggle, ContextMenu, FilterMenu, FilterOption, Icon, IconType,
+    LazySection, PackageEntry, PackageRow, ScrollArea, Segment, SegmentedControl, TextInput,
     package_context_menu, use_shared_delete,
 };
-use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch};
+use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::{Actions, utils};
@@ -120,6 +120,131 @@ impl HiddenFilter {
     }
 }
 
+#[derive(Clone, PartialEq)]
+pub(super) struct Bulk {
+    pub(super) selection: Selection<String>,
+    pub(super) order: Vec<String>,
+    pub(super) count: usize,
+    pub(super) deletable: usize,
+    pub(super) set_enabled: EventHandler<bool>,
+    pub(super) delete: EventHandler<()>,
+}
+
+impl Bulk {
+    pub(super) fn active(&self) -> bool {
+        self.selection.is_active()
+    }
+
+    fn all_selected(&self) -> bool {
+        self.count > 0 && self.count == self.order.len()
+    }
+
+    fn toggle_all_label(&self) -> (IconType, &'static str) {
+        if self.all_selected() {
+            (IconType::XClose, "Unselect all")
+        } else {
+            (IconType::Check, "Select all")
+        }
+    }
+
+    fn controls(&self) -> Vec<Element> {
+        let selection = self.selection;
+        let order = self.order.clone();
+        let enable = self.set_enabled.clone();
+        let disable = self.set_enabled.clone();
+        let delete = self.delete.clone();
+        let (toggle_icon, toggle_label) = self.toggle_all_label();
+        let button = |icon: IconType, text: String| {
+            Button::new()
+                .secondary()
+                .height(Size::px(34.))
+                .font_size(12.)
+                .child(Icon::new(icon).size(15.))
+                .text(text)
+        };
+
+        vec![
+            label()
+                .text(format!("{} selected", self.count))
+                .font_size(12.)
+                .max_lines(1)
+                .color(colors::fg_secondary())
+                .into_element(),
+            button(toggle_icon, toggle_label.to_string())
+                .on_press(move |_| selection.toggle_all(&order))
+                .into_element(),
+            button(IconType::CheckCircle, "Enable".to_string())
+                .enabled(self.count > 0)
+                .on_press(move |_| enable.call(true))
+                .into_element(),
+            button(IconType::Minus, "Disable".to_string())
+                .enabled(self.count > 0)
+                .on_press(move |_| disable.call(false))
+                .into_element(),
+            button(IconType::Trash01, format!("Delete ({})", self.deletable))
+                .danger()
+                .enabled(self.deletable > 0)
+                .on_press(move |_| delete.call(()))
+                .into_element(),
+            Button::new()
+                .ghost()
+                .icon()
+                .height(Size::px(34.))
+                .tooltip("Exit select mode")
+                .on_press(move |_| selection.exit())
+                .child(Icon::new(IconType::XClose).size(15.))
+                .into_element(),
+        ]
+    }
+
+    fn menu(&self, x: f32, y: f32, key: String) -> ContextMenu {
+        let selection = self.selection;
+        let order = self.order.clone();
+        let enable = self.set_enabled.clone();
+        let disable = self.set_enabled.clone();
+        let delete = self.delete.clone();
+        let (toggle_icon, toggle_label) = self.toggle_all_label();
+
+        let (icon, text) = if selection.is_selected(&key) {
+            (IconType::XClose, "Unselect")
+        } else {
+            (IconType::Check, "Select")
+        };
+
+        let mut menu = ContextMenu::new(x, y)
+            .title(format!("{} selected", self.count))
+            .action(icon, text, move |()| selection.toggle(key.clone()))
+            .separator();
+        if self.count > 0 {
+            menu = menu
+                .action(IconType::CheckCircle, "Enable Selected", move |()| {
+                    enable.call(true)
+                })
+                .action(IconType::Minus, "Disable Selected", move |()| {
+                    disable.call(false)
+                })
+                .separator();
+        }
+        menu = menu.action(toggle_icon, toggle_label, move |()| {
+            selection.toggle_all(&order)
+        });
+        if self.count > 0 && !self.all_selected() {
+            menu = menu.action(IconType::XClose, "Clear selection", move |()| {
+                selection.clear()
+            });
+        }
+
+        if self.deletable == 0 {
+            return menu;
+        }
+        menu.separator().danger_action(
+            IconType::Trash01,
+            format!("Delete {}", self.deletable),
+            move |()| delete.call(()),
+        )
+    }
+}
+
 const TOOLBAR_STACK_W: f32 = 640.;
 const TABS_ROW_H: f32 = 34.;
 
@@ -147,6 +272,7 @@ pub(super) fn toolbar_bar(
     cluster_id: i64,
     package_type: &'static str,
     mut toolbar_width: State<f32>,
+    bulk: &Bulk,
 ) -> impl IntoElement {
     let chips = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
@@ -226,6 +352,11 @@ pub(super) fn toolbar_bar(
             .text("Add Content")
             .into_element(),
     );
+    let controls = if bulk.active() {
+        bulk.controls()
+    } else {
+        controls
+    };
 
     let inner = if stacked {
         rect()
@@ -514,7 +645,7 @@ pub(super) struct AdvancedSection {
 }
 
 impl AdvancedSection {
-    fn expanded(self) -> bool {
+    pub(super) fn expanded(self) -> bool {
         self.forced || *self.open.read()
     }
 }
@@ -581,6 +712,7 @@ pub(super) struct ContentBox {
     cluster_id: i64,
     kind: ContentKind,
     layout: CardLayout,
+    bulk: Bulk,
     notices: Vec<String>,
 }
 
@@ -596,6 +728,7 @@ impl ContentBox {
         cluster_id: i64,
         kind: ContentKind,
         layout: CardLayout,
+        bulk: Bulk,
     ) -> Self {
         Self {
             items,
@@ -607,6 +740,7 @@ impl ContentBox {
             cluster_id,
             kind,
             layout,
+            bulk,
             notices: Vec::new(),
         }
     }
@@ -641,14 +775,30 @@ impl Component for ContentBox {
             cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
         });
 
+        let bulk = self.bulk.clone();
+        let selection = bulk.selection;
+        let active = bulk.active();
+        let selecting = active || selection.modifier_held();
+        let selected: Vec<bool> = items
+            .iter()
+            .map(|p| selection.is_selected(&p.package_id))
+            .collect();
+
         let row = {
             let items = items.clone();
+            let order = bulk.order.clone();
             move |i: usize| {
                 let item: PackageEntry = items[i].clone();
                 let key = item.package_id.clone();
                 let for_menu = item.clone();
+                let is_selected = selected[i];
+                let order = order.clone();
+                let click_key = key.clone();
                 PackageRow::new(item, cluster_id, package_type)
                     .layout(layout)
+                    .selection(is_selected, selecting, move |()| {
+                        selection.click(click_key.clone(), &order)
+                    })
                     .on_context(move |(x, y)| menu.set(Some((x, y, for_menu.clone()))))
                     .key(key)
                     .into_element()
@@ -696,9 +846,21 @@ impl Component for ContentBox {
         });
 
         let menu_overlay = menu.read().clone().map(|(x, y, item)| {
-            package_context_menu(x, y, &item, cluster_id, package_type, on_delete)
-                .on_close(move |_| menu.set(None))
-                .into_element()
+            let menu_for = if bulk.active() {
+                bulk.menu(x, y, item.package_id.clone())
+            } else {
+                let key = item.package_id.clone();
+                package_context_menu(
+                    x,
+                    y,
+                    &item,
+                    cluster_id,
+                    package_type,
+                    on_delete,
+                    (move |()| selection.toggle(key.clone())).into(),
+                )
+            };
+            menu_for.on_close(move |_| menu.set(None)).into_element()
         });
 
         let empty = (count == 0).then(|| match kind {

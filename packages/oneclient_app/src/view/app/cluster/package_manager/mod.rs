@@ -8,12 +8,22 @@ use oneclient_core::{
 };
 use oneclient_db::models::OverrideType;
 
-use crate::components::{CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry};
-use crate::hooks::{package_meta_batch, use_game_snapshot, use_package_meta_batch, use_view_state};
+use crate::components::{
+    CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry, disable_warning_body,
+    toggle_action,
+};
+use crate::hooks::{
+    ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings, package_meta_batch,
+    use_cluster_mutation, use_disable_warnings, use_essential_guard, use_game_snapshot,
+    use_package_meta_batch, use_selection, use_view_state,
+};
+
+use super::folder_list::confirm_dialog;
 
 mod views;
 use views::{
-    AdvancedSection, ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode, toolbar_bar,
+    AdvancedSection, Bulk, ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode,
+    toolbar_bar,
 };
 pub(super) use views::{empty_hint, empty_shell, empty_title, notice_bar};
 
@@ -466,6 +476,11 @@ impl Component for PackageManager {
         let hidden_filter = use_state(|| HiddenFilter::Hide);
         let advanced_open = use_state(|| false);
         let toolbar_width = use_state(|| 0f32);
+        let selection = use_selection::<String>();
+        let mutation = use_cluster_mutation();
+        let mut guard = use_essential_guard();
+        let warnings_query = use_disable_warnings();
+        let mut confirm_delete = use_state(|| false);
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
@@ -532,7 +547,109 @@ impl Component for PackageManager {
 
         let (advanced, filtered): (Vec<_>, Vec<_>) = filtered.into_iter().partition(|p| p.advanced);
 
-        rect()
+        let section = AdvancedSection {
+            open: advanced_open,
+            forced: !query.is_empty(),
+        };
+        let shown: Vec<&PackageEntry> = filtered
+            .iter()
+            .chain(advanced.iter().filter(|_| section.expanded()))
+            .collect();
+        let order: Vec<String> = shown.iter().map(|p| p.package_id.clone()).collect();
+        let chosen: Vec<PackageEntry> = shown
+            .into_iter()
+            .filter(|p| selection.is_selected(&p.package_id))
+            .cloned()
+            .collect();
+        let deletable: Vec<String> = chosen
+            .iter()
+            .filter(|p| p.installed && !p.in_bundle())
+            .filter_map(|p| p.hash.clone())
+            .collect();
+
+        let set_enabled: EventHandler<bool> = {
+            let chosen = chosen.clone();
+            let warnings = disable_warnings(&warnings_query);
+            (move |enabled: bool| {
+                let targets: Vec<&PackageEntry> =
+                    chosen.iter().filter(|p| p.enabled != enabled).collect();
+                let actions: Vec<ClusterAction> = targets
+                    .iter()
+                    .filter_map(|p| toggle_action(p, cluster_id, enabled))
+                    .collect();
+                if actions.is_empty() {
+                    return;
+                }
+                let action = ClusterAction::Batch(actions);
+
+                let warned: Vec<String> = targets
+                    .iter()
+                    .filter(|_| !enabled)
+                    .filter_map(|p| {
+                        disable_warning_body(p, warnings.clone())
+                            .map(|body| format!("**{}**\n\n{body}", p.name))
+                    })
+                    .collect();
+                if warned.is_empty() {
+                    mutation.mutate(action);
+                    return;
+                }
+                guard.set(Some(PendingEssential {
+                    name: match targets.as_slice() {
+                        [only] => only.name.clone(),
+                        _ => format!("{} {noun_plural}", targets.len()),
+                    },
+                    body: warned.join("\n\n"),
+                    kind: EssentialGuardKind::Disable,
+                    action,
+                }));
+            })
+            .into()
+        };
+
+        let bulk = Bulk {
+            selection,
+            order,
+            count: chosen.len(),
+            deletable: deletable.len(),
+            set_enabled,
+            delete: (move |()| confirm_delete.set(true)).into(),
+        };
+
+        let delete_dialog = confirm_delete.read().then(|| {
+            let count = deletable.len();
+            let noun = if count == 1 {
+                package_type
+            } else {
+                noun_plural
+            };
+            let shared = if shares_content == Some(true) {
+                format!(" Shared {noun_plural} are deleted from every cluster that uses them.")
+            } else {
+                String::new()
+            };
+            confirm_dialog(
+                format!("Delete {count} {noun}?"),
+                format!("This can't be undone.{shared}"),
+                move || confirm_delete.set(false),
+                move || {
+                    mutation.mutate(ClusterAction::Batch(
+                        deletable
+                            .iter()
+                            .map(|hash| ClusterAction::RemoveArtifact {
+                                cluster_id,
+                                hash: hash.clone(),
+                            })
+                            .collect(),
+                    ));
+                    selection.exit();
+                    confirm_delete.set(false);
+                },
+            )
+        });
+
+        selection
+            .track_modifiers(rect())
             .vertical()
             .width(Size::fill())
             .height(Size::fill())
@@ -550,23 +667,23 @@ impl Component for PackageManager {
                 cluster_id,
                 package_type,
                 toolbar_width,
+                &bulk,
             ))
             .child(
                 ContentBox::new(
                     filtered,
                     advanced,
-                    AdvancedSection {
-                        open: advanced_open,
-                        forced: !query.is_empty(),
-                    },
+                    section,
                     noun_plural,
                     package_type,
                     content_type,
                     cluster_id,
                     content_kind,
                     card_layout,
+                    bulk,
                 )
                 .notices(notices),
             )
+            .maybe_child(delete_dialog)
     }
 }

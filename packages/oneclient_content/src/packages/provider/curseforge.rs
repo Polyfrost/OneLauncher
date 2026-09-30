@@ -552,7 +552,8 @@ struct CfFile {
     #[serde(default)]
     hashes: Vec<CfHash>,
     file_fingerprint: u32,
-    download_url: String,
+    #[serde(default)]
+    download_url: Option<String>,
     file_length: u64,
     #[serde(default)]
     dependencies: Vec<CfDependency>,
@@ -737,7 +738,7 @@ impl From<CfFile> for VersionDetail {
             downloads: f.download_count,
             files: vec![VersionFile {
                 sha1,
-                url: f.download_url,
+                url: f.download_url.unwrap_or_default(),
                 file_name: f.file_name,
                 primary: true,
                 size: f.file_length,
@@ -861,5 +862,27 @@ mod tests {
         assert_eq!(version.dependencies[1].kind, DependencyKind::Optional);
         assert_eq!(version.dependencies[2].kind, DependencyKind::Incompatible);
         assert_eq!(version.dependencies[3].kind, DependencyKind::Embedded);
+    }
+
+    #[test]
+    fn a_distribution_blocked_file_still_parses() {
+        let raw = serde_json::json!({
+            "id": 1,
+            "modId": 2,
+            "displayName": "Blocked",
+            "fileName": "blocked.jar",
+            "releaseType": 1,
+            "fileDate": "2025-01-01T00:00:00Z",
+            "downloadCount": 10,
+            "fileFingerprint": 123,
+            "downloadUrl": null,
+            "fileLength": 100
+        });
+
+        let version: VersionDetail = serde_json::from_value::<CfFile>(raw)
+            .expect("curseforge file")
+            .into();
+
+        assert_eq!(version.files[0].url, "");
     }
 }

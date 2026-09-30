@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use freya::prelude::*;
-use oneclient_cluster::naming::validate_instance_name;
+use oneclient_cluster::naming::{MAX_NAME_CHARS, validate_instance_name};
 use oneclient_core::BundleArchive;
 
 use super::cards::{
@@ -11,7 +11,7 @@ use super::cards::{
 };
 use super::data::Picks;
 use super::details::details_body;
-use super::model::{LoaderChoice, Step, TypeChoice, Wizard};
+use super::model::{LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard};
 use super::model::{VERSION_KINDS, kind_bit};
 use super::rail::version_art;
 use crate::components::{
@@ -27,6 +27,7 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
         Step::Loader => ("step-loader", loader_step(wizard, picks)),
         Step::Version => ("step-version", version_step(wizard, picks)),
         Step::Bundles => ("step-bundles", bundles_step(wizard, picks)),
+        Step::Modpack => ("step-modpack", modpack_step(wizard, picks)),
         Step::Customize => (
             "step-details",
             details_body(
@@ -35,6 +36,7 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
                 None,
                 version_art(picks.versions.chosen.as_deref(), picks.loader.chosen),
                 validate_instance_name(&picks.name).err(),
+                Some(MAX_NAME_CHARS),
             ),
         ),
     };
@@ -69,6 +71,14 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
             "Pick a loader and a version and build the instance yourself. Packages can be added once it exists.",
             "Fabric, Forge, NeoForge, or no loader at all. Keeps its own game folder.",
         ),
+        (
+            TypeChoice::Modpack,
+            IconType::DownloadCloud02,
+            "Modpack",
+            None,
+            "Install a ready-made pack from Modrinth or CurseForge, or one you already downloaded. Its version, loader, mods and configs come with it.",
+            "Modrinth .mrpack or CurseForge .zip. Keeps its own game folder.",
+        ),
     ];
 
     rect()
@@ -95,6 +105,43 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
                     })
                 }),
         )
+        .into_element()
+}
+
+fn modpack_step(wizard: Wizard, picks: &Picks) -> Element {
+    let cards = [
+        (
+            ModpackOrigin::Browse,
+            IconType::Globe01,
+            "Browse modpacks",
+            "Search Modrinth and CurseForge. Installing a pack from there creates its instance.",
+            "Opens the browser on the Modpacks tab.",
+        ),
+        (
+            ModpackOrigin::File,
+            IconType::File02,
+            "Import a file",
+            "Use a modpack you already downloaded or got from someone else.",
+            "Modrinth .mrpack or CurseForge .zip.",
+        ),
+    ];
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .children(cards.into_iter().map(|(origin, icon, title, blurb, meta)| {
+            let mut chosen = wizard.modpack_origin;
+            wide_card(WideCard {
+                icon,
+                title: title.to_string(),
+                badge: None,
+                blurb: blurb.to_string(),
+                meta: meta.to_string(),
+                selected: picks.modpack_origin == origin,
+                on_press: (move |()| chosen.set(origin)).into(),
+            })
+        }))
         .into_element()
 }
 

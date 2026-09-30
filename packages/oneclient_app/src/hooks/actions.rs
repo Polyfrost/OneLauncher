@@ -3,6 +3,9 @@
 //! Always `spawn_forever` never `spawn` Freya's `spawn` cancels the task when
 //! the calling component unmounts this work is app-scoped not component-scoped
 
+mod modpacks;
+
+pub use modpacks::modpack_job_running;
 mod release_migration;
 
 use std::collections::HashMap;
@@ -989,6 +992,13 @@ impl Actions {
     }
 
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
+        if modpack_job_running(cluster_id) {
+            self.notify("The modpack is still being set up")
+                .body("Wait for it to finish installing, then press Play again.")
+                .send();
+            return;
+        }
+
         let claimed = self
             .station
             .clone()

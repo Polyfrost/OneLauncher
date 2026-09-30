@@ -4,7 +4,6 @@ pub mod dependencies;
 pub mod error;
 pub mod local_manifest;
 pub mod metadata_cache;
-pub mod modpack;
 pub mod provider;
 pub mod release_migration;
 pub mod store;

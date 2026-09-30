@@ -25,7 +25,8 @@ pub use active_cluster::{
     use_provide_start_maximized, use_splash, use_start_maximized,
 };
 
-pub use actions::{Actions, NotificationBuilder, PumpSignal};
+pub use actions::{Actions, NotificationBuilder, PumpSignal, modpack_job_running};
+pub(crate) use queries::use_folder_watch;
 pub use queries::{
     AddOfflineAccountKeys, AvailableBundlesQuery, BROWSE_PAGE_SIZE, BeginMicrosoftLoginMutation,
     CachedImageQuery, CancelMicrosoftLoginKeys, CancelMicrosoftLoginMutation, ClusterAction,

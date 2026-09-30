@@ -458,6 +458,16 @@ async fn store_local_file(
 ) -> ContentResult<ArtifactRow> {
     ensure_takes_mods(content_type, cluster)?;
 
+    let row = cache_local_file(path, content_type, ctx).await?;
+    PackageStore::link_artifact(&row, cluster, None, ctx).await?;
+    Ok(row)
+}
+
+pub async fn cache_local_file(
+    path: &Path,
+    content_type: ContentType,
+    ctx: &ContentCtx,
+) -> ContentResult<ArtifactRow> {
     let file_name = path
         .file_name()
         .and_then(|name| name.to_str())
@@ -466,8 +476,9 @@ async fn store_local_file(
 
     let hash = normalize_hash(&sha1_file(path).await?);
 
-    if let Some(row) = artifact_dao::get_artifact_by_hash(&ctx.db, &hash).await? {
-        PackageStore::link_artifact(&row, cluster, None, ctx).await?;
+    if let Some(row) = artifact_dao::get_artifact_by_hash(&ctx.db, &hash).await?
+        && artifact_absolute_path(&row.path)?.exists()
+    {
         return Ok(row);
     }
 
@@ -486,7 +497,7 @@ async fn store_local_file(
     let size = polyio::stat(&dest).await?.len();
     let stored_path = relative_cache_path(&dest)?;
 
-    let row = artifact_dao::insert_artifact(
+    artifact_dao::insert_artifact(
         &ctx.db,
         &hash,
         content_type as i64,
@@ -494,10 +505,8 @@ async fn store_local_file(
         &file_name,
         Some(size as i64),
     )
-    .await?;
-
-    PackageStore::link_artifact(&row, cluster, None, ctx).await?;
-    Ok(row)
+    .await
+    .map_err(Into::into)
 }
 
 /// A dropped file arrives as a file name and nothing else so it is worth

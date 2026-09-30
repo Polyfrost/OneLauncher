@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::ContentResult;
 use oneclient_events::EventBus;
-use polyio::{sha1_bytes, sha1_file};
+use polyio::{ZipEntryCursor, sha1_bytes, sha1_file};
 
 const ALWAYS_UPDATE_GLOBS: &[&str] = &["config/fabric_loader_dependencies.json"];
 
@@ -71,20 +71,98 @@ async fn sync_bundle_overrides_at(
     root: &Path,
     events: Option<&EventBus>,
 ) -> ContentResult<OverrideSyncReport> {
-    let entries =
-        polyio::read_zip_file_entries(archive_path, |name| name.starts_with(OVERRIDES_PREFIX))
-            .await?;
+    sync_layered_overrides(
+        archive_path,
+        bundle_name,
+        root,
+        &[OVERRIDES_PREFIX],
+        &|_| true,
+        events,
+    )
+    .await
+}
+
+pub(crate) struct OverrideLayers {
+    cursor: ZipEntryCursor,
+    entries: Vec<(String, String)>,
+}
+
+impl OverrideLayers {
+    pub(crate) async fn open(archive_path: &Path, prefixes: &[&str]) -> ContentResult<Self> {
+        let layer_of = |name: &str| prefixes.iter().position(|prefix| name.starts_with(prefix));
+        let cursor = ZipEntryCursor::open(archive_path, |name| layer_of(name).is_some()).await?;
+
+        let mut winners: HashMap<String, (usize, String)> = HashMap::new();
+        for name in cursor.names() {
+            let Some(layer) = layer_of(name) else {
+                continue;
+            };
+            let rel = &name[prefixes[layer].len()..];
+            if rel.is_empty() {
+                continue;
+            }
+            let replaces = winners
+                .get(rel)
+                .is_none_or(|(current, _)| layer >= *current);
+            if replaces {
+                winners.insert(rel.to_string(), (layer, name.clone()));
+            }
+        }
+
+        let mut entries: Vec<(String, String)> = winners
+            .into_iter()
+            .map(|(rel, (_, name))| (rel, name))
+            .collect();
+        entries.sort();
+
+        Ok(Self { cursor, entries })
+    }
+
+    pub(crate) fn entries(&self) -> &[(String, String)] {
+        &self.entries
+    }
+
+    pub(crate) async fn read(&mut self, entry: &str) -> Option<Vec<u8>> {
+        match self.cursor.read(entry).await {
+            Ok(bytes) => Some(bytes),
+            Err(err) => {
+                tracing::warn!(entry, error = %err, "skipping an override that could not be read");
+                None
+            }
+        }
+    }
+}
+
+#[tracing::instrument(level = "debug", skip(keep, events))]
+pub(crate) async fn sync_layered_overrides(
+    archive_path: &Path,
+    bundle_name: &str,
+    root: &Path,
+    prefixes: &[&str],
+    keep: &(dyn Fn(&str) -> bool + Sync),
+    events: Option<&EventBus>,
+) -> ContentResult<OverrideSyncReport> {
+    let mut layers = OverrideLayers::open(archive_path, prefixes).await?;
+    let entries: Vec<(String, String)> = layers
+        .entries()
+        .iter()
+        .filter(|(rel, _)| keep(rel))
+        .cloned()
+        .collect();
 
     let mut lock = OverrideLock::load(root).await;
     let previous = lock.bundles.remove(bundle_name).unwrap_or_default();
     let mut next: HashMap<String, String> = HashMap::new();
     let mut report = OverrideSyncReport::default();
 
-    for (name, bytes) in entries {
-        let rel = name.trim_start_matches(OVERRIDES_PREFIX);
-        if rel.is_empty() {
+    for (rel, entry) in entries {
+        let rel = rel.as_str();
+        let Some(bytes) = layers.read(&entry).await else {
+            if let Some(base) = previous.get(rel) {
+                next.insert(rel.to_string(), base.clone());
+            }
             continue;
-        }
+        };
 
         let new_sha1 = sha1_bytes(&bytes);
         let dest = root.join(polyio::sanitize_path(rel));
@@ -164,6 +242,42 @@ async fn sync_bundle_overrides_at(
     }
 
     Ok(report)
+}
+
+pub(crate) async fn sync_file_lock(
+    root: &Path,
+    key: &str,
+    written: HashMap<String, String>,
+    listed: &std::collections::HashSet<String>,
+) -> Vec<String> {
+    let mut lock = OverrideLock::load(root).await;
+    let previous = lock.bundles.remove(key).unwrap_or_default();
+    let mut next = written;
+    let mut deleted = Vec::new();
+
+    for (rel, base_sha1) in previous {
+        if next.contains_key(&rel) {
+            continue;
+        }
+        if listed.contains(&rel) {
+            next.insert(rel, base_sha1);
+            continue;
+        }
+
+        let dest = root.join(polyio::sanitize_path(&rel));
+        if current_sha1(&dest).await.as_deref() == Some(base_sha1.as_str())
+            && polyio::remove_file(&dest).await.is_ok()
+        {
+            deleted.push(rel);
+        }
+    }
+
+    lock.bundles.insert(key.to_string(), next);
+    if let Err(err) = lock.save(root).await {
+        tracing::warn!(error = %err, "failed to persist the file lock");
+    }
+
+    deleted
 }
 
 async fn write_override(dest: &Path, bytes: &[u8], rel: &str) -> bool {
@@ -314,6 +428,115 @@ mod tests {
         sync_bundle_overrides_at(zip, "test-bundle", root, None)
             .await
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_later_layer_wins_over_an_earlier_one() {
+        let root = polyio::testing::ScratchDir::new("layers");
+        let zip = root.join("pack.mrpack");
+        write_bundle(
+            &zip,
+            &[
+                ("client-overrides/options.txt", b"client"),
+                ("overrides/options.txt", b"common"),
+                ("overrides/config/a.toml", b"alpha"),
+                ("server-overrides/server.properties", b"server"),
+            ],
+        )
+        .await;
+
+        let report = sync_layered_overrides(
+            &zip,
+            "test-pack",
+            root.path(),
+            &["overrides/", "client-overrides/"],
+            &|_| true,
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report.written.len(), 2);
+        assert_eq!(read(&root.join("options.txt")).await.unwrap(), b"client");
+        assert_eq!(read(&root.join("config/a.toml")).await.unwrap(), b"alpha");
+        assert!(read(&root.join("server.properties")).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn entries_the_filter_rejects_are_left_alone() {
+        let root = polyio::testing::ScratchDir::new("keep-filter");
+        let zip = root.join("pack.mrpack");
+        write_bundle(
+            &zip,
+            &[
+                ("overrides/mods/bundled.jar", b"jar"),
+                ("overrides/config/a.toml", b"alpha"),
+            ],
+        )
+        .await;
+
+        let report = sync_layered_overrides(
+            &zip,
+            "test-pack",
+            root.path(),
+            &["overrides/"],
+            &|rel| !rel.starts_with("mods/"),
+            None,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(report.written, vec!["config/a.toml".to_string()]);
+        assert!(read(&root.join("mods/bundled.jar")).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn a_file_dropped_from_the_lock_is_deleted_only_when_untouched() {
+        let root = polyio::testing::ScratchDir::new("file-lock");
+        polyio::write(root.join("config/kept.json"), b"mine")
+            .await
+            .unwrap();
+        polyio::write(root.join("config/gone.json"), b"pack")
+            .await
+            .unwrap();
+        polyio::write(root.join("config/edited.json"), b"edited")
+            .await
+            .unwrap();
+
+        let first: HashMap<String, String> = [
+            ("config/kept.json", b"mine".as_slice()),
+            ("config/gone.json", b"pack".as_slice()),
+            ("config/edited.json", b"pack".as_slice()),
+        ]
+        .into_iter()
+        .map(|(rel, bytes)| (rel.to_string(), sha1_bytes(bytes)))
+        .collect();
+        sync_file_lock(root.path(), "files", first, &Default::default()).await;
+
+        let listed = ["config/kept.json".to_string()].into_iter().collect();
+        let deleted = sync_file_lock(root.path(), "files", HashMap::new(), &listed).await;
+
+        assert_eq!(deleted, vec!["config/gone.json".to_string()]);
+        assert!(read(&root.join("config/kept.json")).await.is_some());
+        assert!(read(&root.join("config/edited.json")).await.is_some());
+    }
+
+    #[tokio::test]
+    async fn a_large_override_is_not_skipped() {
+        let root = polyio::testing::ScratchDir::new("large-override");
+        let zip = root.join("pack.mrpack");
+        let big = vec![7u8; 17 * 1024 * 1024];
+        write_bundle(&zip, &[("overrides/resourcepacks/big.zip", big.as_slice())]).await;
+
+        let report = sync(&zip, root.path()).await;
+
+        assert_eq!(report.written, vec!["resourcepacks/big.zip".to_string()]);
+        assert_eq!(
+            read(&root.join("resourcepacks/big.zip"))
+                .await
+                .map(|bytes| bytes.len()),
+            Some(big.len())
+        );
     }
 
     #[tokio::test]

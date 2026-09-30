@@ -24,6 +24,7 @@ use crate::view::app::settings::{section_header, settings_row, settings_row_disa
 use oneclient_core::clusters::rank_migration_sources;
 
 use super::cluster_not_found;
+use super::modpack_settings::{ModpackRepairRow, ModpackUpdateRow};
 use crate::hooks::use_cluster;
 
 #[derive(PartialEq)]
@@ -78,6 +79,7 @@ impl Component for ClusterSettings {
                     mc_version: cluster.mc_version.clone(),
                     mc_loader: cluster.mc_loader,
                     kind: cluster.kind,
+                    modpack: cluster.linked_modpack_hash.is_some(),
                 },
             }
             .into_element()
@@ -100,6 +102,16 @@ impl Component for ClusterSettings {
         };
         let migrate_row: Vec<Element> = if mod_loader {
             vec![MigrateFromRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
+
+        let modpack_section: Vec<Element> = if cluster.linked_modpack_hash.is_some() {
+            vec![
+                section_header("MODPACK").into_element(),
+                ModpackUpdateRow { cluster_id }.into_element(),
+                ModpackRepairRow { cluster_id }.into_element(),
+            ]
         } else {
             Vec::new()
         };
@@ -176,6 +188,7 @@ impl Component for ClusterSettings {
                         .into_element(),
                     )
                     .append_children(migrate_row)
+                    .append_children(modpack_section)
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element()),
             )

@@ -1,5 +1,6 @@
 #![recursion_limit = "256"]
 pub mod bundles;
+pub mod modpacks;
 pub mod packages;
 
 mod ctx;

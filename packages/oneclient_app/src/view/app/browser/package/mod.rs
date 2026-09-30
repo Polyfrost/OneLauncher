@@ -3,6 +3,7 @@ use std::collections::HashMap;
 
 use oneclient_content::packages::types::DependencyKind;
 use oneclient_content::packages::{ContentType, ProviderId};
+use oneclient_core::clusters::ModpackSource;
 
 use crate::components::{ScrollArea, use_shared_delete};
 use crate::hooks::use_cluster;
@@ -38,10 +39,20 @@ struct Installer {
     cluster_id: i64,
     provider: ProviderId,
     world_prompt: Option<State<Option<String>>>,
+    modpack: bool,
 }
 
 impl Installer {
     fn install(&self, project_id: String, version_id: String) {
+        if self.modpack {
+            self.dispatch.install_modpack(ModpackSource::Provider {
+                provider: self.provider,
+                project_id,
+                version_id,
+            });
+            return;
+        }
+
         match self.world_prompt {
             Some(mut prompt) => prompt.set(Some(version_id)),
             None => self.dispatch.install_package(
@@ -143,11 +154,13 @@ impl Component for BrowserPackage {
             cluster_id,
             provider,
             world_prompt: is_datapack.then_some(world_prompt),
+            modpack: content_type == ContentType::Modpack,
         };
 
         let cluster = use_cluster(cluster_id);
         let compat = *compatible_only.read();
-        let (game_version, loader) = match (compat, &cluster) {
+        let narrows = content_type != ContentType::Modpack;
+        let (game_version, loader) = match (compat && narrows, &cluster) {
             (true, Some(c)) => (
                 Some(c.mc_version.clone()),
                 (content_type == ContentType::Mod).then_some(c.mc_loader),
@@ -173,7 +186,12 @@ impl Component for BrowserPackage {
             *versions_page.read(),
         );
 
-        let installing = use_installs_snapshot().is_installing(cluster_id, provider, &project_id);
+        let (installing, waiting) = use_installs_snapshot().package_busy(
+            content_type == ContentType::Modpack,
+            cluster_id,
+            provider,
+            &project_id,
+        );
 
         let installed = installed_map(
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
@@ -234,7 +252,7 @@ impl Component for BrowserPackage {
                 installer.clone(),
                 on_remove,
                 installed.clone(),
-                installing,
+                installing || waiting,
             )
             .into_element(),
             (Some(_), _) => gallery_panel(gallery).into_element(),
@@ -253,6 +271,7 @@ impl Component for BrowserPackage {
                 confirm,
                 installed,
                 installing,
+                waiting,
             ))
             .child(
                 rect()

@@ -62,6 +62,7 @@ pub use changelog::{
 pub use cluster_content::{cluster_content_items, use_cluster_content};
 pub use clusters::{use_cluster, use_clusters};
 pub use disable_warnings::{DisableWarningsQuery, disable_warnings, use_disable_warnings};
+pub(crate) use folder_watch::use_folder_watch;
 pub use image::{CachedImageQuery, loaded_image, use_cached_image};
 pub use java::{
     invalidate_java_queries, java_runtimes, provider_versions, use_java_runtimes,

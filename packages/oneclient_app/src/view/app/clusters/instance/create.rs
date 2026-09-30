@@ -1,8 +1,9 @@
 use std::collections::HashSet;
 
 use freya::prelude::*;
+use freya::router::RouterContext;
 use oneclient_core::GameVersionKind;
-use oneclient_core::clusters::ClusterKind;
+use oneclient_core::clusters::{ClusterKind, ModpackSource};
 
 use super::copy::{footer_note, heading, is_ready, step_value};
 use super::data::{Picks, resolve};
@@ -11,7 +12,15 @@ use super::model::*;
 use super::rail::{Rail, RowState, rail, steps_card, version_art};
 use super::shell::{Shell, shell};
 use super::steps;
-use crate::hooks::{ClusterAction, use_cluster_mutation};
+use crate::Route;
+use crate::hooks::{
+    ClusterAction, settled_or_loading, use_active_cluster_id, use_cluster_mutation, use_clusters,
+    use_dispatch,
+};
+use crate::utils::default_cluster;
+
+const MODPACK_BROWSE_TYPE: &str = "modpack";
+const MODPACK_EXTENSIONS: [&str; 2] = ["mrpack", "zip"];
 
 fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
     let mc_version = picks.versions.chosen.clone()?;
@@ -51,6 +60,7 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
                 Some(version) => format!("{version} · {}", picks.loader_label()),
                 None => picks.loader_label(),
             },
+            TypeChoice::Modpack => "Modpack".to_string(),
         }
     } else {
         description
@@ -77,8 +87,12 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
         })
         .collect();
 
-    let art = version_art(picks.versions.chosen.as_deref(), picks.loader.chosen)
-        .picked_cover(wizard.details.cover.read().clone());
+    let art = if picks.choice == TypeChoice::Modpack {
+        version_art(None, None)
+    } else {
+        version_art(picks.versions.chosen.as_deref(), picks.loader.chosen)
+    }
+    .picked_cover(wizard.details.cover.read().clone());
 
     rail(Rail {
         art,
@@ -118,8 +132,11 @@ impl Component for CreateInstanceModal {
             loader: use_state(|| LoaderChoice::Fabric),
             loader_version: use_state(|| None::<String>),
             declined: use_state(|| None::<HashSet<String>>),
+            modpack_origin: use_state(|| ModpackOrigin::Browse),
             details: DetailsState::blank(),
         };
+        let dispatch = use_dispatch();
+        let browse_cluster = browse_cluster();
 
         let picks = resolve(wizard);
         let action = create_action(wizard, &picks);
@@ -127,6 +144,8 @@ impl Component for CreateInstanceModal {
 
         let first = picks.index == 0;
         let last = picks.step == Step::Customize;
+        let modpack_step = picks.step == Step::Modpack;
+        let origin = picks.modpack_origin;
         let index = picks.index;
         let mut step = wizard.step;
         let mut query = wizard.query;
@@ -134,6 +153,7 @@ impl Component for CreateInstanceModal {
         let close_x = self.on_close.clone();
         let close_cancel = self.on_close.clone();
         let close_created = self.on_close.clone();
+        let close_modpack = self.on_close.clone();
 
         shell(Shell {
             rail: wizard_rail(wizard, &picks),
@@ -144,7 +164,13 @@ impl Component for CreateInstanceModal {
             scrolls_itself: picks.step == Step::Version,
             note: footer_note(&picks),
             secondary_label: if first { "Cancel" } else { "Back" }.to_string(),
-            primary_label: if last { "Create instance" } else { "Next" }.to_string(),
+            primary_label: match (modpack_step, origin) {
+                (true, ModpackOrigin::Browse) => "Browse modpacks",
+                (true, ModpackOrigin::File) => "Choose file",
+                (false, _) if last => "Create instance",
+                (false, _) => "Next",
+            }
+            .to_string(),
             primary_enabled: is_ready(&picks),
             on_close: (move |()| close_x.call(())).into(),
             on_secondary: (move |()| {
@@ -156,7 +182,14 @@ impl Component for CreateInstanceModal {
             })
             .into(),
             on_primary: (move |()| {
-                if last {
+                if modpack_step {
+                    start_modpack(
+                        origin,
+                        browse_cluster,
+                        dispatch.clone(),
+                        close_modpack.clone(),
+                    );
+                } else if last {
                     if let Some(action) = action.clone() {
                         mutation.mutate(action);
                         close_created.call(());
@@ -168,5 +201,46 @@ impl Component for CreateInstanceModal {
             })
             .into(),
         })
+    }
+}
+
+fn browse_cluster() -> i64 {
+    let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
+    let active = *use_active_cluster_id().read();
+
+    default_cluster(clusters, active)
+        .map(|cluster| cluster.id)
+        .unwrap_or_default()
+}
+
+fn start_modpack(
+    origin: ModpackOrigin,
+    cluster_id: i64,
+    dispatch: crate::Actions,
+    on_close: EventHandler<()>,
+) {
+    match origin {
+        ModpackOrigin::Browse => {
+            on_close.call(());
+            let _ = RouterContext::get().push(Route::Browser {
+                cluster_id,
+                package_type: MODPACK_BROWSE_TYPE.to_string(),
+                pick_cluster: true,
+            });
+        }
+        ModpackOrigin::File => {
+            spawn(async move {
+                let Some(handle) = rfd::AsyncFileDialog::new()
+                    .set_title("Choose a modpack")
+                    .add_filter("Modpack", &MODPACK_EXTENSIONS)
+                    .pick_file()
+                    .await
+                else {
+                    return;
+                };
+                dispatch.install_modpack(ModpackSource::File(handle.path().to_path_buf()));
+                on_close.call(());
+            });
+        }
     }
 }

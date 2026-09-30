@@ -27,6 +27,13 @@ pub fn kind_bit(kind: GameVersionKind) -> u8 {
 pub enum TypeChoice {
     OneClient,
     Scratch,
+    Modpack,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ModpackOrigin {
+    Browse,
+    File,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -110,6 +117,7 @@ pub enum Step {
     Version,
     Bundles,
     Customize,
+    Modpack,
 }
 
 impl Step {
@@ -120,17 +128,20 @@ impl Step {
             Self::Version => "Version",
             Self::Bundles => "Bundles",
             Self::Customize => "Details",
+            Self::Modpack => "Source",
         }
     }
 }
 
 const ONECLIENT_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Bundles, Step::Customize];
 const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Loader, Step::Customize];
+const MODPACK_STEPS: [Step; 2] = [Step::Type, Step::Modpack];
 
 pub fn step_order(choice: TypeChoice) -> &'static [Step] {
     match choice {
         TypeChoice::OneClient => &ONECLIENT_STEPS,
         TypeChoice::Scratch => &SCRATCH_STEPS,
+        TypeChoice::Modpack => &MODPACK_STEPS,
     }
 }
 
@@ -189,5 +200,6 @@ pub struct Wizard {
     pub loader: State<LoaderChoice>,
     pub loader_version: State<Option<String>>,
     pub declined: State<Option<HashSet<String>>>,
+    pub modpack_origin: State<ModpackOrigin>,
     pub details: DetailsState,
 }

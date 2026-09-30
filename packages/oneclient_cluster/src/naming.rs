@@ -2,6 +2,7 @@ use crate::manager::ClusterManager;
 
 pub const MAX_NAME_CHARS: usize = 20;
 pub const MAX_TAG_CHARS: usize = 20;
+pub const MAX_FOLDER_CHARS: usize = 40;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NameProblem {
@@ -35,11 +36,19 @@ pub fn is_allowed_name_char(c: char) -> bool {
 }
 
 pub fn validate_instance_name(name: &str) -> Result<(), NameProblem> {
+    validate_name(name, Some(MAX_NAME_CHARS))
+}
+
+pub fn validate_modpack_instance_name(name: &str) -> Result<(), NameProblem> {
+    validate_name(name, None)
+}
+
+pub fn validate_name(name: &str, max_chars: Option<usize>) -> Result<(), NameProblem> {
     let name = name.trim();
     if name.is_empty() {
         return Err(NameProblem::Empty);
     }
-    if name.chars().count() > MAX_NAME_CHARS {
+    if max_chars.is_some_and(|max| name.chars().count() > max) {
         return Err(NameProblem::TooLong);
     }
     if !name.chars().all(is_allowed_name_char) {
@@ -96,6 +105,14 @@ mod tests {
             Err(NameProblem::TooLong)
         );
         assert_eq!(validate_instance_name("abcdefghijklmnopqrst"), Ok(()));
+        assert_eq!(
+            validate_modpack_instance_name("All the Mods 10 - To the Sky"),
+            Ok(())
+        );
+        assert_eq!(
+            validate_modpack_instance_name("my:world"),
+            Err(NameProblem::ForbiddenCharacters)
+        );
     }
 
     #[test]

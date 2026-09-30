@@ -12,7 +12,7 @@ use crate::{
         use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
     },
     theme,
-    utils::sort_clusters_for_home,
+    utils::default_cluster,
 };
 
 const NAVBAR_INTRO_MS: u64 = 460;
@@ -157,11 +157,7 @@ fn browse_target() -> Route {
     let active = *use_active_cluster_id().read();
     let package_type = use_browser_type().read().clone();
 
-    let cluster = active
-        .and_then(|id| clusters.iter().find(|cluster| cluster.id == id).cloned())
-        .or_else(|| sort_clusters_for_home(clusters).into_iter().next());
-
-    match cluster {
+    match default_cluster(clusters, active) {
         Some(cluster) => Route::Browser {
             cluster_id: cluster.id,
             package_type: crate::view::app::browser::browsable_type(&package_type, &cluster),

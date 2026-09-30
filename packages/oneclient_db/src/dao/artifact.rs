@@ -56,8 +56,9 @@ pub async fn insert_artifact(
 /// this layer does not touch the disk
 pub async fn delete_artifact_if_unused(pool: &SqlitePool, hash: &str) -> Result<bool, sqlx::Error> {
     let result = sqlx::query(
-        "DELETE FROM artifacts WHERE hash = ? AND NOT EXISTS (SELECT 1 FROM cluster_artifacts WHERE hash = ?)",
+        "DELETE FROM artifacts WHERE hash = ? AND NOT EXISTS (SELECT 1 FROM cluster_artifacts WHERE hash = ?) AND NOT EXISTS (SELECT 1 FROM clusters WHERE linked_modpack_hash = ?)",
     )
+    .bind(hash)
     .bind(hash)
     .bind(hash)
     .execute(pool)
@@ -133,6 +134,7 @@ pub async fn list_unused_artifacts(pool: &SqlitePool) -> Result<Vec<ArtifactRow>
 		SELECT hash, content_type, path, file_name, size_bytes
 		FROM artifacts
 		WHERE hash NOT IN (SELECT hash FROM cluster_artifacts)
+		AND hash NOT IN (SELECT linked_modpack_hash FROM clusters WHERE linked_modpack_hash IS NOT NULL)
 		"#,
     )
     .fetch_all(pool)

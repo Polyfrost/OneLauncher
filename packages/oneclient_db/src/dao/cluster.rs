@@ -238,6 +238,15 @@ pub async fn set_stage(pool: &SqlitePool, id: i64, stage: i64) -> Result<Cluster
     .await
 }
 
+pub async fn touch_last_played(pool: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE clusters SET last_played = ? WHERE id = ?")
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
 pub async fn add_playtime(
     pool: &SqlitePool,
     id: i64,

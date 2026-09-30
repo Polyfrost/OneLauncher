@@ -30,7 +30,7 @@ pub fn effective_enabled(file: &BundleFile, user_override: Option<OverrideType>)
     }
 }
 
-fn find_override(
+pub(crate) fn find_override(
     overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
     bundle_name: &str,
     package_id: &str,
@@ -139,7 +139,7 @@ pub async fn install_package_from_bundle(
 }
 
 #[tracing::instrument(level = "debug", skip(ext, cluster, child, ctx), fields(file = %ext.name))]
-async fn install_external(
+pub(crate) async fn install_external(
     ext: &ExternalFile,
     cluster: &ClusterRow,
     skip_compatibility: bool,
@@ -428,6 +428,36 @@ pub async fn install_enabled_bundle_files(
         "installing enabled bundle files"
     );
 
+    let results = install_bundle_files(
+        to_install,
+        cluster_id,
+        &bundle_name,
+        skip_compatibility,
+        progress,
+        ctx,
+    )
+    .await;
+
+    for (file, result) in results {
+        match result {
+            Ok(hash) => installed.push(hash),
+            Err(err) => {
+                tracing::warn!(file = %file.display_name(), error = %err, "failed to install bundle file");
+            }
+        }
+    }
+
+    Ok(installed)
+}
+
+pub(crate) async fn install_bundle_files(
+    to_install: Vec<BundleFile>,
+    cluster_id: i64,
+    bundle_name: &str,
+    skip_compatibility: bool,
+    progress: Option<&GroupedProgressSession>,
+    ctx: &ContentCtx,
+) -> Vec<(BundleFile, ContentResult<String>)> {
     if let Some(p) = progress {
         let reserved_bytes: u64 = to_install.iter().map(|f| f.size.max(1)).sum();
         p.expect(
@@ -437,8 +467,7 @@ pub async fn install_enabled_bundle_files(
         );
     }
 
-    let bundle_name = &bundle_name;
-    let results = futures_util::stream::iter(to_install.into_iter().map(|file| async move {
+    futures_util::stream::iter(to_install.into_iter().map(|file| async move {
         let child = progress.map(|p| {
             let c = p.child(
                 format!("Mod {}", file.display_name()),
@@ -463,32 +492,21 @@ pub async fn install_enabled_bundle_files(
             child.set_phase(TaskPhase::Installing);
             child.finish();
         }
-        (file.display_name(), result)
+        (file, result)
     }))
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
     .collect::<Vec<_>>()
-    .await;
-
-    for (name, result) in results {
-        match result {
-            Ok(hash) => installed.push(hash),
-            Err(err) => {
-                tracing::warn!(file = %name, error = %err, "failed to install bundle file");
-            }
-        }
-    }
-
-    Ok(installed)
+    .await
 }
 
-struct PresentContent {
+pub(crate) struct PresentContent {
     projects: std::collections::HashSet<String>,
     hashes: std::collections::HashSet<String>,
     tracked_ids: std::collections::HashSet<String>,
 }
 
 impl PresentContent {
-    async fn load(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<Self> {
+    pub(crate) async fn load(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<Self> {
         let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
         let tracked_ids = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
             .await?
@@ -506,7 +524,11 @@ impl PresentContent {
         })
     }
 
-    fn contains(&self, file: &BundleFile) -> bool {
+    pub(crate) fn has_hash(&self, hash: &str) -> bool {
+        self.hashes.contains(hash)
+    }
+
+    pub(crate) fn contains(&self, file: &BundleFile) -> bool {
         match &file.kind {
             BundleFileKind::Managed { project_id, .. } => self.projects.contains(project_id),
             BundleFileKind::External { file: ext, id, .. } => {

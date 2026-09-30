@@ -67,11 +67,12 @@ const SORTS: [(SearchSort, &str); 4] = [
     (SearchSort::Updated, "Updated"),
 ];
 
-const BROWSE_TYPES: [(&str, &str); 4] = [
+const BROWSE_TYPES: [(&str, &str); 5] = [
     ("mod", "Mods"),
     ("texture", "Textures"),
     ("shader", "Shaders"),
     ("datapack", "Data packs"),
+    ("modpack", "Modpacks"),
 ];
 
 const DATAPACK_SLUG: &str = "datapack";
@@ -163,7 +164,11 @@ impl Component for BrowserBody {
         let content_type = content_type_for_slug(&package_type);
 
         let store = use_browser_state_store();
-        let state_key = format!("{cluster_id}:{package_type}");
+        let state_key = if content_type == ContentType::Modpack {
+            package_type.clone()
+        } else {
+            format!("{cluster_id}:{package_type}")
+        };
         let saved = store.peek().get(&state_key).cloned().unwrap_or_default();
 
         let query = use_state(|| saved.query.clone());
@@ -200,7 +205,8 @@ impl Component for BrowserBody {
         let compat = *compatible_only.read();
         let cats = selected_categories.read().clone();
 
-        let (game_versions, loaders) = match (compat, &cluster) {
+        let targets_cluster = content_type != ContentType::Modpack;
+        let (game_versions, loaders) = match (compat && targets_cluster, &cluster) {
             (true, Some(c)) => {
                 let loaders = if content_type == ContentType::Mod {
                     vec![c.mc_loader]
@@ -245,7 +251,7 @@ impl Component for BrowserBody {
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
         );
-        let installed = if content_type == ContentType::DataPack {
+        let installed = if matches!(content_type, ContentType::DataPack | ContentType::Modpack) {
             Default::default()
         } else {
             installed
@@ -334,8 +340,11 @@ impl Component for BrowserBody {
             .spacing(18.)
             .child(header(
                 &package_type,
-                cluster.as_ref().map(|c| c.name.clone()),
-                self.pick_cluster.then(|| ClusterPicker {
+                cluster
+                    .as_ref()
+                    .filter(|_| targets_cluster)
+                    .map(|c| c.name.clone()),
+                (self.pick_cluster && targets_cluster).then(|| ClusterPicker {
                     cluster_id,
                     package_type: package_type.clone(),
                 }),

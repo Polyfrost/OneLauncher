@@ -13,6 +13,7 @@ pub struct CreateClusterOptions {
     pub mem_max: Option<u32>,
     pub kind: ClusterKind,
     pub user_created: bool,
+    pub modpack: bool,
     pub description: Option<String>,
     pub tags: Vec<String>,
 }
@@ -31,6 +32,7 @@ impl CreateClusterOptions {
             mem_max: None,
             kind: ClusterKind::OneClient,
             user_created: false,
+            modpack: false,
             description: None,
             tags: Vec::new(),
         }
@@ -53,6 +55,11 @@ impl CreateClusterOptions {
 
     pub fn user_created(mut self, user_created: bool) -> Self {
         self.user_created = user_created;
+        self
+    }
+
+    pub fn modpack(mut self, modpack: bool) -> Self {
+        self.modpack = modpack;
         self
     }
 

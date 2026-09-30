@@ -285,6 +285,118 @@ pub fn incomplete(dir: &Path) -> bool {
     dir.join(IN_PROGRESS_MARKER).exists()
 }
 
+pub async fn adopt_legacy_dir() -> Result<Option<PathBuf>, String> {
+    let (Some(from), Ok(to)) = (paths::legacy_dir(), paths::standard_dir()) else {
+        return Ok(None);
+    };
+
+    let Ok(raw) = polyio::read(from.join(paths::SETTINGS_FILE)).await else {
+        return Ok(None);
+    };
+
+    let chosen_folder = serde_json::from_slice::<serde_json::Value>(&raw)
+        .map_or(true, |settings| !settings["data_dir"].is_null());
+    if chosen_folder {
+        return Ok(None);
+    }
+
+    #[cfg(unix)]
+    if std::os::unix::net::UnixStream::connect(from.join("ipc.sock")).is_ok() {
+        return Ok(None);
+    }
+
+    let old = polyio::canonicalize(&from).unwrap_or_else(|_| from.clone());
+
+    if let Some(parent) = to.parent() {
+        polyio::create_dir_all(parent)
+            .await
+            .map_err(|err| format!("Couldn't create {}: {err}", parent.display()))?;
+    }
+    polyio::remove_dir(&to).await.ok();
+
+    polyio::rename(&from, &to).await.map_err(|err| {
+        format!(
+            "Couldn't move {} to {}, staying on the old folder: {err}",
+            from.display(),
+            to.display()
+        )
+    })?;
+
+    let database = to.join(paths::DATABASE_FILE);
+    if database.is_file()
+        && let Err(err) = rewrite_java_paths(&database, &from, &to).await
+    {
+        return match polyio::rename(&to, &from).await {
+            Ok(()) => Err(format!("{err} Staying on {}.", from.display())),
+            Err(back) => Err(format!(
+                "{err} Moving {} back failed too: {back}",
+                to.display()
+            )),
+        };
+    }
+
+    for dir in from.ancestors().skip(1).take(2) {
+        if polyio::remove_dir(dir).await.is_err() {
+            break;
+        }
+    }
+
+    let new = polyio::canonicalize(&to).unwrap_or_else(|_| to.clone());
+    repoint_links(&new, &old, &from).await.map_err(|err| {
+        format!(
+            "Moved to {} but a link could not be repointed: {err}",
+            to.display()
+        )
+    })?;
+
+    Ok(Some(from))
+}
+
+async fn repoint_links(root: &Path, old: &Path, raw_old: &Path) -> Result<(), polyio::IOError> {
+    let mut stack = vec![root.to_path_buf()];
+
+    while let Some(dir) = stack.pop() {
+        let mut entries = polyio::read_dir(&dir).await?;
+
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let Ok(kind) = entry.file_type().await else {
+                continue;
+            };
+
+            if kind.is_dir() {
+                stack.push(path);
+                continue;
+            }
+
+            if !kind.is_symlink() {
+                continue;
+            }
+
+            let Ok(target) = polyio::read_link(&path).await else {
+                continue;
+            };
+            let Ok(rest) = target
+                .strip_prefix(old)
+                .or_else(|_| target.strip_prefix(raw_old))
+            else {
+                continue;
+            };
+
+            let target = root.join(rest);
+            if target.is_dir() {
+                polyio::remove_symlink_dir(&path).await?;
+                polyio::symlink_dir(&target, &path).await?;
+            } else {
+                polyio::remove_file(&path).await?;
+                polyio::symlink_file(&target, &path).await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 fn current_dir() -> Result<PathBuf, String> {
     paths::data_dir()
         .map(Path::to_path_buf)

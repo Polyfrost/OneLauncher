@@ -110,6 +110,8 @@ fn main() {
     let rt = builder.build().unwrap();
     let _tokio_guard = rt.enter();
 
+    let adopted = rt.block_on(oneclient_core::relocate::adopt_legacy_dir());
+
     // no settings file is the sign of a fresh install, but not proof of one
     let never_set_up = oneclient_common::paths::settings_file()
         .map(|path| !path.exists())
@@ -150,6 +152,14 @@ fn main() {
         oneclient_core::logger::init()
     }
     .expect("Failed to initialize logger");
+
+    match adopted {
+        Ok(Some(from)) => {
+            tracing::info!(from = %from.display(), "moved out of the old launcher folder")
+        }
+        Ok(None) => {}
+        Err(err) => tracing::error!("{err}"),
+    }
 
     if let Some(reason) = unprotected {
         tracing::warn!("no single-instance endpoint, a second launcher can start: {reason}");

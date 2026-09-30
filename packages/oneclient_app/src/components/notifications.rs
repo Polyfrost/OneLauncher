@@ -489,7 +489,10 @@ struct Footer;
 impl Component for Footer {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let is_empty = use_notifications_snapshot().inbox.is_empty();
+        let is_empty = !use_notifications_snapshot()
+            .inbox
+            .iter()
+            .any(|e| e.dismissable());
 
         rect()
             .horizontal()

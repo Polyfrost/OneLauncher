@@ -530,21 +530,32 @@ impl NotificationState {
         (timers, None)
     }
 
-    pub fn toggle_center(&mut self, _inbox: &mut [InboxEntry], center_open: bool) -> bool {
+    pub fn toggle_center(&mut self, inbox: &mut Vec<InboxEntry>, center_open: bool) -> bool {
         let next = !center_open;
         if next {
+            let ids: Vec<u64> = inbox
+                .iter()
+                .filter(|e| e.toast_only && e.dismissable())
+                .map(|e| e.id)
+                .collect();
+            for id in ids {
+                self.forget_entry(inbox, id);
+            }
             self.active_toasts.clear();
             self.pending_timers.clear();
         }
         next
     }
 
-    pub fn clear_inbox(&mut self) {
-        self.progress_entries.clear();
-        self.grouped_entries.clear();
-        self.grouped_tasks.clear();
-        self.active_toasts.clear();
-        self.pending_timers.clear();
+    pub fn clear_inbox(&mut self, inbox: &mut Vec<InboxEntry>) {
+        let ids: Vec<u64> = inbox
+            .iter()
+            .filter(|e| e.dismissable())
+            .map(|e| e.id)
+            .collect();
+        for id in ids {
+            self.forget_entry(inbox, id);
+        }
     }
 
     pub fn dismiss_toast(&mut self, inbox: &mut Vec<InboxEntry>, entry_id: u64) {
@@ -925,7 +936,7 @@ impl NotificationState {
             icon,
             progress: _,
             actions,
-            toast_only: _,
+            toast_only,
         } = spec;
 
         match entry_id.and_then(|id| inbox.iter_mut().find(|e| e.id == id)) {
@@ -941,6 +952,7 @@ impl NotificationState {
                 entry.actions = actions;
                 entry.tasks = Vec::new();
                 entry.transfer = None;
+                entry.toast_only = toast_only;
                 // Keeping it in `active_toasts` lets the loop arm a dismiss timer
                 // now that the entry is no longer loading
                 self.ensure_progress_toast(entry.id);
@@ -955,7 +967,7 @@ impl NotificationState {
                         icon,
                         progress: None,
                         actions,
-                        toast_only: false,
+                        toast_only,
                     },
                 );
             }

@@ -4949,6 +4949,7 @@ dependencies = [
  "freya-testing",
  "futures-util",
  "image",
+ "libloading 0.8.9",
  "mimalloc",
  "notify",
  "oneclient_auth",

@@ -713,8 +713,7 @@ impl Actions {
 
     pub fn clear_notification_inbox(&self) {
         self.with_engine(|state| {
-            state.inbox.clear();
-            state.notifications.clear_inbox();
+            state.notifications.clear_inbox(&mut state.inbox);
         });
     }
 
@@ -1229,7 +1228,7 @@ impl Actions {
                     icon: Some(IconType::Download01),
                     progress: None,
                     actions: Vec::new(),
-                    toast_only: false,
+                    toast_only: true,
                 },
                 Err(err) => NotificationSpec {
                     title: "Install failed".to_string(),
@@ -1782,7 +1781,7 @@ impl Actions {
             icon: Some(IconType::DownloadCloud02),
             progress: None,
             actions: Vec::new(),
-            toast_only: false,
+            toast_only: true,
         });
 
         self.with_engine(|app| {
@@ -1903,7 +1902,7 @@ impl Actions {
                     icon: Some(IconType::DownloadCloud02),
                     progress: None,
                     actions: Vec::new(),
-                    toast_only: false,
+                    toast_only: true,
                 },
                 Err(err) => NotificationSpec {
                     title: "Update failed".to_string(),

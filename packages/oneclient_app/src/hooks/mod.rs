@@ -3,10 +3,12 @@ mod active_cluster;
 mod debounce;
 mod overlay_claims;
 mod queries;
+mod selection;
 mod shortcut_actions;
 mod view_state;
 
 pub use debounce::use_debounced;
+pub use selection::{Selection, use_selection};
 pub use overlay_claims::{
     OverlayClaims, use_overlay_claim, use_overlay_claim_when, use_overlay_claims,
     use_provide_overlay_claims,

@@ -191,6 +191,7 @@ pub enum ClusterAction {
     DeleteInstance {
         cluster_id: ClusterId,
     },
+    Batch(Vec<ClusterAction>),
 }
 
 impl MutationCapability for ClusterMutation {
@@ -199,6 +200,19 @@ impl MutationCapability for ClusterMutation {
     type Keys = ClusterAction;
 
     async fn run(&self, keys: &ClusterAction) -> Result<(), String> {
+        if let ClusterAction::Batch(actions) = keys {
+            let mut errors = Vec::new();
+            for action in actions {
+                if let Err(err) = Box::pin(self.run(action)).await {
+                    errors.push(err);
+                }
+            }
+            return if errors.is_empty() {
+                Ok(())
+            } else {
+                Err(errors.join("\n"))
+            };
+        }
         let started = std::time::Instant::now();
         let state = crate::launcher::state().map_err(|e| e.to_string())?;
         let services = &state.services;
@@ -433,6 +447,7 @@ impl MutationCapability for ClusterMutation {
                     outcome
                 }
             }
+            ClusterAction::Batch(_) => unreachable!(),
         };
         tracing::debug!(
             target: "oneclient_app::perf",
@@ -455,7 +470,13 @@ impl MutationCapability for ClusterMutation {
                 .error()
                 .send();
         }
-        if matches!(keys, ClusterAction::SetArtifactEnabled { .. }) {
+        let enabled_only = match keys {
+            ClusterAction::Batch(actions) => actions
+                .iter()
+                .all(|a| matches!(a, ClusterAction::SetArtifactEnabled { .. })),
+            keys => matches!(keys, ClusterAction::SetArtifactEnabled { .. }),
+        };
+        if enabled_only {
             invalidate_enabled_flag_queries().await;
         } else {
             invalidate_cluster_queries().await;

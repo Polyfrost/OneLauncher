@@ -14,7 +14,8 @@ const APPLICATION: &str = "OneClient";
 #[cfg(debug_assertions)]
 const APPLICATION: &str = "OneClient-dev";
 
-const SETTINGS_FILE: &str = "settings.json";
+pub const SETTINGS_FILE: &str = "settings.json";
+pub const DATABASE_FILE: &str = "user_data.db";
 
 static DEFAULT_DIR: OnceLock<PathBuf> = OnceLock::new();
 static CONFIG_DIR_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
@@ -35,7 +36,8 @@ fn organization_dir() -> PathsResult<PathBuf> {
         .ok_or(PathsError::DataDirUnavailable)
 }
 
-fn legacy_dir() -> Option<PathBuf> {
+#[must_use]
+pub fn legacy_dir() -> Option<PathBuf> {
     ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
         .map(|dirs| dirs.data_local_dir().to_path_buf())
 }
@@ -47,6 +49,10 @@ fn resolve_default_dir() -> PathsResult<PathBuf> {
         return Ok(legacy);
     }
 
+    standard_dir()
+}
+
+pub fn standard_dir() -> PathsResult<PathBuf> {
     Ok(organization_dir()?.join(APPLICATION))
 }
 
@@ -87,7 +93,7 @@ pub fn picker_start_dir() -> Option<PathBuf> {
 }
 
 pub fn database_file() -> PathsResult<PathBuf> {
-    Ok(data_dir()?.join("user_data.db"))
+    Ok(data_dir()?.join(DATABASE_FILE))
 }
 
 pub fn settings_file() -> PathsResult<PathBuf> {

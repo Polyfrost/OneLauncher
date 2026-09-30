@@ -61,6 +61,7 @@ pub struct Picks {
     pub index: usize,
     pub step: Step,
     pub choice: TypeChoice,
+    pub modpack_origin: ModpackOrigin,
     pub kind: ClusterKind,
     pub name: String,
     pub suggested: String,
@@ -264,7 +265,7 @@ fn kind_for(choice: TypeChoice, loader: Option<GameLoader>) -> ClusterKind {
     match (choice, loader) {
         (TypeChoice::OneClient, _) => ClusterKind::OneClient,
         (TypeChoice::Scratch, Some(GameLoader::Vanilla) | None) => ClusterKind::Vanilla,
-        (TypeChoice::Scratch, Some(_)) => ClusterKind::Modded,
+        (TypeChoice::Scratch, Some(_)) | (TypeChoice::Modpack, _) => ClusterKind::Modded,
     }
 }
 
@@ -337,7 +338,9 @@ pub fn resolve(w: Wizard) -> Picks {
     let available = settled_or_loading(&available_query);
     let loader = match choice {
         TypeChoice::OneClient => version.as_ref().and_then(|id| catalogue.loader_for(id)),
-        TypeChoice::Scratch => w.loader.read().resolve(available.as_deref().unwrap_or(&[])),
+        TypeChoice::Scratch | TypeChoice::Modpack => {
+            w.loader.read().resolve(available.as_deref().unwrap_or(&[]))
+        }
     };
 
     let loader_versions = loader_versions(&use_loader_versions(
@@ -371,6 +374,7 @@ pub fn resolve(w: Wizard) -> Picks {
         index,
         step,
         choice,
+        modpack_origin: *w.modpack_origin.read(),
         kind,
         name: w.details.effective_name(&suggested),
         suggested,

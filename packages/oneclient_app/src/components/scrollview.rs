@@ -39,7 +39,7 @@ pub(crate) fn scroll_pos_from_wheel(wheel: f32, inner: f32, viewport: f32, curre
         return 0;
     }
     if new_pos <= -(inner - viewport) && wheel < 0.0 {
-        return -(inner - viewport) as i32;
+        return -(inner - viewport).ceil() as i32;
     }
     new_pos as i32
 }
@@ -50,7 +50,7 @@ pub(crate) fn corrected_scroll(inner: f32, viewport: f32, pos: f32) -> f32 {
     }
     if (-pos + viewport) > inner {
         return if viewport < inner {
-            -(inner - viewport)
+            -(inner - viewport).ceil()
         } else {
             0.0
         };
@@ -708,7 +708,7 @@ impl ScrollArea {
                                     content_h.set(h);
                                     if stick_bottom {
                                         let vp = *viewport_h.read();
-                                        let target = -((h - vp).max(0.));
+                                        let target = -((h - vp).max(0.).ceil());
                                         controller.scroll_to_y(target as i32);
                                     }
                                 }

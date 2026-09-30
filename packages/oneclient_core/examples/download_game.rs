@@ -31,6 +31,7 @@ async fn main() -> LauncherResult<()> {
                 mem_max: None,
                 kind: oneclient_cluster::ClusterKind::OneClient,
                 user_created: false,
+                modpack: false,
                 description: None,
                 tags: Vec::new(),
             },

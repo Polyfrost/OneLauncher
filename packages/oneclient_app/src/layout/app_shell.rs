@@ -11,7 +11,7 @@ use crate::Route;
 use crate::components::Button;
 use crate::components::{
     ART_PREVIEW_EDGE, AppNavbar, DynamicArt, FileDropOverlay, Icon, IconType, OverlayPopup,
-    ScrollArea,
+    ScrollArea, accept_drop,
 };
 use crate::layout::AnimatedAppOutlet;
 use crate::theme;
@@ -53,7 +53,8 @@ impl Component for AppShell {
 
         // `FileDrop` bubbles so anything a drop zone doesn't `stop_propagation()` lands here
         let mut drop_hovering = use_state(|| false);
-        let mut drop_pending = use_state(Vec::<PathBuf>::new);
+        let drop_pending = use_state(Vec::<PathBuf>::new);
+        let dropped_modpacks = use_state(Vec::<PathBuf>::new);
 
         let game = use_game_snapshot();
 
@@ -81,7 +82,7 @@ impl Component for AppShell {
             .on_global_file_hover_cancelled(move |_| drop_hovering.set(false))
             .on_file_drop(move |e: Event<FileEventData>| {
                 drop_hovering.set(false);
-                drop_pending.write().extend_from_slice(&e.file_paths);
+                accept_drop(&e.file_paths, drop_pending, dropped_modpacks);
             })
             .child(AppNavbar)
             .child(AppHomeBackground)
@@ -94,6 +95,7 @@ impl Component for AppShell {
             .child(FileDropOverlay {
                 hovering: drop_hovering,
                 pending: drop_pending,
+                modpacks: dropped_modpacks,
             })
             .maybe_child(
                 game.error

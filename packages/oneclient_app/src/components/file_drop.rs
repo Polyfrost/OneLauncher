@@ -3,20 +3,24 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use freya::animation::{AnimNum, Ease, Function, OnCreation, use_animation};
 use freya::prelude::*;
 use freya::router::use_route;
+use oneclient_content::modpacks::detect_format;
 use oneclient_content::packages::ContentType;
-use oneclient_core::clusters::Cluster;
+use oneclient_core::clusters::{Cluster, ModpackSource};
 use oneclient_db::models::ClusterId;
 
 use crate::Route;
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{
     add_world_datapacks, settled_or_loading, spawn_world_task, try_cluster_worlds,
-    use_active_cluster_id, use_cluster_worlds, use_clusters, use_datapack_world, use_dispatch,
+    use_active_cluster_id, use_cluster_worlds, use_clusters, use_datapack_world, use_debounced,
+    use_dispatch,
 };
+use crate::launcher::off_ui;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -90,6 +94,55 @@ fn infer_content_type(
     }
 }
 
+const DROP_SETTLE: Duration = Duration::from_millis(300);
+
+pub fn accept_drop(
+    paths: &[PathBuf],
+    mut pending: State<Vec<PathBuf>>,
+    mut modpacks: State<Vec<PathBuf>>,
+) {
+    for path in paths {
+        match extension(path).as_deref() {
+            Some("mrpack") => modpacks.write().push(path.clone()),
+            Some("zip") => {
+                let path = path.clone();
+                spawn(async move {
+                    let probe = path.clone();
+                    let is_modpack =
+                        off_ui(async move { detect_format(&probe).await.is_ok() }).await;
+                    if is_modpack {
+                        modpacks.write().push(path);
+                    } else {
+                        pending.write().push(path);
+                    }
+                });
+            }
+            _ => pending.write().push(path.clone()),
+        }
+    }
+}
+
+fn use_dropped_modpack_driver(pending: State<Vec<PathBuf>>, modpacks: State<Vec<PathBuf>>) {
+    let dispatch = use_dispatch();
+    let settled = use_debounced(
+        (pending.read().is_empty(), modpacks.read().len()),
+        DROP_SETTLE,
+    );
+    let settled = *settled.read();
+
+    use_side_effect_with_deps(&settled, move |&(prompt_closed, queued)| {
+        if !prompt_closed || queued == 0 || !pending.peek().is_empty() {
+            return;
+        }
+
+        let mut modpacks = modpacks;
+        let dropped = std::mem::take(&mut *modpacks.write());
+        for path in dropped {
+            dispatch.install_modpack(ModpackSource::File(path));
+        }
+    });
+}
+
 fn route_target(route: &Route) -> Option<(ClusterId, ContentType)> {
     match route {
         Route::ClusterMods { cluster_id } => Some((*cluster_id, ContentType::Mod)),
@@ -105,10 +158,12 @@ fn route_target(route: &Route) -> Option<(ClusterId, ContentType)> {
 pub struct FileDropOverlay {
     pub hovering: State<bool>,
     pub pending: State<Vec<PathBuf>>,
+    pub modpacks: State<Vec<PathBuf>>,
 }
 
 impl Component for FileDropOverlay {
     fn render(&self) -> impl IntoElement {
+        use_dropped_modpack_driver(self.pending, self.modpacks);
         let files = self.pending.read().clone();
 
         if !files.is_empty() {

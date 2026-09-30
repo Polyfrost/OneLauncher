@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use freya::prelude::*;
-use oneclient_cluster::naming::validate_instance_name;
+use oneclient_cluster::naming::{MAX_NAME_CHARS, validate_name};
 use oneclient_common::domain::GameLoader;
 use oneclient_core::clusters::ClusterKind;
 
@@ -20,6 +20,7 @@ pub struct InstanceFacts {
     pub mc_version: String,
     pub mc_loader: GameLoader,
     pub kind: ClusterKind,
+    pub modpack: bool,
 }
 
 #[derive(PartialEq)]
@@ -35,6 +36,10 @@ impl EditInstanceModal {
             on_close: on_close.into(),
         }
     }
+}
+
+fn name_limit(modpack: bool) -> Option<usize> {
+    (!modpack).then_some(MAX_NAME_CHARS)
 }
 
 fn kind_label(kind: ClusterKind) -> &'static str {
@@ -63,7 +68,7 @@ impl Component for EditInstanceModal {
         let name_problem = if typed == self.facts.name {
             None
         } else {
-            validate_instance_name(&typed).err()
+            validate_name(&typed, name_limit(self.facts.modpack)).err()
         };
         let ready = !typed.is_empty() && name_problem.is_none();
 
@@ -122,6 +127,7 @@ impl Component for EditInstanceModal {
                 existing,
                 version_art(Some(&self.facts.mc_version), Some(self.facts.mc_loader)),
                 name_problem,
+                name_limit(self.facts.modpack),
             ),
             scrolls_itself: false,
             note: "Changes apply straight away.".to_string(),

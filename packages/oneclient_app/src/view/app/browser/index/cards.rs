@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use freya::router::RouterContext;
 use oneclient_content::packages::types::ProjectSummary;
 use oneclient_content::packages::{ContentType, ProviderId};
+use oneclient_core::clusters::ModpackSource;
 
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{
@@ -346,7 +347,8 @@ impl Component for InstallButton {
         let cluster = use_cluster(cluster_id);
 
         // The same narrowing the package page does so both agree on what "latest" installs
-        let (game_version, loader) = match (compat, &cluster) {
+        let is_modpack = self.content_type == ContentType::Modpack;
+        let (game_version, loader) = match (compat && !is_modpack, &cluster) {
             (true, Some(c)) => (
                 Some(c.mc_version.clone()),
                 (self.content_type == ContentType::Mod).then_some(c.mc_loader),
@@ -367,7 +369,8 @@ impl Component for InstallButton {
         let mut world_prompt = use_state(|| None::<String>);
 
         // Nothing to start twice while an install is running or before versions arrive
-        let installing = use_installs_snapshot().is_installing(cluster_id, provider, &project_id);
+        let (installing, waiting) =
+            use_installs_snapshot().package_busy(is_modpack, cluster_id, provider, &project_id);
 
         if let Some(installed) = self.installed {
             let color = installed.color();
@@ -401,7 +404,7 @@ impl Component for InstallButton {
                     .small()
                     .height(Size::px(INSTALL_BUTTON_H))
                     .padding(Gaps::new_symmetric(0., 11.))
-                    .enabled(latest.is_some() && !installing)
+                    .enabled(latest.is_some() && !installing && !waiting)
                     .on_press({
                         let project_id = project_id.clone();
                         move |_| {
@@ -410,6 +413,12 @@ impl Component for InstallButton {
                             };
                             if is_datapack {
                                 world_prompt.set(Some(version_id));
+                            } else if is_modpack {
+                                dispatch.install_modpack(ModpackSource::Provider {
+                                    provider,
+                                    project_id: project_id.clone(),
+                                    version_id,
+                                });
                             } else {
                                 dispatch.install_package(
                                     cluster_id,

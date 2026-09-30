@@ -14,6 +14,7 @@ pub(super) fn sidebar(
     confirm: State<Option<String>>,
     installed: Option<Installed>,
     installing: bool,
+    waiting: bool,
 ) -> impl IntoElement {
     let Some(project) = project else {
         return rect()
@@ -28,7 +29,7 @@ pub(super) fn sidebar(
         (Some(installed), Some(latest)) => installed.is_version(latest),
         _ => false,
     };
-    let can_install = latest_version.is_some() && !have_latest && !installing;
+    let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
 
     rect()
         .vertical()

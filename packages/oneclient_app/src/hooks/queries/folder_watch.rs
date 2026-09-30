@@ -8,7 +8,7 @@ use tokio::sync::mpsc;
 
 const WATCH_QUIET: Duration = Duration::from_millis(400);
 
-pub(super) fn use_folder_watch(
+pub(crate) fn use_folder_watch(
     folder: Option<PathBuf>,
     watch_children: bool,
     relevant: fn(&Path, &Event) -> bool,

@@ -413,7 +413,12 @@ impl MutationCapability for ClusterMutation {
                     })
             }
             ClusterAction::DeleteInstance { cluster_id } => {
-                if state.games.is_active(*cluster_id) {
+                if crate::hooks::modpack_job_running(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the modpack to finish installing before deleting this instance."
+                            .to_string(),
+                    })
+                } else if state.games.is_active(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
                         reason: "Close the game before deleting this instance.".to_string(),
                     })

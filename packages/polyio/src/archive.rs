@@ -246,6 +246,72 @@ pub async fn read_zip_file_entries(
     Ok(out)
 }
 
+pub const MAX_STREAMED_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
+
+pub struct ZipEntryCursor {
+    reader: FileZipReader,
+    indices: std::collections::HashMap<String, usize>,
+}
+
+impl ZipEntryCursor {
+    #[tracing::instrument(level = "debug", skip(zip_path, filter), fields(zip_path = %zip_path.as_ref().display()))]
+    pub async fn open(
+        zip_path: impl AsRef<std::path::Path>,
+        filter: impl Fn(&str) -> bool,
+    ) -> PolyIOResult<Self> {
+        let reader = open_zip_file(zip_path.as_ref()).await?;
+
+        let mut indices = std::collections::HashMap::new();
+        for (index, cdr) in reader.cdrs().iter().enumerate() {
+            let Some(name) = cdr.insecure_file_name.as_str() else {
+                continue;
+            };
+            if name.ends_with('/') || !filter(name) {
+                continue;
+            }
+            indices.insert(name.to_string(), index);
+        }
+
+        Ok(Self { reader, indices })
+    }
+
+    pub fn names(&self) -> impl Iterator<Item = &String> {
+        self.indices.keys()
+    }
+
+    pub async fn read(&mut self, name: &str) -> PolyIOResult<Vec<u8>> {
+        let index = *self
+            .indices
+            .get(name)
+            .ok_or_else(|| IOError::FileNotFoundInZip {
+                file_name: name.to_string(),
+            })?;
+
+        let declared = self.reader.cdrs()[index].uncompressed_size()?;
+        if declared > MAX_STREAMED_ENTRY_BYTES {
+            return Err(IOError::IOError(std::io::Error::other(format!(
+                "'{name}' declares {declared} bytes, over the {MAX_STREAMED_ENTRY_BYTES} byte limit"
+            ))));
+        }
+
+        let entry_reader = self.reader.file(index).await?;
+        let mut data = Vec::with_capacity(usize::try_from(declared).unwrap_or_default());
+        futures_lite::AsyncReadExt::read_to_end(
+            &mut futures_lite::AsyncReadExt::take(entry_reader, MAX_STREAMED_ENTRY_BYTES + 1),
+            &mut data,
+        )
+        .await?;
+
+        if data.len() as u64 > MAX_STREAMED_ENTRY_BYTES {
+            return Err(IOError::IOError(std::io::Error::other(format!(
+                "'{name}' decompressed past the {MAX_STREAMED_ENTRY_BYTES} byte limit"
+            ))));
+        }
+
+        Ok(data)
+    }
+}
+
 #[tracing::instrument(
     level = "debug",
     skip(zip_path),

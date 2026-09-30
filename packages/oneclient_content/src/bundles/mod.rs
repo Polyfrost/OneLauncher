@@ -1,10 +1,10 @@
 mod error;
-mod install;
+pub(crate) mod install;
 mod manager;
 mod manifest;
 mod optional;
-mod overrides;
-mod polymrpack;
+pub(crate) mod overrides;
+pub(crate) mod polymrpack;
 mod types;
 mod updates;
 

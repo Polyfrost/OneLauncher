@@ -105,6 +105,11 @@ async fn start(
 
     state.games.set_dir(cluster_id, game_dir.clone());
 
+    match state.clusters.mark_played(cluster_id).await {
+        Ok(()) => events.signal(oneclient_events::Signal::ClustersChanged),
+        Err(err) => tracing::debug!(cluster_id, error = %err, "could not record the launch time"),
+    }
+
     let progress = GroupedProgressSession::start(
         &state.services.events,
         format!("Launching {}", existing.name),

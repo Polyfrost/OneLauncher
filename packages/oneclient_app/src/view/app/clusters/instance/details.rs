@@ -1,9 +1,7 @@
 use std::path::PathBuf;
 
 use freya::prelude::*;
-use oneclient_cluster::naming::{
-    MAX_NAME_CHARS, MAX_TAG_CHARS, NameProblem, is_allowed_name_char, validate_tag,
-};
+use oneclient_cluster::naming::{MAX_TAG_CHARS, NameProblem, is_allowed_name_char, validate_tag};
 
 use crate::components::{
     ART_PREVIEW_EDGE, Button, DynamicArt, GALLERY_COVER_EDGE, Icon, IconType, LocalImage,
@@ -109,6 +107,7 @@ pub fn details_body(
     existing_cover: Option<PathBuf>,
     version_art: DynamicArt,
     name_problem: Option<NameProblem>,
+    name_limit: Option<usize>,
 ) -> Element {
     let mut touched = state.name_touched;
     let name = state.name;
@@ -135,7 +134,7 @@ pub fn details_body(
                             let next = validator.text();
                             let current = name.peek();
                             validator.set_valid(
-                                within_limit(&next, &current, MAX_NAME_CHARS)
+                                name_limit.is_none_or(|limit| within_limit(&next, &current, limit))
                                     && no_new_forbidden(&next, &current),
                             );
                         }),

@@ -539,6 +539,7 @@ fn filter_menu(
 fn search_input(query: State<String>, width: Size) -> Element {
     TextInput::new(query)
         .width(width)
+        .height(Size::px(34.))
         .placeholder("Search instances")
         .leading(
             Icon::new(IconType::SearchMd)

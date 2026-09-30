@@ -33,6 +33,8 @@ pub async fn remove_mods_link(folder_name: &str) {
     }
 }
 
+pub const MODPACK_ICON_FILE: &str = ".oneclient/modpack-icon.png";
+
 pub fn encode_tags(tags: &[String]) -> String {
     serde_json::to_string(tags).unwrap_or_else(|_| "[]".to_string())
 }
@@ -133,6 +135,11 @@ impl Cluster {
 
     pub fn shares_content(&self, content_type: oneclient_common::domain::ContentType) -> bool {
         content_type.is_global() && !self.is_isolated()
+    }
+
+    pub fn modpack_icon_file(&self) -> Option<PathBuf> {
+        self.linked_modpack_hash.as_ref()?;
+        Some(self.dir().ok()?.join(MODPACK_ICON_FILE))
     }
 
     pub fn cover_file(&self) -> Option<PathBuf> {

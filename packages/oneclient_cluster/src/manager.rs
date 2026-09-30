@@ -129,14 +129,15 @@ impl ClusterManager {
         options: CreateClusterOptions,
     ) -> ClusterResult<Cluster> {
         if options.user_created {
-            crate::naming::validate_instance_name(&options.name)
+            let limit = (!options.modpack).then_some(crate::naming::MAX_NAME_CHARS);
+            crate::naming::validate_name(&options.name, limit)
                 .map_err(ClusterError::InvalidName)?;
             for tag in &options.tags {
                 crate::naming::validate_tag(tag).map_err(ClusterError::InvalidName)?;
             }
         }
 
-        let folder_stem = Self::sanitize_name(&options.name);
+        let folder_stem = Self::sanitize_name(&cap_folder_stem(&options.name));
         if folder_stem.is_empty() {
             return Err(ClusterError::EmptyName);
         }
@@ -188,7 +189,11 @@ impl ClusterManager {
             if let Some(raw) = update.name.as_deref()
                 && raw.trim() != existing.name
             {
-                crate::naming::validate_instance_name(raw).map_err(ClusterError::InvalidName)?;
+                let limit = existing
+                    .linked_modpack_hash
+                    .is_none()
+                    .then_some(crate::naming::MAX_NAME_CHARS);
+                crate::naming::validate_name(raw, limit).map_err(ClusterError::InvalidName)?;
             }
             for tag in update.tags.iter().flatten() {
                 if !existing.tags.contains(tag) {
@@ -467,6 +472,12 @@ impl ClusterManager {
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn mark_played(&self, cluster_id: ClusterId) -> ClusterResult<()> {
+        cluster_dao::touch_last_played(&self.db, cluster_id).await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
     pub async fn add_playtime(
         &self,
         cluster_id: ClusterId,
@@ -658,6 +669,13 @@ async fn ensure_profile_exists(pool: &oneclient_db::DbPool, name: &str) -> Clust
 }
 
 #[tracing::instrument(level = "debug")]
+fn cap_folder_stem(name: &str) -> String {
+    name.trim()
+        .chars()
+        .take(crate::naming::MAX_FOLDER_CHARS)
+        .collect()
+}
+
 async fn resolve_unique_folder_name(name: &str) -> ClusterResult<String> {
     let cluster_dir = oneclient_common::paths::clusters_dir()?;
     let mut folder_name = name.to_string();
@@ -695,7 +713,19 @@ async fn ensure_content_dirs(cluster_path: &std::path::Path) -> ClusterResult<()
 
 #[cfg(test)]
 mod tests {
-    use super::{COVER_MAX_EDGE, is_cover_file, shrink_cover};
+    use super::{COVER_MAX_EDGE, ClusterManager, cap_folder_stem, is_cover_file, shrink_cover};
+
+    #[test]
+    fn a_long_modpack_name_gets_a_short_folder() {
+        let name = "All the Mods 10 - To the Sky Community Edition Extended";
+        let folder = ClusterManager::sanitize_name(&cap_folder_stem(name));
+
+        assert_eq!(folder, "All the Mods 10 - To the Sky Community E");
+        assert_eq!(
+            ClusterManager::sanitize_name(&cap_folder_stem("Short Pack")),
+            "Short Pack"
+        );
+    }
 
     fn png(width: u32, height: u32) -> Vec<u8> {
         let mut out = Vec::new();

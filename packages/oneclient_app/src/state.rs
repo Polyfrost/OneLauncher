@@ -121,6 +121,9 @@ pub struct RelocationState {
 pub struct InstallState {
     pending: HashSet<(i64, ProviderId, String)>,
     pub flagged: Option<FlaggedInstallPrompt>,
+    pub modpack_busy: bool,
+    pub modpack_project: Option<(ProviderId, String)>,
+    pub modpack_cluster: Option<i64>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -143,6 +146,31 @@ impl InstallState {
     pub fn finish(&mut self, cluster_id: i64, provider: ProviderId, project_id: &str) {
         self.pending
             .remove(&(cluster_id, provider, project_id.to_string()));
+    }
+
+    #[must_use]
+    pub fn is_modpack_job(&self, cluster_id: i64) -> bool {
+        self.modpack_cluster == Some(cluster_id)
+    }
+
+    #[must_use]
+    pub fn package_busy(
+        &self,
+        is_modpack: bool,
+        cluster_id: i64,
+        provider: ProviderId,
+        project_id: &str,
+    ) -> (bool, bool) {
+        if !is_modpack {
+            return (self.is_installing(cluster_id, provider, project_id), false);
+        }
+        let installing =
+            self.modpack_project
+                .as_ref()
+                .is_some_and(|(busy_provider, busy_project)| {
+                    *busy_provider == provider && busy_project == project_id
+                });
+        (installing, self.modpack_busy)
     }
 
     #[must_use]

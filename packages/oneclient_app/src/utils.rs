@@ -334,13 +334,24 @@ pub fn bundle_display_name(archive: &BundleArchive) -> String {
     }
 }
 
+pub fn default_cluster(clusters: Vec<Cluster>, active: Option<i64>) -> Option<Cluster> {
+    active
+        .and_then(|id| clusters.iter().find(|cluster| cluster.id == id).cloned())
+        .or_else(|| sort_clusters_for_home(clusters).into_iter().next())
+}
+
 pub fn sort_clusters_for_home(mut clusters: Vec<Cluster>) -> Vec<Cluster> {
-    clusters.sort_by(compare_last_played);
+    clusters.sort_by(compare_recent_activity);
     clusters
 }
 
-fn compare_last_played(a: &Cluster, b: &Cluster) -> Ordering {
-    match (a.last_played, b.last_played) {
+fn recent_activity(cluster: &Cluster) -> Option<chrono::DateTime<chrono::Utc>> {
+    let created = cluster.created_at.filter(|_| cluster.user_created);
+    cluster.last_played.max(created)
+}
+
+fn compare_recent_activity(a: &Cluster, b: &Cluster) -> Ordering {
+    match (recent_activity(a), recent_activity(b)) {
         // Most recently played first
         (Some(a), Some(b)) => b.cmp(&a),
         (Some(_), None) => Ordering::Less,
@@ -386,6 +397,51 @@ mod tests {
             mc_version: mc_version.to_string(),
             ..cluster(id)
         }
+    }
+
+    #[test]
+    fn a_newly_created_instance_comes_first_on_home() {
+        let now = chrono::Utc::now();
+        let played = Cluster {
+            last_played: Some(now - chrono::Duration::hours(2)),
+            ..versioned(1, "1.21.1")
+        };
+        let created = Cluster {
+            user_created: true,
+            created_at: Some(now),
+            ..versioned(2, "1.20.1")
+        };
+        let provisioned = Cluster {
+            user_created: false,
+            created_at: Some(now),
+            ..versioned(3, "26.3")
+        };
+
+        let order: Vec<i64> = sort_clusters_for_home(vec![played, provisioned, created])
+            .into_iter()
+            .map(|cluster| cluster.id)
+            .collect();
+        assert_eq!(order, vec![2, 1, 3]);
+    }
+
+    #[test]
+    fn playing_an_older_instance_moves_it_back_in_front() {
+        let now = chrono::Utc::now();
+        let created = Cluster {
+            user_created: true,
+            created_at: Some(now - chrono::Duration::hours(1)),
+            ..versioned(1, "1.20.1")
+        };
+        let played = Cluster {
+            last_played: Some(now),
+            ..versioned(2, "1.21.1")
+        };
+
+        let order: Vec<i64> = sort_clusters_for_home(vec![created, played])
+            .into_iter()
+            .map(|cluster| cluster.id)
+            .collect();
+        assert_eq!(order, vec![2, 1]);
     }
 
     fn line(major: u32, minor: Option<u32>) -> ReleaseLine {

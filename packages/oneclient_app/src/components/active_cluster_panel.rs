@@ -74,13 +74,15 @@ impl Component for ActiveClusterPanel {
                 );
         };
 
-        let title = format!("{} {}", cluster.mc_version, cluster.mc_loader);
-        let subtitle = if cluster.user_created {
-            cluster.name.clone()
+        let version = format!("{} {}", cluster.mc_version, cluster.mc_loader);
+        let (title, subtitle) = if cluster.user_created {
+            (cluster.name.clone(), version)
         } else {
-            metadata
-                .map(|m| m.name)
-                .unwrap_or_else(|| cluster.name.clone())
+            let subtitle = match metadata {
+                Some(m) => format!("OneClient · {}", m.name),
+                None => "OneClient".to_string(),
+            };
+            (version, subtitle)
         };
         let cluster_id = cluster.id;
         let syncing = launch_syncing(&launcher, cluster.uses_bundles());
@@ -95,6 +97,9 @@ impl Component for ActiveClusterPanel {
             .child(
                 label()
                     .text(title)
+                    .width(Size::fill())
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis)
                     .font_size(56.)
                     .line_height(1.1)
                     .font_weight(FontWeight::BOLD)

@@ -247,7 +247,7 @@ fn main() {
 		.with_plugin(freya::metrics::MetricsPlugin::default())
         .with_default_font(theme::DEFAULT_FONT);
 
-    if show_tray_icon {
+    if show_tray_icon && platform::tray::available() {
         launch_config = launch_config.with_tray(platform::tray::build, platform::tray::handle);
     }
 

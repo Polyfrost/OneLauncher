@@ -335,9 +335,14 @@ pub fn bundle_display_name(archive: &BundleArchive) -> String {
 }
 
 pub fn default_cluster(clusters: Vec<Cluster>, active: Option<i64>) -> Option<Cluster> {
+    home_cluster(&clusters, active).cloned()
+}
+
+pub fn home_cluster(clusters: &[Cluster], active: Option<i64>) -> Option<&Cluster> {
     active
-        .and_then(|id| clusters.iter().find(|cluster| cluster.id == id).cloned())
-        .or_else(|| sort_clusters_for_home(clusters).into_iter().next())
+        .and_then(|id| clusters.iter().find(|cluster| cluster.id == id))
+        // `min_by` keeps the first of equals, matching the stable sort in `sort_clusters_for_home`
+        .or_else(|| clusters.iter().min_by(|a, b| compare_recent_activity(a, b)))
 }
 
 pub fn sort_clusters_for_home(mut clusters: Vec<Cluster>) -> Vec<Cluster> {
@@ -442,6 +447,22 @@ mod tests {
             .map(|cluster| cluster.id)
             .collect();
         assert_eq!(order, vec![2, 1]);
+    }
+
+    #[test]
+    fn home_background_matches_the_first_recents_card() {
+        let clusters = vec![
+            versioned(1, "1.8.9"),
+            versioned(2, "26.2"),
+            versioned(3, "1.21.1"),
+        ];
+
+        let first_card = sort_clusters_for_home(clusters.clone())[0].id;
+        assert_eq!(
+            home_cluster(&clusters, None).map(|c| c.id),
+            Some(first_card)
+        );
+        assert_eq!(home_cluster(&clusters, Some(3)).map(|c| c.id), Some(3));
     }
 
     fn line(major: u32, minor: Option<u32>) -> ReleaseLine {

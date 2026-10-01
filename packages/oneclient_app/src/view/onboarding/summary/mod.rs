@@ -1,14 +1,18 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
+use oneclient_core::clusters::Cluster;
+use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
 use oneclient_core::{BundleArchive, BundleFile, ImportTarget, MigrationSource, SentryExclusion};
 use oneclient_db::models::OverrideType;
 
+use crate::components::ART_PREVIEW_EDGE;
 use crate::hooks::{
-    Actions, ClusterBundles, invalidate_cluster_queries, migration_detection,
+    Actions, ClusterBundles, cluster_art_url, invalidate_cluster_queries, migration_detection,
     onboarding_bundles_items, try_default_account, use_current_account, use_dispatch,
     use_migration, use_onboarding_bundles, use_onboarding_selection, use_settings_snapshot,
 };
 use crate::routes::Route;
+use crate::utils::{home_cluster, sort_clusters_for_home};
 use crate::view::onboarding::{matching_new_cluster_id, pkg_key};
 
 mod view;
@@ -302,6 +306,8 @@ fn finish_setup(
 
         invalidate_cluster_queries().await;
 
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(30), warm_home_art()).await;
+
         for version in versions {
             dispatch.record_seen_version(version);
         }
@@ -309,6 +315,59 @@ fn finish_setup(
         dispatch.mark_onboarding_seen();
         let _ = RouterContext::get().replace(Route::Home {});
     });
+}
+
+const HOME_ART_CLUSTERS: usize = 3;
+
+async fn warm_home_art() {
+    let Ok(state) = crate::launcher::state() else {
+        return;
+    };
+    let clusters = match state.clusters.list().await {
+        Ok(clusters) => clusters,
+        Err(err) => {
+            tracing::debug!("could not list clusters to warm home art: {err}");
+            return;
+        }
+    };
+
+    let meta_url_base = &state.services.requester.config().meta_url_base;
+    let (list, arts) = tokio::join!(
+        state.versions.metadata(meta_url_base),
+        state.versions.arts(meta_url_base),
+    );
+    let art_url = |cluster: &Cluster| {
+        cluster
+            .cover_file()
+            .is_none()
+            .then(|| cluster_art_url(cluster, &list, &arts))
+            .flatten()
+    };
+
+    let background = home_cluster(&clusters, None).and_then(art_url);
+    let mut warms: Vec<(String, &[u32])> = sort_clusters_for_home(clusters.clone())
+        .iter()
+        .take(HOME_ART_CLUSTERS)
+        .filter_map(art_url)
+        .filter(|url| Some(url) != background.as_ref())
+        .map(|url| (url, &[ART_PREVIEW_EDGE][..]))
+        .collect();
+    warms.sort();
+    warms.dedup();
+    warms.extend(background.map(|url| (url, &[ART_PREVIEW_EDGE, BACKGROUND_IMAGE_EDGE][..])));
+
+    let net = &state.services.requester;
+    let results = futures_util::future::join_all(
+        warms
+            .iter()
+            .map(|(url, edges)| state.images.prefetch(net, url, edges)),
+    )
+    .await;
+    for ((url, _), result) in warms.iter().zip(results) {
+        if let Err(err) = result {
+            tracing::debug!("home art warm failed for {url}: {err}");
+        }
+    }
 }
 
 async fn apply_overrides(plan: &ClusterPlan) -> oneclient_core::LauncherResult<()> {

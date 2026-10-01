@@ -104,8 +104,8 @@ pub use storage::{
 };
 pub use tos::{TermsQuery, terms_document, terms_error, terms_is_loading, use_terms};
 pub use version_metadata::{
-    pick_version_metadata, refresh_version_art_gallery, resolve_art_url, use_version_art,
-    use_version_art_gallery, use_version_metadata,
+    cluster_art_url, pick_version_metadata, refresh_version_art_gallery, resolve_art_url,
+    use_version_art, use_version_art_gallery, use_version_metadata,
 };
 pub use versions::{
     GameVersion, JavaMajorsQuery, game_versions, java_majors,

@@ -27,6 +27,7 @@ use crate::hooks::{
     use_provide_browser_state, use_provide_browser_type, use_provide_datapack_world, use_splash,
 };
 use crate::theme::colors;
+use crate::utils::home_cluster;
 use oneclient_events::LaunchStage;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -270,12 +271,6 @@ pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
 }
 
 pub const HOME_BACKGROUND_ASSET: &str = "backgrounds/CavesAndCliffs.jpg";
-
-fn home_cluster(clusters: &[Cluster], active: Option<ClusterId>) -> Option<&Cluster> {
-    active
-        .and_then(|id| clusters.iter().find(|c| c.id == id))
-        .or_else(|| clusters.first())
-}
 
 fn home_art(cluster: Option<&Cluster>) -> DynamicArt {
     cluster

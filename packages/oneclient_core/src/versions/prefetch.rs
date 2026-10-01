@@ -2,12 +2,16 @@ use std::collections::BTreeSet;
 
 use futures_util::StreamExt;
 
-use crate::images::{DEFAULT_IMAGE_EDGE, PREVIEW_IMAGE_EDGE};
+use crate::images::{BACKGROUND_IMAGE_EDGE, DEFAULT_IMAGE_EDGE, PREVIEW_IMAGE_EDGE};
 use crate::state::LauncherState;
 
 const PREFETCH_CONCURRENCY: usize = 4;
 
-const PREFETCH_EDGES: [u32; 2] = [PREVIEW_IMAGE_EDGE, DEFAULT_IMAGE_EDGE];
+const PREFETCH_EDGES: [u32; 3] = [
+    PREVIEW_IMAGE_EDGE,
+    DEFAULT_IMAGE_EDGE,
+    BACKGROUND_IMAGE_EDGE,
+];
 
 #[tracing::instrument(level = "debug", skip(state))]
 pub async fn prefetch_version_art(state: &LauncherState) {

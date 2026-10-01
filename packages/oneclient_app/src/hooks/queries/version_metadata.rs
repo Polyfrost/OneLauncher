@@ -1,6 +1,8 @@
-use oneclient_common::VersionKey;
 use oneclient_common::domain::GameLoader;
+use oneclient_common::{VersionKey, parse_mc_version};
 use oneclient_core::VersionMetadata;
+use oneclient_core::clusters::Cluster;
+use oneclient_core::versions::VersionArts;
 
 use freya::query::QueriesStorage;
 
@@ -105,6 +107,23 @@ pub fn resolve_art_url(
         .or_else(|| candidates.minor.clone())
         .or_else(|| curated.and_then(|m| m.art_url.clone()))
         .or_else(|| candidates.fallback.clone())
+}
+
+pub fn cluster_art_url(
+    cluster: &Cluster,
+    list: &[VersionMetadata],
+    arts: &VersionArts,
+) -> Option<String> {
+    let parsed = parse_mc_version(&cluster.mc_version);
+    let major = parsed.as_ref().map(|p| p.major);
+    let key = parsed.and_then(|p| p.key());
+    let curated =
+        major.and_then(|major| pick_version_metadata(list, major, key, Some(cluster.mc_loader)));
+    let candidates = VersionArtCandidates {
+        minor: arts.specific_art_url(major, key),
+        fallback: arts.fallback_art_url(major),
+    };
+    resolve_art_url(curated.as_ref(), &candidates)
 }
 
 #[cfg(test)]

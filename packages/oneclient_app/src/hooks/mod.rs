@@ -50,7 +50,7 @@ pub use queries::{
     mutation_error, mutation_is_pending, mutation_is_running, mutation_ok,
     onboarding_bundles_items, package_meta_batch, package_updates, pick_version_metadata,
     project_detail, provider_versions, query_error, query_is_busy, query_is_loading,
-    refresh_version_art_gallery, reset_login_code_dedup, resolve_art_url, search_items,
+    cluster_art_url, refresh_version_art_gallery, reset_login_code_dedup, resolve_art_url, search_items,
     search_pending, search_total, settled_or_loading, stale_hashes, terms_document, terms_error,
     terms_is_loading, try_account, try_accounts, try_cluster_analytics, try_cluster_logs,
     try_cluster_screenshots, try_default_account, try_game_profile, try_global_analytics,

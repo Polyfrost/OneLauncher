@@ -14,14 +14,14 @@ use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
     settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
     use_game_profile, use_game_snapshot, use_java_runtimes, use_loader_versions,
-    use_release_migration_checking, use_settings_snapshot,
+    use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
 use crate::view::app::clusters::{DeleteInstanceModal, EditInstanceModal, InstanceFacts};
 use crate::view::app::settings::{section_header, settings_row, settings_row_disabled};
-use oneclient_core::clusters::rank_migration_sources;
+use oneclient_core::clusters::{can_migrate_manually, rank_migration_sources};
 
 use super::cluster_not_found;
 use super::modpack_settings::{ModpackRepairRow, ModpackUpdateRow};
@@ -890,29 +890,47 @@ impl Component for MigrateFromRow {
         let cluster_id = self.cluster_id;
         let dispatch = use_dispatch();
         let checking = use_release_migration_checking(cluster_id);
-        let running = use_game_snapshot().is_running(cluster_id);
+        let game = use_game_snapshot();
         let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
-        let mut picked = use_state(|| None::<i64>);
+        let mut picked = use_state(|| None::<(i64, i64)>);
 
-        let sources = clusters
-            .iter()
-            .find(|cluster| cluster.id == cluster_id)
-            .map(|target| rank_migration_sources(target, &clusters))
-            .unwrap_or_default();
+        let mut routes: Vec<(String, i64, i64)> = Vec::new();
+        if let Some(this) = clusters.iter().find(|cluster| cluster.id == cluster_id) {
+            routes.extend(
+                rank_migration_sources(this, &clusters)
+                    .into_iter()
+                    .map(|source| (format!("From {}", source.name), cluster_id, source.id)),
+            );
+            routes.extend(
+                clusters
+                    .iter()
+                    .filter(|other| {
+                        other.id != cluster_id
+                            && can_migrate_manually(this.mc_loader, other.mc_loader)
+                    })
+                    .map(|target| (format!("To {}", target.name), target.id, cluster_id)),
+            );
+        }
+        let has_partners = !routes.is_empty();
+        let migratable =
+            use_migratable_routes(routes.iter().map(|route| (route.1, route.2)).collect());
+        routes.retain(|route| migratable.contains(&(route.1, route.2)));
 
         let selected = picked
             .read()
-            .and_then(|id| sources.iter().find(|source| source.id == id))
-            .or_else(|| sources.first())
+            .and_then(|pair| routes.iter().find(|route| (route.1, route.2) == pair))
+            .or_else(|| routes.first())
             .cloned();
-        let selected_id = selected.as_ref().map(|source| source.id);
+        let selected_pair = selected.as_ref().map(|route| (route.1, route.2));
+        let running = selected_pair
+            .is_some_and(|(target, source)| game.is_running(target) || game.is_running(source));
 
         let mut button = Button::new()
             .secondary()
-            .enabled(selected_id.is_some() && !checking && !running)
+            .enabled(selected_pair.is_some() && !checking && !running)
             .on_press(move |_| {
-                if let Some(source_id) = selected_id {
-                    dispatch.open_manual_migration(cluster_id, source_id);
+                if let Some((target, source)) = selected_pair {
+                    dispatch.open_manual_migration(target, source);
                 }
             });
         button = if checking {
@@ -928,33 +946,34 @@ impl Component for MigrateFromRow {
             button = button.tooltip("Close the game before migrating");
         }
 
-        let picker: Element = if sources.is_empty() {
+        let picker: Element = if routes.is_empty() {
             label()
-                .text("No other clusters with this loader")
+                .text(if has_partners {
+                    "Nothing installed from the browser left to copy"
+                } else {
+                    "No other clusters with this loader"
+                })
                 .font_size(12.)
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
-            let ids: Vec<i64> = sources.iter().map(|source| source.id).collect();
-            let names: Vec<String> = sources.iter().map(|source| source.name.clone()).collect();
-            Dropdown::new(
-                selected.map(|source| source.name).unwrap_or_default(),
-                names,
-            )
-            .width(Size::px(180.))
-            .height(Size::px(34.))
-            .on_select(move |index: usize| {
-                if let Some(id) = ids.get(index) {
-                    picked.set(Some(*id));
-                }
-            })
-            .into_element()
+            let pairs: Vec<(i64, i64)> = routes.iter().map(|route| (route.1, route.2)).collect();
+            let names: Vec<String> = routes.iter().map(|route| route.0.clone()).collect();
+            Dropdown::new(selected.map(|route| route.0).unwrap_or_default(), names)
+                .width(Size::px(220.))
+                .height(Size::px(34.))
+                .on_select(move |index: usize| {
+                    if let Some(pair) = pairs.get(index) {
+                        picked.set(Some(*pair));
+                    }
+                })
+                .into_element()
         };
 
         settings_row(
             IconType::Copy01,
             "Migrate",
-            "Bring mods, resource packs and shaders you installed in another cluster. Compatible versions are downloaded; the other cluster is left as it is.",
+            "Copy mods, resource packs and shaders you installed from the browser to or from another cluster.",
             rect()
                 .horizontal()
                 .cross_align(Alignment::Center)

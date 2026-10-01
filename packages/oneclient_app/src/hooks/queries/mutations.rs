@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
-use super::cluster_content::ClusterContentQuery;
+use super::cluster_content::{ClusterContentQuery, MigratableRoutesQuery};
 use super::clusters::ListClustersQuery;
 use super::package_updates::PackageUpdatesQuery;
 use super::settings_profiles::{
@@ -43,6 +43,11 @@ pub async fn invalidate_cluster_queries() {
     )
     .await;
     timed(
+        "migratable_routes",
+        QueriesStorage::<MigratableRoutesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
         "clusters",
         QueriesStorage::<ListClustersQuery>::invalidate_all(),
     )
@@ -68,6 +73,7 @@ pub async fn invalidate_cluster_queries() {
 /// this before dropping its busy flag
 pub async fn invalidate_cluster_content_queries() {
     QueriesStorage::<ClusterContentQuery>::invalidate_all().await;
+    QueriesStorage::<MigratableRoutesQuery>::invalidate_all().await;
 }
 
 /// Everything [`invalidate_cluster_queries`] does bar the cluster list and the

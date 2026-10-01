@@ -150,6 +150,23 @@ pub async fn has_migratable_packages(cluster_id: i64, ctx: &ContentCtx) -> Conte
     Ok(!migratable_candidates(cluster_id, ctx).await?.is_empty())
 }
 
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
+pub async fn has_packages_to_migrate(
+    source_cluster_id: i64,
+    target_cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<bool> {
+    let candidates = migratable_candidates(source_cluster_id, ctx).await?;
+    if candidates.is_empty() {
+        return Ok(false);
+    }
+    let present = target_projects(target_cluster_id, bundles, ctx).await?;
+    Ok(candidates
+        .iter()
+        .any(|candidate| !present.contains(&candidate.project_id)))
+}
+
 async fn target_projects(
     target_cluster_id: i64,
     bundles: &BundlesManager,

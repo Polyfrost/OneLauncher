@@ -4,7 +4,9 @@ use oneclient_common::domain::GameLoader;
 
 use oneclient_cluster::Cluster;
 use oneclient_common::version::parse_mc_version;
-use oneclient_content::packages::release_migration::has_migratable_packages;
+use oneclient_content::packages::release_migration::{
+    has_migratable_packages, has_packages_to_migrate,
+};
 
 use crate::LauncherResult;
 use crate::state::LauncherState;
@@ -50,9 +52,7 @@ fn is_migration_source(
     target: &Cluster,
     loader_ok: impl Fn(GameLoader, GameLoader) -> bool,
 ) -> bool {
-    candidate.id != target.id
-        && !candidate.user_created
-        && loader_ok(candidate.mc_loader, target.mc_loader)
+    candidate.id != target.id && loader_ok(candidate.mc_loader, target.mc_loader)
 }
 
 fn is_migration_destination(target: &ReleaseTarget, rules: &[RemoteMigration]) -> bool {
@@ -142,7 +142,7 @@ pub async fn manual_migration_offer(
     };
 
     if !is_migration_source(source, target, can_migrate_manually)
-        || !has_migratable_packages(source.id, &content).await?
+        || !has_packages_to_migrate(source.id, target.id, &state.bundles, &content).await?
     {
         return Ok(OfferLookup::NoSources);
     }
@@ -188,7 +188,7 @@ async fn offer_for(
 
     let mut sources = Vec::new();
     for cluster in clusters {
-        if !is_migration_source(cluster, target, |from, to| from == to) {
+        if cluster.user_created || !is_migration_source(cluster, target, |from, to| from == to) {
             continue;
         }
         if !version_order(&cluster.mc_version).is_some_and(|order| order != target_order) {
@@ -334,5 +334,35 @@ mod tests {
     #[test]
     fn a_bare_minor_orders_below_its_patches() {
         assert!(version_order("26.3") < version_order("26.3.1"));
+    }
+
+    fn user_cluster(id: i64, mc_version: &str) -> Cluster {
+        Cluster {
+            id,
+            name: format!("{mc_version} Fabric"),
+            folder_name: format!("cluster-{id}"),
+            setting_profile_name: None,
+            mc_version: mc_version.to_string(),
+            mc_loader: GameLoader::Fabric,
+            mc_loader_version: None,
+            stage: oneclient_cluster::ClusterStage::default(),
+            created_at: None,
+            last_played: None,
+            overall_played: std::time::Duration::ZERO,
+            linked_modpack_hash: None,
+            kind: oneclient_cluster::ClusterKind::OneClient,
+            user_created: true,
+            description: None,
+            tags: Vec::new(),
+            cover_path: None,
+        }
+    }
+
+    #[test]
+    fn manual_migration_lists_user_created_sources() {
+        let target = user_cluster(1, "26.2");
+        let clusters = [target.clone(), user_cluster(2, "26.3")];
+        let sources = rank_migration_sources(&target, &clusters);
+        assert_eq!(sources.iter().map(|c| c.id).collect::<Vec<_>>(), [2]);
     }
 }

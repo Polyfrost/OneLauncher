@@ -512,12 +512,14 @@ impl Actions {
 
     pub fn open_manual_migration(&self, target_cluster_id: i64, source_cluster_id: i64) {
         self.set_release_migration_checking(target_cluster_id, true);
+        self.set_release_migration_checking(source_cluster_id, true);
         let actions = self.clone();
         spawn_forever(async move {
             actions
                 .run_manual_migration(target_cluster_id, source_cluster_id)
                 .await;
             actions.set_release_migration_checking(target_cluster_id, false);
+            actions.set_release_migration_checking(source_cluster_id, false);
         });
     }
 

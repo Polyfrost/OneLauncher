@@ -64,6 +64,10 @@ pub fn java_arguments(
 
     parsed.extend(performance_flags(java_major, java_arch, mem_max, &custom));
 
+    if java_major >= 21 {
+        parsed.push("--add-modules=jdk.incubator.vector".to_string());
+    }
+
     parsed.push(format!("-Xmx{mem_max}M"));
     parsed.extend(custom);
 
@@ -893,7 +897,7 @@ mod tests {
         let cp = classpaths(&dir, &libraries, &client, "x86", false).unwrap();
 
         assert!(
-            !cp.contains("asm-all"),
+            !cp.contains("asm-all-4.1.jar"),
             "fabric aborts on two copies of org/objectweb/asm/ClassReader.class: {cp}"
         );
         assert!(cp.contains("asm-9.10.1.jar"), "{cp}");

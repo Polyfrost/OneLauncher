@@ -60,8 +60,8 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
             IconType::Rocket02,
             "OneClient",
             Some("Recommended"),
-            "Polyfrost's client with OneConfig, performance mods and cosmetics set up.",
-            "Shares worlds and packs with your other OneClient instances.",
+            "The most bleeding edge performance, QoL mods and world hosting in one instance.",
+            "Shares configs, worlds, and packs with your other OneClient instances.",
         ),
         (
             TypeChoice::Scratch,

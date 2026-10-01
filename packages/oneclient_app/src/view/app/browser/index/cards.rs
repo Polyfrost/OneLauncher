@@ -385,16 +385,16 @@ impl Component for InstallButton {
                 .spacing(6.)
                 .padding(Gaps::new_symmetric(0., 10.))
                 .corner_radius(CornerRadius::new_all(6.))
-                .background(color.with_a(36))
-                .border(border_all_color(1., color.with_a(115)))
+                .background(colors::component_bg())
+                .border(border_all_color(1., colors::component_border()))
                 .child(Icon::new(IconType::CheckCircle).size(12.).color(color))
                 .child(
                     label()
                         .text(installed.label())
                         .font_size(11.)
-                        .font_weight(FontWeight::SEMI_BOLD)
+                        .font_weight(FontWeight::NORMAL)
                         .max_lines(1)
-                        .color(color),
+                        .color(colors::fg_secondary()),
                 )
                 .into_element();
         }

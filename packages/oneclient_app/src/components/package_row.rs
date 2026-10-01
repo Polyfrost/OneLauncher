@@ -24,7 +24,6 @@ pub(crate) const GRID_MIN_W: f32 = 290.;
 const GRID_CARD_PADDING: f32 = 14.;
 const BADGE_STRIP_H: f32 = 20.;
 const BADGE_STRIP_LIFT: f32 = 2.;
-const TAG_LETTER_SPACING: f32 = 0.6;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -839,24 +838,27 @@ fn updated_badge() -> Element {
     status_tag("Updated", colors::success())
 }
 
-fn status_tag(text: &str, accent: Color) -> Element {
+fn status_tag(text: &'static str, accent: Color) -> Element {
     rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(5.)
+        .padding(Gaps::new(2., 6., 2., 6.))
         .corner_radius(CornerRadius::new_all(4.))
         .background(colors::component_bg())
         .child(
             rect()
-                .padding(Gaps::new(1., 6., 3., 6. + TAG_LETTER_SPACING))
-                .corner_radius(CornerRadius::new_all(4.))
-                .background(accent.with_a(38))
-                .border(border_all_color(1., accent.with_a(96)))
-                .child(
-                    label()
-                        .text(text.to_uppercase())
-                        .font_size(9.)
-                        .font_weight(FontWeight::BOLD)
-                        .letter_spacing(TAG_LETTER_SPACING)
-                        .color(accent),
-                ),
+                .width(Size::px(6.))
+                .height(Size::px(6.))
+                .corner_radius(CornerRadius::new_all(3.))
+                .background(accent),
+        )
+        .child(
+            label()
+                .text(text)
+                .font_size(11.)
+                .font_weight(FontWeight::MEDIUM)
+                .color(colors::fg_secondary()),
         )
         .into_element()
 }

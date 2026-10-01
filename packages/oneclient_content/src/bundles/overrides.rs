@@ -493,6 +493,7 @@ mod tests {
     #[tokio::test]
     async fn a_file_dropped_from_the_lock_is_deleted_only_when_untouched() {
         let root = polyio::testing::ScratchDir::new("file-lock");
+        polyio::create_dir_all(root.join("config")).await.unwrap();
         polyio::write(root.join("config/kept.json"), b"mine")
             .await
             .unwrap();

@@ -98,7 +98,7 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
         art,
         title,
         subtitle,
-        card: steps_card(picks.progress(), rows),
+        card: steps_card(rows),
         tags: if picks.step == Step::Customize {
             tags
         } else {

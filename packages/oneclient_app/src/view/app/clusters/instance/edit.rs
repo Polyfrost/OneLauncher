@@ -108,7 +108,6 @@ impl Component for EditInstanceModal {
                 title,
                 subtitle,
                 card: facts_card(
-                    "Instance".to_string(),
                     vec![
                         ("Type", kind_label(self.facts.kind).to_string()),
                         ("Version", self.facts.mc_version.clone()),

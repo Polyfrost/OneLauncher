@@ -3,11 +3,8 @@ use oneclient_common::domain::GameLoader;
 use oneclient_common::parse_mc_version;
 
 use super::shell::RAIL_WIDTH;
-use crate::components::{DynamicArt, Icon, IconType};
-use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::components::DynamicArt;
 
-const CARD_BG: Color = Color::from_argb(158, 11, 16, 19);
 const HAIRLINE: Color = Color::from_argb(31, 255, 255, 255);
 const CHIP_BG: Color = Color::from_argb(26, 255, 255, 255);
 const SUB: Color = Color::from_argb(184, 213, 219, 255);
@@ -35,126 +32,52 @@ pub fn version_art(version: Option<&str>, loader: Option<GameLoader>) -> Dynamic
     }
 }
 
-pub fn steps_card(progress: String, rows: Vec<(&'static str, String, RowState)>) -> Element {
-    card(
-        progress,
+pub fn steps_card(rows: Vec<(&'static str, String, RowState)>) -> Element {
+    rows_list(
         rows.into_iter()
-            .enumerate()
-            .map(|(index, (name, value, state))| step_row(index, name, &value, state))
+            .map(|(name, value, state)| {
+                let name_color = match state {
+                    RowState::Current => Color::WHITE,
+                    RowState::Done => SUB,
+                    RowState::Pending => MUTED,
+                };
+                row(name, &value, name_color)
+            })
             .collect(),
     )
 }
 
-pub fn facts_card(heading: String, rows: Vec<(&'static str, String)>) -> Element {
-    card(
-        heading,
+pub fn facts_card(rows: Vec<(&'static str, String)>) -> Element {
+    rows_list(
         rows.into_iter()
-            .map(|(name, value)| fact_row(name, &value))
+            .map(|(name, value)| row(name, &value, SUB))
             .collect(),
     )
 }
 
-fn card(heading: String, rows: Vec<Element>) -> Element {
+fn rows_list(rows: Vec<Element>) -> Element {
     rect()
         .vertical()
         .width(Size::fill())
+        .spacing(10.)
+        .children(rows)
+        .into_element()
+}
+
+fn row(name: &'static str, value: &str, name_color: Color) -> Element {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
         .spacing(12.)
         .child(
             label()
-                .text(heading)
-                .font_size(11.)
-                .font_weight(FontWeight::MEDIUM)
-                .letter_spacing(1.6)
-                .color(SUB),
-        )
-        .child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .spacing(10.)
-                .children(rows),
-        )
-        .into_element()
-}
-
-fn step_row(index: usize, name: &'static str, value: &str, state: RowState) -> Element {
-    let done = state == RowState::Done;
-    let now = state == RowState::Current;
-
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(11.)
-        .child(
-            rect()
-                .width(Size::px(20.))
-                .height(Size::px(20.))
-                .center()
-                .corner_radius(CornerRadius::new_all(6.))
-                .background(if done {
-                    colors::brand()
-                } else {
-                    Color::TRANSPARENT
-                })
-                .border(border_all_color(
-                    1.,
-                    if done || now {
-                        colors::brand()
-                    } else {
-                        HAIRLINE
-                    },
-                ))
-                .child(if done {
-                    Icon::new(IconType::Check)
-                        .size(12.)
-                        .color(Color::WHITE)
-                        .into_element()
-                } else {
-                    label()
-                        .text((index + 1).to_string())
-                        .font_size(11.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(if now { Color::WHITE } else { MUTED })
-                        .into_element()
-                }),
-        )
-        .child(
-            label()
                 .text(name)
                 .width(Size::px(76.))
-                .font_size(12.)
-                .max_lines(1)
-                .color(if now { Color::WHITE } else { SUB }),
-        )
-        .child(
-            label()
-                .text(value.to_string())
-                .width(Size::flex(1.0))
                 .font_size(13.)
-                .font_weight(FontWeight::MEDIUM)
                 .max_lines(1)
-                .text_align(TextAlign::Right)
-                .color(if done { Color::WHITE } else { SUB }),
-        )
-        .into_element()
-}
-
-fn fact_row(name: &'static str, value: &str) -> Element {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(11.)
-        .child(
-            label()
-                .text(name)
-                .width(Size::px(76.))
-                .font_size(12.)
-                .max_lines(1)
-                .color(SUB),
+                .color(name_color),
         )
         .child(
             label()
@@ -233,11 +156,7 @@ pub fn rail(parts: Rail) -> Element {
                     rect()
                         .vertical()
                         .width(Size::fill())
-                        .spacing(12.)
-                        .padding(Gaps::new_all(16.))
-                        .corner_radius(CornerRadius::new_all(12.))
-                        .background(CARD_BG)
-                        .border(border_all_color(1., HAIRLINE))
+                        .spacing(14.)
                         .child(card)
                         .maybe_child((!tags.is_empty()).then(|| {
                             rect()

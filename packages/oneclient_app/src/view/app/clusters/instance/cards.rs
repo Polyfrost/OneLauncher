@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use super::model::{LoaderChoice, VersionRow};
 use crate::AppAssets;
-use crate::components::{AssetImage, Icon, IconType, filled_pill, pill};
+use crate::components::{AssetImage, Icon, IconType, pill};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -181,36 +181,24 @@ pub fn wide_card(card: WideCard) -> Element {
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)
-        .cross_align(Alignment::Start)
-        .spacing(16.)
-        .child(
-            rect()
-                .width(Size::px(44.))
-                .height(Size::px(44.))
-                .center()
-                .corner_radius(CornerRadius::new_all(10.))
-                .background(if selected {
-                    colors::brand()
-                } else {
-                    colors::page_elevated()
-                })
-                .border(border_all_color(1., colors::component_border()))
-                .child(Icon::new(icon).size(22.).color(if selected {
-                    Color::WHITE
-                } else {
-                    colors::fg_primary()
-                })),
-        )
+        .cross_align(Alignment::Center)
+        .spacing(14.)
+        .child(marker(selected, false))
+        .child(Icon::new(icon).size(20.).color(if selected {
+            colors::fg_primary()
+        } else {
+            colors::fg_secondary()
+        }))
         .child(
             rect()
                 .vertical()
                 .width(Size::flex(1.0))
-                .spacing(7.)
+                .spacing(2.)
                 .child(
                     rect()
                         .horizontal()
                         .cross_align(Alignment::Center)
-                        .spacing(10.)
+                        .spacing(8.)
                         .child(
                             label()
                                 .text(title)
@@ -218,32 +206,28 @@ pub fn wide_card(card: WideCard) -> Element {
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(colors::fg_primary()),
                         )
-                        .maybe_child(
-                            badge.map(|badge| filled_pill(badge, colors::brand(), Color::WHITE)),
-                        ),
+                        .maybe_child(badge.map(|badge| {
+                            label()
+                                .text(badge)
+                                .font_size(12.)
+                                .color(colors::fg_secondary())
+                        })),
                 )
                 .child(
                     label()
-                        .text(blurb)
-                        .font_size(12.)
+                        .text(format!("{blurb} {meta}"))
+                        .font_size(13.)
                         .line_height(1.45)
-                        .color(colors::fg_secondary()),
-                )
-                .child(
-                    label()
-                        .text(meta)
-                        .font_size(11.)
                         .color(colors::fg_secondary()),
                 ),
         )
-        .child(marker(selected, false))
         .into_element();
 
     SelectCard {
         id: title_id,
         selected,
         height: None,
-        padding: Gaps::new_all(16.),
+        padding: Gaps::new_symmetric(16., 18.),
         content,
         on_press,
     }

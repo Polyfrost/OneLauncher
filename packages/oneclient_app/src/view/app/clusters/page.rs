@@ -254,15 +254,13 @@ impl Component for Clusters {
             shown_lines.is_empty() && shown_custom.is_empty() && shown_packs.is_empty();
 
         let tabs = [
-            (Filter::All, "All", lines.len() + instances.len()),
-            (Filter::OneClient, "OneClient", lines.len()),
-            (Filter::Custom, "Custom", custom.len()),
-            (Filter::Modpacks, "Modpacks", packs.len()),
+            (Filter::All, "All"),
+            (Filter::OneClient, "OneClient"),
+            (Filter::Custom, "Custom"),
+            (Filter::Modpacks, "Modpacks"),
         ]
-        .map(|(value, name, count)| {
-            TabItem::new(name, active_filter == value)
-                .count_text(count.to_string())
-                .on_press(move |_| filter.set(value))
+        .map(|(value, name)| {
+            TabItem::new(name, active_filter == value).on_press(move |_| filter.set(value))
         });
 
         let line_cards: Vec<Element> = shown_lines

@@ -898,19 +898,3 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
         )
         .into_element()
 }
-
-pub(crate) fn filled_pill(text: String, background: Color, foreground: Color) -> Element {
-    rect()
-        .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(6.))
-        .background(background)
-        .child(
-            label()
-                .text(text)
-                .font_size(10.)
-                .font_weight(FontWeight::SEMI_BOLD)
-                .letter_spacing(1.)
-                .color(foreground),
-        )
-        .into_element()
-}

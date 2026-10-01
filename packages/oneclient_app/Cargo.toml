@@ -153,6 +153,7 @@ SectionEnd
 
 [package.metadata.packager.deb]
 desktop-template = "distribution/linux/org.polyfrost.oneclient.template"
+depends = ["libxdo3"]
 
 [package.metadata.packager.appimage]
 # desktop entry generated from the deb template above via the linux config

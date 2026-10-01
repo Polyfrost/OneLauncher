@@ -488,6 +488,8 @@ struct CfMod {
 struct CfScreenshot {
     url: String,
     #[serde(default)]
+    thumbnail_url: Option<String>,
+    #[serde(default)]
     title: Option<String>,
 }
 
@@ -629,6 +631,12 @@ impl From<CfMod> for ProjectSummary {
                 .logo
                 .and_then(|l| l.thumbnail_url.or(l.url))
                 .filter(|s| !s.is_empty()),
+            banner_url: m
+                .screenshots
+                .into_iter()
+                .next()
+                .map(|s| s.thumbnail_url.filter(|t| !t.is_empty()).unwrap_or(s.url))
+                .filter(|s| !s.is_empty()),
             downloads: m.download_count,
             created: m.date_created,
             updated: m.date_modified,
@@ -668,6 +676,7 @@ impl CfMod {
                 .map(|s| GalleryImage {
                     url: s.url,
                     title: s.title.filter(|t| !t.is_empty()),
+                    featured: false,
                 })
                 .collect(),
             license: None,

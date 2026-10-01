@@ -130,6 +130,10 @@ impl PackageProvider for ModrinthProvider {
             game_versions: Vec<String>,
             downloads: u64,
             icon_url: Option<String>,
+            #[serde(default)]
+            featured_gallery: Option<String>,
+            #[serde(default)]
+            gallery: Vec<String>,
             date_created: DateTime<Utc>,
             date_modified: DateTime<Utc>,
         }
@@ -152,6 +156,10 @@ impl PackageProvider for ModrinthProvider {
                     summary: h.description,
                     author: h.author,
                     icon_url: h.icon_url,
+                    banner_url: h
+                        .featured_gallery
+                        .or_else(|| h.gallery.into_iter().next())
+                        .filter(|url| !url.is_empty()),
                     downloads: h.downloads,
                     created: h.date_created,
                     updated: h.date_modified,
@@ -534,6 +542,8 @@ struct ModrinthGalleryItem {
     raw_url: Option<String>,
     #[serde(default)]
     title: Option<String>,
+    #[serde(default)]
+    featured: bool,
 }
 
 #[derive(Deserialize)]
@@ -627,6 +637,7 @@ impl ModrinthProject {
                 .map(|g| GalleryImage {
                     url: g.raw_url.filter(|url| !url.is_empty()).unwrap_or(g.url),
                     title: g.title.filter(|t| !t.is_empty()),
+                    featured: g.featured,
                 })
                 .collect(),
             license,

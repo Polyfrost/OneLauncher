@@ -376,7 +376,9 @@ async fn apply_project_cover(
 fn cover_url(project: &ProjectDetail) -> Option<String> {
     project
         .gallery
-        .first()
+        .iter()
+        .find(|image| image.featured)
+        .or_else(|| project.gallery.first())
         .map(|image| image.url.clone())
         .or_else(|| project.icon_url.clone())
         .filter(|url| !url.is_empty())

@@ -102,6 +102,10 @@ impl Component for PackageCard {
         let provider = self.item.provider;
         let package_type = self.package_type.clone();
         let icon_url = self.item.icon_url.clone();
+        let banner = match self.item.banner_url.clone() {
+            Some(url) => PackageBanner::new(Some(url), BANNER_H).sharp(),
+            None => PackageBanner::new(icon_url.clone(), BANNER_H),
+        };
         let cluster_id = self.cluster_id;
 
         let a11y_id = use_a11y();
@@ -134,7 +138,7 @@ impl Component for PackageCard {
                     .height(Size::px(BANNER_H))
                     .overflow(Overflow::Clip)
                     // No installed badge, the control at the foot of the card already states it
-                    .child(PackageBanner::new(icon_url.clone(), BANNER_H).backdrop_only()),
+                    .child(banner.backdrop_only()),
             )
             .child(
                 rect()

@@ -289,6 +289,7 @@ pub(crate) struct PackageBanner {
     icon_url: Option<String>,
     height: f32,
     backdrop_only: bool,
+    sharp: bool,
     key: DiffKey,
 }
 
@@ -298,6 +299,7 @@ impl PackageBanner {
             icon_url,
             height,
             backdrop_only: false,
+            sharp: false,
             key: DiffKey::None,
         }
     }
@@ -305,6 +307,11 @@ impl PackageBanner {
     /// Drops the centred icon so a caller can place its own artwork over the blur
     pub fn backdrop_only(mut self) -> Self {
         self.backdrop_only = true;
+        self
+    }
+
+    pub fn sharp(mut self) -> Self {
+        self.sharp = true;
         self
     }
 }
@@ -319,7 +326,7 @@ impl Component for PackageBanner {
     fn render(&self) -> impl IntoElement {
         let h = self.height;
         let icon = h * 0.62;
-        let query = use_cached_image(self.icon_url.clone(), 512);
+        let query = use_cached_image(self.icon_url.clone(), if self.sharp { 384 } else { 256 });
         let loaded = loaded_image(self.icon_url.as_deref(), &query);
 
         let banner = rect()
@@ -350,7 +357,7 @@ impl Component for PackageBanner {
                         )
                         .layer(Layer::Relative(1)),
                 )
-                .child(
+                .maybe_child((!self.sharp).then(|| {
                     rect()
                         .position(Position::new_absolute().top(0.).left(0.))
                         .width(Size::fill())
@@ -358,8 +365,9 @@ impl Component for PackageBanner {
                         .backdrop_blur(12.)
                         .background(BANNER_BG.with_a(120))
                         .overflow(Overflow::Clip)
-                        .layer(Layer::Relative(3)),
-                )
+                        .layer(Layer::Relative(3))
+                        .into_element()
+                }))
                 .maybe_child((!backdrop_only).then(|| {
                     rect()
                         .width(Size::px(icon))

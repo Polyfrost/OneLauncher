@@ -271,7 +271,6 @@ fn kind_for(choice: TypeChoice, loader: Option<GameLoader>) -> ClusterKind {
 
 fn suggested_name(
     version: Option<&String>,
-    choice: TypeChoice,
     kind: ClusterKind,
     loader: Option<GameLoader>,
 ) -> String {
@@ -279,11 +278,10 @@ fn suggested_name(
         return String::new();
     };
 
-    let full = match (choice, kind, loader) {
-        (TypeChoice::OneClient, _, _) => version.clone(),
-        (_, ClusterKind::Vanilla, _) => format!("{version} Vanilla"),
-        (_, _, Some(loader)) => format!("{version} {loader}"),
-        (_, _, None) => version.clone(),
+    let full = match (kind, loader) {
+        (ClusterKind::Vanilla, _) => format!("{version} Vanilla"),
+        (_, Some(loader)) => format!("{version} {loader}"),
+        (_, None) => version.clone(),
     };
     if validate_instance_name(&full).is_ok() {
         return full;
@@ -359,7 +357,7 @@ pub fn resolve(w: Wizard) -> Picks {
     let bundles = use_bundle_context(version.as_ref(), loader, oneclient, step == Step::Bundles);
 
     let kind = kind_for(choice, loader);
-    let suggested = suggested_name(version.as_ref(), choice, kind, loader);
+    let suggested = suggested_name(version.as_ref(), kind, loader);
     let declined = w.declined.read().clone().unwrap_or_else(|| {
         bundles
             .archives

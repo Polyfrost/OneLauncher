@@ -4,6 +4,7 @@ use freya::router::RouterContext;
 
 use crate::components::{Button, Icon, IconType};
 use oneclient_common::parse_mc_version;
+use oneclient_core::clusters::ClusterKind;
 
 use crate::hooks::{
     settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
@@ -75,14 +76,19 @@ impl Component for ActiveClusterPanel {
         };
 
         let version = format!("{} {}", cluster.mc_version, cluster.mc_loader);
-        let (title, subtitle) = if cluster.user_created {
+        let (title, subtitle) = if cluster.user_created && cluster.kind != ClusterKind::OneClient {
             (cluster.name.clone(), version)
         } else {
             let subtitle = match metadata {
                 Some(m) => format!("OneClient · {}", m.name),
                 None => "OneClient".to_string(),
             };
-            (version, subtitle)
+            let title = if cluster.user_created {
+                cluster.name.clone()
+            } else {
+                version
+            };
+            (title, subtitle)
         };
         let cluster_id = cluster.id;
         let syncing = launch_syncing(&launcher, cluster.uses_bundles());

@@ -88,11 +88,11 @@ pub enum GridSelection {
 }
 
 pub fn split_clusters(clusters: &[Cluster]) -> (ClusterGroups, Vec<Cluster>) {
-    let (instances, provisioned): (Vec<&Cluster>, Vec<&Cluster>) =
-        clusters.iter().partition(|cluster| cluster.user_created);
+    let (instances, oneclient): (Vec<&Cluster>, Vec<&Cluster>) =
+        clusters.iter().partition(|cluster| cluster.is_isolated());
 
     (
-        group_clusters_by_release(provisioned),
+        group_clusters_by_release(oneclient),
         sort_clusters_for_home(instances.into_iter().cloned().collect()),
     )
 }
@@ -405,6 +405,26 @@ mod tests {
             mc_version: mc_version.to_string(),
             ..cluster(id)
         }
+    }
+
+    #[test]
+    fn user_created_oneclient_clusters_join_their_release_line() {
+        let provisioned = versioned(1, "26.1");
+        let mine = Cluster {
+            user_created: true,
+            ..versioned(2, "26.1")
+        };
+        let vanilla = Cluster {
+            user_created: true,
+            kind: oneclient_db::models::ClusterKind::Vanilla,
+            ..versioned(3, "26.1")
+        };
+
+        let (groups, instances) = split_clusters(&[provisioned, mine, vanilla]);
+        let line = ReleaseLine::from_version("26.1").unwrap();
+        let grouped: Vec<i64> = groups[&line].iter().map(|c| c.id).collect();
+        assert_eq!(grouped, vec![1, 2]);
+        assert_eq!(instances.iter().map(|c| c.id).collect::<Vec<_>>(), vec![3]);
     }
 
     #[test]

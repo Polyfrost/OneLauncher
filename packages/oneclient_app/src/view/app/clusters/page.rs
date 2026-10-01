@@ -92,8 +92,7 @@ impl Component for Clusters {
         let active_id = use_active_cluster_id();
         let show_create = use_state(|| false);
         let mut selected = use_state(|| None::<GridSelection>);
-        let mut selected_version = use_state(|| None::<VersionKey>);
-        let mut selected_loader = use_state(|| None::<GameLoader>);
+        let mut selected_cluster = use_state(|| None::<i64>);
         let mut filter = use_state(|| Filter::All);
         let query = use_state(String::new);
         let loaders = use_state(Vec::<String>::new);
@@ -145,7 +144,7 @@ impl Component for Clusters {
 
         if selected.read().is_none() {
             *selected.write() = match active_cluster.as_ref() {
-                Some(cluster) if cluster.user_created => Some(GridSelection::Instance(cluster.id)),
+                Some(cluster) if cluster.is_isolated() => Some(GridSelection::Instance(cluster.id)),
                 other => default_line(&groups, other.cloned())
                     .map(GridSelection::Line)
                     .or_else(fallback),
@@ -172,25 +171,15 @@ impl Component for Clusters {
             .and_then(|line| groups.get(&line).cloned())
             .unwrap_or_default();
 
-        if line.is_some() && selected_version.read().is_none() {
-            let preferred = active_cluster
-                .as_ref()
-                .and_then(|c| parse_mc_version(&c.mc_version))
-                .and_then(|p| p.key());
-            *selected_version.write() = default_version_key(&clusters_for_line, preferred);
+        if line.is_some() && selected_cluster.read().is_none() {
+            *selected_cluster.write() =
+                default_line_cluster(&clusters_for_line, active_cluster.as_ref());
         }
 
-        if line.is_some() && selected_loader.read().is_none() {
-            let preferred = active_cluster.as_ref().map(|c| c.mc_loader);
-            *selected_loader.write() = default_loader(&clusters_for_line, preferred);
-        }
-
-        let cluster = resolve_cluster(
-            &clusters_for_line,
-            *selected_version.read(),
-            *selected_loader.read(),
-        )
-        .or_else(|| clusters_for_line.first().cloned());
+        let cluster = selected_cluster
+            .read()
+            .and_then(|id| clusters_for_line.iter().find(|c| c.id == id).cloned())
+            .or_else(|| clusters_for_line.first().cloned());
 
         let instance = match current {
             Some(GridSelection::Instance(id)) => instances.iter().find(|c| c.id == id).cloned(),
@@ -268,8 +257,7 @@ impl Component for Clusters {
                 };
                 VersionCard::new(line, list, caption, is_selected, move |_| {
                     selected.set(Some(item));
-                    selected_version.set(None);
-                    selected_loader.set(None);
+                    selected_cluster.set(None);
                 })
                 .into_element()
             })
@@ -293,14 +281,10 @@ impl Component for Clusters {
                     major: line.major,
                     key: parsed.and_then(|p| p.key()),
                     loader: cluster.mc_loader,
+                    user_created: cluster.user_created,
                     base: Sidebar {
-                        picker: line_picker(
-                            line,
-                            &cluster,
-                            &clusters_for_line,
-                            selected_version,
-                            selected_loader,
-                        ),
+                        picker: line_picker(line, &cluster, &clusters_for_line, selected_cluster),
+                        description: cluster.description.clone(),
                         ..Sidebar::base(&cluster, sidebar_w)
                     },
                 }
@@ -431,6 +415,29 @@ fn cluster_caption(cluster: &Cluster) -> String {
     format!("{} \u{b7} {}", cluster.mc_version, cluster.mc_loader)
 }
 
+fn picker_caption(cluster: &Cluster) -> String {
+    if cluster.user_created {
+        format!("{} \u{b7} {}", cluster.name, cluster_caption(cluster))
+    } else {
+        cluster_caption(cluster)
+    }
+}
+
+fn default_line_cluster(clusters: &[Cluster], active: Option<&Cluster>) -> Option<i64> {
+    if let Some(active) = active.filter(|a| clusters.iter().any(|c| c.id == a.id)) {
+        return Some(active.id);
+    }
+    let preferred_key = active
+        .and_then(|c| parse_mc_version(&c.mc_version))
+        .and_then(|p| p.key());
+    resolve_cluster(
+        clusters,
+        default_version_key(clusters, preferred_key),
+        default_loader(clusters, active.map(|c| c.mc_loader)),
+    )
+    .map(|c| c.id)
+}
+
 fn bottom_border() -> Border {
     Border::new()
         .fill(colors::component_border())
@@ -554,25 +561,18 @@ fn line_picker(
     line: ReleaseLine,
     cluster: &Cluster,
     siblings: &[Cluster],
-    mut selected_version: State<Option<VersionKey>>,
-    mut selected_loader: State<Option<GameLoader>>,
+    mut selected_cluster: State<Option<i64>>,
 ) -> Option<Element> {
     if siblings.len() <= 1 {
         return None;
     }
 
-    let options: Vec<String> = siblings.iter().map(cluster_caption).collect();
+    let options: Vec<String> = siblings.iter().map(picker_caption).collect();
     let current = siblings
         .iter()
         .position(|c| c.id == cluster.id)
         .unwrap_or(0);
-    let picks: Vec<(Option<VersionKey>, GameLoader)> = siblings
-        .iter()
-        .map(|c| {
-            let key = parse_mc_version(&c.mc_version).and_then(|p| p.key());
-            (key, c.mc_loader)
-        })
-        .collect();
+    let ids: Vec<i64> = siblings.iter().map(|c| c.id).collect();
 
     Some(
         rect()
@@ -596,9 +596,8 @@ fn line_picker(
                     .width(Size::fill())
                     .height(Size::px(40.))
                     .on_select(move |idx: usize| {
-                        if let Some((key, loader)) = picks.get(idx).copied() {
-                            selected_version.set(key);
-                            selected_loader.set(Some(loader));
+                        if let Some(id) = ids.get(idx).copied() {
+                            selected_cluster.set(Some(id));
                         }
                     }),
             )
@@ -663,6 +662,7 @@ struct LineSidebar {
     major: u32,
     key: Option<VersionKey>,
     loader: GameLoader,
+    user_created: bool,
     base: Sidebar,
 }
 
@@ -672,8 +672,10 @@ impl Component for LineSidebar {
 
         let mut sidebar = self.base.clone();
         if let Some(metadata) = metadata {
-            sidebar.title = metadata.name;
-            sidebar.description = metadata.long_description;
+            if !self.user_created {
+                sidebar.title = metadata.name;
+            }
+            sidebar.description = sidebar.description.or(metadata.long_description);
         }
         sidebar
     }

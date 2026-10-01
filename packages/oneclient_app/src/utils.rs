@@ -13,11 +13,12 @@ pub use oneclient_common::total_ram_mb;
 pub type ClusterGroups = BTreeMap<ReleaseLine, Vec<Cluster>>;
 
 /// The modern scheme puts a full release in the first two components (`26.1`) so each
-/// minor is its own line legacy `1.x` versions keep the whole major (`1.21`) as one line
+/// minor is its own line. `1.21.x` is split the same way (`1.21.5`) since it spans many
+/// content drops; other legacy `1.x` versions keep the whole major (`1.20`) as one line
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReleaseLine {
     pub major: u32,
-    /// `Some` only for the modern scheme where the minor is part of the line
+    /// `Some` for the modern scheme and `1.21.x`, where the minor is part of the line
     pub minor: Option<u32>,
 }
 
@@ -25,6 +26,8 @@ impl ReleaseLine {
     fn from_parsed(parsed: &ParsedMcVersion) -> Option<Self> {
         let minor = if parsed.major >= 26 {
             Some(parsed.minor?)
+        } else if parsed.major == 21 {
+            parsed.minor
         } else {
             None
         };
@@ -42,10 +45,10 @@ impl ReleaseLine {
         Self::from_version(&cluster.mc_version)
     }
 
-    /// The generic name of the line `26.1` `1.21`
+    /// The generic name of the line `26.1` `1.21.5` `1.20`
     pub fn pretty_name(&self) -> String {
         match self.minor {
-            Some(minor) => format!("{}.{minor}", self.major),
+            Some(minor) => format_mc_version(self.major, minor, None),
             None => format!("1.{}", self.major),
         }
     }
@@ -491,10 +494,23 @@ mod tests {
     }
 
     #[test]
-    fn legacy_minors_share_one_line() {
+    fn one_twenty_one_minors_are_separate_lines() {
         let clusters = [versioned(1, "1.21.5"), versioned(2, "1.21.11")];
 
-        assert_eq!(lines_of(&clusters), vec![line(21, None)]);
+        assert_eq!(
+            lines_of(&clusters),
+            vec![line(21, Some(5)), line(21, Some(11))]
+        );
+        assert_eq!(line_title(line(21, Some(5)), &clusters[..1]), "1.21.5");
+    }
+
+    #[test]
+    fn other_legacy_minors_share_one_line() {
+        let clusters = [versioned(1, "1.20.1"), versioned(2, "1.20.4")];
+
+        assert_eq!(lines_of(&clusters), vec![line(20, None)]);
+        assert_eq!(line_title(line(20, None), &clusters), "1.20");
+        assert_eq!(line_art_key(line(20, None), &clusters), None);
     }
 
     #[test]
@@ -521,14 +537,6 @@ mod tests {
 
     #[test]
     fn several_versions_fall_back_to_the_generic_name() {
-        let legacy = [
-            versioned(1, "1.21.1"),
-            versioned(2, "1.21.10"),
-            versioned(3, "1.21.11"),
-        ];
-        assert_eq!(line_title(line(21, None), &legacy), "1.21");
-        assert_eq!(line_art_key(line(21, None), &legacy), None);
-
         let modern = [versioned(4, "26.1"), versioned(5, "26.1.2")];
         assert_eq!(line_title(line(26, Some(1)), &modern), "26.1");
         assert_eq!(line_art_key(line(26, Some(1)), &modern), Some((1, None)));

@@ -258,7 +258,12 @@ impl QueryCapability for JavaMajorsQuery {
                 let mc = mc.clone();
                 async move {
                     let info = oneclient_core::game::download_version_info(
-                        &mc, None, &version, None, false,
+                        &mc,
+                        None,
+                        &version,
+                        oneclient_common::domain::GameLoader::Vanilla,
+                        None,
+                        false,
                     )
                     .await
                     .ok()?;

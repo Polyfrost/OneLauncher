@@ -188,6 +188,7 @@ pub async fn required_java_major(
             &state.services.mc(),
             None,
             &version,
+            cluster.mc_loader,
             loader_version.as_ref(),
             false,
         )
@@ -222,6 +223,7 @@ pub async fn estimate_cluster_download(
             &state.services.mc(),
             None,
             &version,
+            cluster.mc_loader,
             loader_version.as_ref(),
             false,
         )
@@ -279,6 +281,7 @@ async fn install_cluster(
         &state.services.mc(),
         Some(progress),
         &version,
+        cluster.mc_loader,
         loader_version.as_ref(),
         force,
     )

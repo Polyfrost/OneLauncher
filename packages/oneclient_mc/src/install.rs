@@ -705,6 +705,7 @@ pub async fn download_version_info(
     ctx: &McCtx,
     progress: Option<&GroupedProgressSession>,
     version: &Version,
+    game_loader: GameLoader,
     loader: Option<&LoaderVersion>,
     force: bool,
 ) -> McResult<VersionInfo> {
@@ -714,7 +715,7 @@ pub async fn download_version_info(
 
     let path = paths::versions_dir()?
         .join(&version_id)
-        .join(format!("{version_id}.json"));
+        .join(version_info_file_name(&version_id, game_loader.get_format_version()));
 
     if path.exists() && !force {
         match polyio::read_json::<VersionInfo>(&path).await {
@@ -1540,9 +1541,23 @@ pub fn is_version_updated(version_index: usize, versions: &[Version]) -> bool {
     version_index <= versions.iter().position(|x| x.id == "22w16a").unwrap_or(0)
 }
 
+fn version_info_file_name(version_id: &str, format_version: usize) -> String {
+    if format_version == 0 {
+        format!("{version_id}.json")
+    } else {
+        format!("{version_id}.v{format_version}.json")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_format_bump_moves_the_cached_version_info() {
+        assert_eq!(version_info_file_name("1.8.9", 0), "1.8.9.json");
+        assert_eq!(version_info_file_name("1.8.9-0.19.5", 1), "1.8.9-0.19.5.v1.json");
+    }
 
     fn scratch(tag: &str) -> PathBuf {
         let dir =

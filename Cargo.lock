@@ -3619,9 +3619,9 @@ dependencies = [
 
 [[package]]
 name = "interfrost"
-version = "1.4.0"
+version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "76a14453cd2d9454beb9b410dc7b845b2d62ff67a6f42460bce6b9bc6e34d3b9"
+checksum = "51cf4ffa08d3e23d9f6328cf64f521f7f50fb9ada957d0292e1738c40b699686"
 dependencies = [
  "chrono",
  "serde",

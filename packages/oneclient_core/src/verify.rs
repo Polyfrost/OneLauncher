@@ -123,6 +123,7 @@ async fn run_verify(
             &state.services.mc(),
             Some(progress),
             &version,
+            cluster.mc_loader,
             loader_version.as_ref(),
             false,
         )

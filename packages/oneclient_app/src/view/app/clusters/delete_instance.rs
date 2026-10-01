@@ -35,7 +35,9 @@ impl Component for DeleteInstanceModal {
         let game = use_game_snapshot();
         let cluster_id = self.cluster_id;
         let running = game.is_running(cluster_id);
-        let dedicated = use_cluster(cluster_id).is_none_or(|c| c.uses_dedicated_dir());
+        let cluster = use_cluster(cluster_id);
+        let dedicated = cluster.as_ref().is_none_or(|c| c.uses_dedicated_dir());
+        let provisioned = cluster.as_ref().is_some_and(|c| !c.user_created);
         let warning = if dedicated {
             format!(
                 "{} and its files will be deleted, including its worlds, settings and installed content. This cannot be undone.",
@@ -82,6 +84,13 @@ impl Component for DeleteInstanceModal {
                                     .font_size(13.)
                                     .color(colors::fg_secondary()),
                             )
+                            .maybe_child(provisioned.then(|| {
+                                label()
+                                    .text("It won't be added back automatically. To play this version again, create a OneClient instance for it.")
+                                    .font_size(12.)
+                                    .color(colors::fg_secondary())
+                                    .into_element()
+                            }))
                             .maybe_child(running.then(|| {
                                 label()
                                     .text("Close the game before deleting this instance.")

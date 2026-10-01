@@ -115,6 +115,12 @@ impl ClusterManager {
         )
         .await?
         .is_some()
+            || cluster_dao::is_provision_dismissed(
+                &self.db,
+                &options.mc_version,
+                options.mc_loader as i64,
+            )
+            .await?
         {
             return Ok(None);
         }
@@ -387,6 +393,15 @@ impl ClusterManager {
     #[tracing::instrument(skip(self))]
     pub async fn delete(&self, cluster_id: ClusterId, remove_files: bool) -> ClusterResult<()> {
         let cluster = self.get(cluster_id).await?;
+
+        if !cluster.user_created {
+            cluster_dao::dismiss_provision(
+                &self.db,
+                &cluster.mc_version,
+                cluster.mc_loader as i64,
+            )
+            .await?;
+        }
 
         let trashed = if remove_files && cluster.is_isolated() {
             move_to_trash(&cluster).await

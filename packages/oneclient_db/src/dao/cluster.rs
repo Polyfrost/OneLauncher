@@ -86,6 +86,34 @@ pub async fn find_by_version_loader(
     .await
 }
 
+pub async fn dismiss_provision(
+    pool: &SqlitePool,
+    mc_version: &str,
+    mc_loader: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT OR IGNORE INTO dismissed_provisions (mc_version, mc_loader) VALUES (?, ?)")
+        .bind(mc_version)
+        .bind(mc_loader)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn is_provision_dismissed(
+    pool: &SqlitePool,
+    mc_version: &str,
+    mc_loader: i64,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT 1 FROM dismissed_provisions WHERE mc_version = ? AND mc_loader = ?",
+    )
+    .bind(mc_version)
+    .bind(mc_loader)
+    .fetch_optional(pool)
+    .await
+    .map(|row| row.is_some())
+}
+
 pub async fn insert(pool: &SqlitePool, new: &NewCluster<'_>) -> Result<ClusterRow, sqlx::Error> {
     let created_at = Utc::now().to_rfc3339();
 
@@ -315,6 +343,19 @@ mod tests {
         )
         .await
         .expect("insert cluster")
+    }
+
+    #[tokio::test]
+    async fn dismissed_provision_is_remembered_per_version_and_loader() {
+        let pool = pool().await;
+        assert!(!is_provision_dismissed(&pool, "26.1", 1).await.unwrap());
+
+        dismiss_provision(&pool, "26.1", 1).await.unwrap();
+        dismiss_provision(&pool, "26.1", 1).await.unwrap();
+
+        assert!(is_provision_dismissed(&pool, "26.1", 1).await.unwrap());
+        assert!(!is_provision_dismissed(&pool, "26.1", 2).await.unwrap());
+        assert!(!is_provision_dismissed(&pool, "26.2", 1).await.unwrap());
     }
 
     #[tokio::test]

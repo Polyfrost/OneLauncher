@@ -95,6 +95,16 @@ async fn apply_rule(state: &LauncherState, rule: &RemoteMigration) -> LauncherRe
         return Ok(false);
     };
 
+    if cluster_dao::is_provision_dismissed(db, &to.mc_version, to.loader as i64).await? {
+        tracing::info!(
+            migration_id = %rule.id,
+            to = %to.mc_version,
+            to_loader = %to.loader,
+            "target version was dismissed; skipping migration"
+        );
+        return Ok(false);
+    }
+
     if cluster_dao::find_by_version_loader(db, &to.mc_version, to.loader as i64)
         .await?
         .is_some()
@@ -431,6 +441,78 @@ fn retarget_version_prefix(value: &str, from: &str, to: &str) -> Option<String> 
 mod tests {
     use super::*;
     use oneclient_common::domain::GameLoader;
+
+    #[cfg(debug_assertions)]
+    #[tokio::test]
+    async fn remote_migration_does_not_restore_a_deleted_target() {
+        use crate::clusters::CreateClusterOptions;
+        use crate::versions::{MigrationSource, MigrationTarget};
+
+        let state = crate::dev::ephemeral_state().await.unwrap();
+        let global = state.settings.read().global_game_settings.clone();
+        let mut clusters = Vec::new();
+        for version in ["26.1", "26.1.2"] {
+            clusters.push(
+                state
+                    .clusters
+                    .create_provisioned(
+                        &global,
+                        CreateClusterOptions::new(
+                            format!("{version} Fabric"),
+                            version,
+                            GameLoader::Fabric,
+                        ),
+                    )
+                    .await
+                    .unwrap()
+                    .unwrap(),
+            );
+        }
+        let source = &clusters[0];
+        let target = &clusters[1];
+        let marker = source.dir().unwrap().join("keep.txt");
+        polyio::write(&marker, b"keep").await.unwrap();
+        state.clusters.delete(target.id, true).await.unwrap();
+
+        let mut rule = RemoteMigration {
+            id: "dismissed-target".to_string(),
+            from: MigrationSource {
+                mc_version: source.mc_version.clone(),
+                loader: "fabric".to_string(),
+            },
+            to: MigrationTarget {
+                mc_version: target.mc_version.clone(),
+                loader: None,
+            },
+            allow_without_bundles: false,
+        };
+
+        for loader in [None, Some("fabric".to_string())] {
+            rule.to.loader = loader;
+            assert!(!apply_rule(&state, &rule).await.unwrap());
+            let unchanged = state.clusters.get(source.id).await.unwrap();
+            assert_eq!(unchanged.mc_version, source.mc_version);
+            assert_eq!(unchanged.folder_name, source.folder_name);
+            assert_eq!(polyio::read(&marker).await.unwrap(), b"keep");
+            assert!(
+                cluster_dao::find_by_version_loader(
+                    &state.services.db,
+                    &target.mc_version,
+                    target.mc_loader as i64,
+                )
+                .await
+                .unwrap()
+                .is_none()
+            );
+        }
+
+        rule.to.mc_version = "26.1.3".to_string();
+        assert!(apply_rule(&state, &rule).await.unwrap());
+        assert_eq!(
+            state.clusters.get(source.id).await.unwrap().mc_version,
+            "26.1.3"
+        );
+    }
 
     #[test]
     fn retargets_generated_folder() {

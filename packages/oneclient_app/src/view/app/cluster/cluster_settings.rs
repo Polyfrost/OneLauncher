@@ -68,8 +68,9 @@ impl Component for ClusterSettings {
         let versions = loader_versions(&versions_query);
         let runtimes = java_runtimes(&runtimes_query);
 
-        let instance_row = cluster.user_created.then(|| {
+        let instance_row = {
             InstanceRow {
+                editable: cluster.user_created,
                 facts: InstanceFacts {
                     cluster_id,
                     name: cluster.name.clone(),
@@ -83,7 +84,7 @@ impl Component for ClusterSettings {
                 },
             }
             .into_element()
-        });
+        };
 
         let mod_loader = !cluster.lacks_mod_loader();
         let loader_section: Vec<Element> = if mod_loader {
@@ -124,7 +125,7 @@ impl Component for ClusterSettings {
                     .scrollbar_gutter(true)
                     .spacing(4.)
                     .child(section_header("INSTANCE"))
-                    .append_children(instance_row)
+                    .child(instance_row)
                     .child(
                         DedicatedDirRow {
                             cluster_id,
@@ -311,6 +312,7 @@ impl Component for ToggleRow {
 
 #[derive(PartialEq)]
 struct InstanceRow {
+    editable: bool,
     facts: InstanceFacts,
 }
 
@@ -322,16 +324,24 @@ impl Component for InstanceRow {
         let name = self.facts.name.clone();
         let facts = self.facts.clone();
 
+        let editable = self.editable;
+        let description = if editable {
+            "Change this instance's name, description, tags and cover image, or remove it from your list."
+        } else {
+            "Remove this version from your list."
+        };
+
         let buttons = rect()
             .horizontal()
             .spacing(8.)
-            .child(
+            .maybe_child(editable.then(|| {
                 Button::new()
                     .small()
                     .secondary()
                     .on_press(move |_| editing.set(true))
-                    .text("Edit"),
-            )
+                    .text("Edit")
+                    .into_element()
+            }))
             .child(
                 Button::new()
                     .small()
@@ -346,12 +356,11 @@ impl Component for InstanceRow {
             .child(settings_row(
                 IconType::Pencil01,
                 "Instance Details",
-                "Change this instance's name, description, tags and cover image, or remove it from your list.",
+                description,
                 buttons,
             ))
             .maybe_child(editing.read().then(|| {
-                EditInstanceModal::new(facts.clone(), move |()| editing.set(false))
-                .into_element()
+                EditInstanceModal::new(facts.clone(), move |()| editing.set(false)).into_element()
             }))
             .maybe_child(deleting.read().then(|| {
                 DeleteInstanceModal::new(cluster_id, name.clone(), move |()| deleting.set(false))

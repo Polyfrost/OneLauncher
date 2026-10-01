@@ -4,12 +4,13 @@ use oneclient_core::clusters::Cluster;
 use crate::components::{ART_PREVIEW_EDGE, DynamicArt};
 use crate::theme::colors;
 use crate::ui::{border_all_color, last_played_label};
+use crate::utils::{GridSelection, ReleaseLine, line_art_key, line_title};
 
 const ROW_HEIGHT_PX: f32 = 56.;
 const THUMB_PX: f32 = 40.;
 
 pub struct InstanceRow {
-    id: i64,
+    key: GridSelection,
     title: String,
     subtitle: String,
     played: String,
@@ -25,7 +26,7 @@ impl InstanceRow {
         on_press: impl Into<EventHandler<Event<PressEventData>>>,
     ) -> Self {
         Self {
-            id: cluster.id,
+            key: GridSelection::Instance(cluster.id),
             title: cluster.name.clone(),
             subtitle: format!("{} \u{b7} {}", cluster.mc_version, cluster.mc_loader),
             played: last_played_label(cluster.last_played),
@@ -34,11 +35,30 @@ impl InstanceRow {
             on_press: on_press.into(),
         }
     }
+
+    pub fn for_line(
+        line: ReleaseLine,
+        clusters: &[Cluster],
+        caption: String,
+        selected: bool,
+        on_press: impl Into<EventHandler<Event<PressEventData>>>,
+    ) -> Self {
+        Self {
+            key: GridSelection::Line(line),
+            title: line_title(line, clusters),
+            subtitle: caption,
+            played: last_played_label(clusters.iter().filter_map(|c| c.last_played).max()),
+            art: DynamicArt::for_version(line.major, line_art_key(line, clusters), None)
+                .max_edge(ART_PREVIEW_EDGE),
+            selected,
+            on_press: on_press.into(),
+        }
+    }
 }
 
 impl PartialEq for InstanceRow {
     fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
+        self.key == other.key
             && self.title == other.title
             && self.subtitle == other.subtitle
             && self.played == other.played
@@ -76,7 +96,7 @@ impl Component for InstanceRow {
         };
 
         rect()
-            .key(self.id)
+            .key(self.key)
             .horizontal()
             .width(Size::fill())
             .height(Size::px(ROW_HEIGHT_PX))

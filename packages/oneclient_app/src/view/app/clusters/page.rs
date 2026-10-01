@@ -5,14 +5,16 @@ use freya::router::RouterContext;
 use oneclient_common::domain::GameLoader;
 use oneclient_common::{VersionKey, parse_mc_version};
 use oneclient_core::clusters::Cluster;
+use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     ART_PREVIEW_EDGE, Button, Dropdown, DynamicArt, FilterMenu, FilterOption, Icon, IconType,
-    InstanceRow, ScrollArea, TabBar, TabItem, TextInput, VersionCard, open_folder_button,
+    InstanceRow, ScrollArea, Segment, SegmentedControl, TabBar, TabItem, TextInput, VersionCard,
+    open_folder_button,
 };
 use crate::hooks::{
     settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
-    use_launcher, use_version_metadata,
+    use_launcher, use_version_metadata, use_view_state,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -97,6 +99,7 @@ impl Component for Clusters {
         let query = use_state(String::new);
         let loaders = use_state(Vec::<String>::new);
         let sort = use_state(|| Sort::RecentFirst);
+        let layout = use_view_state("clusters").layout;
         let mut body_width =
             use_state(|| window_logical_size().width - PAGE_PADDING.left() - PAGE_PADDING.right());
 
@@ -197,8 +200,20 @@ impl Component for Clusters {
             SIDEBAR_WIDTH_PX
         };
         let main_w = body_w - sidebar_w - COLUMN_GAP_PX;
-        let card_columns = grid_columns_for_width(main_w, MAX_CARD_WIDTH_PX, CARD_GAP_PX);
-        let row_columns = grid_columns_for_width(main_w, MAX_ROW_WIDTH_PX, ROW_GAP_PX);
+        let grid = *layout.read() == ViewLayout::Grid;
+        let (columns, item_height, gap) = if grid {
+            (
+                grid_columns_for_width(main_w, MAX_CARD_WIDTH_PX, CARD_GAP_PX),
+                CARD_HEIGHT_PX,
+                CARD_GAP_PX,
+            )
+        } else {
+            (
+                grid_columns_for_width(main_w, MAX_ROW_WIDTH_PX, ROW_GAP_PX),
+                ROW_HEIGHT_PX,
+                ROW_GAP_PX,
+            )
+        };
         let inline_search = main_w >= INLINE_SEARCH_MIN_PX;
 
         let active_filter = *filter.read();
@@ -229,7 +244,12 @@ impl Component for Clusters {
             clusters.iter().map(|c| c.mc_loader.to_string()).collect();
         available_loaders.sort();
         available_loaders.dedup();
-        let filters = filter_menu(&available_loaders, loaders, sort);
+        let filters = rect()
+            .horizontal()
+            .spacing(8.)
+            .child(filter_menu(&available_loaders, loaders, sort))
+            .child(layout_toggle(layout))
+            .into_element();
         let nothing_shown =
             shown_lines.is_empty() && shown_custom.is_empty() && shown_packs.is_empty();
 
@@ -255,11 +275,15 @@ impl Component for Clusters {
                     (true, Some(c), _) | (_, _, [c]) => cluster_caption(c),
                     _ => format!("{} instances", list.len()),
                 };
-                VersionCard::new(line, list, caption, is_selected, move |_| {
+                let on_press = move |_| {
                     selected.set(Some(item));
                     selected_cluster.set(None);
-                })
-                .into_element()
+                };
+                if grid {
+                    VersionCard::new(line, list, caption, is_selected, on_press).into_element()
+                } else {
+                    InstanceRow::for_line(line, list, caption, is_selected, on_press).into_element()
+                }
             })
             .collect();
 
@@ -267,8 +291,13 @@ impl Component for Clusters {
             list.iter()
                 .map(|c| {
                     let item = GridSelection::Instance(c.id);
-                    InstanceRow::new(c, current == Some(item), move |_| selected.set(Some(item)))
-                        .into_element()
+                    let is_selected = current == Some(item);
+                    let on_press = move |_| selected.set(Some(item));
+                    if grid {
+                        VersionCard::for_instance(c, is_selected, on_press).into_element()
+                    } else {
+                        InstanceRow::new(c, is_selected, on_press).into_element()
+                    }
                 })
                 .collect()
         };
@@ -341,12 +370,7 @@ impl Component for Clusters {
                                         section(
                                             "OneClient",
                                             "Grouped by Minecraft version",
-                                            fixed_grid(
-                                                line_cards,
-                                                card_columns,
-                                                CARD_HEIGHT_PX,
-                                                CARD_GAP_PX,
-                                            ),
+                                            fixed_grid(line_cards, columns, item_height, gap),
                                         )
                                     }))
                                     .append_children(
@@ -367,9 +391,9 @@ impl Component for Clusters {
                                                     caption,
                                                     fixed_grid(
                                                         instance_rows(list),
-                                                        row_columns,
-                                                        ROW_HEIGHT_PX,
-                                                        ROW_GAP_PX,
+                                                        columns,
+                                                        item_height,
+                                                        gap,
                                                     ),
                                                 )
                                             },
@@ -540,6 +564,16 @@ fn filter_menu(
                 })
             }),
         )
+        .into_element()
+}
+
+fn layout_toggle(layout: State<ViewLayout>) -> Element {
+    SegmentedControl::new(layout)
+        .height(34.)
+        .icon_size(15.)
+        .equal_width(34.)
+        .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
+        .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
         .into_element()
 }
 

@@ -1,17 +1,16 @@
 use freya::prelude::*;
-use oneclient_common::VersionKey;
 use oneclient_core::clusters::Cluster;
 
 use crate::components::{ART_PREVIEW_EDGE, DynamicArt};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::utils::{ReleaseLine, line_art_key, line_title};
+use crate::utils::{GridSelection, ReleaseLine, line_art_key, line_title};
 
 const CARD_HEIGHT_PX: f32 = 150.;
 
 pub struct VersionCard {
-    pub line: ReleaseLine,
-    pub art_key: Option<VersionKey>,
+    pub key: GridSelection,
+    pub art: DynamicArt,
     pub title: String,
     pub caption: String,
     pub count: usize,
@@ -28,11 +27,28 @@ impl VersionCard {
         on_press: impl Into<EventHandler<Event<PressEventData>>>,
     ) -> Self {
         Self {
-            line,
-            art_key: line_art_key(line, clusters),
+            key: GridSelection::Line(line),
+            art: DynamicArt::for_version(line.major, line_art_key(line, clusters), None)
+                .max_edge(ART_PREVIEW_EDGE),
             title: line_title(line, clusters),
             caption,
             count: clusters.len(),
+            selected,
+            on_press: on_press.into(),
+        }
+    }
+
+    pub fn for_instance(
+        cluster: &Cluster,
+        selected: bool,
+        on_press: impl Into<EventHandler<Event<PressEventData>>>,
+    ) -> Self {
+        Self {
+            key: GridSelection::Instance(cluster.id),
+            art: DynamicArt::for_cluster(cluster).max_edge(ART_PREVIEW_EDGE),
+            title: cluster.name.clone(),
+            caption: format!("{} \u{b7} {}", cluster.mc_version, cluster.mc_loader),
+            count: 1,
             selected,
             on_press: on_press.into(),
         }
@@ -41,8 +57,8 @@ impl VersionCard {
 
 impl PartialEq for VersionCard {
     fn eq(&self, other: &Self) -> bool {
-        self.line == other.line
-            && self.art_key == other.art_key
+        self.key == other.key
+            && self.art == other.art
             && self.title == other.title
             && self.caption == other.caption
             && self.count == other.count
@@ -79,7 +95,7 @@ impl Component for VersionCard {
         };
 
         rect()
-            .key(self.line)
+            .key(self.key)
             .width(Size::fill())
             .height(Size::px(CARD_HEIGHT_PX))
             .corner_radius(CornerRadius::new_all(16.))
@@ -97,10 +113,7 @@ impl Component for VersionCard {
                     .height(Size::fill())
                     .position(Position::new_absolute())
                     .opacity(art_opacity)
-                    .child(
-                        DynamicArt::for_version(self.line.major, self.art_key, None)
-                            .max_edge(ART_PREVIEW_EDGE),
-                    ),
+                    .child(self.art.clone()),
             )
             .child(
                 rect()

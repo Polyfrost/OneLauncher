@@ -29,7 +29,6 @@ const DIALOG_H: f32 = 616.;
 const ART_W: f32 = 368.;
 const PANEL_BG: Color = Color::from_rgb(22, 28, 35);
 const FOOTER_BG: Color = Color::from_rgb(19, 25, 31);
-const CARD_BG: Color = Color::from_argb(214, 17, 22, 28);
 const ROW_ICON: f32 = 32.;
 const CHECK_SIZE: f32 = 24.;
 const SKIPPED_ICON: f32 = 20.;
@@ -328,7 +327,7 @@ fn summary_card(
     plan: Option<&ReleaseMigrationPlan>,
     excluded: &HashSet<SelectionKey>,
 ) -> impl IntoElement {
-    let mut rows = rect().vertical().width(Size::fill()).spacing(12.);
+    let mut rows = rect().vertical().width(Size::fill()).spacing(10.);
     for tab in PackageTab::ALL {
         let value = plan.map_or_else(
             || "–".to_string(),
@@ -379,16 +378,12 @@ fn summary_card(
         .vertical()
         .width(Size::fill())
         .margin(Gaps::new(20., 0., 0., 0.))
-        .padding(Gaps::new(16., 16., 16., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
-        .background(CARD_BG)
-        .border(border_all_color(1., colors::component_border()))
         .child(rows)
         .child(
             rect()
                 .width(Size::fill())
                 .height(Size::px(1.))
-                .margin(Gaps::new(14., 0., 14., 0.))
+                .margin(Gaps::new(12., 0., 12., 0.))
                 .background(colors::component_border()),
         )
         .child(summary_row("Won't migrate", wont, colors::fg_secondary()))
@@ -411,8 +406,8 @@ fn summary_row(name: &str, value: String, name_color: Color) -> impl IntoElement
             label()
                 .text(value)
                 .font_size(13.)
-                .font_weight(FontWeight::SEMI_BOLD)
-                .color(colors::fg_primary()),
+                .font_weight(FontWeight::MEDIUM)
+                .color(Color::WHITE),
         )
 }
 
@@ -1171,10 +1166,6 @@ fn footer(
     let mut migrate = Button::new()
         .primary()
         .enabled(enabled)
-        .width(Size::px(176.))
-        .height(Size::px(52.))
-        .font_size(15.)
-        .font_weight(FontWeight::SEMI_BOLD)
         .on_press(move |_| {
             dispatch.migrate_release_packages(chosen.clone(), *copy_configs.peek());
         })
@@ -1207,10 +1198,6 @@ fn footer(
         .child(
             Button::new()
                 .ghost()
-                .height(Size::px(52.))
-                .padding(Gaps::new_symmetric(0., 16.))
-                .font_size(15.)
-                .font_weight(FontWeight::SEMI_BOLD)
                 .on_press(move |_| dismiss.dismiss_release_migration())
                 .text("Not now"),
         )

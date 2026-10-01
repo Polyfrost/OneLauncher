@@ -228,6 +228,7 @@ fn version_row(
     installing: bool,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
+    let version_label = v.version_number.clone();
     let mut chips: Vec<String> = v.loaders.iter().map(|l| l.to_string()).collect();
     chips.extend(v.game_versions.iter().cloned());
     let stats = {
@@ -301,16 +302,25 @@ fn version_row(
                 .map(|installed| activity_badge(installed.enabled).into_element()),
         )
         .child(version_button(
-            installed, v.name, project_id, version_id, installer, on_remove, installing,
+            installed,
+            v.name,
+            project_id,
+            version_id,
+            version_label,
+            installer,
+            on_remove,
+            installing,
         ))
 }
 
 /// A bundle pin with nothing linked leaves nothing to press no artifact to remove and installing by hand would duplicate it
+#[allow(clippy::too_many_arguments)]
 fn version_button(
     installed: Option<InstalledVersion>,
     version_name: String,
     project_id: String,
     version_id: String,
+    version_label: String,
     installer: Installer,
     on_remove: EventHandler<(String, String)>,
     busy: bool,
@@ -320,7 +330,13 @@ fn version_button(
             .secondary()
             .small()
             .enabled(!busy)
-            .on_press(move |_| installer.install(project_id.clone(), version_id.clone()))
+            .on_press(move |_| {
+                installer.install(
+                    project_id.clone(),
+                    version_id.clone(),
+                    version_label.clone(),
+                )
+            })
             .text("Install");
     };
 

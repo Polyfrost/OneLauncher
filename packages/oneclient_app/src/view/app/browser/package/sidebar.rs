@@ -1,7 +1,7 @@
 use super::*;
 
 use oneclient_content::packages::ProviderId;
-use oneclient_content::packages::types::{ProjectDetail, ProjectMember};
+use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSummary};
 
 use crate::components::{Button, Icon, IconType};
 use crate::theme::colors;
@@ -9,7 +9,7 @@ use crate::ui::border_all_color;
 
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
-    latest_version: Option<String>,
+    latest_version: Option<VersionSummary>,
     installer: Installer,
     confirm: State<Option<String>>,
     installed: Option<Installed>,
@@ -26,7 +26,7 @@ pub(super) fn sidebar(
     let project_id = project.id.clone();
     // Nothing to do when this version is already there or while an install is running
     let have_latest = match (&installed, &latest_version) {
-        (Some(installed), Some(latest)) => installed.is_version(latest),
+        (Some(installed), Some(latest)) => installed.is_version(&latest.version_id),
         _ => false,
     };
     let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
@@ -107,8 +107,12 @@ pub(super) fn sidebar(
                 .width(Size::fill())
                 .enabled(can_install)
                 .on_press(move |_| {
-                    if let Some(version_id) = latest_version.clone() {
-                        installer.install(project_id.clone(), version_id);
+                    if let Some(latest) = latest_version.clone() {
+                        installer.install(
+                            project_id.clone(),
+                            latest.version_id,
+                            latest.version_number,
+                        );
                     }
                 })
                 .child(Icon::new(IconType::Download01).size(14.))

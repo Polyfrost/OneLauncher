@@ -1,13 +1,12 @@
-
 use std::future::Future;
 use std::time::Duration;
 
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
-use serde::de::Error as DeError;
 use serde::Deserialize;
+use serde::de::Error as DeError;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -16,19 +15,16 @@ use url::Url;
 use uuid::Uuid;
 
 use super::data::{AccountKind, BrowserLogin, DeviceCodeLogin, MinecraftAccount};
-use super::error::{friendly_xbox_error, MinecraftAuthError, MinecraftAuthStep};
+use super::error::{MinecraftAuthError, MinecraftAuthStep, friendly_xbox_error};
 use oneclient_common::constants::{MICROSOFT_CLIENT_ID, MINECRAFT_SCOPES};
 
-const DEVICE_CODE_URL: &str =
-    "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
+const DEVICE_CODE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
 
-const AUTHORIZE_URL: &str =
-    "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
+const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
 
 const TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
 
 const AUTH_STEPS: u64 = 5;
-
 
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn begin_device_login(client: &Client) -> Result<DeviceCodeLogin, MinecraftAuthError> {
@@ -446,9 +442,7 @@ async fn poll_device_token(
                 "expired_token" => return Err(MinecraftAuthError::DeviceAuthorizationExpired),
                 other => {
                     return Err(MinecraftAuthError::DeviceAuthorizationFailed {
-                        error: err
-                            .error_description
-                            .unwrap_or_else(|| other.to_string()),
+                        error: err.error_description.unwrap_or_else(|| other.to_string()),
                     });
                 }
             }
@@ -488,7 +482,8 @@ async fn refresh_msa_token(
         source,
     })?;
 
-    parse_json_response(res, MinecraftAuthStep::RefreshToken).await
+    parse_json_response(res, MinecraftAuthStep::RefreshToken)
+        .await
         .map(MsaToken::from_response)
 }
 
@@ -790,7 +785,10 @@ async fn parse_json_response<T: for<'de> Deserialize<'de>>(
 
     serde_json::from_str(&text).map_err(|source| {
         if !status.is_success() {
-            MinecraftAuthError::ServiceError { step, status_code: status }
+            MinecraftAuthError::ServiceError {
+                step,
+                status_code: status,
+            }
         } else {
             MinecraftAuthError::DeserializeError {
                 step,

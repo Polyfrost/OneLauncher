@@ -1,9 +1,9 @@
 use reqwest::Method;
 use serde::de::DeserializeOwned;
 
-use oneclient_net::{RequestClient, RequestError, ResponseNotifyOptions, ResponseOptions};
-use oneclient_events::GroupedProgressChild;
 use crate::ctx::ContentCtx;
+use oneclient_events::GroupedProgressChild;
+use oneclient_net::{RequestClient, RequestError, ResponseNotifyOptions, ResponseOptions};
 
 #[tracing::instrument(level = "debug", skip(client, url, body))]
 pub async fn fetch_json<T: DeserializeOwned>(

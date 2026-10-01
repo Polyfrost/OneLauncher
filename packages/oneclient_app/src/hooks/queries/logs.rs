@@ -1,12 +1,14 @@
 use std::path::PathBuf;
 
 use freya::query::{
-    Mutation, MutationCapability, QueriesStorage, Query, QueryCapability,
-    UseMutation, UseQuery, use_mutation, use_query,
+    Mutation, MutationCapability, QueriesStorage, Query, QueryCapability, UseMutation, UseQuery,
+    use_mutation, use_query,
 };
 use oneclient_core::{
     LauncherError, LogFileInfo, LogLevel, LogLine, MclogsUploadResponse, ReadOptions,
 };
+
+use crate::launcher::{off_ui, off_ui_blocking};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ClusterLogsKeys {
@@ -24,7 +26,7 @@ impl QueryCapability for ClusterLogsQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
         let cluster = state.clusters.get(keys.cluster_id).await?;
-        Ok(oneclient_core::list_cluster_logs(&cluster)?)
+        Ok(off_ui_blocking(move || oneclient_core::list_cluster_logs(&cluster)).await?)
     }
 }
 
@@ -48,15 +50,13 @@ impl QueryCapability for LogContentQuery {
         if keys.path.as_os_str().is_empty() {
             return Ok(Vec::new());
         }
-        Ok(oneclient_core::read_log_at(
-            &keys.path,
-            &ReadOptions {
-                level_filter: keys.level,
-                search: keys.search.clone(),
-                max_lines: keys.max_lines,
-            },
-        )
-        .await?)
+        let path = keys.path.clone();
+        let options = ReadOptions {
+            level_filter: keys.level,
+            search: keys.search.clone(),
+            max_lines: keys.max_lines,
+        };
+        Ok(off_ui(async move { oneclient_core::read_log_at(&path, &options).await }).await?)
     }
 }
 
@@ -109,7 +109,11 @@ impl MutationCapability for UploadLogMutation {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        Ok(oneclient_core::upload_log_at(&state.services.requester, &keys.path).await?)
+        let path = keys.path.clone();
+        Ok(off_ui(
+            async move { oneclient_core::upload_log_at(&state.services.requester, &path).await },
+        )
+        .await?)
     }
 }
 

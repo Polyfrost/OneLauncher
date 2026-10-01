@@ -1,335 +1,552 @@
 use chrono::Utc;
 use sqlx::SqlitePool;
 
-use crate::models::{ClusterPatch, ClusterRow, NewCluster};
+use crate::models::{ClusterKind, ClusterPatch, ClusterRow, NewCluster};
 
 pub async fn get_by_id(pool: &SqlitePool, id: i64) -> Result<Option<ClusterRow>, sqlx::Error> {
-	sqlx::query_as!(
-		ClusterRow,
-		r#"
+    sqlx::query_as!(
+        ClusterRow,
+        r#"
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		FROM clusters
 		WHERE id = ?
 		"#,
-		id
-	)
-	.fetch_optional(pool)
-	.await
+        id
+    )
+    .fetch_optional(pool)
+    .await
 }
 
 pub async fn get_by_folder_name(
-	pool: &SqlitePool,
-	folder_name: &str,
+    pool: &SqlitePool,
+    folder_name: &str,
 ) -> Result<Option<ClusterRow>, sqlx::Error> {
-	sqlx::query_as!(
-		ClusterRow,
-		r#"
+    sqlx::query_as!(
+        ClusterRow,
+        r#"
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		FROM clusters
 		WHERE folder_name = ?
 		"#,
-		folder_name
-	)
-	.fetch_optional(pool)
-	.await
+        folder_name
+    )
+    .fetch_optional(pool)
+    .await
 }
 
 pub async fn list_all(pool: &SqlitePool) -> Result<Vec<ClusterRow>, sqlx::Error> {
-	sqlx::query_as!(
-		ClusterRow,
-		r#"
+    sqlx::query_as!(
+        ClusterRow,
+        r#"
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		FROM clusters
 		ORDER BY last_played IS NULL, last_played DESC, name ASC
 		"#
-	)
-	.fetch_all(pool)
-	.await
+    )
+    .fetch_all(pool)
+    .await
+}
+
+pub async fn list_oneclient_ids(pool: &SqlitePool) -> Result<Vec<i64>, sqlx::Error> {
+    sqlx::query_scalar("SELECT id FROM clusters WHERE kind = ?")
+        .bind(ClusterKind::OneClient.as_i64())
+        .fetch_all(pool)
+        .await
 }
 
 pub async fn find_by_version_loader(
-	pool: &SqlitePool,
-	mc_version: &str,
-	mc_loader: i64,
+    pool: &SqlitePool,
+    mc_version: &str,
+    mc_loader: i64,
 ) -> Result<Option<ClusterRow>, sqlx::Error> {
-	sqlx::query_as!(
-		ClusterRow,
-		r#"
+    sqlx::query_as!(
+        ClusterRow,
+        r#"
 		SELECT
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		FROM clusters
-		WHERE mc_version = ? AND mc_loader = ?
+		WHERE mc_version = ? AND mc_loader = ? AND user_created = 0
 		LIMIT 1
 		"#,
-		mc_version,
-		mc_loader
-	)
-	.fetch_optional(pool)
-	.await
+        mc_version,
+        mc_loader
+    )
+    .fetch_optional(pool)
+    .await
+}
+
+pub async fn dismiss_provision(
+    pool: &SqlitePool,
+    mc_version: &str,
+    mc_loader: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query("INSERT OR IGNORE INTO dismissed_provisions (mc_version, mc_loader) VALUES (?, ?)")
+        .bind(mc_version)
+        .bind(mc_loader)
+        .execute(pool)
+        .await?;
+    Ok(())
+}
+
+pub async fn is_provision_dismissed(
+    pool: &SqlitePool,
+    mc_version: &str,
+    mc_loader: i64,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>(
+        "SELECT 1 FROM dismissed_provisions WHERE mc_version = ? AND mc_loader = ?",
+    )
+    .bind(mc_version)
+    .bind(mc_loader)
+    .fetch_optional(pool)
+    .await
+    .map(|row| row.is_some())
 }
 
 pub async fn insert(pool: &SqlitePool, new: &NewCluster<'_>) -> Result<ClusterRow, sqlx::Error> {
-	let created_at = Utc::now().to_rfc3339();
+    let created_at = Utc::now().to_rfc3339();
 
-	sqlx::query_as!(
-		ClusterRow,
-		r#"
+    sqlx::query_as!(
+        ClusterRow,
+        r#"
 		INSERT INTO clusters (
 			name, folder_name, mc_version, mc_loader, mc_loader_version,
-			setting_profile_name, stage, created_at
+			setting_profile_name, stage, created_at,
+			kind, user_created, description, tags, cover_path
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		"#,
-		new.name,
-		new.folder_name,
-		new.mc_version,
-		new.mc_loader,
-		new.mc_loader_version,
-		new.setting_profile_name,
-		new.stage,
-		created_at
-	)
-	.fetch_one(pool)
-	.await
+        new.name,
+        new.folder_name,
+        new.mc_version,
+        new.mc_loader,
+        new.mc_loader_version,
+        new.setting_profile_name,
+        new.stage,
+        created_at,
+        new.kind,
+        new.user_created,
+        new.description,
+        new.tags,
+        new.cover_path
+    )
+    .fetch_one(pool)
+    .await
 }
 
 pub async fn update(
-	pool: &SqlitePool,
-	id: i64,
-	patch: &ClusterPatch,
+    pool: &SqlitePool,
+    id: i64,
+    patch: &ClusterPatch,
 ) -> Result<ClusterRow, sqlx::Error> {
-	let existing = get_by_id(pool, id)
-		.await?
-		.ok_or(sqlx::Error::RowNotFound)?;
+    let existing = get_by_id(pool, id).await?.ok_or(sqlx::Error::RowNotFound)?;
 
-	let name = patch.name.as_deref().unwrap_or(&existing.name);
-	let setting_profile_name = patch
-		.setting_profile_name
-		.clone()
-		.unwrap_or(existing.setting_profile_name);
-	let mc_loader_version = patch
-		.mc_loader_version
-		.clone()
-		.unwrap_or(existing.mc_loader_version);
-	let linked_modpack_hash = patch
-		.linked_modpack_hash
-		.clone()
-		.unwrap_or(existing.linked_modpack_hash);
+    let name = patch.name.as_deref().unwrap_or(&existing.name);
+    let setting_profile_name = patch
+        .setting_profile_name
+        .clone()
+        .unwrap_or(existing.setting_profile_name);
+    let mc_loader_version = patch
+        .mc_loader_version
+        .clone()
+        .unwrap_or(existing.mc_loader_version);
+    let linked_modpack_hash = patch
+        .linked_modpack_hash
+        .clone()
+        .unwrap_or(existing.linked_modpack_hash);
+    let description = patch.description.clone().unwrap_or(existing.description);
+    let tags = patch.tags.clone().unwrap_or(existing.tags);
+    let cover_path = patch.cover_path.clone().unwrap_or(existing.cover_path);
 
-	sqlx::query_as!(
-		ClusterRow,
-		r#"
+    sqlx::query_as!(
+        ClusterRow,
+        r#"
 		UPDATE clusters
 		SET name = ?,
 		    setting_profile_name = ?,
 		    mc_loader_version = ?,
-		    linked_modpack_hash = ?
+		    linked_modpack_hash = ?,
+		    description = ?,
+		    tags = ?,
+		    cover_path = ?
 		WHERE id = ?
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		"#,
-		name,
-		setting_profile_name,
-		mc_loader_version,
-		linked_modpack_hash,
-		id
-	)
-	.fetch_one(pool)
-	.await
+        name,
+        setting_profile_name,
+        mc_loader_version,
+        linked_modpack_hash,
+        description,
+        tags,
+        cover_path,
+        id
+    )
+    .fetch_one(pool)
+    .await
 }
 
-pub async fn migrate_version(
-	pool: &SqlitePool,
-	id: i64,
-	mc_version: &str,
-	name: Option<&str>,
-	folder_name: &str,
-) -> Result<ClusterRow, sqlx::Error> {
-	let existing = get_by_id(pool, id)
-		.await?
-		.ok_or(sqlx::Error::RowNotFound)?;
+pub struct ClusterMigration<'a> {
+    pub mc_version: &'a str,
+    pub mc_loader: i64,
+    pub mc_loader_version: Option<&'a str>,
+    pub stage: i64,
+    pub name: Option<&'a str>,
+    pub folder_name: &'a str,
+}
 
-	let name = name.unwrap_or(&existing.name);
-
-	sqlx::query_as!(
-		ClusterRow,
-		r#"
+pub async fn migrate_version_if_unchanged(
+    pool: &SqlitePool,
+    expected: &ClusterRow,
+    migration: ClusterMigration<'_>,
+) -> Result<Option<ClusterRow>, sqlx::Error> {
+    sqlx::query_as::<_, ClusterRow>(
+        r#"
 		UPDATE clusters
 		SET mc_version = ?,
-		    name = ?,
+		    mc_loader = ?,
+		    mc_loader_version = ?,
+		    stage = ?,
+		    name = COALESCE(?, name),
 		    folder_name = ?
-		WHERE id = ?
+		WHERE id = ? AND mc_version = ? AND mc_loader = ? AND folder_name = ?
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		"#,
-		mc_version,
-		name,
-		folder_name,
-		id
-	)
-	.fetch_one(pool)
-	.await
+    )
+    .bind(migration.mc_version)
+    .bind(migration.mc_loader)
+    .bind(migration.mc_loader_version)
+    .bind(migration.stage)
+    .bind(migration.name)
+    .bind(migration.folder_name)
+    .bind(expected.id)
+    .bind(&expected.mc_version)
+    .bind(expected.mc_loader)
+    .bind(&expected.folder_name)
+    .fetch_optional(pool)
+    .await
 }
 
 pub async fn set_stage(pool: &SqlitePool, id: i64, stage: i64) -> Result<ClusterRow, sqlx::Error> {
-	sqlx::query_as!(
-		ClusterRow,
-		r#"
+    sqlx::query_as!(
+        ClusterRow,
+        r#"
 		UPDATE clusters
 		SET stage = ?
 		WHERE id = ?
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		"#,
-		stage,
-		id
-	)
-	.fetch_one(pool)
-	.await
+        stage,
+        id
+    )
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn touch_last_played(pool: &SqlitePool, id: i64) -> Result<(), sqlx::Error> {
+    sqlx::query("UPDATE clusters SET last_played = ? WHERE id = ?")
+        .bind(Utc::now().to_rfc3339())
+        .bind(id)
+        .execute(pool)
+        .await?;
+    Ok(())
 }
 
 pub async fn add_playtime(
-	pool: &SqlitePool,
-	id: i64,
-	seconds: i64,
+    pool: &SqlitePool,
+    id: i64,
+    seconds: i64,
 ) -> Result<ClusterRow, sqlx::Error> {
-	let now = Utc::now().to_rfc3339();
+    let now = Utc::now().to_rfc3339();
 
-	sqlx::query_as!(
-		ClusterRow,
-		r#"
+    sqlx::query_as!(
+        ClusterRow,
+        r#"
 		UPDATE clusters
 		SET overall_played = COALESCE(overall_played, 0) + ?,
 		    last_played = ?
 		WHERE id = ?
 		RETURNING
 			id, name, folder_name, setting_profile_name, mc_version, mc_loader,
-			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash
+			stage, mc_loader_version, created_at, last_played, overall_played, linked_modpack_hash,
+			kind, user_created, description, tags, cover_path
 		"#,
-		seconds,
-		now,
-		id
-	)
-	.fetch_one(pool)
-	.await
+        seconds,
+        now,
+        id
+    )
+    .fetch_one(pool)
+    .await
 }
 
 pub async fn delete_by_id(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Error> {
-	let result = sqlx::query!("DELETE FROM clusters WHERE id = ?", id)
-		.execute(pool)
-		.await?;
+    let result = sqlx::query!("DELETE FROM clusters WHERE id = ?", id)
+        .execute(pool)
+        .await?;
 
-	Ok(result.rows_affected() > 0)
+    Ok(result.rows_affected() > 0)
 }
 
 #[cfg(test)]
 mod tests {
-	use super::*;
-	use crate::dao::applied_migration;
+    use super::*;
+    use crate::dao::applied_migration;
 
-	async fn pool() -> SqlitePool {
-		let pool = SqlitePool::connect("sqlite::memory:")
-			.await
-			.expect("in-memory sqlite");
-		sqlx::migrate!().run(&pool).await.expect("migrations run");
-		pool
-	}
+    async fn pool() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite");
+        sqlx::migrate!().run(&pool).await.expect("migrations run");
+        pool
+    }
 
-	async fn seed(pool: &SqlitePool, mc_version: &str, folder: &str) -> ClusterRow {
-		insert(
-			pool,
-			&NewCluster {
-				name: &format!("{mc_version} fabric"),
-				folder_name: folder,
-				mc_version,
-				mc_loader: 1,
-				mc_loader_version: None,
-				setting_profile_name: None,
-				stage: 0,
-			},
-		)
-		.await
-		.expect("insert cluster")
-	}
+    async fn seed(pool: &SqlitePool, mc_version: &str, folder: &str) -> ClusterRow {
+        insert(
+            pool,
+            &NewCluster {
+                name: &format!("{mc_version} fabric"),
+                folder_name: folder,
+                mc_version,
+                mc_loader: 1,
+                mc_loader_version: None,
+                setting_profile_name: None,
+                stage: 0,
+                kind: 0,
+                user_created: 0,
+                description: None,
+                tags: "[]",
+                cover_path: None,
+            },
+        )
+        .await
+        .expect("insert cluster")
+    }
 
-	#[tokio::test]
-	async fn migrate_version_rewrites_identity_and_keeps_history() {
-		let pool = pool().await;
-		let cluster = seed(&pool, "26.1", "26.1 fabric").await;
-		add_playtime(&pool, cluster.id, 3600)
-			.await
-			.expect("record playtime");
+    #[tokio::test]
+    async fn dismissed_provision_is_remembered_per_version_and_loader() {
+        let pool = pool().await;
+        assert!(!is_provision_dismissed(&pool, "26.1", 1).await.unwrap());
 
-		let migrated = migrate_version(
-			&pool,
-			cluster.id,
-			"26.1.2",
-			Some("26.1.2 fabric"),
-			"26.1.2 fabric",
-		)
-		.await
-		.expect("migrate");
+        dismiss_provision(&pool, "26.1", 1).await.unwrap();
+        dismiss_provision(&pool, "26.1", 1).await.unwrap();
 
-		assert_eq!(migrated.id, cluster.id, "must move the row, not replace it");
-		assert_eq!(migrated.mc_version, "26.1.2");
-		assert_eq!(migrated.folder_name, "26.1.2 fabric");
-		assert_eq!(migrated.name, "26.1.2 fabric");
-		assert_eq!(migrated.overall_played, Some(3600));
-		assert_eq!(migrated.created_at, cluster.created_at);
+        assert!(is_provision_dismissed(&pool, "26.1", 1).await.unwrap());
+        assert!(!is_provision_dismissed(&pool, "26.1", 2).await.unwrap());
+        assert!(!is_provision_dismissed(&pool, "26.2", 1).await.unwrap());
+    }
 
-		assert!(
-			find_by_version_loader(&pool, "26.1", 1)
-				.await
-				.unwrap()
-				.is_none()
-		);
-		assert_eq!(
-			find_by_version_loader(&pool, "26.1.2", 1)
-				.await
-				.unwrap()
-				.unwrap()
-				.id,
-			cluster.id
-		);
-	}
+    #[tokio::test]
+    async fn migrate_version_rewrites_identity_and_keeps_history() {
+        let pool = pool().await;
+        let cluster = seed(&pool, "26.1", "26.1 fabric").await;
+        add_playtime(&pool, cluster.id, 3600)
+            .await
+            .expect("record playtime");
 
-	#[tokio::test]
-	async fn migrate_version_can_leave_name_and_folder_untouched() {
-		let pool = pool().await;
-		let cluster = seed(&pool, "26.1", "my cool pack").await;
+        let migrated = migrate_version_if_unchanged(
+            &pool,
+            &cluster,
+            ClusterMigration {
+                mc_version: "26.1.2",
+                mc_loader: 1,
+                mc_loader_version: None,
+                stage: 0,
+                name: Some("26.1.2 fabric"),
+                folder_name: "26.1.2 fabric",
+            },
+        )
+        .await
+        .expect("migrate")
+        .expect("row unchanged");
 
-		let migrated = migrate_version(&pool, cluster.id, "26.1.2", None, "my cool pack")
-			.await
-			.expect("migrate");
+        assert_eq!(migrated.id, cluster.id, "must move the row, not replace it");
+        assert_eq!(migrated.mc_version, "26.1.2");
+        assert_eq!(migrated.folder_name, "26.1.2 fabric");
+        assert_eq!(migrated.name, "26.1.2 fabric");
+        assert_eq!(migrated.overall_played, Some(3600));
+        assert_eq!(migrated.created_at, cluster.created_at);
 
-		assert_eq!(migrated.mc_version, "26.1.2");
-		assert_eq!(migrated.name, "26.1 fabric", "custom name must survive");
-		assert_eq!(migrated.folder_name, "my cool pack");
-	}
+        assert!(
+            find_by_version_loader(&pool, "26.1", 1)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            find_by_version_loader(&pool, "26.1.2", 1)
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            cluster.id
+        );
+    }
 
-	#[tokio::test]
-	async fn applied_migrations_ledger_is_idempotent() {
-		let pool = pool().await;
+    #[tokio::test]
+    async fn migrate_version_can_leave_name_and_folder_untouched() {
+        let pool = pool().await;
+        let cluster = seed(&pool, "26.1", "my cool pack").await;
 
-		assert!(!applied_migration::is_applied(&pool, "rule-a").await.unwrap());
-		applied_migration::mark_applied(&pool, "rule-a").await.unwrap();
-		assert!(applied_migration::is_applied(&pool, "rule-a").await.unwrap());
+        let migrated = migrate_version_if_unchanged(
+            &pool,
+            &cluster,
+            ClusterMigration {
+                mc_version: "26.1.2",
+                mc_loader: 1,
+                mc_loader_version: None,
+                stage: 0,
+                name: None,
+                folder_name: "my cool pack",
+            },
+        )
+        .await
+        .expect("migrate")
+        .expect("row unchanged");
 
-		applied_migration::mark_applied(&pool, "rule-a").await.unwrap();
-		assert!(applied_migration::is_applied(&pool, "rule-a").await.unwrap());
-		assert!(!applied_migration::is_applied(&pool, "rule-b").await.unwrap());
-	}
+        assert_eq!(migrated.mc_version, "26.1.2");
+        assert_eq!(migrated.name, "26.1 fabric", "custom name must survive");
+        assert_eq!(migrated.folder_name, "my cool pack");
+    }
+
+    #[tokio::test]
+    async fn migrate_version_switches_loader_and_resets_preparation() {
+        let pool = pool().await;
+        let cluster = seed(&pool, "1.20.1", "1.20.1 Forge").await;
+        set_stage(&pool, cluster.id, 3).await.expect("mark ready");
+
+        let migrated = migrate_version_if_unchanged(
+            &pool,
+            &cluster,
+            ClusterMigration {
+                mc_version: "1.20.1",
+                mc_loader: 2,
+                mc_loader_version: None,
+                stage: 0,
+                name: Some("1.20.1 NeoForge"),
+                folder_name: "1.20.1 NeoForge",
+            },
+        )
+        .await
+        .expect("migrate")
+        .expect("row unchanged");
+
+        assert_eq!(migrated.id, cluster.id);
+        assert_eq!(migrated.mc_loader, 2);
+        assert_eq!(migrated.mc_loader_version, None);
+        assert_eq!(migrated.stage, 0);
+        assert!(
+            find_by_version_loader(&pool, "1.20.1", 1)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(
+            find_by_version_loader(&pool, "1.20.1", 2)
+                .await
+                .unwrap()
+                .unwrap()
+                .id,
+            cluster.id
+        );
+    }
+
+    #[tokio::test]
+    async fn conditional_migration_skips_a_row_that_already_moved() {
+        let pool = pool().await;
+        let cluster = seed(&pool, "1.20.1", "1.20.1 Forge").await;
+        let stale = cluster.clone();
+
+        let first = migrate_version_if_unchanged(
+            &pool,
+            &cluster,
+            ClusterMigration {
+                mc_version: "1.20.1",
+                mc_loader: 2,
+                mc_loader_version: None,
+                stage: 0,
+                name: Some("1.20.1 NeoForge"),
+                folder_name: "1.20.1 NeoForge",
+            },
+        )
+        .await
+        .expect("migrate")
+        .expect("row matched");
+        assert_eq!(first.folder_name, "1.20.1 NeoForge");
+
+        let second = migrate_version_if_unchanged(
+            &pool,
+            &stale,
+            ClusterMigration {
+                mc_version: "1.20.1",
+                mc_loader: 2,
+                mc_loader_version: None,
+                stage: 0,
+                name: None,
+                folder_name: "1.20.1 Forge",
+            },
+        )
+        .await
+        .expect("migrate");
+        assert!(second.is_none());
+
+        let row = get_by_id(&pool, cluster.id).await.unwrap().unwrap();
+        assert_eq!(row.folder_name, "1.20.1 NeoForge");
+        assert_eq!(row.name, "1.20.1 NeoForge");
+    }
+
+    #[tokio::test]
+    async fn applied_migrations_ledger_is_idempotent() {
+        let pool = pool().await;
+
+        assert!(
+            !applied_migration::is_applied(&pool, "rule-a")
+                .await
+                .unwrap()
+        );
+        applied_migration::mark_applied(&pool, "rule-a")
+            .await
+            .unwrap();
+        assert!(
+            applied_migration::is_applied(&pool, "rule-a")
+                .await
+                .unwrap()
+        );
+
+        applied_migration::mark_applied(&pool, "rule-a")
+            .await
+            .unwrap();
+        assert!(
+            applied_migration::is_applied(&pool, "rule-a")
+                .await
+                .unwrap()
+        );
+        assert!(
+            !applied_migration::is_applied(&pool, "rule-b")
+                .await
+                .unwrap()
+        );
+    }
 }

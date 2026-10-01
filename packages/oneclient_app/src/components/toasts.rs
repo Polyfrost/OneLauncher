@@ -10,12 +10,12 @@ use freya::{
 use oneclient_events::Level;
 
 use crate::{
-    ui::{divider},
-    components::{Button, ButtonSize, Icon, IconType, progress_track},
+    components::{Button, ButtonSize, Icon, IconType, TooltipPlacement, progress_track},
     hooks::{use_dispatch, use_notifications_snapshot},
     motion::use_animations_enabled,
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
+    ui::divider,
 };
 
 const TOAST_W: f32 = 300.;
@@ -328,6 +328,8 @@ fn close_button(dispatch: crate::Actions, id: u64) -> impl IntoElement {
                 .size(ButtonSize::Icon)
                 .width(Size::px(28.))
                 .height(Size::px(28.))
+                .tooltip("Dismiss")
+                .tooltip_placement(TooltipPlacement::Left)
                 .on_press(move |_| dispatch.dismiss_toast(id))
                 .child(
                     Icon::new(IconType::XClose)
@@ -337,12 +339,7 @@ fn close_button(dispatch: crate::Actions, id: u64) -> impl IntoElement {
         )
 }
 
-fn message_card(
-    entry: &InboxEntry,
-    dispatch: crate::Actions,
-    id: u64,
-    ttl_pct: f32,
-) -> Rect {
+fn message_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: f32) -> Rect {
     toast_shell(entry)
         .child(
             rect()

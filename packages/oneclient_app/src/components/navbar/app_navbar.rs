@@ -12,16 +12,21 @@ use crate::{
         use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
     },
     theme,
-    utils::sort_clusters_for_home,
+    utils::default_cluster,
 };
 
 const NAVBAR_INTRO_MS: u64 = 460;
+const LOGO_HIDE_NAVBAR_W: f32 = 1100.;
+const NAVBAR_SIDE_PADDING_PX: f32 = 40.;
+const NAV_LINK_SPACING_PX: f32 = 36.;
+const COMPACT_LOGO_PX: f32 = 32.;
 
 #[derive(PartialEq)]
 pub struct Navbar;
 
 impl Component for Navbar {
     fn render(&self) -> impl IntoElement {
+        let mut navbar_width = use_state(|| 0f32);
         let intro = use_animation(|conf| {
             conf.on_creation(OnCreation::Run);
             AnimNum::new(0., 1.)
@@ -31,6 +36,9 @@ impl Component for Navbar {
         });
         let eased = intro.get().value();
         let slide = (1.0 - eased) * -theme::NAVBAR_HEIGHT_PX;
+
+        let measured = *navbar_width.read();
+        let show_logo = measured <= 0. || measured > LOGO_HIDE_NAVBAR_W;
 
         rect()
             .width(Size::fill())
@@ -44,11 +52,17 @@ impl Component for Navbar {
                     .horizontal()
                     .content(Content::Flex)
                     .cross_align(Alignment::Center)
-                    .padding(Gaps::new_symmetric(0.0, 40.0))
+                    .padding(Gaps::new_symmetric(0.0, NAVBAR_SIDE_PADDING_PX))
                     .offset_y(slide)
                     .opacity(eased)
-                    .child(navbar_left())
-                    .child(navbar_center())
+                    .on_sized(move |event: Event<SizedEventData>| {
+                        let next = event.data().area.width();
+                        if (*navbar_width.peek() - next).abs() > 0.5 {
+                            navbar_width.set(next);
+                        }
+                    })
+                    .child(navbar_left(show_logo))
+                    .child(navbar_center(!show_logo))
                     .child(NavbarRight),
             )
             .child(
@@ -61,34 +75,54 @@ impl Component for Navbar {
     }
 }
 
-fn navbar_left() -> impl IntoElement {
+fn navbar_left(show_logo: bool) -> impl IntoElement {
     rect()
         .horizontal()
-        .width(Size::flex(1.0))
+        .width(if show_logo {
+            Size::flex(1.0)
+        } else {
+            Size::auto()
+        })
         .cross_align(Alignment::Center)
-        .child(navbar_logo())
+		.spacing(NAV_LINK_SPACING_PX / 2.)
+        .maybe(!show_logo, |el| {
+            el.padding(Gaps::new(0., NAV_LINK_SPACING_PX, 0., 0.))
+        })
+		.child(Icon::new(IconType::IconLogo)
+                .size(COMPACT_LOGO_PX)
+                .into_element())
+		.maybe(show_logo, |rect| rect.child(NavbarLogo.into_element()))
 }
 
-fn navbar_logo() -> impl IntoElement {
-    let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
+#[derive(PartialEq)]
+struct NavbarLogo;
 
-    SvgViewer::new(("logo.svg", bytes.read().cloned()))
-        .show_loader(false)
-        .height(Size::px(44.))
-        .width(Size::px(214.))
-        .color(theme::colors::fg_primary())
+impl Component for NavbarLogo {
+    fn render(&self) -> impl IntoElement {
+        let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
+
+        SvgViewer::new(("logo.svg", bytes.read().cloned()))
+            .show_loader(false)
+            .height(Size::px(44.))
+            .width(Size::px(214.))
+            .color(theme::colors::fg_primary())
+    }
 }
 
-fn navbar_center() -> impl IntoElement {
+fn navbar_center(is_small: bool) -> impl IntoElement {
     let route = use_route::<Route>();
     let browse_target = browse_target();
 
     rect()
         .horizontal()
         .width(Size::flex(1.0))
-        .main_align(Alignment::Center)
+        .main_align(if is_small {
+            Alignment::Start
+        } else {
+            Alignment::Center
+        })
         .cross_align(Alignment::Center)
-        .spacing(36.)
+        .spacing(if is_small { 12. } else { 4. })
         .child(NavLink {
             active: route == Route::Home {},
             target: NavTarget::Route(Route::Home {}),
@@ -99,12 +133,7 @@ fn navbar_center() -> impl IntoElement {
             target: NavTarget::Route(Route::Clusters {}),
             nav_label: "Versions",
         })
-        .child(NavLink {
-            active: false,
-            target: NavTarget::External("https://store.polyfrost.org"),
-            nav_label: "Cosmetics",
-        })
-        .child(NavLink {
+		.child(NavLink {
             active: matches!(
                 route,
                 Route::Browser {
@@ -116,9 +145,9 @@ fn navbar_center() -> impl IntoElement {
             nav_label: "Browse",
         })
         .child(NavLink {
-            active: route == Route::Stats {},
-            target: NavTarget::Route(Route::Stats {}),
-            nav_label: "Stats",
+            active: false,
+            target: NavTarget::External("https://store.polyfrost.org"),
+            nav_label: "Cosmetics",
         })
 }
 
@@ -128,14 +157,10 @@ fn browse_target() -> Route {
     let active = *use_active_cluster_id().read();
     let package_type = use_browser_type().read().clone();
 
-    let cluster_id = active
-        .filter(|id| clusters.iter().any(|cluster| cluster.id == *id))
-        .or_else(|| sort_clusters_for_home(clusters).first().map(|c| c.id));
-
-    match cluster_id {
-        Some(cluster_id) => Route::Browser {
-            cluster_id,
-            package_type,
+    match default_cluster(clusters, active) {
+        Some(cluster) => Route::Browser {
+            cluster_id: cluster.id,
+            package_type: crate::view::app::browser::browsable_type(&package_type, &cluster),
             pick_cluster: true,
         },
         None => Route::Clusters {},
@@ -171,22 +196,30 @@ impl Component for NavLink {
             theme::colors::fg_secondary()
         };
 
-        let underline_width = if active {
-            27.
+        let background = if active {
+            theme::colors::ghost_overlay()
         } else if hovering() || focused().is_focused() {
-            18.
+            theme::colors::ghost_overlay_hover()
         } else {
-            0.
+			Color::TRANSPARENT
         };
 
         rect()
-            .vertical()
+            .horizontal()
+            .main_align(Alignment::Center)
             .cross_align(Alignment::Center)
-            .spacing(2.)
-            .width(Size::px(nav_label.len() as f32 * 10. + 10.))
-            // TODO workaround for a Freya measurement bug a fully transparent background
-            // measures wrongly so give it alpha 0 red to keep pointer events working
-            .background(Color::RED.with_a(0))
+            .height(Size::px(36.))
+            .width(Size::px(nav_label.len() as f32 * 10. + 34.))
+            .corner_radius(CornerRadius::new_all(10.))
+            .background(background)
+            .maybe(active, |el| {
+                el.border(
+                    Border::new()
+                        .fill(theme::colors::component_border())
+                        .width(1.)
+                        .alignment(BorderAlignment::Inner),
+                )
+            })
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
@@ -213,17 +246,6 @@ impl Component for NavLink {
                     })
                     .color(color),
             )
-            .child(
-                rect()
-                    .height(Size::px(2.))
-                    .width(Size::px(underline_width))
-                    .corner_radius(CornerRadius::new_all(2.))
-                    .background(if active {
-                        theme::colors::fg_primary()
-                    } else {
-                        theme::colors::fg_secondary()
-                    }),
-            )
     }
 }
 
@@ -245,12 +267,12 @@ impl Component for NavbarRight {
             notif_dispatch.toggle_notification_center();
         };
 
-        let open_account_switcher = move |_| {
-            dispatch.toggle_account_switcher();
+        let open_control_center = move |_| {
+            dispatch.toggle_control_center();
         };
 
-        let open_settings = |_| {
-            let _ = RouterContext::get().push(Route::SettingsLauncher {});
+        let open_stats = |_| {
+            let _ = RouterContext::get().push(Route::Stats {});
         };
 
         rect()
@@ -261,26 +283,55 @@ impl Component for NavbarRight {
             .spacing(8.)
             .child(
                 super::navbar_button()
+                    .tooltip("Stats")
+                    .child(Icon::new(IconType::LineChartUp01).size(20.))
+                    .on_press(open_stats),
+            )
+            .child(
+                super::navbar_button()
+                    .tooltip("Notifications")
                     .child(notification_bell(unread))
                     .on_press(open_notifications),
             )
             .child(
                 super::navbar_button()
-                    .child(Icon::new(IconType::Settings02).size(20.))
-                    .on_press(open_settings),
-            )
-            .child(
-                super::navbar_button()
+                    .overflow(Overflow::None)
+                    .tooltip("Control Center")
                     .padding(0.0)
-                    .on_press(open_account_switcher)
-                    .child(
-                        Avatar::new(account_uuid)
-                            .width(Size::px(24.))
-                            .height(Size::px(24.)),
-                    ),
+                    .on_press(open_control_center)
+                    .child(avatar_with_gear(account_uuid)),
             )
             .child(super::window_controls())
     }
+}
+
+fn avatar_with_gear(uuid: String) -> impl IntoElement {
+    rect()
+        .width(Size::px(28.))
+        .height(Size::px(28.))
+        .center()
+        .child(Avatar::new(uuid).width(Size::px(28.)).height(Size::px(28.)))
+        .child(
+            rect()
+                .position(Position::new_absolute().bottom(-7.).right(-7.))
+                .width(Size::px(16.))
+                .height(Size::px(16.))
+                .corner_radius(CornerRadius::from(7.))
+                .background(theme::colors::page_elevated())
+                .border(
+                    Border::new()
+                        .fill(theme::colors::component_border())
+                        .width(1.)
+                        .alignment(BorderAlignment::Inner),
+                )
+                .layer(Layer::Relative(3))
+                .center()
+                .child(
+                    Icon::new(IconType::Settings02)
+                        .size(12.)
+                        .color(theme::colors::fg_secondary()),
+                ),
+        )
 }
 
 fn notification_bell(unread: usize) -> impl IntoElement {

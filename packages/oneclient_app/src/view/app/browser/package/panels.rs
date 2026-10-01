@@ -1,13 +1,12 @@
 use super::*;
 
-use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::markdown::normalize_markdown;
-use oneclient_content::packages::types::{PackageBody, ProjectDetail, ReleaseType, VersionSummary};
+use oneclient_content::packages::types::{
+    DependencyKind, PackageBody, ProjectDetail, ReleaseType, VersionSummary,
+};
 
-use crate::Actions;
 use crate::components::{
-    Button, Icon, IconType, Markdown, MarkdownStyle, PendingBundledInstall, Segment,
-    SegmentedControl,
+    Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl,
 };
 use crate::hooks::VERSIONS_PAGE_SIZE;
 use crate::theme::colors;
@@ -108,14 +107,12 @@ pub(super) fn versions_panel(
     versions: Vec<VersionSummary>,
     total_versions: usize,
     versions_page: State<usize>,
-    provider: ProviderId,
+    dependency_names: HashMap<String, String>,
     project_id: String,
-    project_name: String,
-    cluster_id: i64,
-    dispatch: Actions,
+    installer: Installer,
+    on_remove: EventHandler<(String, String)>,
     installed: Option<Installed>,
     installing: bool,
-    warn: State<Option<PendingBundledInstall>>,
 ) -> impl IntoElement {
     let current = *versions_page.read();
     let total_pages = total_versions.div_ceil(VERSIONS_PAGE_SIZE).max(1);
@@ -145,29 +142,15 @@ pub(super) fn versions_panel(
                 let duplicated = installed
                     .as_ref()
                     .is_some_and(|installed| installed.is_duplicated());
-                let pending = installed
-                    .as_ref()
-                    .filter(|installed| installed.conflicts_with_bundle(&v.version_id))
-                    .map(|installed| PendingBundledInstall {
-                        cluster_id,
-                        provider,
-                        project_id: project_id.clone(),
-                        version_id: v.version_id.clone(),
-                        project_name: project_name.clone(),
-                        version_label: v.version_number.clone(),
-                        bundled_version: installed.bundled_version_label(),
-                    });
                 version_row(
                     v,
-                    provider,
+                    &dependency_names,
                     project_id.clone(),
-                    cluster_id,
-                    dispatch.clone(),
+                    installer.clone(),
+                    on_remove.clone(),
                     tag,
                     duplicated,
                     installing,
-                    pending,
-                    warn,
                 )
                 .into_element()
             }))
@@ -235,18 +218,17 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
 #[allow(clippy::too_many_arguments)]
 fn version_row(
     v: VersionSummary,
-    provider: ProviderId,
+    dependency_names: &HashMap<String, String>,
     project_id: String,
-    cluster_id: i64,
-    dispatch: Actions,
+    installer: Installer,
+    on_remove: EventHandler<(String, String)>,
     installed: Option<InstalledVersion>,
     // Saying which version is live only tells the user anything when there are several
     duplicated: bool,
     installing: bool,
-    pending: Option<PendingBundledInstall>,
-    warn: State<Option<PendingBundledInstall>>,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
+    let version_label = v.version_number.clone();
     let mut chips: Vec<String> = v.loaders.iter().map(|l| l.to_string()).collect();
     chips.extend(v.game_versions.iter().cloned());
     let stats = {
@@ -258,6 +240,13 @@ fn version_row(
         parts.join("  ·  ")
     };
     let has_chips = !chips.is_empty();
+    let requires: Vec<&str> = v
+        .dependencies
+        .iter()
+        .filter(|d| d.kind == DependencyKind::Required)
+        .filter_map(|d| d.project_id.as_deref())
+        .map(|id| dependency_names.get(id).map_or(id, String::as_str))
+        .collect();
 
     rect()
         .horizontal()
@@ -283,7 +272,16 @@ fn version_row(
                         .max_lines(1)
                         .color(colors::fg_primary()),
                 )
-                .maybe(has_chips, |el| el.child(pill_flow(&chips, 8, 10)))
+                .maybe(has_chips, |el| el.child(pill_flow(&chips, 10)))
+                .maybe(!requires.is_empty(), |el| {
+                    el.child(
+                        label()
+                            .text(format!("Requires {}", requires.join(", ")))
+                            .font_size(11.)
+                            .max_lines(2)
+                            .color(colors::fg_secondary()),
+                    )
+                })
                 .child(
                     label()
                         .text(stats)
@@ -306,14 +304,12 @@ fn version_row(
         .child(version_button(
             installed,
             v.name,
-            provider,
             project_id,
             version_id,
-            cluster_id,
-            dispatch,
+            version_label,
+            installer,
+            on_remove,
             installing,
-            pending,
-            warn,
         ))
 }
 
@@ -322,49 +318,41 @@ fn version_row(
 fn version_button(
     installed: Option<InstalledVersion>,
     version_name: String,
-    provider: ProviderId,
     project_id: String,
     version_id: String,
-    cluster_id: i64,
-    dispatch: Actions,
+    version_label: String,
+    installer: Installer,
+    on_remove: EventHandler<(String, String)>,
     busy: bool,
-    pending: Option<PendingBundledInstall>,
-    mut warn: State<Option<PendingBundledInstall>>,
 ) -> impl IntoElement {
     let Some(installed) = installed else {
         return Button::new()
             .secondary()
             .small()
             .enabled(!busy)
-            .on_press(move |_| match &pending {
-                Some(pending) => warn.set(Some(pending.clone())),
-                None => dispatch.install_package(
-                    cluster_id,
-                    provider,
+            .on_press(move |_| {
+                installer.install(
                     project_id.clone(),
                     version_id.clone(),
-                ),
+                    version_label.clone(),
+                )
             })
             .text("Install");
     };
 
     let Some(hash) = installed.hash else {
-        return Button::new().secondary().small().enabled(false).text("Install");
+        return Button::new()
+            .secondary()
+            .small()
+            .enabled(false)
+            .text("Install");
     };
 
     Button::new()
         .danger()
         .small()
         .enabled(!busy)
-        .on_press(move |_| {
-            dispatch.remove_package_version(
-                cluster_id,
-                provider,
-                project_id.clone(),
-                hash.clone(),
-                version_name.clone(),
-            );
-        })
+        .on_press(move |_| on_remove.call((version_name.clone(), hash.clone())))
         .text("Remove")
 }
 

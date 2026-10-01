@@ -322,10 +322,7 @@ fn unused_cache_description(entry: &ReclaimableEntry) -> String {
     )
 }
 
-fn legacy_content_description(
-    content: &ReclaimableEntry,
-    natives: &ReclaimableEntry,
-) -> String {
+fn legacy_content_description(content: &ReclaimableEntry, natives: &ReclaimableEntry) -> String {
     if content.is_empty() && natives.is_empty() {
         return "Nothing here - no old cluster content and no unused natives.".to_string();
     }

@@ -13,8 +13,8 @@ use crate::view::{
         AccountSkins, Clusters, Debug, Home, Stats,
         browser::{Browser, BrowserPackage},
         cluster::{
-            ClusterLogs, ClusterMods, ClusterOverview, ClusterScreenshots, ClusterSettings,
-            ClusterShaders, ClusterTextures, ProcessLogs,
+            ClusterDataPacks, ClusterLogs, ClusterMods, ClusterOverview, ClusterScreenshots,
+            ClusterSettings, ClusterShaders, ClusterTextures, ClusterWorlds, ProcessLogs,
         },
         settings::{
             SettingsAccounts, SettingsApis, SettingsAppearance, SettingsChangelog,
@@ -23,8 +23,8 @@ use crate::view::{
         },
     },
     onboarding::{
-        OnboardingAccount, OnboardingBundles, OnboardingDownloading, OnboardingLanguage,
-        OnboardingLocation, OnboardingMigration, OnboardingPreferences, OnboardingTerms,
+        OnboardingAccount, OnboardingBundles, OnboardingLanguage, OnboardingLocation,
+        OnboardingMigration, OnboardingPreferences, OnboardingSummary, OnboardingTerms,
         OnboardingWelcome,
     },
 };
@@ -55,8 +55,8 @@ pub enum Route {
             OnboardingPreferences {},
             #[route("/onboarding/bundles")]
             OnboardingBundles {},
-            #[route("/onboarding/downloading")]
-            OnboardingDownloading {},
+            #[route("/onboarding/summary")]
+            OnboardingSummary {},
         #[end_layout]
         
         #[layout(AppShell)]
@@ -80,6 +80,10 @@ pub enum Route {
                 ClusterShaders { cluster_id: i64 },
                 #[route("/app/clusters/:cluster_id/textures")]
                 ClusterTextures { cluster_id: i64 },
+                #[route("/app/clusters/:cluster_id/worlds")]
+                ClusterWorlds { cluster_id: i64 },
+                #[route("/app/clusters/:cluster_id/datapacks")]
+                ClusterDataPacks { cluster_id: i64 },
                 #[route("/app/clusters/:cluster_id/settings")]
                 ClusterSettings { cluster_id: i64 },
             #[end_layout]
@@ -138,7 +142,7 @@ impl Route {
             Route::OnboardingAccount { .. } => "Account".to_string(),
             Route::OnboardingPreferences { .. } => "Accessibility".to_string(),
             Route::OnboardingBundles { .. } => "Mods".to_string(),
-            Route::OnboardingDownloading { .. } => "Finishing".to_string(),
+            Route::OnboardingSummary { .. } => "Summary".to_string(),
             Route::Home { .. } => "Home".to_string(),
             Route::Clusters { .. } => "Versions".to_string(),
             Route::ClusterOverview { .. } => "Cluster".to_string(),
@@ -148,6 +152,8 @@ impl Route {
             Route::ClusterMods { .. } => "Cluster Mods".to_string(),
             Route::ClusterShaders { .. } => "Cluster Shaders".to_string(),
             Route::ClusterTextures { .. } => "Cluster Textures".to_string(),
+            Route::ClusterWorlds { .. } => "Cluster Worlds".to_string(),
+            Route::ClusterDataPacks { .. } => "Cluster Data Packs".to_string(),
             Route::ClusterSettings { .. } => "Cluster Settings".to_string(),
             Route::Browser { .. } => "Browser".to_string(),
             Route::BrowserPackage { .. } => "Browser".to_string(),

@@ -113,6 +113,7 @@ impl Component for BundledInstallWarning {
                                                     install.provider,
                                                     install.project_id.clone(),
                                                     install.version_id.clone(),
+                                                    None,
                                                 );
                                                 pending.set(None);
                                             })

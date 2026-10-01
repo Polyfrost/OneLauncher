@@ -2,6 +2,25 @@ mod index;
 mod package;
 
 pub use index::Browser;
+pub(crate) use index::{browsable_type, encode_package_id};
+
+mod world_prompt;
+use world_prompt::WorldInstallPrompt;
+
+/// Projects shipping both a mod and a data pack tag the mod files with a loader
+fn preferred_version(
+    versions: &[oneclient_content::packages::types::VersionSummary],
+    content_type: oneclient_content::packages::ContentType,
+) -> Option<&oneclient_content::packages::types::VersionSummary> {
+    if content_type == oneclient_content::packages::ContentType::DataPack {
+        versions
+            .iter()
+            .find(|v| v.loaders.is_empty())
+            .or_else(|| versions.first())
+    } else {
+        versions.first()
+    }
+}
 pub use package::BrowserPackage;
 
 use std::collections::HashMap;
@@ -172,16 +191,6 @@ pub(crate) fn installed_badge(installed: InstallSource, font_size: f32) -> impl 
     badge(installed, font_size, installed.color().with_a(38), None)
 }
 
-/// Brings its own backdrop and outline so it stays legible over card artwork
-pub(crate) fn installed_badge_overlay(installed: InstallSource) -> impl IntoElement {
-    badge(
-        installed,
-        10.,
-        BANNER_BG.with_a(225),
-        Some(installed.color().with_a(110)),
-    )
-}
-
 /// Which of several installed versions the game actually loads
 pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
     let (text, color) = if active {
@@ -197,13 +206,7 @@ pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
         .padding(Gaps::new_symmetric(2., 8.))
         .corner_radius(CornerRadius::new_all(999.))
         .background(color.with_a(38))
-        .child(
-            label()
-                .text(text)
-                .font_size(11.)
-                .max_lines(1)
-                .color(color),
-        )
+        .child(label().text(text).font_size(11.).max_lines(1).color(color))
 }
 
 fn badge(
@@ -307,6 +310,8 @@ fn thumbnail_placeholder(size: f32, radius: f32, icon_ratio: f32) -> Element {
 pub(crate) struct PackageBanner {
     icon_url: Option<String>,
     height: f32,
+    backdrop_only: bool,
+    sharp: bool,
     key: DiffKey,
 }
 
@@ -315,8 +320,21 @@ impl PackageBanner {
         Self {
             icon_url,
             height,
+            backdrop_only: false,
+            sharp: false,
             key: DiffKey::None,
         }
+    }
+
+    /// Drops the centred icon so a caller can place its own artwork over the blur
+    pub fn backdrop_only(mut self) -> Self {
+        self.backdrop_only = true;
+        self
+    }
+
+    pub fn sharp(mut self) -> Self {
+        self.sharp = true;
+        self
     }
 }
 
@@ -330,7 +348,7 @@ impl Component for PackageBanner {
     fn render(&self) -> impl IntoElement {
         let h = self.height;
         let icon = h * 0.62;
-        let query = use_cached_image(self.icon_url.clone(), 512);
+        let query = use_cached_image(self.icon_url.clone(), if self.sharp { 384 } else { 256 });
         let loaded = loaded_image(self.icon_url.as_deref(), &query);
 
         let banner = rect()
@@ -341,6 +359,7 @@ impl Component for PackageBanner {
             .background(BANNER_BG);
 
         let icon_placeholder = thumbnail_placeholder(icon, 10., 0.45);
+        let backdrop_only = self.backdrop_only;
 
         match loaded {
             Some((url, bytes)) => banner
@@ -360,17 +379,18 @@ impl Component for PackageBanner {
                         )
                         .layer(Layer::Relative(1)),
                 )
-                .child(
+                .maybe_child((!self.sharp).then(|| {
                     rect()
                         .position(Position::new_absolute().top(0.).left(0.))
                         .width(Size::fill())
                         .height(Size::fill())
-                        .blur(12.)
+                        .backdrop_blur(12.)
                         .background(BANNER_BG.with_a(120))
                         .overflow(Overflow::Clip)
-                        .layer(Layer::Relative(3)),
-                )
-                .child(
+                        .layer(Layer::Relative(3))
+                        .into_element()
+                }))
+                .maybe_child((!backdrop_only).then(|| {
                     rect()
                         .width(Size::px(icon))
                         .height(Size::px(icon))
@@ -380,10 +400,12 @@ impl Component for PackageBanner {
                                 .height(Size::px(icon))
                                 .aspect_ratio(AspectRatio::Min)
                                 .corner_radius(CornerRadius::new_all(10.))
-                                .fallback(icon_placeholder),
+                                .fallback(icon_placeholder.clone()),
                         )
-                        .layer(Layer::Relative(5)),
-                ),
+                        .layer(Layer::Relative(5))
+                        .into_element()
+                })),
+            None if backdrop_only => banner,
             None => banner.child(icon_placeholder),
         }
     }
@@ -440,6 +462,7 @@ mod tests {
             hidden: false,
             path: format!("mods/{project_id}.jar"),
             size: 1,
+            file_type: oneclient_core::BundleFileType::Normal,
             kind: BundleFileKind::Managed {
                 provider: ProviderId::Modrinth,
                 project_id: project_id.to_string(),
@@ -478,7 +501,10 @@ mod tests {
         );
 
         let sodium = entry(&map, "sodium");
-        assert!(sodium.is_version("v1"), "the older version is still in there");
+        assert!(
+            sodium.is_version("v1"),
+            "the older version is still in there"
+        );
         assert!(sodium.is_version("v2"));
         assert_eq!(
             sodium.find_version("v2").and_then(|v| v.hash.clone()),
@@ -498,7 +524,11 @@ mod tests {
         );
 
         let sodium = entry(&map, "sodium");
-        assert_eq!(sodium.source, InstallSource::Bundled, "the bundle owns the project");
+        assert_eq!(
+            sodium.source,
+            InstallSource::Bundled,
+            "the bundle owns the project"
+        );
         assert_eq!(
             sodium.find_version("v1").map(|v| v.source),
             Some(InstallSource::Bundled)

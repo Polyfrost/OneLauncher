@@ -1,15 +1,15 @@
 use super::*;
 
-use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::router::RouterContext;
 use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CardLayout, Icon, IconType, PackageEntry, PackageRow, ScrollArea, ScrollAreaCtx,
-    Segment, SegmentedControl, TabBar, TabItem, TextInput, grid_columns_picker, resolved_columns,
+    Button, CardLayout, ChevronToggle, ContextMenu, FilterMenu, FilterOption, Icon, IconType,
+    LazySection, PackageEntry, PackageRow, ScrollArea, Segment, SegmentedControl, TextInput,
+    package_context_menu, use_shared_delete,
 };
-use crate::hooks::{use_dispatch, use_overlay_claim};
+use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::{Actions, utils};
@@ -120,8 +120,142 @@ impl HiddenFilter {
     }
 }
 
-const FILTER_PANEL_W: f32 = 172.;
-const FILTER_BTN_W: f32 = 34.;
+#[derive(Clone, PartialEq)]
+pub(super) struct Bulk {
+    pub(super) selection: Selection<String>,
+    pub(super) order: Vec<String>,
+    pub(super) count: usize,
+    pub(super) deletable: usize,
+    pub(super) set_enabled: EventHandler<bool>,
+    pub(super) delete: EventHandler<()>,
+}
+
+impl Bulk {
+    pub(super) fn active(&self) -> bool {
+        self.selection.is_active()
+    }
+
+    fn all_selected(&self) -> bool {
+        self.count > 0 && self.count == self.order.len()
+    }
+
+    fn toggle_all_label(&self) -> (IconType, &'static str) {
+        if self.all_selected() {
+            (IconType::XClose, "Unselect all")
+        } else {
+            (IconType::Check, "Select all")
+        }
+    }
+
+    fn controls(&self) -> Vec<Element> {
+        let selection = self.selection;
+        let order = self.order.clone();
+        let enable = self.set_enabled.clone();
+        let disable = self.set_enabled.clone();
+        let delete = self.delete.clone();
+        let (toggle_icon, toggle_label) = self.toggle_all_label();
+        let button = |icon: IconType, text: String| {
+            Button::new()
+                .secondary()
+                .height(Size::px(34.))
+                .font_size(12.)
+                .child(Icon::new(icon).size(15.))
+                .text(text)
+        };
+
+        vec![
+            label()
+                .text(format!("{} selected", self.count))
+                .font_size(12.)
+                .max_lines(1)
+                .color(colors::fg_secondary())
+                .into_element(),
+            button(toggle_icon, toggle_label.to_string())
+                .on_press(move |_| selection.toggle_all(&order))
+                .into_element(),
+            button(IconType::CheckCircle, "Enable".to_string())
+                .enabled(self.count > 0)
+                .on_press(move |_| enable.call(true))
+                .into_element(),
+            button(IconType::Minus, "Disable".to_string())
+                .enabled(self.count > 0)
+                .on_press(move |_| disable.call(false))
+                .into_element(),
+            button(IconType::Trash01, format!("Delete ({})", self.deletable))
+                .danger()
+                .enabled(self.deletable > 0)
+                .on_press(move |_| delete.call(()))
+                .into_element(),
+            Button::new()
+                .ghost()
+                .icon()
+                .height(Size::px(34.))
+                .tooltip("Exit select mode")
+                .on_press(move |_| selection.exit())
+                .child(Icon::new(IconType::XClose).size(15.))
+                .into_element(),
+        ]
+    }
+
+    fn menu(&self, x: f32, y: f32, key: String) -> ContextMenu {
+        let selection = self.selection;
+        let order = self.order.clone();
+        let enable = self.set_enabled.clone();
+        let disable = self.set_enabled.clone();
+        let delete = self.delete.clone();
+        let (toggle_icon, toggle_label) = self.toggle_all_label();
+
+        let (icon, text) = if selection.is_selected(&key) {
+            (IconType::XClose, "Unselect")
+        } else {
+            (IconType::Check, "Select")
+        };
+
+        let mut menu = ContextMenu::new(x, y)
+            .title(format!("{} selected", self.count))
+            .action(icon, text, move |()| selection.toggle(key.clone()))
+            .separator();
+        if self.count > 0 {
+            menu = menu
+                .action(IconType::CheckCircle, "Enable Selected", move |()| {
+                    enable.call(true)
+                })
+                .action(IconType::Minus, "Disable Selected", move |()| {
+                    disable.call(false)
+                })
+                .separator();
+        }
+        menu = menu.action(toggle_icon, toggle_label, move |()| {
+            selection.toggle_all(&order)
+        });
+        if self.count > 0 && !self.all_selected() {
+            menu = menu.action(IconType::XClose, "Clear selection", move |()| {
+                selection.clear()
+            });
+        }
+
+        if self.deletable == 0 {
+            return menu;
+        }
+        menu.separator().danger_action(
+            IconType::Trash01,
+            format!("Delete {}", self.deletable),
+            move |()| delete.call(()),
+        )
+    }
+}
+
+const TOOLBAR_STACK_W: f32 = 640.;
+const TABS_ROW_H: f32 = 34.;
+
+fn tabs_scrollbar_theme() -> ScrollBarThemePartial {
+    ScrollBarThemePartial {
+        thumb_background: Some(colors::fg_secondary().with_a(120).into()),
+        hover_thumb_background: Some(colors::fg_secondary().with_a(190).into()),
+        active_thumb_background: Some(colors::fg_primary().into()),
+        ..Default::default()
+    }
+}
 
 #[allow(clippy::too_many_arguments)]
 pub(super) fn toolbar_bar(
@@ -133,87 +267,212 @@ pub(super) fn toolbar_bar(
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
     hidden_filter: State<HiddenFilter>,
+    uses_bundles: bool,
     layout: State<ViewLayout>,
-    grid_columns: State<u8>,
     cluster_id: i64,
     package_type: &'static str,
+    mut toolbar_width: State<f32>,
+    bulk: &Bulk,
 ) -> impl IntoElement {
-    let tab_items = tabs.iter().enumerate().map(|(i, tab)| {
+    let chips = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
-        TabItem::new(tab.label(), i == active_idx).on_press(move |_| *active.write() = i)
+        CategoryChip {
+            label: tab.label(),
+            selected: i == active_idx,
+            on_press: (move |_| *active.write() = i).into(),
+        }
+        .into_element()
     });
 
     let mut top_corners = CornerRadius::new_all(0.);
     top_corners.fill_top(12.);
 
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(8.)
-        .content(Content::Flex)
-        .overflow(Overflow::Clip)
-        .padding(Gaps::new_symmetric(8., 12.))
-        .corner_radius(top_corners)
-        .background(colors::page_elevated())
+    let measured = *toolbar_width.read();
+    let stacked = measured > 0. && measured < TOOLBAR_STACK_W;
+
+    let filter_tabs = ScrollView::new()
+        .direction(Direction::Horizontal)
+        .invert_scroll_wheel(true)
+        .show_scrollbar(true)
+        .scrollbar(|context| ScrollBar::new(context).theme(tabs_scrollbar_theme()).into())
+        .width(if stacked {
+            Size::fill()
+        } else {
+            Size::flex(1.0)
+        })
+        .height(Size::px(TABS_ROW_H))
         .child(
-            ScrollView::new()
-                .direction(Direction::Horizontal)
-                .show_scrollbar(false)
-                .width(Size::flex(1.0))
-                .height(Size::auto())
-                .child(
-                    TabBar::new()
-                        .width(Size::auto())
-                        .height(Size::auto())
-                        .spacing(20.)
-                        .font_size(12.)
-                        .tabs(tab_items),
-                ),
+            rect()
+                .horizontal()
+                .width(Size::auto())
+                .height(Size::fill())
+                .cross_align(Alignment::Center)
+                .spacing(6.)
+                .children(chips),
         )
-        .child(
-            TextInput::new(search)
-                .placeholder("Search...")
-                .width(Size::px(180.))
-                .leading(
-                    Icon::new(IconType::SearchMd)
-                        .size(14.)
-                        .color(colors::fg_secondary())
-                        .into_element(),
-                ),
-        )
-        .child(FilterButton {
+        .into_element();
+
+    let mut controls: Vec<Element> = vec![
+        TextInput::new(search)
+            .placeholder("Search...")
+            .width(Size::px(180.))
+            .leading(
+                Icon::new(IconType::SearchMd)
+                    .size(14.)
+                    .color(colors::fg_secondary())
+                    .into_element(),
+            )
+            .into_element(),
+        filter_button(
             sort,
             current_sort,
             enabled_filter,
             hidden_filter,
+            uses_bundles,
+        )
+        .into_element(),
+    ];
+
+    controls.push(
+        SegmentedControl::new(layout)
+            .height(34.)
+            .icon_size(15.)
+            .equal_width(34.)
+            .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
+            .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
+            .into_element(),
+    );
+    controls.push(
+        Button::new()
+            .primary()
+            .height(Size::px(34.))
+            .font_size(12.)
+            .on_press(move |_| open_browser(cluster_id, package_type))
+            .child(Icon::new(IconType::Plus).size(15.))
+            .text("Add Content")
+            .into_element(),
+    );
+    let controls = if bulk.active() {
+        bulk.controls()
+    } else {
+        controls
+    };
+
+    let inner = if stacked {
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(8.)
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .height(Size::px(TABS_ROW_H))
+                    .cross_align(Alignment::Center)
+                    .child(filter_tabs),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(8.)
+                    .content(Content::Flex)
+                    .children(controls),
+            )
+            .into_element()
+    } else {
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .content(Content::Flex)
+            .child(filter_tabs)
+            .children(controls)
+            .into_element()
+    };
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .overflow(Overflow::Clip)
+        .padding(Gaps::new_symmetric(8., 12.))
+        .corner_radius(top_corners)
+        .background(colors::page_elevated())
+        .on_sized(move |event: Event<SizedEventData>| {
+            let next = event.data().area.width();
+            if (*toolbar_width.peek() - next).abs() > 0.5 {
+                toolbar_width.set(next);
+            }
         })
-        .maybe_child(
-            (*layout.read() == ViewLayout::Grid)
-                .then(|| grid_columns_picker(grid_columns, 34.).into_element()),
-        )
-        .child(
-            SegmentedControl::new(layout)
-                .height(34.)
-                .icon_size(15.)
-                .equal_width(34.)
-                .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
-                .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid)),
-        )
-        .child(
-            Button::new()
-                .primary()
-                .height(Size::px(34.))
-                .font_size(12.)
-                .on_press(move |_| open_browser(cluster_id, package_type))
-                .child(Icon::new(IconType::Plus).size(15.))
-                .text("Add Content"),
-        )
+        .child(inner)
         .into_element()
 }
 
-pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> Element {
-    let text = match content_type {
+#[derive(PartialEq)]
+struct CategoryChip {
+    label: String,
+    selected: bool,
+    on_press: EventHandler<Event<PressEventData>>,
+}
+
+impl Component for CategoryChip {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let selected = self.selected;
+
+        let a11y_id = use_a11y();
+        let focus = use_focus(a11y_id);
+        let focused = focus().is_focused();
+
+        let background = if selected {
+            colors::brand()
+        } else if *hovered.read() {
+            colors::component_bg_hover()
+        } else {
+            colors::component_bg()
+        };
+
+        rect()
+            .horizontal()
+            .height(Size::px(32.))
+            .center()
+            .padding(Gaps::new_symmetric(0., 12.))
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(background)
+            .border(crate::ui::border_all_color(
+                1.,
+                if selected || focused {
+                    colors::brand()
+                } else {
+                    colors::component_border()
+                },
+            ))
+            .cursor(CursorIcon::Pointer)
+            .a11y_id(a11y_id)
+            .a11y_focusable(true)
+            .a11y_role(AccessibilityRole::Tab)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
+            .on_press(self.on_press.clone())
+            .child(
+                label()
+                    .text(self.label.clone())
+                    .font_size(12.)
+                    .font_weight(FontWeight::MEDIUM)
+                    .max_lines(1)
+                    .color(if selected {
+                        Color::WHITE
+                    } else {
+                        colors::fg_primary()
+                    }),
+            )
+    }
+}
+
+pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentType) -> String {
+    match content_type {
         ContentType::ResourcePack => format!(
             "Minecraft is running. New {noun_plural} usually go in right away, open Options → Resource Packs in game to turn them on. OneClient tells you when one has to wait for the next launch."
         ),
@@ -223,25 +482,39 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
         _ => format!(
             "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
         ),
-    };
-
-    notice_bar(text)
+    }
 }
 
-pub(super) fn global_notice(noun_plural: &'static str) -> Element {
-    notice_bar(format!(
-        "These {noun_plural} are shared across all your clusters. Adding one here makes it available everywhere, and turning one off removes it everywhere."
-    ))
+pub(super) fn global_notice(noun_plural: &'static str) -> String {
+    format!(
+        "These {noun_plural} are shared across all your OneClient clusters. Adding one here makes it available in all of them, and turning one off removes it from all of them."
+    )
 }
 
-fn notice_bar(text: String) -> Element {
+pub(super) fn instance_only_notice(noun_plural: &'static str) -> String {
+    format!(
+        "These {noun_plural} belong to this instance alone. Adding one here does not touch your other instances."
+    )
+}
+
+pub(super) fn essential_notice(names: &[&'static str]) -> String {
+    match names {
+        [only] => format!("{only} is turned off, so its features will not work in game."),
+        _ => format!(
+            "{} are turned off, so their features will not work in game.",
+            names.join(", ")
+        ),
+    }
+}
+
+pub(crate) fn notice_bar(text: String) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .content(Content::Flex)
         .spacing(10.)
-        .margin(Gaps::new(8., 0., 0., 0.))
+        .margin(Gaps::new(0., 0., 8., 0.))
         .padding(Gaps::new_symmetric(9., 12.))
         .corner_radius(CornerRadius::new_all(10.))
         .background(colors::brand().with_a(30))
@@ -261,253 +534,50 @@ fn notice_bar(text: String) -> Element {
         .into_element()
 }
 
-#[derive(PartialEq)]
-struct FilterButton {
-    sort: State<Option<String>>,
+fn filter_button(
+    mut sort: State<Option<String>>,
     current_sort: SortMode,
-    enabled_filter: State<EnabledFilter>,
-    hidden_filter: State<HiddenFilter>,
-}
+    mut enabled_filter: State<EnabledFilter>,
+    mut hidden_filter: State<HiddenFilter>,
+    uses_bundles: bool,
+) -> FilterMenu {
+    let show = *enabled_filter.read();
+    let hidden = *hidden_filter.read();
 
-impl Component for FilterButton {
-    fn render(&self) -> impl IntoElement {
-        let mut open = use_state(|| false);
+    // Hiding hidden packages is the default so it does not count as the filters being touched
+    let active = current_sort != SortMode::NameAsc
+        || show != EnabledFilter::All
+        || hidden != HiddenFilter::Hide;
 
-        let sort = self.sort;
-        let current_sort = self.current_sort;
-        let enabled_filter = self.enabled_filter;
-        let hidden_filter = self.hidden_filter;
+    let menu = FilterMenu::new(active)
+        .section(
+            "Sort by",
+            SortMode::ALL.map(|mode| {
+                FilterOption::new(mode.label(), mode == current_sort, move |()| {
+                    sort.set(Some(mode.key().to_string()));
+                })
+            }),
+        )
+        .section(
+            "Show",
+            EnabledFilter::ALL.map(|filter| {
+                FilterOption::new(filter.label(), filter == show, move |()| {
+                    enabled_filter.set(filter);
+                })
+            }),
+        );
 
-        // Hiding hidden packages is the default so it does not count as the filters being touched
-        let is_open = open();
-        let active = current_sort != SortMode::NameAsc
-            || *enabled_filter.read() != EnabledFilter::All
-            || *hidden_filter.read() != HiddenFilter::Hide;
-
-        let icon_color = if active {
-            colors::brand()
-        } else {
-            colors::fg_secondary()
-        };
-
-        rect()
-            .width(Size::px(FILTER_BTN_W))
-            .child(
-                Button::new()
-                    .secondary()
-                    .icon()
-                    .width(Size::px(FILTER_BTN_W))
-                    .height(Size::px(34.))
-                    .on_press(move |e: Event<PressEventData>| {
-                        e.stop_propagation();
-                        open.toggle();
-                    })
-                    .child(Icon::new(IconType::Sliders04).size(16.).color(icon_color)),
-            )
-            .maybe_child(is_open.then(|| {
-                let on_close: EventHandler<()> = (move |()| open.set(false)).into();
-                FilterPopover {
-                    sort,
-                    current_sort,
-                    enabled_filter,
-                    hidden_filter,
-                    on_close,
-                }
-                .into_element()
-            }))
+    if !uses_bundles {
+        return menu;
     }
-}
-
-#[derive(PartialEq)]
-struct FilterPopover {
-    sort: State<Option<String>>,
-    current_sort: SortMode,
-    enabled_filter: State<EnabledFilter>,
-    hidden_filter: State<HiddenFilter>,
-    on_close: EventHandler<()>,
-}
-
-impl Component for FilterPopover {
-    fn render(&self) -> impl IntoElement {
-        use_overlay_claim();
-
-        let mut sort = self.sort;
-        let current_sort = self.current_sort;
-        let mut enabled_filter = self.enabled_filter;
-        let mut hidden_filter = self.hidden_filter;
-        let backdrop_close = self.on_close.clone();
-        let key_close = self.on_close.clone();
-
-        let a11y_id = use_a11y();
-
-        let fade = use_animation(|conf| {
-            conf.on_creation(OnCreation::Run);
-            AnimNum::new(0., 1.).time(160).ease(Ease::Out)
-        });
-        let progress = fade.read().value();
-
-        let show = *enabled_filter.read();
-        let hidden = *hidden_filter.read();
-
-        let mut panel = rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(4.)
-            .padding(Gaps::new_all(8.))
-            .opacity(progress)
-            .offset_y((progress - 1.0) * 6.)
-            .corner_radius(CornerRadius::new_all(10.))
-            .background(colors::page_elevated().with_a(230))
-            .blur(12.)
-            .border(crate::ui::border_all_color(1., colors::component_border()))
-            .shadow(Shadow::from((
-                0.,
-                8.,
-                32.,
-                0.,
-                Color::from_argb(120, 0, 0, 0),
-            )))
-            .a11y_id(a11y_id)
-            .a11y_role(AccessibilityRole::Dialog)
-            .on_global_key_down(move |e: Event<KeyboardEventData>| {
-                if e.key == Key::Named(NamedKey::Escape) {
-                    key_close.call(());
-                }
-            })
-            .child(section_label("Sort by"));
-
-        for mode in SortMode::ALL {
-            let selected = mode == current_sort;
-            let on_press: EventHandler<Event<PressEventData>> = (move |_| {
-                sort.set(Some(mode.key().to_string()));
-            })
-            .into();
-            panel = panel.child(ChoiceRow {
-                text: mode.label(),
-                selected,
-                on_press,
-            });
-        }
-
-        panel = panel.child(section_label("Show"));
-        for filter in EnabledFilter::ALL {
-            let selected = filter == show;
-            let on_press: EventHandler<Event<PressEventData>> = (move |_| {
-                enabled_filter.set(filter);
-            })
-            .into();
-            panel = panel.child(ChoiceRow {
-                text: filter.label(),
-                selected,
-                on_press,
-            });
-        }
-
-        panel = panel.child(section_label("Hidden packages"));
-        for filter in HiddenFilter::ALL {
-            let selected = filter == hidden;
-            let on_press: EventHandler<Event<PressEventData>> = (move |_| {
+    menu.section(
+        "Hidden packages",
+        HiddenFilter::ALL.map(|filter| {
+            FilterOption::new(filter.label(), filter == hidden, move |()| {
                 hidden_filter.set(filter);
             })
-            .into();
-            panel = panel.child(ChoiceRow {
-                text: filter.label(),
-                selected,
-                on_press,
-            });
-        }
-
-        rect()
-            .height(Size::px(0.))
-            .width(Size::px(FILTER_PANEL_W))
-            .layer(Layer::Overlay)
-            .child(
-                rect()
-                    .layer(Layer::OverlayLevel(10))
-                    .position(Position::new_global().top(0.).left(0.))
-                    .width(Size::window_percent(100.))
-                    .height(Size::window_percent(100.))
-                    .on_press(move |_| backdrop_close.call(())),
-            )
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .layer(Layer::OverlayLevel(12))
-                    .margin(Gaps::new(6., 0., 0., -(FILTER_PANEL_W - FILTER_BTN_W)))
-                    .child(panel),
-            )
-    }
-}
-
-fn section_label(text: &'static str) -> impl IntoElement {
-    label()
-        .text(text)
-        .font_size(10.)
-        .font_weight(FontWeight::SEMI_BOLD)
-        .color(colors::fg_secondary())
-}
-
-#[derive(PartialEq)]
-struct ChoiceRow {
-    text: &'static str,
-    selected: bool,
-    on_press: EventHandler<Event<PressEventData>>,
-}
-
-impl Component for ChoiceRow {
-    fn render(&self) -> impl IntoElement {
-        let text = self.text;
-        let selected = self.selected;
-
-        let a11y_id = use_a11y();
-        let focus = use_focus(a11y_id);
-        let focused = focus().is_focused();
-
-        let color = if selected {
-            colors::fg_primary()
-        } else {
-            colors::fg_secondary()
-        };
-
-        let bg = if selected {
-            colors::component_bg()
-        } else if focused {
-            colors::ghost_overlay_hover()
-        } else {
-            Color::TRANSPARENT
-        };
-
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .cross_align(Alignment::Center)
-            .spacing(8.)
-            .padding(Gaps::new_symmetric(5., 8.))
-            .corner_radius(CornerRadius::new_all(6.))
-            .background(bg)
-            .content(Content::Flex)
-            .a11y_id(a11y_id)
-            .a11y_focusable(true)
-            .a11y_role(AccessibilityRole::MenuItemRadio)
-            .maybe(focused, |el| {
-                el.border(crate::ui::border_all_color(1., colors::brand()))
-            })
-            .cursor(CursorIcon::Pointer)
-            .on_press(self.on_press.clone())
-            .child(
-                label()
-                    .text(text)
-                    .font_size(12.)
-                    .width(Size::flex(1.0))
-                    .color(color),
-            )
-            .maybe_child(selected.then(|| {
-                Icon::new(IconType::Check)
-                    .size(14.)
-                    .color(colors::brand())
-                    .into_element()
-            }))
-    }
+        }),
+    )
 }
 
 fn add_from_file_button(
@@ -566,80 +636,231 @@ pub(super) enum ContentKind {
     },
 }
 
+const SECTION_HEADER_H: f32 = 36.;
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) struct AdvancedSection {
+    pub(super) open: State<bool>,
+    pub(super) forced: bool,
+}
+
+impl AdvancedSection {
+    pub(super) fn expanded(self) -> bool {
+        self.forced || *self.open.read()
+    }
+}
+
+#[derive(PartialEq)]
+struct SectionHeader {
+    label: &'static str,
+    count: usize,
+    section: AdvancedSection,
+}
+
+impl Component for SectionHeader {
+    fn render(&self) -> impl IntoElement {
+        let mut hovered = use_state(|| false);
+        let section = self.section;
+        let mut open = section.open;
+        let expanded = section.expanded();
+        let interactive = !section.forced;
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::fill())
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .padding(Gaps::new_symmetric(0., 12.))
+            .corner_radius(CornerRadius::new_all(10.))
+            .background(if interactive && *hovered.read() {
+                colors::ghost_overlay_hover()
+            } else {
+                Color::TRANSPARENT
+            })
+            .maybe(interactive, |el| {
+                el.cursor(CursorIcon::Pointer)
+                    .on_pointer_enter(move |_| hovered.set(true))
+                    .on_pointer_leave(move |_| hovered.set(false))
+                    .on_press(move |_| open.toggle())
+            })
+            .child(ChevronToggle { expanded })
+            .child(
+                label()
+                    .text(self.label)
+                    .font_size(13.)
+                    .font_weight(FontWeight::SEMI_BOLD)
+                    .color(colors::fg_primary()),
+            )
+            .child(
+                label()
+                    .text(self.count.to_string())
+                    .font_size(12.)
+                    .color(colors::fg_secondary()),
+            )
+    }
+}
+
 #[derive(PartialEq)]
 pub(super) struct ContentBox {
     items: Vec<PackageEntry>,
+    advanced: Vec<PackageEntry>,
+    section: AdvancedSection,
     noun_plural: &'static str,
     package_type: &'static str,
     content_type: ContentType,
     cluster_id: i64,
     kind: ContentKind,
     layout: CardLayout,
-    grid_columns: u8,
+    bulk: Bulk,
+    notices: Vec<String>,
 }
 
 impl ContentBox {
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         items: Vec<PackageEntry>,
+        advanced: Vec<PackageEntry>,
+        section: AdvancedSection,
         noun_plural: &'static str,
         package_type: &'static str,
         content_type: ContentType,
         cluster_id: i64,
         kind: ContentKind,
         layout: CardLayout,
-        grid_columns: u8,
+        bulk: Bulk,
     ) -> Self {
         Self {
             items,
+            advanced,
+            section,
             noun_plural,
             package_type,
             content_type,
             cluster_id,
             kind,
             layout,
-            grid_columns,
+            bulk,
+            notices: Vec::new(),
         }
+    }
+
+    pub(super) fn notices(mut self, notices: Vec<String>) -> Self {
+        self.notices = notices;
+        self
     }
 }
 
 impl Component for ContentBox {
     fn render(&self) -> impl IntoElement {
-        let items = self.items.clone();
+        let section = self.section;
+        let expanded = section.expanded();
+        let advanced_count = self.advanced.len();
+        let mut items = self.items.clone();
+        let normal_count = items.len();
+        if expanded {
+            items.extend(self.advanced.iter().cloned());
+        }
         let package_type = self.package_type;
         let content_type = self.content_type;
         let cluster_id = self.cluster_id;
         let noun_plural = self.noun_plural;
         let kind = &self.kind;
         let layout = self.layout;
-        let grid_columns = self.grid_columns;
 
         let dispatch = use_dispatch();
+        let cluster = use_cluster_mutation();
+        let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
+        let (on_delete, delete_dialog) = use_shared_delete(cluster_id, move |(_, hash)| {
+            cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
+        });
 
-        let count = items.len();
-        let scroll = (count > 0).then(|| match layout {
-            CardLayout::List => {
-                let items = items.clone();
-                ScrollArea::new()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .lazy(count, CARD_H, CARD_SPACING, move |i| {
-                        let item = items[i].clone();
-                        let key = item.package_id.clone();
-                        PackageRow::new(item, cluster_id, package_type)
-                            .layout(CardLayout::List)
-                            .key(key)
-                            .into_element()
+        let bulk = self.bulk.clone();
+        let selection = bulk.selection;
+        let active = bulk.active();
+        let selecting = active || selection.modifier_held();
+        let selected: Vec<bool> = items
+            .iter()
+            .map(|p| selection.is_selected(&p.package_id))
+            .collect();
+
+        let row = {
+            let items = items.clone();
+            let order = bulk.order.clone();
+            move |i: usize| {
+                let item: PackageEntry = items[i].clone();
+                let key = item.package_id.clone();
+                let for_menu = item.clone();
+                let is_selected = selected[i];
+                let order = order.clone();
+                let click_key = key.clone();
+                PackageRow::new(item, cluster_id, package_type)
+                    .layout(layout)
+                    .selection(is_selected, selecting, move |()| {
+                        selection.click(click_key.clone(), &order)
                     })
+                    .on_context(move |(x, y)| menu.set(Some((x, y, for_menu.clone()))))
+                    .key(key)
                     .into_element()
             }
-            CardLayout::Grid => ScrollArea::new()
+        };
+
+        let count = normal_count + advanced_count;
+        let scroll = (count > 0).then(|| {
+            let mut sections = vec![LazySection {
+                header: false,
+                count: normal_count,
+            }];
+            if advanced_count > 0 {
+                sections.push(LazySection {
+                    header: true,
+                    count: if expanded { advanced_count } else { 0 },
+                });
+            }
+            let (item_height, gap, min_width, max_cols) = match layout {
+                CardLayout::List => (CARD_H, CARD_SPACING, 0., 1),
+                CardLayout::Grid => (CARD_GRID_H, GRID_GAP, GRID_MIN_W, GRID_MAX_COLS),
+            };
+            ScrollArea::new()
                 .width(Size::fill())
-                .height(Size::fill())
-                .content(move |ctx: ScrollAreaCtx| {
-                    grid_content(&items, package_type, cluster_id, grid_columns, ctx).into_element()
-                })
-                .into_element(),
+                .height(Size::flex(1.0))
+                .scrollbar_gutter(true)
+                .lazy_sections(
+                    sections,
+                    item_height,
+                    gap,
+                    min_width,
+                    max_cols,
+                    SECTION_HEADER_H,
+                    row,
+                    move |_| {
+                        SectionHeader {
+                            label: "Advanced",
+                            count: advanced_count,
+                            section,
+                        }
+                        .into_element()
+                    },
+                )
+                .into_element()
+        });
+
+        let menu_overlay = menu.read().clone().map(|(x, y, item)| {
+            let menu_for = if bulk.active() {
+                bulk.menu(x, y, item.package_id.clone())
+            } else {
+                let key = item.package_id.clone();
+                package_context_menu(
+                    x,
+                    y,
+                    &item,
+                    cluster_id,
+                    package_type,
+                    on_delete,
+                    (move |()| selection.toggle(key.clone())).into(),
+                )
+            };
+            menu_for.on_close(move |_| menu.set(None)).into_element()
         });
 
         let empty = (count == 0).then(|| match kind {
@@ -677,14 +898,22 @@ impl Component for ContentBox {
             .vertical()
             .width(Size::fill())
             .height(Size::flex(1.0))
-            .spacing(8.)
-            .padding(Gaps::new_all(8.))
+            .padding(Gaps::new(0., 12., 12., 12.))
             .corner_radius(bottom_corners)
             .background(colors::page_elevated())
             .overflow(Overflow::Clip)
+            .content(Content::Flex)
+            .children(self.notices.iter().map(|text| notice_bar(text.clone())))
             .maybe_child(header)
             .maybe_child(scroll)
-            .maybe_child(empty)
+            .maybe_child(empty.map(|empty| {
+                rect()
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .child(empty)
+            }))
+            .maybe_child(menu_overlay)
+            .maybe_child(delete_dialog)
     }
 }
 
@@ -698,63 +927,7 @@ fn action_header(button: impl IntoElement) -> impl IntoElement {
         .child(button)
 }
 
-fn grid_content(
-    items: &[PackageEntry],
-    package_type: &'static str,
-    cluster_id: i64,
-    grid_columns: u8,
-    ctx: ScrollAreaCtx,
-) -> impl IntoElement {
-    let count = items.len();
-    let fits = ((ctx.viewport_w + GRID_GAP) / (GRID_MIN_W + GRID_GAP)).floor() as usize;
-    let cols = resolved_columns(grid_columns).min(fits.max(1));
-    let rows_total = count.div_ceil(cols);
-    let slot = CARD_GRID_H + GRID_GAP;
-
-    let first_row = (((-ctx.corrected_y) / slot).floor() as i64 - LAZY_OVERSCAN).max(0) as usize;
-    let span = ((ctx.viewport_h / slot).ceil() as i64 + 2 * LAZY_OVERSCAN).max(0) as usize;
-    let last_row = (first_row + span).min(rows_total);
-
-    let top_pad = first_row as f32 * slot;
-    let bottom_pad = rows_total.saturating_sub(last_row) as f32 * slot;
-
-    let mut container = rect().vertical().width(Size::fill());
-    if top_pad > 0. {
-        container = container.child(rect().width(Size::fill()).height(Size::px(top_pad)));
-    }
-    for r in first_row..last_row {
-        let mut row = rect()
-            .key(r)
-            .horizontal()
-            .width(Size::fill())
-            .height(Size::px(slot))
-            .spacing(GRID_GAP)
-            .content(Content::Flex);
-        for c in 0..cols {
-            let idx = r * cols + c;
-            let cell = rect().width(Size::flex(1.0)).height(Size::px(CARD_GRID_H));
-            row = row.child(if idx < count {
-                let item = items[idx].clone();
-                let key = item.package_id.clone();
-                cell.child(
-                    PackageRow::new(item, cluster_id, package_type)
-                        .layout(CardLayout::Grid)
-                        .key(key)
-                        .into_element(),
-                )
-            } else {
-                cell
-            });
-        }
-        container = container.child(row);
-    }
-    if bottom_pad > 0. {
-        container = container.child(rect().width(Size::fill()).height(Size::px(bottom_pad)));
-    }
-    container.into_element()
-}
-
-fn empty_shell(icon: IconType) -> Rect {
+pub(crate) fn empty_shell(icon: IconType) -> Rect {
     rect()
         .vertical()
         .width(Size::fill())
@@ -765,14 +938,14 @@ fn empty_shell(icon: IconType) -> Rect {
         .child(Icon::new(icon).size(28.).color(colors::fg_secondary()))
 }
 
-fn empty_title(text: impl Into<String>) -> impl IntoElement {
+pub(crate) fn empty_title(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
         .font_size(14.)
         .color(colors::fg_secondary())
 }
 
-fn empty_hint(text: impl Into<String>) -> impl IntoElement {
+pub(crate) fn empty_hint(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
         .font_size(12.)

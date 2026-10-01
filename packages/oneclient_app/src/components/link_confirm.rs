@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup};
+use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup};
 use crate::hooks::use_link_confirm;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -20,6 +20,7 @@ impl Component for ConfirmLinkOverlay {
         let open_url = url.clone();
 
         OverlayPopup::new()
+            .overlay_level(OVERLAY_BASE_LEVEL + 3)
             .on_close(move |_| pending.set(None))
             .child(
                 rect()

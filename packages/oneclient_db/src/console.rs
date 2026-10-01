@@ -163,6 +163,10 @@ mod tests {
     #[tokio::test]
     async fn invalid_sql_errors() {
         let pool = pool().await;
-        assert!(run_console_query(&pool, "SELECT * FROM nope").await.is_err());
+        assert!(
+            run_console_query(&pool, "SELECT * FROM nope")
+                .await
+                .is_err()
+        );
     }
 }

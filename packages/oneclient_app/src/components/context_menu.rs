@@ -2,6 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup};
 use crate::theme::colors;
+use crate::ui::clamp_to_window;
 
 const MENU_BG: Color = Color::from_rgb(25, 32, 38);
 const MENU_BORDER: Color = Color::from_argb(26, 255, 255, 255);
@@ -10,8 +11,6 @@ const MENU_DANGER: Color = Color::from_rgb(242, 84, 90);
 
 /// Panel padding and border on both axes, which the measured list sits inside of
 const PANEL_INSET: f32 = 14.;
-/// Gap the clamped menu keeps from the window edges
-const EDGE_MARGIN: f32 = 8.;
 
 enum Entry {
     Action {
@@ -213,26 +212,6 @@ impl Component for ContextMenu {
             .on_close(move |_| on_close.call(()))
             .child(panel.into_element())
     }
-}
-
-/// `root_size` is physical while the press position is logical, so it has to be
-/// scaled down before the two are compared
-fn clamp_to_window(x: f32, y: f32, menu_width: f32, menu_height: f32) -> (f32, f32) {
-    let platform = Platform::get();
-    let scale = *platform.scale_factor.peek() as f32;
-    if scale <= 0. {
-        return (x, y);
-    }
-
-    let window = *platform.root_size.peek();
-    let clamp = |pos: f32, len: f32, limit: f32| {
-        pos.clamp(EDGE_MARGIN, (limit - len - EDGE_MARGIN).max(EDGE_MARGIN))
-    };
-
-    (
-        clamp(x, menu_width, window.width / scale),
-        clamp(y, menu_height, window.height / scale),
-    )
 }
 
 #[derive(PartialEq)]

@@ -1,8 +1,4 @@
-use std::path::Path;
-
-
-use crate::error::ContentResult;
-use polyio::{normalize_hash, sha1_bytes};
+use polyio::normalize_hash;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FileIdentity {
@@ -11,29 +7,11 @@ pub struct FileIdentity {
 }
 
 impl FileIdentity {
-    pub fn from_bytes(bytes: &[u8]) -> Self {
-        Self {
-            sha1: sha1_bytes(bytes),
-            cf_fingerprint: Some(curseforge_fingerprint(bytes)),
-        }
-    }
-
-    #[tracing::instrument(level = "debug", skip(path))]
-    pub async fn from_path(path: impl AsRef<Path>) -> ContentResult<Self> {
-        let bytes = polyio::read(path).await?;
-        Ok(Self::from_bytes(&bytes))
-    }
-
     pub fn from_sha1(sha1: impl AsRef<str>) -> Self {
         Self {
             sha1: normalize_hash(sha1.as_ref()),
             cf_fingerprint: None,
         }
-    }
-
-    pub fn with_curseforge_fingerprint(mut self, fingerprint: u32) -> Self {
-        self.cf_fingerprint = Some(fingerprint);
-        self
     }
 }
 

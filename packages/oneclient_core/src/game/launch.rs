@@ -5,24 +5,25 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use interfrost::api::minecraft::ArgumentType;
+use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 use crate::ClusterStage;
-use oneclient_auth::MinecraftAccount;
+use crate::LauncherResult;
 use crate::clusters::Cluster;
-use oneclient_discord::Presence;
+use crate::game::GameError;
 use crate::game::session::SessionRecorder;
 use crate::game::tail::spawn_log_tail;
-use crate::game::GameError;
-use oneclient_mc::{
-    self as arguments, download_minecraft, download_version_info, get_loader_version,
-    game_files_missing, resolve_minecraft_version,
-};
-use oneclient_events::{GroupedProgressSession, LaunchStage};
 use crate::settings::GameSettingsProfile;
 use crate::state::LauncherState;
-use crate::LauncherResult;
+use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
+use oneclient_discord::Presence;
+use oneclient_events::{GroupedProgressSession, LaunchStage};
+use oneclient_mc::{
+    self as arguments, download_minecraft, download_version_info, game_files_missing,
+    get_loader_version, resolve_minecraft_version,
+};
 
 pub fn is_running(state: &LauncherState, cluster_id: i64) -> bool {
     state.games.is_running(cluster_id)
@@ -45,7 +46,10 @@ pub async fn launch_cluster(
 
     let parallel = state.settings.read().allow_parallel_running_clusters;
     if !parallel && state.games.is_active(cluster_id) {
-        tracing::warn!(cluster_id, "cluster already launching or running; refusing launch");
+        tracing::warn!(
+            cluster_id,
+            "cluster already launching or running; refusing launch"
+        );
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
 
@@ -101,10 +105,28 @@ async fn start(
 
     state.games.set_dir(cluster_id, game_dir.clone());
 
+    match state.clusters.mark_played(cluster_id).await {
+        Ok(()) => events.signal(oneclient_events::Signal::ClustersChanged),
+        Err(err) => tracing::debug!(cluster_id, error = %err, "could not record the launch time"),
+    }
+
     let progress = GroupedProgressSession::start(
         &state.services.events,
         format!("Launching {}", existing.name),
     );
+
+    if existing.uses_bundles()
+        && let Err(err) = crate::clusters::apply_bundle_java_override(
+            state,
+            cluster_id,
+            search_for_java,
+            false,
+            Some(&progress),
+        )
+        .await
+    {
+        tracing::warn!(cluster_id, error = %err, "failed to apply bundle java override");
+    }
 
     let cluster = if existing.stage == ClusterStage::Ready {
         existing
@@ -128,13 +150,14 @@ async fn start(
             }
         }
     };
-    if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
-        cluster_id,
-        state.bundles.as_ref(),
-        Some(&progress),
-        &state.services.content(),
-    )
-    .await
+    if cluster.uses_bundles()
+        && let Err(err) = oneclient_content::bundles::install_cluster_bundles(
+            cluster_id,
+            state.bundles.as_ref(),
+            Some(&progress),
+            &state.services.content(),
+        )
+        .await
     {
         tracing::warn!(cluster_id, error = %err, "failed to install bundle content");
     }
@@ -163,6 +186,7 @@ async fn start(
             &state.services.mc(),
             Some(&progress),
             &version,
+            cluster.mc_loader,
             loader_version.as_ref(),
             false,
         )
@@ -196,8 +220,10 @@ async fn start(
         "resolved launch metadata"
     );
 
-    let java = if let Some(runtime) =
-        state.java.runtime_for_profile(profile.java_path.as_deref()).await?
+    let java = if let Some(runtime) = state
+        .java
+        .runtime_for_profile(profile.java_path.as_deref())
+        .await?
     {
         runtime
     } else {
@@ -207,13 +233,19 @@ async fn start(
             .map(|v| v.major_version)
             .ok_or(GameError::MissingJavaVersion)?;
 
-        state.java.prepare(major, search_for_java, false, None).await?
+        state
+            .java
+            .prepare(major, search_for_java, false, None)
+            .await?
     };
 
     match game_files_missing(&version_info, &java.os_arch, updated) {
         Ok(true) => {
             tracing::info!(cluster_id, "missing game files; repairing");
-            let _ = state.clusters.set_stage(cluster_id, ClusterStage::Repairing).await;
+            let _ = state
+                .clusters
+                .set_stage(cluster_id, ClusterStage::Repairing)
+                .await;
             stage(LaunchStage::Downloading);
             if let Err(err) = download_minecraft(
                 &state.services.mc(),
@@ -229,7 +261,10 @@ async fn start(
                 stage(LaunchStage::Exited);
                 return Err(err.into());
             }
-            let _ = state.clusters.set_stage(cluster_id, ClusterStage::Ready).await;
+            let _ = state
+                .clusters
+                .set_stage(cluster_id, ClusterStage::Ready)
+                .await;
         }
         Ok(false) => {}
         Err(err @ oneclient_mc::McError::NoNativesForPlatform { .. }) => {
@@ -254,11 +289,8 @@ async fn start(
     let custom_args = profile.launch_args.clone().unwrap_or_default();
     let loader_version_id = loader_version.as_ref().map(|lv| lv.id.as_str());
 
-    let mods_in_cluster = crate::game::uses_cluster_mods_folder(
-        cluster.mc_loader,
-        loader_version_id,
-        &custom_args,
-    );
+    let mods_in_cluster =
+        crate::game::uses_cluster_mods_folder(cluster.mc_loader, loader_version_id, &custom_args);
 
     if let Err(err) =
         crate::game::materialize_content(&state.services, &cluster, &cwd, mods_in_cluster).await
@@ -295,7 +327,9 @@ async fn start(
         &libraries,
         &classpaths,
         &version_name,
-        profile.mem_max.unwrap_or_else(oneclient_common::default_mem_max),
+        profile
+            .mem_max
+            .unwrap_or_else(oneclient_common::default_mem_max),
         profile.launch_args.clone().unwrap_or_default(),
         &java.os_arch,
         java.major,
@@ -329,7 +363,13 @@ async fn start(
     )?;
     arguments::append_profile_game_arguments(&mut mc_args, profile.force_fullscreen, None);
 
-    run_hook(profile.hook_pre.as_deref(), &cwd).await;
+    if let Some(reason) = run_hook(profile.hook_pre.as_deref(), &cwd).await {
+        events
+            .notify("Pre-launch command failed")
+            .body(reason)
+            .error()
+            .send();
+    }
 
     tracing::info!(
         cluster_id,
@@ -341,15 +381,15 @@ async fn start(
     );
     tracing::debug!(cluster_id, ?jvm_args, main_class = %version_info.main_class, "jvm arguments");
 
-    let mut command = base_command(&profile, &java.absolute_path);
+    let (mut command, wrapper) = base_command(&profile, &java.absolute_path);
 
-	if profile.use_discrete_gpu() {
+    if profile.use_discrete_gpu() {
         crate::game::gpu::prefer_discrete(&mut command, &java.absolute_path).await;
     }
 
-	apply_env(&mut command, &profile);
+    apply_env(&mut command, &profile);
 
-	command
+    command
         .args(jvm_args)
         .arg(&version_info.main_class)
         .args(mc_args)
@@ -384,9 +424,10 @@ async fn start(
     command.stdin(Stdio::null());
     detach(&mut command);
 
-    let mut child = command
-        .spawn()
-        .map_err(|err| GameError::Spawn(err.to_string()))?;
+    let mut child = command.spawn().map_err(|err| match &wrapper {
+        Some(program) => GameError::wrapper_spawn(program, &err),
+        None => GameError::Spawn(err.to_string()),
+    })?;
     let pid = child.id();
 
     stage(LaunchStage::Running);
@@ -399,7 +440,9 @@ async fn start(
     let recorder = SessionRecorder::start(
         state,
         cluster_id,
-        profile.mem_max.unwrap_or_else(oneclient_common::default_mem_max),
+        profile
+            .mem_max
+            .unwrap_or_else(oneclient_common::default_mem_max),
         &java,
     )
     .await;
@@ -432,11 +475,11 @@ async fn start(
     let post_hook = profile.hook_post.clone();
     tokio::spawn(async move {
         let cluster = cluster;
-        let status = tokio::select! {
-            status = child.wait() => status,
+        let (status, stopped) = tokio::select! {
+            status = child.wait() => (status, false),
             _ = kill_rx => {
                 let _ = child.start_kill();
-                child.wait().await
+                (child.wait().await, true)
             }
         };
 
@@ -445,7 +488,7 @@ async fn start(
         let outcome = match status {
             Ok(status) => Exit::Observed {
                 code: status.code().map(i64::from),
-                success: status.success(),
+                success: status.success() || stopped || killed(&status),
                 display: status.to_string(),
             },
             Err(err) => Exit::Failed(err.to_string()),
@@ -498,6 +541,19 @@ fn detach(command: &mut Command) {
             .as_std_mut()
             .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
+}
+
+#[cfg(unix)]
+fn killed(status: &std::process::ExitStatus) -> bool {
+    use std::os::unix::process::ExitStatusExt;
+    const SIGKILL: i32 = 9;
+    const JVM_SIGTERM_EXIT: i32 = 143;
+    status.signal() == Some(SIGKILL) || status.code() == Some(JVM_SIGTERM_EXIT)
+}
+
+#[cfg(not(unix))]
+fn killed(_status: &std::process::ExitStatus) -> bool {
+    false
 }
 
 pub(crate) enum Exit {
@@ -563,7 +619,15 @@ pub(crate) async fn finalize_session(
         recorder.finish_at(&end.ended_at.to_rfc3339(), code).await;
     }
 
-    run_hook(post_hook, cwd).await;
+    if let Some(reason) = run_hook(post_hook, cwd).await {
+        state
+            .services
+            .events
+            .notify("Post-exit command failed")
+            .body(reason)
+            .error()
+            .send();
+    }
 
     if dedicated {
         // The folder stays materialized so it remains a real Minecraft directory
@@ -580,18 +644,21 @@ pub(crate) async fn finalize_session(
     let crashed = !matches!(end.outcome, Exit::Observed { success: true, .. });
 
     match end.outcome {
-        Exit::Observed { success: true, .. } => state
-            .services
-            .events
-            .notify("Game closed").body(format!("{name} exited")).send(),
+        Exit::Observed { success: true, .. } => {}
         Exit::Observed { display, .. } => state
             .services
             .events
-            .notify("Game crashed").body(format!("{name} exited with {display}")).error().send(),
+            .notify("Game crashed")
+            .body(format!("{name} exited with {display}"))
+            .error()
+            .send(),
         Exit::Failed(err) => state
             .services
             .events
-            .notify("Game error").body(format!("{name}: {err}")).error().send(),
+            .notify("Game error")
+            .body(format!("{name}: {err}"))
+            .error()
+            .send(),
         // Nothing was watching so there is no crash to report
         Exit::Inferred => {}
     }
@@ -664,21 +731,25 @@ pub async fn offer_repair(
     }
 }
 
-fn base_command(profile: &GameSettingsProfile, java_path: &str) -> Command {
-    if let Some(wrapper) = profile
+fn base_command(profile: &GameSettingsProfile, java_path: &str) -> (Command, Option<String>) {
+    let Some(wrapper) = profile
         .hook_wrapper
         .as_deref()
         .map(str::trim)
         .filter(|hook| !hook.is_empty())
-    {
-        let mut split = wrapper.split_whitespace();
-        let mut command = Command::new(split.next().unwrap_or("sh"));
-        command.args(split);
-        command.arg(java_path);
-        command
-    } else {
-        Command::new(java_path)
-    }
+    else {
+        return (Command::new(java_path), None);
+    };
+
+    let mut split = wrapper.split_whitespace();
+    let Some(program) = split.next() else {
+        return (Command::new(java_path), None);
+    };
+
+    let mut command = Command::new(program);
+    command.args(split);
+    command.arg(java_path);
+    (command, Some(program.to_string()))
 }
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
@@ -694,10 +765,8 @@ fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
 }
 
 #[tracing::instrument(skip(cwd), fields(hook), level = "debug")]
-async fn run_hook(hook: Option<&str>, cwd: &Path) {
-    let Some(hook) = hook.map(str::trim).filter(|h| !h.is_empty()) else {
-        return;
-    };
+async fn run_hook(hook: Option<&str>, cwd: &Path) -> Option<String> {
+    let hook = hook.map(str::trim).filter(|h| !h.is_empty())?;
 
     #[cfg(windows)]
     let mut command = {
@@ -713,8 +782,81 @@ async fn run_hook(hook: Option<&str>, cwd: &Path) {
     };
 
     command.current_dir(cwd);
+    command.stderr(Stdio::piped());
+    command.stdin(Stdio::null());
     oneclient_common::process::no_window(command.as_std_mut());
-    if let Err(err) = command.status().await {
-        tracing::warn!("hook '{hook}' failed: {err}");
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            tracing::warn!("hook '{hook}' could not start: {err}");
+            return Some(format!("The command shell could not be started: {err}"));
+        }
+    };
+
+    let collector = child.stderr.take().map(|mut pipe| {
+        tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf).await;
+            buf
+        })
+    });
+
+    let status = match child.wait().await {
+        Ok(status) => status,
+        Err(err) => {
+            if let Some(collector) = collector {
+                collector.abort();
+            }
+            tracing::warn!("hook '{hook}' could not be waited on: {err}");
+            return Some(format!("The command could not be waited on: {err}"));
+        }
+    };
+
+    if status.success() {
+        if let Some(collector) = collector {
+            collector.abort();
+        }
+        return None;
     }
+
+    let detail = match collector {
+        Some(mut collector) => {
+            match tokio::time::timeout(Duration::from_millis(200), &mut collector).await {
+                Ok(Ok(buf)) => stderr_detail(&buf),
+                _ => {
+                    collector.abort();
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+
+    let message = match (detail, status.code()) {
+        (Some(detail), _) => detail,
+        (None, Some(code)) => format!("The command exited with code {code}"),
+        (None, None) => "The command was stopped before it finished".to_string(),
+    };
+
+    tracing::warn!("hook '{hook}' failed: {message}");
+    Some(message)
+}
+
+fn stderr_detail(bytes: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(bytes);
+    let line = text
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
+
+    const MAX: usize = 300;
+    if line.chars().count() <= MAX {
+        return Some(line.to_string());
+    }
+
+    let mut clipped: String = line.chars().take(MAX).collect();
+    clipped.push('…');
+    Some(clipped)
 }

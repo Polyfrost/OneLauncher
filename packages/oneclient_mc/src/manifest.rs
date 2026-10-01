@@ -7,11 +7,10 @@ use reqwest::Method;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
-
-use oneclient_common::domain::GameLoader;
-use oneclient_common::paths;
 use crate::McCtx;
 use crate::error::{McError, McResult};
+use oneclient_common::domain::GameLoader;
+use oneclient_common::paths;
 
 #[derive(Debug, Default)]
 pub struct MetadataStore {
@@ -42,10 +41,7 @@ impl MetadataStore {
     }
 
     #[tracing::instrument(level = "debug", skip(self, ctx))]
-    pub async fn get_vanilla_or_fetch(
-        &mut self,
-        ctx: &McCtx,
-    ) -> McResult<&VanillaManifest> {
+    pub async fn get_vanilla_or_fetch(&mut self, ctx: &McCtx) -> McResult<&VanillaManifest> {
         if !self.initialized() {
             self.initialize(ctx).await?;
         }
@@ -103,27 +99,29 @@ impl MetadataStore {
         let mut save_file = false;
         let mut metadata = Self::default();
 
-        if let Ok(bytes) = polyio::read(&path).await {
-            if let Ok(inner) = serde_json::from_slice::<MetadataInner>(&bytes) {
+        match polyio::read_json::<MetadataInner>(&path).await {
+            Ok(inner) => {
                 metadata.inner = inner;
 
                 if metadata.refetch_errored(ctx).await > 0 {
                     save_file = true;
                 }
-            } else {
+            }
+            Err(err) => {
+                if path.exists() {
+                    tracing::warn!(
+                        path = %path.display(),
+                        "cached metadata manifest is unusable, refetching: {err}"
+                    );
+                }
+
                 metadata.fetch_all(ctx).await;
                 save_file = true;
             }
-        } else {
-            metadata.fetch_all(ctx).await;
-            save_file = true;
         }
 
         if save_file {
-            if let Some(parent) = path.parent() {
-                polyio::create_dir_all(parent).await?;
-            }
-            polyio::write(&path, &serde_json::to_vec(&metadata.inner)?).await?;
+            polyio::write_json_atomic(&path, &metadata.inner).await?;
         }
 
         *self = metadata;
@@ -137,10 +135,11 @@ impl MetadataStore {
         let mut changed: u8 = 0;
 
         if self.inner.minecraft.is_none()
-            && let Ok(data) = fetch_vanilla_manifest(ctx).await {
-                self.inner.minecraft = Some(data);
-                changed += 1;
-            }
+            && let Ok(data) = fetch_vanilla_manifest(ctx).await
+        {
+            self.inner.minecraft = Some(data);
+            changed += 1;
+        }
 
         macro_rules! check_modded {
             ($var:ident) => {
@@ -152,11 +151,7 @@ impl MetadataStore {
                                 changed += 1;
                             }
                             Err(err) => {
-                                tracing::error!(
-                                    "failed to fetch manifest for {}: {}",
-                                    loader,
-                                    err
-                                );
+                                tracing::error!("failed to fetch manifest for {}: {}", loader, err);
                             }
                         }
                     }
@@ -212,15 +207,7 @@ impl MetadataStore {
                 continue;
             };
 
-            let found = manifest.game_versions.iter().any(|entry| {
-                entry
-                    .id
-                    .replace("${interpulse.gameVersion}", mc_version)
-                    .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
-                    == mc_version
-            });
-
-            if found {
+            if manifest_supports_version(manifest, mc_version) {
                 loaders.push(*loader);
             }
         }
@@ -230,6 +217,91 @@ impl MetadataStore {
 
         Ok(loaders)
     }
+
+    #[tracing::instrument(level = "debug", skip(self, ctx))]
+    pub async fn loader_supports_version(
+        &mut self,
+        ctx: &McCtx,
+        loader: GameLoader,
+        mc_version: &str,
+    ) -> McResult<bool> {
+        if !loader.is_modded() {
+            return Ok(true);
+        }
+
+        let manifest = self.get_modded_or_fetch(ctx, loader).await?;
+        Ok(manifest_supports_version(manifest, mc_version))
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, ctx))]
+    pub async fn get_versions_for_loader(
+        &mut self,
+        ctx: &McCtx,
+        loader: GameLoader,
+    ) -> McResult<Option<Vec<String>>> {
+        if !self.initialized() {
+            self.initialize(ctx).await?;
+        }
+
+        if loader == GameLoader::Vanilla {
+            return Ok(None);
+        }
+
+        let Ok(manifest) = self.get_modded(loader) else {
+            return Ok(None);
+        };
+
+        Ok(concrete_version_ids(manifest))
+    }
+}
+
+const LEGACY_DUMMY_REPLACE_STRING: &str = "${interpulse.gameVersion}";
+
+#[must_use]
+pub(crate) fn is_version_placeholder(entry_id: &str) -> bool {
+    entry_id.contains(LEGACY_DUMMY_REPLACE_STRING)
+        || entry_id.contains(interfrost::api::modded::DUMMY_REPLACE_STRING)
+}
+
+#[must_use]
+pub(crate) fn entry_matches_version(entry_id: &str, mc_version: &str) -> bool {
+    entry_id
+        .replace(LEGACY_DUMMY_REPLACE_STRING, mc_version)
+        .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
+        == mc_version
+}
+
+#[must_use]
+pub(crate) fn concrete_version_ids(manifest: &ModdedManifest) -> Option<Vec<String>> {
+    let mut ids = Vec::with_capacity(manifest.game_versions.len());
+
+    for entry in &manifest.game_versions {
+        if is_version_placeholder(&entry.id) {
+            continue;
+        }
+        ids.push(entry.id.clone());
+    }
+
+    (!ids.is_empty()).then_some(ids)
+}
+
+#[must_use]
+pub(crate) fn manifest_supports_version(manifest: &ModdedManifest, mc_version: &str) -> bool {
+    let mut saw_concrete = false;
+
+    for entry in &manifest.game_versions {
+        if is_version_placeholder(&entry.id) {
+            continue;
+        }
+
+        saw_concrete = true;
+
+        if entry.id == mc_version {
+            return true;
+        }
+    }
+
+    !saw_concrete
 }
 
 fn keep_fetched<T>(slot: &mut Option<T>, fetched: McResult<T>) {
@@ -251,8 +323,7 @@ async fn fetch_vanilla_manifest(ctx: &McCtx) -> McResult<VanillaManifest> {
                 let url = interfrost::api::minecraft::VERSION_MANIFEST_URL
                     .parse()
                     .map_err(McError::Url)?;
-                ctx
-                    .net
+                ctx.net
                     .send_json(Method::GET, url, None, &[])
                     .await
                     .map_err(McError::from)
@@ -262,18 +333,12 @@ async fn fetch_vanilla_manifest(ctx: &McCtx) -> McResult<VanillaManifest> {
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-async fn fetch_modded_manifest(
-    ctx: &McCtx,
-    loader: GameLoader,
-) -> McResult<ModdedManifest> {
+async fn fetch_modded_manifest(ctx: &McCtx, loader: GameLoader) -> McResult<ModdedManifest> {
     fetch_manifest(ctx, loader).await
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-async fn fetch_manifest<T: DeserializeOwned>(
-    ctx: &McCtx,
-    loader: GameLoader,
-) -> McResult<T> {
+async fn fetch_manifest<T: DeserializeOwned>(ctx: &McCtx, loader: GameLoader) -> McResult<T> {
     let url = format!(
         "{}/{}/v{}/manifest.json",
         ctx.net.config().metadata_api_url,
@@ -282,9 +347,58 @@ async fn fetch_manifest<T: DeserializeOwned>(
     );
 
     let parsed = url.parse().map_err(McError::Url)?;
-    ctx
-        .net
+    ctx.net
         .send_json(Method::GET, parsed, None, &[])
         .await
         .map_err(McError::from)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ModdedManifest, concrete_version_ids, manifest_supports_version};
+
+    fn manifest(raw: &str) -> ModdedManifest {
+        serde_json::from_str(raw).unwrap()
+    }
+
+    fn fabric_shaped() -> ModdedManifest {
+        manifest(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/0.19.5.json", "stable": true }
+                ]},
+                { "id": "1.21.1", "stable": true, "loaders": [] },
+                { "id": "1.14", "stable": true, "loaders": [] }
+            ]}"#,
+        )
+    }
+
+    #[test]
+    fn the_concrete_entries_are_the_supported_set() {
+        let manifest = fabric_shaped();
+
+        assert!(manifest_supports_version(&manifest, "1.21.1"));
+        assert!(manifest_supports_version(&manifest, "1.14"));
+        assert!(!manifest_supports_version(&manifest, "1.8.9"));
+    }
+
+    #[test]
+    fn a_manifest_of_nothing_but_placeholders_covers_everything() {
+        let manifest = manifest(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [] }
+            ]}"#,
+        );
+
+        assert!(manifest_supports_version(&manifest, "1.8.9"));
+        assert_eq!(concrete_version_ids(&manifest), None);
+    }
+
+    #[test]
+    fn the_version_list_drops_the_placeholder_rather_than_going_unbounded() {
+        assert_eq!(
+            concrete_version_ids(&fabric_shaped()),
+            Some(vec!["1.21.1".to_string(), "1.14".to_string()])
+        );
+    }
 }

@@ -1,21 +1,22 @@
 use futures_util::StreamExt;
+use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterRow;
 use oneclient_db::models::OverrideType;
 
-use crate::error::ContentError;
-use crate::error::ContentResult;
 use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
-use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
-use oneclient_common::domain::{ContentType, GameLoader};
+use crate::ctx::ContentCtx;
+use crate::error::ContentError;
+use crate::error::ContentResult;
 use crate::packages::store::{LiveSync, PackageStore, evict_if_unused, try_unlink_materialized};
 use crate::packages::types::ExternalFile;
-use crate::ctx::ContentCtx;
+use oneclient_common::domain::{ContentType, GameLoader};
+use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 
 fn is_base62(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric())
@@ -29,7 +30,7 @@ pub fn effective_enabled(file: &BundleFile, user_override: Option<OverrideType>)
     }
 }
 
-fn find_override(
+pub(crate) fn find_override(
     overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
     bundle_name: &str,
     package_id: &str,
@@ -99,15 +100,11 @@ pub async fn install_package_from_bundle(
             .await;
 
             let version = if is_base62(version_id) {
-                crate::packages::get_version_cached(ctx, *provider, project_id, version_id)
-                    .await?
-            } else if let Ok(Some((_, version))) =
-                ctx.providers.lookup_version(sha1, ctx).await
-            {
+                crate::packages::get_version_cached(ctx, *provider, project_id, version_id).await?
+            } else if let Ok(Some((_, version))) = ctx.providers.lookup_version(sha1, ctx).await {
                 version
             } else {
-                crate::packages::get_version_cached(ctx, *provider, project_id, version_id)
-                    .await?
+                crate::packages::get_version_cached(ctx, *provider, project_id, version_id).await?
             };
 
             let (artifact, _) = PackageStore::install_to_cluster(
@@ -123,7 +120,7 @@ pub async fn install_package_from_bundle(
             .await?;
             artifact.hash
         }
-        BundleFileKind::External(ext) => {
+        BundleFileKind::External { file: ext, .. } => {
             install_external(ext, &cluster, skip_compatibility, child, ctx).await?
         }
     };
@@ -142,7 +139,7 @@ pub async fn install_package_from_bundle(
 }
 
 #[tracing::instrument(level = "debug", skip(ext, cluster, child, ctx), fields(file = %ext.name))]
-async fn install_external(
+pub(crate) async fn install_external(
     ext: &ExternalFile,
     cluster: &ClusterRow,
     skip_compatibility: bool,
@@ -177,6 +174,9 @@ pub async fn install_bundle(
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<String>> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if !cluster.uses_bundles() {
+        return Ok(Vec::new());
+    }
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),
@@ -202,12 +202,123 @@ pub(crate) fn disable_was_deliberate(suppression: Option<OverrideType>) -> bool 
     }
 }
 
+const DUPLICATE_DISABLE_REPAIR: &str = "repair-hidden-duplicate-disables";
+
+async fn clear_reconciler_disables(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let id = format!("{DUPLICATE_DISABLE_REPAIR}:{cluster_id}");
+    if migration_dao::is_applied(&ctx.db, &id).await? {
+        return Ok(());
+    }
+
+    let hidden: std::collections::HashSet<String> = archives
+        .iter()
+        .flat_map(|archive| &archive.manifest.files)
+        .filter(|file| file.hidden)
+        .map(|file| file.kind.package_id())
+        .collect();
+
+    if hidden.is_empty() {
+        return Ok(());
+    }
+
+    let mut cleared = 0u64;
+    for package_id in &hidden {
+        cleared += bundle_dao::clear_disabled_overrides(&ctx.db, cluster_id, package_id).await?;
+    }
+
+    if cleared > 0 {
+        tracing::info!(
+            cluster_id,
+            cleared,
+            "cleared disabled overrides on hidden bundle files that no user was ever shown"
+        );
+    }
+
+    migration_dao::mark_applied(&ctx.db, &id).await?;
+    Ok(())
+}
+
+pub(crate) fn external_ids_by_sha1(
+    archives: &[BundleArchive],
+) -> std::collections::HashMap<String, String> {
+    archives
+        .iter()
+        .flat_map(|archive| &archive.manifest.files)
+        .filter_map(|file| match &file.kind {
+            BundleFileKind::External {
+                file: ext,
+                id: Some(id),
+                ..
+            } => Some((ext.sha1.clone(), id.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+async fn adopt_external_ids(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let ids = external_ids_by_sha1(archives);
+    if ids.is_empty() {
+        return Ok(());
+    }
+
+    for row in bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await? {
+        let (Some(bundle_name), Some(version_id), Some(package_id)) =
+            (&row.bundle_name, &row.bundle_version_id, &row.package_id)
+        else {
+            continue;
+        };
+        if *package_id != row.hash {
+            continue;
+        }
+        let Some(id) = ids.get(package_id) else {
+            continue;
+        };
+        bundle_dao::track_bundle_artifact(
+            &ctx.db,
+            cluster_id,
+            &row.hash,
+            bundle_name,
+            version_id,
+            id,
+        )
+        .await?;
+    }
+
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    for row in &overrides {
+        let Some(id) = ids.get(&row.package_id) else {
+            continue;
+        };
+        let superseded = overrides
+            .iter()
+            .any(|other| other.bundle_name == row.bundle_name && other.package_id == *id);
+        if !superseded && let Some(override_type) = OverrideType::parse(&row.override_type) {
+            bundle_dao::save_override(&ctx.db, cluster_id, &row.bundle_name, id, override_type)
+                .await?;
+        }
+        bundle_dao::remove_override(&ctx.db, cluster_id, &row.bundle_name, &row.package_id).await?;
+    }
+
+    Ok(())
+}
+
 #[tracing::instrument(level = "debug", skip(archives, ctx))]
 pub async fn heal_bundle_activity(
     cluster_id: i64,
     archives: &[BundleArchive],
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    clear_reconciler_disables(cluster_id, archives, ctx).await?;
+    adopt_external_ids(cluster_id, archives, ctx).await?;
+
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     if tracked.iter().all(|row| row.enabled != 0) {
         return Ok(());
@@ -226,10 +337,20 @@ pub async fn heal_bundle_activity(
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
 
+    let mut live_packages: std::collections::HashSet<String> = tracked
+        .iter()
+        .filter(|row| row.enabled != 0)
+        .filter_map(|row| row.package_id.clone())
+        .collect();
+
     for row in tracked.iter().filter(|row| row.enabled == 0) {
         let (Some(bundle_name), Some(package_id)) = (&row.bundle_name, &row.package_id) else {
             continue;
         };
+
+        if live_packages.contains(package_id) {
+            continue;
+        }
         let Some(is_hidden) = hidden
             .get(&(bundle_name.as_str(), package_id.clone()))
             .copied()
@@ -261,6 +382,8 @@ pub async fn heal_bundle_activity(
             tracing::warn!(hash = %row.hash, error = %err, "failed to re-enable bundle content");
             continue;
         }
+
+        live_packages.insert(package_id.clone());
     }
 
     Ok(())
@@ -281,18 +404,10 @@ pub async fn install_enabled_bundle_files(
     let bundle_name = archive.manifest.name.clone();
     let mut installed = Vec::new();
 
-    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
-    let mut linked_projects: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    let mut linked_hashes: std::collections::HashSet<&str> = std::collections::HashSet::new();
     // "Already installed" means the database not disk
     // content lives in the cache between sessions so probing the folder would
     // reinstall everything
-    for info in &linked {
-        if let Some(pid) = &info.project_id {
-            linked_projects.insert(pid.as_str());
-        }
-        linked_hashes.insert(info.hash.as_str());
-    }
+    let present = PresentContent::load(cluster_id, ctx).await?;
 
     let to_install: Vec<BundleFile> = archive
         .manifest
@@ -300,16 +415,8 @@ pub async fn install_enabled_bundle_files(
         .iter()
         .filter(|file| {
             let package_id = file.kind.package_id();
-            if !effective_enabled(file, find_override(&overrides, &bundle_name, &package_id)) {
-                return false;
-            }
-            let already_installed = match &file.kind {
-                BundleFileKind::Managed { project_id, .. } => {
-                    linked_projects.contains(project_id.as_str())
-                }
-                BundleFileKind::External(ext) => linked_hashes.contains(ext.sha1.as_str()),
-            };
-            !already_installed
+            effective_enabled(file, find_override(&overrides, &bundle_name, &package_id))
+                && !present.contains(file)
         })
         .cloned()
         .collect();
@@ -321,13 +428,46 @@ pub async fn install_enabled_bundle_files(
         "installing enabled bundle files"
     );
 
-    if let Some(p) = progress {
-        let reserved_bytes: u64 = to_install.iter().map(|f| f.size.max(1)).sum();
-        p.expect(TaskCategory::Packages, to_install.len() as u64, reserved_bytes);
+    let results = install_bundle_files(
+        to_install,
+        cluster_id,
+        &bundle_name,
+        skip_compatibility,
+        progress,
+        ctx,
+    )
+    .await;
+
+    for (file, result) in results {
+        match result {
+            Ok(hash) => installed.push(hash),
+            Err(err) => {
+                tracing::warn!(file = %file.display_name(), error = %err, "failed to install bundle file");
+            }
+        }
     }
 
-    let bundle_name = &bundle_name;
-    let results = futures_util::stream::iter(to_install.into_iter().map(|file| async move {
+    Ok(installed)
+}
+
+pub(crate) async fn install_bundle_files(
+    to_install: Vec<BundleFile>,
+    cluster_id: i64,
+    bundle_name: &str,
+    skip_compatibility: bool,
+    progress: Option<&GroupedProgressSession>,
+    ctx: &ContentCtx,
+) -> Vec<(BundleFile, ContentResult<String>)> {
+    if let Some(p) = progress {
+        let reserved_bytes: u64 = to_install.iter().map(|f| f.size.max(1)).sum();
+        p.expect(
+            TaskCategory::Packages,
+            to_install.len() as u64,
+            reserved_bytes,
+        );
+    }
+
+    futures_util::stream::iter(to_install.into_iter().map(|file| async move {
         let child = progress.map(|p| {
             let c = p.child(
                 format!("Mod {}", file.display_name()),
@@ -352,22 +492,51 @@ pub async fn install_enabled_bundle_files(
             child.set_phase(TaskPhase::Installing);
             child.finish();
         }
-        (file.display_name(), result)
+        (file, result)
     }))
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
     .collect::<Vec<_>>()
-    .await;
+    .await
+}
 
-    for (name, result) in results {
-        match result {
-            Ok(hash) => installed.push(hash),
-            Err(err) => {
-                tracing::warn!(file = %name, error = %err, "failed to install bundle file");
+pub(crate) struct PresentContent {
+    projects: std::collections::HashSet<String>,
+    hashes: std::collections::HashSet<String>,
+    tracked_ids: std::collections::HashSet<String>,
+}
+
+impl PresentContent {
+    pub(crate) async fn load(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<Self> {
+        let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
+        let tracked_ids = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
+            .await?
+            .into_iter()
+            .filter_map(|row| row.package_id)
+            .collect();
+
+        Ok(Self {
+            projects: linked
+                .iter()
+                .filter_map(|info| info.project_id.clone())
+                .collect(),
+            hashes: linked.into_iter().map(|info| info.hash).collect(),
+            tracked_ids,
+        })
+    }
+
+    pub(crate) fn has_hash(&self, hash: &str) -> bool {
+        self.hashes.contains(hash)
+    }
+
+    pub(crate) fn contains(&self, file: &BundleFile) -> bool {
+        match &file.kind {
+            BundleFileKind::Managed { project_id, .. } => self.projects.contains(project_id),
+            BundleFileKind::External { file: ext, id, .. } => {
+                self.hashes.contains(&ext.sha1)
+                    || id.as_ref().is_some_and(|id| self.tracked_ids.contains(id))
             }
         }
     }
-
-    Ok(installed)
 }
 
 /// Kept modest each fetch also costs a provider API call rate limited per-minute
@@ -379,7 +548,10 @@ pub async fn enabled_bundle_bytes(
     bundles: &BundlesManager,
     ctx: &ContentCtx,
 ) -> ContentResult<u64> {
-    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let Some(cluster) = bundle_cluster(cluster_id, ctx).await? else {
+        return Ok(0);
+    };
+
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),
@@ -390,32 +562,16 @@ pub async fn enabled_bundle_bytes(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
-    let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
-
-    let mut linked_projects: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    let mut linked_hashes: std::collections::HashSet<&str> = std::collections::HashSet::new();
-    for info in &linked {
-        if let Some(pid) = &info.project_id {
-            linked_projects.insert(pid.as_str());
-        }
-        linked_hashes.insert(info.hash.as_str());
-    }
+    let present = PresentContent::load(cluster_id, ctx).await?;
 
     let mut total = 0u64;
     for archive in &archives {
         let bundle_name = &archive.manifest.name;
         for file in &archive.manifest.files {
             let package_id = file.kind.package_id();
-            if !effective_enabled(file, find_override(&overrides, bundle_name, &package_id)) {
-                continue;
-            }
-            let already_installed = match &file.kind {
-                BundleFileKind::Managed { project_id, .. } => {
-                    linked_projects.contains(project_id.as_str())
-                }
-                BundleFileKind::External(ext) => linked_hashes.contains(ext.sha1.as_str()),
-            };
-            if already_installed {
+            if !effective_enabled(file, find_override(&overrides, bundle_name, &package_id))
+                || present.contains(file)
+            {
                 continue;
             }
             total += file.size;
@@ -433,6 +589,10 @@ pub async fn set_bundle_package_override(
     override_type: Option<OverrideType>,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
+        return Ok(());
+    }
+
     match override_type {
         // The UI shows one row per package across bundles so an objection left
         // under another bundle would let the next pass undo this switch
@@ -485,6 +645,10 @@ pub async fn set_bundle_package_overrides(
     overrides: &[(String, String, OverrideType)],
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
+        return Ok(());
+    }
+
     bundle_dao::save_overrides(&ctx.db, cluster_id, overrides).await?;
     Ok(())
 }
@@ -517,6 +681,51 @@ pub async fn list_cluster_bundle_overrides(
         .collect())
 }
 
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
+pub async fn enabled_bundle_projects(
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<std::collections::HashSet<String>> {
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if !cluster.uses_bundles() {
+        return Ok(std::collections::HashSet::new());
+    }
+    let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
+        ContentError::InvalidData {
+            reason: format!("unknown loader {}", cluster.mc_loader),
+        }
+    })?;
+
+    let archives = bundles
+        .archives_for(ctx, &cluster.mc_version, loader)
+        .await?;
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+
+    let mut projects = std::collections::HashSet::new();
+    for archive in &archives {
+        let bundle_name = &archive.manifest.name;
+        for file in &archive.manifest.files {
+            let BundleFileKind::Managed { project_id, .. } = &file.kind else {
+                continue;
+            };
+            if effective_enabled(file, find_override(&overrides, bundle_name, project_id)) {
+                projects.insert(project_id.clone());
+            }
+        }
+    }
+
+    Ok(projects)
+}
+
+pub(crate) async fn bundle_cluster(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<ClusterRow>> {
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    Ok(cluster.uses_bundles().then_some(cluster))
+}
+
 #[tracing::instrument(skip(bundles, progress, ctx))]
 pub async fn install_cluster_bundles(
     cluster_id: i64,
@@ -525,6 +734,11 @@ pub async fn install_cluster_bundles(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if !cluster.uses_bundles() {
+        tracing::debug!(cluster_id, "instance does not take bundle content");
+        return Ok(());
+    }
+
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),
@@ -584,47 +798,11 @@ pub async fn set_artifact_enabled_to(
     Ok(live)
 }
 
-/// Writes the override alongside the flag
-/// without it the losing bundle copy looks disabled-by-nobody and
-/// heal_bundle_activity re-enables it every launch
-#[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn reconcile_duplicate_activity(
-    cluster_id: i64,
-    ctx: &ContentCtx,
-) -> ContentResult<()> {
-    for hash in crate::packages::reconcile_duplicate_activity(cluster_id, ctx).await? {
-        on_user_disable_artifact(cluster_id, &hash, ctx).await?;
-    }
-
-    Ok(())
-}
-
 // which clusters have to record what the user just did
-async fn override_scope(
-    cluster_id: i64,
-    hash: &str,
-    ctx: &ContentCtx,
-) -> ContentResult<Vec<i64>> {
-    let global = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+async fn override_scope(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<Vec<i64>> {
+    Ok(sharing_scope(cluster_id, hash, ctx)
         .await?
-        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8))
-        .is_some_and(ContentType::is_global);
-
-    if !global {
-        return Ok(vec![cluster_id]);
-    }
-
-    let mut ids: Vec<i64> = cluster_dao::list_all(&ctx.db)
-        .await?
-        .into_iter()
-        .map(|row| row.id)
-        .collect();
-
-    if !ids.contains(&cluster_id) {
-        ids.push(cluster_id);
-    }
-
-    Ok(ids)
+        .unwrap_or_else(|| vec![cluster_id]))
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
@@ -648,9 +826,10 @@ pub async fn on_user_enable_artifact(
 ) -> ContentResult<()> {
     for id in override_scope(cluster_id, hash, ctx).await? {
         if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, id, hash).await?
-            && let Some(package_id) = tracked.package_id {
-                clear_suppressing_overrides(id, &package_id, ctx).await?;
-            }
+            && let Some(package_id) = tracked.package_id
+        {
+            clear_suppressing_overrides(id, &package_id, ctx).await?;
+        }
     }
 
     Ok(())
@@ -663,8 +842,7 @@ async fn handle_user_artifact_action(
     ctx: &ContentCtx,
     override_type: OverrideType,
 ) -> ContentResult<()> {
-    let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?
-    else {
+    let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await? else {
         return Ok(());
     };
 
@@ -709,48 +887,115 @@ pub async fn remove_artifact_from_cluster(
     artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
     // Best-effort folder cleanup failure here is not an error
-    if let (Some(content_type), Some(link)) = (target, link) {
-        try_unlink_materialized(&cluster, content_type, &link.cluster_file_name).await;
-    }
+    let deferred = match (target, link) {
+        (Some(content_type), Some(link)) => {
+            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db)
+                .await
+                == LiveSync::Deferred
+        }
+        _ => false,
+    };
 
     // The package actually lives in the cache
     // `evict_if_unused` drops it only once no other cluster still needs it
-    if let Err(err) = evict_if_unused(hash, ctx).await {
+    if !deferred && let Err(err) = evict_if_unused(hash, ctx).await {
         tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
     }
 
     if let Some(tracked) = bundle_data
         && let (Some(bundle_name), Some(package_id)) =
             (tracked.bundle_name.clone(), tracked.package_id.clone())
-        {
-            if record_override {
-                bundle_dao::save_override(
-                    &ctx.db,
-                    cluster_id,
-                    &bundle_name,
-                    &package_id,
-                    OverrideType::Removed,
-                )
-                .await?;
-            } else {
-                let replacement_exists = bundle_dao::has_bundle_mapping_for_package(
-                    &ctx.db,
-                    cluster_id,
-                    &package_id,
-                )
-                .await?;
-                if !replacement_exists {
-                    clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
-                }
+    {
+        if record_override {
+            bundle_dao::save_override(
+                &ctx.db,
+                cluster_id,
+                &bundle_name,
+                &package_id,
+                OverrideType::Removed,
+            )
+            .await?;
+        } else {
+            let replacement_exists =
+                bundle_dao::has_bundle_mapping_for_package(&ctx.db, cluster_id, &package_id)
+                    .await?;
+            if !replacement_exists {
+                clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
             }
         }
+    }
 
     Ok(())
+}
+
+async fn sharing_scope(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<Vec<i64>>> {
+    let global = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+        .await?
+        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8))
+        .is_some_and(|content_type| content_type.is_global());
+    if !global {
+        return Ok(None);
+    }
+
+    let sharing = cluster_dao::list_oneclient_ids(&ctx.db).await?;
+
+    Ok(sharing.contains(&cluster_id).then_some(sharing))
+}
+
+async fn sharing_clusters(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<Vec<i64>>> {
+    let Some(sharing) = sharing_scope(cluster_id, hash, ctx).await? else {
+        return Ok(None);
+    };
+
+    Ok(Some(
+        artifact_dao::list_clusters_linking(&ctx.db, hash)
+            .await?
+            .into_iter()
+            .filter(|id| sharing.contains(id))
+            .collect(),
+    ))
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn clusters_sharing_artifact(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<usize>> {
+    Ok(sharing_clusters(cluster_id, hash, ctx)
+        .await?
+        .map(|clusters| clusters.len()))
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn delete_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
+    let Some(linked_clusters) = sharing_clusters(cluster_id, hash, ctx).await? else {
+        return remove_artifact_from_cluster(cluster_id, hash, true, ctx).await;
+    };
+
+    let mut first_error = None;
+    for linked_cluster in linked_clusters {
+        if let Err(err) = remove_artifact_from_cluster(linked_cluster, hash, true, ctx).await {
+            tracing::warn!(cluster_id = linked_cluster, hash, error = %err, "failed to delete shared package from a cluster");
+            first_error.get_or_insert(err);
+        }
+    }
+
+    first_error.map_or(Ok(()), Err)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::bundles::types::BundleFileType;
     use oneclient_common::domain::ContentType;
     use oneclient_db::models::ClusterBundleOverrideRow;
 
@@ -760,13 +1005,18 @@ mod tests {
             hidden: false,
             path: "mods/example.jar".to_string(),
             size: 1,
-            kind: BundleFileKind::External(ExternalFile {
-                name: "example.jar".to_string(),
-                url: "https://example.invalid/example.jar".to_string(),
-                sha1: "abc123".to_string(),
-                size: 1,
-                content_type: ContentType::Mod,
-            }),
+            file_type: BundleFileType::Normal,
+            kind: BundleFileKind::External {
+                file: ExternalFile {
+                    name: "example.jar".to_string(),
+                    url: "https://example.invalid/example.jar".to_string(),
+                    sha1: "abc123".to_string(),
+                    size: 1,
+                    content_type: ContentType::Mod,
+                },
+                id: None,
+                meta: None,
+            },
         }
     }
 
@@ -778,7 +1028,10 @@ mod tests {
 
     #[test]
     fn suppressing_overrides_win_over_enabled_manifest() {
-        assert!(!effective_enabled(&file(true), Some(OverrideType::Disabled)));
+        assert!(!effective_enabled(
+            &file(true),
+            Some(OverrideType::Disabled)
+        ));
         assert!(!effective_enabled(&file(true), Some(OverrideType::Removed)));
     }
 
@@ -796,7 +1049,6 @@ mod tests {
     #[test]
     fn unknown_override_string_is_ignored() {
         assert_eq!(OverrideType::parse("something-new"), None);
-        assert!(!effective_enabled(&file(false), None));
     }
 
     fn row(bundle: &str, pid: &str, ty: OverrideType) -> ClusterBundleOverrideRow {

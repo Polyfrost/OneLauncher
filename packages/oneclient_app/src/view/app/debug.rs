@@ -15,7 +15,7 @@ use crate::notifications::{
     OptionalModsGroup,
 };
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{self, colors};
 use crate::ui::border_all_color;
 
 type SqlResult = Option<Result<ConsoleQueryResult, String>>;
@@ -25,7 +25,7 @@ pub struct Debug;
 
 impl Component for Debug {
     fn render(&self) -> impl IntoElement {
-		let dispatch = use_dispatch();
+        let dispatch = use_dispatch();
         let log_debug_info = use_state(|| false);
         let show_dev_stuff = use_state(|| false);
         let seen_onboarding = use_state(|| true);
@@ -78,6 +78,11 @@ impl Component for Debug {
                     ))
                     .child(divider())
                     .child(section(
+                        "Release Migration",
+                        vec![ReleaseMigrationSimulator.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
                         "Launcher Auto Update",
                         vec![LauncherUpdateSimulator.into_element()],
                     ))
@@ -103,12 +108,15 @@ impl Component for Debug {
                     .child(divider())
                     .child(section(
                         "Other",
-                        vec![action_row(&dispatch, vec![
-                            ("Open Dev Tools", IconType::CodeSnippet02),
-                            ("Open Onboarding", IconType::Rocket02),
-                            ("Open Launcher Data", IconType::Folder),
-                            ("Log Running Processes", IconType::Terminal),
-                        ])],
+                        vec![action_row(
+                            &dispatch,
+                            vec![
+                                ("Open Dev Tools", IconType::CodeSnippet02),
+                                ("Open Onboarding", IconType::Rocket02),
+                                ("Open Launcher Data", IconType::Folder),
+                                ("Log Running Processes", IconType::Terminal),
+                            ],
+                        )],
                     )),
             )
     }
@@ -432,52 +440,50 @@ const CLUSTER_UPDATE_PRESETS: [(&str, IconType, ClusterUpdatePreset); 7] = [
                 &[],
             ),
             preset_summary(2, "Skyblock", &[], &[], &["OptiFine", "Skytils"], &[]),
-            preset_summary(3, "Vanilla+", &[], &["Sodium", "Iris", "FerriteCore"], &[], &[]),
+            preset_summary(
+                3,
+                "Vanilla+",
+                &[],
+                &["Sodium", "Iris", "FerriteCore"],
+                &[],
+                &[],
+            ),
         ]
     }),
     ("2 clusters · removals only", IconType::Trash01, || {
         vec![
             preset_summary(1, "PolyBlock", &[], &[], &["OptiFine"], &[]),
-            preset_summary(2, "Skyblock", &[], &[], &["Skytils", "NotEnoughUpdates"], &[]),
+            preset_summary(
+                2,
+                "Skyblock",
+                &[],
+                &[],
+                &["Skytils", "NotEnoughUpdates"],
+                &[],
+            ),
         ]
     }),
     ("6 clusters · long names", IconType::Database01, || {
         (1..=6)
-            .map(|i| {
-                ClusterUpdateSummary {
-                    cluster_id: i,
-                    cluster_name: format!(
-                        "Cluster {i} with a deliberately overlong name that has to truncate"
-                    ),
-                    updated: cluster_update_items(&[
-                        format!("Sodium 0.{i} → 0.{}", i + 1),
-                        format!("Iris 1.{i} → 1.{}", i + 1),
-                    ]),
-                    added: cluster_update_items(&[format!("Lithium {i}")]),
-                    removed: Vec::new(),
-                    optional: Vec::new(),
-                }
+            .map(|i| ClusterUpdateSummary {
+                cluster_id: i,
+                cluster_name: format!(
+                    "Cluster {i} with a deliberately overlong name that has to truncate"
+                ),
+                updated: cluster_update_items(&[
+                    format!("Sodium 0.{i} → 0.{}", i + 1),
+                    format!("Iris 1.{i} → 1.{}", i + 1),
+                ]),
+                added: cluster_update_items(&[format!("Lithium {i}")]),
+                removed: Vec::new(),
+                optional: Vec::new(),
             })
             .collect()
     }),
     ("2 clusters · offers only", IconType::Plus, || {
         vec![
-            preset_summary(
-                1,
-                "PolyBlock",
-                &[],
-                &[],
-                &[],
-                &["Lithium", "FerriteCore"],
-            ),
-            preset_summary(
-                2,
-                "Skyblock",
-                &[],
-                &["Skytils"],
-                &[],
-                &["Skytils"],
-            ),
+            preset_summary(1, "PolyBlock", &[], &[], &[], &["Lithium", "FerriteCore"]),
+            preset_summary(2, "Skyblock", &[], &["Skytils"], &[], &["Skytils"]),
         ]
     }),
 ];
@@ -519,7 +525,7 @@ fn preset_summary(
         updated: cluster_update_items(updated),
         added: cluster_update_items(added),
         removed: cluster_update_items(removed),
-        optional: cluster_update_items(optional)
+        optional: cluster_update_items(optional),
     }
 }
 
@@ -577,6 +583,124 @@ fn send_cluster_update(dispatch: &crate::Actions, summaries: Vec<ClusterUpdateSu
 
     // No continuation the real prompt is raised by a launch, which waits on one
     dispatch.open_optional_mods(optional, None);
+}
+
+#[derive(PartialEq)]
+struct ReleaseMigrationSimulator;
+
+fn newest_first(clusters: &mut [oneclient_core::clusters::Cluster]) {
+    clusters.sort_by_key(|cluster| {
+        std::cmp::Reverse(
+            oneclient_common::version::parse_mc_version(&cluster.mc_version).map(|parsed| {
+                (
+                    parsed.major,
+                    parsed.minor.unwrap_or(0),
+                    parsed.patch.unwrap_or(0),
+                )
+            }),
+        )
+    });
+}
+
+impl Component for ReleaseMigrationSimulator {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let clusters_query = use_clusters();
+        let mut target = use_state(|| None::<i64>);
+
+        let mut clusters = settled_or_loading(&clusters_query).unwrap_or_default();
+        newest_first(&mut clusters);
+
+        let selected = target
+            .read()
+            .and_then(|id| clusters.iter().find(|cluster| cluster.id == id))
+            .or_else(|| clusters.first())
+            .cloned();
+
+        let ids: Vec<i64> = clusters.iter().map(|cluster| cluster.id).collect();
+        let options: Vec<String> = clusters
+            .iter()
+            .map(|cluster| cluster.name.clone())
+            .collect();
+        let selected_name = selected
+            .as_ref()
+            .map(|cluster| cluster.name.clone())
+            .unwrap_or_else(|| "No clusters".to_string());
+        let selected_id = selected.as_ref().map(|cluster| cluster.id);
+
+        let simulate = dispatch.clone();
+        let fake = dispatch.clone();
+        let queue = dispatch.clone();
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                label()
+                    .text("\"Simulate\" opens the real migration modal with the chosen cluster as the new release and the real compatibility check against every other cluster with the same loader; closing it changes nothing. \"Fake Plan\" skips the check and fills the same modal with made-up packages, so the UI can be reviewed when no cluster has anything to migrate. \"Queue as New Version\" adds the chosen version to the pending list exactly as a new manifest entry would, then runs the startup check, so the real one-time flow can be tested.")
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(12.)
+                    .child(
+                        label()
+                            .text("Target")
+                            .font_size(13.)
+                            .color(colors::fg_secondary()),
+                    )
+                    .child(
+                        Dropdown::new(selected_name, options)
+                            .width(Size::px(220.))
+                            .height(Size::px(32.))
+                            .on_select(move |index: usize| {
+                                if let Some(id) = ids.get(index) {
+                                    target.set(Some(*id));
+                                }
+                            }),
+                    )
+                    .child(
+                        Button::new()
+                            .primary()
+                            .enabled(selected_id.is_some())
+                            .child(Icon::new(IconType::RefreshCw01).size(16.))
+                            .text("Simulate Release Migration")
+                            .on_press(move |_| {
+                                if let Some(id) = selected_id {
+                                    simulate.simulate_release_migration(id);
+                                }
+                            }),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .enabled(selected_id.is_some())
+                            .text("Fake Plan")
+                            .on_press(move |_| {
+                                if let Some(id) = selected_id {
+                                    fake.simulate_fake_release_migration(id);
+                                }
+                            }),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .enabled(selected_id.is_some())
+                            .text("Queue as New Version")
+                            .on_press(move |_| {
+                                if let Some(id) = selected_id {
+                                    queue.queue_release_migration(id);
+                                }
+                            }),
+                    ),
+            )
+            .into_element()
+    }
 }
 
 #[derive(PartialEq)]
@@ -1036,9 +1160,11 @@ fn run_damage(dispatch: &crate::Actions, kind: DamageKind, cluster_id: i64) {
     let dispatch = dispatch.clone();
     spawn(async move {
         let result = match kind {
-            DamageKind::Assets(count, damage) => oneclient_core::simulate::damage_assets(count, damage)
-                .await
-                .map(|report| (report, damage.verb())),
+            DamageKind::Assets(count, damage) => {
+                oneclient_core::simulate::damage_assets(count, damage)
+                    .await
+                    .map(|report| (report, damage.verb()))
+            }
             DamageKind::Libraries(count, damage) => {
                 oneclient_core::simulate::damage_libraries(count, damage)
                     .await
@@ -1091,24 +1217,36 @@ impl Component for SqlConsole {
             .width(Size::fill())
             .spacing(10.)
             .child(
+                TextInput::new(query)
+                    .multiline(true)
+                    .placeholder("SELECT * FROM …")
+                    .font_family(theme::MONO_FONT)
+                    .width(Size::fill())
+                    .height(Size::px(140.))
+                    .on_submit(move |_| run_sql(query, result, running)),
+            )
+            .child(
                 rect()
                     .horizontal()
                     .width(Size::fill())
                     .cross_align(Alignment::Center)
                     .spacing(12.)
                     .child(
-                        rect().width(Size::flex(1.0)).child(
-                            TextInput::new(query)
-                                .placeholder("SELECT * FROM …")
-                                .on_submit(move |_| run_sql(query, result, running)),
-                        ),
-                    )
-                    .child(
                         Button::new()
                             .primary()
                             .child(Icon::new(IconType::Terminal).size(16.))
                             .text(if *running.read() { "Running…" } else { "Run" })
                             .on_press(move |_| run_sql(query, result, running)),
+                    )
+                    .child(
+                        label()
+                            .text(if cfg!(target_os = "macos") {
+                                "⌘ Enter"
+                            } else {
+                                "Ctrl+Enter"
+                            })
+                            .font_size(12.)
+                            .color(colors::fg_secondary()),
                     ),
             )
             .child(sql_result(&result.read()))
@@ -1300,9 +1438,9 @@ fn action_row(dispatch: &Actions, buttons: Vec<(&'static str, IconType)>) -> Ele
             .text(text);
 
         if text == "Open Onboarding" {
-			let dispatch = dispatch.clone();
-			button = button.on_press(move |_| {
-				dispatch.reset_onboarding();
+            let dispatch = dispatch.clone();
+            button = button.on_press(move |_| {
+                dispatch.reset_onboarding();
                 let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
             });
         }

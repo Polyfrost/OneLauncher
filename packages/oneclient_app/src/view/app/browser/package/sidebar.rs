@@ -3,22 +3,18 @@ use super::*;
 use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSummary};
 
-use crate::Actions;
-use crate::components::{Button, Icon, IconType, PendingBundledInstall};
+use crate::components::{Button, Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
-    latest: Option<VersionSummary>,
-    provider: ProviderId,
-    cluster_id: i64,
-    dispatch: Actions,
+    latest_version: Option<VersionSummary>,
+    installer: Installer,
     confirm: State<Option<String>>,
     installed: Option<Installed>,
     installing: bool,
-    mut warn: State<Option<PendingBundledInstall>>,
+    waiting: bool,
 ) -> impl IntoElement {
     let Some(project) = project else {
         return rect()
@@ -29,27 +25,11 @@ pub(super) fn sidebar(
 
     let project_id = project.id.clone();
     // Nothing to do when this version is already there or while an install is running
-    let have_latest = match (&installed, &latest) {
+    let have_latest = match (&installed, &latest_version) {
         (Some(installed), Some(latest)) => installed.is_version(&latest.version_id),
         _ => false,
     };
-    let can_install = latest.is_some() && !have_latest && !installing;
-
-    let pending = match (&installed, &latest) {
-        (Some(installed), Some(latest)) if installed.conflicts_with_bundle(&latest.version_id) => {
-            Some(PendingBundledInstall {
-                cluster_id,
-                provider,
-                project_id: project_id.clone(),
-                version_id: latest.version_id.clone(),
-                project_name: project.name.clone(),
-                version_label: latest.version_number.clone(),
-                bundled_version: installed.bundled_version_label(),
-            })
-        }
-        _ => None,
-    };
-    let latest_version = latest.map(|latest| latest.version_id);
+    let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
 
     rect()
         .vertical()
@@ -68,14 +48,7 @@ pub(super) fn sidebar(
                     rect()
                         .width(Size::fill())
                         .overflow(Overflow::Clip)
-                        .child(PackageBanner::new(project.icon_url.clone(), 110.))
-                        .maybe_child(installed.as_ref().map(|installed| {
-                            rect()
-                                .position(Position::new_absolute().top(8.).left(8.))
-                                .layer(Layer::Relative(7))
-                                .child(installed_badge_overlay(installed.source))
-                                .into_element()
-                        })),
+                        .child(PackageBanner::new(project.icon_url.clone(), 110.)),
                 )
                 .child(
                     rect()
@@ -133,17 +106,13 @@ pub(super) fn sidebar(
                 .primary()
                 .width(Size::fill())
                 .enabled(can_install)
-                .on_press(move |_| match &pending {
-                    Some(pending) => warn.set(Some(pending.clone())),
-                    None => {
-                        if let Some(version_id) = latest_version.clone() {
-                            dispatch.install_package(
-                                cluster_id,
-                                provider,
-                                project_id.clone(),
-                                version_id,
-                            );
-                        }
+                .on_press(move |_| {
+                    if let Some(latest) = latest_version.clone() {
+                        installer.install(
+                            project_id.clone(),
+                            latest.version_id,
+                            latest.version_number,
+                        );
                     }
                 })
                 .child(Icon::new(IconType::Download01).size(14.))

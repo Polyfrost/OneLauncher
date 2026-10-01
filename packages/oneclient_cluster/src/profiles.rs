@@ -162,4 +162,3 @@ pub async fn update_named_profile(
 
     upsert_named_profile(pool, &profile).await
 }
-

@@ -1,12 +1,12 @@
-use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::dao::cluster_optional_mod as optional_dao;
-use oneclient_db::models::{OptionalModStatus, OverrideType};
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::types::{BundleArchive, BundleFile};
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::store::PackageStore;
 use oneclient_common::domain::GameLoader;
+use oneclient_db::dao::cluster_bundle as bundle_dao;
+use oneclient_db::dao::cluster_optional_mod as optional_dao;
+use oneclient_db::models::{OptionalModStatus, OverrideType};
 
 #[derive(Debug, Clone)]
 pub struct PendingOptionalMod {
@@ -50,6 +50,10 @@ pub async fn pending_optional_mods(
             );
             continue;
         };
+
+        if !file.is_optional_offer() {
+            continue;
+        }
 
         // The queue row can outlive the offer the user may have opted in from
         // the package manager since it was written

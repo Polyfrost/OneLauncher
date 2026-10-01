@@ -65,9 +65,7 @@ fn duplicates_to_disable(linked: &[LinkedArtifactInfo]) -> Vec<String> {
 /// Local files and a bundle's external files have no project to group on so
 /// they are left out
 /// two of those are two packages not two copies
-fn group_duplicates(
-    linked: &[LinkedArtifactInfo],
-) -> Vec<((ProviderId, String), Vec<Copy>)> {
+fn group_duplicates(linked: &[LinkedArtifactInfo]) -> Vec<((ProviderId, String), Vec<Copy>)> {
     let mut by_project: HashMap<(ProviderId, String), Vec<Copy>> = HashMap::new();
 
     for info in linked {
@@ -145,7 +143,11 @@ mod tests {
             ("middle", false, Some("2026-03-01T00:00:00Z")),
         ]));
 
-        assert_eq!(picked.as_deref(), Some("new"), "being enabled does not win it");
+        assert_eq!(
+            picked.as_deref(),
+            Some("new"),
+            "being enabled does not win it"
+        );
     }
 
     #[test]
@@ -162,7 +164,10 @@ mod tests {
     fn an_undated_group_still_picks_one() {
         let picked = newest(&copies(&[("a", false, None), ("b", false, None)]));
 
-        assert!(picked.is_some(), "a group with no dates must not go unresolved");
+        assert!(
+            picked.is_some(),
+            "a group with no dates must not go unresolved"
+        );
     }
 
     #[test]
@@ -206,7 +211,12 @@ mod tests {
     fn the_user_disabling_the_newest_copy_is_left_standing() {
         let disable = duplicates_to_disable(&[
             info(Some("sodium"), "chosen", true, Some("2026-01-01T00:00:00Z")),
-            info(Some("sodium"), "newest", false, Some("2026-06-01T00:00:00Z")),
+            info(
+                Some("sodium"),
+                "newest",
+                false,
+                Some("2026-06-01T00:00:00Z"),
+            ),
         ]);
 
         assert!(

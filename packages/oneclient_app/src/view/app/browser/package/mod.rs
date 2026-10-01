@@ -1,20 +1,26 @@
 use freya::prelude::*;
-use oneclient_content::packages::{ContentType, ProviderId};
+use std::collections::HashMap;
 
-use crate::components::{BundledInstallWarning, PendingBundledInstall, ScrollArea};
+use oneclient_content::packages::types::DependencyKind;
+use oneclient_content::packages::{ContentType, ProviderId};
+use oneclient_core::clusters::ModpackSource;
+
+use crate::components::{
+    BundledInstallWarning, PendingBundledInstall, ScrollArea, use_shared_delete,
+};
+use crate::hooks::use_cluster;
 use crate::hooks::{
-    bundles_with_status_items, cluster_content_items, content_type_for_slug, project_detail,
-    use_browser_compat, use_bundles_with_status, use_cluster_content, use_dispatch,
-    use_installs_snapshot, use_link_confirm, use_package_project, use_package_versions,
-    version_list, versions_total,
+    bundles_with_status_items, cluster_content_items, content_type_for_slug, package_meta_batch,
+    project_detail, use_browser_compat, use_bundles_with_status, use_cluster_content,
+    use_dispatch, use_installs_snapshot, use_link_confirm, use_package_meta_batch,
+    use_package_project, use_package_versions, version_list, versions_total,
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::hooks::use_cluster;
 
 use super::{
-    Installed, InstalledVersion, PackageBanner, Thumbnail, activity_badge, installed_badge,
-    installed_badge_overlay, installed_map,
+    Installed, InstalledVersion, PackageBanner, Thumbnail, WorldInstallPrompt, activity_badge,
+    installed_badge, installed_map, preferred_version,
 };
 use crate::utils::abbreviate_number;
 
@@ -28,6 +34,60 @@ use sidebar::sidebar;
 const PANEL_BG: Color = Color::from_rgb(21, 28, 34);
 const SIDEBAR_W: f32 = 280.;
 const SCROLLBAR_GUTTER: f32 = 18.;
+
+#[derive(Clone)]
+struct Installer {
+    dispatch: crate::Actions,
+    cluster_id: i64,
+    provider: ProviderId,
+    world_prompt: Option<State<Option<String>>>,
+    modpack: bool,
+    installed: Option<Installed>,
+    project_name: String,
+    bundled_warning: State<Option<PendingBundledInstall>>,
+}
+
+impl Installer {
+    fn install(&self, project_id: String, version_id: String, version_label: String) {
+        if let Some(installed) = self
+            .installed
+            .as_ref()
+            .filter(|installed| installed.conflicts_with_bundle(&version_id))
+        {
+            let mut warning = self.bundled_warning;
+            warning.set(Some(PendingBundledInstall {
+                cluster_id: self.cluster_id,
+                provider: self.provider,
+                project_id,
+                version_id,
+                project_name: self.project_name.clone(),
+                version_label,
+                bundled_version: installed.bundled_version_label(),
+            }));
+            return;
+        }
+
+        if self.modpack {
+            self.dispatch.install_modpack(ModpackSource::Provider {
+                provider: self.provider,
+                project_id,
+                version_id,
+            });
+            return;
+        }
+
+        match self.world_prompt {
+            Some(mut prompt) => prompt.set(Some(version_id)),
+            None => self.dispatch.install_package(
+                self.cluster_id,
+                self.provider,
+                project_id,
+                version_id,
+                None,
+            ),
+        }
+    }
+}
 
 fn decode_package_id(package_id: &str) -> (ProviderId, String) {
     match package_id.split_once(':') {
@@ -60,7 +120,7 @@ fn pill(text: String) -> impl IntoElement {
         .into_element()
 }
 
-fn pill_flow(items: &[String], per_row: usize, max: usize) -> impl IntoElement {
+fn pill_flow(items: &[String], max: usize) -> impl IntoElement {
     let shown: Vec<String> = items.iter().take(max).cloned().collect();
     let overflow = items.len().saturating_sub(shown.len());
     let mut all = shown;
@@ -69,15 +129,11 @@ fn pill_flow(items: &[String], per_row: usize, max: usize) -> impl IntoElement {
     }
 
     rect()
-        .vertical()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::wrap_spacing(4.))
         .spacing(4.)
-        .children(all.chunks(per_row.max(1)).map(|chunk| {
-            rect()
-                .horizontal()
-                .spacing(4.)
-                .children(chunk.iter().map(|t| pill(t.clone()).into_element()))
-                .into_element()
-        }))
+        .children(all.into_iter().map(|t| pill(t).into_element()))
         .into_element()
 }
 
@@ -92,7 +148,7 @@ fn pill_detail(key: &str, items: &[String]) -> Element {
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
-        .child(pill_flow(items, 4, 18))
+        .child(pill_flow(items, 18))
         .into_element()
 }
 
@@ -114,11 +170,14 @@ impl Component for BrowserPackage {
         let compatible_only = use_browser_compat();
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
+        let world_prompt = use_state(|| None::<String>);
         let bundled_warning = use_state(|| None::<PendingBundledInstall>);
+        let is_datapack = content_type == ContentType::DataPack;
 
         let cluster = use_cluster(cluster_id);
         let compat = *compatible_only.read();
-        let (game_version, loader) = match (compat, &cluster) {
+        let narrows = content_type != ContentType::Modpack;
+        let (game_version, loader) = match (compat && narrows, &cluster) {
             (true, Some(c)) => (
                 Some(c.mc_version.clone()),
                 (content_type == ContentType::Mod).then_some(c.mc_loader),
@@ -144,18 +203,61 @@ impl Component for BrowserPackage {
             *versions_page.read(),
         );
 
-        let installing = use_installs_snapshot().is_installing(cluster_id, provider, &project_id);
+        let (installing, waiting) = use_installs_snapshot().package_busy(
+            content_type == ContentType::Modpack,
+            cluster_id,
+            provider,
+            &project_id,
+        );
 
         let installed = installed_map(
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
         )
-        .remove(&(provider, project_id.clone()));
+        .remove(&(provider, project_id.clone()))
+        .filter(|_| !is_datapack);
 
         let project = project_detail(&project_query);
+
+        let installer = Installer {
+            dispatch: dispatch.clone(),
+            cluster_id,
+            provider,
+            world_prompt: is_datapack.then_some(world_prompt),
+            modpack: content_type == ContentType::Modpack,
+            installed: installed.clone(),
+            project_name: project.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+            bundled_warning,
+        };
+
+        let remove_id = project.as_ref().map(|p| p.id.clone());
+        let remove_dispatch = dispatch.clone();
+        let (on_remove, remove_dialog) = use_shared_delete(cluster_id, move |(name, hash)| {
+            if let Some(project_id) = &remove_id {
+                remove_dispatch.remove_package_version(
+                    cluster_id,
+                    provider,
+                    project_id.clone(),
+                    hash,
+                    name,
+                );
+            }
+        });
+
         let versions = version_list(&versions_query);
         let total_versions = versions_total(&versions_query);
-        let latest = versions.first().cloned();
+        let dependency_ids: Vec<String> = versions
+            .iter()
+            .flat_map(|v| &v.dependencies)
+            .filter(|d| d.kind == DependencyKind::Required)
+            .filter_map(|d| d.project_id.clone())
+            .collect();
+        let dependency_names: HashMap<String, String> =
+            package_meta_batch(&use_package_meta_batch(provider, dependency_ids))
+                .into_iter()
+                .map(|(id, meta)| (id, meta.name))
+                .collect();
+        let latest_version = preferred_version(&versions, content_type).cloned();
 
         let gallery = project
             .as_ref()
@@ -172,14 +274,12 @@ impl Component for BrowserPackage {
                 versions,
                 total_versions,
                 versions_page,
-                provider,
+                dependency_names,
                 project.id.clone(),
-                project.name.clone(),
-                cluster_id,
-                dispatch.clone(),
+                installer.clone(),
+                on_remove,
                 installed.clone(),
-                installing,
-                bundled_warning,
+                installing || waiting,
             )
             .into_element(),
             (Some(_), _) => gallery_panel(gallery).into_element(),
@@ -193,14 +293,12 @@ impl Component for BrowserPackage {
             .content(Content::Flex)
             .child(sidebar(
                 project,
-                latest,
-                provider,
-                cluster_id,
-                dispatch,
+                latest_version,
+                installer,
                 confirm,
                 installed,
                 installing,
-                bundled_warning,
+                waiting,
             ))
             .child(
                 rect()
@@ -215,21 +313,23 @@ impl Component for BrowserPackage {
         rect()
             .width(Size::fill())
             .height(Size::fill())
+            .overflow(Overflow::Clip)
+            .padding(Gaps::new(0., 40., 40., 40.))
             .child(
-                rect()
+                ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::fill())
-                    .overflow(Overflow::Clip)
-                    .padding(Gaps::new(0., 40., 40., 40.))
-                    .child(
-                        ScrollArea::new()
-                            .width(Size::fill())
-                            .height(Size::fill())
-                            .reset_key(current as u64)
-                            .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.))
-                            .children([row]),
-                    ),
+                    .reset_key(current as u64)
+                    .padding(Gaps::new(0., SCROLLBAR_GUTTER, 0., 0.))
+                    .children([row]),
             )
+            .maybe_child(remove_dialog)
+            .maybe_child(world_prompt.read().is_some().then(|| WorldInstallPrompt {
+                cluster_id,
+                provider,
+                project_id: project_id.clone(),
+                pending: world_prompt,
+            }))
             .child(BundledInstallWarning {
                 pending: bundled_warning,
             })

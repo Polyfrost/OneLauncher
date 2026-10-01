@@ -5,13 +5,13 @@ use freya::{
 use oneclient_events::Level;
 
 use crate::{
-    ui::{divider, relative_time},
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
     hooks::{use_dispatch, use_notifications_snapshot},
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
     transfer::TransferStats,
-    utils::{format_duration_hms, format_size},
+    ui::{divider, relative_time},
+    utils::{format_durations, format_size},
 };
 
 #[derive(PartialEq)]
@@ -48,9 +48,13 @@ impl Component for NotificationPanel {
 
         let progress = intro.read().value();
 
-        let entries = inbox.len();
         let mut rows: Vec<Element> = Vec::new();
-        if entries == 0 {
+        // Toast-only notices are ephemeral: never surface them in the center
+        let visible: Vec<InboxEntry> = inbox
+            .into_iter()
+            .filter(|entry| !entry.toast_only)
+            .collect();
+        if visible.is_empty() {
             rows.push(
                 label()
                     .text("No notifications")
@@ -59,8 +63,8 @@ impl Component for NotificationPanel {
                     .into_element(),
             );
         } else {
-            let last = entries - 1;
-            for (i, entry) in inbox.into_iter().enumerate() {
+            let last = visible.len() - 1;
+            for (i, entry) in visible.into_iter().enumerate() {
                 let id = entry.id;
                 rows.push(NotifEntryRow::new(entry, i != last).key(id).into_element());
             }
@@ -82,7 +86,7 @@ impl Component for NotificationPanel {
             .opacity(progress)
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
-            .blur(12.)
+            .backdrop_blur(12.)
             .corner_radius(CornerRadius::new_all(12.))
             .border(
                 Border::new()
@@ -212,7 +216,9 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
                     let now = !*expanded.peek();
                     expanded.set(now);
                 })
-                .child(ChevronToggle { expanded: is_expanded })
+                .child(ChevronToggle {
+                    expanded: is_expanded,
+                })
                 .child(
                     label()
                         .text(if is_expanded {
@@ -279,8 +285,8 @@ fn task_row(task: &crate::notifications::TaskView) -> impl IntoElement {
 }
 
 #[derive(PartialEq)]
-struct ChevronToggle {
-    expanded: bool,
+pub struct ChevronToggle {
+    pub expanded: bool,
 }
 
 impl Component for ChevronToggle {
@@ -445,7 +451,7 @@ fn transfer_footer(stats: TransferStats) -> Element {
     let speed = format!("{}/s", format_size(stats.speed_bps as u64));
     let eta = stats
         .eta_secs
-        .map(|secs| format!("{} left", format_duration_hms(secs as i64)));
+        .map(|secs| format!("{} left", format_durations(secs as i64)));
 
     rect()
         .horizontal()
@@ -483,7 +489,10 @@ struct Footer;
 impl Component for Footer {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let is_empty = use_notifications_snapshot().inbox.is_empty();
+        let is_empty = !use_notifications_snapshot()
+            .inbox
+            .iter()
+            .any(|e| e.dismissable());
 
         rect()
             .horizontal()
@@ -525,4 +534,3 @@ fn level_color(level: &Level) -> Color {
         Level::Error => colors::danger(),
     }
 }
-

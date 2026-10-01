@@ -15,6 +15,8 @@ Source0:        %{url}/releases/download/oneclient-%{version}/%{_rpmfile}
 ExclusiveArch:  x86_64
 BuildRequires:  bsdtar
 Requires:       gtk3
+Requires:       libayatana-appindicator-gtk3
+Requires:       libxdo
 Requires:       dbus-libs
 Provides:       oneclient = %{version}-%{release}
 

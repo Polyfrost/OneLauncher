@@ -51,7 +51,11 @@ impl Icon {
 impl Component for Icon {
     fn render(&self) -> impl IntoElement {
         let path = self.icon.path();
-        let bytes = use_memo(move || AppAssets::get_bytes(path).unwrap_or_default());
+        let load = move || (path, AppAssets::get_bytes(path).unwrap_or_default());
+        let mut bytes = use_state(load);
+        if bytes.peek().0 != path {
+            bytes.set(load());
+        }
         let tint = use_hook(try_consume_context::<IconTint>);
 
         let color = self
@@ -59,7 +63,7 @@ impl Component for Icon {
             .or_else(|| tint.map(|tint| *tint.0.read()))
             .unwrap_or_else(colors::fg_primary);
 
-        SvgViewer::new((path, bytes.read().cloned()))
+        SvgViewer::new((path, bytes.peek().1.clone()))
             .show_loader(false)
             .width(Size::px(self.size_px))
             .height(Size::px(self.size_px))
@@ -87,6 +91,7 @@ pub enum IconType {
     ArrowLeft,
     ArrowRight,
     Brush01,
+    BarChartSquare02,
     Bell01,
     Calendar,
     CheckCircle,
@@ -102,6 +107,7 @@ pub enum IconType {
     Copy01,
     Curseforge,
     Database01,
+    Discord,
     DotsGrid,
     DotsVertical,
     Download01,
@@ -113,18 +119,23 @@ pub enum IconType {
     Folder,
     FolderCheck,
     FolderDownload,
+    Github,
     Globe01,
     HelpCircle,
+    IconLogo,
     InfoCircle,
     Key01,
     LayoutTop,
+    LineChartUp01,
     Link03,
     LinkExternal01,
     Loading02,
+    LogOut01,
     Maximize01,
     MessageTextSquare01,
     Minus,
     Modrinth,
+    Moon01,
     OnboardingAccount,
     OnboardingComplete,
     OnboardingLanguage,

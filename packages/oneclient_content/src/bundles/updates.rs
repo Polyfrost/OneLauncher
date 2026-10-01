@@ -1,25 +1,25 @@
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 
 use oneclient_db::dao::artifact as artifact_dao;
-use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::bundle as bundle_catalog_dao;
+use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::dao::cluster_optional_mod as optional_dao;
 use oneclient_db::models::ClusterPatch;
 use oneclient_db::models::{
-    BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType,
-    SeenStatus,
+    BundleTrackedArtifactRow, ClusterBundleOverrideRow, OptionalModStatus, OverrideType, SeenStatus,
 };
 use tokio::sync::Mutex as AsyncMutex;
 
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, disable_was_deliberate, find_user_suppression,
-    heal_bundle_activity, install_package_from_bundle, remove_artifact_from_cluster,
-    set_artifact_enabled_to,
+    BUNDLE_INSTALL_CONCURRENCY, bundle_cluster, disable_was_deliberate, external_ids_by_sha1,
+    find_user_suppression, heal_bundle_activity, install_package_from_bundle,
+    remove_artifact_from_cluster, set_artifact_enabled_to,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -28,11 +28,11 @@ use crate::bundles::types::{
     BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate, BundleUpdateCheckResult,
     BundleWithUpdateStatus, FileUpdateStatus, external_bundle_key, managed_bundle_key,
 };
-use oneclient_common::domain::{GameLoader, ProviderId};
-use crate::packages::store::PackageStore;
-use crate::packages::types::LinkedArtifactInfo;
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
+use crate::packages::store::PackageStore;
+use crate::packages::types::LinkedArtifactInfo;
+use oneclient_common::domain::{GameLoader, ProviderId};
 
 static CLUSTER_UPDATE_LOCKS: OnceLock<Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>> = OnceLock::new();
 
@@ -58,6 +58,10 @@ pub async fn check_bundle_updates(
 /// update so the catalog never has to be fetched for it
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn cluster_has_bundle_content(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<bool> {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
+        return Ok(false);
+    }
+
     if !bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
         .await?
         .is_empty()
@@ -78,6 +82,12 @@ async fn check_bundle_updates_inner(
     overrides: &[ClusterBundleOverrideRow],
 ) -> ContentResult<BundleUpdateCheckResult> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if !cluster.uses_bundles() {
+        return Ok(BundleUpdateCheckResult {
+            cluster_id,
+            ..Default::default()
+        });
+    }
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).ok_or_else(|| {
         ContentError::InvalidData {
             reason: format!("unknown loader {}", cluster.mc_loader),
@@ -144,14 +154,7 @@ async fn check_bundle_updates_inner(
         let mut shipped_keys = HashSet::new();
 
         for file in &archive.manifest.files {
-            shipped_keys.insert(match &file.kind {
-                BundleFileKind::Managed {
-                    provider,
-                    project_id,
-                    ..
-                } => managed_bundle_key(*provider, project_id),
-                BundleFileKind::External(ext) => external_bundle_key(&ext.sha1),
-            });
+            shipped_keys.insert(file.kind.bundle_key());
 
             let user_override = overrides_map
                 .get(&(archive.manifest.name.clone(), file.kind.package_id()))
@@ -159,26 +162,10 @@ async fn check_bundle_updates_inner(
             if !crate::bundles::effective_enabled(file, user_override) {
                 continue;
             }
-            match &file.kind {
-                BundleFileKind::Managed {
-                    provider,
-                    project_id,
-                    version_id,
-                    ..
-                } => {
-                    let key = managed_bundle_key(*provider, project_id);
-                    files_map.insert(key.clone(), (version_id.clone(), file.clone()));
-                    if file.hidden {
-                        hidden_explicit_keys.insert(key);
-                    }
-                }
-                BundleFileKind::External(ext) => {
-                    let key = external_bundle_key(&ext.sha1);
-                    files_map.insert(key.clone(), (ext.sha1.clone(), file.clone()));
-                    if file.hidden {
-                        hidden_explicit_keys.insert(key);
-                    }
-                }
+            let key = file.kind.bundle_key();
+            files_map.insert(key.clone(), (file.kind.bundle_version_id(), file.clone()));
+            if file.hidden {
+                hidden_explicit_keys.insert(key);
             }
         }
 
@@ -230,6 +217,7 @@ async fn check_bundle_updates_inner(
         .map(|a| a.manifest.name.as_str())
         .collect();
 
+    let external_ids = external_ids_by_sha1(&archives);
     let mut updates_available = Vec::new();
     let mut removals_available = Vec::new();
 
@@ -241,7 +229,8 @@ async fn check_bundle_updates_inner(
             continue;
         };
 
-        let installed_key = bundle_package_key(bundle_pkg, &all_linked_by_hash, pkg_id);
+        let installed_key =
+            bundle_package_key(bundle_pkg, &all_linked_by_hash, &external_ids, pkg_id);
 
         let Some(bundle_name) = &bundle_pkg.bundle_name else {
             continue;
@@ -343,8 +332,15 @@ async fn check_bundle_updates_inner(
     let mut additions_available = Vec::new();
     let mut optional_available: Vec<(String, BundleOptionalPackage)> = Vec::new();
     let mut planned_addition_keys = all_installed_managed_keys.clone();
-    for hash in all_installed_external_hashes {
-        planned_addition_keys.insert(external_bundle_key(&hash));
+    let tracked_package_by_hash: HashMap<&str, &str> = bundle_packages
+        .iter()
+        .filter_map(|bp| Some((bp.hash.as_str(), bp.package_id.as_deref()?)))
+        .collect();
+    for hash in &all_installed_external_hashes {
+        planned_addition_keys.insert(external_bundle_key(hash));
+        if let Some(package_id) = tracked_package_by_hash.get(hash.as_str()) {
+            planned_addition_keys.insert(external_bundle_key(package_id));
+        }
     }
 
     for archive in &archives {
@@ -358,21 +354,19 @@ async fn check_bundle_updates_inner(
                 .get(&(archive.manifest.name.clone(), file_id.clone()))
                 .copied();
 
-            let file_key = match &file.kind {
-                BundleFileKind::Managed {
-                    provider,
-                    project_id,
-                    ..
-                } => managed_bundle_key(*provider, project_id),
-                BundleFileKind::External(ext) => external_bundle_key(&ext.sha1),
-            };
-            if planned_addition_keys.contains(&file_key) {
+            let file_key = file.kind.bundle_key();
+            let exact_file_installed = matches!(
+                &file.kind,
+                BundleFileKind::External { file: ext, .. }
+                    if planned_addition_keys.contains(&external_bundle_key(&ext.sha1))
+            );
+            if planned_addition_keys.contains(&file_key) || exact_file_installed {
                 continue;
             }
 
             if !crate::bundles::effective_enabled(file, user_override) {
                 if user_override.is_none()
-                    && !file.hidden
+                    && file.is_optional_offer()
                     && !optional_available.iter().any(|(key, _)| *key == file_key)
                 {
                     optional_available.push((
@@ -418,14 +412,18 @@ pub async fn apply_bundle_updates(
     cluster_id: i64,
     bundles: &BundlesManager,
     ctx: &ContentCtx,
+    deadline: Option<Instant>,
 ) -> ContentResult<ApplyBundleUpdatesResult> {
-    let session = oneclient_events::GroupedProgressSession::start(
-        &ctx.events,
-        "Updating bundle content",
-    );
-    let result = apply_bundle_updates_with(cluster_id, bundles, ctx, Some(&session)).await;
+    let session =
+        oneclient_events::GroupedProgressSession::start(&ctx.events, "Updating bundle content");
+    let result =
+        apply_bundle_updates_with(cluster_id, bundles, ctx, Some(&session), deadline).await;
     session.finish();
     result
+}
+
+fn past(deadline: Option<Instant>) -> bool {
+    deadline.is_some_and(|deadline| Instant::now() >= deadline)
 }
 
 /// The caller owns `session`'s lifetime
@@ -436,7 +434,12 @@ pub async fn apply_bundle_updates_with(
     bundles: &BundlesManager,
     ctx: &ContentCtx,
     session: Option<&oneclient_events::GroupedProgressSession>,
+    deadline: Option<Instant>,
 ) -> ContentResult<ApplyBundleUpdatesResult> {
+    if bundle_cluster(cluster_id, ctx).await?.is_none() {
+        return Ok(ApplyBundleUpdatesResult::default());
+    }
+
     let lock = cluster_lock(cluster_id);
     let _guard = lock.lock().await;
 
@@ -465,6 +468,11 @@ pub async fn apply_bundle_updates_with(
     let mut result = ApplyBundleUpdatesResult::default();
 
     for removal in check.removals_available {
+        if past(deadline) {
+            result.stopped_early = true;
+            break;
+        }
+
         match remove_artifact_from_cluster(cluster_id, &removal.hash, false, ctx).await {
             Ok(()) => result.removals_applied.push(removal),
             Err(err) => result
@@ -481,16 +489,23 @@ pub async fn apply_bundle_updates_with(
             .updates_available
             .iter()
             .map(|u| u.new_file.size.max(1))
-            .chain(check.additions_available.iter().map(|a| a.new_file.size.max(1)))
+            .chain(
+                check
+                    .additions_available
+                    .iter()
+                    .map(|a| a.new_file.size.max(1)),
+            )
             .sum();
         s.expect(oneclient_events::TaskCategory::Packages, count, bytes);
     }
 
-    // Fetch concurrently reconcile in order
-    // splitting the two keeps the fan-out safe since no artifact is unlinked
-    // while another download still needs it
+    let overrides_ref = &overrides;
     let fetched_updates = futures_util::stream::iter(check.updates_available.into_iter().map(
         |update| async move {
+            if past(deadline) {
+                return (update, None);
+            }
+
             let child = session.map(|s| {
                 let c = s.child(
                     update.new_file.display_name(),
@@ -509,29 +524,37 @@ pub async fn apply_bundle_updates_with(
                 ctx,
             )
             .await;
-            if let Some(child) = child {
+            if let Some(child) = &child {
                 child.set_phase(oneclient_events::TaskPhase::Installing);
+            }
+            let applied = match installed {
+                Ok(hash) => reconcile_update(&update, &hash, overrides_ref, ctx).await,
+                Err(err) => Err(err),
+            };
+            if let Some(child) = child {
                 child.finish();
             }
-            (update, installed)
+            (update, Some(applied))
         },
     ))
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
     .collect::<Vec<_>>()
     .await;
 
-    for (update, installed) in fetched_updates {
-        match installed {
-            Ok(hash) => match reconcile_update(&update, &hash, &overrides, ctx).await {
-                Ok(()) => result.updates_applied.push(update),
-                Err(err) => result.updates_failed.push(err.to_string()),
-            },
-            Err(err) => result.updates_failed.push(err.to_string()),
+    for (update, applied) in fetched_updates {
+        match applied {
+            Some(Ok(())) => result.updates_applied.push(update),
+            Some(Err(err)) => result.updates_failed.push(err.to_string()),
+            None => result.stopped_early = true,
         }
     }
 
     let fetched_additions = futures_util::stream::iter(check.additions_available.into_iter().map(
         |addition| async move {
+            if past(deadline) {
+                return (addition, None);
+            }
+
             let child = session.map(|s| {
                 let c = s.child(
                     addition.new_file.display_name(),
@@ -550,27 +573,31 @@ pub async fn apply_bundle_updates_with(
                 ctx,
             )
             .await;
-            if let Some(child) = child {
+            if let Some(child) = &child {
                 child.set_phase(oneclient_events::TaskPhase::Installing);
+            }
+            let applied = match installed {
+                Ok(hash) => reconcile_addition(&addition, &hash, overrides_ref, ctx).await,
+                Err(err) => Err(err),
+            };
+            if let Some(child) = child {
                 child.finish();
             }
-            (addition, installed)
+            (addition, Some(applied))
         },
     ))
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
     .collect::<Vec<_>>()
     .await;
 
-    for (addition, installed) in fetched_additions {
-        let file_id = addition.new_file.kind.package_id();
-        match installed {
-            Ok(hash) => {
-                match reconcile_addition(&addition, &hash, &overrides, ctx).await {
-                    Ok(()) => result.additions_applied.push(addition),
-                    Err(err) => result.additions_failed.push(format!("{file_id}: {err:#}")),
-                }
+    for (addition, applied) in fetched_additions {
+        match applied {
+            Some(Ok(())) => result.additions_applied.push(addition),
+            Some(Err(err)) => {
+                let file_id = addition.new_file.kind.package_id();
+                result.additions_failed.push(format!("{file_id}: {err:#}"));
             }
-            Err(err) => result.additions_failed.push(format!("{file_id}: {err:#}")),
+            None => result.stopped_early = true,
         }
     }
 
@@ -582,10 +609,7 @@ pub async fn apply_bundle_updates_with(
     {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
-        if let Ok(archives) = bundles
-            .archives_for(ctx, &cluster.mc_version, loader)
-            .await
-        {
+        if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
             for archive in archives {
                 if let Err(err) = overrides::sync_bundle_overrides(
                     &archive.bundle.path,
@@ -706,7 +730,8 @@ async fn reconcile_update(
     set_artifact_enabled_to(update.cluster_id, hash, enabled, ctx).await?;
 
     if hash != update.installed_hash {
-        artifact_dao::set_seen_status(&ctx.db, update.cluster_id, hash, SeenStatus::Updated).await?;
+        artifact_dao::set_seen_status(&ctx.db, update.cluster_id, hash, SeenStatus::Updated)
+            .await?;
         remove_artifact_from_cluster(update.cluster_id, &update.installed_hash, false, ctx).await?;
     }
 
@@ -786,18 +811,26 @@ pub async fn get_bundles_with_update_status(
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<BundleWithUpdateStatus>> {
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    if !cluster.uses_bundles() {
+        return Ok(Vec::new());
+    }
     let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
     let bundle_packages = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     let all_linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
     let all_linked_by_hash: HashMap<String, &LinkedArtifactInfo> =
         all_linked.iter().map(|a| (a.hash.clone(), a)).collect();
 
+    let archives = bundles
+        .archives_for(ctx, &cluster.mc_version, loader)
+        .await?;
+    let external_ids = external_ids_by_sha1(&archives);
+
     let mut installed_map: HashMap<String, &BundleTrackedArtifactRow> = HashMap::new();
     for bundle_pkg in &bundle_packages {
         let Some(pkg_id) = &bundle_pkg.package_id else {
             continue;
         };
-        let key = bundle_package_key(bundle_pkg, &all_linked_by_hash, pkg_id);
+        let key = bundle_package_key(bundle_pkg, &all_linked_by_hash, &external_ids, pkg_id);
         installed_map.insert(key, bundle_pkg);
     }
 
@@ -810,9 +843,6 @@ pub async fn get_bundles_with_update_status(
         })
         .collect();
 
-    let archives = bundles
-        .archives_for(ctx, &cluster.mc_version, loader)
-        .await?;
     let mut results = Vec::new();
 
     for archive in archives {
@@ -820,48 +850,25 @@ pub async fn get_bundles_with_update_status(
         let mut has_updates = false;
 
         for file in &archive.manifest.files {
-            let status = match &file.kind {
-                BundleFileKind::Managed {
-                    provider,
-                    project_id,
-                    version_id,
-                    ..
-                } => {
-                    let key = managed_bundle_key(*provider, project_id);
-                    if let Some(installed) = installed_map.get(&key) {
-                        let installed_version =
-                            installed.bundle_version_id.as_deref().unwrap_or("");
-                        if installed_version == version_id.as_str() {
-                            FileUpdateStatus::UpToDate
-                        } else {
-                            has_updates = true;
-                            FileUpdateStatus::UpdateAvailable {
-                                installed_version_id: installed_version.to_string(),
-                                new_version_id: version_id.clone(),
-                            }
-                        }
-                    } else if matches!(
-                        overrides_map.get(&(archive.manifest.name.clone(), project_id.clone())),
-                        Some(OverrideType::Removed)
-                    ) {
-                        FileUpdateStatus::RemovedByUser
-                    } else {
-                        FileUpdateStatus::NotInstalled
+            let new_version_id = file.kind.bundle_version_id();
+            let status = if let Some(installed) = installed_map.get(&file.kind.bundle_key()) {
+                let installed_version = installed.bundle_version_id.as_deref().unwrap_or("");
+                if installed_version == new_version_id {
+                    FileUpdateStatus::UpToDate
+                } else {
+                    has_updates = true;
+                    FileUpdateStatus::UpdateAvailable {
+                        installed_version_id: installed_version.to_string(),
+                        new_version_id,
                     }
                 }
-                BundleFileKind::External(ext) => {
-                    let key = external_bundle_key(&ext.sha1);
-                    if installed_map.contains_key(&key) {
-                        FileUpdateStatus::UpToDate
-                    } else if matches!(
-                        overrides_map.get(&(archive.manifest.name.clone(), ext.sha1.clone())),
-                        Some(OverrideType::Removed)
-                    ) {
-                        FileUpdateStatus::RemovedByUser
-                    } else {
-                        FileUpdateStatus::NotInstalled
-                    }
-                }
+            } else if matches!(
+                overrides_map.get(&(archive.manifest.name.clone(), file.kind.package_id())),
+                Some(OverrideType::Removed)
+            ) {
+                FileUpdateStatus::RemovedByUser
+            } else {
+                FileUpdateStatus::NotInstalled
             };
             files.push((file.clone(), status));
         }
@@ -876,45 +883,24 @@ pub async fn get_bundles_with_update_status(
     Ok(results)
 }
 
-#[tracing::instrument(level = "debug", skip_all)]
-pub async fn apply_bundle_updates_for_all_clusters(
-    bundles: &BundlesManager,
-    ctx: &ContentCtx,
-    session: Option<&oneclient_events::GroupedProgressSession>,
-) -> ContentResult<Vec<(i64, ApplyBundleUpdatesResult)>> {
-    let mut changed = Vec::new();
-    for cluster in cluster_dao::list_all(&ctx.db).await? {
-        match apply_bundle_updates_with(cluster.id, bundles, ctx, session).await {
-            Ok(result) => {
-                if !result.updates_applied.is_empty()
-                    || !result.additions_applied.is_empty()
-                    || !result.removals_applied.is_empty()
-                    || !result.optional_available.is_empty()
-                {
-                    changed.push((cluster.id, result));
-                }
-            }
-            Err(err) => tracing::warn!(
-                cluster_id = cluster.id,
-                error = %err,
-                "bundle update apply failed for cluster"
-            ),
-        }
-    }
-    Ok(changed)
-}
-
 fn bundle_package_key(
     bundle_pkg: &BundleTrackedArtifactRow,
     linked: &HashMap<String, &LinkedArtifactInfo>,
+    external_ids: &HashMap<String, String>,
     package_id: &str,
 ) -> String {
     if package_id == bundle_pkg.hash {
-        external_bundle_key(&bundle_pkg.hash)
-    } else if let Some(info) = linked.get(&bundle_pkg.hash) {
-        managed_bundle_key(info.provider.unwrap_or(ProviderId::Modrinth), package_id)
+        return external_bundle_key(
+            external_ids
+                .get(package_id)
+                .map_or(package_id, String::as_str),
+        );
+    }
+    let provider = linked.get(&bundle_pkg.hash).and_then(|info| info.provider);
+    if provider.is_none() && external_ids.values().any(|id| id == package_id) {
+        external_bundle_key(package_id)
     } else {
-        managed_bundle_key(ProviderId::Modrinth, package_id)
+        managed_bundle_key(provider.unwrap_or(ProviderId::Modrinth), package_id)
     }
 }
 
@@ -929,8 +915,8 @@ async fn addition_eligible_bundles(
     candidate_keys_by_bundle: &HashMap<String, HashSet<String>>,
     overrides: &[ClusterBundleOverrideRow],
 ) -> ContentResult<HashSet<String>> {
-    let (live_managed_keys, _) =
-        installed_bundle_keys(ctx, all_linked.iter().filter(|item| item.enabled)).await?;
+    let live: Vec<_> = all_linked.iter().filter(|item| item.enabled).collect();
+    let (live_managed_keys, _) = installed_bundle_keys(ctx, live).await?;
 
     let mut eligible: HashSet<String> = bundle_packages
         .iter()

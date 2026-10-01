@@ -46,14 +46,16 @@ pub fn item_from_bundle_file(file: &oneclient_core::BundleFile) -> ClusterUpdate
             ..
         } => ClusterUpdateItem {
             provider: *provider,
+            github_hosted: false,
             project_id: Some(project_id.clone()),
             fallback: file.display_name(),
             offer: None,
             status: None,
         },
-        oneclient_core::BundleFileKind::External(_) => ClusterUpdateItem {
+        oneclient_core::BundleFileKind::External { .. } => ClusterUpdateItem {
             provider: oneclient_content::packages::ProviderId::Local,
-            project_id: None,
+            github_hosted: file.is_github_hosted(),
+            project_id: Some(file.kind.metadata_id()),
             fallback: file.display_name(),
             offer: None,
             status: None,
@@ -90,6 +92,7 @@ async fn cluster_update_summary(
             provider: r
                 .provider
                 .unwrap_or(oneclient_content::packages::ProviderId::Local),
+            github_hosted: false,
             project_id: r.project_id.clone(),
             fallback: r
                 .display_name
@@ -165,60 +168,7 @@ pub async fn cluster_update_notification(
             label: "View changes".to_string(),
             kind: NotificationActionKind::OpenClusterUpdate(vec![summary]),
         }],
-    })
-}
-
-/// All clusters share one "View changes" action so the notification keeps exactly two buttons
-pub async fn combined_cluster_update_spec(
-    changed: &[(i64, oneclient_core::ApplyBundleUpdatesResult)],
-    services: &oneclient_core::LauncherServices,
-) -> Option<NotificationSpec> {
-    let mut summaries = Vec::new();
-    let mut total_changes = 0usize;
-
-    for (cluster_id, result) in changed {
-        if let Some(summary) = cluster_update_summary(*cluster_id, result, services).await {
-            total_changes += summary.total();
-            summaries.push(summary);
-        }
-    }
-
-    if summaries.is_empty() {
-        return None;
-    }
-
-    let cluster_count = summaries.len();
-    let (title, body) = if total_changes == 0 {
-        let offers: usize = summaries.iter().map(|s| s.optional.len()).sum();
-        (
-            "Optional mods available",
-            format!(
-                "{offers} optional mod{} across {cluster_count} cluster{}",
-                if offers == 1 { "" } else { "s" },
-                if cluster_count == 1 { "" } else { "s" }
-            ),
-        )
-    } else {
-        (
-            "Mods updated",
-            format!(
-                "{total_changes} package{} updated across {cluster_count} cluster{}",
-                if total_changes == 1 { "" } else { "s" },
-                if cluster_count == 1 { "" } else { "s" }
-            ),
-        )
-    };
-
-    Some(NotificationSpec {
-        title: title.to_string(),
-        body,
-        level: Level::Info,
-        icon: Some(IconType::DownloadCloud02),
-        progress: None,
-        actions: vec![NotificationAction {
-            label: "View changes".to_string(),
-            kind: NotificationActionKind::OpenClusterUpdate(summaries),
-        }],
+        toast_only: false,
     })
 }
 
@@ -255,6 +205,13 @@ pub struct PackageInstall {
     /// The game is open but could not take the package, so the toast must not
     /// claim it is there now
     pub live_deferred: bool,
+}
+
+pub struct FlaggedInstall {
+    pub name: String,
+    pub mc_version: String,
+    pub explanation: Option<String>,
+    pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
 }
 
 pub fn install_body(
@@ -297,13 +254,47 @@ impl PackageInstall {
     }
 }
 
+async fn flagged_install(
+    name: String,
+    entry: &oneclient_content::packages::BadMod,
+    cluster_id: i64,
+    content: &oneclient_content::ContentCtx,
+) -> FlaggedInstall {
+    let resolve = async {
+        match PackageStore::get_cluster(cluster_id, content).await {
+            Ok(cluster) => {
+                let alternatives =
+                    oneclient_content::packages::resolve_alternatives(entry, &cluster, content)
+                        .await;
+                (cluster.mc_version, alternatives)
+            }
+            Err(err) => {
+                tracing::warn!(%err, cluster_id, "cannot resolve alternatives without the cluster");
+                (String::new(), Vec::new())
+            }
+        }
+    };
+    let ((mc_version, alternatives), explanation) = tokio::join!(
+        resolve,
+        oneclient_content::packages::fetch_explanation(entry, content),
+    );
+    FlaggedInstall {
+        name,
+        mc_version,
+        explanation,
+        alternatives,
+    }
+}
+
 pub async fn install_package(
     state: &Arc<LauncherState>,
     provider: oneclient_content::packages::ProviderId,
     project_id: &str,
     version_id: &str,
     cluster_id: i64,
-) -> PackageInstall {
+    world: Option<String>,
+    allow_flagged: bool,
+) -> Result<PackageInstall, FlaggedInstall> {
     let lookup = async {
         let provider_impl = state.services.packages.get(provider)?;
         let project = provider_impl
@@ -318,8 +309,30 @@ pub async fn install_package(
 
     let (project, version) = match lookup {
         Ok(found) => found,
-        Err(err) => return PackageInstall::failed(err),
+        Err(err) => return Ok(PackageInstall::failed(err)),
     };
+
+    if let Some(world) = world {
+        let project = oneclient_content::packages::types::ProjectDetail {
+            content_type: oneclient_content::packages::ContentType::DataPack,
+            ..project
+        };
+        return Ok(install_datapack(state, provider, &project, &version, cluster_id, world).await);
+    }
+
+    let content = state.services.content();
+    let bad_mods = oneclient_content::packages::load_bad_mods(&content).await;
+    let screened = !allow_flagged
+        && !state
+            .clusters
+            .get(cluster_id)
+            .await
+            .is_ok_and(|cluster| cluster.user_created);
+
+    if screened && let Some(entry) = bad_mods.check(&project, &version) {
+        tracing::warn!(project = %project.name, version = %version.version_number, "refusing to install flagged mod");
+        return Err(flagged_install(project.name, entry, cluster_id, &content).await);
+    }
 
     // Resolved before the session starts so its children can be announced up front
     let mut resolution = oneclient_content::packages::DependencyResolution::default();
@@ -337,6 +350,18 @@ pub async fn install_package(
                 tracing::warn!(%err, "dependency resolution failed, installing package alone");
             }
         }
+    }
+
+    if screened
+        && let Some((dependency, entry)) = resolution.install.iter().find_map(|dependency| {
+            bad_mods
+                .check(&dependency.project, &dependency.version)
+                .map(|entry| (dependency, entry))
+        })
+    {
+        tracing::warn!(dependency = %dependency.project.name, project = %project.name, "refusing to install flagged dependency");
+        let name = format!("{} (required by {})", dependency.project.name, project.name);
+        return Err(flagged_install(name, entry, cluster_id, &content).await);
     }
 
     let session = oneclient_events::GroupedProgressSession::start(
@@ -430,12 +455,68 @@ pub async fn install_package(
         mark_new(cluster_id, &artifact.hash, state).await;
     }
 
-    PackageInstall {
+    Ok(PackageInstall {
         session_id: Some(session.detach()),
         result: result.map(|_| project.name).map_err(anyhow::Error::from),
         dependencies: installed_dependencies,
         missing_dependencies,
         live_deferred,
+    })
+}
+
+async fn install_datapack(
+    state: &Arc<LauncherState>,
+    provider: oneclient_content::packages::ProviderId,
+    project: &oneclient_content::packages::types::ProjectDetail,
+    version: &oneclient_content::packages::types::VersionDetail,
+    cluster_id: i64,
+    world: String,
+) -> PackageInstall {
+    let Some(file) = version.primary_file() else {
+        return PackageInstall::failed(anyhow::anyhow!("This version has no file to download"));
+    };
+    if !file.file_name.to_lowercase().ends_with(".zip") {
+        return PackageInstall::failed(anyhow::anyhow!(
+            "This version is a mod, not a data pack. Pick a .zip version instead"
+        ));
+    }
+
+    let session = oneclient_events::GroupedProgressSession::start(
+        &state.services.events,
+        format!("Installing {}", project.name),
+    );
+    session.expect(oneclient_events::TaskCategory::Packages, 1, file.size);
+    let child = session.child(
+        project.name.clone(),
+        file.size,
+        oneclient_events::TaskCategory::Packages,
+    );
+
+    let result = async {
+        let artifact = PackageStore::download_and_cache(
+            provider,
+            project,
+            version,
+            false,
+            Some(&child),
+            &state.services.content(),
+        )
+        .await?;
+        let path = oneclient_content::packages::store::artifact_absolute_path(&artifact.path)?;
+        let cluster = state.clusters.get(cluster_id).await?;
+        oneclient_core::add_world_datapacks(&cluster, &world, &[path]).await?;
+        anyhow::Ok(())
+    }
+    .await;
+
+    child.finish();
+
+    PackageInstall {
+        session_id: Some(session.detach()),
+        result: result.map(|()| format!("{} to {world}", project.name)),
+        dependencies: Vec::new(),
+        missing_dependencies: Vec::new(),
+        live_deferred: false,
     }
 }
 

@@ -17,6 +17,8 @@ depends=(
   'wayland'
   'dbus'
   'gtk3'
+  'libayatana-appindicator'
+  'xdotool'
 )
 makedepends=(
   'rust'
@@ -28,7 +30,10 @@ makedepends=(
 )
 provides=('oneclient')
 conflicts=('oneclient-bin')
-options=('!lto')
+options=(
+  '!lto'
+  '!debug'
+)
 source=("$pkgname-$pkgver.tar.gz::${url}/archive/refs/tags/oneclient-${pkgver}.tar.gz")
 sha256sums=('SKIP')
 

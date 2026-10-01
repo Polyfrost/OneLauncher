@@ -2,9 +2,10 @@ use std::cmp::Ordering;
 use std::collections::BTreeMap;
 
 use chrono::{Datelike, NaiveDate};
-use oneclient_core::clusters::Cluster;
 use oneclient_common::domain::GameLoader;
 use oneclient_common::{ParsedMcVersion, VersionKey, format_mc_version, parse_mc_version};
+use oneclient_core::BundleArchive;
+use oneclient_core::clusters::Cluster;
 
 use oneclient_common::MEMORY_HEADROOM_GB;
 pub use oneclient_common::total_ram_mb;
@@ -12,11 +13,12 @@ pub use oneclient_common::total_ram_mb;
 pub type ClusterGroups = BTreeMap<ReleaseLine, Vec<Cluster>>;
 
 /// The modern scheme puts a full release in the first two components (`26.1`) so each
-/// minor is its own line legacy `1.x` versions keep the whole major (`1.21`) as one line
+/// minor is its own line. `1.21.x` is split the same way (`1.21.5`) since it spans many
+/// content drops; other legacy `1.x` versions keep the whole major (`1.20`) as one line
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ReleaseLine {
     pub major: u32,
-    /// `Some` only for the modern scheme where the minor is part of the line
+    /// `Some` for the modern scheme and `1.21.x`, where the minor is part of the line
     pub minor: Option<u32>,
 }
 
@@ -24,6 +26,8 @@ impl ReleaseLine {
     fn from_parsed(parsed: &ParsedMcVersion) -> Option<Self> {
         let minor = if parsed.major >= 26 {
             Some(parsed.minor?)
+        } else if parsed.major == 21 {
+            parsed.minor
         } else {
             None
         };
@@ -41,10 +45,10 @@ impl ReleaseLine {
         Self::from_version(&cluster.mc_version)
     }
 
-    /// The generic name of the line `26.1` `1.21`
+    /// The generic name of the line `26.1` `1.21.5` `1.20`
     pub fn pretty_name(&self) -> String {
         match self.minor {
-            Some(minor) => format!("{}.{minor}", self.major),
+            Some(minor) => format_mc_version(self.major, minor, None),
             None => format!("1.{}", self.major),
         }
     }
@@ -77,7 +81,25 @@ pub fn line_art_key(line: ReleaseLine, clusters: &[Cluster]) -> Option<VersionKe
     sole_version_key(clusters).or_else(|| line.art_key())
 }
 
-pub fn group_clusters_by_release(clusters: &[Cluster]) -> ClusterGroups {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GridSelection {
+    Line(ReleaseLine),
+    Instance(i64),
+}
+
+pub fn split_clusters(clusters: &[Cluster]) -> (ClusterGroups, Vec<Cluster>) {
+    let (instances, oneclient): (Vec<&Cluster>, Vec<&Cluster>) =
+        clusters.iter().partition(|cluster| cluster.is_isolated());
+
+    (
+        group_clusters_by_release(oneclient),
+        sort_clusters_for_home(instances.into_iter().cloned().collect()),
+    )
+}
+
+pub fn group_clusters_by_release<'a>(
+    clusters: impl IntoIterator<Item = &'a Cluster>,
+) -> ClusterGroups {
     let mut groups: ClusterGroups = BTreeMap::new();
 
     for cluster in clusters {
@@ -92,20 +114,6 @@ pub fn group_clusters_by_release(clusters: &[Cluster]) -> ClusterGroups {
     }
 
     groups
-}
-
-pub fn loader_tags(clusters: &[Cluster]) -> Vec<String> {
-    let mut tags = Vec::new();
-    for cluster in clusters {
-        if cluster.mc_loader.is_modded() {
-            let label = cluster.mc_loader.to_string();
-            if !tags.iter().any(|t| t == &label) {
-                tags.push(label);
-            }
-        }
-    }
-    tags.sort();
-    tags
 }
 
 pub fn version_keys(clusters: &[Cluster]) -> Vec<VersionKey> {
@@ -207,7 +215,7 @@ pub fn format_res((w, h): (u32, u32)) -> String {
     format!("{w}×{h}")
 }
 
-/// Prevents user from choosing his max amount of ram preset (e.g Someone has 16GB of RAM, 
+/// Prevents user from choosing his max amount of ram preset (e.g Someone has 16GB of RAM,
 /// so the max preset is 16GB - 2GB = 14GB)
 const MEMORY_PRESETS_GB: [u32; 11] = [2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64];
 
@@ -245,22 +253,28 @@ pub fn format_memory_gb(mb: u32) -> String {
     }
 }
 
-/// `7384` -> `2h 3m` `540` -> `9m` `0` -> `0m`
-pub fn format_duration_hm(secs: i64) -> String {
+/// `45` -> `45s` `540` -> `9m` `7200` -> `2h` `7384` -> `2h 3m` `180000` -> `2d 2h`
+pub fn format_duration(secs: i64) -> String {
     if secs <= 0 {
         return "0m".to_string();
     }
-    let hours = secs / 3600;
+
+    let days = secs / 86_400;
+    let hours = (secs % 86_400) / 3600;
     let minutes = (secs % 3600) / 60;
-    if hours > 0 {
-        format!("{hours}h {minutes}m")
-    } else {
-        format!("{minutes}m")
+
+    match (days, hours, minutes) {
+        (0, 0, 0) => format!("{secs}s"),
+        (0, 0, m) => format!("{m}m"),
+        (0, h, 0) => format!("{h}h"),
+        (0, h, m) => format!("{h}h {m}m"),
+        (d, 0, _) => format!("{d}d"),
+        (d, h, _) => format!("{d}d {h}h"),
     }
 }
 
 /// `3723` -> `1h 2m` `83` -> `1m 23s` `45` -> `45s`
-pub fn format_duration_hms(secs: i64) -> String {
+pub fn format_durations(secs: i64) -> String {
     if secs <= 0 {
         return "0s".to_string();
     }
@@ -314,24 +328,49 @@ pub fn format_day(date: NaiveDate) -> String {
     format!("{} {}", MONTHS[date.month0() as usize], date.day())
 }
 
+pub fn bundle_display_name(archive: &BundleArchive) -> String {
+    let category = archive.manifest.category.trim();
+    if category.is_empty() {
+        archive.manifest.name.clone()
+    } else {
+        category.to_string()
+    }
+}
+
+pub fn default_cluster(clusters: Vec<Cluster>, active: Option<i64>) -> Option<Cluster> {
+    home_cluster(&clusters, active).cloned()
+}
+
+pub fn home_cluster(clusters: &[Cluster], active: Option<i64>) -> Option<&Cluster> {
+    active
+        .and_then(|id| clusters.iter().find(|cluster| cluster.id == id))
+        // `min_by` keeps the first of equals, matching the stable sort in `sort_clusters_for_home`
+        .or_else(|| clusters.iter().min_by(|a, b| compare_recent_activity(a, b)))
+}
+
 pub fn sort_clusters_for_home(mut clusters: Vec<Cluster>) -> Vec<Cluster> {
-    clusters.sort_by(compare_last_played);
+    clusters.sort_by(compare_recent_activity);
     clusters
 }
 
-fn compare_last_played(a: &Cluster, b: &Cluster) -> Ordering {
-    match (a.last_played, b.last_played) {
+fn recent_activity(cluster: &Cluster) -> Option<chrono::DateTime<chrono::Utc>> {
+    let created = cluster.created_at.filter(|_| cluster.user_created);
+    cluster.last_played.max(created)
+}
+
+fn compare_recent_activity(a: &Cluster, b: &Cluster) -> Ordering {
+    match (recent_activity(a), recent_activity(b)) {
         // Most recently played first
         (Some(a), Some(b)) => b.cmp(&a),
         (Some(_), None) => Ordering::Less,
         (None, Some(_)) => Ordering::Greater,
         // Never played latest version first (major then minor)
-        (None, None) => version_sort_key(b).cmp(&version_sort_key(a)),
+        (None, None) => version_sort_key(&b.mc_version).cmp(&version_sort_key(&a.mc_version)),
     }
 }
 
-fn version_sort_key(cluster: &Cluster) -> (u32, u32, u32) {
-    parse_mc_version(&cluster.mc_version)
+pub fn version_sort_key(version: &str) -> (u32, u32, u32) {
+    parse_mc_version(version)
         .map(|v| (v.major, v.minor.unwrap_or(0), v.patch.unwrap_or(0)))
         .unwrap_or((0, 0, 0))
 }
@@ -368,6 +407,87 @@ mod tests {
         }
     }
 
+    #[test]
+    fn user_created_oneclient_clusters_join_their_release_line() {
+        let provisioned = versioned(1, "26.1");
+        let mine = Cluster {
+            user_created: true,
+            ..versioned(2, "26.1")
+        };
+        let vanilla = Cluster {
+            user_created: true,
+            kind: oneclient_db::models::ClusterKind::Vanilla,
+            ..versioned(3, "26.1")
+        };
+
+        let (groups, instances) = split_clusters(&[provisioned, mine, vanilla]);
+        let line = ReleaseLine::from_version("26.1").unwrap();
+        let grouped: Vec<i64> = groups[&line].iter().map(|c| c.id).collect();
+        assert_eq!(grouped, vec![1, 2]);
+        assert_eq!(instances.iter().map(|c| c.id).collect::<Vec<_>>(), vec![3]);
+    }
+
+    #[test]
+    fn a_newly_created_instance_comes_first_on_home() {
+        let now = chrono::Utc::now();
+        let played = Cluster {
+            last_played: Some(now - chrono::Duration::hours(2)),
+            ..versioned(1, "1.21.1")
+        };
+        let created = Cluster {
+            user_created: true,
+            created_at: Some(now),
+            ..versioned(2, "1.20.1")
+        };
+        let provisioned = Cluster {
+            user_created: false,
+            created_at: Some(now),
+            ..versioned(3, "26.3")
+        };
+
+        let order: Vec<i64> = sort_clusters_for_home(vec![played, provisioned, created])
+            .into_iter()
+            .map(|cluster| cluster.id)
+            .collect();
+        assert_eq!(order, vec![2, 1, 3]);
+    }
+
+    #[test]
+    fn playing_an_older_instance_moves_it_back_in_front() {
+        let now = chrono::Utc::now();
+        let created = Cluster {
+            user_created: true,
+            created_at: Some(now - chrono::Duration::hours(1)),
+            ..versioned(1, "1.20.1")
+        };
+        let played = Cluster {
+            last_played: Some(now),
+            ..versioned(2, "1.21.1")
+        };
+
+        let order: Vec<i64> = sort_clusters_for_home(vec![created, played])
+            .into_iter()
+            .map(|cluster| cluster.id)
+            .collect();
+        assert_eq!(order, vec![2, 1]);
+    }
+
+    #[test]
+    fn home_background_matches_the_first_recents_card() {
+        let clusters = vec![
+            versioned(1, "1.8.9"),
+            versioned(2, "26.2"),
+            versioned(3, "1.21.1"),
+        ];
+
+        let first_card = sort_clusters_for_home(clusters.clone())[0].id;
+        assert_eq!(
+            home_cluster(&clusters, None).map(|c| c.id),
+            Some(first_card)
+        );
+        assert_eq!(home_cluster(&clusters, Some(3)).map(|c| c.id), Some(3));
+    }
+
     fn line(major: u32, minor: Option<u32>) -> ReleaseLine {
         ReleaseLine { major, minor }
     }
@@ -394,10 +514,23 @@ mod tests {
     }
 
     #[test]
-    fn legacy_minors_share_one_line() {
+    fn one_twenty_one_minors_are_separate_lines() {
         let clusters = [versioned(1, "1.21.5"), versioned(2, "1.21.11")];
 
-        assert_eq!(lines_of(&clusters), vec![line(21, None)]);
+        assert_eq!(
+            lines_of(&clusters),
+            vec![line(21, Some(5)), line(21, Some(11))]
+        );
+        assert_eq!(line_title(line(21, Some(5)), &clusters[..1]), "1.21.5");
+    }
+
+    #[test]
+    fn other_legacy_minors_share_one_line() {
+        let clusters = [versioned(1, "1.20.1"), versioned(2, "1.20.4")];
+
+        assert_eq!(lines_of(&clusters), vec![line(20, None)]);
+        assert_eq!(line_title(line(20, None), &clusters), "1.20");
+        assert_eq!(line_art_key(line(20, None), &clusters), None);
     }
 
     #[test]
@@ -424,14 +557,6 @@ mod tests {
 
     #[test]
     fn several_versions_fall_back_to_the_generic_name() {
-        let legacy = [
-            versioned(1, "1.21.1"),
-            versioned(2, "1.21.10"),
-            versioned(3, "1.21.11"),
-        ];
-        assert_eq!(line_title(line(21, None), &legacy), "1.21");
-        assert_eq!(line_art_key(line(21, None), &legacy), None);
-
         let modern = [versioned(4, "26.1"), versioned(5, "26.1.2")];
         assert_eq!(line_title(line(26, Some(1)), &modern), "26.1");
         assert_eq!(line_art_key(line(26, Some(1)), &modern), Some((1, None)));
@@ -464,6 +589,17 @@ mod tests {
     fn memory_labels_drop_the_decimal_when_whole() {
         assert_eq!(format_memory_gb(8192), "8 GB");
         assert_eq!(format_memory_gb(1536), "1.5 GB");
+    }
+
+    #[test]
+    fn durations_never_show_a_zero_unit() {
+        assert_eq!(format_duration(45), "45s");
+        assert_eq!(format_duration(540), "9m");
+        assert_eq!(format_duration(7200), "2h");
+        assert_eq!(format_duration(7384), "2h 3m");
+        assert_eq!(format_duration(180_000), "2d 2h");
+        assert_eq!(format_duration(172_800), "2d");
+        assert_eq!(format_duration(0), "0m");
     }
 
     #[test]

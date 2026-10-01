@@ -1,7 +1,5 @@
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
-use oneclient_core::{
-    ChangelogGroup, LauncherError, fetch_changelog, parse_changelog,
-};
+use oneclient_core::{ChangelogGroup, LauncherError, fetch_changelog, parse_changelog};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct ChangelogKeys {

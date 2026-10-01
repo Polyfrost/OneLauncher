@@ -2,16 +2,17 @@ use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
 use freya::prelude::spawn_forever;
-use tokio::sync::mpsc::UnboundedSender;
 use oneclient_common::Patch;
 use oneclient_core::settings::store::save_settings_and_apply;
 use oneclient_core::{LauncherState, ProfileUpdate};
 use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt, Signal};
 use oneclient_java::{JavaRuntime, JavaVendor};
+use tokio::sync::mpsc::UnboundedSender;
 
 use crate::hooks::Actions;
 use crate::launcher;
+use crate::launcher::off_ui;
 
 /// Front-ends match on these
 pub const MICROSOFT_JAVA_CHOICE_INSTALL: &str = "java.microsoft.install";
@@ -59,7 +60,10 @@ async fn auto_install(refresh: UnboundedSender<()>) {
             return;
         }
         Err(err) => {
-            tracing::warn!(cluster_id, "could not read the cluster's Java version: {err:#}");
+            tracing::warn!(
+                cluster_id,
+                "could not read the cluster's Java version: {err:#}"
+            );
             return;
         }
     };
@@ -94,45 +98,57 @@ pub async fn offer_for_pinned_cluster(actions: &Actions, cluster_id: ClusterId) 
         return;
     };
 
-    if opted_out(&state) {
-        return;
-    }
+    let offer = off_ui({
+        let state = state.clone();
+        async move {
+            if opted_out(&state) {
+                return None;
+            }
 
-    let Some(pinned) = pinned_runtime(&state, cluster_id).await else {
+            let pinned = pinned_runtime(&state, cluster_id).await?;
+
+            if pinned.vendor == JavaVendor::Microsoft {
+                return None;
+            }
+
+            let major = match oneclient_core::required_java_major(&state, cluster_id).await {
+                Ok(Some(major)) => major,
+                Ok(None) => {
+                    tracing::info!(cluster_id, "the cluster's manifest names no Java version");
+                    return None;
+                }
+                Err(err) => {
+                    tracing::warn!(
+                        cluster_id,
+                        "could not read the cluster's Java version: {err:#}"
+                    );
+                    return None;
+                }
+            };
+
+            let installed = match state
+                .java
+                .has_vendor_runtime(&JavaVendor::Microsoft, Some(major))
+                .await
+            {
+                Ok(installed) => installed,
+                Err(err) => {
+                    tracing::warn!("could not check for a Microsoft Java runtime: {err:#}");
+                    false
+                }
+            };
+
+            if !installed && !publishes(&state, major).await {
+                return None;
+            }
+
+            Some((major, installed))
+        }
+    })
+    .await;
+    let Some((major, installed)) = offer else {
         return;
     };
-
-    if pinned.vendor == JavaVendor::Microsoft {
-        return;
-    }
-
-    let major = match oneclient_core::required_java_major(&state, cluster_id).await {
-        Ok(Some(major)) => major,
-        Ok(None) => {
-            tracing::info!(cluster_id, "the cluster's manifest names no Java version");
-            return;
-        }
-        Err(err) => {
-            tracing::warn!(cluster_id, "could not read the cluster's Java version: {err:#}");
-            return;
-        }
-    };
-
-    let installed = match state
-        .java
-        .has_vendor_runtime(&JavaVendor::Microsoft, Some(major))
-        .await
-    {
-        Ok(installed) => installed,
-        Err(err) => {
-            tracing::warn!("could not check for a Microsoft Java runtime: {err:#}");
-            false
-        }
-    };
-
-    if !installed && !publishes(&state, major).await {
-        return;
-    }
 
     if !claim_ask(cluster_id) {
         return;

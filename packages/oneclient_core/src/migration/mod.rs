@@ -44,9 +44,10 @@ pub struct SourceInstance {
     pub instance_id: i64,
     pub folder_name: String,
     pub mc_version: String,
-	/// Set for "migrated" clusters (e.g. 26.1 fabric -> 26.1.2 fabric)
+    /// Set for "migrated" clusters (e.g. 26.1 fabric -> 26.1.2 fabric)
     pub target_mc_version: Option<String>,
     pub mc_loader: GameLoader,
+    pub target_mc_loader: Option<GameLoader>,
     /// Empty when the source has no category concept
     pub categories: Vec<String>,
     pub has_game_dir: bool,
@@ -62,7 +63,14 @@ pub struct MigrationDetection {
 impl SourceInstance {
     #[must_use]
     pub fn import_version(&self) -> &str {
-        self.target_mc_version.as_deref().unwrap_or(&self.mc_version)
+        self.target_mc_version
+            .as_deref()
+            .unwrap_or(&self.mc_version)
+    }
+
+    #[must_use]
+    pub fn import_loader(&self) -> GameLoader {
+        self.target_mc_loader.unwrap_or(self.mc_loader)
     }
 }
 
@@ -124,6 +132,7 @@ mod tests {
             mc_version: "26.1".to_string(),
             target_mc_version: None,
             mc_loader: GameLoader::Fabric,
+            target_mc_loader: None,
             categories: Vec::new(),
             has_game_dir: true,
         };
@@ -131,6 +140,24 @@ mod tests {
 
         instance.target_mc_version = Some("26.1.2".to_string());
         assert_eq!(instance.import_version(), "26.1.2");
+    }
+
+    #[test]
+    fn import_loader_prefers_resolved_target() {
+        let mut instance = SourceInstance {
+            instance_id: 1,
+            folder_name: "1.20.1 Forge".to_string(),
+            mc_version: "1.20.1".to_string(),
+            target_mc_version: None,
+            mc_loader: GameLoader::Forge,
+            target_mc_loader: None,
+            categories: Vec::new(),
+            has_game_dir: true,
+        };
+        assert_eq!(instance.import_loader(), GameLoader::Forge);
+
+        instance.target_mc_loader = Some(GameLoader::NeoForge);
+        assert_eq!(instance.import_loader(), GameLoader::NeoForge);
     }
 
     #[test]

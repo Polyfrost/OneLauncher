@@ -1,9 +1,12 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
+use oneclient_common::domain::GameLoader;
 use oneclient_db::models::ClusterRow;
 use serde::{Deserialize, Serialize};
 
+use crate::bundles::BundlesManager;
+use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use oneclient_events::EventBus;
 use polyio::{ZipEntryCursor, sha1_bytes, sha1_file};
@@ -80,6 +83,20 @@ async fn sync_bundle_overrides_at(
         events,
     )
     .await
+}
+
+pub async fn bundle_override_paths(
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+    mc_version: &str,
+    loader: GameLoader,
+) -> ContentResult<HashSet<String>> {
+    let mut paths = HashSet::new();
+    for archive in bundles.archives_for(ctx, mc_version, loader).await? {
+        let layers = OverrideLayers::open(&archive.bundle.path, &[OVERRIDES_PREFIX]).await?;
+        paths.extend(layers.entries().iter().map(|(rel, _)| rel.clone()));
+    }
+    Ok(paths)
 }
 
 pub(crate) struct OverrideLayers {

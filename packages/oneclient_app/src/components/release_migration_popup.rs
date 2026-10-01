@@ -11,7 +11,9 @@ use oneclient_content::packages::release_migration::{
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 use oneclient_core::clusters::Cluster;
 
-use crate::components::{Button, Dropdown, DynamicArt, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::components::{
+    Button, Dropdown, DynamicArt, Icon, IconType, OverlayPopup, ScrollArea, checkbox_labeled,
+};
 use crate::hooks::{
     loaded_image, package_meta_batch, use_cached_image, use_dispatch, use_game_snapshot,
     use_launcher, use_notifications_snapshot, use_package_meta_batch, use_release_migration,
@@ -103,6 +105,7 @@ impl Component for ReleaseMigrationPopup {
 
         let mut excluded = use_state(HashSet::<SelectionKey>::new);
         let mut tab = use_state(|| PackageTab::Mods);
+        let mut copy_configs = use_state(|| true);
 
         let settled = launcher.ready && !launcher.fetching && !launcher.syncing_bundles;
         let checked = use_state(|| false);
@@ -159,6 +162,7 @@ impl Component for ReleaseMigrationPopup {
             tab.set_if_modified(PackageTab::Mods);
             wont_open.set_if_modified(true);
             deps_open.set_if_modified(false);
+            copy_configs.set_if_modified(true);
             return rect().into_element();
         };
 
@@ -189,6 +193,7 @@ impl Component for ReleaseMigrationPopup {
                         tab,
                         wont_open,
                         deps_open,
+                        copy_configs,
                         target_running,
                     )),
             )
@@ -205,6 +210,7 @@ fn dialog(
     tab: State<PackageTab>,
     wont_open: State<bool>,
     deps_open: State<bool>,
+    copy_configs: State<bool>,
     target_running: bool,
 ) -> impl IntoElement {
     let plan = match prompt.plan() {
@@ -240,6 +246,7 @@ fn dialog(
             tab,
             wont_open,
             deps_open,
+            copy_configs,
             target_running,
         ))
 }
@@ -419,6 +426,7 @@ fn content_panel(
     tab: State<PackageTab>,
     wont_open: State<bool>,
     deps_open: State<bool>,
+    copy_configs: State<bool>,
     target_running: bool,
 ) -> impl IntoElement {
     let close = dispatch.clone();
@@ -493,7 +501,14 @@ fn content_panel(
                 .height(Size::px(1.))
                 .background(colors::component_border()),
         )
-        .child(footer(prompt, plan, dispatch, excluded, target_running))
+        .child(footer(
+            prompt,
+            plan,
+            dispatch,
+            excluded,
+            copy_configs,
+            target_running,
+        ))
 }
 
 fn source_picker(prompt: &ReleaseMigrationPrompt, dispatch: crate::Actions) -> impl IntoElement {
@@ -1117,6 +1132,7 @@ fn footer(
     plan: Option<&ReleaseMigrationPlan>,
     dispatch: crate::Actions,
     excluded: State<HashSet<SelectionKey>>,
+    copy_configs: State<bool>,
     target_running: bool,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
@@ -1159,7 +1175,9 @@ fn footer(
         .height(Size::px(52.))
         .font_size(15.)
         .font_weight(FontWeight::SEMI_BOLD)
-        .on_press(move |_| dispatch.migrate_release_packages(chosen.clone()))
+        .on_press(move |_| {
+            dispatch.migrate_release_packages(chosen.clone(), *copy_configs.peek());
+        })
         .text("Migrate");
     if target_running {
         migrate = migrate.tooltip(format!("Close {} before migrating", prompt.target.name));
@@ -1180,6 +1198,11 @@ fn footer(
                 .width(Size::flex(1.))
                 .max_lines(2)
                 .color(colors::fg_secondary()),
+        )
+        .maybe_child(
+            prompt
+                .target_dedicated
+                .then(|| checkbox_labeled(copy_configs, "Copy configs")),
         )
         .child(
             Button::new()

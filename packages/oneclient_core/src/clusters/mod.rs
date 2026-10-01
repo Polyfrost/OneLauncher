@@ -17,7 +17,7 @@ pub use prepare::{
 };
 pub use provision::{ensure_from_bundles, ensure_from_versions};
 pub use release_migration::{
-    OfferLookup, ReleaseMigrationOffer, can_migrate_manually, manual_migration_offer,
+    OfferLookup, ReleaseMigrationOffer, can_migrate_manually, copy_configs, manual_migration_offer,
     rank_migration_sources, record_new_versions, release_migration_offer,
 };
 pub use unlink_legacy::{SweepReport, unlink_legacy_cluster_content};

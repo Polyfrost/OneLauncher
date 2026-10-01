@@ -75,6 +75,7 @@ pub enum ReleasePlanState {
 pub struct ReleaseMigrationPrompt {
     pub key: String,
     pub target: Cluster,
+    pub target_dedicated: bool,
     pub java_major: Option<u32>,
     pub sources: Vec<Cluster>,
     pub selected: i64,

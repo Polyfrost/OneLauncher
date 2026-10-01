@@ -13,8 +13,8 @@ use oneclient_content::packages::{
 };
 use oneclient_core::ReleaseTarget;
 use oneclient_core::clusters::{
-    Cluster, OfferLookup, ReleaseMigrationOffer, manual_migration_offer, record_new_versions,
-    release_migration_offer,
+    Cluster, OfferLookup, ReleaseMigrationOffer, copy_configs, manual_migration_offer,
+    record_new_versions, release_migration_offer,
 };
 use oneclient_events::Level;
 
@@ -255,6 +255,7 @@ impl Actions {
         self.write_release_migration(move |prompt| {
             *prompt = Some(ReleaseMigrationPrompt {
                 key: offer.release.key(),
+                target_dedicated: offer.target.uses_dedicated_dir(),
                 target: offer.target,
                 java_major,
                 sources,
@@ -417,6 +418,7 @@ impl Actions {
             actions.write_release_migration(move |prompt| {
                 *prompt = Some(ReleaseMigrationPrompt {
                     key: release.key(),
+                    target_dedicated: target.uses_dedicated_dir(),
                     target,
                     java_major: None,
                     sources: vec![source],
@@ -661,7 +663,11 @@ impl Actions {
         }
     }
 
-    pub fn migrate_release_packages(&self, packages: Vec<ReleaseMigrationPackage>) {
+    pub fn migrate_release_packages(
+        &self,
+        packages: Vec<ReleaseMigrationPackage>,
+        copy_configs_too: bool,
+    ) {
         let mut taken = None;
         self.write_release_migration(|prompt| taken = prompt.take());
         let Some(prompt) = taken else { return };
@@ -708,6 +714,7 @@ impl Actions {
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
             let content = state.services.content();
+            let source = prompt.source().filter(|_| copy_configs_too).cloned();
             let target = prompt.target;
             let total = packages.len() + dependencies.len();
 
@@ -786,6 +793,13 @@ impl Actions {
                 );
             } else if let Err(err) = add_to_waitlist(target.id, &unavailable, &content).await {
                 tracing::warn!(error = %err, "could not add packages without a build to the migration waitlist");
+            }
+
+            if let Some(source) = &source {
+                match copy_configs(&state, source, &target).await {
+                    Ok(copied) => tracing::info!(copied, "copied config files into the target"),
+                    Err(err) => tracing::warn!(error = %err, "could not copy config files"),
+                }
             }
 
             let failed = total - migrated;

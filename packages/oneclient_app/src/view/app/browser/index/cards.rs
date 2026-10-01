@@ -9,8 +9,8 @@ use oneclient_core::clusters::ModpackSource;
 
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{
-    content_type_for_slug, use_browser_compat, use_cluster, use_dispatch, use_installs_snapshot,
-    use_package_versions_when, version_list,
+    ClusterAction, content_type_for_slug, use_browser_compat, use_cluster, use_dispatch,
+    use_installs_snapshot, use_package_versions_when, version_list,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -21,10 +21,25 @@ type InstalledMap = HashMap<(ProviderId, String), Installed>;
 /// Height of the install control, matched by the installed pill that replaces it
 const INSTALL_BUTTON_H: f32 = 28.;
 
-fn installed_for(installed: &InstalledMap, item: &ProjectSummary) -> Option<InstallSource> {
+#[derive(Clone, PartialEq)]
+struct CardInstalled {
+    source: InstallSource,
+    enable: Option<ClusterAction>,
+}
+
+fn installed_for(
+    installed: &InstalledMap,
+    item: &ProjectSummary,
+    cluster_id: i64,
+) -> Option<CardInstalled> {
     installed
         .get(&(item.provider, item.id.clone()))
-        .map(|installed| installed.source)
+        .map(|installed| CardInstalled {
+            source: installed.source,
+            enable: installed
+                .disabled_bundled()
+                .and_then(|version| version.enable_action(cluster_id)),
+        })
 }
 
 pub(super) fn grid_row(
@@ -36,9 +51,9 @@ pub(super) fn grid_row(
 ) -> impl IntoElement {
     let package_type = package_type.to_string();
     let fill = cols.saturating_sub(row.len());
-    let installed: Vec<Option<InstallSource>> = row
+    let installed: Vec<Option<CardInstalled>> = row
         .iter()
-        .map(|item| installed_for(installed, item))
+        .map(|item| installed_for(installed, item, cluster_id))
         .collect();
 
     rect()
@@ -77,7 +92,7 @@ struct PackageCard {
     item: ProjectSummary,
     cluster_id: i64,
     package_type: String,
-    installed: Option<InstallSource>,
+    installed: Option<CardInstalled>,
 }
 
 impl PackageCard {
@@ -85,7 +100,7 @@ impl PackageCard {
         item: ProjectSummary,
         cluster_id: i64,
         package_type: String,
-        installed: Option<InstallSource>,
+        installed: Option<CardInstalled>,
     ) -> Self {
         Self {
             item,
@@ -202,7 +217,7 @@ impl Component for PackageCard {
                         &self.item,
                         self.cluster_id,
                         &self.package_type,
-                        self.installed,
+                        self.installed.clone(),
                     )),
             )
     }
@@ -215,7 +230,7 @@ pub(super) fn list_row(
     installed: &InstalledMap,
 ) -> impl IntoElement {
     ListRow {
-        installed: installed_for(installed, &item),
+        installed: installed_for(installed, &item, cluster_id),
         item,
         cluster_id,
         package_type: package_type.to_string(),
@@ -227,7 +242,7 @@ struct ListRow {
     item: ProjectSummary,
     cluster_id: i64,
     package_type: String,
-    installed: Option<InstallSource>,
+    installed: Option<CardInstalled>,
 }
 
 impl Component for ListRow {
@@ -308,7 +323,7 @@ impl Component for ListRow {
                 &self.item,
                 self.cluster_id,
                 &self.package_type,
-                self.installed,
+                self.installed.clone(),
             ))
     }
 }
@@ -320,7 +335,7 @@ struct InstallButton {
     cluster_id: i64,
     content_type: ContentType,
     /// Cluster already has this one, so the control becomes a static pill
-    installed: Option<InstallSource>,
+    installed: Option<CardInstalled>,
 }
 
 impl InstallButton {
@@ -328,7 +343,7 @@ impl InstallButton {
         item: &ProjectSummary,
         cluster_id: i64,
         package_type: &str,
-        installed: Option<InstallSource>,
+        installed: Option<CardInstalled>,
     ) -> Self {
         Self {
             provider: item.provider,
@@ -376,7 +391,17 @@ impl Component for InstallButton {
         let (installing, waiting) =
             use_installs_snapshot().package_busy(is_modpack, cluster_id, provider, &project_id);
 
-        if let Some(installed) = self.installed {
+        if let Some(installed) = &self.installed {
+            if let Some(action) = installed.enable.clone() {
+                return EnableButton {
+                    action,
+                    variant: EnableVariant::Card {
+                        height: INSTALL_BUTTON_H,
+                    },
+                }
+                .into_element();
+            }
+            let installed = installed.source;
             let color = installed.color();
             return rect()
                 .horizontal()

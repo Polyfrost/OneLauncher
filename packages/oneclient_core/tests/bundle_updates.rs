@@ -1,6 +1,7 @@
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
+    get_bundles_with_update_status,
 };
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
@@ -485,5 +486,33 @@ async fn tracked_bundle_that_never_synced_is_not_removed() {
         check.removals_available.is_empty(),
         "an absent catalog is not a delisting and must not take content down: {:?}",
         check.removals_available
+    );
+}
+
+#[tokio::test]
+async fn untracked_older_install_counts_as_opted_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![managed_file(true), newly_shipped_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    bundle_dao::clear_bundle_tracking(&state.services.db, cluster_id, HASH)
+        .await
+        .unwrap();
+
+    let bundles = get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        bundles.iter().all(|b| b.opted_in),
+        "a bundle the updater infers from its installed mods must not have its files hidden from the All tab"
     );
 }

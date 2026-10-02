@@ -126,6 +126,7 @@ fn entry_from_item(
         hash: None,
         manifest_default: false,
         hidden: false,
+        opted_in: true,
         advanced: false,
         update_available: false,
         // Offered, not installed, so there is no recency badge to show

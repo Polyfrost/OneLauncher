@@ -60,6 +60,8 @@ pub struct PackageEntry {
     pub manifest_default: bool,
     /// Private bundle dependency only set for bundle rows
     pub hidden: bool,
+    /// False for uninstalled rows of bundles the cluster never took keeps them out of the All tab
+    pub opted_in: bool,
     pub advanced: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,

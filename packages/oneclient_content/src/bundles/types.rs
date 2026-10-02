@@ -253,4 +253,5 @@ pub struct BundleWithUpdateStatus {
     pub archive: BundleArchive,
     pub files: Vec<(BundleFile, FileUpdateStatus)>,
     pub has_updates: bool,
+    pub opted_in: bool,
 }

@@ -1252,3 +1252,44 @@ async fn switching_a_new_mod_on_beside_switched_off_ones_installs_it() {
         "sodium staying off must not swallow the user switching newcomer on: {added:?}"
     );
 }
+
+#[tokio::test]
+async fn the_package_list_does_not_save_the_opt_out() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![managed_file(true), resource_pack_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_mods_opted_out(&state, BUNDLE).await;
+
+    let status = get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let types = &status
+        .iter()
+        .find(|b| b.archive.manifest.name == BUNDLE)
+        .unwrap()
+        .opted_in_types;
+    assert!(!types.contains(&ContentType::Mod), "{types:?}");
+    assert!(
+        bundle_dao::list_type_opt_outs(&state.services.db, cluster_id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "only the updater saves the opt-out"
+    );
+
+    added_ids(&state, cluster_id).await;
+    assert!(
+        !bundle_dao::list_type_opt_outs(&state.services.db, cluster_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+}

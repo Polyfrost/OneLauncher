@@ -322,10 +322,11 @@ async fn check_bundle_updates_inner(
 
     let addition_eligible_bundles = addition_eligible_bundles(
         ctx,
+        &archives,
         &bundle_packages,
         &all_linked,
-        &candidate_keys_by_bundle,
         overrides,
+        &overrides_map,
     )
     .await?;
 
@@ -351,7 +352,7 @@ async fn check_bundle_updates_inner(
         if !addition_eligible_bundles.contains(&archive.manifest.name) {
             continue;
         }
-        let suppressed_types = opt_outs.suppressed(archive, ctx).await?;
+        let suppressed_types = opt_outs.remember(archive, ctx).await?;
 
         for file in &archive.manifest.files {
             let suppressed = suppressed_types.contains(&file.content_type());
@@ -858,14 +859,15 @@ pub async fn get_bundles_with_update_status(
         .collect();
 
     // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
-    let live: Vec<_> = all_linked.iter().filter(|item| item.enabled).collect();
-    let (live_managed_keys, _) = installed_bundle_keys(ctx, live).await?;
-    let mut live_bundles = live_bundle_names(&bundle_packages, &overrides);
-    live_bundles.extend(infer_subscribed_from_archives(
+    let live_bundles = addition_eligible_bundles(
+        ctx,
         &archives,
+        &bundle_packages,
+        &all_linked,
+        &overrides,
         &overrides_map,
-        &live_managed_keys,
-    ));
+    )
+    .await?;
 
     let (installed_managed_keys, installed_external_hashes) =
         installed_bundle_keys(ctx, &all_linked).await?;
@@ -914,7 +916,7 @@ pub async fn get_bundles_with_update_status(
         }
 
         let opted_in_types = if live_bundles.contains(&archive.manifest.name) {
-            let suppressed = opt_outs.suppressed(&archive, ctx).await?;
+            let suppressed = opt_outs.suppressed(&archive);
             archive
                 .manifest
                 .files
@@ -1087,13 +1089,25 @@ impl<'a> TypeOptOuts<'a> {
         (seen, suppressed)
     }
 
-    async fn suppressed(
+    fn suppressed(&self, archive: &BundleArchive) -> HashSet<ContentType> {
+        let (seen, mut suppressed) = self.signals(archive);
+        suppressed.extend(
+            self.remembered
+                .get(&archive.manifest.name)
+                .into_iter()
+                .flatten()
+                .filter(|ct| !seen.contains(ct)),
+        );
+        suppressed
+    }
+
+    async fn remember(
         &self,
         archive: &BundleArchive,
         ctx: &ContentCtx,
     ) -> ContentResult<HashSet<ContentType>> {
         let bundle_name = &archive.manifest.name;
-        let (seen, mut suppressed) = self.signals(archive);
+        let (seen, suppressed) = self.signals(archive);
         let remembered = self.remembered.get(bundle_name);
 
         for ct in &seen {
@@ -1110,13 +1124,7 @@ impl<'a> TypeOptOuts<'a> {
             }
         }
 
-        suppressed.extend(
-            remembered
-                .into_iter()
-                .flatten()
-                .filter(|ct| !seen.contains(ct)),
-        );
-        Ok(suppressed)
+        Ok(self.suppressed(archive))
     }
 }
 
@@ -1126,17 +1134,19 @@ impl<'a> TypeOptOuts<'a> {
 #[tracing::instrument(level = "debug", skip_all)]
 async fn addition_eligible_bundles(
     ctx: &ContentCtx,
+    archives: &[BundleArchive],
     bundle_packages: &[BundleTrackedArtifactRow],
     all_linked: &[LinkedArtifactInfo],
-    candidate_keys_by_bundle: &HashMap<String, HashSet<String>>,
     overrides: &[ClusterBundleOverrideRow],
+    overrides_map: &HashMap<(String, String), OverrideType>,
 ) -> ContentResult<HashSet<String>> {
     let live: Vec<_> = all_linked.iter().filter(|item| item.enabled).collect();
     let (live_managed_keys, _) = installed_bundle_keys(ctx, live).await?;
 
     let mut eligible = live_bundle_names(bundle_packages, overrides);
-    eligible.extend(infer_bundle_names_from_unique_installed_keys(
-        candidate_keys_by_bundle,
+    eligible.extend(infer_subscribed_from_archives(
+        archives,
+        overrides_map,
         &live_managed_keys,
     ));
 

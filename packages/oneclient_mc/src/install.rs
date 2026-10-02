@@ -726,19 +726,6 @@ pub async fn download_version_info(
     };
     let path = dir.join(version_info_file_name(&stem, format_version));
 
-    let mut refreshed = match loader {
-        Some(_) => {
-            let lock = VERSION_INFO_REFRESH
-                .lock()
-                .unwrap()
-                .entry(path.clone())
-                .or_default()
-                .clone();
-            Some(lock.lock_owned().await)
-        }
-        None => None,
-    };
-
     let cached = if force {
         None
     } else {
@@ -752,11 +739,20 @@ pub async fn download_version_info(
         cached
     };
 
+    let lock = loader.map(|_| {
+        VERSION_INFO_REFRESH
+            .lock()
+            .unwrap()
+            .entry(path.clone())
+            .or_default()
+            .clone()
+    });
+
     if let Some(cached) = cached {
         // Serve the cache now and refresh it in the background once per run,
-        // so a slow meta host never holds up a launch. Later callers wait on
-        // the lock and pick up the refreshed file.
-        if let Some(mut done) = refreshed
+        // so a slow meta host never holds up a launch. A caller that arrives
+        // while the refresh is running gets the cached copy too.
+        if let Some(Ok(mut done)) = lock.map(|lock| lock.try_lock_owned())
             && !*done
             && oneclient_net::status::current().online
         {
@@ -784,7 +780,17 @@ pub async fn download_version_info(
         return Ok(cached);
     }
 
-    if let Some(done) = &mut refreshed {
+    let mut done = match lock {
+        Some(lock) => Some(lock.lock_owned().await),
+        None => None,
+    };
+    if !force
+        && done.is_some()
+        && let Some(cached) = read_cached_version_info(&path).await
+    {
+        return Ok(cached);
+    }
+    if let Some(done) = &mut done {
         **done = true;
     }
 

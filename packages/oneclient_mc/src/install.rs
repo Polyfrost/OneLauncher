@@ -1,4 +1,6 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use futures_util::{StreamExt, stream};
 use interfrost::api::minecraft::{
@@ -700,6 +702,8 @@ pub async fn confirm_incomplete_install(
     }
 }
 
+static VERSION_INFO_REFRESHED: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
+
 #[tracing::instrument(skip(ctx, progress), level = "debug")]
 pub async fn download_version_info(
     ctx: &McCtx,
@@ -713,22 +717,77 @@ pub async fn download_version_info(
         .map(|it| format!("{}-{}", version.id, it.id))
         .unwrap_or_else(|| version.id.clone());
 
-    let path = paths::versions_dir()?
-        .join(&version_id)
-        .join(version_info_file_name(&version_id, game_loader.get_format_version()));
+    let dir = paths::versions_dir()?.join(&version_id);
+    let format_version = game_loader.get_format_version();
+    let stem = match loader {
+        Some(_) => format!("{version_id}.{}", game_loader.get_format_name()),
+        None => version_id.clone(),
+    };
+    let path = dir.join(version_info_file_name(&stem, format_version));
 
-    if path.exists() && !force {
-        match polyio::read_json::<VersionInfo>(&path).await {
-            Ok(cached) => return Ok(cached),
-            Err(err) => {
-                tracing::warn!(
-                    path = %path.display(),
-                    "cached version metadata is unusable, redownloading: {err}"
-                );
-            }
+    let cached = if force {
+        None
+    } else {
+        let mut cached = read_cached_version_info(&path).await;
+        if cached.is_none() && loader.is_some() {
+            let legacy = version_info_file_name(&version_id, format_version);
+            cached = read_cached_version_info(&dir.join(legacy))
+                .await
+                .filter(|info| profile_matches_loader(&info.libraries, game_loader));
         }
+        cached
+    };
+
+    if let Some(cached) = cached {
+        if loader.is_some()
+            && oneclient_net::status::current().online
+            && VERSION_INFO_REFRESHED.lock().unwrap().insert(path.clone())
+        {
+            let ctx = ctx.clone();
+            let version = version.clone();
+            let loader = loader.cloned();
+            let installed = processor_inputs(&cached);
+            tokio::spawn(async move {
+                let refresh = async {
+                    let info =
+                        fetch_version_info(&ctx, None, &version, loader.as_ref(), &version_id)
+                            .await?;
+                    if processor_inputs(&info) != installed {
+                        tracing::warn!(
+                            version_id = %version_id,
+                            "loader processors changed upstream, keeping cached profile until reinstall"
+                        );
+                        return Ok(());
+                    }
+                    polyio::write_json_atomic(&path, &info).await?;
+                    McResult::Ok(())
+                };
+                if let Err(err) = refresh.await {
+                    tracing::warn!(
+                        version_id = %version_id,
+                        "could not refresh version metadata, keeping cached copy: {err}"
+                    );
+                }
+            });
+        }
+        return Ok(cached);
     }
 
+    let info = fetch_version_info(ctx, progress, version, loader, &version_id).await?;
+    polyio::write_json_atomic(&path, &info).await?;
+    if loader.is_some() {
+        VERSION_INFO_REFRESHED.lock().unwrap().insert(path);
+    }
+    Ok(info)
+}
+
+async fn fetch_version_info(
+    ctx: &McCtx,
+    progress: Option<&GroupedProgressSession>,
+    version: &Version,
+    loader: Option<&LoaderVersion>,
+    version_id: &str,
+) -> McResult<VersionInfo> {
     tracing::debug!(
         version_id = %version_id,
         "downloading Minecraft version metadata"
@@ -806,9 +865,7 @@ pub async fn download_version_info(
         }
     }
 
-    info.id.clone_from(&version_id);
-
-    polyio::write_json_atomic(&path, &info).await?;
+    info.id = version_id.to_owned();
 
     Ok(info)
 }
@@ -1541,11 +1598,60 @@ pub fn is_version_updated(version_index: usize, versions: &[Version]) -> bool {
     version_index <= versions.iter().position(|x| x.id == "22w16a").unwrap_or(0)
 }
 
-fn version_info_file_name(version_id: &str, format_version: usize) -> String {
+async fn read_cached_version_info(path: &Path) -> Option<VersionInfo> {
+    if !path.exists() {
+        return None;
+    }
+
+    polyio::read_json::<VersionInfo>(path)
+        .await
+        .inspect_err(|err| {
+            tracing::warn!(
+                path = %path.display(),
+                "cached version metadata is unusable, redownloading: {err}"
+            );
+        })
+        .ok()
+}
+
+fn processor_inputs(info: &VersionInfo) -> Option<serde_json::Value> {
+    let processors = info.processors.as_deref().unwrap_or_default();
+    let refs = processors
+        .iter()
+        .flat_map(|it| &it.args)
+        .chain(info.data.iter().flatten().flat_map(|(_, it)| [&it.client, &it.server]))
+        .filter_map(|it| it.strip_prefix('[')?.strip_suffix(']'));
+    let named: BTreeSet<&str> = processors
+        .iter()
+        .flat_map(|it| std::iter::once(&it.jar).chain(&it.classpath))
+        .map(String::as_str)
+        .chain(refs)
+        .collect();
+    let libraries: Vec<&Library> = info
+        .libraries
+        .iter()
+        .filter(|lib| named.contains(lib.name.as_str()))
+        .collect();
+    serde_json::to_value((&info.processors, &info.data, libraries)).ok()
+}
+
+fn profile_matches_loader(libraries: &[Library], loader: GameLoader) -> bool {
+    let has = |group: &str| libraries.iter().any(|lib| lib.name.starts_with(group));
+    match loader {
+        GameLoader::Forge => !has("net.neoforged"),
+        GameLoader::NeoForge => has("net.neoforged"),
+        GameLoader::Fabric => !has("org.quiltmc") && !has("net.ornithemc"),
+        GameLoader::Quilt => has("org.quiltmc") && !has("net.ornithemc"),
+        GameLoader::Ornithe => has("net.ornithemc"),
+        GameLoader::Vanilla => true,
+    }
+}
+
+fn version_info_file_name(stem: &str, format_version: usize) -> String {
     if format_version == 0 {
-        format!("{version_id}.json")
+        format!("{stem}.json")
     } else {
-        format!("{version_id}.v{format_version}.json")
+        format!("{stem}.v{format_version}.json")
     }
 }
 
@@ -1556,7 +1662,78 @@ mod tests {
     #[test]
     fn a_format_bump_moves_the_cached_version_info() {
         assert_eq!(version_info_file_name("1.8.9", 0), "1.8.9.json");
-        assert_eq!(version_info_file_name("1.8.9-0.19.5", 1), "1.8.9-0.19.5.v1.json");
+        assert_eq!(
+            version_info_file_name("1.8.9-0.19.5", 1),
+            "1.8.9-0.19.5.v1.json"
+        );
+    }
+
+    #[test]
+    fn a_shared_legacy_profile_only_stands_in_for_its_own_loader() {
+        let libs = |names: &[&str]| -> Vec<Library> {
+            names
+                .iter()
+                .map(|name| serde_json::from_value(serde_json::json!({ "name": name })).unwrap())
+                .collect()
+        };
+        let forge = libs(&["net.minecraftforge:forge:1.20.1-47.1.106"]);
+        let neo = libs(&[
+            "net.minecraftforge:eventbus:6.0.5",
+            "net.neoforged:forge:1.20.1-47.1.106",
+        ]);
+        let fabric = libs(&["net.fabricmc:fabric-loader:0.16.0"]);
+        let quilt = libs(&[
+            "net.fabricmc:intermediary:1.20.1",
+            "org.quiltmc:quilt-loader:0.26.0",
+        ]);
+
+        assert!(profile_matches_loader(&forge, GameLoader::Forge));
+        assert!(!profile_matches_loader(&forge, GameLoader::NeoForge));
+        assert!(profile_matches_loader(&neo, GameLoader::NeoForge));
+        assert!(!profile_matches_loader(&neo, GameLoader::Forge));
+        assert!(profile_matches_loader(&fabric, GameLoader::Fabric));
+        assert!(!profile_matches_loader(&fabric, GameLoader::Quilt));
+        assert!(profile_matches_loader(&quilt, GameLoader::Quilt));
+        assert!(!profile_matches_loader(&quilt, GameLoader::Fabric));
+
+        let ornithe = libs(&[
+            "net.fabricmc:fabric-loader:0.16.5",
+            "net.ornithemc:calamus-intermediary:1.14.4",
+        ]);
+        assert!(profile_matches_loader(&ornithe, GameLoader::Ornithe));
+        assert!(!profile_matches_loader(&ornithe, GameLoader::Fabric));
+        assert!(!profile_matches_loader(&fabric, GameLoader::Ornithe));
+    }
+
+    #[test]
+    fn a_changed_processor_library_counts_as_changed_input() {
+        let info = |installer: &str, lwjgl: &str| -> VersionInfo {
+            serde_json::from_value(serde_json::json!({
+                "assetIndex": { "id": "1", "sha1": "", "size": 0, "totalSize": 0, "url": "" },
+                "assets": "1",
+                "downloads": {},
+                "id": "1.20.1-47.1.106",
+                "libraries": [
+                    { "name": "net.minecraftforge:installertools:1.3.0", "url": installer },
+                    { "name": "de.oceanlabs.mcp:mcp_config:1.20.1@zip", "url": installer },
+                    { "name": "org.lwjgl:lwjgl:3.3.1", "url": lwjgl },
+                ],
+                "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+                "minimumLauncherVersion": 0,
+                "releaseTime": "2023-06-12T00:00:00Z",
+                "time": "2023-06-12T00:00:00Z",
+                "type": "release",
+                "data": { "MCP": { "client": "[de.oceanlabs.mcp:mcp_config:1.20.1@zip]", "server": "" } },
+                "processors": [
+                    { "jar": "net.minecraftforge:installertools:1.3.0", "classpath": [], "args": ["{MCP}"] },
+                ],
+            }))
+            .unwrap()
+        };
+
+        let installed = processor_inputs(&info("a", "a"));
+        assert_eq!(processor_inputs(&info("a", "b")), installed);
+        assert_ne!(processor_inputs(&info("b", "a")), installed);
     }
 
     fn scratch(tag: &str) -> PathBuf {

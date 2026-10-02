@@ -157,7 +157,7 @@ impl Component for CreateInstanceModal {
 
         shell(Shell {
             rail: wizard_rail(wizard, &picks),
-            eyebrow: picks.progress(),
+            eyebrow: None,
             title: title.to_string(),
             subtitle,
             body: steps::body(wizard, &picks),

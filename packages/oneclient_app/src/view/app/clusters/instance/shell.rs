@@ -11,7 +11,7 @@ pub const PANE_PADDING: f32 = 24.;
 
 pub struct Shell {
     pub rail: Element,
-    pub eyebrow: String,
+    pub eyebrow: Option<String>,
     pub title: String,
     pub subtitle: String,
     pub body: Element,
@@ -101,7 +101,7 @@ pub fn shell(parts: Shell) -> Element {
         .into_element()
 }
 
-fn header(eyebrow: String, title: String, subtitle: String, on_close: EventHandler<()>) -> Element {
+fn header(eyebrow: Option<String>, title: String, subtitle: String, on_close: EventHandler<()>) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -114,14 +114,14 @@ fn header(eyebrow: String, title: String, subtitle: String, on_close: EventHandl
                 .vertical()
                 .width(Size::flex(1.0))
                 .spacing(5.)
-                .child(
+                .maybe_child(eyebrow.map(|eyebrow| {
                     label()
                         .text(eyebrow)
                         .font_size(11.)
                         .font_weight(FontWeight::MEDIUM)
                         .letter_spacing(1.6)
-                        .color(colors::fg_secondary()),
-                )
+                        .color(colors::fg_secondary())
+                }))
                 .child(
                     label()
                         .text(title)

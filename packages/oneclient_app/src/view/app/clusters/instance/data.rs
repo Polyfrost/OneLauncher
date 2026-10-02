@@ -78,10 +78,6 @@ impl Picks {
             (Some(loader), None) => loader.to_string(),
         }
     }
-
-    pub fn progress(&self) -> String {
-        format!("Step {} of {}", self.index + 1, self.steps.len())
-    }
 }
 
 fn matches_filter(kind: GameVersionKind, filter: u8) -> bool {

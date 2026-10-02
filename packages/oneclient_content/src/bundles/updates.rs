@@ -857,6 +857,7 @@ pub async fn get_bundles_with_update_status(
         })
         .collect();
 
+    // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
     let live: Vec<_> = all_linked.iter().filter(|item| item.enabled).collect();
     let (live_managed_keys, _) = installed_bundle_keys(ctx, live).await?;
     let mut live_bundles = live_bundle_names(&bundle_packages, &overrides);

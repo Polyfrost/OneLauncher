@@ -81,7 +81,7 @@ Once you have finished making your changes, create a pull request (PR) to submit
 
   # Fixed the thing players noticed
   ```
-  Use `patch` for fixes, `minor` for features and `major` for breaking changes. The title becomes your line in the release notes.
+  Use `patch` for fixes, `minor` for features and `major` for breaking changes. The title becomes your line in the release notes. PRs without one fail the `Changeset Check` unless a maintainer labels them `no changeset`.
 - If you are addressing an existing issue, don't forget to [link your PR to the issue].
 - Enable the checkbox to [allow maintainer edits] so that the branch can be updated for merging.
 - Once you submit your PR, a team member will review your proposal. They may ask questions or request additional information.

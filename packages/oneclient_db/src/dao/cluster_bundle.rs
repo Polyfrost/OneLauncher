@@ -298,21 +298,3 @@ pub async fn set_type_opt_out(
     }
     Ok(())
 }
-
-pub async fn clear_type_opt_outs(
-    pool: &SqlitePool,
-    cluster_id: i64,
-    bundle_name: &str,
-) -> Result<(), sqlx::Error> {
-    sqlx::query!(
-        r#"
-        DELETE FROM cluster_bundle_type_opt_outs
-        WHERE cluster_id = ? AND bundle_name = ?
-        "#,
-        cluster_id,
-        bundle_name
-    )
-    .execute(pool)
-    .await?;
-    Ok(())
-}

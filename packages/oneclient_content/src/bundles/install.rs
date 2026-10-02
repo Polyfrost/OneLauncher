@@ -613,8 +613,6 @@ pub async fn set_bundle_package_override(
 
 /// For bundle files the cluster has not installed
 /// installed ones go through [`set_artifact_enabled_to`]
-/// Matching the manifest default clears the override
-/// switching *on* also drops objections filed under other bundles
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn set_bundle_package_enabled(
     cluster_id: i64,
@@ -625,19 +623,12 @@ pub async fn set_bundle_package_enabled(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let override_type = match (enabled, manifest_default) {
-        (true, true) | (false, false) => None,
-        (true, false) => Some(OverrideType::Enabled),
+        (true, _) => Some(OverrideType::Enabled),
+        (false, false) => None,
         (false, true) => Some(OverrideType::Disabled),
     };
 
-    set_bundle_package_override(cluster_id, bundle_name, package_id, override_type, ctx).await?;
-
-    if enabled {
-        clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
-        bundle_dao::clear_type_opt_outs(&ctx.db, cluster_id, bundle_name).await?;
-    }
-
-    Ok(())
+    set_bundle_package_override(cluster_id, bundle_name, package_id, override_type, ctx).await
 }
 
 #[tracing::instrument(level = "debug", skip(overrides, ctx), fields(count = overrides.len()))]

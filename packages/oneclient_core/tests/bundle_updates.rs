@@ -1190,6 +1190,22 @@ async fn the_catalog_dropping_every_switched_off_mod_keeps_the_opt_out() {
     set_bundle_package_enabled(
         cluster_id,
         BUNDLE,
+        "looks",
+        true,
+        true,
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let added = added_ids(&state, cluster_id).await;
+    assert!(
+        !added.iter().any(|id| id == "newcomer"),
+        "switching a resource pack on must not opt the mods back in: {added:?}"
+    );
+
+    set_bundle_package_enabled(
+        cluster_id,
+        BUNDLE,
         "newcomer",
         true,
         true,
@@ -1201,5 +1217,38 @@ async fn the_catalog_dropping_every_switched_off_mod_keeps_the_opt_out() {
     assert!(
         added.iter().any(|id| id == "newcomer"),
         "switching a mod back on opts the mods back in: {added:?}"
+    );
+}
+
+#[tokio::test]
+async fn switching_a_new_mod_on_beside_switched_off_ones_installs_it() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_mods_opted_out(&state, BUNDLE).await;
+    added_ids(&state, cluster_id).await;
+
+    set_bundle_package_enabled(
+        cluster_id,
+        BUNDLE,
+        "newcomer",
+        true,
+        true,
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let added = added_ids(&state, cluster_id).await;
+    assert!(
+        added.iter().any(|id| id == "newcomer"),
+        "sodium staying off must not swallow the user switching newcomer on: {added:?}"
     );
 }

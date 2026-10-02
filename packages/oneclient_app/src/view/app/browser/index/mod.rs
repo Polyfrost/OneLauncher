@@ -19,17 +19,22 @@ use crate::components::{
 };
 use crate::hooks::use_cluster;
 use crate::hooks::{
-    BROWSE_PAGE_SIZE, BrowserUiState, bundles_with_status_items, category_list,
-    cluster_content_items, content_type_for_slug, pick_version_metadata, search_items,
-    search_pending, search_total, settled_or_loading, use_browser_compat, use_browser_state_store,
-    use_browser_type, use_bundles_with_status, use_cluster_content, use_clusters, use_debounced,
-    use_package_categories, use_package_search, use_versions, use_view_state, versions_metadata,
+    BROWSE_PAGE_SIZE, BrowserUiState, bundle_overrides_map, bundles_with_status_items,
+    category_list, cluster_content_items, content_type_for_slug, pick_version_metadata,
+    search_items, search_pending, search_total, settled_or_loading, use_browser_compat,
+    use_browser_state_store, use_browser_type, use_bundle_overrides, use_bundles_with_status,
+    use_cluster_content, use_clusters, use_debounced, use_package_categories, use_package_search,
+    use_versions, use_view_state, versions_metadata,
 };
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::grid_columns_for_width;
+use crate::view::app::cluster::supports_datapacks;
 
-use super::{InstallSource, Installed, PackageBanner, Thumbnail, installed_map};
+use super::{
+    EnableButton, EnableVariant, InstallSource, Installed, PackageBanner, Thumbnail,
+    WorldInstallPrompt, installed_map, preferred_version,
+};
 use crate::utils::{abbreviate_number, sort_clusters_for_home};
 
 mod cards;
@@ -63,11 +68,30 @@ const SORTS: [(SearchSort, &str); 4] = [
     (SearchSort::Updated, "Updated"),
 ];
 
-const BROWSE_TYPES: [(&str, &str); 3] = [
+const BROWSE_TYPES: [(&str, &str); 5] = [
     ("mod", "Mods"),
     ("texture", "Textures"),
     ("shader", "Shaders"),
+    ("datapack", "Data packs"),
+    ("modpack", "Modpacks"),
 ];
+
+const DATAPACK_SLUG: &str = "datapack";
+const TEXTURE_SLUG: &str = "texture";
+const LOADER_SLUGS: [&str; 2] = ["mod", "shader"];
+
+pub(crate) fn browsable_type(package_type: &str, cluster: &Cluster) -> String {
+    if cluster.lacks_mod_loader() {
+        let unsupported = LOADER_SLUGS.contains(&package_type)
+            || (package_type == DATAPACK_SLUG && !supports_datapacks(&cluster.mc_version));
+        return if unsupported { TEXTURE_SLUG } else { package_type }.to_string();
+    }
+    if package_type == DATAPACK_SLUG && !supports_datapacks(&cluster.mc_version) {
+        BROWSE_TYPES[0].0.to_string()
+    } else {
+        package_type.to_string()
+    }
+}
 
 fn type_title(package_type: &str) -> &'static str {
     BROWSE_TYPES
@@ -76,7 +100,7 @@ fn type_title(package_type: &str) -> &'static str {
         .map_or("Mods", |(_, title)| *title)
 }
 
-fn encode_package_id(provider: ProviderId, id: &str) -> String {
+pub(crate) fn encode_package_id(provider: ProviderId, id: &str) -> String {
     format!("{}:{}", provider as u8, id)
 }
 
@@ -93,6 +117,21 @@ impl Component for Browser {
         let mut last_type = use_browser_type();
         use_side_effect_with_deps(&self.package_type, move |package_type| {
             last_type.set_if_modified(package_type.clone());
+        });
+
+        let redirect = use_cluster(self.cluster_id)
+            .filter(Cluster::lacks_mod_loader)
+            .map(|c| browsable_type(&self.package_type, &c))
+            .filter(|package_type| *package_type != self.package_type)
+            .map(|package_type| Route::Browser {
+                cluster_id: self.cluster_id,
+                package_type,
+                pick_cluster: self.pick_cluster,
+            });
+        use_side_effect_with_deps(&redirect, move |redirect: &Option<Route>| {
+            if let Some(route) = redirect.clone() {
+                let _ = RouterContext::get().replace(route);
+            }
         });
 
         BrowserBody {
@@ -126,7 +165,11 @@ impl Component for BrowserBody {
         let content_type = content_type_for_slug(&package_type);
 
         let store = use_browser_state_store();
-        let state_key = format!("{cluster_id}:{package_type}");
+        let state_key = if content_type == ContentType::Modpack {
+            package_type.clone()
+        } else {
+            format!("{cluster_id}:{package_type}")
+        };
         let saved = store.peek().get(&state_key).cloned().unwrap_or_default();
 
         let query = use_state(|| saved.query.clone());
@@ -163,7 +206,8 @@ impl Component for BrowserBody {
         let compat = *compatible_only.read();
         let cats = selected_categories.read().clone();
 
-        let (game_versions, loaders) = match (compat, &cluster) {
+        let targets_cluster = content_type != ContentType::Modpack;
+        let (game_versions, loaders) = match (compat && targets_cluster, &cluster) {
             (true, Some(c)) => {
                 let loaders = if content_type == ContentType::Mod {
                     vec![c.mc_loader]
@@ -207,7 +251,13 @@ impl Component for BrowserBody {
         let installed = installed_map(
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
+            &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
         );
+        let installed = if matches!(content_type, ContentType::DataPack | ContentType::Modpack) {
+            Default::default()
+        } else {
+            installed
+        };
 
         let packages = search_items(&search);
         let total = search_total(&search);
@@ -292,8 +342,11 @@ impl Component for BrowserBody {
             .spacing(18.)
             .child(header(
                 &package_type,
-                cluster.as_ref().map(|c| c.name.clone()),
-                self.pick_cluster.then(|| ClusterPicker {
+                cluster
+                    .as_ref()
+                    .filter(|_| targets_cluster)
+                    .map(|c| c.name.clone()),
+                (self.pick_cluster && targets_cluster).then(|| ClusterPicker {
                     cluster_id,
                     package_type: package_type.clone(),
                 }),
@@ -540,6 +593,9 @@ impl Component for SortPicker {
 
 /// Falls back to the bare version while the manifest hasn't arrived or doesn't cover it
 fn version_name(metadata: &[VersionMetadata], cluster: &Cluster) -> String {
+    if cluster.user_created {
+        return format!("{} {}", cluster.mc_version, cluster.mc_loader);
+    }
     parse_mc_version(&cluster.mc_version)
         .and_then(|parsed| {
             pick_version_metadata(
@@ -565,8 +621,18 @@ impl Component for TypePicker {
         let cluster_id = self.cluster_id;
         let pick_cluster = self.pick_cluster;
         let current = self.package_type.clone();
+        let cluster = use_cluster(cluster_id);
+        let datapacks = cluster
+            .as_ref()
+            .is_none_or(|c| supports_datapacks(&c.mc_version));
+        let mod_loader = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
 
-        let labels: Vec<String> = BROWSE_TYPES
+        let types: Vec<(&str, &str)> = BROWSE_TYPES
+            .into_iter()
+            .filter(|(slug, _)| datapacks || *slug != DATAPACK_SLUG)
+            .filter(|(slug, _)| mod_loader || !LOADER_SLUGS.contains(slug))
+            .collect();
+        let labels: Vec<String> = types
             .iter()
             .map(|(_, title)| (*title).to_string())
             .collect();
@@ -576,7 +642,7 @@ impl Component for TypePicker {
             .width(Size::px(CATEGORY_SIDEBAR_W))
             .height(Size::px(30.))
             .on_select(move |idx: usize| {
-                let picked = BROWSE_TYPES.get(idx).filter(|(slug, _)| *slug != current);
+                let picked = types.get(idx).filter(|(slug, _)| *slug != current);
                 if let Some((slug, _)) = picked {
                     let _ = RouterContext::get().push(Route::Browser {
                         cluster_id,
@@ -625,10 +691,12 @@ impl Component for ClusterPicker {
                     .width(Size::px(240.))
                     .height(Size::px(28.))
                     .on_select(move |idx: usize| {
-                        if let Some(cluster_id) = ids.get(idx).copied() {
+                        if let (Some(cluster_id), Some(cluster)) =
+                            (ids.get(idx).copied(), clusters.get(idx))
+                        {
                             let _ = RouterContext::get().replace(Route::Browser {
                                 cluster_id,
-                                package_type: package_type.clone(),
+                                package_type: browsable_type(&package_type, cluster),
                                 pick_cluster: true,
                             });
                         }

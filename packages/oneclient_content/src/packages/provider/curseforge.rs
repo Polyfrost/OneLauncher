@@ -9,11 +9,12 @@ use super::PackageProvider;
 use super::http::fetch_json;
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
+use crate::packages::dependencies::base_game_version;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
-    DependencyKind, GalleryImage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary,
-    ReleaseType, SearchFilters, VersionDependency, VersionDetail, VersionFile, VersionLookup,
-    VersionSummary,
+    DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail,
+    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
+    VersionFile, VersionLookup, VersionSummary,
 };
 use oneclient_common::constants::{CURSEFORGE_API_URL, CURSEFORGE_GAME_ID};
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
@@ -276,6 +277,123 @@ impl PackageProvider for CurseForgeProvider {
 
         Ok(out)
     }
+
+    #[tracing::instrument(level = "debug", skip(self, packages, ctx))]
+    async fn latest_for_game_version(
+        &self,
+        packages: &[InstalledPackage],
+        mc_version: &str,
+        loader: GameLoader,
+        ctx: &ContentCtx,
+    ) -> ContentResult<HashMap<String, VersionDetail>> {
+        let mod_ids: Vec<u32> = packages
+            .iter()
+            .filter_map(|package| package.project_id.parse().ok())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        if mod_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let response: CfData<Vec<CfModFiles>> = fetch_json(
+            &ctx.net,
+            Method::POST,
+            &api_url("/mods"),
+            Some(serde_json::json!({ "modIds": mod_ids })),
+        )
+        .await?;
+        let indexes: HashMap<String, Vec<CfFileIndex>> = response
+            .data
+            .into_iter()
+            .map(|entry| (entry.id.to_string(), entry.latest_files_indexes))
+            .collect();
+
+        let mut picks: Vec<(String, u32)> = Vec::new();
+        for package in packages {
+            let Some(files) = indexes.get(&package.project_id) else {
+                continue;
+            };
+            if let Some(file_id) = pick_file_index(files, package.content_type, mc_version, loader)
+            {
+                picks.push((package.hash.clone(), file_id));
+            }
+        }
+        if picks.is_empty() {
+            return Ok(HashMap::new());
+        }
+
+        let file_ids: Vec<String> = picks
+            .iter()
+            .map(|(_, file_id)| file_id.to_string())
+            .collect::<std::collections::HashSet<_>>()
+            .into_iter()
+            .collect();
+        let versions: HashMap<String, VersionDetail> = self
+            .get_versions(&file_ids, ctx)
+            .await?
+            .into_iter()
+            .map(|version| (version.version_id.clone(), version))
+            .collect();
+
+        Ok(picks
+            .into_iter()
+            .filter_map(|(hash, file_id)| {
+                versions
+                    .get(&file_id.to_string())
+                    .map(|version| (hash, version.clone()))
+            })
+            .collect())
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CfModFiles {
+    id: u32,
+    #[serde(default)]
+    latest_files_indexes: Vec<CfFileIndex>,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CfFileIndex {
+    game_version: String,
+    file_id: u32,
+    release_type: u8,
+    #[serde(default)]
+    mod_loader: Option<u8>,
+}
+
+fn pick_file_index(
+    files: &[CfFileIndex],
+    content_type: ContentType,
+    mc_version: &str,
+    loader: GameLoader,
+) -> Option<u32> {
+    let wanted = base_game_version(mc_version);
+    let loader_fits = |index: &CfFileIndex| {
+        if content_type != ContentType::Mod || !loader.is_modded() {
+            return true;
+        }
+        index
+            .mod_loader
+            .and_then(|raw| cf_loader_to_game(CfLoader::from(raw)))
+            .is_some_and(|other| loader.compatible_with(other))
+    };
+
+    let fitting: Vec<&CfFileIndex> = files
+        .iter()
+        .filter(|index| base_game_version(&index.game_version) == wanted)
+        .filter(|index| loader_fits(index))
+        .collect();
+
+    fitting
+        .iter()
+        .filter(|index| index.release_type == 1)
+        .map(|index| index.file_id)
+        .max()
+        .or_else(|| fitting.iter().map(|index| index.file_id).max())
 }
 
 #[derive(Deserialize)]
@@ -370,6 +488,8 @@ struct CfMod {
 struct CfScreenshot {
     url: String,
     #[serde(default)]
+    thumbnail_url: Option<String>,
+    #[serde(default)]
     title: Option<String>,
 }
 
@@ -434,7 +554,8 @@ struct CfFile {
     #[serde(default)]
     hashes: Vec<CfHash>,
     file_fingerprint: u32,
-    download_url: String,
+    #[serde(default)]
+    download_url: Option<String>,
     file_length: u64,
     #[serde(default)]
     dependencies: Vec<CfDependency>,
@@ -487,7 +608,7 @@ struct CfHash {
 enum CfClass {
     Mod = 6,
     ResourcePack = 12,
-    DataPack = 4472,
+    DataPack = 6945,
     Shader = 6552,
     Modpack = 4471,
 }
@@ -509,6 +630,12 @@ impl From<CfMod> for ProjectSummary {
             icon_url: m
                 .logo
                 .and_then(|l| l.thumbnail_url.or(l.url))
+                .filter(|s| !s.is_empty()),
+            banner_url: m
+                .screenshots
+                .into_iter()
+                .next()
+                .map(|s| s.thumbnail_url.filter(|t| !t.is_empty()).unwrap_or(s.url))
                 .filter(|s| !s.is_empty()),
             downloads: m.download_count,
             created: m.date_created,
@@ -549,6 +676,7 @@ impl CfMod {
                 .map(|s| GalleryImage {
                     url: s.url,
                     title: s.title.filter(|t| !t.is_empty()),
+                    featured: false,
                 })
                 .collect(),
             license: None,
@@ -589,6 +717,7 @@ impl From<CfFile> for VersionSummary {
                 .collect(),
             downloads: f.download_count,
             file_size: f.file_length,
+            dependencies: f.dependencies.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -618,7 +747,7 @@ impl From<CfFile> for VersionDetail {
             downloads: f.download_count,
             files: vec![VersionFile {
                 sha1,
-                url: f.download_url,
+                url: f.download_url.unwrap_or_default(),
                 file_name: f.file_name,
                 primary: true,
                 size: f.file_length,
@@ -633,7 +762,7 @@ fn cf_class_id(t: ContentType) -> u32 {
     match t {
         ContentType::Mod => 6,
         ContentType::ResourcePack => 12,
-        ContentType::DataPack => 4472,
+        ContentType::DataPack => 6945,
         ContentType::Shader => 6552,
         ContentType::Modpack => 4471,
         ContentType::World => 6,
@@ -669,7 +798,7 @@ impl From<u32> for CfClass {
         match value {
             6 => Self::Mod,
             12 => Self::ResourcePack,
-            4472 => Self::DataPack,
+            6945 => Self::DataPack,
             6552 => Self::Shader,
             4471 => Self::Modpack,
             _ => Self::Mod,
@@ -742,5 +871,27 @@ mod tests {
         assert_eq!(version.dependencies[1].kind, DependencyKind::Optional);
         assert_eq!(version.dependencies[2].kind, DependencyKind::Incompatible);
         assert_eq!(version.dependencies[3].kind, DependencyKind::Embedded);
+    }
+
+    #[test]
+    fn a_distribution_blocked_file_still_parses() {
+        let raw = serde_json::json!({
+            "id": 1,
+            "modId": 2,
+            "displayName": "Blocked",
+            "fileName": "blocked.jar",
+            "releaseType": 1,
+            "fileDate": "2025-01-01T00:00:00Z",
+            "downloadCount": 10,
+            "fileFingerprint": 123,
+            "downloadUrl": null,
+            "fileLength": 100
+        });
+
+        let version: VersionDetail = serde_json::from_value::<CfFile>(raw)
+            .expect("curseforge file")
+            .into();
+
+        assert_eq!(version.files[0].url, "");
     }
 }

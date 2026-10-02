@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::Path;
 
+use oneclient_common::domain::GameLoader;
 use serde::Deserialize;
 
 const MAX_DESCRIPTION: usize = 600;
@@ -85,6 +86,32 @@ pub async fn read_jar_manifest(jar: &Path) -> JarManifest {
     }
 
     out
+}
+
+#[tracing::instrument(level = "debug", fields(jar = %jar.display()))]
+pub async fn read_jar_loader(jar: &Path) -> Option<GameLoader> {
+    let entries = polyio::read_zip_file_entries(jar, |name| MANIFESTS.contains(&name))
+        .await
+        .inspect_err(|err| tracing::debug!("could not read {}: {err}", jar.display()))
+        .ok()?;
+    let has = |wanted: &str| entries.iter().any(|(name, _)| name == wanted);
+
+    let fabric_family = has(FABRIC) || has(QUILT);
+    let forge_family = has(FORGE) || has(LEGACY_FORGE) || has(NEOFORGE);
+    if fabric_family && forge_family {
+        return None;
+    }
+
+    [
+        (FABRIC, GameLoader::Fabric),
+        (QUILT, GameLoader::Quilt),
+        (FORGE, GameLoader::Forge),
+        (LEGACY_FORGE, GameLoader::Forge),
+        (NEOFORGE, GameLoader::NeoForge),
+    ]
+    .into_iter()
+    .find(|(wanted, _)| has(wanted))
+    .map(|(_, loader)| loader)
 }
 
 #[tracing::instrument(level = "debug", fields(jar = %jar.display()))]

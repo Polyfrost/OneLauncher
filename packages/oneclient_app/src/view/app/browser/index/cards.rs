@@ -5,11 +5,12 @@ use std::collections::HashMap;
 use freya::router::RouterContext;
 use oneclient_content::packages::types::ProjectSummary;
 use oneclient_content::packages::{ContentType, ProviderId};
+use oneclient_core::clusters::ModpackSource;
 
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{
-    content_type_for_slug, use_browser_compat, use_cluster, use_dispatch, use_installs_snapshot,
-    use_package_versions_when, version_list,
+    ClusterAction, content_type_for_slug, use_browser_compat, use_cluster, use_dispatch,
+    use_installs_snapshot, use_package_versions_when, version_list,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -20,10 +21,25 @@ type InstalledMap = HashMap<(ProviderId, String), Installed>;
 /// Height of the install control, matched by the installed pill that replaces it
 const INSTALL_BUTTON_H: f32 = 28.;
 
-fn installed_for(installed: &InstalledMap, item: &ProjectSummary) -> Option<InstallSource> {
+#[derive(Clone, PartialEq)]
+struct CardInstalled {
+    source: InstallSource,
+    enable: Option<ClusterAction>,
+}
+
+fn installed_for(
+    installed: &InstalledMap,
+    item: &ProjectSummary,
+    cluster_id: i64,
+) -> Option<CardInstalled> {
     installed
         .get(&(item.provider, item.id.clone()))
-        .map(|installed| installed.source)
+        .map(|installed| CardInstalled {
+            source: installed.source,
+            enable: installed
+                .disabled_bundled()
+                .and_then(|version| version.enable_action(cluster_id)),
+        })
 }
 
 pub(super) fn grid_row(
@@ -35,9 +51,9 @@ pub(super) fn grid_row(
 ) -> impl IntoElement {
     let package_type = package_type.to_string();
     let fill = cols.saturating_sub(row.len());
-    let installed: Vec<Option<InstallSource>> = row
+    let installed: Vec<Option<CardInstalled>> = row
         .iter()
-        .map(|item| installed_for(installed, item))
+        .map(|item| installed_for(installed, item, cluster_id))
         .collect();
 
     rect()
@@ -76,7 +92,7 @@ struct PackageCard {
     item: ProjectSummary,
     cluster_id: i64,
     package_type: String,
-    installed: Option<InstallSource>,
+    installed: Option<CardInstalled>,
 }
 
 impl PackageCard {
@@ -84,7 +100,7 @@ impl PackageCard {
         item: ProjectSummary,
         cluster_id: i64,
         package_type: String,
-        installed: Option<InstallSource>,
+        installed: Option<CardInstalled>,
     ) -> Self {
         Self {
             item,
@@ -101,6 +117,10 @@ impl Component for PackageCard {
         let provider = self.item.provider;
         let package_type = self.package_type.clone();
         let icon_url = self.item.icon_url.clone();
+        let banner = match self.item.banner_url.clone() {
+            Some(url) => PackageBanner::new(Some(url), BANNER_H).sharp(),
+            None => PackageBanner::new(icon_url.clone(), BANNER_H),
+        };
         let cluster_id = self.cluster_id;
 
         let a11y_id = use_a11y();
@@ -133,7 +153,7 @@ impl Component for PackageCard {
                     .height(Size::px(BANNER_H))
                     .overflow(Overflow::Clip)
                     // No installed badge, the control at the foot of the card already states it
-                    .child(PackageBanner::new(icon_url.clone(), BANNER_H).backdrop_only()),
+                    .child(banner.backdrop_only()),
             )
             .child(
                 rect()
@@ -197,7 +217,7 @@ impl Component for PackageCard {
                         &self.item,
                         self.cluster_id,
                         &self.package_type,
-                        self.installed,
+                        self.installed.clone(),
                     )),
             )
     }
@@ -210,7 +230,7 @@ pub(super) fn list_row(
     installed: &InstalledMap,
 ) -> impl IntoElement {
     ListRow {
-        installed: installed_for(installed, &item),
+        installed: installed_for(installed, &item, cluster_id),
         item,
         cluster_id,
         package_type: package_type.to_string(),
@@ -222,7 +242,7 @@ struct ListRow {
     item: ProjectSummary,
     cluster_id: i64,
     package_type: String,
-    installed: Option<InstallSource>,
+    installed: Option<CardInstalled>,
 }
 
 impl Component for ListRow {
@@ -303,7 +323,7 @@ impl Component for ListRow {
                 &self.item,
                 self.cluster_id,
                 &self.package_type,
-                self.installed,
+                self.installed.clone(),
             ))
     }
 }
@@ -315,7 +335,7 @@ struct InstallButton {
     cluster_id: i64,
     content_type: ContentType,
     /// Cluster already has this one, so the control becomes a static pill
-    installed: Option<InstallSource>,
+    installed: Option<CardInstalled>,
 }
 
 impl InstallButton {
@@ -323,7 +343,7 @@ impl InstallButton {
         item: &ProjectSummary,
         cluster_id: i64,
         package_type: &str,
-        installed: Option<InstallSource>,
+        installed: Option<CardInstalled>,
     ) -> Self {
         Self {
             provider: item.provider,
@@ -346,7 +366,8 @@ impl Component for InstallButton {
         let cluster = use_cluster(cluster_id);
 
         // The same narrowing the package page does so both agree on what "latest" installs
-        let (game_version, loader) = match (compat, &cluster) {
+        let is_modpack = self.content_type == ContentType::Modpack;
+        let (game_version, loader) = match (compat && !is_modpack, &cluster) {
             (true, Some(c)) => (
                 Some(c.mc_version.clone()),
                 (self.content_type == ContentType::Mod).then_some(c.mc_loader),
@@ -362,12 +383,25 @@ impl Component for InstallButton {
             loader,
             0,
         ));
-        let latest = versions.first().map(|v| v.version_id.clone());
+        let latest = preferred_version(&versions, self.content_type).map(|v| v.version_id.clone());
+        let is_datapack = self.content_type == ContentType::DataPack;
+        let mut world_prompt = use_state(|| None::<String>);
 
         // Nothing to start twice while an install is running or before versions arrive
-        let installing = use_installs_snapshot().is_installing(cluster_id, provider, &project_id);
+        let (installing, waiting) =
+            use_installs_snapshot().package_busy(is_modpack, cluster_id, provider, &project_id);
 
-        if let Some(installed) = self.installed {
+        if let Some(installed) = &self.installed {
+            if let Some(action) = installed.enable.clone() {
+                return EnableButton {
+                    action,
+                    variant: EnableVariant::Card {
+                        height: INSTALL_BUTTON_H,
+                    },
+                }
+                .into_element();
+            }
+            let installed = installed.source;
             let color = installed.color();
             return rect()
                 .horizontal()
@@ -376,16 +410,16 @@ impl Component for InstallButton {
                 .spacing(6.)
                 .padding(Gaps::new_symmetric(0., 10.))
                 .corner_radius(CornerRadius::new_all(6.))
-                .background(color.with_a(36))
-                .border(border_all_color(1., color.with_a(115)))
+                .background(colors::component_bg())
+                .border(border_all_color(1., colors::component_border()))
                 .child(Icon::new(IconType::CheckCircle).size(12.).color(color))
                 .child(
                     label()
                         .text(installed.label())
                         .font_size(11.)
-                        .font_weight(FontWeight::SEMI_BOLD)
+                        .font_weight(FontWeight::NORMAL)
                         .max_lines(1)
-                        .color(color),
+                        .color(colors::fg_secondary()),
                 )
                 .into_element();
         }
@@ -399,15 +433,30 @@ impl Component for InstallButton {
                     .small()
                     .height(Size::px(INSTALL_BUTTON_H))
                     .padding(Gaps::new_symmetric(0., 11.))
-                    .enabled(latest.is_some() && !installing)
-                    .on_press(move |_| {
-                        if let Some(version_id) = latest.clone() {
-                            dispatch.install_package(
-                                cluster_id,
-                                provider,
-                                project_id.clone(),
-                                version_id,
-                            );
+                    .enabled(latest.is_some() && !installing && !waiting)
+                    .on_press({
+                        let project_id = project_id.clone();
+                        move |_| {
+                            let Some(version_id) = latest.clone() else {
+                                return;
+                            };
+                            if is_datapack {
+                                world_prompt.set(Some(version_id));
+                            } else if is_modpack {
+                                dispatch.install_modpack(ModpackSource::Provider {
+                                    provider,
+                                    project_id: project_id.clone(),
+                                    version_id,
+                                });
+                            } else {
+                                dispatch.install_package(
+                                    cluster_id,
+                                    provider,
+                                    project_id.clone(),
+                                    version_id,
+                                    None,
+                                );
+                            }
                         }
                     })
                     .child(
@@ -428,6 +477,12 @@ impl Component for InstallButton {
                             .color(colors::fg_primary()),
                     ),
             )
+            .maybe_child(world_prompt.read().is_some().then_some(WorldInstallPrompt {
+                cluster_id,
+                provider,
+                project_id,
+                pending: world_prompt,
+            }))
             .into_element()
     }
 }

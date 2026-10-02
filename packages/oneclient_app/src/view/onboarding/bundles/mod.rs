@@ -2,8 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
 use oneclient_content::packages::ProviderId;
+use oneclient_core::BundleArchive;
 use oneclient_core::clusters::Cluster;
-use oneclient_core::{BundleArchive, BundleFile, BundleFileKind};
 
 use crate::components::ScrollArea;
 use crate::hooks::{
@@ -14,11 +14,11 @@ use crate::hooks::{
 type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
 use crate::routes::Route;
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{border_all_color, fixed_grid};
+use crate::utils::bundle_display_name;
 use crate::view::onboarding::{
-    archive_selected, choice_row_sized, is_default_bundle, is_optional_file, onboarding_nav,
-    onboarding_slide, pkg_key, predownload_toggle_row, set_archive_selected, step_heading,
-    version_chip,
+    archive_selected, choice_row_sized, is_default_bundle, onboarding_nav, onboarding_slide,
+    pkg_key, set_archive_selected, step_heading, version_chip,
 };
 
 mod row;
@@ -65,22 +65,6 @@ fn fps_warning_banner() -> impl IntoElement {
         .border(border_all_color(1., colors::code_warn()))
         .padding(Gaps::new_all(8.))
         .child(text)
-}
-
-fn file_provider(file: &BundleFile) -> ProviderId {
-    match &file.kind {
-        BundleFileKind::Managed { provider, .. } => *provider,
-        BundleFileKind::External(_) => ProviderId::Local,
-    }
-}
-
-fn bundle_display_name(archive: &BundleArchive) -> String {
-    let category = archive.manifest.category.trim();
-    if category.is_empty() {
-        archive.manifest.name.clone()
-    } else {
-        category.to_string()
-    }
 }
 
 #[derive(Clone)]
@@ -149,7 +133,9 @@ fn opt_in_bundles(clusters: &[ClusterBundles]) -> Vec<OptInBundle> {
 #[derive(Clone)]
 struct OptionalMod {
     package_id: String,
+    metadata_id: String,
     provider: ProviderId,
+    github_hosted: bool,
     fallback_name: String,
     size: u64,
     /// `(cluster_id, bundle_name)` pairs this mod is available from
@@ -179,14 +165,16 @@ fn optional_mods(clusters: &[ClusterBundles]) -> Vec<OptionalMod> {
                 .manifest
                 .files
                 .iter()
-                .filter(|f| is_optional_file(f))
+                .filter(|f| f.is_optional_offer())
             {
                 let package_id = file.kind.package_id();
                 let entry = map.entry(package_id.clone()).or_insert_with(|| {
                     order.push(package_id.clone());
                     OptionalMod {
                         package_id: package_id.clone(),
-                        provider: file_provider(file),
+                        metadata_id: file.kind.metadata_id(),
+                        provider: file.kind.metadata_provider(),
+                        github_hosted: file.is_github_hosted(),
                         fallback_name: file.display_name(),
                         size: file.size,
                         locations: Vec::new(),
@@ -244,7 +232,6 @@ impl Component for OnboardingBundles {
         let selection = use_onboarding_selection();
         let selected = selection.selected;
         let user_touched = selection.user_touched;
-        let predownload = selection.predownload;
 
         let clusters = onboarding_bundles_items(&bundles_query).unwrap_or_default();
         let bundles_loaded = onboarding_bundles_items(&bundles_query).is_some();
@@ -259,9 +246,10 @@ impl Component for OnboardingBundles {
         let extras = optional_mods(&clusters);
 
         // Hooks so they run every render regardless of whether there are extras yet
-        let (mr_ids, cf_ids) = collect_ids(&extras);
+        let (mr_ids, cf_ids, local_ids) = collect_ids(&extras);
         let mr_meta = package_meta_batch(&use_package_meta_batch(ProviderId::Modrinth, mr_ids));
         let cf_meta = package_meta_batch(&use_package_meta_batch(ProviderId::CurseForge, cf_ids));
+        let local_meta = package_meta_batch(&use_package_meta_batch(ProviderId::Local, local_ids));
 
         let mut sections: Vec<Element> = Vec::new();
 
@@ -278,6 +266,7 @@ impl Component for OnboardingBundles {
                 user_touched,
                 &mr_meta,
                 &cf_meta,
+                &local_meta,
             ));
         }
 
@@ -318,8 +307,7 @@ impl Component for OnboardingBundles {
                                     .children(sections),
                             )
                             .maybe_child(nothing_to_ask.then(|| empty_hint(&catalog_msg))),
-                    )
-                    .child(predownload_toggle_row(predownload)),
+                    ),
             ))
             .child(onboarding_nav(
                 Some(Route::OnboardingAccount {}),
@@ -441,14 +429,15 @@ fn extras_section(
     user_touched: State<bool>,
     mr_meta: &MetaMap,
     cf_meta: &MetaMap,
+    local_meta: &MetaMap,
 ) -> Element {
     let cards: Vec<Element> = extras
         .iter()
         .map(|entry| {
             let meta = match entry.provider {
-                ProviderId::Modrinth => mr_meta.get(&entry.package_id),
-                ProviderId::CurseForge => cf_meta.get(&entry.package_id),
-                ProviderId::Local => None,
+                ProviderId::Modrinth => mr_meta.get(&entry.metadata_id),
+                ProviderId::CurseForge => cf_meta.get(&entry.metadata_id),
+                ProviderId::Local => local_meta.get(&entry.metadata_id),
             };
             let name = meta
                 .map(|m| m.name.clone())
@@ -461,6 +450,7 @@ fn extras_section(
 
             OnboardingModCard {
                 provider: entry.provider,
+                github_hosted: entry.github_hosted,
                 name,
                 author,
                 description,
@@ -474,29 +464,6 @@ fn extras_section(
         })
         .collect();
 
-    let mut rows: Vec<Element> = Vec::new();
-    for (index, chunk) in cards.chunks(MOD_GRID_COLS).enumerate() {
-        let mut row = rect()
-            .key(index)
-            .horizontal()
-            .width(Size::fill())
-            .height(Size::px(CARD_GRID_H))
-            .spacing(GRID_GAP)
-            .content(Content::Flex);
-        for card in chunk {
-            row = row.child(
-                rect()
-                    .width(Size::flex(1.0))
-                    .height(Size::fill())
-                    .child(card.clone()),
-            );
-        }
-        for _ in chunk.len()..MOD_GRID_COLS {
-            row = row.child(rect().width(Size::flex(1.0)).height(Size::fill()));
-        }
-        rows.push(row.into_element());
-    }
-
     rect()
         .vertical()
         .width(Size::fill())
@@ -508,25 +475,20 @@ fn extras_section(
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
-        .child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .spacing(GRID_GAP)
-                .children(rows),
-        )
+        .child(fixed_grid(cards, MOD_GRID_COLS, CARD_GRID_H, GRID_GAP))
         .into_element()
 }
 
-fn collect_ids(extras: &[OptionalMod]) -> (Vec<String>, Vec<String>) {
+fn collect_ids(extras: &[OptionalMod]) -> (Vec<String>, Vec<String>, Vec<String>) {
     let mut mr = Vec::new();
     let mut cf = Vec::new();
+    let mut local = Vec::new();
     for entry in extras {
         match entry.provider {
-            ProviderId::Modrinth => mr.push(entry.package_id.clone()),
-            ProviderId::CurseForge => cf.push(entry.package_id.clone()),
-            ProviderId::Local => {}
+            ProviderId::Modrinth => mr.push(entry.metadata_id.clone()),
+            ProviderId::CurseForge => cf.push(entry.metadata_id.clone()),
+            ProviderId::Local => local.push(entry.metadata_id.clone()),
         }
     }
-    (mr, cf)
+    (mr, cf, local)
 }

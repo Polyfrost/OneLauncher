@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use oneclient_db::models::ClusterId;
+use oneclient_db::models::ClusterKind;
 use oneclient_db::models::ClusterRow;
 use serde::{Deserialize, Serialize};
 
@@ -32,6 +33,12 @@ pub async fn remove_mods_link(folder_name: &str) {
     }
 }
 
+pub const MODPACK_ICON_FILE: &str = ".oneclient/modpack-icon.png";
+
+pub fn encode_tags(tags: &[String]) -> String {
+    serde_json::to_string(tags).unwrap_or_else(|_| "[]".to_string())
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Cluster {
     pub id: ClusterId,
@@ -47,6 +54,11 @@ pub struct Cluster {
     #[serde(with = "serde_duration_secs")]
     pub overall_played: Duration,
     pub linked_modpack_hash: Option<String>,
+    pub kind: ClusterKind,
+    pub user_created: bool,
+    pub description: Option<String>,
+    pub tags: Vec<String>,
+    pub cover_path: Option<String>,
 }
 
 impl PartialEq for Cluster {
@@ -74,6 +86,7 @@ impl Cluster {
             .ok_or(ClusterError::InvalidLoader(row.mc_loader))?;
         let stage =
             ClusterStage::from_repr(row.stage).ok_or(ClusterError::InvalidStage(row.stage))?;
+        let kind = ClusterKind::from_repr(row.kind).ok_or(ClusterError::InvalidKind(row.kind))?;
 
         Ok(Self {
             id: row.id,
@@ -88,6 +101,11 @@ impl Cluster {
             last_played: parse_timestamp(row.last_played),
             overall_played: Duration::from_secs(row.overall_played.unwrap_or(0).max(0) as u64),
             linked_modpack_hash: row.linked_modpack_hash,
+            kind,
+            user_created: row.user_created != 0,
+            description: row.description,
+            tags: serde_json::from_str(&row.tags).unwrap_or_default(),
+            cover_path: row.cover_path,
         })
     }
 
@@ -100,11 +118,47 @@ impl Cluster {
     }
 
     pub fn uses_dedicated_dir(&self) -> bool {
-        paths::cluster_uses_dedicated_dir(&self.folder_name)
+        self.is_isolated() || paths::cluster_uses_dedicated_dir(&self.folder_name)
+    }
+
+    pub fn is_isolated(&self) -> bool {
+        self.kind.is_isolated()
+    }
+
+    pub fn uses_bundles(&self) -> bool {
+        self.kind.uses_bundles()
+    }
+
+    pub fn lacks_mod_loader(&self) -> bool {
+        self.is_isolated() && self.mc_loader == oneclient_common::domain::GameLoader::Vanilla
+    }
+
+    pub fn shares_content(&self, content_type: oneclient_common::domain::ContentType) -> bool {
+        content_type.is_global() && !self.is_isolated()
+    }
+
+    pub fn modpack_icon_file(&self) -> Option<PathBuf> {
+        self.linked_modpack_hash.as_ref()?;
+        Some(self.dir().ok()?.join(MODPACK_ICON_FILE))
+    }
+
+    pub fn cover_file(&self) -> Option<PathBuf> {
+        let cover = self.cover_path.as_deref()?;
+        let mut parts = std::path::Path::new(cover).components();
+        let Some(std::path::Component::Normal(name)) = parts.next() else {
+            return None;
+        };
+        if parts.next().is_some() {
+            return None;
+        }
+        Some(self.dir().ok()?.join(name))
     }
 
     pub fn game_dir(&self) -> ClusterResult<PathBuf> {
-        Ok(paths::cluster_game_dir(&self.folder_name)?)
+        Ok(paths::cluster_game_dir(
+            &self.folder_name,
+            self.is_isolated(),
+        )?)
     }
 
     pub fn as_link_target(&self) -> ClusterLinkTarget<'_> {

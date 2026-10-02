@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tINSERT INTO release_migration_waitlist (\n\t\t\ttarget_cluster_id, provider, project_id, content_type,\n\t\t\tsource_hash, display_name, added_at, expires_at, enabled\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n\t\tON CONFLICT(target_cluster_id, provider, project_id) DO UPDATE SET\n\t\t\tcontent_type = excluded.content_type,\n\t\t\tsource_hash = excluded.source_hash,\n\t\t\tdisplay_name = excluded.display_name,\n\t\t\tadded_at = excluded.added_at,\n\t\t\texpires_at = excluded.expires_at,\n\t\t\tenabled = excluded.enabled\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "e12409b04c8a3eea09a4bfc1014bca6fe5fbc1256b3537ed37195ed20075f944"
+}

@@ -3,10 +3,10 @@ use std::path::{Path, PathBuf};
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::relocate::RelocationPlan;
-use oneclient_core::settings::{LaunchBehaviour, data_dir};
+use oneclient_core::settings::{LaunchBehaviour, LauncherSettings, data_dir};
 use oneclient_core::storage::format_bytes;
 
-use super::{section_header, settings_page, settings_row};
+use super::{resettable, section_header, settings_page, settings_row};
 use crate::Route;
 use crate::components::{
     Button, Dropdown, Icon, IconType, OverlayPopup, open_folder_button, toggle,
@@ -24,6 +24,7 @@ pub struct SettingsLauncher;
 impl Component for SettingsLauncher {
     fn render(&self) -> impl IntoElement {
         let settings = use_settings_snapshot().settings;
+        let defaults = LauncherSettings::default();
         let dispatch = use_dispatch();
 
         let discord_rpc = use_state({
@@ -51,28 +52,32 @@ impl Component for SettingsLauncher {
             move || v
         });
 
+        let launch_behaviour = use_state({
+            let v = settings.launch_behaviour;
+            move || v
+        });
+
         let mut first = use_state(|| true);
-        {
-            let dispatch = dispatch.clone();
-            use_side_effect(move || {
-                let discord = *discord_rpc.read();
-                let crash = *crash_reporting.read();
-                let maximized = *start_maximized.read();
-                let background = *run_in_background.read();
-                let tray = *show_tray_icon.read();
-                if *first.peek() {
-                    first.set(false);
-                    return;
-                }
-                dispatch.edit_settings(|next| {
-                    next.discord_enabled = discord;
-                    next.crash_reporting = crash;
-                    next.start_maximized = maximized;
-                    next.run_in_background = background;
-                    next.show_tray_icon = tray;
-                });
+        use_side_effect(move || {
+            let discord = *discord_rpc.read();
+            let crash = *crash_reporting.read();
+            let maximized = *start_maximized.read();
+            let background = *run_in_background.read();
+            let tray = *show_tray_icon.read();
+            let behaviour = *launch_behaviour.read();
+            if *first.peek() {
+                first.set(false);
+                return;
+            }
+            dispatch.edit_settings(|next| {
+                next.discord_enabled = discord;
+                next.crash_reporting = crash;
+                next.start_maximized = maximized;
+                next.run_in_background = background;
+                next.show_tray_icon = tray;
+                next.launch_behaviour = behaviour;
             });
-        }
+        });
 
         // The only way back for someone who declined during onboarding
         let consent_summary = if settings.declined_tos {
@@ -94,19 +99,27 @@ impl Component for SettingsLauncher {
                 IconType::Link03,
                 "Discord RPC",
                 "Enable Discord Rich Presence.",
-                toggle(discord_rpc),
+                resettable(toggle(discord_rpc), discord_rpc, defaults.discord_enabled),
             ))
             .child(settings_row(
                 IconType::AlertTriangle,
                 "Crash Reporting",
                 "Send anonymous crash and error reports to help fix bugs. Applies on restart.",
-                toggle(crash_reporting),
+                resettable(
+                    toggle(crash_reporting),
+                    crash_reporting,
+                    defaults.crash_reporting,
+                ),
             ))
             .child(settings_row(
                 IconType::Maximize01,
                 "Start Maximized",
                 "Open the launcher window maximized. Applies on restart.",
-                toggle(start_maximized),
+                resettable(
+                    toggle(start_maximized),
+                    start_maximized,
+                    defaults.start_maximized,
+                ),
             ))
             .child(settings_row(
                 IconType::File02,
@@ -119,19 +132,31 @@ impl Component for SettingsLauncher {
                 IconType::Eye,
                 "While Playing",
                 "What the launcher window does once a game is running.",
-                launch_behaviour_field(settings.launch_behaviour, dispatch),
+                resettable(
+                    launch_behaviour_field(launch_behaviour),
+                    launch_behaviour,
+                    defaults.launch_behaviour,
+                ),
             ))
             .child(settings_row(
                 IconType::Moon01,
                 "Run in Background",
                 "Closing the window keeps OneClient running. Open it again from the tray icon or by launching it.",
-                toggle(run_in_background),
+                resettable(
+                    toggle(run_in_background),
+                    run_in_background,
+                    defaults.run_in_background,
+                ),
             ))
             .child(settings_row(
                 IconType::LayoutTop,
                 "Show Tray Icon",
                 "Show OneClient in the system tray or menu bar. Applies on restart.",
-                toggle(show_tray_icon),
+                resettable(
+                    toggle(show_tray_icon),
+                    show_tray_icon,
+                    defaults.show_tray_icon,
+                ),
             ))
             .child(section_header("FOLDERS AND FILES"))
             .child(DataFolder.into_element())
@@ -139,18 +164,18 @@ impl Component for SettingsLauncher {
     }
 }
 
-fn launch_behaviour_field(selected: LaunchBehaviour, dispatch: Actions) -> impl IntoElement {
+fn launch_behaviour_field(mut selected: State<LaunchBehaviour>) -> impl IntoElement {
     let options: Vec<String> = LaunchBehaviour::ALL
         .iter()
         .map(|behaviour| behaviour.label().to_string())
         .collect();
 
-    Dropdown::new(selected.label(), options)
+    Dropdown::new(selected.read().label(), options)
         .width(Size::px(220.))
         .height(Size::px(34.))
         .on_select(move |idx: usize| {
             if let Some(behaviour) = LaunchBehaviour::ALL.get(idx).copied() {
-                dispatch.edit_settings(|settings| settings.launch_behaviour = behaviour);
+                selected.set(behaviour);
             }
         })
 }
@@ -294,7 +319,7 @@ fn plan(
         checking.set(true);
         error.set(None);
 
-        match plan_move(picked.as_deref()).await {
+        match crate::launcher::off_ui(async move { plan_move(picked.as_deref()).await }).await {
             Ok(planned) => pending.set(Some(planned)),
             Err(message) => error.set(Some(message)),
         }

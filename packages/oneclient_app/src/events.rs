@@ -340,7 +340,9 @@ pub async fn start_launcher(
     station: RadioStation<AppState, AppChannel>,
     events: oneclient_events::EventBus,
 ) -> Result<(), anyhow::Error> {
-    let state = crate::launcher::install(oneclient_core::LauncherState::new(events).await?);
+    let state = crate::launcher::install(
+        crate::launcher::off_ui(oneclient_core::LauncherState::new(events)).await?,
+    );
 
     oneclient_net::status::start(state.services.requester.clone());
     oneclient_polyplus::start(std::sync::Arc::clone(&state.auth));

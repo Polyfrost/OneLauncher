@@ -14,9 +14,9 @@ use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
-    DependencyKind, GalleryImage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary,
-    ReleaseType, SearchFilters, VersionDependency, VersionDetail, VersionFile, VersionLookup,
-    VersionSummary,
+    DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail,
+    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
+    VersionFile, VersionLookup, VersionSummary,
 };
 use oneclient_common::constants::MODRINTH_API_URL;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
@@ -130,6 +130,10 @@ impl PackageProvider for ModrinthProvider {
             game_versions: Vec<String>,
             downloads: u64,
             icon_url: Option<String>,
+            #[serde(default)]
+            featured_gallery: Option<String>,
+            #[serde(default)]
+            gallery: Vec<String>,
             date_created: DateTime<Utc>,
             date_modified: DateTime<Utc>,
         }
@@ -152,6 +156,10 @@ impl PackageProvider for ModrinthProvider {
                     summary: h.description,
                     author: h.author,
                     icon_url: h.icon_url,
+                    banner_url: h
+                        .featured_gallery
+                        .or_else(|| h.gallery.into_iter().next())
+                        .filter(|url| !url.is_empty()),
                     downloads: h.downloads,
                     created: h.date_created,
                     updated: h.date_modified,
@@ -198,7 +206,10 @@ impl PackageProvider for ModrinthProvider {
             project_type: String,
         }
         let tags: Vec<Tag> = fetch_json(&ctx.net, Method::GET, &v2("/tag/category"), None).await?;
-        let want = content_type.modrinth_type();
+        let want = match content_type {
+            ContentType::DataPack => ContentType::Mod.modrinth_type(),
+            other => other.modrinth_type(),
+        };
         Ok(tags
             .into_iter()
             .filter(|t| t.project_type == want)
@@ -367,6 +378,102 @@ impl PackageProvider for ModrinthProvider {
 
         Ok(out)
     }
+
+    #[tracing::instrument(level = "debug", skip(self, packages, ctx))]
+    async fn latest_for_game_version(
+        &self,
+        packages: &[InstalledPackage],
+        mc_version: &str,
+        loader: GameLoader,
+        ctx: &ContentCtx,
+    ) -> ContentResult<HashMap<String, VersionDetail>> {
+        let mut groups: HashMap<ContentType, Vec<String>> = HashMap::new();
+        for package in packages {
+            groups
+                .entry(package.content_type)
+                .or_default()
+                .push(package.hash.clone());
+        }
+
+        let mut out = HashMap::new();
+        for (content_type, hashes) in groups {
+            let loaders = modrinth_loader_filter(content_type, loader);
+
+            let releases =
+                latest_version_files(ctx, &hashes, mc_version, loaders.as_deref(), true).await?;
+            let missing: Vec<String> = hashes
+                .iter()
+                .filter(|hash| !releases.contains_key(*hash))
+                .cloned()
+                .collect();
+            out.extend(releases);
+
+            if !missing.is_empty() {
+                out.extend(
+                    latest_version_files(ctx, &missing, mc_version, loaders.as_deref(), false)
+                        .await?,
+                );
+            }
+        }
+
+        Ok(out)
+    }
+}
+
+fn modrinth_loader_filter(content_type: ContentType, loader: GameLoader) -> Option<Vec<String>> {
+    if content_type != ContentType::Mod || !loader.is_modded() {
+        return None;
+    }
+    Some(
+        [
+            GameLoader::Forge,
+            GameLoader::NeoForge,
+            GameLoader::Quilt,
+            GameLoader::Fabric,
+            GameLoader::Ornithe,
+        ]
+        .into_iter()
+        .filter(|other| loader.compatible_with(*other))
+        .map(|other| other.modrinth_name().to_string())
+        .collect(),
+    )
+}
+
+async fn latest_version_files(
+    ctx: &ContentCtx,
+    hashes: &[String],
+    mc_version: &str,
+    loaders: Option<&[String]>,
+    releases_only: bool,
+) -> ContentResult<HashMap<String, VersionDetail>> {
+    if hashes.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut body = serde_json::json!({
+        "hashes": hashes,
+        "algorithm": "sha1",
+        "game_versions": [mc_version],
+    });
+    if let Some(loaders) = loaders {
+        body["loaders"] = serde_json::json!(loaders);
+    }
+    if releases_only {
+        body["version_types"] = serde_json::json!(["release"]);
+    }
+
+    let fetched: HashMap<String, ModrinthVersion> = fetch_json(
+        &ctx.net,
+        Method::POST,
+        &v2("/version_files/update"),
+        Some(body),
+    )
+    .await?;
+
+    Ok(fetched
+        .into_iter()
+        .map(|(hash, version)| (polyio::normalize_hash(&hash), version.into()))
+        .collect())
 }
 
 #[tracing::instrument(level = "debug", skip(client, team_ids))]
@@ -435,6 +542,8 @@ struct ModrinthGalleryItem {
     raw_url: Option<String>,
     #[serde(default)]
     title: Option<String>,
+    #[serde(default)]
+    featured: bool,
 }
 
 #[derive(Deserialize)]
@@ -528,6 +637,7 @@ impl ModrinthProject {
                 .map(|g| GalleryImage {
                     url: g.raw_url.filter(|url| !url.is_empty()).unwrap_or(g.url),
                     title: g.title.filter(|t| !t.is_empty()),
+                    featured: g.featured,
                 })
                 .collect(),
             license,
@@ -654,6 +764,7 @@ impl From<ModrinthVersion> for VersionSummary {
                 .collect(),
             downloads: v.downloads,
             file_size,
+            dependencies: v.dependencies.into_iter().map(Into::into).collect(),
         }
     }
 }

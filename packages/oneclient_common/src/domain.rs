@@ -63,6 +63,11 @@ impl ContentType {
     }
 
     #[must_use]
+    pub const fn needs_mod_loader(self) -> bool {
+        matches!(self, Self::Mod | Self::Shader)
+    }
+
+    #[must_use]
     pub const fn reloads_in_game(self) -> bool {
         matches!(self, Self::ResourcePack | Self::Shader)
     }

@@ -5,6 +5,7 @@ pub mod dev;
 
 pub mod changelog;
 pub mod clusters;
+pub mod disable_warnings;
 mod error;
 pub mod game;
 pub mod images;
@@ -25,10 +26,15 @@ pub mod versions;
 pub use changelog::{ChangelogGroup, fetch_changelog, parse_changelog};
 pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
-    ensure_from_bundles, ensure_from_versions, estimate_cluster_download, required_java_major,
+    apply_bundle_java_override, ensure_from_bundles, ensure_from_versions,
+    estimate_cluster_download, required_java_major,
 };
+pub use disable_warnings::{DisableWarnings, fetch_disable_warnings};
 pub use error::{LauncherError, LauncherResult, SentryExclusion};
-pub use game::{GameError, LaunchedGame, get_loader_versions, launch_cluster};
+pub use game::{
+    GameError, GameVersionInfo, GameVersionKind, LaunchedGame, get_loader_versions,
+    get_loaders_for_version, get_version_ids, get_versions_for_loader, launch_cluster,
+};
 pub use images::ImageCacheStore;
 pub use migration::{
     ImportTarget, MigrationDetection, MigrationSource, SourceInstance, detect as detect_migration,
@@ -39,13 +45,19 @@ pub use oneclient_cluster::logs::{
     delete_log_at, list_cluster_logs, read_log_at, upload_log_at,
 };
 pub use oneclient_cluster::screenshots::{
-    ScreenshotInfo, ScreenshotsError, delete_screenshot, list_cluster_screenshots, load_screenshot,
+    ScreenshotInfo, ScreenshotsError, delete_screenshot, list_cluster_screenshots,
+    load_picked_image, load_screenshot,
+};
+pub use oneclient_cluster::worlds::{
+    DataPackInfo, LEVEL_DAT, PackIcon, WORLD_ICON, WorldInfo, WorldsError, add_world_datapacks,
+    delete_world, delete_world_datapack, list_cluster_worlds, list_world_datapacks, world_size,
 };
 pub use oneclient_content::bundles::{
     ApplyBundleUpdatesResult, Bundle, BundleArchive, BundleError, BundleFile, BundleFileKind,
-    BundleManifest, BundleOptionalPackage, BundleUpdateCheckResult, BundleWithUpdateStatus,
-    BundlesManager, FileUpdateStatus, PendingOptionalMod, apply_bundle_updates,
-    apply_bundle_updates_with, check_bundle_updates, cluster_has_bundle_content, effective_enabled,
+    BundleFileType, BundleManifest, BundleOptionalPackage, BundleUpdateCheckResult,
+    BundleWithUpdateStatus, BundlesManager, FileUpdateStatus, PendingOptionalMod,
+    apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,
+    cluster_has_bundle_content, clusters_sharing_artifact, delete_artifact, effective_enabled,
     get_bundles_with_update_status, install_bundle, install_cluster_bundles,
     install_package_from_bundle, list_cluster_bundle_overrides, pending_optional_mods,
     remove_artifact_from_cluster, resolve_optional_mods, set_artifact_enabled_to,
@@ -69,5 +81,7 @@ pub use state::shutdown;
 pub use tos::{TermsDocument, fetch_terms};
 pub use verify::{ClusterVerifyReport, verify_cluster_files};
 pub use versions::{
-    RemoteMigration, VersionMetadata, VersionsManager, VersionsManifest, resolve_migration_chain,
+    ReleaseTarget, RemoteMigration, VersionArts, VersionMetadata, VersionsManager,
+    VersionsManifest,
+    resolve_migration_chain,
 };

@@ -5,6 +5,8 @@ use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::SearchSort;
 use oneclient_db::models::ClusterId;
 
+use crate::hooks::ClusterAction;
+
 #[derive(Clone)]
 pub struct ActiveClusterState(pub State<Option<ClusterId>>);
 
@@ -45,6 +47,8 @@ pub fn use_start_maximized() -> bool {
     consume_root_context::<StartMaximizedState>().0
 }
 
+pub const BROWSER_COMPAT_DEFAULT: bool = true;
+
 #[derive(Clone)]
 pub struct BrowserCompatState(pub State<bool>);
 
@@ -68,6 +72,17 @@ pub fn use_browser_type() -> State<String> {
 }
 
 #[derive(Clone)]
+pub struct DataPackWorldState(pub State<HashMap<ClusterId, String>>);
+
+pub fn use_provide_datapack_world(state: DataPackWorldState) {
+    use_hook(move || provide_root_context(state));
+}
+
+pub fn use_datapack_world() -> State<HashMap<ClusterId, String>> {
+    consume_root_context::<DataPackWorldState>().0
+}
+
+#[derive(Clone)]
 pub struct LinkConfirmState(pub State<Option<String>>);
 
 pub fn use_provide_link_confirm(state: LinkConfirmState) {
@@ -76,6 +91,31 @@ pub fn use_provide_link_confirm(state: LinkConfirmState) {
 
 pub fn use_link_confirm() -> State<Option<String>> {
     consume_root_context::<LinkConfirmState>().0
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub enum EssentialGuardKind {
+    Disable,
+    Remove,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct PendingEssential {
+    pub name: String,
+    pub body: String,
+    pub kind: EssentialGuardKind,
+    pub action: ClusterAction,
+}
+
+#[derive(Clone)]
+pub struct EssentialGuardState(pub State<Option<PendingEssential>>);
+
+pub fn use_provide_essential_guard(state: EssentialGuardState) {
+    use_provide_root_context(move || state.clone());
+}
+
+pub fn use_essential_guard() -> State<Option<PendingEssential>> {
+    consume_root_context::<EssentialGuardState>().0
 }
 
 #[derive(Clone)]
@@ -120,8 +160,6 @@ pub struct OnboardingSelectionState {
     pub migrated_categories: State<Option<Vec<String>>>,
     pub language: State<String>,
     pub reduce_motion: State<bool>,
-    pub predownload: State<bool>,
-    pub setup_started: State<bool>,
     /// `None` = don't import
     pub import_folder: State<Option<String>>,
     pub import_dedicated: State<bool>,

@@ -29,6 +29,11 @@ async fn main() -> LauncherResult<()> {
                 mc_loader: loader,
                 mc_loader_version: loader_version.map(str::to_string),
                 mem_max: None,
+                kind: oneclient_cluster::ClusterKind::OneClient,
+                user_created: false,
+                modpack: false,
+                description: None,
+                tags: Vec::new(),
             },
         )
         .await?;

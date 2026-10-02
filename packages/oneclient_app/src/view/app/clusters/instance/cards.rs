@@ -184,7 +184,7 @@ pub fn wide_card(card: WideCard) -> Element {
         .cross_align(Alignment::Center)
         .spacing(14.)
         .child(marker(selected, false))
-        .child(Icon::new(icon).size(20.).color(if selected {
+        .child(Icon::new(icon).size(25.).color(if selected {
             colors::fg_primary()
         } else {
             colors::fg_secondary()

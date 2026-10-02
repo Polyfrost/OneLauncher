@@ -1,7 +1,7 @@
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
-    get_bundles_with_update_status,
+    get_bundles_with_update_status, set_bundle_package_enabled,
 };
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
@@ -1082,4 +1082,124 @@ async fn an_outdated_github_mod_left_on_keeps_the_bundle_taking_mods() {
         .unwrap()
         .opted_in_types;
     assert!(types.contains(&ContentType::Mod), "{types:?}");
+}
+
+async fn cluster_with_mods_opted_out(state: &LauncherState, disabled_under: &str) -> i64 {
+    let cluster_id = cluster_with_tracked_mod(state).await;
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        disabled_under,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        "looks",
+        OverrideType::Enabled,
+    )
+    .await
+    .unwrap();
+    cluster_id
+}
+
+async fn added_ids(state: &LauncherState, cluster_id: i64) -> Vec<String> {
+    check_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap()
+    .additions_available
+    .iter()
+    .map(|a| a.new_file.kind.package_id())
+    .collect()
+}
+
+#[tokio::test]
+async fn a_disable_filed_under_another_bundle_still_opts_the_mods_out() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![
+            managed_file(true),
+            newly_shipped_file(),
+            resource_pack_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_mods_opted_out(&state, "Old Bundle").await;
+
+    let added = added_ids(&state, cluster_id).await;
+    assert!(
+        !added.iter().any(|id| id == "newcomer"),
+        "the user switched sodium off while it was filed under another bundle: {added:?}"
+    );
+}
+
+#[tokio::test]
+async fn the_catalog_dropping_every_switched_off_mod_keeps_the_opt_out() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![managed_file(true), resource_pack_file()]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_mods_opted_out(&state, BUNDLE).await;
+    added_ids(&state, cluster_id).await;
+
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![newly_shipped_file(), resource_pack_file()]),
+    )
+    .await
+    .unwrap();
+
+    let added = added_ids(&state, cluster_id).await;
+    assert!(
+        !added.iter().any(|id| id == "newcomer"),
+        "mods stay opted out after the catalog replaces them: {added:?}"
+    );
+    let status = get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let types = &status
+        .iter()
+        .find(|b| b.archive.manifest.name == BUNDLE)
+        .unwrap()
+        .opted_in_types;
+    assert!(
+        !types.contains(&ContentType::Mod),
+        "the package list must remember the opt-out too: {types:?}"
+    );
+
+    set_bundle_package_enabled(
+        cluster_id,
+        BUNDLE,
+        "newcomer",
+        true,
+        true,
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let added = added_ids(&state, cluster_id).await;
+    assert!(
+        added.iter().any(|id| id == "newcomer"),
+        "switching a mod back on opts the mods back in: {added:?}"
+    );
 }

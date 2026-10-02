@@ -634,6 +634,7 @@ pub async fn set_bundle_package_enabled(
 
     if enabled {
         clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
+        bundle_dao::clear_type_opt_outs(&ctx.db, cluster_id, bundle_name).await?;
     }
 
     Ok(())

@@ -18,7 +18,7 @@ use futures_util::StreamExt;
 
 use crate::bundles::install::{
     BUNDLE_INSTALL_CONCURRENCY, bundle_cluster, disable_was_deliberate, external_ids_by_sha1,
-    find_user_suppression, heal_bundle_activity, install_package_from_bundle,
+    find_override, find_user_suppression, heal_bundle_activity, install_package_from_bundle,
     remove_artifact_from_cluster, set_artifact_enabled_to,
 };
 use crate::bundles::manager::BundlesManager;
@@ -337,18 +337,21 @@ async fn check_bundle_updates_inner(
         &bundle_packages,
     ));
     let installed_keys = planned_addition_keys.clone();
-    let shared_keys = keys_shipped_by_several_bundles(
-        archives
-            .iter()
-            .filter(|a| addition_eligible_bundles.contains(&a.manifest.name)),
-    );
+    let opt_outs = TypeOptOuts::load(
+        cluster_id,
+        &archives,
+        &addition_eligible_bundles,
+        overrides,
+        &installed_keys,
+        ctx,
+    )
+    .await?;
 
     for archive in &archives {
         if !addition_eligible_bundles.contains(&archive.manifest.name) {
             continue;
         }
-        let suppressed_types =
-            suppressed_content_types(archive, &overrides_map, &installed_keys, &shared_keys);
+        let suppressed_types = opt_outs.suppressed(archive, ctx).await?;
 
         for file in &archive.manifest.files {
             let suppressed = suppressed_types.contains(&file.content_type());
@@ -870,11 +873,15 @@ pub async fn get_bundles_with_update_status(
         &installed_external_hashes,
         &bundle_packages,
     ));
-    let shared_keys = keys_shipped_by_several_bundles(
-        archives
-            .iter()
-            .filter(|a| live_bundles.contains(&a.manifest.name)),
-    );
+    let opt_outs = TypeOptOuts::load(
+        cluster_id,
+        &archives,
+        &live_bundles,
+        &overrides,
+        &installed_keys,
+        ctx,
+    )
+    .await?;
     let mut results = Vec::new();
 
     for archive in archives {
@@ -906,8 +913,7 @@ pub async fn get_bundles_with_update_status(
         }
 
         let opted_in_types = if live_bundles.contains(&archive.manifest.name) {
-            let suppressed =
-                suppressed_content_types(&archive, &overrides_map, &installed_keys, &shared_keys);
+            let suppressed = opt_outs.suppressed(&archive, ctx).await?;
             archive
                 .manifest
                 .files
@@ -991,42 +997,126 @@ fn keys_shipped_by_several_bundles<'a>(
         .collect()
 }
 
-fn suppressed_content_types(
-    archive: &BundleArchive,
-    overrides_map: &HashMap<(String, String), OverrideType>,
-    installed_keys: &HashSet<String>,
-    shared_keys: &HashSet<String>,
-) -> HashSet<ContentType> {
-    let bundle_name = &archive.manifest.name;
-    let mut all_suppressed: HashMap<ContentType, bool> = HashMap::new();
+struct TypeOptOuts<'a> {
+    cluster_id: i64,
+    overrides: &'a [ClusterBundleOverrideRow],
+    stray_overrides: Vec<ClusterBundleOverrideRow>,
+    installed_keys: &'a HashSet<String>,
+    shared_keys: HashSet<String>,
+    remembered: HashMap<String, HashSet<ContentType>>,
+}
 
-    for file in archive.manifest.files.iter().filter(|f| !f.hidden) {
-        let override_type = overrides_map
-            .get(&(bundle_name.clone(), file.kind.package_id()))
-            .copied();
-        let key = file.kind.bundle_key();
-        let installed = installed_keys.contains(&key)
-            || matches!(&file.kind, BundleFileKind::External { file: ext, .. }
-                if installed_keys.contains(&external_bundle_key(&ext.sha1)));
-        if override_type.is_none() && !installed {
-            continue;
-        }
-        if shared_keys.contains(&key) {
-            continue;
+impl<'a> TypeOptOuts<'a> {
+    async fn load(
+        cluster_id: i64,
+        archives: &[BundleArchive],
+        live: &HashSet<String>,
+        overrides: &'a [ClusterBundleOverrideRow],
+        installed_keys: &'a HashSet<String>,
+        ctx: &ContentCtx,
+    ) -> ContentResult<Self> {
+        let shipped: HashSet<(&str, String)> = archives
+            .iter()
+            .flat_map(|a| {
+                a.manifest
+                    .files
+                    .iter()
+                    .map(|f| (a.manifest.name.as_str(), f.kind.package_id()))
+            })
+            .collect();
+        let stray_overrides = overrides
+            .iter()
+            .filter(|o| !shipped.contains(&(o.bundle_name.as_str(), o.package_id.clone())))
+            .cloned()
+            .collect();
+
+        let mut remembered: HashMap<String, HashSet<ContentType>> = HashMap::new();
+        for (bundle_name, content_type) in
+            bundle_dao::list_type_opt_outs(&ctx.db, cluster_id).await?
+        {
+            if let Some(ct) = ContentType::from_repr(content_type as u8) {
+                remembered.entry(bundle_name).or_default().insert(ct);
+            }
         }
 
-        let suppressed = matches!(
-            override_type,
-            Some(OverrideType::Disabled | OverrideType::Removed)
-        );
-        let entry = all_suppressed.entry(file.content_type()).or_insert(true);
-        *entry = *entry && suppressed;
+        Ok(Self {
+            cluster_id,
+            overrides,
+            stray_overrides,
+            installed_keys,
+            shared_keys: keys_shipped_by_several_bundles(
+                archives.iter().filter(|a| live.contains(&a.manifest.name)),
+            ),
+            remembered,
+        })
     }
 
-    all_suppressed
-        .into_iter()
-        .filter_map(|(ct, all)| all.then_some(ct))
-        .collect()
+    fn signals(&self, archive: &BundleArchive) -> (HashSet<ContentType>, HashSet<ContentType>) {
+        let bundle_name = &archive.manifest.name;
+        let mut all_suppressed: HashMap<ContentType, bool> = HashMap::new();
+
+        for file in archive.manifest.files.iter().filter(|f| !f.hidden) {
+            let package_id = file.kind.package_id();
+            let override_type = find_override(self.overrides, bundle_name, &package_id)
+                .or_else(|| find_user_suppression(&self.stray_overrides, &package_id));
+            let key = file.kind.bundle_key();
+            let installed = self.installed_keys.contains(&key)
+                || matches!(&file.kind, BundleFileKind::External { file: ext, .. }
+                    if self.installed_keys.contains(&external_bundle_key(&ext.sha1)));
+            if override_type.is_none() && !installed {
+                continue;
+            }
+            if self.shared_keys.contains(&key) {
+                continue;
+            }
+
+            let suppressed = matches!(
+                override_type,
+                Some(OverrideType::Disabled | OverrideType::Removed)
+            );
+            let entry = all_suppressed.entry(file.content_type()).or_insert(true);
+            *entry = *entry && suppressed;
+        }
+
+        let seen = all_suppressed.keys().copied().collect();
+        let suppressed = all_suppressed
+            .into_iter()
+            .filter_map(|(ct, all)| all.then_some(ct))
+            .collect();
+        (seen, suppressed)
+    }
+
+    async fn suppressed(
+        &self,
+        archive: &BundleArchive,
+        ctx: &ContentCtx,
+    ) -> ContentResult<HashSet<ContentType>> {
+        let bundle_name = &archive.manifest.name;
+        let (seen, mut suppressed) = self.signals(archive);
+        let remembered = self.remembered.get(bundle_name);
+
+        for ct in &seen {
+            let opted_out = suppressed.contains(ct);
+            if opted_out != remembered.is_some_and(|r| r.contains(ct)) {
+                bundle_dao::set_type_opt_out(
+                    &ctx.db,
+                    self.cluster_id,
+                    bundle_name,
+                    *ct as i64,
+                    opted_out,
+                )
+                .await?;
+            }
+        }
+
+        suppressed.extend(
+            remembered
+                .into_iter()
+                .flatten()
+                .filter(|ct| !seen.contains(ct)),
+        );
+        Ok(suppressed)
+    }
 }
 
 /// Stricter than subscription

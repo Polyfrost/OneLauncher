@@ -1615,7 +1615,24 @@ async fn read_cached_version_info(path: &Path) -> Option<VersionInfo> {
 }
 
 fn processor_inputs(info: &VersionInfo) -> Option<serde_json::Value> {
-    serde_json::to_value((&info.processors, &info.data)).ok()
+    let processors = info.processors.as_deref().unwrap_or_default();
+    let refs = processors
+        .iter()
+        .flat_map(|it| &it.args)
+        .chain(info.data.iter().flatten().flat_map(|(_, it)| [&it.client, &it.server]))
+        .filter_map(|it| it.strip_prefix('[')?.strip_suffix(']'));
+    let named: BTreeSet<&str> = processors
+        .iter()
+        .flat_map(|it| std::iter::once(&it.jar).chain(&it.classpath))
+        .map(String::as_str)
+        .chain(refs)
+        .collect();
+    let libraries: Vec<&Library> = info
+        .libraries
+        .iter()
+        .filter(|lib| named.contains(lib.name.as_str()))
+        .collect();
+    serde_json::to_value((&info.processors, &info.data, libraries)).ok()
 }
 
 fn profile_matches_loader(libraries: &[Library], loader: GameLoader) -> bool {
@@ -1686,6 +1703,37 @@ mod tests {
         assert!(profile_matches_loader(&ornithe, GameLoader::Ornithe));
         assert!(!profile_matches_loader(&ornithe, GameLoader::Fabric));
         assert!(!profile_matches_loader(&fabric, GameLoader::Ornithe));
+    }
+
+    #[test]
+    fn a_changed_processor_library_counts_as_changed_input() {
+        let info = |installer: &str, lwjgl: &str| -> VersionInfo {
+            serde_json::from_value(serde_json::json!({
+                "assetIndex": { "id": "1", "sha1": "", "size": 0, "totalSize": 0, "url": "" },
+                "assets": "1",
+                "downloads": {},
+                "id": "1.20.1-47.1.106",
+                "libraries": [
+                    { "name": "net.minecraftforge:installertools:1.3.0", "url": installer },
+                    { "name": "de.oceanlabs.mcp:mcp_config:1.20.1@zip", "url": installer },
+                    { "name": "org.lwjgl:lwjgl:3.3.1", "url": lwjgl },
+                ],
+                "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+                "minimumLauncherVersion": 0,
+                "releaseTime": "2023-06-12T00:00:00Z",
+                "time": "2023-06-12T00:00:00Z",
+                "type": "release",
+                "data": { "MCP": { "client": "[de.oceanlabs.mcp:mcp_config:1.20.1@zip]", "server": "" } },
+                "processors": [
+                    { "jar": "net.minecraftforge:installertools:1.3.0", "classpath": [], "args": ["{MCP}"] },
+                ],
+            }))
+            .unwrap()
+        };
+
+        let installed = processor_inputs(&info("a", "a"));
+        assert_eq!(processor_inputs(&info("a", "b")), installed);
+        assert_ne!(processor_inputs(&info("b", "a")), installed);
     }
 
     fn scratch(tag: &str) -> PathBuf {

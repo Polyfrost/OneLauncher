@@ -9,14 +9,16 @@ use oneclient_events::{GroupedProgressSession, TaskCategory, TaskPhase};
 use futures_util::StreamExt;
 
 use super::{
-    BlockedFile, LooseFile, MODPACK_BUNDLE_NAME, ModpackContents, ModpackManifest,
+    BlockedFile, LooseFile, ModpackContents, ModpackManifest, file_sha1, loose_lock_key,
     tracked_content_type,
 };
 use crate::bundles::install::{
     PresentContent, effective_enabled, find_override, install_bundle_files, install_external,
     remove_artifact_from_cluster,
 };
-use crate::bundles::overrides::{OverrideLayers, sync_file_lock, sync_layered_overrides};
+use crate::bundles::overrides::{
+    OverrideLayers, lock_entries, sync_file_lock, sync_layered_overrides,
+};
 use crate::bundles::{BundleFile, BundleFileKind};
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
@@ -26,7 +28,6 @@ use crate::packages::types::ExternalFile;
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_common::paths;
 
-const LOOSE_LOCK_KEY: &str = "modpack:files";
 const LOOSE_CONCURRENCY: usize = 6;
 
 #[derive(Debug, Clone, Default)]
@@ -34,6 +35,7 @@ pub struct ModpackInstallReport {
     pub installed: usize,
     pub failed: Vec<String>,
     pub blocked: Vec<BlockedFile>,
+    pub kept: Vec<String>,
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
@@ -43,6 +45,7 @@ pub async fn store_modpack_archive(path: &Path, ctx: &ContentCtx) -> ContentResu
 
 struct InstallContext<'a> {
     manifest: &'a ModpackManifest,
+    bundle_name: &'a str,
     cluster: &'a ClusterRow,
     present: &'a PresentContent,
     ctx: &'a ContentCtx,
@@ -53,6 +56,7 @@ pub async fn install_modpack(
     archive_path: &Path,
     manifest: &ModpackManifest,
     cluster_id: i64,
+    bundle_name: &str,
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
 ) -> ContentResult<ModpackInstallReport> {
@@ -66,7 +70,7 @@ pub async fn install_modpack(
         bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
             .await?
             .into_iter()
-            .filter(|row| row.bundle_name.as_deref() == Some(MODPACK_BUNDLE_NAME))
+            .filter(|row| row.bundle_name.as_deref() == Some(bundle_name))
             .filter_map(|row| Some((row.package_id?, (row.hash, row.bundle_version_id?))))
             .collect();
 
@@ -76,7 +80,7 @@ pub async fn install_modpack(
         .iter()
         .filter(|file| {
             let package_id = file.kind.package_id();
-            let user_choice = find_override(&overrides, MODPACK_BUNDLE_NAME, &package_id);
+            let user_choice = find_override(&overrides, bundle_name, &package_id);
             if user_choice == Some(OverrideType::Removed) {
                 return false;
             }
@@ -86,7 +90,11 @@ pub async fn install_modpack(
                     replaced.insert(package_id, hash.clone());
                     true
                 }
-                None => effective_enabled(file, user_choice) && !present.contains(file),
+                None => {
+                    effective_enabled(file, user_choice)
+                        && !present.contains(file)
+                        && !present.has_hash(file_sha1(file))
+                }
             }
         })
         .cloned()
@@ -95,20 +103,14 @@ pub async fn install_modpack(
     let mut report = ModpackInstallReport::default();
     let install = InstallContext {
         manifest,
+        bundle_name,
         cluster: &cluster,
         present: &present,
         ctx,
     };
 
-    let results = install_bundle_files(
-        to_install,
-        cluster_id,
-        MODPACK_BUNDLE_NAME,
-        true,
-        progress,
-        ctx,
-    )
-    .await;
+    let results =
+        install_bundle_files(to_install, cluster_id, bundle_name, true, progress, ctx).await;
     for (file, installed) in results {
         let replaced = replaced.remove(&file.kind.package_id());
         match settle_file(&install, &file, installed, replaced).await {
@@ -121,8 +123,29 @@ pub async fn install_modpack(
         }
     }
 
+    let imported = super::is_imported_bundle(bundle_name);
+    let loose_key = loose_lock_key(bundle_name);
+    let owned = if imported {
+        lock_entries(&root, &loose_key).await
+    } else {
+        HashMap::new()
+    };
+    let mut to_write = Vec::new();
+    for file in &contents.loose {
+        if imported && !owned.contains_key(&file.path) {
+            let dest = root.join(polyio::sanitize_path(&file.path));
+            if polyio::try_exists(&dest).await.unwrap_or(false)
+                && !oneclient_net::matches_on_disk(&dest, &file.sha1).await
+            {
+                report.kept.push(file.path.clone());
+                continue;
+            }
+        }
+        to_write.push(file.clone());
+    }
+
     let game_dir = root.as_path();
-    let loose = futures_util::stream::iter(contents.loose.iter().cloned().map(|file| async move {
+    let loose = futures_util::stream::iter(to_write.into_iter().map(|file| async move {
         let result = install_loose_file(&file, game_dir, progress, ctx).await;
         (file, result)
     }))
@@ -146,22 +169,25 @@ pub async fn install_modpack(
         .iter()
         .map(|file| file.path.clone())
         .collect();
-    sync_file_lock(&root, LOOSE_LOCK_KEY, written, &listed).await;
+    sync_file_lock(&root, &loose_key, written, &listed).await;
 
     let prefixes: Vec<&str> = manifest
         .override_prefixes
         .iter()
         .map(String::as_str)
         .collect();
-    sync_layered_overrides(
+    let synced = sync_layered_overrides(
         archive_path,
-        MODPACK_BUNDLE_NAME,
+        bundle_name,
         &root,
         &prefixes,
         &|rel| tracked_content_type(rel).is_none(),
-        Some(&ctx.events),
+        (!imported).then_some(&ctx.events),
     )
     .await?;
+    if imported {
+        report.kept.extend(synced.conflicts);
+    }
 
     let bundled =
         import_override_content(archive_path, &prefixes, &install, &overrides, &mut report).await?;
@@ -170,7 +196,7 @@ pub async fn install_modpack(
 
     for file in &contents.blocked {
         let suppressed = matches!(
-            find_override(&overrides, MODPACK_BUNDLE_NAME, &file.project_id),
+            find_override(&overrides, bundle_name, &file.project_id),
             Some(OverrideType::Removed | OverrideType::Disabled)
         );
         if present.has_hash(&file.sha1) || suppressed {
@@ -178,7 +204,7 @@ pub async fn install_modpack(
         }
 
         match cached_blocked_file(file, ctx).await {
-            Some(row) => match link_blocked_file(&cluster, file, &row, ctx).await {
+            Some(row) => match link_blocked_file(&cluster, bundle_name, file, &row, ctx).await {
                 Ok(()) => report.installed += 1,
                 Err(err) => {
                     tracing::warn!(file = %file.file_name, error = %err, "could not reuse a cached manual download");
@@ -251,7 +277,7 @@ async fn settle_file(
 }
 
 fn verify_installed(file: &BundleFile, hash: String) -> ContentResult<String> {
-    let expected = super::file_sha1(file);
+    let expected = file_sha1(file);
     if expected.is_empty() || expected == hash {
         return Ok(hash);
     }
@@ -338,7 +364,7 @@ async fn install_direct(
         &ctx.db,
         install.cluster.id,
         &hash,
-        MODPACK_BUNDLE_NAME,
+        install.bundle_name,
         &file.kind.bundle_version_id(),
         &file.kind.package_id(),
     )
@@ -378,7 +404,7 @@ async fn import_override_content(
         let hash = polyio::normalize_hash(&polyio::sha1_bytes(&bytes));
         hashes.push(hash.clone());
         let removed = matches!(
-            find_override(overrides, MODPACK_BUNDLE_NAME, &hash),
+            find_override(overrides, install.bundle_name, &hash),
             Some(OverrideType::Removed | OverrideType::Disabled)
         );
         if removed || install.present.has_hash(&hash) {
@@ -407,7 +433,7 @@ async fn import_override_content(
             &ctx.db,
             install.cluster.id,
             &row.hash,
-            MODPACK_BUNDLE_NAME,
+            install.bundle_name,
             &row.hash,
             &row.hash,
         )
@@ -509,6 +535,7 @@ async fn candidate_files(locations: &[PathBuf]) -> Vec<PathBuf> {
 #[tracing::instrument(level = "debug", skip(found, ctx), fields(files = found.len()))]
 pub async fn import_blocked_files(
     cluster_id: i64,
+    bundle_name: &str,
     found: &[(PathBuf, BlockedFile)],
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<String>> {
@@ -525,7 +552,7 @@ pub async fn import_blocked_files(
             .into());
         }
 
-        link_blocked_file(&cluster, file, &row, ctx).await?;
+        link_blocked_file(&cluster, bundle_name, file, &row, ctx).await?;
         imported.push(row.hash);
     }
 
@@ -534,6 +561,7 @@ pub async fn import_blocked_files(
 
 async fn link_blocked_file(
     cluster: &ClusterRow,
+    bundle_name: &str,
     file: &BlockedFile,
     row: &ArtifactRow,
     ctx: &ContentCtx,
@@ -543,7 +571,7 @@ async fn link_blocked_file(
         &ctx.db,
         cluster.id,
         &row.hash,
-        MODPACK_BUNDLE_NAME,
+        bundle_name,
         &file.version_id,
         &file.project_id,
     )

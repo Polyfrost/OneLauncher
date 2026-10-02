@@ -116,6 +116,7 @@ pub struct ResolvedAlternative {
     pub provider: ProviderId,
     pub project_id: String,
     pub name: String,
+    pub version_id: Option<String>,
     pub version_number: Option<String>,
     pub icon_url: Option<String>,
 }
@@ -126,15 +127,27 @@ impl BadModList {
             return None;
         }
 
-        let authors: Vec<&str> = std::iter::once(project.author.as_str())
-            .chain(project.members.iter().map(|member| member.name.as_str()))
-            .collect();
-
         version
             .primary_file()
             .and_then(|file| self.find(&file.sha1))
             .or_else(|| self.find_project(project.provider, &project.id))
-            .or_else(|| self.find_name_and_author(&project.name, &authors))
+            .or_else(|| self.find_by_name_and_author(project))
+    }
+
+    pub fn find_by_name_and_author(&self, project: &ProjectDetail) -> Option<&BadMod> {
+        let authors: Vec<&str> = std::iter::once(project.author.as_str())
+            .chain(project.members.iter().map(|member| member.name.as_str()))
+            .collect();
+        self.find_name_and_author(&project.name, &authors)
+    }
+
+    pub fn has_name_only_entries(&self) -> bool {
+        self.bad_mods.iter().any(|entry| {
+            entry.hash.is_none()
+                && entry.project_ids.is_empty()
+                && entry.name.is_some()
+                && entry.author.is_some()
+        })
     }
 
     pub fn find(&self, sha1: &str) -> Option<&BadMod> {
@@ -147,7 +160,7 @@ impl BadModList {
         })
     }
 
-    fn find_project(&self, provider: ProviderId, project_id: &str) -> Option<&BadMod> {
+    pub fn find_project(&self, provider: ProviderId, project_id: &str) -> Option<&BadMod> {
         self.bad_mods
             .iter()
             .find(|entry| entry.project_ids.get(provider) == Some(project_id))
@@ -389,6 +402,7 @@ async fn resolve_alternative(
             provider: ProviderId::Modrinth,
             project_id: version.project_id.clone(),
             name,
+            version_id: Some(version.version_id.clone()),
             version_number: Some(version.version_number.clone()),
             icon_url,
         });
@@ -426,11 +440,12 @@ async fn with_newest_version(
         Err(err) => Err(err),
     };
 
-    let version_number = match picked {
-        Ok(pick) => pick.map(|pick| pick.version_number),
+    let (version_id, version_number) = match picked {
+        Ok(Some(pick)) => (Some(pick.version_id), Some(pick.version_number)),
+        Ok(None) => (None, None),
         Err(err) => {
             tracing::warn!(%err, ?provider_id, project_id = %project.id, "failed to pick alternative version");
-            None
+            (None, None)
         }
     };
 
@@ -438,6 +453,7 @@ async fn with_newest_version(
         provider: provider_id,
         project_id: project.id.clone(),
         name: project.name.clone(),
+        version_id,
         version_number,
         icon_url: project.icon_url.clone(),
     }

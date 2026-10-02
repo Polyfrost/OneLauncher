@@ -6,7 +6,7 @@ use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::clusters::ModpackSource;
 
 use crate::components::{ScrollArea, use_shared_delete};
-use crate::hooks::use_cluster;
+use crate::hooks::{settled_or_loading, use_cluster, use_clusters};
 use crate::hooks::{
     ALL_VERSIONS, VERSIONS_PAGE_SIZE, bundle_overrides_map, bundles_with_status_items,
     cluster_content_items, content_type_for_slug, package_meta_batch, project_detail,
@@ -19,9 +19,9 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 
 use super::{
-    EnableButton, EnableVariant, Installed, InstalledVersion, ModpackVersionPrompt, PackageBanner,
-    Thumbnail, WorldInstallPrompt, activity_badge, installed_badge, installed_map,
-    minecraft_choices, preferred_version,
+    EnableButton, EnableVariant, Installed, InstalledVersion, ModpackInstancePrompt,
+    ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt, activity_badge,
+    installed_badge, installed_map, instance_choices, minecraft_choices, preferred_version,
 };
 use crate::utils::abbreviate_number;
 
@@ -44,6 +44,7 @@ struct Installer {
     world_prompt: Option<State<Option<String>>>,
     modpack: bool,
     modpack_prompt: Option<State<bool>>,
+    import_prompt: Option<State<bool>>,
 }
 
 impl Installer {
@@ -160,6 +161,8 @@ impl Component for BrowserPackage {
         let confirm = use_link_confirm();
         let world_prompt = use_state(|| None::<String>);
         let modpack_prompt = use_state(|| false);
+        let import_prompt = use_state(|| false);
+        let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
         let is_datapack = content_type == ContentType::DataPack;
         let mut installer = Installer {
             dispatch: dispatch.clone(),
@@ -168,6 +171,7 @@ impl Component for BrowserPackage {
             world_prompt: is_datapack.then_some(world_prompt),
             modpack: content_type == ContentType::Modpack,
             modpack_prompt: None,
+            import_prompt: (content_type == ContentType::Modpack).then_some(import_prompt),
         };
 
         let cluster = use_cluster(cluster_id);
@@ -349,6 +353,12 @@ impl Component for BrowserPackage {
                 project_id: project_id.clone(),
                 choices,
                 open: modpack_prompt,
+            }))
+            .maybe_child(import_prompt.read().then(|| ModpackInstancePrompt {
+                provider,
+                project_id: project_id.clone(),
+                choices: instance_choices(&all_versions, &clusters),
+                open: import_prompt,
             }))
             .into_element()
     }

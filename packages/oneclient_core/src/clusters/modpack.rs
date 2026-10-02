@@ -132,6 +132,7 @@ pub async fn install_modpack_instance(
         &prepared.archive_path,
         &prepared.manifest,
         cluster_id,
+        modpacks::MODPACK_BUNDLE_NAME,
         progress,
         &content,
     )
@@ -189,8 +190,15 @@ pub async fn update_modpack_cluster(
         .into());
     }
 
-    let report =
-        modpacks::install_modpack(&archive_path, &manifest, cluster_id, progress, &content).await?;
+    let report = modpacks::install_modpack(
+        &archive_path,
+        &manifest,
+        cluster_id,
+        modpacks::MODPACK_BUNDLE_NAME,
+        progress,
+        &content,
+    )
+    .await?;
 
     let loader_version = match &manifest.loader_version {
         Some(version) if cluster.mc_loader_version.as_ref() != Some(version) => {
@@ -239,14 +247,21 @@ pub async fn repair_modpack_cluster(
     let archive_path = artifact_absolute_path(&artifact.path)?;
     let manifest = modpacks::read_modpack(&archive_path, &content).await?;
 
-    let report =
-        modpacks::install_modpack(&archive_path, &manifest, cluster_id, progress, &content).await?;
+    let report = modpacks::install_modpack(
+        &archive_path,
+        &manifest,
+        cluster_id,
+        modpacks::MODPACK_BUNDLE_NAME,
+        progress,
+        &content,
+    )
+    .await?;
     restore_missing_icon(state, &cluster).await;
 
     Ok(ModpackCluster { cluster, report })
 }
 
-async fn fetch_project(
+pub(super) async fn fetch_project(
     state: &Arc<LauncherState>,
     release: &ModpackRelease,
 ) -> LauncherResult<ProjectDetail> {

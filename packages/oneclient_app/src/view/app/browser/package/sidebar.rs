@@ -30,6 +30,7 @@ pub(super) fn sidebar(
         _ => false,
     };
     let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
+    let import_prompt = installer.import_prompt;
     let enable = installed
         .as_ref()
         .and_then(Installed::disabled_bundled)
@@ -130,6 +131,16 @@ pub(super) fn sidebar(
                 })
                 .into_element(),
         })
+        .maybe_child(import_prompt.map(|mut prompt| {
+            Button::new()
+                .secondary()
+                .width(Size::fill())
+                .enabled(!installing && !waiting)
+                .on_press(move |_| prompt.set(true))
+                .child(Icon::new(IconType::Plus).size(14.))
+                .text("Add to an instance")
+                .into_element()
+        }))
         .maybe(
             !project.members.is_empty() || !project.author.is_empty(),
             |el| el.child(authors_card(&project, confirm)),

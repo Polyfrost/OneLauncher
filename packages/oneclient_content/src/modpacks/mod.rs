@@ -2,6 +2,8 @@ mod checker;
 mod curseforge;
 mod install;
 mod mrpack;
+mod remove;
+mod screen;
 mod update;
 
 use std::collections::{HashMap, HashSet};
@@ -12,7 +14,7 @@ use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::PackageError;
 use crate::packages::types::ExternalFile;
-use oneclient_common::domain::{ContentType, GameLoader};
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
 pub use update::{
     ModpackRelease, ModpackUpdateStatus, check_modpack_update, cluster_modpack, identify_modpack,
@@ -22,8 +24,48 @@ pub use install::{
     ModpackInstallReport, find_blocked_downloads, import_blocked_files, install_modpack,
     store_modpack_archive,
 };
+pub use remove::remove_modpack_files;
+pub use screen::{FlaggedPackFile, bundled_mods, screen_modpack};
 
 pub const MODPACK_BUNDLE_NAME: &str = "modpack";
+const IMPORTED_PREFIX: &str = "modpack:";
+
+#[must_use]
+pub fn imported_bundle_name(release: Option<(ProviderId, &str)>, pack_name: &str) -> String {
+    match release {
+        Some((provider, project_id)) => {
+            format!("{IMPORTED_PREFIX}{}:{project_id}", provider.dir_name())
+        }
+        None => format!("{IMPORTED_PREFIX}file:{}", slug(pack_name)),
+    }
+}
+
+#[must_use]
+pub fn is_imported_bundle(bundle_name: &str) -> bool {
+    bundle_name.starts_with(IMPORTED_PREFIX)
+}
+
+fn slug(text: &str) -> String {
+    let slug = text
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect::<String>()
+        .split('-')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("-");
+    if slug.is_empty() {
+        "pack".to_string()
+    } else {
+        slug
+    }
+}
+
+fn loose_lock_key(bundle_name: &str) -> String {
+    format!("{bundle_name}:files")
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModpackFormat {
@@ -196,6 +238,22 @@ mod tests {
         assert!(!is_safe_relative_path("C:/Windows/evil.dll"));
         assert!(!is_safe_relative_path("mods//evil.jar"));
         assert!(!is_safe_relative_path(""));
+    }
+
+    #[test]
+    fn imported_packs_get_their_own_bundle_name() {
+        assert_eq!(
+            imported_bundle_name(Some((ProviderId::Modrinth, "AANobbMI")), "Whatever"),
+            "modpack:modrinth:AANobbMI"
+        );
+        assert_eq!(
+            imported_bundle_name(None, "Better MC [FORGE] 1.20"),
+            "modpack:file:better-mc-forge-1-20"
+        );
+        assert_eq!(imported_bundle_name(None, "✨"), "modpack:file:pack");
+        assert!(is_imported_bundle("modpack:file:pack"));
+        assert!(!is_imported_bundle(MODPACK_BUNDLE_NAME));
+        assert_eq!(loose_lock_key(MODPACK_BUNDLE_NAME), "modpack:files");
     }
 
     #[test]

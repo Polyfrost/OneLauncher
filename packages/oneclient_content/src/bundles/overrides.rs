@@ -261,6 +261,14 @@ pub(crate) async fn sync_layered_overrides(
     Ok(report)
 }
 
+pub(crate) async fn lock_entries(root: &Path, key: &str) -> HashMap<String, String> {
+    OverrideLock::load(root)
+        .await
+        .bundles
+        .remove(key)
+        .unwrap_or_default()
+}
+
 pub(crate) async fn sync_file_lock(
     root: &Path,
     key: &str,

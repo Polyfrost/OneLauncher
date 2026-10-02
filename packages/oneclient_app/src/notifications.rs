@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 use oneclient_content::modpacks::{BlockedFile, ModpackSummary};
 use oneclient_content::packages::ProviderId;
 use oneclient_core::BrowserPackageUpdate;
+use oneclient_core::clusters::FlaggedPackMod;
 use oneclient_db::models::{ClusterId, OptionalModStatus};
 use oneclient_events::{
     Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
@@ -78,12 +79,29 @@ pub struct ModpackConfirm {
     pub loader: String,
     pub source: String,
     pub summary: ModpackSummary,
+    pub import: Option<ModpackImportView>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FlaggedChoice {
+    #[default]
+    Skip,
+    Keep,
+    Replace(usize),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ModpackImportView {
+    pub cluster_name: String,
+    pub previous_version: Option<String>,
+    pub flagged: Vec<FlaggedPackMod>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct BlockedDownloads {
     pub cluster_id: ClusterId,
     pub cluster_name: String,
+    pub bundle_name: String,
     pub files: Vec<BlockedFile>,
     pub added: HashSet<String>,
     pub open_when_done: bool,
@@ -1223,6 +1241,7 @@ mod package_update_tests {
         state.open_blocked_downloads(BlockedDownloads {
             cluster_id: 7,
             cluster_name: "Pack".into(),
+            bundle_name: oneclient_content::modpacks::MODPACK_BUNDLE_NAME.into(),
             files: vec![blocked_file("aa"), blocked_file("bb")],
             added: HashSet::new(),
             open_when_done: true,

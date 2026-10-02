@@ -4,7 +4,7 @@ use freya::prelude::*;
 use oneclient_common::version::parse_mc_version;
 use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ReleaseType, VersionSummary};
-use oneclient_core::clusters::ModpackSource;
+use oneclient_core::clusters::{Cluster, ModpackSource};
 
 use crate::components::{Button, Icon, IconType, ScrollArea};
 use crate::hooks::use_dispatch;
@@ -81,6 +81,145 @@ fn push_choice(choices: &mut Vec<MinecraftChoice>, mc: &str, pick: &VersionSumma
     });
 }
 
+#[derive(Clone, PartialEq)]
+pub(crate) struct InstanceChoice {
+    cluster_id: i64,
+    name: String,
+    detail: String,
+    version_id: String,
+}
+
+fn fits_cluster(version: &VersionSummary, cluster: &Cluster) -> bool {
+    if !version.game_versions.contains(&cluster.mc_version) {
+        return false;
+    }
+    if cluster.mc_loader.is_modded() {
+        version.loaders.contains(&cluster.mc_loader)
+    } else {
+        version.loaders.iter().all(|loader| !loader.is_modded())
+    }
+}
+
+pub(crate) fn instance_choices(
+    versions: &[VersionSummary],
+    clusters: &[Cluster],
+) -> Vec<InstanceChoice> {
+    clusters
+        .iter()
+        .filter_map(|cluster| {
+            let fitting = || versions.iter().filter(|v| fits_cluster(v, cluster));
+            let pick = fitting()
+                .find(|v| matches!(v.release_type, ReleaseType::Release))
+                .or_else(|| fitting().next())?;
+            let loader = if cluster.mc_loader.is_modded() {
+                cluster.mc_loader.to_string()
+            } else {
+                "Vanilla".to_string()
+            };
+            Some(InstanceChoice {
+                cluster_id: cluster.id,
+                name: cluster.name.clone(),
+                detail: format!(
+                    "Minecraft {}  ·  {loader}  ·  pack {}",
+                    cluster.mc_version, pick.version_number
+                ),
+                version_id: pick.version_id.clone(),
+            })
+        })
+        .collect()
+}
+
+#[derive(PartialEq)]
+pub(crate) struct ModpackInstancePrompt {
+    pub provider: ProviderId,
+    pub project_id: String,
+    pub choices: Vec<InstanceChoice>,
+    pub open: State<bool>,
+}
+
+impl Component for ModpackInstancePrompt {
+    fn render(&self) -> impl IntoElement {
+        let provider = self.provider;
+        let project_id = self.project_id.clone();
+        let mut open = self.open;
+        let dispatch = use_dispatch();
+        let mut selected = use_state(|| 0usize);
+        let current = (*selected.read()).min(self.choices.len().saturating_sub(1));
+
+        let rows: Vec<Element> = self
+            .choices
+            .iter()
+            .enumerate()
+            .map(|(i, choice)| {
+                radio_row(
+                    choice.name.clone(),
+                    choice.detail.clone(),
+                    i == current,
+                    move || selected.set(i),
+                )
+                .into_element()
+            })
+            .collect();
+        let control = (!rows.is_empty()).then(|| {
+            let shown = self.choices.len().min(VISIBLE_ROWS) as f32;
+            let list_h = shown * ROW_H + (shown - 1.).max(0.) * ROW_GAP;
+            ScrollArea::new()
+                .width(Size::fill())
+                .height(Size::px(list_h))
+                .spacing(ROW_GAP)
+                .children(rows)
+                .into_element()
+        });
+
+        let picked = self
+            .choices
+            .get(current)
+            .map(|c| (c.cluster_id, c.version_id.clone()));
+        let can_add = picked.is_some();
+        let add = move |_| {
+            let Some((cluster_id, version_id)) = picked.clone() else {
+                return;
+            };
+            dispatch.import_modpack(
+                cluster_id,
+                ModpackSource::Provider {
+                    provider,
+                    project_id: project_id.clone(),
+                    version_id,
+                },
+            );
+            open.set(false);
+        };
+
+        let body = if can_add {
+            "Its mods are added next to the ones already in the instance. Only instances with a matching Minecraft version and loader are listed."
+        } else {
+            "None of your instances use a Minecraft version and loader this pack is made for."
+        };
+
+        dialog(
+            "Add to which instance?".to_string(),
+            body.to_string(),
+            control,
+            move || open.set(false),
+            [
+                Button::new()
+                    .secondary()
+                    .on_press(move |_| open.set(false))
+                    .text("Cancel")
+                    .into_element(),
+                Button::new()
+                    .primary()
+                    .enabled(can_add)
+                    .on_press(add)
+                    .child(Icon::new(IconType::Plus).size(14.))
+                    .text("Add")
+                    .into_element(),
+            ],
+        )
+    }
+}
+
 #[derive(PartialEq)]
 pub(crate) struct ModpackVersionPrompt {
     pub provider: ProviderId,
@@ -154,6 +293,20 @@ impl Component for ModpackVersionPrompt {
 fn choice_row(
     choice: &MinecraftChoice,
     active: bool,
+    on_select: impl FnMut() + 'static,
+) -> impl IntoElement {
+    radio_row(
+        format!("Minecraft {}", choice.mc),
+        choice.detail.clone(),
+        active,
+        on_select,
+    )
+}
+
+fn radio_row(
+    title: String,
+    detail: String,
+    active: bool,
     mut on_select: impl FnMut() + 'static,
 ) -> impl IntoElement {
     let ring = if active {
@@ -195,7 +348,7 @@ fn choice_row(
                 .spacing(2.)
                 .child(
                     label()
-                        .text(format!("Minecraft {}", choice.mc))
+                        .text(title)
                         .font_size(13.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
@@ -203,7 +356,7 @@ fn choice_row(
                 )
                 .child(
                     label()
-                        .text(choice.detail.clone())
+                        .text(detail)
                         .font_size(11.)
                         .max_lines(1)
                         .color(colors::fg_secondary()),

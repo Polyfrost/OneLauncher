@@ -560,7 +560,7 @@ mod tests {
                 .collect(),
             archive: archive("performance", true, files),
             has_updates: false,
-            opted_in: true,
+            opted_in_types: [ContentType::Mod].into(),
         }]
     }
 

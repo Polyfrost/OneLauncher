@@ -243,3 +243,58 @@ pub async fn list_overrides(
     .fetch_all(pool)
     .await
 }
+
+pub async fn list_type_opt_outs(
+    pool: &SqlitePool,
+    cluster_id: i64,
+) -> Result<Vec<(String, i64)>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT bundle_name, content_type
+        FROM cluster_bundle_type_opt_outs
+        WHERE cluster_id = ?
+        "#,
+        cluster_id
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.bundle_name, r.content_type))
+        .collect())
+}
+
+pub async fn set_type_opt_out(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    bundle_name: &str,
+    content_type: i64,
+    opted_out: bool,
+) -> Result<(), sqlx::Error> {
+    if opted_out {
+        sqlx::query!(
+            r#"
+            INSERT OR IGNORE INTO cluster_bundle_type_opt_outs (cluster_id, bundle_name, content_type)
+            VALUES (?, ?, ?)
+            "#,
+            cluster_id,
+            bundle_name,
+            content_type
+        )
+        .execute(pool)
+        .await?;
+    } else {
+        sqlx::query!(
+            r#"
+            DELETE FROM cluster_bundle_type_opt_outs
+            WHERE cluster_id = ? AND bundle_name = ? AND content_type = ?
+            "#,
+            cluster_id,
+            bundle_name,
+            content_type
+        )
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}

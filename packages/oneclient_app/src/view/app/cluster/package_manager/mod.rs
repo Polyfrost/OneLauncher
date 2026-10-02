@@ -145,7 +145,7 @@ pub fn bundle_packages(
     }
 
     let mut ordered: Vec<&BundleWithUpdateStatus> = bundles.iter().collect();
-    ordered.sort_by_key(|b| !b.opted_in);
+    ordered.sort_by_key(|b| !b.opted_in_types.contains(&content_type));
 
     let mut rows = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
@@ -202,7 +202,8 @@ pub fn bundle_packages(
                 vec![category.clone()]
             };
 
-            let opted_in = installed_info.is_some() || bundle.opted_in;
+            let opted_in =
+                installed_info.is_some() || bundle.opted_in_types.contains(&content_type);
             let mut row = make_row(
                 pid,
                 Some(bundle_name.clone()),
@@ -711,7 +712,11 @@ mod tests {
                 .collect(),
             archive: archive(category, true, files),
             has_updates: false,
-            opted_in,
+            opted_in_types: if opted_in {
+                [ContentType::Mod].into()
+            } else {
+                HashSet::new()
+            },
         }
     }
 

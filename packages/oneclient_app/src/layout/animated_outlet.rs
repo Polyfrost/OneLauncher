@@ -43,6 +43,8 @@ fn is_cluster_route(route: &Route) -> bool {
             | Route::ClusterMods { .. }
             | Route::ClusterShaders { .. }
             | Route::ClusterTextures { .. }
+            | Route::ClusterWorlds { .. }
+            | Route::ClusterDataPacks { .. }
             | Route::ClusterSettings { .. }
     )
 }
@@ -252,7 +254,7 @@ impl Component for AnimatedAppOutlet {
             .height(Size::fill())
             .overflow(Overflow::Clip)
             .on_global_key_down(on_global_key)
-            .on_global_pointer_press(on_global_pointer)
+            .on_global_pointer_up(on_global_pointer)
             .maybe_child(overlay)
             .child(column)
     }

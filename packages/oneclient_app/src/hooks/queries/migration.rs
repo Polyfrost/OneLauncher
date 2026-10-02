@@ -27,10 +27,13 @@ impl QueryCapability for MigrationQuery {
                 if instance.mc_version.is_empty() {
                     continue;
                 }
-                let resolved =
+                let (version, loader) =
                     resolve_migration_chain(&instance.mc_version, instance.mc_loader, &rules);
-                if resolved != instance.mc_version {
-                    instance.target_mc_version = Some(resolved);
+                if version != instance.mc_version {
+                    instance.target_mc_version = Some(version);
+                }
+                if loader != instance.mc_loader {
+                    instance.target_mc_loader = Some(loader);
                 }
             }
         }

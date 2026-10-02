@@ -2,14 +2,15 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::components::{
-    AccountSwitcher, ClusterUpdatePopup, ControlCenter, GenericPromptOverlay, JavaPromptOverlay,
-    MicrosoftJavaPromptOverlay, NotificationCenter, OptionalModsPopup, PackageUpdatePopup,
+    AccountSwitcher, BlockedDownloadsPopup, ClusterUpdatePopup, ControlCenter, FlaggedInstallPopup,
+    GenericPromptOverlay, JavaPromptOverlay, MicrosoftJavaPromptOverlay, ModpackConfirmPopup,
+    NotificationCenter, OptionalModsPopup, PackageUpdatePopup, ReleaseMigrationPopup,
     SplashCurtain, StatusBar, Toasts, TooltipHost, UpdatePromptOverlay, use_provide_tooltips,
 };
 #[cfg(not(target_os = "macos"))]
 use crate::hooks::use_start_maximized;
 use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
-use crate::layout::{HomeArtPrefetch, PendingLaunchDriver};
+use crate::layout::{HomeArtPrefetch, PendingLaunchDriver, use_ipc_commands};
 use crate::motion::AnimationClockDriver;
 use crate::routes::Route;
 use crate::theme;
@@ -25,6 +26,7 @@ impl Component for RootLayout {
         use_provide_splash(SplashState { active, home_ready });
         use_provide_overlay_claims();
         use_provide_tooltips();
+        use_ipc_commands();
 
         rect()
             .width(Size::fill())
@@ -50,7 +52,11 @@ impl Component for RootLayout {
             .child(GenericPromptOverlay)
             .child(ClusterUpdatePopup)
             .child(OptionalModsPopup)
+            .child(BlockedDownloadsPopup)
+            .child(ModpackConfirmPopup)
             .child(PackageUpdatePopup)
+            .child(FlaggedInstallPopup)
+            .child(ReleaseMigrationPopup)
             .child(StatusBar)
             .child(TooltipHost)
             .child(SplashCurtain)

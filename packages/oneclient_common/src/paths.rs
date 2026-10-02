@@ -14,7 +14,8 @@ const APPLICATION: &str = "OneClient";
 #[cfg(debug_assertions)]
 const APPLICATION: &str = "OneClient-dev";
 
-const SETTINGS_FILE: &str = "settings.json";
+pub const SETTINGS_FILE: &str = "settings.json";
+pub const DATABASE_FILE: &str = "user_data.db";
 
 static DEFAULT_DIR: OnceLock<PathBuf> = OnceLock::new();
 static CONFIG_DIR_OVERRIDE: OnceLock<PathBuf> = OnceLock::new();
@@ -35,7 +36,8 @@ fn organization_dir() -> PathsResult<PathBuf> {
         .ok_or(PathsError::DataDirUnavailable)
 }
 
-fn legacy_dir() -> Option<PathBuf> {
+#[must_use]
+pub fn legacy_dir() -> Option<PathBuf> {
     ProjectDirs::from(QUALIFIER, ORGANIZATION, APPLICATION)
         .map(|dirs| dirs.data_local_dir().to_path_buf())
 }
@@ -47,6 +49,10 @@ fn resolve_default_dir() -> PathsResult<PathBuf> {
         return Ok(legacy);
     }
 
+    standard_dir()
+}
+
+pub fn standard_dir() -> PathsResult<PathBuf> {
     Ok(organization_dir()?.join(APPLICATION))
 }
 
@@ -87,7 +93,7 @@ pub fn picker_start_dir() -> Option<PathBuf> {
 }
 
 pub fn database_file() -> PathsResult<PathBuf> {
-    Ok(data_dir()?.join("user_data.db"))
+    Ok(data_dir()?.join(DATABASE_FILE))
 }
 
 pub fn settings_file() -> PathsResult<PathBuf> {
@@ -114,12 +120,18 @@ pub fn clusters_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join("clusters"))
 }
 
+pub fn cluster_trash_dir() -> PathsResult<PathBuf> {
+    Ok(data_dir()?.join(".trash"))
+}
+
 pub fn shared_minecraft_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join(".minecraft"))
 }
 
 /// Presence marks a cluster folder as its own game dir instead of the shared `.minecraft`
 pub const DEDICATED_MARKER: &str = ".dedicated_directory";
+
+pub const INSTANCE_FILE: &str = ".instance.json";
 
 pub fn cluster_dir(folder_name: &str) -> PathsResult<PathBuf> {
     Ok(clusters_dir()?.join(folder_name))
@@ -131,8 +143,8 @@ pub fn cluster_uses_dedicated_dir(folder_name: &str) -> bool {
 
 /// Lives here not on `Cluster` so the content layer can resolve it from a bare
 /// `ClusterRow` without duplicating the marker-file rule
-pub fn cluster_game_dir(folder_name: &str) -> PathsResult<PathBuf> {
-    if cluster_uses_dedicated_dir(folder_name) {
+pub fn cluster_game_dir(folder_name: &str, isolated: bool) -> PathsResult<PathBuf> {
+    if isolated || cluster_uses_dedicated_dir(folder_name) {
         cluster_dir(folder_name)
     } else {
         shared_minecraft_dir()
@@ -195,8 +207,12 @@ pub fn versions_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join("metadata").join("versions"))
 }
 
+pub fn metadata_dir() -> PathsResult<PathBuf> {
+    Ok(data_dir()?.join("metadata"))
+}
+
 pub fn libraries_dir() -> PathsResult<PathBuf> {
-    Ok(data_dir()?.join("metadata").join("libraries"))
+    Ok(metadata_dir()?.join("libraries"))
 }
 
 pub fn natives_dir() -> PathsResult<PathBuf> {

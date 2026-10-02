@@ -6,7 +6,8 @@ use serde::Deserialize;
 
 use crate::bundles::error::BundleError;
 use crate::bundles::types::{
-    BundleFile, BundleFileKind, BundleManifest, content_type_from_bundle_path,
+    BundleFile, BundleFileKind, BundleFileType, BundleManifest, ExternalFileMeta,
+    content_type_from_bundle_path,
 };
 use crate::error::ContentResult;
 use crate::packages::types::ExternalFile;
@@ -32,6 +33,8 @@ struct PolyMrpackManifest {
     pub version_id: String,
     pub name: String,
     #[serde(default)]
+    pub java_version_override: Option<u32>,
+    #[serde(default)]
     pub dependencies: HashMap<String, String>,
     #[serde(default)]
     pub files: Vec<PolyMrpackFile>,
@@ -49,6 +52,24 @@ struct PolyMrpackFile {
     pub enabled: bool,
     #[serde(default)]
     pub hidden: bool,
+    #[serde(rename = "type", default)]
+    pub file_type: Option<BundleFileType>,
+    #[serde(default)]
+    pub id: Option<String>,
+    #[serde(default)]
+    pub overrides: Option<PolyMrpackFileOverrides>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+struct PolyMrpackFileOverrides {
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub description: Option<String>,
+    #[serde(default)]
+    pub authors: Vec<String>,
+    #[serde(default)]
+    pub icon: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -97,37 +118,90 @@ fn parse_manifest_bytes(bytes: &[u8]) -> ContentResult<BundleManifest> {
         loader,
         loader_version,
         enabled: manifest.enabled,
+        java_version_override: manifest.java_version_override,
         files,
     })
+}
+
+pub(crate) struct PackDependencies {
+    pub(crate) mc_version: Option<String>,
+    pub(crate) loader: Option<(GameLoader, String)>,
+}
+
+pub(crate) fn scan_dependencies(
+    deps: &HashMap<String, String>,
+    accept: impl Fn(GameLoader) -> bool,
+) -> PackDependencies {
+    let mut scanned = PackDependencies {
+        mc_version: None,
+        loader: None,
+    };
+
+    for (key, value) in deps {
+        let normalized = key.to_lowercase().replace(['_', '.', ' ', '-'], "");
+        if normalized == "minecraft" {
+            scanned.mc_version = Some(value.clone());
+        } else if let Ok(parsed) = GameLoader::from_str(&normalized)
+            && accept(parsed)
+        {
+            scanned.loader = Some((parsed, value.clone()));
+        }
+    }
+
+    scanned
 }
 
 fn parse_dependencies(
     deps: &HashMap<String, String>,
 ) -> ContentResult<(String, GameLoader, String)> {
-    let mut mc_version = None;
-    let mut loader = None;
-    let mut loader_version = None;
-
-    for (key, value) in deps {
-        let normalized = key.to_lowercase().replace(['_', '.', ' ', '-'], "");
-        if normalized == "minecraft" {
-            mc_version = Some(value.clone());
-        } else if let Ok(parsed) = GameLoader::from_str(&normalized) {
-            loader = Some(parsed);
-            loader_version = Some(value.clone());
-        }
-    }
+    let scanned = scan_dependencies(deps, |_| true);
+    let (loader, loader_version) = scanned.loader.ok_or(BundleError::InvalidManifest)?;
 
     Ok((
-        mc_version.ok_or(BundleError::InvalidManifest)?,
-        loader.ok_or(BundleError::InvalidManifest)?,
-        loader_version.ok_or(BundleError::InvalidManifest)?,
+        scanned.mc_version.ok_or(BundleError::InvalidManifest)?,
+        loader,
+        loader_version,
     ))
 }
 
 fn parse_bundle_file(file: &PolyMrpackFile) -> Option<BundleFile> {
-    if let Some(url) = file
-        .downloads
+    let mut kind = mrpack_file_kind(
+        &file.path,
+        &file.downloads,
+        &file.hashes.sha1,
+        file.file_size,
+    )?;
+
+    if let BundleFileKind::External { id, meta, .. } = &mut kind {
+        *id = non_blank(file.id.as_deref()).map(|id| {
+            if id.starts_with(EXTERNAL_ID_PREFIX) {
+                id
+            } else {
+                format!("{EXTERNAL_ID_PREFIX}{id}")
+            }
+        });
+        *meta = file.overrides.as_ref().and_then(external_meta);
+    }
+
+    Some(BundleFile {
+        enabled: file.enabled,
+        hidden: file.hidden,
+        path: file.path.clone(),
+        size: file.file_size,
+        file_type: file.file_type.unwrap_or_default(),
+        kind,
+    })
+}
+
+pub(crate) fn mrpack_file_kind(
+    path: &str,
+    downloads: &[String],
+    sha1: &str,
+    size: u64,
+) -> Option<BundleFileKind> {
+    let sha1 = sha1.to_ascii_lowercase();
+
+    if let Some(url) = downloads
         .iter()
         .find(|url| url.starts_with(MODRINTH_CDN_PREFIX))
     {
@@ -135,42 +209,52 @@ fn parse_bundle_file(file: &PolyMrpackFile) -> Option<BundleFile> {
             .split('/')
             .collect::<Vec<_>>();
         if paths.len() >= 4 {
-            return Some(BundleFile {
-                enabled: file.enabled,
-                hidden: file.hidden,
-                path: file.path.clone(),
-                size: file.file_size,
-                kind: BundleFileKind::Managed {
-                    provider: ProviderId::Modrinth,
-                    project_id: paths[0].to_string(),
-                    version_id: paths[2].to_string(),
-                    sha1: file.hashes.sha1.to_ascii_lowercase(),
-                },
+            return Some(BundleFileKind::Managed {
+                provider: ProviderId::Modrinth,
+                project_id: paths[0].to_string(),
+                version_id: paths[2].to_string(),
+                sha1,
             });
         }
         tracing::error!("invalid modrinth file URL in bundle: '{url}'");
         return None;
     }
 
-    let download_url = file.downloads.first().cloned()?;
-    let file_name = file
-        .path
-        .split('/')
-        .next_back()
-        .unwrap_or(&file.path)
-        .to_string();
+    let download_url = downloads.first().cloned()?;
+    let file_name = path.split('/').next_back().unwrap_or(path).to_string();
 
-    Some(BundleFile {
-        enabled: file.enabled,
-        hidden: file.hidden,
-        path: file.path.clone(),
-        size: file.file_size,
-        kind: BundleFileKind::External(ExternalFile {
+    Some(BundleFileKind::External {
+        file: ExternalFile {
             name: file_name,
             url: download_url,
-            sha1: file.hashes.sha1.to_ascii_lowercase(),
-            size: file.file_size,
-            content_type: content_type_from_bundle_path(&file.path),
-        }),
+            sha1,
+            size,
+            content_type: content_type_from_bundle_path(path),
+        },
+        id: None,
+        meta: None,
     })
+}
+
+const EXTERNAL_ID_PREFIX: &str = "ext:";
+
+fn non_blank(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn external_meta(overrides: &PolyMrpackFileOverrides) -> Option<ExternalFileMeta> {
+    let meta = ExternalFileMeta {
+        name: non_blank(overrides.name.as_deref()),
+        description: non_blank(overrides.description.as_deref()),
+        authors: overrides
+            .authors
+            .iter()
+            .filter_map(|author| non_blank(Some(author)))
+            .collect(),
+        icon_url: non_blank(overrides.icon.as_deref()),
+    };
+    (meta != ExternalFileMeta::default()).then_some(meta)
 }

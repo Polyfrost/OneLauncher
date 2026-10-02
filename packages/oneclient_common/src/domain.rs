@@ -63,6 +63,11 @@ impl ContentType {
     }
 
     #[must_use]
+    pub const fn needs_mod_loader(self) -> bool {
+        matches!(self, Self::Mod | Self::Shader)
+    }
+
+    #[must_use]
     pub const fn reloads_in_game(self) -> bool {
         matches!(self, Self::ResourcePack | Self::Shader)
     }
@@ -280,7 +285,7 @@ impl Display for GameLoader {
             Self::NeoForge => "NeoForge",
             Self::Quilt => "Quilt",
             Self::Fabric => "Fabric",
-            Self::Ornithe => "Fabric (Ornithe)",
+            Self::Ornithe => "Fabric",
         })
     }
 }
@@ -312,7 +317,7 @@ mod tests {
 
     #[test]
     fn a_display_name_is_not_a_metadata_path() {
-        assert_eq!(GameLoader::Ornithe.to_string(), "Fabric (Ornithe)");
+        assert_eq!(GameLoader::Ornithe.to_string(), "Fabric");
         assert_eq!(GameLoader::Ornithe.get_format_name(), "ornithe");
         assert_eq!(GameLoader::Vanilla.get_format_name(), "minecraft");
         assert_eq!(GameLoader::NeoForge.get_format_name(), "neo");

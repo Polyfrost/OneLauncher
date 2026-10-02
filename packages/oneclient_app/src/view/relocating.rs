@@ -114,12 +114,7 @@ fn moved(outcome: &RelocationOutcome, actions: Actions) -> Element {
             buttons().child(back_button(actions)).child(
                 Button::new()
                     .primary()
-                    .on_press(|_| {
-                        let platform = Platform::get();
-                        Platform::get().with_window(Platform::window_id(), move |window| {
-                            platform.close_window(window.id());
-                        });
-                    })
+                    .on_press(|_| crate::platform::quit())
                     .text("Quit OneClient"),
             ),
         )

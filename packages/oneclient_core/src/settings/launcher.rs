@@ -13,6 +13,32 @@ pub enum ViewLayout {
     List,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum LaunchBehaviour {
+    #[default]
+    KeepVisible,
+    HideWhilePlaying,
+    CloseLauncher,
+}
+
+impl LaunchBehaviour {
+    pub const ALL: [Self; 3] = [
+        Self::KeepVisible,
+        Self::HideWhilePlaying,
+        Self::CloseLauncher,
+    ];
+
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::KeepVisible => "Keep visible",
+            Self::HideWhilePlaying => "Hide while playing",
+            Self::CloseLauncher => "Close completely",
+        }
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq, Default)]
 #[serde(default)]
 pub struct ViewState {
@@ -33,6 +59,9 @@ pub struct LauncherSettings {
     pub max_concurrent_requests: usize,
     pub global_game_settings: GameSettingsProfile,
     pub allow_parallel_running_clusters: bool,
+    pub launch_behaviour: LaunchBehaviour,
+    pub run_in_background: bool,
+    pub show_tray_icon: bool,
     pub dynamic_background_enabled: bool,
     pub start_maximized: bool,
     pub animations_enabled: bool,
@@ -45,6 +74,7 @@ pub struct LauncherSettings {
     pub declined_tos: bool,
     pub seen_versions: Vec<String>,
     pub seen_changelog_version: Option<String>,
+    pub pending_release_migrations: Vec<String>,
     pub modrinth_api_key: Option<String>,
     pub curseforge_api_key: Option<String>,
     pub custom_api_endpoint: Option<String>,
@@ -75,6 +105,9 @@ impl Default for LauncherSettings {
             max_concurrent_requests: 25,
             global_game_settings: GameSettingsProfile::default_global_profile(),
             allow_parallel_running_clusters: false,
+            launch_behaviour: LaunchBehaviour::default(),
+            run_in_background: false,
+            show_tray_icon: true,
             dynamic_background_enabled: true,
             start_maximized: false,
             animations_enabled: true,
@@ -87,6 +120,7 @@ impl Default for LauncherSettings {
             declined_tos: false,
             seen_versions: Vec::new(),
             seen_changelog_version: None,
+            pending_release_migrations: Vec::new(),
             modrinth_api_key: None,
             curseforge_api_key: None,
             custom_api_endpoint: None,

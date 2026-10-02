@@ -11,8 +11,6 @@ pub enum PackageError {
     NotModpack,
     #[error("unsupported modpack format")]
     UnsupportedModpackFormat,
-    #[error("modpack install had {failed} of {total} file failures")]
-    PartialModpackInstall { failed: u64, total: u64 },
     #[error("missing API key for provider {0:?}")]
     MissingApiKey(ProviderId),
     #[error("unsupported package body type")]

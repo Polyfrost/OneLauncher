@@ -1,19 +1,19 @@
 use freya::prelude::*;
-use oneclient_common::VersionKey;
 use oneclient_core::clusters::Cluster;
 
-use crate::components::ClusterLandscapeArt;
+use crate::components::{ART_PREVIEW_EDGE, DynamicArt};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::utils::{ReleaseLine, line_art_key, line_title, loader_tags};
+use crate::utils::{GridSelection, ReleaseLine, line_art_key, line_title};
 
-const CARD_HEIGHT_PX: f32 = 240.;
+const CARD_HEIGHT_PX: f32 = 150.;
 
 pub struct VersionCard {
-    pub line: ReleaseLine,
-    pub art_key: Option<VersionKey>,
-    pub tags: Vec<String>,
+    pub key: GridSelection,
+    pub art: DynamicArt,
     pub title: String,
+    pub caption: String,
+    pub count: usize,
     pub selected: bool,
     pub on_press: EventHandler<Event<PressEventData>>,
 }
@@ -22,14 +22,33 @@ impl VersionCard {
     pub fn new(
         line: ReleaseLine,
         clusters: &[Cluster],
+        caption: String,
         selected: bool,
         on_press: impl Into<EventHandler<Event<PressEventData>>>,
     ) -> Self {
         Self {
-            line,
-            art_key: line_art_key(line, clusters),
-            tags: loader_tags(clusters),
+            key: GridSelection::Line(line),
+            art: DynamicArt::for_version(line.major, line_art_key(line, clusters), None)
+                .max_edge(ART_PREVIEW_EDGE),
             title: line_title(line, clusters),
+            caption,
+            count: clusters.len(),
+            selected,
+            on_press: on_press.into(),
+        }
+    }
+
+    pub fn for_instance(
+        cluster: &Cluster,
+        selected: bool,
+        on_press: impl Into<EventHandler<Event<PressEventData>>>,
+    ) -> Self {
+        Self {
+            key: GridSelection::Instance(cluster.id),
+            art: DynamicArt::for_cluster(cluster).max_edge(ART_PREVIEW_EDGE),
+            title: cluster.name.clone(),
+            caption: format!("{} \u{b7} {}", cluster.mc_version, cluster.mc_loader),
+            count: 1,
             selected,
             on_press: on_press.into(),
         }
@@ -38,10 +57,11 @@ impl VersionCard {
 
 impl PartialEq for VersionCard {
     fn eq(&self, other: &Self) -> bool {
-        self.line == other.line
-            && self.art_key == other.art_key
-            && self.tags == other.tags
+        self.key == other.key
+            && self.art == other.art
             && self.title == other.title
+            && self.caption == other.caption
+            && self.count == other.count
             && self.selected == other.selected
     }
 }
@@ -58,101 +78,91 @@ impl Component for VersionCard {
         let focused = focus().is_focused();
         let on_press = self.on_press.clone();
 
-        let opacity = if selected || hovered || focused {
-            if selected { 1.0 } else { 0.85 }
+        let art_opacity = if selected {
+            1.0
+        } else if hovered || focused {
+            0.85
         } else {
             0.6
         };
 
-        let border_color = if selected || focused {
-            colors::brand()
+        let border = if selected || focused {
+            border_all_color(2., colors::brand())
         } else if hovered {
-            colors::component_border_hover()
+            border_all_color(1., colors::component_border_hover())
         } else {
-            colors::component_border()
+            border_all_color(1., colors::component_border())
         };
 
         rect()
-            .key(self.line)
-            .width(Size::flex(1.0))
+            .key(self.key)
+            .width(Size::fill())
             .height(Size::px(CARD_HEIGHT_PX))
+            .corner_radius(CornerRadius::new_all(16.))
+            .overflow(Overflow::Clip)
+            .background(colors::page_elevated())
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
             .on_press(move |e| on_press.call(e))
-            .on_pointer_enter(move |_| {
-                *hovering.write() = true;
-            })
-            .on_pointer_leave(move |_| {
-                *hovering.write() = false;
-            })
+            .on_pointer_enter(move |_| hovering.set(true))
+            .on_pointer_leave(move |_| hovering.set(false))
             .child(
                 rect()
                     .width(Size::fill())
                     .height(Size::fill())
-                    .overflow(Overflow::Clip)
-                    .corner_radius(CornerRadius::new_all(12.))
-                    .opacity(opacity)
-                    .child(
-                        rect()
-                            .width(Size::fill())
-                            .height(Size::fill())
-                            .position(Position::new_absolute())
-                            .child(ClusterLandscapeArt::for_version(
-                                self.line.major,
-                                self.art_key,
-                                None,
-                                false,
-                            )),
+                    .position(Position::new_absolute())
+                    .opacity(art_opacity)
+                    .child(self.art.clone()),
+            )
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .padding(12.)
+                    .spacing(5.)
+                    .main_align(Alignment::End)
+                    .corner_radius(CornerRadius::new_all(16.))
+                    .border(border.alignment(BorderAlignment::Inner))
+                    .layer(Layer::Relative(3))
+                    .background(
+                        LinearGradient::new()
+                            .angle(0.)
+                            .stop((Color::from_af32rgb(0.1, 11, 16, 19), 0.))
+                            .stop((Color::from_af32rgb(0.6, 11, 16, 19), 55.))
+                            .stop((Color::from_af32rgb(0.95, 11, 16, 19), 100.)),
                     )
                     .child(
-                        rect()
-                            .width(Size::fill())
-                            .height(Size::fill())
-                            .padding(Gaps::new_symmetric(12., 16.))
-                            .main_align(Alignment::SpaceBetween)
-                            .corner_radius(CornerRadius::new_all(12.))
-                            .cross_align(Alignment::Start)
-                            .border(
-                                border_all_color(1., border_color)
-                                    .alignment(BorderAlignment::Inner),
-                            )
-                            .layer(Layer::Relative(3))
-                            .background(
-                                LinearGradient::new()
-                                    .angle(0.)
-                                    .stop((Color::from_af32rgb(0.8, 0, 0, 0), 0.))
-                                    .stop((Color::from_af32rgb(0.3, 0, 0, 0), 20.))
-                                    .stop((Color::from_af32rgb(0.3, 0, 0, 0), 60.))
-                                    .stop((Color::from_af32rgb(0.8, 0, 0, 0), 100.)),
-                            )
-                            .child(
-                                rect()
-                                    .horizontal()
-                                    .spacing(8.)
-                                    .children(self.tags.iter().map(|tag| {
-                                        rect()
-                                            .padding(Gaps::new_symmetric(4., 8.))
-                                            .corner_radius(CornerRadius::new_all(999.))
-                                            .background(colors::fg_primary())
-                                            .child(
-                                                label()
-                                                    .text(tag.clone())
-                                                    .font_size(12.)
-                                                    .font_weight(FontWeight::MEDIUM)
-                                                    .color(colors::brand()),
-                                            )
-                                            .into_element()
-                                    })),
-                            )
-                            .child(
-                                label()
-                                    .text(format!("Version {}", self.title))
-                                    .font_size(32.)
-                                    .font_weight(FontWeight::SEMI_BOLD)
-                                    .color(colors::fg_primary()),
-                            ),
+                        label()
+                            .text(self.title.clone())
+                            .font_size(22.)
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .color(Color::WHITE),
+                    )
+                    .child(
+                        label()
+                            .text(self.caption.clone())
+                            .font_size(11.)
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .color(colors::fg_secondary()),
                     ),
             )
+            .maybe_child((self.count > 1).then(|| {
+                rect()
+                    .position(Position::new_absolute().top(8.).right(8.))
+                    .layer(Layer::Relative(4))
+                    .padding(Gaps::new_symmetric(4., 8.))
+                    .corner_radius(CornerRadius::new_all(6.))
+                    .background(Color::from_af32rgb(0.66, 11, 16, 19))
+                    .child(
+                        label()
+                            .text(format!("{} instances", self.count))
+                            .font_size(11.)
+                            .font_weight(FontWeight::MEDIUM)
+                            .color(colors::fg_primary()),
+                    )
+                    .into_element()
+            }))
     }
 }

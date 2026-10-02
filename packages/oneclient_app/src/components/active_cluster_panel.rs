@@ -4,6 +4,7 @@ use freya::router::RouterContext;
 
 use crate::components::{Button, Icon, IconType};
 use oneclient_common::parse_mc_version;
+use oneclient_core::clusters::ClusterKind;
 
 use crate::hooks::{
     settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
@@ -12,7 +13,7 @@ use crate::hooks::{
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::utils::sort_clusters_for_home;
-use crate::view::app::launch_button_state;
+use crate::view::app::{launch_button_state, launch_syncing};
 
 #[derive(PartialEq)]
 pub struct ActiveClusterPanel;
@@ -24,7 +25,6 @@ impl Component for ActiveClusterPanel {
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
         let launcher = use_launcher();
-        let syncing = launcher.fetching || launcher.syncing_bundles;
 
         let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
@@ -75,11 +75,23 @@ impl Component for ActiveClusterPanel {
                 );
         };
 
-        let title = format!("{} {}", cluster.mc_version, cluster.mc_loader);
-        let subtitle = metadata
-            .map(|m| m.name)
-            .unwrap_or_else(|| cluster.name.clone());
+        let version = format!("{} {}", cluster.mc_version, cluster.mc_loader);
+        let (title, subtitle) = if cluster.user_created && cluster.kind != ClusterKind::OneClient {
+            (cluster.name.clone(), version)
+        } else {
+            let subtitle = match metadata {
+                Some(m) => format!("OneClient · {}", m.name),
+                None => "OneClient".to_string(),
+            };
+            let title = if cluster.user_created {
+                cluster.name.clone()
+            } else {
+                version
+            };
+            (title, subtitle)
+        };
         let cluster_id = cluster.id;
+        let syncing = launch_syncing(&launcher, cluster.uses_bundles());
 
         rect()
             .vertical()
@@ -91,6 +103,9 @@ impl Component for ActiveClusterPanel {
             .child(
                 label()
                     .text(title)
+                    .width(Size::fill())
+                    .max_lines(1)
+                    .text_overflow(TextOverflow::Ellipsis)
                     .font_size(56.)
                     .line_height(1.1)
                     .font_weight(FontWeight::BOLD)

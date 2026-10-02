@@ -1,7 +1,8 @@
 use sqlx::SqlitePool;
 
 use crate::models::{
-    ArtifactRow, ClusterArtifactRow, LinkedArtifactRow, ProviderReleaseRow, SeenStatus,
+    ArtifactRow, ClusterArtifactRow, ClusterKind, LinkedArtifactRow, ProviderReleaseRow,
+    SeenStatus,
 };
 
 pub async fn get_artifact_by_hash(
@@ -54,25 +55,21 @@ pub async fn insert_artifact(
 /// `provider_releases` cascades the cached file is the caller's to delete
 /// this layer does not touch the disk
 pub async fn delete_artifact_if_unused(pool: &SqlitePool, hash: &str) -> Result<bool, sqlx::Error> {
-    let linked: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM cluster_artifacts WHERE hash = ?")
-        .bind(hash)
-        .fetch_one(pool)
-        .await?;
+    let result = sqlx::query(
+        "DELETE FROM artifacts WHERE hash = ? AND NOT EXISTS (SELECT 1 FROM cluster_artifacts WHERE hash = ?) AND NOT EXISTS (SELECT 1 FROM clusters WHERE linked_modpack_hash = ?)",
+    )
+    .bind(hash)
+    .bind(hash)
+    .bind(hash)
+    .execute(pool)
+    .await?;
 
-    if linked.0 > 0 {
-        return Ok(false);
-    }
-
-    sqlx::query!("DELETE FROM artifacts WHERE hash = ?", hash)
-        .execute(pool)
-        .await?;
-
-    Ok(true)
+    Ok(result.rows_affected() > 0)
 }
 
 use crate::models::GlobalArtifactRow;
 
-/// One row per hash across every cluster for content that is installed globally
+/// One row per hash across the OneClient clusters for content that is installed globally
 ///
 /// `enabled` is the OR over the clusters: one cluster still having a pack on is
 /// enough to keep it in the folder, because there is one folder and it can only
@@ -95,16 +92,18 @@ pub async fn list_global_artifacts(
 			MAX(ca.enabled) AS enabled
 		FROM cluster_artifacts ca
 		JOIN artifacts a ON a.hash = ca.hash
-		WHERE a.content_type = ?
+		JOIN clusters c ON c.id = ca.cluster_id
+		WHERE a.content_type = ? AND c.kind = ?
 		GROUP BY ca.hash
 		"#,
     )
     .bind(content_type)
+    .bind(ClusterKind::OneClient.as_i64())
     .fetch_all(pool)
     .await
 }
 
-/// Sets the flag on every cluster that has this artifact
+/// Sets the flag on every cluster sharing the global folder that has this artifact
 ///
 /// Globally installed content has one folder so writing only the row of
 /// whichever cluster the user happened to be looking at would leave the rest
@@ -114,11 +113,17 @@ pub async fn set_enabled_for_hash(
     hash: &str,
     enabled: i64,
 ) -> Result<u64, sqlx::Error> {
-    let result = sqlx::query("UPDATE cluster_artifacts SET enabled = ? WHERE hash = ?")
-        .bind(enabled)
-        .bind(hash)
-        .execute(pool)
-        .await?;
+    let result = sqlx::query(
+        r#"
+		UPDATE cluster_artifacts SET enabled = ?
+		WHERE hash = ? AND cluster_id IN (SELECT id FROM clusters WHERE kind = ?)
+		"#,
+    )
+    .bind(enabled)
+    .bind(hash)
+    .bind(ClusterKind::OneClient.as_i64())
+    .execute(pool)
+    .await?;
 
     Ok(result.rows_affected())
 }
@@ -129,6 +134,7 @@ pub async fn list_unused_artifacts(pool: &SqlitePool) -> Result<Vec<ArtifactRow>
 		SELECT hash, content_type, path, file_name, size_bytes
 		FROM artifacts
 		WHERE hash NOT IN (SELECT hash FROM cluster_artifacts)
+		AND hash NOT IN (SELECT linked_modpack_hash FROM clusters WHERE linked_modpack_hash IS NOT NULL)
 		"#,
     )
     .fetch_all(pool)
@@ -232,19 +238,6 @@ pub async fn get_release_by_hash(
     .await
 }
 
-pub async fn list_release_game_versions(
-    pool: &SqlitePool,
-    hash: &str,
-) -> Result<Vec<String>, sqlx::Error> {
-    let rows: Vec<(String,)> =
-        sqlx::query_as("SELECT mc_versions FROM provider_releases WHERE hash = ?")
-            .bind(hash)
-            .fetch_all(pool)
-            .await?;
-
-    Ok(rows.into_iter().map(|(versions,)| versions).collect())
-}
-
 pub async fn link_cluster_artifact(
     pool: &SqlitePool,
     cluster_id: i64,
@@ -310,6 +303,38 @@ pub async fn is_cluster_linked(
             .await?;
 
     Ok(row.is_some())
+}
+
+pub async fn list_clusters_linking(pool: &SqlitePool, hash: &str) -> Result<Vec<i64>, sqlx::Error> {
+    sqlx::query_scalar("SELECT cluster_id FROM cluster_artifacts WHERE hash = ?")
+        .bind(hash)
+        .fetch_all(pool)
+        .await
+}
+
+pub async fn is_launcher_owned(pool: &SqlitePool, hash: &str) -> Result<bool, sqlx::Error> {
+    let owned: i64 = sqlx::query_scalar(
+        r#"
+		SELECT EXISTS (
+			SELECT 1 FROM artifacts a
+			WHERE a.hash = ?
+			AND (
+				NOT EXISTS (SELECT 1 FROM cluster_artifacts ca WHERE ca.hash = a.hash)
+				OR EXISTS (
+					SELECT 1 FROM cluster_artifacts ca
+					LEFT JOIN clusters c ON c.id = ca.cluster_id
+					WHERE ca.hash = a.hash AND (c.id IS NULL OR c.kind = ?)
+				)
+			)
+		)
+		"#,
+    )
+    .bind(hash)
+    .bind(ClusterKind::OneClient.as_i64())
+    .fetch_one(pool)
+    .await?;
+
+    Ok(owned != 0)
 }
 
 pub async fn unlink_cluster_artifact(
@@ -482,6 +507,11 @@ mod tests {
                 mc_loader_version: None,
                 setting_profile_name: None,
                 stage: 0,
+                kind: 0,
+                user_created: 0,
+                description: None,
+                tags: "[]",
+                cover_path: None,
             },
         )
         .await

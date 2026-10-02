@@ -116,7 +116,7 @@ fn dependency_label(dep: &VersionDependency) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-async fn resolve_one(
+pub(crate) async fn resolve_one(
     provider: &dyn PackageProvider,
     dep: &VersionDependency,
     cluster: &ClusterRow,
@@ -299,6 +299,7 @@ mod tests {
             loaders,
             downloads: 0,
             file_size: 0,
+            dependencies: Vec::new(),
         }
     }
 
@@ -316,6 +317,11 @@ mod tests {
             last_played: None,
             overall_played: None,
             linked_modpack_hash: None,
+            kind: 0,
+            user_created: 0,
+            description: None,
+            tags: "[]".into(),
+            cover_path: None,
         }
     }
 

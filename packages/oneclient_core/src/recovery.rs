@@ -4,12 +4,13 @@ use oneclient_db::DbPool;
 use oneclient_db::dao::{
     artifact as artifact_dao, cluster as cluster_dao, cluster_bundle as cluster_bundle_dao,
 };
-use oneclient_db::models::NewCluster;
+use oneclient_db::models::{ClusterKind, NewCluster};
 use strum::IntoEnumIterator;
 
 use crate::LauncherResult;
 use crate::clusters::ClusterStage;
 use crate::state::LauncherState;
+use oneclient_cluster::encode_tags;
 use oneclient_cluster::profiles::create_profile_from_global;
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_common::paths;
@@ -202,11 +203,43 @@ async fn adopt_cluster(
     folder_name: &str,
     report: &mut RecoveryReport,
 ) -> LauncherResult<()> {
-    let (name, mc_version, loader) = parse_folder_identity(folder_name);
+    let recorded = match oneclient_common::paths::cluster_dir(folder_name) {
+        Ok(dir) => oneclient_cluster::identity::read(&dir).await,
+        Err(_) => None,
+    };
+
+    let (name, mc_version, parsed_loader) = match &recorded {
+        Some(identity) => (
+            identity.name.clone(),
+            identity.mc_version.clone(),
+            identity.mc_loader,
+        ),
+        None => parse_folder_identity(folder_name),
+    };
+
+    let guessed = match &recorded {
+        Some(_) => None,
+        None => orphan_instance_kind(folder_name).await,
+    };
+    let guessed_kind = guessed.map(|(kind, _)| kind);
+    let loader = guessed.map_or(parsed_loader, |(_, loader)| loader);
+    if let Some(kind) = guessed_kind {
+        tracing::info!(
+            folder = folder_name,
+            ?kind,
+            ?loader,
+            "orphan folder has no instance file but is marked as its own instance; adopting it as one"
+        );
+    }
 
     let global = state.settings.read().global_game_settings.clone();
     let profile =
-        create_profile_from_global(&state.services.db, &global, &name, None, None).await?;
+        create_profile_from_global(&state.services.db, &global, folder_name, None, None).await?;
+
+    let tags = recorded.as_ref().map_or_else(
+        || "[]".to_string(),
+        |identity| encode_tags(&identity.tags),
+    );
 
     let row = cluster_dao::insert(
         &state.services.db,
@@ -215,9 +248,26 @@ async fn adopt_cluster(
             folder_name,
             mc_version: &mc_version,
             mc_loader: loader as i64,
-            mc_loader_version: None,
+            mc_loader_version: recorded
+                .as_ref()
+                .and_then(|identity| identity.mc_loader_version.as_deref()),
             setting_profile_name: Some(&profile.name),
             stage: ClusterStage::NotReady as i64,
+            kind: recorded.as_ref().map_or_else(
+                || guessed_kind.map_or(0, ClusterKind::as_i64),
+                |identity| identity.kind.as_i64(),
+            ),
+            user_created: recorded.as_ref().map_or_else(
+                || i64::from(guessed_kind.is_some()),
+                |identity| i64::from(identity.user_created),
+            ),
+            description: recorded
+                .as_ref()
+                .and_then(|identity| identity.description.as_deref()),
+            tags: &tags,
+            cover_path: recorded
+                .as_ref()
+                .and_then(|identity| identity.cover_path.as_deref()),
         },
     )
     .await?;
@@ -230,6 +280,10 @@ async fn adopt_cluster(
         loader = %loader,
         "adopted cluster folder from disk"
     );
+
+    if let Ok(cluster) = oneclient_cluster::Cluster::try_from_row(row.clone()) {
+        state.clusters.ensure_dedicated_marker(&cluster).await.ok();
+    }
 
     relink_cluster_files(state, row.id, folder_name, report).await?;
     Ok(())
@@ -305,6 +359,10 @@ pub async fn restore_bundle_tracking(state: &LauncherState) -> LauncherResult<()
     let clusters = state.clusters.list().await?;
 
     for cluster in clusters {
+        if !cluster.uses_bundles() {
+            continue;
+        }
+
         let archives = match state
             .bundles
             .archives_for(
@@ -369,7 +427,72 @@ pub async fn restore_bundle_tracking(state: &LauncherState) -> LauncherResult<()
     Ok(())
 }
 
-fn parse_folder_identity(folder_name: &str) -> (String, String, GameLoader) {
+async fn orphan_instance_kind(folder_name: &str) -> Option<(ClusterKind, GameLoader)> {
+    if !paths::cluster_uses_dedicated_dir(folder_name) || looks_provisioned(folder_name) {
+        return None;
+    }
+
+    let mods = paths::cluster_dir(folder_name)
+        .ok()?
+        .join(ContentType::Mod.folder_name());
+    let jars = list_files(&mods)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|file| {
+            file.extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("jar"))
+        });
+
+    let mut found = Vec::new();
+    for jar in jars {
+        if let Some(loader) = oneclient_content::packages::read_jar_loader(&jar).await {
+            found.push(loader);
+        }
+    }
+
+    Some(match loader_from_votes(&found) {
+        Some(loader) => (ClusterKind::Modded, loader),
+        None => (ClusterKind::Vanilla, GameLoader::Vanilla),
+    })
+}
+
+fn loader_from_votes(found: &[GameLoader]) -> Option<GameLoader> {
+    let count = |loaders: &[GameLoader]| found.iter().filter(|l| loaders.contains(l)).count();
+    let fabric_family = count(&[GameLoader::Fabric, GameLoader::Quilt]);
+    let forge_family = count(&[GameLoader::Forge, GameLoader::NeoForge]);
+
+    if fabric_family == 0 && forge_family == 0 {
+        None
+    } else if fabric_family >= forge_family {
+        Some(if found.contains(&GameLoader::Quilt) {
+            GameLoader::Quilt
+        } else {
+            GameLoader::Fabric
+        })
+    } else {
+        Some(if found.contains(&GameLoader::NeoForge) {
+            GameLoader::NeoForge
+        } else {
+            GameLoader::Forge
+        })
+    }
+}
+
+fn looks_provisioned(folder_name: &str) -> bool {
+    let without_copy_suffix = folder_name
+        .rsplit_once(" (")
+        .filter(|(_, tail)| {
+            tail.strip_suffix(')')
+                .is_some_and(|n| !n.is_empty() && n.bytes().all(|b| b.is_ascii_digit()))
+        })
+        .map(|(stem, _)| stem);
+
+    parse_provisioned_name(folder_name).is_some()
+        || without_copy_suffix.is_some_and(|stem| parse_provisioned_name(stem).is_some())
+}
+
+fn parse_provisioned_name(folder_name: &str) -> Option<(String, GameLoader)> {
     let tokens: Vec<&str> = folder_name.split_whitespace().collect();
 
     for take in [2usize, 1] {
@@ -379,10 +502,18 @@ fn parse_folder_identity(folder_name: &str) -> (String, String, GameLoader) {
             if let Ok(loader) = loader_str.parse::<GameLoader>() {
                 let version = tokens[..split].join(" ");
                 if parse_mc_version(&version).is_some() {
-                    return (folder_name.to_string(), version, loader);
+                    return Some((version, loader));
                 }
             }
         }
+    }
+
+    None
+}
+
+fn parse_folder_identity(folder_name: &str) -> (String, String, GameLoader) {
+    if let Some((version, loader)) = parse_provisioned_name(folder_name) {
+        return (folder_name.to_string(), version, loader);
     }
 
     let mc_version = parse_mc_version(folder_name)

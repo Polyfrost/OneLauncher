@@ -9,17 +9,18 @@ use crate::{
     components::{Avatar, Icon, IconType},
     hooks::{
         settled_or_loading, try_default_account, use_active_cluster_id, use_browser_type,
-        use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
+        use_clusters, use_current_account, use_dispatch, use_link_confirm,
+        use_notifications_snapshot,
     },
     theme,
-    utils::sort_clusters_for_home,
+    utils::default_cluster,
 };
 
 const NAVBAR_INTRO_MS: u64 = 460;
 const LOGO_HIDE_NAVBAR_W: f32 = 1100.;
 const NAVBAR_SIDE_PADDING_PX: f32 = 40.;
 const NAV_LINK_SPACING_PX: f32 = 36.;
-const COMPACT_LOGO_PX: f32 = 28.;
+const COMPACT_LOGO_PX: f32 = 32.;
 
 #[derive(PartialEq)]
 pub struct Navbar;
@@ -84,16 +85,14 @@ fn navbar_left(show_logo: bool) -> impl IntoElement {
             Size::auto()
         })
         .cross_align(Alignment::Center)
+		.spacing(NAV_LINK_SPACING_PX / 2.)
         .maybe(!show_logo, |el| {
             el.padding(Gaps::new(0., NAV_LINK_SPACING_PX, 0., 0.))
         })
-        .child(if show_logo {
-            NavbarLogo.into_element()
-        } else {
-            Icon::new(IconType::IconLogo)
+		.child(Icon::new(IconType::IconLogo)
                 .size(COMPACT_LOGO_PX)
-                .into_element()
-        })
+                .into_element())
+		.maybe(show_logo, |rect| rect.child(NavbarLogo.into_element()))
 }
 
 #[derive(PartialEq)]
@@ -124,11 +123,7 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             Alignment::Center
         })
         .cross_align(Alignment::Center)
-        .spacing(if is_small {
-            NAV_LINK_SPACING_PX
-        } else {
-            NAV_LINK_SPACING_PX / 2.
-        })
+        .spacing(if is_small { 12. } else { 4. })
         .child(NavLink {
             active: route == Route::Home {},
             target: NavTarget::Route(Route::Home {}),
@@ -163,14 +158,10 @@ fn browse_target() -> Route {
     let active = *use_active_cluster_id().read();
     let package_type = use_browser_type().read().clone();
 
-    let cluster_id = active
-        .filter(|id| clusters.iter().any(|cluster| cluster.id == *id))
-        .or_else(|| sort_clusters_for_home(clusters).first().map(|c| c.id));
-
-    match cluster_id {
-        Some(cluster_id) => Route::Browser {
-            cluster_id,
-            package_type,
+    match default_cluster(clusters, active) {
+        Some(cluster) => Route::Browser {
+            cluster_id: cluster.id,
+            package_type: crate::view::app::browser::browsable_type(&package_type, &cluster),
             pick_cluster: true,
         },
         None => Route::Clusters {},
@@ -195,6 +186,7 @@ impl Component for NavLink {
         let mut hovering = use_state(|| false);
         let a11y_id = use_a11y();
         let focused = use_focus(a11y_id);
+        let mut confirm_link = use_link_confirm();
 
         let active = self.active;
         let target = self.target.clone();
@@ -206,22 +198,30 @@ impl Component for NavLink {
             theme::colors::fg_secondary()
         };
 
-        let underline_width = if active {
-            27.
+        let background = if active {
+            theme::colors::ghost_overlay()
         } else if hovering() || focused().is_focused() {
-            18.
+            theme::colors::ghost_overlay_hover()
         } else {
-            0.
+			Color::TRANSPARENT
         };
 
         rect()
-            .vertical()
+            .horizontal()
+            .main_align(Alignment::Center)
             .cross_align(Alignment::Center)
-            .spacing(2.)
-            .width(Size::px(nav_label.len() as f32 * 10. + 10.))
-            // TODO workaround for a Freya measurement bug a fully transparent background
-            // measures wrongly so give it alpha 0 red to keep pointer events working
-            .background(Color::RED.with_a(0))
+            .height(Size::px(36.))
+            .width(Size::px(nav_label.len() as f32 * 10. + 34.))
+            .corner_radius(CornerRadius::new_all(10.))
+            .background(background)
+            .maybe(active, |el| {
+                el.border(
+                    Border::new()
+                        .fill(theme::colors::component_border())
+                        .width(1.)
+                        .alignment(BorderAlignment::Inner),
+                )
+            })
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
@@ -231,7 +231,7 @@ impl Component for NavLink {
                     NavTarget::Route(route) => {
                         let _ = RouterContext::get().push(route.clone());
                     }
-                    NavTarget::External(url) => crate::platform::open_url(url),
+                    NavTarget::External(url) => confirm_link.set(Some((*url).to_string())),
                 }
             })
             .on_pointer_over(move |_| hovering.set(true))
@@ -247,17 +247,6 @@ impl Component for NavLink {
                         FontWeight::NORMAL
                     })
                     .color(color),
-            )
-            .child(
-                rect()
-                    .height(Size::px(2.))
-                    .width(Size::px(underline_width))
-                    .corner_radius(CornerRadius::new_all(2.))
-                    .background(if active {
-                        theme::colors::fg_primary()
-                    } else {
-                        theme::colors::fg_secondary()
-                    }),
             )
     }
 }

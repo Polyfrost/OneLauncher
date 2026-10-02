@@ -9,8 +9,9 @@ use freya::radio::use_init_radio_station;
 use oneclient_app::ipc::{self, Claim};
 use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
-    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, StartMaximizedState, cli, constants,
-    events, microsoft_java, platform, router, theme, use_provide_actions, use_provide_link_confirm,
+    Actions, ConfirmLinkOverlay, EssentialConfirmOverlay, EssentialGuardState, EventPump,
+    LinkConfirmState, StartMaximizedState, cli, constants, events, microsoft_java, platform,
+    router, theme, use_provide_actions, use_provide_essential_guard, use_provide_link_confirm,
     use_provide_start_maximized,
 };
 use std::cell::Cell;
@@ -20,7 +21,6 @@ struct OneClientApp {
     needs_location: bool,
     start_maximized: bool,
     boot_launch: Cell<Option<String>>,
-    ipc: Cell<Option<ipc::Listener>>,
 }
 
 impl App for OneClientApp {
@@ -37,7 +37,6 @@ impl App for OneClientApp {
         });
 
         let boot_launch = self.boot_launch.take();
-        let ipc_listener = self.ipc.take();
 
         let actions = use_hook(move || {
             let (signals_tx, signals_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -76,17 +75,6 @@ impl App for OneClientApp {
                 actions.request_launch_by_folder(folder);
             }
 
-            if let Some(listener) = ipc_listener {
-                let served = actions.clone();
-                spawn_forever(ipc::serve(listener, move |command| match command {
-                    ipc::IpcCommand::Launch(folder) => {
-                        platform::focus_window();
-                        served.request_launch_by_folder(folder);
-                    }
-                    ipc::IpcCommand::Focus => platform::focus_window(),
-                }));
-            }
-
             actions
         });
 
@@ -95,12 +83,16 @@ impl App for OneClientApp {
         let link_confirm = use_state(|| None::<String>);
         use_provide_link_confirm(LinkConfirmState(link_confirm));
 
+        let essential_guard = use_state(|| None);
+        use_provide_essential_guard(EssentialGuardState(essential_guard));
+
         use_provide_start_maximized(StartMaximizedState(self.start_maximized));
 
         rect()
             .width(Size::fill())
             .height(Size::fill())
             .child(ConfirmLinkOverlay)
+            .child(EssentialConfirmOverlay)
             .child(router())
     }
 }
@@ -118,6 +110,8 @@ fn main() {
     let rt = builder.build().unwrap();
     let _tokio_guard = rt.enter();
 
+    let adopted = rt.block_on(oneclient_core::relocate::adopt_legacy_dir());
+
     // no settings file is the sign of a fresh install, but not proof of one
     let never_set_up = oneclient_common::paths::settings_file()
         .map(|path| !path.exists())
@@ -131,14 +125,11 @@ fn main() {
     let needs_location = never_set_up && !has_database && !was_damaged;
 
     let mut unprotected = None;
-    let ipc = match rt.block_on(ipc::claim(&cli)) {
+    match rt.block_on(ipc::claim(&cli)) {
         Claim::Forwarded => return,
-        Claim::Primary(listener) => Some(listener),
-        Claim::Solo(reason) => {
-            unprotected = Some(reason);
-            None
-        }
-    };
+        Claim::Primary(listener) => ipc::listen(listener),
+        Claim::Solo(reason) => unprotected = Some(reason),
+    }
 
     let settings = rt.block_on(oneclient_core::settings::store::load_settings(None));
 
@@ -161,6 +152,14 @@ fn main() {
         oneclient_core::logger::init()
     }
     .expect("Failed to initialize logger");
+
+    match adopted {
+        Ok(Some(from)) => {
+            tracing::info!(from = %from.display(), "moved out of the old launcher folder")
+        }
+        Ok(None) => {}
+        Err(err) => tracing::error!("{err}"),
+    }
 
     if let Some(reason) = unprotected {
         tracing::warn!("no single-instance endpoint, a second launcher can start: {reason}");
@@ -189,12 +188,12 @@ fn main() {
     oneclient_app::platform::macos::loop_memory_collector();
 
     let start_maximized = settings.start_maximized;
+    let show_tray_icon = settings.show_tray_icon;
 
     let window_config = WindowConfig::new_app(OneClientApp {
         needs_location,
         start_maximized,
         boot_launch: Cell::new(cli.launch),
-        ipc: Cell::new(ipc),
     })
     .with_title(constants::WINDOW_TITLE)
     .with_app_id(constants::WINDOW_APP_ID)
@@ -210,10 +209,10 @@ fn main() {
     .with_on_close(|_, _| {
         if oneclient_core::relocate::in_progress() {
             tracing::warn!("close request ignored, the data folder is still being moved");
-            CloseDecision::KeepOpen
         } else {
-            CloseDecision::Close
+            ipc::send(ipc::IpcCommand::Close);
         }
+        CloseDecision::KeepOpen
     });
 
     #[cfg(target_os = "macos")]
@@ -244,7 +243,13 @@ fn main() {
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(96 * 1024 * 1024),
         )
+		.with_plugin(freya::borderless::BorderlessPlugin::new())
+		.with_plugin(freya::metrics::MetricsPlugin::default())
         .with_default_font(theme::DEFAULT_FONT);
+
+    if show_tray_icon && platform::tray::available() {
+        launch_config = launch_config.with_tray(platform::tray::build, platform::tray::handle);
+    }
 
     for (font, bytes) in theme::load_fonts() {
         launch_config = launch_config.with_font(font, bytes);

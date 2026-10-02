@@ -50,6 +50,7 @@ pub async fn prepare_cluster(
     shared_progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<Cluster> {
     let cluster = state.clusters.get(cluster_id).await?;
+    state.clusters.ensure_dedicated_marker(&cluster).await?;
     let continuing = cluster.stage == ClusterStage::Downloading;
 
     tracing::info!(
@@ -187,6 +188,7 @@ pub async fn required_java_major(
             &state.services.mc(),
             None,
             &version,
+            cluster.mc_loader,
             loader_version.as_ref(),
             false,
         )
@@ -221,6 +223,7 @@ pub async fn estimate_cluster_download(
             &state.services.mc(),
             None,
             &version,
+            cluster.mc_loader,
             loader_version.as_ref(),
             false,
         )
@@ -278,6 +281,7 @@ async fn install_cluster(
         &state.services.mc(),
         Some(progress),
         &version,
+        cluster.mc_loader,
         loader_version.as_ref(),
         force,
     )
@@ -336,7 +340,7 @@ async fn run_forge_processors(
         .join(&version_info.id)
         .join(format!("{}.jar", version_info.id));
     let libraries = paths::libraries_dir()?;
-    let cluster_dir = cluster.game_dir()?;
+    let install_root = paths::metadata_dir()?;
 
     let Some(data) = &mut version_info.data else {
         return Ok(());
@@ -367,7 +371,7 @@ async fn run_forge_processors(
             client => cluster.mc_version.clone(),
             server => "";
         "ROOT":
-            client => cluster_dir.to_string_lossy(),
+            client => install_root.to_string_lossy(),
             server => "";
         "LIBRARY_DIR":
             client => libraries.to_string_lossy(),

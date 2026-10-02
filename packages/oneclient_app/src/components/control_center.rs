@@ -57,7 +57,7 @@ impl Component for ControlPanel {
             .opacity(progress)
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
-            .blur(12.)
+            .backdrop_blur(12.)
             .corner_radius(CornerRadius::new_all(14.))
             .border(
                 Border::new()
@@ -283,8 +283,11 @@ impl Component for QuickSettings {
         let dispatch = use_dispatch();
 
         let discord_on = settings.discord_enabled;
-        let toggle_discord = move |_| {
-            dispatch.edit_settings(|s| s.discord_enabled = !s.discord_enabled);
+        let toggle_discord = {
+            let dispatch = dispatch.clone();
+            move |_| {
+                dispatch.edit_settings(|s| s.discord_enabled = !s.discord_enabled);
+            }
         };
 
         rect()
@@ -296,7 +299,6 @@ impl Component for QuickSettings {
                 QuickTile::new(IconType::Discord, "Discord RPC", discord_on)
                     .on_press(toggle_discord),
             )
-            .child(QuickTile::new(IconType::Moon01, "Close on launch", false).disabled())
     }
 }
 
@@ -326,11 +328,6 @@ impl QuickTile {
             enabled: true,
             on_press: None,
         }
-    }
-
-    fn disabled(mut self) -> Self {
-        self.enabled = false;
-        self
     }
 
     fn on_press(mut self, on_press: impl Into<EventHandler<Event<PressEventData>>>) -> Self {

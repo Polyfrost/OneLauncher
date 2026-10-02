@@ -3,21 +3,18 @@ use super::*;
 use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ProjectDetail, ProjectMember};
 
-use crate::Actions;
 use crate::components::{Button, Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
     latest_version: Option<String>,
-    provider: ProviderId,
-    cluster_id: i64,
-    dispatch: Actions,
+    installer: Installer,
     confirm: State<Option<String>>,
     installed: Option<Installed>,
     installing: bool,
+    waiting: bool,
 ) -> impl IntoElement {
     let Some(project) = project else {
         return rect()
@@ -32,7 +29,11 @@ pub(super) fn sidebar(
         (Some(installed), Some(latest)) => installed.is_version(latest),
         _ => false,
     };
-    let can_install = latest_version.is_some() && !have_latest && !installing;
+    let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
+    let enable = installed
+        .as_ref()
+        .and_then(Installed::disabled_bundled)
+        .and_then(|version| version.enable_action(installer.cluster_id));
 
     rect()
         .vertical()
@@ -51,14 +52,7 @@ pub(super) fn sidebar(
                     rect()
                         .width(Size::fill())
                         .overflow(Overflow::Clip)
-                        .child(PackageBanner::new(project.icon_url.clone(), 110.))
-                        .maybe_child(installed.as_ref().map(|installed| {
-                            rect()
-                                .position(Position::new_absolute().top(8.).left(8.))
-                                .layer(Layer::Relative(7))
-                                .child(installed_badge_overlay(installed.source))
-                                .into_element()
-                        })),
+                        .child(PackageBanner::new(project.icon_url.clone(), 110.)),
                 )
                 .child(
                     rect()
@@ -111,19 +105,19 @@ pub(super) fn sidebar(
                         ),
                 ),
         )
-        .child(
-            Button::new()
+        .child(match enable {
+            Some(action) => EnableButton {
+                action,
+                variant: EnableVariant::Sidebar,
+            }
+            .into_element(),
+            None => Button::new()
                 .primary()
                 .width(Size::fill())
                 .enabled(can_install)
                 .on_press(move |_| {
                     if let Some(version_id) = latest_version.clone() {
-                        dispatch.install_package(
-                            cluster_id,
-                            provider,
-                            project_id.clone(),
-                            version_id,
-                        );
+                        installer.install_latest(project_id.clone(), version_id);
                     }
                 })
                 .child(Icon::new(IconType::Download01).size(14.))
@@ -133,8 +127,9 @@ pub(super) fn sidebar(
                     "Latest installed"
                 } else {
                     "Install latest"
-                }),
-        )
+                })
+                .into_element(),
+        })
         .maybe(
             !project.members.is_empty() || !project.author.is_empty(),
             |el| el.child(authors_card(&project, confirm)),

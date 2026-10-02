@@ -51,6 +51,10 @@ pub async fn pending_optional_mods(
             continue;
         };
 
+        if !file.is_optional_offer() {
+            continue;
+        }
+
         // The queue row can outlive the offer the user may have opted in from
         // the package manager since it was written
         let user_override = overrides

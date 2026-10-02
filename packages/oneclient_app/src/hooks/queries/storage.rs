@@ -5,6 +5,8 @@ use freya::query::{
     use_mutation, use_query,
 };
 use oneclient_core::LauncherError;
+
+use crate::launcher::off_ui;
 use oneclient_core::relocate::{Leftovers, discard_leftovers, leftovers};
 use oneclient_core::storage::{StorageReport, storage_report};
 
@@ -21,7 +23,7 @@ impl QueryCapability for StorageReportQuery {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        storage_report(&state).await
+        off_ui(async move { storage_report(&state).await }).await
     }
 }
 
@@ -55,19 +57,23 @@ impl MutationCapability for StorageActionMutation {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state().map_err(|e| e.to_string())?;
+        let keys = *keys;
 
-        match keys {
-            StorageAction::CleanUnreferencedCache => {
-                oneclient_core::storage::clean_unreferenced_cache(&state)
-                    .await
-                    .map(|_| ())
+        off_ui(async move {
+            match keys {
+                StorageAction::CleanUnreferencedCache => {
+                    oneclient_core::storage::clean_unreferenced_cache(&state)
+                        .await
+                        .map(|_| ())
+                }
+                StorageAction::CleanLegacyClusterContent => {
+                    oneclient_core::storage::clean_cluster_leftovers(&state)
+                        .await
+                        .map(|_| ())
+                }
             }
-            StorageAction::CleanLegacyClusterContent => {
-                oneclient_core::storage::clean_cluster_leftovers(&state)
-                    .await
-                    .map(|_| ())
-            }
-        }
+        })
+        .await
         .map_err(|e| e.to_string())
     }
 
@@ -97,7 +103,7 @@ impl QueryCapability for LeftoversQuery {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        Ok(leftovers(&state).await)
+        Ok(off_ui(async move { leftovers(&state).await }).await)
     }
 }
 
@@ -126,7 +132,7 @@ impl MutationCapability for DiscardLeftoversMutation {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state().map_err(|err| err.to_string())?;
-        discard_leftovers(&state).await
+        off_ui(async move { discard_leftovers(&state).await }).await
     }
 
     async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {

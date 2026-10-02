@@ -1,6 +1,8 @@
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
+use oneclient_db::DbPool;
+use oneclient_db::dao::game_session as session_dao;
 use oneclient_db::models::{ArtifactRow, ClusterRow};
 
 use crate::error::ContentResult;
@@ -11,6 +13,10 @@ use super::manifest;
 use super::paths::artifact_absolute_path;
 
 const STAGING_SUFFIX: &str = ".oneclient-tmp";
+
+pub(crate) fn shares_content(cluster: &ClusterRow, content_type: ContentType) -> bool {
+    content_type.is_global() && !cluster.is_isolated()
+}
 
 /// What a live add actually did, so a caller can say so instead of promising
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,7 +97,7 @@ async fn materialized_root(
     cluster: &ClusterRow,
     content_type: ContentType,
 ) -> Option<(PathBuf, &'static str)> {
-    if content_type.is_global() {
+    if shares_content(cluster, content_type) {
         return paths::shared_minecraft_dir()
             .ok()
             .map(|dir| (dir, manifest::GLOBAL_MANIFEST_NAME));
@@ -104,28 +110,43 @@ async fn materialized_root(
         return Some((dir, manifest::MODS_MANIFEST_NAME));
     }
 
-    paths::cluster_game_dir(&cluster.folder_name)
+    paths::cluster_game_dir(&cluster.folder_name, cluster.is_isolated())
         .ok()
         .map(|dir| (dir, manifest::MANIFEST_NAME))
 }
 
-async fn session_owns(cluster: &ClusterRow) -> bool {
-    let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name) else {
+async fn session_owns(cluster: &ClusterRow, db: &DbPool) -> bool {
+    let Ok(game_dir) = paths::cluster_game_dir(&cluster.folder_name, cluster.is_isolated()) else {
         return false;
     };
 
-    manifest::load(&game_dir, manifest::MANIFEST_NAME)
+    let owned = manifest::load(&game_dir, manifest::MANIFEST_NAME)
         .await
-        .is_some_and(|session| session.cluster_id == cluster.id)
+        .is_some_and(|session| session.cluster_id == cluster.id);
+
+    if !owned || !cluster.is_isolated() {
+        return owned;
+    }
+
+    match session_dao::unfinished_sessions(db).await {
+        Ok(sessions) => sessions
+            .iter()
+            .any(|session| session.cluster_id == cluster.id),
+        Err(err) => {
+            tracing::debug!(error = %err, "cannot tell whether the instance is running; treating it as running");
+            true
+        }
+    }
 }
 
-#[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
+#[tracing::instrument(level = "debug", skip(cluster, db), fields(cluster_id = cluster.id))]
 pub async fn try_unlink_materialized(
     cluster: &ClusterRow,
     content_type: ContentType,
     file_name: &str,
+    db: &DbPool,
 ) -> LiveSync {
-    if !content_type.reloads_in_game() && session_owns(cluster).await {
+    if !content_type.reloads_in_game() && session_owns(cluster, db).await {
         tracing::debug!(
             file = file_name,
             "file will be moved at next launch due to an active session"
@@ -144,7 +165,7 @@ pub async fn try_unlink_materialized(
     };
 
     let relative = manifest::entry_path(content_type.folder_name(), file_name);
-    let ours = if content_type.is_global() {
+    let ours = if shares_content(cluster, content_type) {
         loaded.contains(&relative)
     } else {
         loaded.owns(cluster.id, &relative)
@@ -204,14 +225,14 @@ pub async fn try_link_materialized(
         return LiveSync::Skipped;
     };
 
-    if !content_type.is_global() && loaded.cluster_id != cluster.id {
+    if !shares_content(cluster, content_type) && loaded.cluster_id != cluster.id {
         return LiveSync::Deferred;
     }
 
     let relative = manifest::entry_path(content_type.folder_name(), file_name);
     let dest = root.join(&relative);
 
-    let ours = if content_type.is_global() {
+    let ours = if shares_content(cluster, content_type) {
         loaded.contains(&relative)
     } else {
         loaded.owns(cluster.id, &relative)
@@ -263,6 +284,11 @@ mod tests {
             last_played: None,
             overall_played: None,
             linked_modpack_hash: None,
+            kind: 0,
+            user_created: 0,
+            description: None,
+            tags: "[]".into(),
+            cover_path: None,
         }
     }
 

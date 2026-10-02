@@ -1,7 +1,13 @@
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use std::collections::HashSet;
+use std::sync::Arc;
+
+use oneclient_content::packages::release_migration::has_packages_to_migrate;
 use oneclient_content::packages::{ContentType, PackageStore};
 use oneclient_core::{LauncherError, LinkedArtifactInfo};
 use oneclient_db::models::ClusterId;
+
+use crate::launcher::off_ui;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct ClusterContentQuery {
@@ -49,4 +55,36 @@ pub fn use_cluster_content(
 
 pub fn cluster_content_items(query: &UseQuery<ClusterContentQuery>) -> Vec<LinkedArtifactInfo> {
     super::state::settled_or_loading(query).unwrap_or_default()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct MigratableRoutesQuery;
+
+impl QueryCapability for MigratableRoutesQuery {
+    type Ok = Arc<HashSet<(ClusterId, ClusterId)>>;
+    type Err = LauncherError;
+    type Keys = Vec<(ClusterId, ClusterId)>;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state()?;
+        let routes = keys.clone();
+        off_ui(async move {
+            let content = state.services.content();
+            let mut migratable = HashSet::new();
+            for (target, source) in routes {
+                if has_packages_to_migrate(source, target, &state.bundles, &content).await? {
+                    migratable.insert((target, source));
+                }
+            }
+            Ok(Arc::new(migratable))
+        })
+        .await
+    }
+}
+
+pub fn use_migratable_routes(
+    routes: Vec<(ClusterId, ClusterId)>,
+) -> Arc<HashSet<(ClusterId, ClusterId)>> {
+    let query = use_query(Query::new(routes, MigratableRoutesQuery));
+    super::state::settled_or_loading(&query).unwrap_or_default()
 }

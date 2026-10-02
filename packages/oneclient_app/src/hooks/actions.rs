@@ -1998,6 +1998,9 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         if let Err(err) = oneclient_content::packages::refresh_bad_mods(&content).await {
             tracing::warn!(%err, "bad mods list refresh failed, keeping the last one");
         }
+        if let Err(err) = oneclient_content::packages::refresh_bad_modpacks(&content).await {
+            tracing::warn!(%err, "bad modpacks list refresh failed, keeping the last one");
+        }
     });
 
     // Before the game process never after Minecraft reads its mods once at

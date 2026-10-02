@@ -5,10 +5,12 @@ use oneclient_cluster::naming::{is_allowed_name_char, validate_modpack_instance_
 use oneclient_cluster::{Cluster, ClusterKind, ClusterUpdate, CreateClusterOptions};
 use oneclient_common::domain::{GameLoader, ProviderId};
 use oneclient_common::patch::Patch;
-use oneclient_content::ContentError;
+use oneclient_content::{ContentCtx, ContentError};
 use oneclient_content::modpacks::{self, ModpackInstallReport, ModpackManifest, ModpackRelease};
 use oneclient_content::packages::store::artifact_absolute_path;
-use oneclient_content::packages::{PackageStore, ProjectDetail};
+use oneclient_content::packages::{
+    PackageStore, ProjectDetail, fetch_modpack_explanation, load_bad_modpacks,
+};
 use oneclient_db::dao::artifact::get_artifact_by_hash;
 use oneclient_events::GroupedProgressSession;
 
@@ -42,6 +44,12 @@ pub struct PreparedModpack {
     pub archive_path: PathBuf,
     pub manifest: ModpackManifest,
     pub instance_name: String,
+    pub flagged: Option<FlaggedModpack>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlaggedModpack {
+    pub explanation: Option<String>,
 }
 
 #[tracing::instrument(skip(state))]
@@ -61,6 +69,7 @@ pub async fn prepare_modpack(
     };
     let archive_path = artifact_absolute_path(&artifact.path)?;
     let manifest = modpacks::read_modpack(&archive_path, &content).await?;
+    let flagged = screen_modpack(source, &artifact.hash, &content).await;
 
     let taken: Vec<String> = state
         .clusters
@@ -76,7 +85,69 @@ pub async fn prepare_modpack(
         archive_path,
         instance_name: unique_name(&instance_name(&manifest.name), &taken),
         manifest,
+        flagged,
     })
+}
+
+async fn screen_modpack(
+    source: &ModpackSource,
+    hash: &str,
+    content: &ContentCtx,
+) -> Option<FlaggedModpack> {
+    let list = load_bad_modpacks(content).await;
+    if list.bad_modpacks.is_empty() {
+        return None;
+    }
+
+    let entry = match list.find(hash) {
+        Some(entry) => entry,
+        None => {
+            let (provider, project_id) = pack_project(source, hash, content).await?;
+            match list.find_project(provider, &project_id) {
+                Some(entry) => entry,
+                None if list.has_name_only_entries() => {
+                    let project = content
+                        .providers
+                        .get(provider)
+                        .ok()?
+                        .get_project(&project_id, content)
+                        .await
+                        .inspect_err(|err| {
+                            tracing::debug!(error = %err, "could not fetch the modpack project for screening");
+                        })
+                        .ok()?;
+                    list.find_by_name_and_author(&project)?
+                }
+                None => return None,
+            }
+        }
+    };
+
+    tracing::warn!(hash, "modpack is flagged");
+    Some(FlaggedModpack {
+        explanation: fetch_modpack_explanation(entry, content).await,
+    })
+}
+
+async fn pack_project(
+    source: &ModpackSource,
+    hash: &str,
+    content: &ContentCtx,
+) -> Option<(ProviderId, String)> {
+    match source {
+        ModpackSource::Provider {
+            provider,
+            project_id,
+            ..
+        } => Some((*provider, project_id.clone())),
+        ModpackSource::File(_) => match modpacks::identify_modpack(hash, content).await {
+            Ok(release) => release.map(|release| (release.provider, release.project_id)),
+            Err(err) => {
+                tracing::debug!(error = %err, "could not identify the modpack for screening");
+                None
+            }
+        },
+    }
 }
 
 #[tracing::instrument(skip(state, prepared), fields(pack = %prepared.manifest.name))]

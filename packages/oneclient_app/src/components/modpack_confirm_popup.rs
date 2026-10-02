@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use freya::prelude::*;
 use oneclient_content::modpacks::ModpackSummary;
 use oneclient_content::packages::ResolvedAlternative;
-use oneclient_core::clusters::FlaggedPackMod;
+use oneclient_core::clusters::{FlaggedModpack, FlaggedPackMod};
 
 use super::flagged_install_popup::explanation_panel;
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, remote_icon};
@@ -254,6 +254,25 @@ fn dialog(
         .as_ref()
         .filter(|import| !import.flagged.is_empty())
         .map(|import| flagged_section(import, &confirm.mc_version, choices).into_element());
+    let flagged_pack = confirm
+        .flagged
+        .as_ref()
+        .map(|flagged| flagged_pack_section(&confirm.pack_name, flagged).into_element());
+    let add_button = Button::new().on_press(move |_| {
+        if importing {
+            add.confirm_modpack_import(choices.read().clone());
+        } else {
+            add.confirm_modpack();
+        }
+    });
+    let add_button = match (flagged_pack.is_some(), importing) {
+        (true, true) => add_button.danger().text("Add anyway"),
+        (true, false) => add_button.danger().text("Install anyway"),
+        (false, _) => add_button
+            .primary()
+            .child(Icon::new(IconType::Plus).size(15.))
+            .text("Add"),
+    };
 
     rect()
         .vertical()
@@ -312,6 +331,7 @@ fn dialog(
                                 .width(Size::fill())
                                 .spacing(SECTION_GAP)
                                 .on_sized(track_height(measured.content_h))
+                                .maybe_child(flagged_pack)
                                 .child(
                                     rect()
                                         .vertical()
@@ -348,20 +368,48 @@ fn dialog(
                                 .on_press(move |_| cancel.cancel_modpack())
                                 .text("Cancel"),
                         )
-                        .child(
-                            Button::new()
-                                .primary()
-                                .on_press(move |_| {
-                                    if importing {
-                                        add.confirm_modpack_import(choices.read().clone());
-                                    } else {
-                                        add.confirm_modpack();
-                                    }
-                                })
-                                .child(Icon::new(IconType::Plus).size(15.))
-                                .text("Add"),
-                        ),
+                        .child(add_button),
                 ),
+        )
+}
+
+fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoElement {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .child(
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .child(
+                    Icon::new(IconType::AlertTriangle)
+                        .size(16.)
+                        .color(colors::code_warn()),
+                )
+                .child(
+                    label()
+                        .text("Flagged modpack")
+                        .font_size(14.)
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .color(colors::fg_primary()),
+                ),
+        )
+        .child(
+            label()
+                .text(format!(
+                    "{pack_name} is flagged as a problematic modpack. Installing it is not recommended."
+                ))
+                .font_size(12.)
+                .max_lines(3)
+                .color(colors::fg_secondary()),
+        )
+        .maybe_child(
+            flagged
+                .explanation
+                .clone()
+                .map(|markdown| explanation_panel(markdown).into_element()),
         )
 }
 

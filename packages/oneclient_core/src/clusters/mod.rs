@@ -10,7 +10,7 @@ mod unlink_legacy;
 pub use java_override::apply_bundle_java_override;
 pub use migrate::apply_remote_migrations;
 pub use modpack::{
-    ModpackCluster, ModpackSource, PreparedModpack, create_modpack_instance,
+    FlaggedModpack, ModpackCluster, ModpackSource, PreparedModpack, create_modpack_instance,
     install_modpack_instance, prepare_modpack, repair_modpack_cluster, update_modpack_cluster,
 };
 pub use modpack_import::{

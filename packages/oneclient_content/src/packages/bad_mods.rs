@@ -67,7 +67,7 @@ impl ProjectIds {
     }
 }
 
-fn lenient_list<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+pub(super) fn lenient_list<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: DeserializeOwned,
@@ -92,7 +92,9 @@ fn blank_to_none(value: String) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-fn non_blank<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
+pub(super) fn non_blank<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
     Ok(Option::<String>::deserialize(deserializer)?.and_then(blank_to_none))
 }
 
@@ -182,19 +184,26 @@ impl BadModList {
     }
 }
 
-fn same_text(a: &str, b: &str) -> bool {
+pub(super) fn same_text(a: &str, b: &str) -> bool {
     a.trim().to_lowercase() == b.trim().to_lowercase()
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn fetch_bad_mods(ctx: &ContentCtx) -> ContentResult<BadModList> {
-    let url = format!("{}/oneclient/bad-mods.json", ctx.net.config().meta_url_base);
-    let cache_path = paths::caches_dir()?.join("bad-mods.json");
+    fetch_flag_list("bad-mods.json", ctx).await
+}
+
+pub(super) async fn fetch_flag_list<T: DeserializeOwned>(
+    file_name: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<T> {
+    let url = format!("{}/oneclient/{file_name}", ctx.net.config().meta_url_base);
+    let cache_path = paths::caches_dir()?.join(file_name);
 
     let Some(fetched) = fetch_cached(&ctx.net, &url, &cache_path, EtagPolicy::CommitNow).await?
     else {
         return Err(ContentError::InvalidData {
-            reason: "bad mods list is unavailable and not cached".to_string(),
+            reason: format!("{file_name} is unavailable and not cached"),
         });
     };
 
@@ -227,7 +236,11 @@ pub async fn load_bad_mods(ctx: &ContentCtx) -> Arc<BadModList> {
 const EXPLANATIONS_DIR: &str = "/oneclient/bad_mods_mds/";
 
 fn explanation_file_name(path: &str) -> Option<&str> {
-    let name = path.strip_prefix(EXPLANATIONS_DIR)?;
+    md_file_name(EXPLANATIONS_DIR, path)
+}
+
+pub(super) fn md_file_name<'a>(dir: &str, path: &'a str) -> Option<&'a str> {
+    let name = path.strip_prefix(dir)?;
     let valid = name.ends_with(".md")
         && name.len() > ".md".len()
         && !name.contains("..")
@@ -245,12 +258,20 @@ pub async fn fetch_explanation(entry: &BadMod, ctx: &ContentCtx) -> Option<Strin
         );
         return None;
     };
+    fetch_md_file(path, "bad_mods_mds", file_name, ctx).await
+}
 
+pub(super) async fn fetch_md_file(
+    path: &str,
+    cache_dir: &str,
+    file_name: &str,
+    ctx: &ContentCtx,
+) -> Option<String> {
     let url = format!("{}{path}", ctx.net.config().meta_url_base);
     let cache_path = match paths::caches_dir() {
-        Ok(dir) => dir.join("bad_mods_mds").join(file_name),
+        Ok(dir) => dir.join(cache_dir).join(file_name),
         Err(err) => {
-            tracing::warn!(%err, "cannot resolve the cache dir for bad mod explanations");
+            tracing::warn!(%err, "cannot resolve the cache dir for flagged content explanations");
             return None;
         }
     };
@@ -258,11 +279,11 @@ pub async fn fetch_explanation(entry: &BadMod, ctx: &ContentCtx) -> Option<Strin
     match fetch_cached(&ctx.net, &url, &cache_path, EtagPolicy::CommitNow).await {
         Ok(Some(fetched)) => Some(fetched.text()).filter(|text| !text.trim().is_empty()),
         Ok(None) => {
-            tracing::warn!(path, "bad mod explanation is unavailable and not cached");
+            tracing::warn!(path, "flagged content explanation is unavailable and not cached");
             None
         }
         Err(err) => {
-            tracing::warn!(%err, path, "failed to fetch bad mod explanation");
+            tracing::warn!(%err, path, "failed to fetch flagged content explanation");
             None
         }
     }

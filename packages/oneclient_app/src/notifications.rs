@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use oneclient_content::modpacks::{BlockedFile, ModpackSummary};
 use oneclient_content::packages::ProviderId;
 use oneclient_core::BrowserPackageUpdate;
-use oneclient_core::clusters::FlaggedPackMod;
+use oneclient_core::clusters::{FlaggedModpack, FlaggedPackMod};
 use oneclient_db::models::{ClusterId, OptionalModStatus};
 use oneclient_events::{
     Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
@@ -80,6 +80,7 @@ pub struct ModpackConfirm {
     pub source: String,
     pub summary: ModpackSummary,
     pub import: Option<ModpackImportView>,
+    pub flagged: Option<FlaggedModpack>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

@@ -156,6 +156,7 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
         source,
         summary: manifest.summary(),
         import: None,
+        flagged: prepared.flagged.clone(),
     }
 }
 
@@ -286,7 +287,7 @@ impl Actions {
             .await;
 
             match prepared {
-                Ok(prepared) if from_browser => {
+                Ok(prepared) if from_browser && prepared.flagged.is_none() => {
                     actions.run_modpack_job(ModpackJob::Install(Box::new(prepared)));
                 }
                 Ok(prepared) => {

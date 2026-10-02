@@ -25,10 +25,19 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       sha: ${{ steps.version.outputs.sha }}
     steps:
+      - name: Create release app token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.RELEASE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+          permission-contents: write
+
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           # Knope finds the commit (and so the PR author) that added each change file
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Setup Rust
         uses: ./.github/actions/setup-rust
@@ -95,7 +104,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add -A Cargo.toml Cargo.lock .changeset CHANGELOG.md
-            git commit -m "chore: release $VERSION"
+            git commit -m "chore: release $VERSION [skip ci]"
             git push origin "HEAD:${GITHUB_REF_NAME}"
           fi
 

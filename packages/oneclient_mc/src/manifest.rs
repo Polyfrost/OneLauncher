@@ -99,6 +99,10 @@ impl MetadataStore {
         match polyio::read_json::<MetadataInner>(&path).await {
             Ok(inner) => {
                 metadata.inner = inner;
+                if metadata.refetch_errored(ctx).await > 0 {
+                    polyio::write_json_atomic(&path, &metadata.inner).await?;
+                }
+
                 let (tx, rx) = oneshot::channel();
                 metadata.pending = Some(rx);
                 let ctx = ctx.clone();

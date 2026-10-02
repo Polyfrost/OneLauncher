@@ -746,11 +746,19 @@ pub async fn download_version_info(
             let ctx = ctx.clone();
             let version = version.clone();
             let loader = loader.cloned();
+            let installed = processor_inputs(&cached);
             tokio::spawn(async move {
                 let refresh = async {
                     let info =
                         fetch_version_info(&ctx, None, &version, loader.as_ref(), &version_id)
                             .await?;
+                    if processor_inputs(&info) != installed {
+                        tracing::warn!(
+                            version_id = %version_id,
+                            "loader processors changed upstream, keeping cached profile until reinstall"
+                        );
+                        return Ok(());
+                    }
                     polyio::write_json_atomic(&path, &info).await?;
                     McResult::Ok(())
                 };
@@ -1604,6 +1612,10 @@ async fn read_cached_version_info(path: &Path) -> Option<VersionInfo> {
             );
         })
         .ok()
+}
+
+fn processor_inputs(info: &VersionInfo) -> Option<serde_json::Value> {
+    serde_json::to_value((&info.processors, &info.data)).ok()
 }
 
 fn profile_matches_loader(libraries: &[Library], loader: GameLoader) -> bool {

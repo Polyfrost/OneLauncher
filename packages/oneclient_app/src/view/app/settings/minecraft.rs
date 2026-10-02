@@ -48,6 +48,10 @@ impl Component for SettingsMinecraft {
             let v = profile.launch_args.clone().unwrap_or_default();
             move || v
         });
+        let game_args = use_state({
+            let v = profile.game_args.clone().unwrap_or_default();
+            move || v
+        });
         let pre_launch_command = use_state({
             let v = profile.hook_pre.clone().unwrap_or_default();
             move || v
@@ -79,6 +83,7 @@ impl Component for SettingsMinecraft {
                 &height.read(),
                 &memory.read(),
                 &jvm_args.read(),
+                &game_args.read(),
                 &pre_launch_command.read(),
                 &wrapper_command.read(),
                 &post_exit_command.read(),
@@ -157,6 +162,19 @@ impl Component for SettingsMinecraft {
                         .width(Size::px(220.)),
                     jvm_args,
                     defaults.launch_args.clone().unwrap_or_default(),
+                ),
+            ))
+            .child(settings_row(
+                IconType::Play,
+                "Game Arguments",
+                "Extra arguments passed to Minecraft. Separate them with spaces; quote values containing spaces.",
+                resettable(
+                    TextInput::new(game_args)
+                        .placeholder("--tracy --tracyNoImages")
+                        .expandable(true)
+                        .width(Size::px(220.)),
+                    game_args,
+                    defaults.game_args.clone().unwrap_or_default(),
                 ),
             ))
             .child(section_header("CONTENT"))
@@ -246,6 +264,7 @@ fn build_update(
     height: &str,
     memory: &str,
     jvm_args: &str,
+    game_args: &str,
     pre: &str,
     wrapper: &str,
     post: &str,
@@ -269,6 +288,7 @@ fn build_update(
         resolution,
         mem_max,
         launch_args: command_patch(jvm_args),
+        game_args: command_patch(game_args),
         hook_pre: command_patch(pre),
         hook_wrapper: command_patch(wrapper),
         hook_post: command_patch(post),

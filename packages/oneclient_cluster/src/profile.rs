@@ -12,6 +12,7 @@ pub struct GameSettingsProfile {
     pub force_fullscreen: Option<bool>,
     pub mem_max: Option<u32>,
     pub launch_args: Option<String>,
+    pub game_args: Option<String>,
     pub launch_env: Option<String>,
     pub hook_pre: Option<String>,
     pub hook_wrapper: Option<String>,
@@ -58,6 +59,7 @@ impl GameSettingsProfile {
             force_fullscreen: Some(false),
             mem_max: Some(oneclient_common::default_mem_max()),
             launch_args: None,
+            game_args: None,
             launch_env: None,
             hook_pre: None,
             hook_wrapper: None,
@@ -98,6 +100,9 @@ impl GameSettingsProfile {
         if self.launch_args.is_none() {
             self.launch_args = global.launch_args.clone();
         }
+        if self.game_args.is_none() {
+            self.game_args = global.game_args.clone();
+        }
         if self.launch_env.is_none() {
             self.launch_env = global.launch_env.clone();
         }
@@ -129,6 +134,7 @@ impl GameSettingsProfile {
             force_fullscreen: row.force_fullscreen.map(|v| v != 0),
             mem_max: row.mem_max.map(|v| v as u32),
             launch_args: row.launch_args,
+            game_args: row.game_args,
             launch_env: row.launch_env,
             hook_pre: row.hook_pre,
             hook_wrapper: row.hook_wrapper,
@@ -157,6 +163,7 @@ impl GameSettingsProfile {
             force_fullscreen: self.force_fullscreen.map(i64::from),
             mem_max: self.mem_max.map(i64::from),
             launch_args: self.launch_args.clone(),
+            game_args: self.game_args.clone(),
             launch_env: self.launch_env.clone(),
             hook_pre: self.hook_pre.clone(),
             hook_wrapper: self.hook_wrapper.clone(),

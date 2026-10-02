@@ -19,11 +19,12 @@ use crate::components::{
 };
 use crate::hooks::use_cluster;
 use crate::hooks::{
-    BROWSE_PAGE_SIZE, BrowserUiState, bundles_with_status_items, category_list,
-    cluster_content_items, content_type_for_slug, pick_version_metadata, search_items,
-    search_pending, search_total, settled_or_loading, use_browser_compat, use_browser_state_store,
-    use_browser_type, use_bundles_with_status, use_cluster_content, use_clusters, use_debounced,
-    use_package_categories, use_package_search, use_versions, use_view_state, versions_metadata,
+    BROWSE_PAGE_SIZE, BrowserUiState, bundle_overrides_map, bundles_with_status_items,
+    category_list, cluster_content_items, content_type_for_slug, pick_version_metadata,
+    search_items, search_pending, search_total, settled_or_loading, use_browser_compat,
+    use_browser_state_store, use_browser_type, use_bundle_overrides, use_bundles_with_status,
+    use_cluster_content, use_clusters, use_debounced, use_package_categories, use_package_search,
+    use_versions, use_view_state, versions_metadata,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -31,8 +32,8 @@ use crate::ui::grid_columns_for_width;
 use crate::view::app::cluster::supports_datapacks;
 
 use super::{
-    InstallSource, Installed, ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt,
-    installed_map, minecraft_choices, preferred_version,
+    EnableButton, EnableVariant, InstallSource, Installed, ModpackVersionPrompt, PackageBanner,
+    Thumbnail, WorldInstallPrompt, installed_map, minecraft_choices, preferred_version,
 };
 use crate::utils::{abbreviate_number, sort_clusters_for_home};
 
@@ -250,6 +251,7 @@ impl Component for BrowserBody {
         let installed = installed_map(
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
+            &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
         );
         let installed = if matches!(content_type, ContentType::DataPack | ContentType::Modpack) {
             Default::default()

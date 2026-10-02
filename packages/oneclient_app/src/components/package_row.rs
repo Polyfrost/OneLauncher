@@ -60,6 +60,8 @@ pub struct PackageEntry {
     pub manifest_default: bool,
     /// Private bundle dependency only set for bundle rows
     pub hidden: bool,
+    /// False for uninstalled rows of bundles the cluster never took keeps them out of the All tab
+    pub opted_in: bool,
     pub advanced: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
@@ -245,22 +247,38 @@ pub(crate) fn toggle_action(
     cluster_id: i64,
     enabled: bool,
 ) -> Option<ClusterAction> {
-    if let Some(hash) = &item.hash {
+    set_enabled_action(
+        cluster_id,
+        item.hash.as_deref(),
+        item.bundle_name.as_deref(),
+        &item.package_id,
+        item.manifest_default,
+        enabled,
+    )
+}
+
+pub(crate) fn set_enabled_action(
+    cluster_id: i64,
+    hash: Option<&str>,
+    bundle_name: Option<&str>,
+    package_id: &str,
+    manifest_default: bool,
+    enabled: bool,
+) -> Option<ClusterAction> {
+    if let Some(hash) = hash {
         Some(ClusterAction::SetArtifactEnabled {
             cluster_id,
-            hash: hash.clone(),
+            hash: hash.to_string(),
             enabled,
         })
     } else {
-        item.bundle_name
-            .clone()
-            .map(|bundle_name| ClusterAction::SetBundlePackageEnabled {
-                cluster_id,
-                bundle_name,
-                package_id: item.package_id.clone(),
-                enabled,
-                manifest_default: item.manifest_default,
-            })
+        bundle_name.map(|bundle_name| ClusterAction::SetBundlePackageEnabled {
+            cluster_id,
+            bundle_name: bundle_name.to_string(),
+            package_id: package_id.to_string(),
+            enabled,
+            manifest_default,
+        })
     }
 }
 

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            DELETE FROM cluster_bundle_type_opt_outs\n            WHERE cluster_id = ? AND bundle_name = ? AND content_type = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "dff3f2fe8e50eaa7ffebab7490306bc40e846ad708975991346aab83870e0968"
+}

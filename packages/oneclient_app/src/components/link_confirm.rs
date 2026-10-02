@@ -18,6 +18,17 @@ impl Component for ConfirmLinkOverlay {
         };
 
         let open_url = url.clone();
+        let (title, body) = if is_first_party(&url) {
+            (
+                "Leave the launcher?",
+                "This will open the page in your web browser.",
+            )
+        } else {
+            (
+                "Open external link?",
+                "This link was provided by a third party. Only open it if you trust the source.",
+            )
+        };
 
         OverlayPopup::new()
             .overlay_level(OVERLAY_BASE_LEVEL + 3)
@@ -49,7 +60,7 @@ impl Component for ConfirmLinkOverlay {
                                     )
                                     .child(
                                         label()
-                                            .text("Open external link?")
+                                            .text(title)
                                             .font_size(16.)
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
@@ -57,7 +68,7 @@ impl Component for ConfirmLinkOverlay {
                             )
                             .child(
                                 label()
-                                    .text("This link was provided by a third party. Only open it if you trust the source.")
+                                    .text(body)
                                     .font_size(12.)
                                     .color(colors::fg_secondary()),
                             )
@@ -104,4 +115,14 @@ impl Component for ConfirmLinkOverlay {
             )
             .into_element()
     }
+}
+
+fn is_first_party(url: &str) -> bool {
+    let host = url
+        .split_once("://")
+        .map_or(url, |(_, rest)| rest)
+        .split(['/', '?', '#', ':'])
+        .next()
+        .unwrap_or_default();
+    host == "polyfrost.org" || host.ends_with(".polyfrost.org")
 }

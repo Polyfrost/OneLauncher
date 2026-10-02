@@ -8,19 +8,20 @@ use oneclient_core::clusters::ModpackSource;
 use crate::components::{ScrollArea, use_shared_delete};
 use crate::hooks::use_cluster;
 use crate::hooks::{
-    ALL_VERSIONS, VERSIONS_PAGE_SIZE, bundles_with_status_items, cluster_content_items,
-    content_type_for_slug, package_meta_batch, project_detail, use_browser_compat,
-    use_bundles_with_status, use_cluster_content, use_dispatch, use_installs_snapshot,
-    use_link_confirm, use_package_meta_batch, use_package_project, use_package_versions_when,
+    ALL_VERSIONS, VERSIONS_PAGE_SIZE, bundle_overrides_map, bundles_with_status_items,
+    cluster_content_items, content_type_for_slug, package_meta_batch, project_detail,
+    use_browser_compat, use_bundle_overrides, use_bundles_with_status, use_cluster_content,
+    use_dispatch, use_installs_snapshot, use_link_confirm, use_package_meta_batch,
+    use_package_project, use_package_versions_when,
     version_list, versions_total,
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
 use super::{
-    Installed, InstalledVersion, ModpackVersionPrompt, PackageBanner, Thumbnail,
-    WorldInstallPrompt, activity_badge, installed_badge, installed_map, minecraft_choices,
-    preferred_version,
+    EnableButton, EnableVariant, Installed, InstalledVersion, ModpackVersionPrompt, PackageBanner,
+    Thumbnail, WorldInstallPrompt, activity_badge, installed_badge, installed_map,
+    minecraft_choices, preferred_version,
 };
 use crate::utils::abbreviate_number;
 
@@ -220,6 +221,7 @@ impl Component for BrowserPackage {
         let installed = installed_map(
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
+            &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
         )
         .remove(&(provider, project_id.clone()))
         .filter(|_| !is_datapack);

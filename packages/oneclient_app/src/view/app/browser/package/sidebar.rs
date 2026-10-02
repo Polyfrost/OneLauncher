@@ -30,6 +30,10 @@ pub(super) fn sidebar(
         _ => false,
     };
     let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
+    let enable = installed
+        .as_ref()
+        .and_then(Installed::disabled_bundled)
+        .and_then(|version| version.enable_action(installer.cluster_id));
 
     rect()
         .vertical()
@@ -101,8 +105,13 @@ pub(super) fn sidebar(
                         ),
                 ),
         )
-        .child(
-            Button::new()
+        .child(match enable {
+            Some(action) => EnableButton {
+                action,
+                variant: EnableVariant::Sidebar,
+            }
+            .into_element(),
+            None => Button::new()
                 .primary()
                 .width(Size::fill())
                 .enabled(can_install)
@@ -118,8 +127,9 @@ pub(super) fn sidebar(
                     "Latest installed"
                 } else {
                     "Install latest"
-                }),
-        )
+                })
+                .into_element(),
+        })
         .maybe(
             !project.members.is_empty() || !project.author.is_empty(),
             |el| el.child(authors_card(&project, confirm)),

@@ -144,16 +144,13 @@ pub fn bundle_packages(
         }
     }
 
-    let opted_in_ids: HashSet<String> = bundles
-        .iter()
-        .filter(|b| b.opted_in)
-        .flat_map(|b| b.files.iter().map(|(file, _)| file.kind.package_id()))
-        .collect();
+    let mut ordered: Vec<&BundleWithUpdateStatus> = bundles.iter().collect();
+    ordered.sort_by_key(|b| !b.opted_in);
 
     let mut rows = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
-    for bundle in bundles {
+    for bundle in ordered {
         let bundle_name = &bundle.archive.manifest.name;
         let category = bundle.archive.manifest.category.clone();
         for (file, status) in &bundle.files {
@@ -205,7 +202,7 @@ pub fn bundle_packages(
                 vec![category.clone()]
             };
 
-            let opted_in = installed_info.is_some() || opted_in_ids.contains(&pid);
+            let opted_in = installed_info.is_some() || bundle.opted_in;
             let mut row = make_row(
                 pid,
                 Some(bundle_name.clone()),
@@ -749,6 +746,8 @@ mod tests {
             .map(|p| p.package_id.as_str())
             .collect();
         assert_eq!(all, ["shared", "only-taken"]);
+        let shared = rows.iter().find(|p| p.package_id == "shared").unwrap();
+        assert_eq!(shared.categories, ["Taken"]);
         let declined = Tab::Category("Declined".into());
         assert!(
             rows.iter()

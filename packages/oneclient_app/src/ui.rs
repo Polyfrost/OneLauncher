@@ -92,6 +92,21 @@ pub fn relative_time(created_at: Instant) -> String {
     }
 }
 
+pub fn last_played_label(ts: Option<chrono::DateTime<chrono::Utc>>) -> String {
+    let Some(ts) = ts else {
+        return "Never".to_string();
+    };
+    match (chrono::Utc::now() - ts).num_days() {
+        ..=0 => "Today".to_string(),
+        1 => "Yesterday".to_string(),
+        d @ 2..=6 => format!("{d} days ago"),
+        d @ 7..=13 => format!("{} week ago", d / 7),
+        d @ 14..=29 => format!("{} weeks ago", d / 7),
+        d @ 30..=59 => format!("{} month ago", d / 30),
+        d => format!("{} months ago", d / 30),
+    }
+}
+
 /// Gap the clamped menu keeps from the window edges
 pub const EDGE_MARGIN: f32 = 8.;
 
@@ -152,6 +167,37 @@ pub fn columns_for(width: f32, min_cell: f32, max: usize, gap: f32) -> usize {
     }
 
     (((width + gap) / (min_cell + gap)).floor() as usize).clamp(1, max)
+}
+
+pub fn fixed_grid(cards: Vec<Element>, columns: usize, card_height: f32, gap: f32) -> Element {
+    let columns = columns.max(1);
+    let mut root = rect().vertical().width(Size::fill()).spacing(gap);
+
+    for (index, chunk) in cards.chunks(columns).enumerate() {
+        let mut row = rect()
+            .key(index)
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::px(card_height))
+            .content(Content::Flex)
+            .spacing(gap);
+
+        for card in chunk {
+            row = row.child(
+                rect()
+                    .width(Size::flex(1.0))
+                    .height(Size::fill())
+                    .child(card.clone()),
+            );
+        }
+        for _ in chunk.len()..columns {
+            row = row.child(rect().width(Size::flex(1.0)).height(Size::fill()));
+        }
+
+        root = root.child(row.into_element());
+    }
+
+    root.into_element()
 }
 
 /// Short final rows are padded with empty flex cells so tiles keep the column width

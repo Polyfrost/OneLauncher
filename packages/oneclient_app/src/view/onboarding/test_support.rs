@@ -1,7 +1,9 @@
 use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_content::packages::types::ExternalFile;
 use oneclient_core::clusters::{Cluster, ClusterStage};
-use oneclient_core::{Bundle, BundleArchive, BundleFile, BundleFileKind, BundleManifest};
+use oneclient_core::{
+    Bundle, BundleArchive, BundleFile, BundleFileKind, BundleFileType, BundleManifest,
+};
 use std::path::PathBuf;
 
 pub fn file(package_id: &str, enabled: bool, hidden: bool) -> BundleFile {
@@ -10,13 +12,18 @@ pub fn file(package_id: &str, enabled: bool, hidden: bool) -> BundleFile {
         hidden,
         path: format!("mods/{package_id}.jar"),
         size: 1,
-        kind: BundleFileKind::External(ExternalFile {
-            name: format!("{package_id}.jar"),
-            url: format!("https://example.invalid/{package_id}.jar"),
-            sha1: package_id.to_string(),
-            size: 1,
-            content_type: ContentType::Mod,
-        }),
+        file_type: BundleFileType::Normal,
+        kind: BundleFileKind::External {
+            file: ExternalFile {
+                name: format!("{package_id}.jar"),
+                url: format!("https://example.invalid/{package_id}.jar"),
+                sha1: package_id.to_string(),
+                size: 1,
+                content_type: ContentType::Mod,
+            },
+            id: None,
+            meta: None,
+        },
     }
 }
 
@@ -43,6 +50,7 @@ pub fn archive(category: &str, enabled: bool, files: Vec<BundleFile>) -> BundleA
             loader: GameLoader::Fabric,
             loader_version: "0.16.0".to_string(),
             enabled,
+            java_version_override: None,
             files,
         },
     }
@@ -62,5 +70,10 @@ pub fn cluster(id: i64) -> Cluster {
         last_played: None,
         overall_played: std::time::Duration::ZERO,
         linked_modpack_hash: None,
+        kind: oneclient_db::models::ClusterKind::OneClient,
+        user_created: false,
+        description: None,
+        tags: Vec::new(),
+        cover_path: None,
     }
 }

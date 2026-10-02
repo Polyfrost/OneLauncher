@@ -12,7 +12,7 @@ use crate::rules::validate_rules;
 
 use crate::McCtx;
 use crate::error::{McError, McResult};
-use crate::manifest::MetadataStore;
+use crate::manifest::{MetadataStore, entry_matches_version, manifest_supports_version};
 use oneclient_common::domain::GameLoader;
 use oneclient_common::os_ext::OsExt;
 use oneclient_common::paths;
@@ -705,6 +705,7 @@ pub async fn download_version_info(
     ctx: &McCtx,
     progress: Option<&GroupedProgressSession>,
     version: &Version,
+    game_loader: GameLoader,
     loader: Option<&LoaderVersion>,
     force: bool,
 ) -> McResult<VersionInfo> {
@@ -714,7 +715,7 @@ pub async fn download_version_info(
 
     let path = paths::versions_dir()?
         .join(&version_id)
-        .join(format!("{version_id}.json"));
+        .join(version_info_file_name(&version_id, game_loader.get_format_version()));
 
     if path.exists() && !force {
         match polyio::read_json::<VersionInfo>(&path).await {
@@ -1306,12 +1307,12 @@ pub async fn get_loader_versions(
     }
 
     let manifest = metadata.get_modded_or_fetch(ctx, loader).await?;
+    if !manifest_supports_version(manifest, mc_version) {
+        return Ok(Vec::new());
+    }
+
     for entry in &manifest.game_versions {
-        let id = entry
-            .id
-            .replace("${interpulse.gameVersion}", mc_version)
-            .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version);
-        if id == mc_version {
+        if entry_matches_version(&entry.id, mc_version) && !entry.loaders.is_empty() {
             return Ok(entry.loaders.iter().map(|l| l.id.clone()).collect());
         }
     }
@@ -1323,15 +1324,14 @@ fn resolve_loader_from_manifest(
     mc_version: &str,
     loader_version: Option<&str>,
 ) -> (bool, Option<LoaderVersion>) {
+    if !manifest_supports_version(manifest, mc_version) {
+        return (false, None);
+    }
+
     let mut saw_matching_game_version = false;
 
     for entry in &manifest.game_versions {
-        if entry
-            .id
-            .replace("${interpulse.gameVersion}", mc_version)
-            .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
-            != mc_version
-        {
+        if !entry_matches_version(&entry.id, mc_version) {
             continue;
         }
 
@@ -1407,9 +1407,14 @@ pub async fn get_loader_version(
         }
     }
 
+    let no_matching_version = || McError::NoMatchingVersion {
+        loader,
+        version: mc_version.to_string(),
+    };
+
     if let Some(requested) = loader_version {
         if !saw_matching {
-            return Err(McError::NoMatchingVersion);
+            return Err(no_matching_version());
         }
         return Err(McError::RequestedLoaderVersionNotFound {
             requested: requested.to_string(),
@@ -1419,7 +1424,7 @@ pub async fn get_loader_version(
     if saw_matching {
         Err(McError::NoMatchingLoader)
     } else {
-        Err(McError::NoMatchingVersion)
+        Err(no_matching_version())
     }
 }
 
@@ -1458,6 +1463,61 @@ pub async fn get_game_versions(
     Ok(manifest.versions.clone())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GameVersionKind {
+    Release,
+    Snapshot,
+    Beta,
+    Alpha,
+}
+
+impl GameVersionKind {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Release => "Release",
+            Self::Snapshot => "Snapshot",
+            Self::Beta => "Beta",
+            Self::Alpha => "Alpha",
+        }
+    }
+
+    #[must_use]
+    pub const fn is_release(self) -> bool {
+        matches!(self, Self::Release)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameVersionInfo {
+    pub id: String,
+    pub kind: GameVersionKind,
+    pub released: chrono::DateTime<chrono::Utc>,
+}
+
+#[tracing::instrument(skip(metadata, ctx), level = "debug")]
+pub async fn get_version_ids(
+    metadata: &mut MetadataStore,
+    ctx: &McCtx,
+) -> McResult<Vec<GameVersionInfo>> {
+    use interfrost::api::minecraft::VersionType;
+
+    Ok(get_game_versions(metadata, ctx)
+        .await?
+        .into_iter()
+        .map(|version| GameVersionInfo {
+            id: version.id,
+            kind: match version.type_ {
+                VersionType::Release => GameVersionKind::Release,
+                VersionType::Snapshot => GameVersionKind::Snapshot,
+                VersionType::OldBeta => GameVersionKind::Beta,
+                VersionType::OldAlpha => GameVersionKind::Alpha,
+            },
+            released: version.release_time,
+        })
+        .collect())
+}
+
 #[tracing::instrument(skip(metadata, ctx), level = "debug")]
 pub async fn get_loaders_for_version(
     metadata: &mut MetadataStore,
@@ -1467,14 +1527,37 @@ pub async fn get_loaders_for_version(
     metadata.get_loaders_for_version(ctx, mc_version).await
 }
 
+#[tracing::instrument(skip(metadata, ctx), level = "debug")]
+pub async fn get_versions_for_loader(
+    metadata: &mut MetadataStore,
+    ctx: &McCtx,
+    loader: GameLoader,
+) -> McResult<Option<Vec<String>>> {
+    metadata.get_versions_for_loader(ctx, loader).await
+}
+
 #[must_use]
 pub fn is_version_updated(version_index: usize, versions: &[Version]) -> bool {
     version_index <= versions.iter().position(|x| x.id == "22w16a").unwrap_or(0)
 }
 
+fn version_info_file_name(version_id: &str, format_version: usize) -> String {
+    if format_version == 0 {
+        format!("{version_id}.json")
+    } else {
+        format!("{version_id}.v{format_version}.json")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_format_bump_moves_the_cached_version_info() {
+        assert_eq!(version_info_file_name("1.8.9", 0), "1.8.9.json");
+        assert_eq!(version_info_file_name("1.8.9-0.19.5", 1), "1.8.9-0.19.5.v1.json");
+    }
 
     fn scratch(tag: &str) -> PathBuf {
         let dir =
@@ -1557,6 +1640,51 @@ mod tests {
     }
 
     #[test]
+    fn a_wildcard_only_supplies_loaders_for_versions_the_manifest_lists() {
+        let manifest = serde_json::from_str::<interfrost::api::modded::Manifest>(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/0.19.5.json", "stable": true },
+                    { "id": "0.19.4", "url": "https://meta.example/0.19.4.json", "stable": false }
+                ]},
+                { "id": "1.21.1", "stable": true, "loaders": [] },
+                { "id": "1.14", "stable": true, "loaders": [] }
+            ]}"#,
+        )
+        .unwrap();
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.21.1", None);
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.5");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.14", Some("0.19.4"));
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.4");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.8.9", None);
+        assert!(
+            !saw && resolved.is_none(),
+            "fabric publishes no intermediary below 1.14 so the wildcard must not claim 1.8.9"
+        );
+    }
+
+    #[test]
+    fn a_manifest_that_is_only_a_wildcard_still_covers_every_version() {
+        let manifest = serde_json::from_str::<interfrost::api::modded::Manifest>(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/0.19.5.json", "stable": true }
+                ]}
+            ]}"#,
+        )
+        .unwrap();
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.8.9", None);
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.5");
+    }
+
+    #[test]
     fn a_complete_assets_tree_needs_no_repair() {
         let dir = scratch("assets-ok");
         let (index, objects) = install_assets(&dir);
@@ -1567,10 +1695,10 @@ mod tests {
     }
 
     #[test]
-    fn a_deleted_assets_directory_asks_for_a_repair() {
-        let dir = scratch("assets-deleted");
+    fn a_deleted_objects_directory_asks_for_a_repair() {
+        let dir = scratch("assets-no-objects");
         let (index, objects) = install_assets(&dir);
-        std::fs::remove_dir_all(dir.join("assets")).unwrap();
+        std::fs::remove_dir_all(&objects).unwrap();
 
         assert!(assets_tree_missing(&index, &objects));
 

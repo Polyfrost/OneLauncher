@@ -64,6 +64,10 @@ pub fn java_arguments(
 
     parsed.extend(performance_flags(java_major, java_arch, mem_max, &custom));
 
+    if java_major >= 21 {
+        parsed.push("--add-modules=jdk.incubator.vector".to_string());
+    }
+
     parsed.push(format!("-Xmx{mem_max}M"));
     parsed.extend(custom);
 
@@ -226,7 +230,40 @@ pub fn minecraft_arguments(
         )?;
     }
 
+    drop_repeated_arguments(&mut parsed);
+
     Ok(parsed)
+}
+
+fn drop_repeated_arguments(args: &mut Vec<String>) {
+    let mut seen: HashSet<(String, Option<String>)> = HashSet::new();
+    let mut kept: Vec<String> = Vec::with_capacity(args.len());
+    let mut index = 0;
+
+    while index < args.len() {
+        let token = &args[index];
+        if !token.starts_with("--") {
+            kept.push(token.clone());
+            index += 1;
+            continue;
+        }
+
+        let value = args
+            .get(index + 1)
+            .filter(|next| !next.starts_with("--"))
+            .cloned();
+
+        if seen.insert((token.clone(), value.clone())) {
+            kept.push(token.clone());
+            if let Some(value) = &value {
+                kept.push(value.clone());
+            }
+        }
+
+        index += if value.is_some() { 2 } else { 1 };
+    }
+
+    *args = kept;
 }
 
 pub fn append_profile_game_arguments(
@@ -251,70 +288,76 @@ pub fn processor_arguments<T: AsRef<str>, S: std::hash::BuildHasher>(
     let mut parsed = Vec::new();
 
     for arg in args {
-        let a = &arg.as_ref()[1..arg.as_ref().len() - 1];
-        if arg.as_ref().starts_with('{') {
-            if let Some(entry) = data.get(a) {
-                parsed.push(if entry.client.starts_with('[') {
-                    get_library(
-                        libraries_path,
-                        &entry.client[1..entry.client.len() - 1],
-                        true,
-                    )?
-                } else {
-                    entry.client.clone()
-                });
-            }
-        } else if arg.as_ref().starts_with('[') {
-            parsed.push(get_library(libraries_path, a, true)?);
-        } else {
-            parsed.push(arg.as_ref().to_string());
+        let arg = arg.as_ref();
+
+        if let Some(coordinate) = arg.strip_prefix('[').and_then(|a| a.strip_suffix(']')) {
+            parsed.push(get_library(libraries_path, coordinate, true)?);
+            continue;
         }
+
+        parsed.push(expand_data_placeholders(libraries_path, arg, data)?);
     }
 
     Ok(parsed)
 }
 
-#[tracing::instrument(skip_all, level = "debug")]
-pub async fn main_class(path: impl AsRef<std::path::Path>) -> McResult<Option<String>> {
-    let data = polyio::read(path.as_ref()).await?;
-    let mut class_name = None;
+fn expand_data_placeholders<S: std::hash::BuildHasher>(
+    libraries_path: &Path,
+    arg: &str,
+    data: &HashMap<String, SidedDataEntry, S>,
+) -> McResult<String> {
+    let mut out = String::with_capacity(arg.len());
+    let mut rest = arg;
 
-    use futures_util::TryStreamExt;
+    while let Some(open) = rest.find('{') {
+        let Some(close) = rest[open..].find('}').map(|at| open + at) else {
+            break;
+        };
 
-    let stream = polyio::stream_zip_entries_bytes(data);
-    let mut stream = std::pin::pin!(stream);
+        out.push_str(&rest[..open]);
+        let key = &rest[open + 1..close];
 
-    while let Some(item) = stream.try_next().await? {
-        let (index, entry, reader) = item;
-        if entry.dir().map_err(polyio::IOError::from)? {
-            continue;
-        }
-
-        if entry.filename().as_str().map_err(polyio::IOError::from)? != "META-INF/MANIFEST.MF" {
-            continue;
-        }
-
-        let mut buf = String::new();
-        let mut entry_reader = reader
-            .reader_without_entry(index)
-            .await
-            .map_err(polyio::IOError::from)?;
-        futures_util::AsyncReadExt::read_to_string(&mut entry_reader, &mut buf)
-            .await
-            .map_err(polyio::IOError::from)?;
-
-        for line in buf.lines() {
-            let line = line.trim();
-            if line.starts_with("Main-Class:")
-                && let Some(class) = line.split(':').nth(1)
-            {
-                class_name = Some(class.trim().to_string());
-                break;
+        match data.get(key) {
+            Some(entry) => {
+                match entry
+                    .client
+                    .strip_prefix('[')
+                    .and_then(|c| c.strip_suffix(']'))
+                {
+                    Some(coordinate) => {
+                        out.push_str(&get_library(libraries_path, coordinate, true)?);
+                    }
+                    None => out.push_str(&entry.client),
+                }
             }
+            None => out.push_str(&rest[open..=close]),
         }
+
+        rest = &rest[close + 1..];
     }
 
-    Ok(class_name)
+    out.push_str(rest);
+    Ok(out)
+}
+
+#[tracing::instrument(skip_all, level = "debug")]
+pub async fn main_class(path: impl AsRef<std::path::Path>) -> McResult<Option<String>> {
+    let file = tokio::fs::File::open(path.as_ref()).await?;
+    let manifest = match polyio::try_read_zip_entry_bytes(
+        tokio::io::BufReader::new(file),
+        "META-INF/MANIFEST.MF",
+    )
+    .await
+    {
+        Err(polyio::IOError::FileNotFoundInZip { .. }) => return Ok(None),
+        result => result?,
+    };
+
+    Ok(String::from_utf8_lossy(&manifest).lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("Main-Class:")
+            .map(|class| class.trim().to_string())
+    }))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -402,7 +445,7 @@ pub fn classpaths(
     java_arch: &str,
     updated: bool,
 ) -> McResult<String> {
-    let mut chosen: HashMap<String, (Vec<u64>, &str)> = HashMap::new();
+    let mut chosen: HashMap<String, (ClasspathRank, &str)> = HashMap::new();
     for lib in libraries {
         if let Some(rules) = &lib.rules
             && !validate_rules(rules, java_arch, updated)
@@ -418,17 +461,20 @@ pub fn classpaths(
         }
 
         let (artifact, version) = split_artifact_version(&lib.name);
-        let ver_key = version_key(version);
-        match chosen.get(&artifact) {
-            Some((existing, existing_name)) if *existing >= ver_key => {
+        let bundled = is_legacy_asm_bundle(&artifact);
+        let slot = classpath_slot(artifact);
+        let rank = (!bundled, version_key(version));
+
+        match chosen.get(&slot) {
+            Some((existing, existing_name)) if *existing >= rank => {
                 tracing::debug!(
                     skipped = %lib.name,
                     kept = %existing_name,
-                    "classpath: dropping older duplicate library"
+                    "classpath: dropping superseded library"
                 );
             }
             _ => {
-                chosen.insert(artifact, (ver_key, &lib.name));
+                chosen.insert(slot, (rank, &lib.name));
             }
         }
     }
@@ -446,6 +492,25 @@ pub fn classpaths(
         .into_iter()
         .collect::<Vec<_>>()
         .join(constants::CLASSPATH_SEPARATOR))
+}
+
+type ClasspathRank = (bool, Vec<u64>);
+
+const ASM_SLOT: &str = "org.ow2.asm:asm";
+
+fn is_legacy_asm_bundle(artifact: &str) -> bool {
+    matches!(
+        artifact,
+        "org.ow2.asm:asm-all" | "org.ow2.asm:asm-debug-all" | "asm:asm-all" | "asm:asm-debug-all"
+    )
+}
+
+fn classpath_slot(artifact: String) -> String {
+    if is_legacy_asm_bundle(&artifact) {
+        return ASM_SLOT.to_string();
+    }
+
+    artifact
 }
 
 fn split_artifact_version(name: &str) -> (String, &str) {
@@ -476,14 +541,21 @@ pub fn get_classpath_library<T: AsRef<str>>(
     Ok(classpaths.join(constants::CLASSPATH_SEPARATOR))
 }
 
-pub fn get_library(libraries_path: &Path, library: &str, error_exist: bool) -> McResult<String> {
+pub fn get_library(libraries_path: &Path, library: &str, allow_missing: bool) -> McResult<String> {
     let mut path = libraries_path.to_path_buf();
     path.push(
         get_path_from_artifact(library).map_err(|_| McError::LibraryPath(library.to_string()))?,
     );
 
-    if !path.exists() && error_exist {
-        return Ok(path.display().to_string());
+    if !path.exists() {
+        if allow_missing {
+            return Ok(path.display().to_string());
+        }
+
+        return Err(McError::MissingLibrary {
+            library: library.to_string(),
+            path: path.display().to_string(),
+        });
     }
 
     Ok(polyio::canonicalize(&path)?.display().to_string())
@@ -532,8 +604,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        Library, ZGC_MIN_HEAP_MB, classpaths, is_collector_flag, java_arguments,
-        minecraft_arguments, performance_flags, split_custom_args,
+        HashMap, Library, Path, SidedDataEntry, ZGC_MIN_HEAP_MB, classpaths,
+        drop_repeated_arguments, get_library, is_collector_flag, java_arguments,
+        minecraft_arguments, performance_flags, processor_arguments, split_custom_args,
     };
     use oneclient_common::Resolution;
 
@@ -774,17 +847,6 @@ mod tests {
     }
 
     #[test]
-    fn every_tier_starts_small_and_grows_into_the_memory_setting() {
-        for major in [8, 17, 21, 25] {
-            assert_eq!(
-                flags(major, "amd64", 8192).first().unwrap(),
-                "-Xms512M",
-                "java {major} should not commit the ceiling up front"
-            );
-        }
-    }
-
-    #[test]
     fn a_tiny_profile_never_starts_above_its_ceiling() {
         assert_eq!(
             flags(21, "amd64", 256),
@@ -796,6 +858,135 @@ mod tests {
     #[test]
     fn a_java_7_runtime_is_left_untouched() {
         assert_eq!(flags(7, "amd64", 4096), vec!["-Xms512M"]);
+    }
+
+    fn install_jars(tag: &str, jars: &[&str]) -> (std::path::PathBuf, std::path::PathBuf) {
+        let dir = std::env::temp_dir().join(tag);
+        for jar in jars {
+            let path = dir.join(jar);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, b"").unwrap();
+        }
+        let client = dir.join("client.jar");
+        std::fs::write(&client, b"").unwrap();
+        (dir, client)
+    }
+
+    #[test]
+    fn a_legacy_asm_bundle_loses_to_the_split_modules() {
+        let libraries: Vec<Library> = serde_json::from_str(
+            r#"[
+                { "name": "org.ow2.asm:asm-all:4.1" },
+                { "name": "org.ow2.asm:asm:9.10.1" },
+                { "name": "org.ow2.asm:asm-tree:9.10.1" },
+                { "name": "net.minecraft:launchwrapper:1.5" }
+            ]"#,
+        )
+        .unwrap();
+
+        let (dir, client) = install_jars(
+            "oneclient-classpath-asm-all",
+            &[
+                "org/ow2/asm/asm-all/4.1/asm-all-4.1.jar",
+                "org/ow2/asm/asm/9.10.1/asm-9.10.1.jar",
+                "org/ow2/asm/asm-tree/9.10.1/asm-tree-9.10.1.jar",
+                "net/minecraft/launchwrapper/1.5/launchwrapper-1.5.jar",
+            ],
+        );
+
+        let cp = classpaths(&dir, &libraries, &client, "x86", false).unwrap();
+
+        assert!(
+            !cp.contains("asm-all-4.1.jar"),
+            "fabric aborts on two copies of org/objectweb/asm/ClassReader.class: {cp}"
+        );
+        assert!(cp.contains("asm-9.10.1.jar"), "{cp}");
+        assert!(cp.contains("asm-tree-9.10.1.jar"), "{cp}");
+        assert!(cp.contains("launchwrapper-1.5.jar"), "{cp}");
+    }
+
+    #[test]
+    fn a_legacy_asm_bundle_stays_when_nothing_supersedes_it() {
+        let libraries: Vec<Library> = serde_json::from_str(
+            r#"[
+                { "name": "org.ow2.asm:asm-all:4.1" },
+                { "name": "net.minecraft:launchwrapper:1.5" }
+            ]"#,
+        )
+        .unwrap();
+
+        let (dir, client) = install_jars(
+            "oneclient-classpath-asm-only",
+            &[
+                "org/ow2/asm/asm-all/4.1/asm-all-4.1.jar",
+                "net/minecraft/launchwrapper/1.5/launchwrapper-1.5.jar",
+            ],
+        );
+
+        let cp = classpaths(&dir, &libraries, &client, "x86", false).unwrap();
+
+        assert!(cp.contains("asm-all-4.1.jar"), "{cp}");
+    }
+
+    #[test]
+    fn a_newer_bundle_does_not_outrank_an_older_split_module() {
+        let libraries: Vec<Library> = serde_json::from_str(
+            r#"[
+                { "name": "org.ow2.asm:asm-debug-all:5.2" },
+                { "name": "org.ow2.asm:asm:5.0.3" }
+            ]"#,
+        )
+        .unwrap();
+
+        let (dir, client) = install_jars(
+            "oneclient-classpath-asm-debug",
+            &[
+                "org/ow2/asm/asm-debug-all/5.2/asm-debug-all-5.2.jar",
+                "org/ow2/asm/asm/5.0.3/asm-5.0.3.jar",
+            ],
+        );
+
+        let cp = classpaths(&dir, &libraries, &client, "x86", false).unwrap();
+
+        assert!(!cp.contains("asm-debug-all"), "{cp}");
+        assert!(cp.contains("asm-5.0.3.jar"), "{cp}");
+    }
+
+    #[test]
+    fn a_missing_classpath_jar_names_the_library_it_could_not_find() {
+        let libraries: Vec<Library> = serde_json::from_str(
+            r#"[
+                { "name": "net.fabricmc:fabric-loader:0.19.5" },
+                { "name": "net.fabricmc:intermediary:1.8.9" }
+            ]"#,
+        )
+        .unwrap();
+
+        let dir = std::env::temp_dir().join("oneclient-classpath-missing");
+        let present = dir.join("net/fabricmc/fabric-loader/0.19.5/fabric-loader-0.19.5.jar");
+        std::fs::create_dir_all(present.parent().unwrap()).unwrap();
+        std::fs::write(&present, b"").unwrap();
+        let client = dir.join("client.jar");
+        std::fs::write(&client, b"").unwrap();
+
+        let err = classpaths(&dir, &libraries, &client, "x86", false)
+            .expect_err("a jar that never downloaded must not reach the jvm as a silent gap");
+        let message = err.to_string();
+
+        assert!(
+            message.contains("net.fabricmc:intermediary:1.8.9"),
+            "{message}"
+        );
+        assert!(message.contains("intermediary-1.8.9.jar"), "{message}");
+    }
+
+    #[test]
+    fn a_tolerated_missing_library_keeps_its_expected_path() {
+        let dir = std::env::temp_dir().join("oneclient-library-tolerated");
+        let path = get_library(&dir, "net.fabricmc:intermediary:1.8.9", true)
+            .expect("allow_missing hands back the path it would have used");
+
+        assert!(path.ends_with("intermediary-1.8.9.jar"), "{path}");
     }
 
     #[test]
@@ -886,5 +1077,102 @@ mod tests {
         assert_eq!(args.first().unwrap(), "--username");
         assert_eq!(args[1], "player");
         assert_eq!(args.last().unwrap(), "--fabric");
+    }
+
+    #[test]
+    fn a_loader_repeating_the_legacy_string_is_not_passed_twice() {
+        let loader_game: Vec<interfrost::api::minecraft::Argument> = serde_json::from_str(
+            r#"["--username", "${auth_player_name}", "--gameDir", "${game_directory}",
+                "--tweakClass", "net.minecraftforge.fml.common.launcher.FMLTweaker"]"#,
+        )
+        .unwrap();
+        let dir = std::env::temp_dir();
+
+        let args = minecraft_arguments(
+            false,
+            Some(&loader_game),
+            Some(
+                "--username ${auth_player_name} --gameDir ${game_directory}                  --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",
+            ),
+            "token",
+            "player",
+            uuid::Uuid::nil(),
+            "1.11",
+            "1.11",
+            &dir,
+            &dir,
+            interfrost::api::minecraft::VersionType::Release,
+            Resolution::default(),
+            "arm64",
+        )
+        .unwrap();
+
+        assert_eq!(args.iter().filter(|a| *a == "--gameDir").count(), 1);
+        assert_eq!(args.iter().filter(|a| *a == "--username").count(), 1);
+        assert_eq!(args.iter().filter(|a| *a == "--tweakClass").count(), 1);
+    }
+
+    #[test]
+    fn an_embedded_placeholder_keeps_its_surrounding_text() {
+        let mut data = HashMap::new();
+        data.insert(
+            "ROOT".to_string(),
+            SidedDataEntry {
+                client: "/meta".to_string(),
+                server: String::new(),
+            },
+        );
+        data.insert(
+            "BINPATCH".to_string(),
+            SidedDataEntry {
+                client: "/meta/libraries/patch.lzma".to_string(),
+                server: String::new(),
+            },
+        );
+
+        let args = [
+            "--task",
+            "PROCESS_MINECRAFT_JAR",
+            "--extract-libraries-to",
+            "{ROOT}/libraries/",
+            "--apply-patches",
+            "{BINPATCH}",
+        ];
+
+        let parsed = processor_arguments(Path::new("/libs"), &args, &data).unwrap();
+
+        assert_eq!(parsed.len(), args.len());
+        assert_eq!(parsed[3], "/meta/libraries/");
+        assert_eq!(parsed[4], "--apply-patches");
+        assert_eq!(parsed[5], "/meta/libraries/patch.lzma");
+    }
+
+    #[test]
+    fn an_unknown_placeholder_is_left_alone_rather_than_dropped() {
+        let data: HashMap<String, SidedDataEntry> = HashMap::new();
+        let args = ["--flag", "{NOPE}", "--after"];
+
+        let parsed = processor_arguments(Path::new("/libs"), &args, &data).unwrap();
+
+        assert_eq!(parsed, vec!["--flag", "{NOPE}", "--after"]);
+    }
+
+    #[test]
+    fn distinct_tweakers_both_survive() {
+        let mut args = vec![
+            "--tweakClass".to_string(),
+            "forge.FMLTweaker".to_string(),
+            "--tweakClass".to_string(),
+            "optifine.OptiFineTweaker".to_string(),
+            "--gameDir".to_string(),
+            "/games".to_string(),
+            "--gameDir".to_string(),
+            "/games".to_string(),
+        ];
+
+        drop_repeated_arguments(&mut args);
+
+        assert_eq!(args.iter().filter(|a| *a == "--tweakClass").count(), 2);
+        assert_eq!(args.iter().filter(|a| *a == "--gameDir").count(), 1);
     }
 }

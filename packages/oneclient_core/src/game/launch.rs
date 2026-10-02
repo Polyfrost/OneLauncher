@@ -105,10 +105,28 @@ async fn start(
 
     state.games.set_dir(cluster_id, game_dir.clone());
 
+    match state.clusters.mark_played(cluster_id).await {
+        Ok(()) => events.signal(oneclient_events::Signal::ClustersChanged),
+        Err(err) => tracing::debug!(cluster_id, error = %err, "could not record the launch time"),
+    }
+
     let progress = GroupedProgressSession::start(
         &state.services.events,
         format!("Launching {}", existing.name),
     );
+
+    if existing.uses_bundles()
+        && let Err(err) = crate::clusters::apply_bundle_java_override(
+            state,
+            cluster_id,
+            search_for_java,
+            false,
+            Some(&progress),
+        )
+        .await
+    {
+        tracing::warn!(cluster_id, error = %err, "failed to apply bundle java override");
+    }
 
     let cluster = if existing.stage == ClusterStage::Ready {
         existing
@@ -132,13 +150,14 @@ async fn start(
             }
         }
     };
-    if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
-        cluster_id,
-        state.bundles.as_ref(),
-        Some(&progress),
-        &state.services.content(),
-    )
-    .await
+    if cluster.uses_bundles()
+        && let Err(err) = oneclient_content::bundles::install_cluster_bundles(
+            cluster_id,
+            state.bundles.as_ref(),
+            Some(&progress),
+            &state.services.content(),
+        )
+        .await
     {
         tracing::warn!(cluster_id, error = %err, "failed to install bundle content");
     }
@@ -167,6 +186,7 @@ async fn start(
             &state.services.mc(),
             Some(&progress),
             &version,
+            cluster.mc_loader,
             loader_version.as_ref(),
             false,
         )
@@ -455,11 +475,11 @@ async fn start(
     let post_hook = profile.hook_post.clone();
     tokio::spawn(async move {
         let cluster = cluster;
-        let status = tokio::select! {
-            status = child.wait() => status,
+        let (status, stopped) = tokio::select! {
+            status = child.wait() => (status, false),
             _ = kill_rx => {
                 let _ = child.start_kill();
-                child.wait().await
+                (child.wait().await, true)
             }
         };
 
@@ -468,7 +488,7 @@ async fn start(
         let outcome = match status {
             Ok(status) => Exit::Observed {
                 code: status.code().map(i64::from),
-                success: status.success(),
+                success: status.success() || stopped || killed(&status),
                 display: status.to_string(),
             },
             Err(err) => Exit::Failed(err.to_string()),
@@ -521,6 +541,19 @@ fn detach(command: &mut Command) {
             .as_std_mut()
             .creation_flags(DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP);
     }
+}
+
+#[cfg(unix)]
+fn killed(status: &std::process::ExitStatus) -> bool {
+    use std::os::unix::process::ExitStatusExt;
+    const SIGKILL: i32 = 9;
+    const JVM_SIGTERM_EXIT: i32 = 143;
+    status.signal() == Some(SIGKILL) || status.code() == Some(JVM_SIGTERM_EXIT)
+}
+
+#[cfg(not(unix))]
+fn killed(_status: &std::process::ExitStatus) -> bool {
+    false
 }
 
 pub(crate) enum Exit {
@@ -611,12 +644,7 @@ pub(crate) async fn finalize_session(
     let crashed = !matches!(end.outcome, Exit::Observed { success: true, .. });
 
     match end.outcome {
-        Exit::Observed { success: true, .. } => state
-            .services
-            .events
-            .notify("Game closed")
-            .body(format!("{name} exited"))
-            .send(),
+        Exit::Observed { success: true, .. } => {}
         Exit::Observed { display, .. } => state
             .services
             .events

@@ -47,63 +47,35 @@ fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
 }
 
 pub fn analytics_placeholder(note: &str) -> Element {
-    AnalyticsPlaceholder {
-        note: note.to_string(),
-    }
-    .into_element()
-}
-
-#[derive(PartialEq)]
-struct AnalyticsPlaceholder {
-    note: String,
-}
-
-impl Component for AnalyticsPlaceholder {
-    fn render(&self) -> impl IntoElement {
-        let mut body_height = use_state(|| 0f32);
-        let scrim_height = *body_height.read();
-
-        rect()
-            .width(Size::fill())
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .on_sized(move |e: Event<SizedEventData>| {
-                        let height = e.area.height();
-                        if (*body_height.read() - height).abs() > 0.5 {
-                            body_height.set(height);
-                        }
-                    })
-                    .child(analytics_body_inner(&empty_analytics(), true)),
-            )
-            .child(
-                rect()
-                    .position(Position::new_absolute())
-                    .width(Size::fill())
-                    .height(Size::px(scrim_height))
-                    .layer(Layer::Relative(1))
-                    .center()
-                    .padding(40.)
-                    .background(colors::page_overlay())
-                    .on_press(|_| {})
-                    .child(
-                        rect()
-                            .max_width(Size::px(360.))
-                            .padding(Gaps::new_symmetric(16., 24.))
-                            .corner_radius(CornerRadius::new_all(12.))
-                            .background(colors::page_elevated())
-                            .border(border_all_color(1., colors::component_border()))
-                            .center()
-                            .child(
-                                label()
-                                    .text(self.note.clone())
-                                    .font_size(14.)
-                                    .text_align(TextAlign::Center)
-                                    .color(colors::fg_secondary()),
-                            ),
-                    ),
-            )
-    }
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(24.)
+        .child(
+            rect()
+                .width(Size::fill())
+                .padding(Gaps::new_symmetric(16., 24.))
+                .corner_radius(CornerRadius::new_all(12.))
+                .background(colors::page_elevated())
+                .border(border_all_color(1., colors::component_border()))
+                .center()
+                .child(
+                    label()
+                        .text(note.to_string())
+                        .width(Size::fill())
+                        .font_size(14.)
+                        .text_align(TextAlign::Center)
+                        .color(colors::fg_secondary()),
+                ),
+        )
+        .child(
+            rect()
+                .width(Size::fill())
+                .opacity(0.4)
+                .interactive(false)
+                .child(analytics_body_inner(&empty_analytics(), true)),
+        )
+        .into_element()
 }
 
 /// A run of zero-second days ending today so the timeline still renders columns for each range

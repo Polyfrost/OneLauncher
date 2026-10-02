@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::path::PathBuf;
 
 use freya::prelude::*;
@@ -6,12 +5,13 @@ use oneclient_core::ScreenshotInfo;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea, Segment,
-    SegmentedControl, open_folder_button, screenshot_context_menu,
+    Button, ContextMenu, Icon, IconType, LocalImage, OverlayPopup, ScreenshotViewer, ScrollArea,
+    Segment, SegmentedControl, open_folder_button, screenshot_context_menu,
 };
 use crate::hooks::{
-    ScreenshotAction, query_is_loading, try_cluster_screenshots, use_cluster_screenshots,
-    use_dispatch, use_screenshot_action, use_screenshot_folder_watch, use_view_state,
+    ScreenshotAction, Selection, query_is_loading, try_cluster_screenshots,
+    use_cluster_screenshots, use_dispatch, use_screenshot_action, use_screenshot_folder_watch,
+    use_selection, use_view_state,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
@@ -51,19 +51,23 @@ impl Component for ClusterScreenshots {
         let view_mode = use_view_state("cluster.screenshots").layout;
         let menu_dispatch = use_dispatch();
 
-        let mut edit_mode = use_state(|| false);
-        let mut selected = use_state(HashSet::<PathBuf>::new);
+        let selection = use_selection::<PathBuf>();
         let mut viewing = use_state(|| None::<usize>);
-        let confirm_delete = use_state(|| false);
+        let mut confirm_delete = use_state(|| false);
         let grid_width = use_state(|| 0f32);
         let mut menu = use_state(|| None::<(f32, f32, PathBuf)>);
+
+        let order: Vec<PathBuf> = shots.iter().map(|s| s.path.clone()).collect();
+        let selected = selection.selected_in(&order);
+        let editing = selection.is_active();
 
         let toolbar = toolbar_row(
             &shots,
             folder,
             view_mode,
-            edit_mode,
-            selected,
+            editing,
+            selection,
+            selected.len(),
             confirm_delete,
         );
 
@@ -73,17 +77,13 @@ impl Component for ClusterScreenshots {
             let mut items: Vec<Element> = Vec::new();
             for (idx, info) in shots.iter().enumerate() {
                 let info = info.clone();
-                let is_selected = selected.read().contains(&info.path);
-                let editing = *edit_mode.read();
+                let is_selected = selected.contains(&info.path);
 
                 let activate_path = info.path.clone();
+                let activate_order = order.clone();
                 let on_activate = move |_| {
-                    if editing {
-                        let p = activate_path.clone();
-                        let mut set = selected.write();
-                        if !set.remove(&p) {
-                            set.insert(p);
-                        }
+                    if editing || selection.modifier_held() {
+                        selection.click(activate_path.clone(), &activate_order);
                     } else {
                         viewing.set(Some(idx));
                     }
@@ -137,27 +137,67 @@ impl Component for ClusterScreenshots {
             .children(vec![content]);
 
         let confirm_overlay = confirm_delete.read().then(|| {
-            let count = selected.read().len();
-            confirm_panel(count, confirm_delete, move || {
-                let paths: Vec<PathBuf> = selected.read().iter().cloned().collect();
-                for path in paths {
+            let paths = selected.clone();
+            confirm_panel(paths.len(), confirm_delete, move || {
+                for path in paths.iter().cloned() {
                     action.mutate(ScreenshotAction::Delete { path });
                 }
-                selected.write().clear();
-                edit_mode.set(false);
+                selection.exit();
                 confirm_delete.clone().set(false);
             })
         });
 
         let menu_overlay = menu.read().clone().map(|(x, y, path)| {
-            screenshot_context_menu(x, y, path, action, menu_dispatch.clone(), |()| {})
-                .on_close(move |_| menu.set(None))
-                .into_element()
+            let menu_for = if !editing {
+                let select_path = path.clone();
+                screenshot_context_menu(
+                    x,
+                    y,
+                    path,
+                    action,
+                    menu_dispatch.clone(),
+                    |()| {},
+                    Some((move |()| selection.toggle(select_path.clone())).into()),
+                )
+            } else {
+                let all = order.clone();
+                let every = !selected.is_empty() && selected.len() == order.len();
+                let (icon, text) = if every {
+                    (IconType::XClose, "Unselect all")
+                } else {
+                    (IconType::Check, "Select all")
+                };
+                let own = if selected.contains(&path) {
+                    (IconType::XClose, "Unselect")
+                } else {
+                    (IconType::Check, "Select")
+                };
+                let mut multi = ContextMenu::new(x, y)
+                    .title(format!("{} selected", selected.len()))
+                    .action(own.0, own.1, move |()| selection.toggle(path.clone()))
+                    .separator()
+                    .action(icon, text, move |()| selection.toggle_all(&all));
+                if !selected.is_empty() && !every {
+                    multi = multi.action(IconType::XClose, "Clear selection", move |()| {
+                        selection.clear()
+                    });
+                }
+                if !selected.is_empty() {
+                    multi = multi.separator().danger_action(
+                        IconType::Trash01,
+                        format!("Delete {}", selected.len()),
+                        move |()| confirm_delete.set(true),
+                    );
+                }
+                multi
+            };
+            menu_for.on_close(move |_| menu.set(None)).into_element()
         });
 
         cluster_content()
             .child(
-                rect()
+                selection
+                    .track_modifiers(rect())
                     .vertical()
                     .width(Size::fill())
                     .height(Size::fill())
@@ -179,12 +219,11 @@ fn toolbar_row(
     shots: &[ScreenshotInfo],
     folder: Option<PathBuf>,
     view_mode: State<ViewLayout>,
-    mut edit_mode: State<bool>,
-    mut selected: State<HashSet<PathBuf>>,
+    editing: bool,
+    selection: Selection<PathBuf>,
+    count: usize,
     mut confirm_delete: State<bool>,
 ) -> impl IntoElement {
-    let editing = *edit_mode.read();
-    let count = selected.read().len();
     let all_paths: Vec<PathBuf> = shots.iter().map(|s| s.path.clone()).collect();
 
     let mut right = rect()
@@ -199,7 +238,7 @@ fn toolbar_row(
         );
 
     if editing {
-        let select_all_paths = all_paths.clone();
+        let every = count > 0 && count == all_paths.len();
         right = right
             .child(
                 label()
@@ -211,20 +250,18 @@ fn toolbar_row(
                 Button::new()
                     .secondary()
                     .small()
-                    .on_press(move |_| {
-                        let mut set = selected.write();
-                        *set = select_all_paths.iter().cloned().collect();
-                    })
-                    .text("Select all"),
+                    .on_press(move |_| selection.toggle_all(&all_paths))
+                    .text(if every { "Unselect all" } else { "Select all" }),
             )
-            .child(
+            .maybe_child((count > 0 && !every).then(|| {
                 Button::new()
                     .ghost()
                     .small()
                     .enabled(count > 0)
-                    .on_press(move |_| selected.write().clear())
-                    .text("Deselect all"),
-            )
+                    .on_press(move |_| selection.clear())
+                    .text("Deselect all")
+                    .into_element()
+            }))
             .child(
                 Button::new()
                     .danger()
@@ -238,10 +275,7 @@ fn toolbar_row(
                 Button::new()
                     .ghost()
                     .small()
-                    .on_press(move |_| {
-                        selected.write().clear();
-                        edit_mode.set(false);
-                    })
+                    .on_press(move |_| selection.exit())
                     .text("Cancel"),
             );
     } else {
@@ -257,7 +291,7 @@ fn toolbar_row(
                     .secondary()
                     .small()
                     .enabled(!shots.is_empty())
-                    .on_press(move |_| edit_mode.set(true))
+                    .on_press(move |_| selection.enter())
                     .child(Icon::new(IconType::Pencil01).size(14.))
                     .text("Select"),
             );

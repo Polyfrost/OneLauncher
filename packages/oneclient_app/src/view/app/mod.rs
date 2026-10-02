@@ -9,7 +9,7 @@ pub mod browser;
 pub mod cluster;
 pub mod settings;
 
-use crate::state::GameState as GameSnapshot;
+use crate::state::{GameState as GameSnapshot, LauncherInit};
 use oneclient_events::LaunchStage;
 
 pub fn launch_button_state(
@@ -31,6 +31,10 @@ pub fn launch_button_state(
         return (state.0, false);
     }
     state
+}
+
+pub fn launch_syncing(launcher: &LauncherInit, uses_bundles: bool) -> bool {
+    launcher.fetching || (uses_bundles && launcher.syncing_bundles)
 }
 
 pub(crate) use analytics::{analytics_body, analytics_placeholder};

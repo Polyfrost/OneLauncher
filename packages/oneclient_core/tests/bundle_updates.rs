@@ -1,6 +1,6 @@
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_content::bundles::{
-    BundleFile, BundleFileKind, BundleManifest, check_bundle_updates,
+    BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
     get_bundles_with_update_status,
 };
 use oneclient_core::LauncherState;
@@ -20,6 +20,7 @@ fn managed_file(enabled: bool) -> BundleFile {
         hidden: false,
         path: "mods/sodium.jar".to_string(),
         size: 1,
+        file_type: BundleFileType::Normal,
         kind: BundleFileKind::Managed {
             provider: ProviderId::Modrinth,
             project_id: PROJECT_ID.to_string(),
@@ -36,6 +37,7 @@ fn newly_shipped_file() -> BundleFile {
         hidden: false,
         path: "mods/newcomer.jar".to_string(),
         size: 1,
+        file_type: BundleFileType::Normal,
         kind: BundleFileKind::Managed {
             provider: ProviderId::Modrinth,
             project_id: "newcomer".to_string(),
@@ -54,6 +56,7 @@ fn manifest(files: Vec<BundleFile>) -> BundleManifest {
         loader: GameLoader::Fabric,
         loader_version: "0.16.0".to_string(),
         enabled: true,
+        java_version_override: None,
         files,
     }
 }

@@ -73,7 +73,7 @@ impl GameSettingsProfile {
                 .os_extra
                 .as_ref()
                 .and_then(|extra| extra.use_discrete_gpu)
-                .unwrap_or(false),
+                .unwrap_or(true),
             _ => false
         }
     }

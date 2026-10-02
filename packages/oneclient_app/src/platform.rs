@@ -181,6 +181,22 @@ pub mod tray {
         });
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn available() -> bool {
+        let loaded = ["libayatana-appindicator3.so.1", "libappindicator3.so.1"]
+            .into_iter()
+            .any(|name| unsafe { libloading::Library::new(name) }.is_ok());
+        if !loaded {
+            tracing::warn!("tray icon disabled, appindicator failed to load");
+        }
+        loaded
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    pub fn available() -> bool {
+        true
+    }
+
     pub fn build() -> TrayIcon {
         let live_on_linux = cfg!(target_os = "linux");
         let stop = MenuItem::with_id(STOP_ID, "Stop game", live_on_linux, None);

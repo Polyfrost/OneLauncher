@@ -33,6 +33,7 @@ rust-embed.workspace = true
 
 tracing.workspace = true
 tracing-subscriber.workspace = true
+futures-util.workspace = true
 tokio.workspace = true
 uuid.workspace = true
 bytes.workspace = true
@@ -48,8 +49,10 @@ percent-encoding.workspace = true
 
 cargo-packager-updater = "=0.2.3"
 
-rfd = "=0.17.2"
-open = "=5.4.0"
+# rfd = "=0.17.2"
+# open = "=5.4.0"
+rfd.workspace = true
+open.workspace = true
 
 # clipboard image copy + decode for it
 arboard.workspace = true
@@ -65,6 +68,9 @@ freya-testing.workspace = true
 
 [target.'cfg(target_os = "macos")'.dependencies]
 mimalloc = "=0.1.52"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libloading = "=0.8.9"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "=0.62.2", features = [
@@ -147,9 +153,12 @@ SectionEnd
 
 [package.metadata.packager.deb]
 desktop-template = "distribution/linux/org.polyfrost.oneclient.template"
+depends = ["libxdo3"]
 
 [package.metadata.packager.appimage]
 # desktop entry generated from the deb template above via the linux config
+libs = ["libayatana-appindicator3.so.1"]
+excluded-libraries = ["libwayland-*"]
 
 [package.metadata.generate-rpm]
 auto-req = "builtin"

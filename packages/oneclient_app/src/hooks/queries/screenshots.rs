@@ -1,17 +1,17 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
-use std::time::Duration;
 
 use bytes::Bytes;
-use freya::prelude::{spawn, use_hook};
 use freya::query::{
     Mutation, MutationCapability, QueriesStorage, Query, QueryCapability, UseMutation, UseQuery,
     use_mutation, use_query,
 };
-use notify::{EventKind, RecursiveMode, Watcher};
+use notify::{Event, EventKind};
 use oneclient_core::{LauncherError, ScreenshotInfo};
-use tokio::sync::{Semaphore, mpsc};
+use tokio::sync::Semaphore;
+
+use crate::launcher::off_ui_blocking;
 
 static LOCAL_IMAGE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
@@ -31,7 +31,7 @@ impl QueryCapability for ClusterScreenshotsQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
         let cluster = state.clusters.get(keys.cluster_id).await?;
-        Ok(oneclient_core::list_cluster_screenshots(&cluster)?)
+        Ok(off_ui_blocking(move || oneclient_core::list_cluster_screenshots(&cluster)).await?)
     }
 }
 
@@ -42,7 +42,9 @@ pub struct LocalImageKeys {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct LocalImageQuery;
+pub struct LocalImageQuery {
+    picked: bool,
+}
 
 impl QueryCapability for LocalImageQuery {
     type Ok = Bytes;
@@ -50,6 +52,10 @@ impl QueryCapability for LocalImageQuery {
     type Keys = LocalImageKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        if keys.path.as_os_str().is_empty() {
+            return Ok(Bytes::new());
+        }
+
         let path = keys.path.clone();
         let max_edge = (keys.max_edge != 0).then_some(keys.max_edge);
 
@@ -66,11 +72,20 @@ impl QueryCapability for LocalImageQuery {
             None
         };
 
-        Ok(
-            tokio::task::spawn_blocking(move || oneclient_core::load_screenshot(&path, max_edge))
-                .await
-                .map_err(|e| LauncherError::Minecraft(e.to_string()))??,
-        )
+        let picked = self.picked;
+        Ok(tokio::task::spawn_blocking(move || {
+            if picked {
+                oneclient_core::load_picked_image(&path, max_edge)
+            } else {
+                oneclient_core::load_screenshot(&path, max_edge)
+            }
+        })
+        .await
+        .map_err(|e| LauncherError::Minecraft(e.to_string()))??)
+    }
+
+    fn matches(&self, _keys: &Self::Keys) -> bool {
+        !self.picked
     }
 }
 
@@ -81,83 +96,21 @@ pub fn use_cluster_screenshots(cluster_id: i64) -> UseQuery<ClusterScreenshotsQu
     ))
 }
 
-pub fn use_local_image(path: PathBuf, max_edge: u32) -> UseQuery<LocalImageQuery> {
+pub fn use_local_image(path: PathBuf, max_edge: u32, picked: bool) -> UseQuery<LocalImageQuery> {
     use_query(Query::new(
         LocalImageKeys { path, max_edge },
-        LocalImageQuery,
+        LocalImageQuery { picked },
     ))
 }
-
-const WATCH_QUIET: Duration = Duration::from_millis(400);
 
 pub fn use_screenshot_folder_watch(
     folder: Option<PathBuf>,
     query: UseQuery<ClusterScreenshotsQuery>,
 ) {
-    use_hook(move || {
-        let Some(folder) = folder else {
-            return;
-        };
-
-        spawn(async move {
-            if let Err(err) = watch_folder(&folder, query).await {
-                tracing::warn!(
-                    folder = %folder.display(),
-                    error = %err,
-                    "not watching the screenshot folder; the list will refresh on re-entry only"
-                );
-            }
-        });
-    });
+    super::folder_watch::use_folder_watch(folder, false, touches_image, move || query.invalidate());
 }
 
-async fn watch_folder(
-    folder: &Path,
-    query: UseQuery<ClusterScreenshotsQuery>,
-) -> notify::Result<()> {
-    // If there is no screenshots folder it creates it
-    std::fs::create_dir_all(folder)?;
-
-    let (tx, mut rx) = mpsc::unbounded_channel();
-    let mut watcher =
-        notify::recommended_watcher(move |event: notify::Result<notify::Event>| match event {
-            Ok(event) if touches_image(&event) => {
-                let _ = tx.send(());
-            }
-            Ok(_) => {}
-            Err(err) => tracing::debug!(error = %err, "screenshot watcher reported an error"),
-        })?;
-    watcher.watch(folder, RecursiveMode::NonRecursive)?;
-
-    let mut pending = false;
-    loop {
-        tokio::select! {
-            biased;
-
-            event = rx.recv() => {
-                if event.is_none() {
-                    return Ok(());
-                }
-                pending = true;
-            }
-
-            () = quiet_period(pending) => {
-                pending = false;
-                query.invalidate();
-            }
-        }
-    }
-}
-
-async fn quiet_period(pending: bool) {
-    if pending {
-        tokio::time::sleep(WATCH_QUIET).await;
-    } else {
-        std::future::pending::<()>().await;
-    }
-}
-
-fn touches_image(event: &notify::Event) -> bool {
+fn touches_image(_root: &Path, event: &Event) -> bool {
     if matches!(event.kind, EventKind::Access(_)) {
         return false;
     }
@@ -179,7 +132,11 @@ pub fn try_cluster_screenshots(
 
 pub async fn invalidate_screenshots_queries() {
     QueriesStorage::<ClusterScreenshotsQuery>::invalidate_all().await;
-    QueriesStorage::<LocalImageQuery>::invalidate_all().await;
+    QueriesStorage::<LocalImageQuery>::invalidate_matching(LocalImageKeys {
+        path: PathBuf::new(),
+        max_edge: 0,
+    })
+    .await;
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
@@ -197,7 +154,10 @@ impl MutationCapability for ScreenshotActionMutation {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         match keys {
-            ScreenshotAction::Delete { path } => Ok(oneclient_core::delete_screenshot(path)?),
+            ScreenshotAction::Delete { path } => {
+                let path = path.clone();
+                Ok(off_ui_blocking(move || oneclient_core::delete_screenshot(&path)).await?)
+            }
         }
     }
 

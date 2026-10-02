@@ -70,6 +70,8 @@ pub struct ProjectSummary {
     pub summary: String,
     pub author: String,
     pub icon_url: Option<String>,
+    #[serde(default)]
+    pub banner_url: Option<String>,
     pub downloads: u64,
     pub created: DateTime<Utc>,
     pub updated: DateTime<Utc>,
@@ -103,6 +105,8 @@ pub struct ProjectMember {
 pub struct GalleryImage {
     pub url: String,
     pub title: Option<String>,
+    #[serde(default)]
+    pub featured: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -140,6 +144,8 @@ pub struct VersionSummary {
     pub loaders: Vec<GameLoader>,
     pub downloads: u64,
     pub file_size: u64,
+    #[serde(default)]
+    pub dependencies: Vec<VersionDependency>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -232,6 +238,13 @@ pub struct ProviderReleaseInfo {
 }
 
 pub type VersionLookup = HashMap<String, VersionDetail>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InstalledPackage {
+    pub hash: String,
+    pub project_id: String,
+    pub content_type: ContentType,
+}
 pub type ProviderVersionLookup = HashMap<String, (ProviderId, VersionDetail)>;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

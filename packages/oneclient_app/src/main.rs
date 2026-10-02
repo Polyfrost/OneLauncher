@@ -9,8 +9,9 @@ use freya::radio::use_init_radio_station;
 use oneclient_app::ipc::{self, Claim};
 use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
-    Actions, ConfirmLinkOverlay, EventPump, LinkConfirmState, StartMaximizedState, cli, constants,
-    events, microsoft_java, platform, router, theme, use_provide_actions, use_provide_link_confirm,
+    Actions, ConfirmLinkOverlay, EssentialConfirmOverlay, EssentialGuardState, EventPump,
+    LinkConfirmState, StartMaximizedState, cli, constants, events, microsoft_java, platform,
+    router, theme, use_provide_actions, use_provide_essential_guard, use_provide_link_confirm,
     use_provide_start_maximized,
 };
 use std::cell::Cell;
@@ -82,12 +83,16 @@ impl App for OneClientApp {
         let link_confirm = use_state(|| None::<String>);
         use_provide_link_confirm(LinkConfirmState(link_confirm));
 
+        let essential_guard = use_state(|| None);
+        use_provide_essential_guard(EssentialGuardState(essential_guard));
+
         use_provide_start_maximized(StartMaximizedState(self.start_maximized));
 
         rect()
             .width(Size::fill())
             .height(Size::fill())
             .child(ConfirmLinkOverlay)
+            .child(EssentialConfirmOverlay)
             .child(router())
     }
 }
@@ -104,6 +109,8 @@ fn main() {
 
     let rt = builder.build().unwrap();
     let _tokio_guard = rt.enter();
+
+    let adopted = rt.block_on(oneclient_core::relocate::adopt_legacy_dir());
 
     // no settings file is the sign of a fresh install, but not proof of one
     let never_set_up = oneclient_common::paths::settings_file()
@@ -145,6 +152,14 @@ fn main() {
         oneclient_core::logger::init()
     }
     .expect("Failed to initialize logger");
+
+    match adopted {
+        Ok(Some(from)) => {
+            tracing::info!(from = %from.display(), "moved out of the old launcher folder")
+        }
+        Ok(None) => {}
+        Err(err) => tracing::error!("{err}"),
+    }
 
     if let Some(reason) = unprotected {
         tracing::warn!("no single-instance endpoint, a second launcher can start: {reason}");
@@ -232,7 +247,7 @@ fn main() {
 		.with_plugin(freya::metrics::MetricsPlugin::default())
         .with_default_font(theme::DEFAULT_FONT);
 
-    if show_tray_icon {
+    if show_tray_icon && platform::tray::available() {
         launch_config = launch_config.with_tray(platform::tray::build, platform::tray::handle);
     }
 

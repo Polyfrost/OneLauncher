@@ -7,6 +7,7 @@ mod cluster_optional_mod;
 mod game_session;
 mod java;
 mod package_metadata;
+mod release_migration_waitlist;
 mod setting_profile;
 
 pub use artifact::{
@@ -15,7 +16,7 @@ pub use artifact::{
 };
 pub use browser_package_update::BrowserPackageUpdateRow;
 pub use bundle::{BundleRow, NewBundle};
-pub use cluster::{ClusterId, ClusterPatch, ClusterRow, NewCluster};
+pub use cluster::{ClusterId, ClusterKind, ClusterPatch, ClusterRow, NewCluster};
 pub use cluster_bundle::{BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType};
 pub use cluster_optional_mod::{ClusterOptionalModRow, OptionalModStatus};
 pub use game_session::{
@@ -24,4 +25,5 @@ pub use game_session::{
 };
 pub use java::JavaVersionRow;
 pub use package_metadata::PackageMetadataRow;
+pub use release_migration_waitlist::ReleaseMigrationWaitlistRow;
 pub use setting_profile::SettingProfileRow;

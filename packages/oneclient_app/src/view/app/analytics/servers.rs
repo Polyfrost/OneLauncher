@@ -122,12 +122,12 @@ impl Component for ServersSection {
                             .unit(m.unit())
                             .hovered(hovered),
                     )
-                    .child(rect().width(Size::flex(1.0)).child(legend(
-                        &values,
-                        &labels,
-                        *hovered.read(),
-                        m.unit(),
-                    ))),
+                    .child(
+                        rect()
+                            .width(Size::flex(1.0))
+                            .max_width(Size::px(420.))
+                            .child(legend(&values, &labels, *hovered.read(), m.unit())),
+                    ),
             )
             .maybe_child(show_all.read().then(|| {
                 OverlayPopup::new()

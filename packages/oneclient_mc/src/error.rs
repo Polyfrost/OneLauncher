@@ -11,6 +11,11 @@ pub enum McError {
     #[error("failed to resolve library artifact path for {0}")]
     LibraryPath(String),
 
+    #[error(
+        "library {library} is missing from the install; the game cannot start without it (expected at {path})"
+    )]
+    MissingLibrary { library: String, path: String },
+
     #[error("invalid game version {0}")]
     InvalidVersion(String),
 
@@ -29,8 +34,8 @@ pub enum McError {
     #[error("requested loader version '{requested}' was not found")]
     RequestedLoaderVersionNotFound { requested: String },
 
-    #[error("no matching version found")]
-    NoMatchingVersion,
+    #[error("{loader} has no build for Minecraft {version}")]
+    NoMatchingVersion { loader: GameLoader, version: String },
 
     #[error(
         "{version} ships no native libraries for {platform}; this platform is not supported \

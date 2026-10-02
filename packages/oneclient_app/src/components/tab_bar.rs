@@ -230,7 +230,7 @@ impl Component for TabButton {
                                 .margin(Gaps::new_symmetric(0., 4.0))
                                 .corner_radius(CornerRadius::new_all(2.))
                                 .background(if underline_on {
-                                    colors::brand()
+                                    colors::fg_primary()
                                 } else {
                                     Color::TRANSPARENT
                                 }),

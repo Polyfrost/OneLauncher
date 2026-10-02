@@ -332,16 +332,10 @@ async fn check_bundle_updates_inner(
     let mut additions_available = Vec::new();
     let mut optional_available: Vec<(String, BundleOptionalPackage)> = Vec::new();
     let mut planned_addition_keys = all_installed_managed_keys.clone();
-    let tracked_package_by_hash: HashMap<&str, &str> = bundle_packages
-        .iter()
-        .filter_map(|bp| Some((bp.hash.as_str(), bp.package_id.as_deref()?)))
-        .collect();
-    for hash in &all_installed_external_hashes {
-        planned_addition_keys.insert(external_bundle_key(hash));
-        if let Some(package_id) = tracked_package_by_hash.get(hash.as_str()) {
-            planned_addition_keys.insert(external_bundle_key(package_id));
-        }
-    }
+    planned_addition_keys.extend(installed_external_keys(
+        &all_installed_external_hashes,
+        &bundle_packages,
+    ));
     let installed_keys = planned_addition_keys.clone();
     let shared_keys = keys_shipped_by_several_bundles(
         archives
@@ -871,14 +865,11 @@ pub async fn get_bundles_with_update_status(
 
     let (installed_managed_keys, installed_external_hashes) =
         installed_bundle_keys(ctx, &all_linked).await?;
-    let installed_keys: HashSet<String> = installed_managed_keys
-        .into_iter()
-        .chain(
-            installed_external_hashes
-                .iter()
-                .map(|h| external_bundle_key(h)),
-        )
-        .collect();
+    let mut installed_keys = installed_managed_keys;
+    installed_keys.extend(installed_external_keys(
+        &installed_external_hashes,
+        &bundle_packages,
+    ));
     let shared_keys = keys_shipped_by_several_bundles(
         archives
             .iter()
@@ -960,6 +951,25 @@ fn bundle_package_key(
     }
 }
 
+/// Keys both the exact file and the id it was tracked under so a GitHub-hosted file still counts as installed once the bundle moves to a newer release
+fn installed_external_keys(
+    hashes: &HashSet<String>,
+    bundle_packages: &[BundleTrackedArtifactRow],
+) -> HashSet<String> {
+    let tracked_package_by_hash: HashMap<&str, &str> = bundle_packages
+        .iter()
+        .filter_map(|bp| Some((bp.hash.as_str(), bp.package_id.as_deref()?)))
+        .collect();
+    hashes
+        .iter()
+        .flat_map(|hash| {
+            std::iter::once(hash.as_str())
+                .chain(tracked_package_by_hash.get(hash.as_str()).copied())
+        })
+        .map(external_bundle_key)
+        .collect()
+}
+
 fn keys_shipped_by_several_bundles<'a>(
     archives: impl IntoIterator<Item = &'a BundleArchive>,
 ) -> HashSet<String> {
@@ -968,14 +978,7 @@ fn keys_shipped_by_several_bundles<'a>(
     for archive in archives {
         let mut seen: HashSet<String> = HashSet::new();
         for file in &archive.manifest.files {
-            let key = match &file.kind {
-                BundleFileKind::Managed {
-                    provider,
-                    project_id,
-                    ..
-                } => managed_bundle_key(*provider, project_id),
-                BundleFileKind::External { file: ext, .. } => external_bundle_key(&ext.sha1),
-            };
+            let key = file.kind.bundle_key();
             if seen.insert(key.clone()) {
                 *counts.entry(key).or_default() += 1;
             }
@@ -1001,15 +1004,11 @@ fn suppressed_content_types(
         let override_type = overrides_map
             .get(&(bundle_name.clone(), file.kind.package_id()))
             .copied();
-        let key = match &file.kind {
-            BundleFileKind::Managed {
-                provider,
-                project_id,
-                ..
-            } => managed_bundle_key(*provider, project_id),
-            BundleFileKind::External { file: ext, .. } => external_bundle_key(&ext.sha1),
-        };
-        if override_type.is_none() && !installed_keys.contains(&key) {
+        let key = file.kind.bundle_key();
+        let installed = installed_keys.contains(&key)
+            || matches!(&file.kind, BundleFileKind::External { file: ext, .. }
+                if installed_keys.contains(&external_bundle_key(&ext.sha1)));
+        if override_type.is_none() && !installed {
             continue;
         }
         if shared_keys.contains(&key) {

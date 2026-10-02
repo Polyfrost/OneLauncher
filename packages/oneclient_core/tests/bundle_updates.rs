@@ -981,3 +981,105 @@ async fn package_list_and_updater_infer_the_same_bundle_through_overrides() {
         "the package list must infer the same bundle the updater does: {types:?}"
     );
 }
+
+const GITHUB_MOD_ID: &str = "github-mod";
+const GITHUB_OLD_HASH: &str = "1111111111111111111111111111111111111111";
+
+/// The catalog has moved on to a newer release than the one installed
+fn github_mod_file() -> BundleFile {
+    BundleFile {
+        enabled: true,
+        hidden: false,
+        file_type: BundleFileType::Normal,
+        path: "mods/github-mod.jar".to_string(),
+        size: 1,
+        kind: BundleFileKind::External {
+            file: oneclient_content::packages::types::ExternalFile {
+                name: "github-mod.jar".to_string(),
+                url: "https://github.com/example/github-mod/releases/download/v2/github-mod.jar"
+                    .to_string(),
+                sha1: "2222222222222222222222222222222222222222".to_string(),
+                size: 1,
+                content_type: ContentType::Mod,
+            },
+            id: Some(GITHUB_MOD_ID.to_string()),
+            meta: None,
+        },
+    }
+}
+
+#[tokio::test]
+async fn an_outdated_github_mod_left_on_keeps_the_bundle_taking_mods() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(
+        &state,
+        manifest(vec![
+            managed_file(true),
+            github_mod_file(),
+            newly_shipped_file(),
+        ]),
+    )
+    .await
+    .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    let db = &state.services.db;
+    artifact_dao::update_cluster_artifact(db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(db, cluster_id, BUNDLE, PROJECT_ID, OverrideType::Disabled)
+        .await
+        .unwrap();
+    artifact_dao::insert_artifact(
+        db,
+        GITHUB_OLD_HASH,
+        ContentType::Mod as i64,
+        "artifacts/github-mod.jar",
+        "github-mod.jar",
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(db, cluster_id, GITHUB_OLD_HASH, "github-mod.jar")
+        .await
+        .unwrap();
+    bundle_dao::track_bundle_artifact(
+        db,
+        cluster_id,
+        GITHUB_OLD_HASH,
+        BUNDLE,
+        GITHUB_OLD_HASH,
+        GITHUB_MOD_ID,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    assert!(
+        check
+            .additions_available
+            .iter()
+            .any(|a| a.new_file.kind.package_id() == "newcomer"),
+        "the GitHub mod is still on even though its installed release is older than the catalog's"
+    );
+
+    let status = get_bundles_with_update_status(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+    let types = &status
+        .iter()
+        .find(|b| b.archive.manifest.name == BUNDLE)
+        .unwrap()
+        .opted_in_types;
+    assert!(types.contains(&ContentType::Mod), "{types:?}");
+}

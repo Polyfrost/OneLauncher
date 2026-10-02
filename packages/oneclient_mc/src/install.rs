@@ -752,33 +752,45 @@ pub async fn download_version_info(
         cached
     };
 
-    let use_cache = match &refreshed {
-        Some(done) => **done || !oneclient_net::status::current().online,
-        None => true,
-    };
-    if use_cache && let Some(cached) = cached {
+    if let Some(cached) = cached {
+        // Serve the cache now and refresh it in the background once per run,
+        // so a slow meta host never holds up a launch. Later callers wait on
+        // the lock and pick up the refreshed file.
+        if let Some(mut done) = refreshed
+            && !*done
+            && oneclient_net::status::current().online
+        {
+            *done = true;
+            let ctx = ctx.clone();
+            let version = version.clone();
+            let loader = loader.cloned();
+            tokio::spawn(async move {
+                let _done = done;
+                let refresh = async {
+                    let info =
+                        fetch_version_info(&ctx, None, &version, loader.as_ref(), &version_id)
+                            .await?;
+                    polyio::write_json_atomic(&path, &info).await?;
+                    McResult::Ok(())
+                };
+                if let Err(err) = refresh.await {
+                    tracing::warn!(
+                        version_id = %version_id,
+                        "could not refresh version metadata, keeping cached copy: {err}"
+                    );
+                }
+            });
+        }
         return Ok(cached);
     }
+
     if let Some(done) = &mut refreshed {
         **done = true;
     }
 
-    match fetch_version_info(ctx, progress, version, loader, &version_id).await {
-        Ok(info) => {
-            polyio::write_json_atomic(&path, &info).await?;
-            Ok(info)
-        }
-        Err(err) => match cached {
-            Some(cached) => {
-                tracing::warn!(
-                    version_id = %version_id,
-                    "could not refresh version metadata, using cached copy: {err}"
-                );
-                Ok(cached)
-            }
-            None => Err(err),
-        },
-    }
+    let info = fetch_version_info(ctx, progress, version, loader, &version_id).await?;
+    polyio::write_json_atomic(&path, &info).await?;
+    Ok(info)
 }
 
 async fn fetch_version_info(
@@ -1619,9 +1631,10 @@ fn profile_matches_loader(libraries: &[Library], loader: GameLoader) -> bool {
     match loader {
         GameLoader::Forge => !has("net.neoforged"),
         GameLoader::NeoForge => has("net.neoforged"),
-        GameLoader::Fabric => !has("org.quiltmc"),
-        GameLoader::Quilt => has("org.quiltmc"),
-        GameLoader::Vanilla | GameLoader::Ornithe => true,
+        GameLoader::Fabric => !has("org.quiltmc") && !has("net.ornithemc"),
+        GameLoader::Quilt => has("org.quiltmc") && !has("net.ornithemc"),
+        GameLoader::Ornithe => has("net.ornithemc"),
+        GameLoader::Vanilla => true,
     }
 }
 
@@ -1673,6 +1686,14 @@ mod tests {
         assert!(!profile_matches_loader(&fabric, GameLoader::Quilt));
         assert!(profile_matches_loader(&quilt, GameLoader::Quilt));
         assert!(!profile_matches_loader(&quilt, GameLoader::Fabric));
+
+        let ornithe = libs(&[
+            "net.fabricmc:fabric-loader:0.16.5",
+            "net.ornithemc:calamus-intermediary:1.14.4",
+        ]);
+        assert!(profile_matches_loader(&ornithe, GameLoader::Ornithe));
+        assert!(!profile_matches_loader(&ornithe, GameLoader::Fabric));
+        assert!(!profile_matches_loader(&fabric, GameLoader::Ornithe));
     }
 
     fn scratch(tag: &str) -> PathBuf {

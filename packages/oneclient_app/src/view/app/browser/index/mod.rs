@@ -31,8 +31,8 @@ use crate::ui::grid_columns_for_width;
 use crate::view::app::cluster::supports_datapacks;
 
 use super::{
-    InstallSource, Installed, PackageBanner, Thumbnail, WorldInstallPrompt, installed_map,
-    preferred_version,
+    InstallSource, Installed, ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt,
+    installed_map, minecraft_choices, preferred_version,
 };
 use crate::utils::{abbreviate_number, sort_clusters_for_home};
 

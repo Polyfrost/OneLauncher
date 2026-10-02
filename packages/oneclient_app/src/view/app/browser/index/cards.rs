@@ -9,8 +9,8 @@ use oneclient_core::clusters::ModpackSource;
 
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{
-    content_type_for_slug, use_browser_compat, use_cluster, use_dispatch, use_installs_snapshot,
-    use_package_versions_when, version_list,
+    ALL_VERSIONS, VERSIONS_PAGE_SIZE, content_type_for_slug, use_browser_compat, use_cluster,
+    use_dispatch, use_installs_snapshot, use_package_versions_when, version_list,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -367,10 +367,17 @@ impl Component for InstallButton {
             game_version,
             loader,
             0,
+            if is_modpack {
+                ALL_VERSIONS
+            } else {
+                VERSIONS_PAGE_SIZE
+            },
         ));
         let latest = preferred_version(&versions, self.content_type).map(|v| v.version_id.clone());
         let is_datapack = self.content_type == ContentType::DataPack;
         let mut world_prompt = use_state(|| None::<String>);
+        let mut modpack_prompt = use_state(|| false);
+        let mut choices = use_state(Vec::new);
 
         // Nothing to start twice while an install is running or before versions arrive
         let (installing, waiting) =
@@ -418,11 +425,17 @@ impl Component for InstallButton {
                             if is_datapack {
                                 world_prompt.set(Some(version_id));
                             } else if is_modpack {
-                                dispatch.install_modpack(ModpackSource::Provider {
-                                    provider,
-                                    project_id: project_id.clone(),
-                                    version_id,
-                                });
+                                let picks = minecraft_choices(&versions);
+                                if picks.len() > 1 {
+                                    choices.set(picks);
+                                    modpack_prompt.set(true);
+                                } else {
+                                    dispatch.install_modpack(ModpackSource::Provider {
+                                        provider,
+                                        project_id: project_id.clone(),
+                                        version_id,
+                                    });
+                                }
                             } else {
                                 dispatch.install_package(
                                     cluster_id,
@@ -455,8 +468,14 @@ impl Component for InstallButton {
             .maybe_child(world_prompt.read().is_some().then_some(WorldInstallPrompt {
                 cluster_id,
                 provider,
-                project_id,
+                project_id: project_id.clone(),
                 pending: world_prompt,
+            }))
+            .maybe_child(modpack_prompt.read().then(|| ModpackVersionPrompt {
+                provider,
+                project_id,
+                choices: choices.read().clone(),
+                open: modpack_prompt,
             }))
             .into_element()
     }

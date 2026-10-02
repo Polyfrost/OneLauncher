@@ -4,7 +4,9 @@ mod package;
 pub use index::Browser;
 pub(crate) use index::{browsable_type, encode_package_id};
 
+mod modpack_prompt;
 mod world_prompt;
+use modpack_prompt::{ModpackVersionPrompt, minecraft_choices};
 use world_prompt::WorldInstallPrompt;
 
 /// Projects shipping both a mod and a data pack tag the mod files with a loader

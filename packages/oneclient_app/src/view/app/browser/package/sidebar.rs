@@ -108,7 +108,7 @@ pub(super) fn sidebar(
                 .enabled(can_install)
                 .on_press(move |_| {
                     if let Some(version_id) = latest_version.clone() {
-                        installer.install(project_id.clone(), version_id);
+                        installer.install_latest(project_id.clone(), version_id);
                     }
                 })
                 .child(Icon::new(IconType::Download01).size(14.))

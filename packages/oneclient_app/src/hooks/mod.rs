@@ -28,6 +28,7 @@ pub use active_cluster::{
 };
 
 pub use actions::{Actions, NotificationBuilder, PumpSignal, modpack_job_running};
+pub use queries::ALL_VERSIONS;
 pub(crate) use queries::use_folder_watch;
 pub use queries::{
     AddOfflineAccountKeys, AvailableBundlesQuery, BROWSE_PAGE_SIZE, BeginMicrosoftLoginMutation,
@@ -64,9 +65,9 @@ pub use queries::{
     use_global_analytics, use_java_majors, use_java_runtimes, use_leftovers, use_loader_versions,
     use_local_image, use_log_action, use_log_content, use_migratable_routes, use_migration,
     use_named_profiles, use_onboarding_bundles, use_package_categories, use_package_meta_batch,
-    use_package_project, use_package_search, use_package_updates, use_package_versions,
-    use_package_versions_when, use_player_profile, use_player_skin, use_provider_versions,
-    use_refresh_account, use_refresh_all_accounts, use_remove_account, use_screenshot_action,
+    use_package_project, use_package_search, use_package_updates, use_package_versions_when,
+    use_player_profile, use_player_skin, use_provider_versions, use_refresh_account,
+    use_refresh_all_accounts, use_remove_account, use_screenshot_action,
     use_screenshot_folder_watch, use_set_default_account, use_storage_action, use_storage_report,
     use_terms, use_upload_log, use_version_art, use_version_art_gallery, use_version_loaders,
     use_version_metadata, use_versions, version_list, versions_metadata, versions_total,

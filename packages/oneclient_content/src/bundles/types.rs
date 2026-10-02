@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use serde::{Deserialize, Serialize};
 
 use crate::bundles::Bundle;
@@ -253,4 +255,5 @@ pub struct BundleWithUpdateStatus {
     pub archive: BundleArchive,
     pub files: Vec<(BundleFile, FileUpdateStatus)>,
     pub has_updates: bool,
+    pub opted_in_types: HashSet<ContentType>,
 }

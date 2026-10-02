@@ -4,7 +4,9 @@ mod package;
 pub use index::Browser;
 pub(crate) use index::{browsable_type, encode_package_id};
 
+mod modpack_prompt;
 mod world_prompt;
+use modpack_prompt::{ModpackVersionPrompt, minecraft_choices};
 use world_prompt::WorldInstallPrompt;
 
 /// Projects shipping both a mod and a data pack tag the mod files with a loader
@@ -28,9 +30,12 @@ use std::collections::HashMap;
 use freya::prelude::*;
 use oneclient_content::packages::ProviderId;
 use oneclient_core::{BundleFileKind, BundleWithUpdateStatus, LinkedArtifactInfo};
+use oneclient_db::models::OverrideType;
 
-use crate::components::{Icon, IconType};
-use crate::hooks::{loaded_image, use_cached_image};
+use crate::components::{Button, Icon, IconType, set_enabled_action};
+use crate::hooks::{
+    ClusterAction, loaded_image, mutation_is_running, use_cached_image, use_cluster_mutation,
+};
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 
@@ -60,14 +65,35 @@ impl InstallSource {
 }
 
 #[derive(Clone, PartialEq)]
+pub(crate) struct BundlePin {
+    pub bundle_name: String,
+    pub package_id: String,
+    pub manifest_default: bool,
+}
+
+#[derive(Clone, PartialEq)]
 pub(crate) struct InstalledVersion {
     pub version_id: String,
     /// The artifact to remove
     /// `None` when a bundle names this version but nothing is linked
     pub hash: Option<String>,
-    /// Only meaningful alongside a `hash` a bundle pin with nothing linked is neither on nor off
     pub enabled: bool,
     pub source: InstallSource,
+    pub bundle: Option<BundlePin>,
+}
+
+impl InstalledVersion {
+    pub fn enable_action(&self, cluster_id: i64) -> Option<ClusterAction> {
+        let pin = self.bundle.as_ref()?;
+        set_enabled_action(
+            cluster_id,
+            self.hash.as_deref(),
+            Some(&pin.bundle_name),
+            &pin.package_id,
+            pin.manifest_default,
+            true,
+        )
+    }
 }
 
 /// Holds every version found rather than an arbitrary winner a cluster can end up with more than one
@@ -91,12 +117,20 @@ impl Installed {
     pub fn is_duplicated(&self) -> bool {
         self.versions.iter().filter(|v| v.hash.is_some()).count() > 1
     }
+
+    pub fn disabled_bundled(&self) -> Option<&InstalledVersion> {
+        if self.versions.iter().any(|v| v.enabled) {
+            return None;
+        }
+        self.versions.iter().find(|v| v.bundle.is_some())
+    }
 }
 
 /// Local files and a bundle's external files are left out they have no project id to match against
 pub(crate) fn installed_map(
     content: Vec<LinkedArtifactInfo>,
     bundles: &[BundleWithUpdateStatus],
+    overrides: &HashMap<(String, String), String>,
 ) -> HashMap<(ProviderId, String), Installed> {
     let mut map: HashMap<(ProviderId, String), Installed> = HashMap::new();
 
@@ -117,6 +151,7 @@ pub(crate) fn installed_map(
                 hash: Some(item.hash),
                 enabled: item.enabled,
                 source: InstallSource::Manual,
+                bundle: None,
             });
         }
     }
@@ -124,6 +159,7 @@ pub(crate) fn installed_map(
     // Bundle membership wins a bundle's files would otherwise read as hand-installed
     // The manifest pin is only a fallback for a missing linked version
     for bundle in bundles {
+        let bundle_name = &bundle.archive.manifest.name;
         for (file, _status) in &bundle.files {
             if let BundleFileKind::Managed {
                 provider,
@@ -132,18 +168,34 @@ pub(crate) fn installed_map(
                 ..
             } = &file.kind
             {
+                let pin = BundlePin {
+                    bundle_name: bundle_name.clone(),
+                    package_id: file.kind.package_id(),
+                    manifest_default: file.enabled,
+                };
                 match map.get_mut(&(*provider, project_id.clone())) {
                     Some(installed) => {
                         installed.source = InstallSource::Bundled;
-                        if let Some(version) = installed
+                        let only_copy = installed.versions.len() == 1;
+                        match installed
                             .versions
                             .iter_mut()
                             .find(|v| &v.version_id == version_id)
                         {
-                            version.source = InstallSource::Bundled;
+                            Some(version) => {
+                                version.source = InstallSource::Bundled;
+                                version.bundle.get_or_insert(pin);
+                            }
+                            None if only_copy => {
+                                installed.versions[0].bundle.get_or_insert(pin);
+                            }
+                            None => {}
                         }
                     }
                     None => {
+                        let user_override = overrides
+                            .get(&(bundle_name.clone(), pin.package_id.clone()))
+                            .and_then(|o| OverrideType::parse(o));
                         map.insert(
                             (*provider, project_id.clone()),
                             Installed {
@@ -151,8 +203,9 @@ pub(crate) fn installed_map(
                                 versions: vec![InstalledVersion {
                                     version_id: version_id.clone(),
                                     hash: None,
-                                    enabled: false,
+                                    enabled: oneclient_core::effective_enabled(file, user_override),
                                     source: InstallSource::Bundled,
+                                    bundle: Some(pin),
                                 }],
                             },
                         );
@@ -163,6 +216,68 @@ pub(crate) fn installed_map(
     }
 
     map
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum EnableVariant {
+    Sidebar,
+    Card { height: f32 },
+    VersionRow,
+}
+
+#[derive(PartialEq)]
+pub(crate) struct EnableButton {
+    pub action: ClusterAction,
+    pub variant: EnableVariant,
+}
+
+impl Component for EnableButton {
+    fn render(&self) -> impl IntoElement {
+        let mutation = use_cluster_mutation();
+        let running = mutation_is_running(&mutation);
+        let action = self.action.clone();
+
+        let button = Button::new()
+            .enabled(!running)
+            .on_press(move |_| mutation.mutate(action.clone()));
+
+        match self.variant {
+            EnableVariant::Sidebar => button
+                .primary()
+                .width(Size::fill())
+                .child(Icon::new(IconType::CheckCircle).size(14.))
+                .text(if running { "Enabling..." } else { "Enable" })
+                .into_element(),
+            EnableVariant::Card { height } => rect()
+                .on_press(|e: Event<PressEventData>| e.stop_propagation())
+                .child(
+                    button
+                        .primary()
+                        .small()
+                        .height(Size::px(height))
+                        .padding(Gaps::new_symmetric(0., 11.))
+                        .child(
+                            Icon::new(if running {
+                                IconType::Loading02
+                            } else {
+                                IconType::CheckCircle
+                            })
+                            .size(12.)
+                            .color(colors::fg_primary()),
+                        )
+                        .child(
+                            label()
+                                .text(if running { "Enabling" } else { "Enable" })
+                                .font_size(11.)
+                                .font_weight(FontWeight::SEMI_BOLD)
+                                .max_lines(1)
+                                .color(colors::fg_primary()),
+                        ),
+                )
+                .into_element(),
+            EnableVariant::VersionRow => button.secondary().small().text("Enable").into_element(),
+        }
+    }
 }
 
 pub(crate) fn installed_badge(installed: InstallSource, font_size: f32) -> impl IntoElement {
@@ -447,7 +562,32 @@ mod tests {
                 .collect(),
             archive: archive("performance", true, files),
             has_updates: false,
+            opted_in_types: [ContentType::Mod].into(),
         }]
+    }
+
+    fn installed_map(
+        content: Vec<LinkedArtifactInfo>,
+        bundles: &[BundleWithUpdateStatus],
+    ) -> HashMap<(ProviderId, String), Installed> {
+        super::installed_map(content, bundles, &HashMap::new())
+    }
+
+    fn optional(project_id: &str, version_id: &str) -> BundleFile {
+        BundleFile {
+            enabled: false,
+            ..managed(project_id, version_id)
+        }
+    }
+
+    fn overridden(
+        project_id: &str,
+        override_type: OverrideType,
+    ) -> HashMap<(String, String), String> {
+        HashMap::from([(
+            ("performance".to_string(), project_id.to_string()),
+            override_type.as_str().to_string(),
+        )])
     }
 
     fn entry(map: &HashMap<(ProviderId, String), Installed>, project: &str) -> Installed {
@@ -577,5 +717,97 @@ mod tests {
             "there is no version to tie to a row in the list"
         );
         assert_eq!(sodium.source, InstallSource::Manual);
+    }
+
+    #[test]
+    fn an_optional_mod_never_downloaded_offers_enable_through_the_bundle() {
+        let map = installed_map(Vec::new(), &bundles(vec![optional("sodium", "v1")]));
+
+        let sodium = entry(&map, "sodium");
+        let disabled = sodium.disabled_bundled().expect("offers enable");
+        assert!(matches!(
+            disabled.enable_action(7),
+            Some(ClusterAction::SetBundlePackageEnabled {
+                cluster_id: 7,
+                enabled: true,
+                manifest_default: false,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn an_enabled_pin_waiting_for_sync_does_not_offer_enable() {
+        let map = installed_map(Vec::new(), &bundles(vec![managed("sodium", "v1")]));
+
+        assert!(entry(&map, "sodium").disabled_bundled().is_none());
+    }
+
+    #[test]
+    fn a_disabled_override_on_an_unlinked_pin_offers_enable() {
+        let map = super::installed_map(
+            Vec::new(),
+            &bundles(vec![managed("sodium", "v1")]),
+            &overridden("sodium", OverrideType::Disabled),
+        );
+
+        let sodium = entry(&map, "sodium");
+        assert!(matches!(
+            sodium.disabled_bundled().and_then(|v| v.enable_action(7)),
+            Some(ClusterAction::SetBundlePackageEnabled {
+                manifest_default: true,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn a_disabled_linked_bundle_artifact_is_enabled_by_hash() {
+        let map = installed_map(
+            vec![disabled_linked("sodium", Some("v1"), "hash-1", false)],
+            &bundles(vec![managed("sodium", "v1")]),
+        );
+
+        let sodium = entry(&map, "sodium");
+        assert!(matches!(
+            sodium.disabled_bundled().and_then(|v| v.enable_action(7)),
+            Some(ClusterAction::SetArtifactEnabled { ref hash, enabled: true, .. }) if hash == "hash-1"
+        ));
+    }
+
+    #[test]
+    fn a_disabled_copy_from_an_older_bundle_pin_still_offers_enable() {
+        let map = installed_map(
+            vec![disabled_linked("sodium", Some("v1"), "hash-1", false)],
+            &bundles(vec![managed("sodium", "v2")]),
+        );
+
+        assert!(entry(&map, "sodium").disabled_bundled().is_some());
+    }
+
+    #[test]
+    fn another_enabled_copy_hides_enable() {
+        let map = installed_map(
+            vec![
+                disabled_linked("sodium", Some("v1"), "hash-1", false),
+                linked("sodium", Some("v2"), "hash-2"),
+            ],
+            &bundles(vec![managed("sodium", "v1")]),
+        );
+
+        assert!(
+            entry(&map, "sodium").disabled_bundled().is_none(),
+            "enabling the bundle copy would load two"
+        );
+    }
+
+    #[test]
+    fn a_hand_installed_disabled_mod_is_not_offered_enable() {
+        let map = installed_map(
+            vec![disabled_linked("sodium", Some("v1"), "hash-1", false)],
+            &[],
+        );
+
+        assert!(entry(&map, "sodium").disabled_bundled().is_none());
     }
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT OR IGNORE INTO cluster_bundle_type_opt_outs (cluster_id, bundle_name, content_type)\n            VALUES (?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "59a29c97c422e8721c29b9517ae834ea97776c57bb129a9d67007cdd979ae841"
+}

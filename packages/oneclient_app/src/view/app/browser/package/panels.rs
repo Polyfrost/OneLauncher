@@ -8,7 +8,7 @@ use oneclient_content::packages::types::{
 use crate::components::{
     Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl,
 };
-use crate::hooks::VERSIONS_PAGE_SIZE;
+use crate::hooks::{ClusterAction, VERSIONS_PAGE_SIZE};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
@@ -142,6 +142,11 @@ pub(super) fn versions_panel(
                 let duplicated = installed
                     .as_ref()
                     .is_some_and(|installed| installed.is_duplicated());
+                let enable = installed
+                    .as_ref()
+                    .and_then(Installed::disabled_bundled)
+                    .filter(|disabled| disabled.version_id == v.version_id)
+                    .and_then(|disabled| disabled.enable_action(installer.cluster_id));
                 version_row(
                     v,
                     &dependency_names,
@@ -151,6 +156,7 @@ pub(super) fn versions_panel(
                     tag,
                     duplicated,
                     installing,
+                    enable,
                 )
                 .into_element()
             }))
@@ -226,6 +232,7 @@ fn version_row(
     // Saying which version is live only tells the user anything when there are several
     duplicated: bool,
     installing: bool,
+    enable: Option<ClusterAction>,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
     let mut chips: Vec<String> = v.loaders.iter().map(|l| l.to_string()).collect();
@@ -300,9 +307,17 @@ fn version_row(
                 .filter(|_| duplicated)
                 .map(|installed| activity_badge(installed.enabled).into_element()),
         )
-        .child(version_button(
-            installed, v.name, project_id, version_id, installer, on_remove, installing,
-        ))
+        .child(match enable {
+            Some(action) => EnableButton {
+                action,
+                variant: EnableVariant::VersionRow,
+            }
+            .into_element(),
+            None => version_button(
+                installed, v.name, project_id, version_id, installer, on_remove, installing,
+            )
+            .into_element(),
+        })
 }
 
 /// A bundle pin with nothing linked leaves nothing to press no artifact to remove and installing by hand would duplicate it

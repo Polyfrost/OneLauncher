@@ -18,7 +18,7 @@ use futures_util::StreamExt;
 
 use crate::bundles::install::{
     BUNDLE_INSTALL_CONCURRENCY, bundle_cluster, disable_was_deliberate, external_ids_by_sha1,
-    find_user_suppression, heal_bundle_activity, install_package_from_bundle,
+    find_override, find_user_suppression, heal_bundle_activity, install_package_from_bundle,
     remove_artifact_from_cluster, set_artifact_enabled_to,
 };
 use crate::bundles::manager::BundlesManager;
@@ -32,7 +32,7 @@ use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
 use crate::packages::store::PackageStore;
 use crate::packages::types::LinkedArtifactInfo;
-use oneclient_common::domain::{GameLoader, ProviderId};
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 
 static CLUSTER_UPDATE_LOCKS: OnceLock<Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>> = OnceLock::new();
 
@@ -322,33 +322,40 @@ async fn check_bundle_updates_inner(
 
     let addition_eligible_bundles = addition_eligible_bundles(
         ctx,
+        &archives,
         &bundle_packages,
         &all_linked,
-        &candidate_keys_by_bundle,
         overrides,
+        &overrides_map,
     )
     .await?;
 
     let mut additions_available = Vec::new();
     let mut optional_available: Vec<(String, BundleOptionalPackage)> = Vec::new();
     let mut planned_addition_keys = all_installed_managed_keys.clone();
-    let tracked_package_by_hash: HashMap<&str, &str> = bundle_packages
-        .iter()
-        .filter_map(|bp| Some((bp.hash.as_str(), bp.package_id.as_deref()?)))
-        .collect();
-    for hash in &all_installed_external_hashes {
-        planned_addition_keys.insert(external_bundle_key(hash));
-        if let Some(package_id) = tracked_package_by_hash.get(hash.as_str()) {
-            planned_addition_keys.insert(external_bundle_key(package_id));
-        }
-    }
+    planned_addition_keys.extend(installed_external_keys(
+        &all_installed_external_hashes,
+        &bundle_packages,
+    ));
+    let installed_keys = planned_addition_keys.clone();
+    let opt_outs = TypeOptOuts::load(
+        cluster_id,
+        &archives,
+        &addition_eligible_bundles,
+        overrides,
+        &installed_keys,
+        ctx,
+    )
+    .await?;
 
     for archive in &archives {
         if !addition_eligible_bundles.contains(&archive.manifest.name) {
             continue;
         }
+        let suppressed_types = opt_outs.remember(archive, ctx).await?;
 
         for file in &archive.manifest.files {
+            let suppressed = suppressed_types.contains(&file.content_type());
             let file_id = file.kind.package_id();
             let user_override = overrides_map
                 .get(&(archive.manifest.name.clone(), file_id.clone()))
@@ -361,6 +368,10 @@ async fn check_bundle_updates_inner(
                     if planned_addition_keys.contains(&external_bundle_key(&ext.sha1))
             );
             if planned_addition_keys.contains(&file_key) || exact_file_installed {
+                continue;
+            }
+
+            if suppressed && user_override.is_none() {
                 continue;
             }
 
@@ -773,7 +784,11 @@ async fn sync_cluster_loader_version_from_bundles(
     let subscribed: HashSet<String> = bundle_packages
         .iter()
         .filter_map(|bp| bp.bundle_name.clone())
-        .chain(infer_subscribed_from_archives(&archives, &managed_keys))
+        .chain(infer_subscribed_from_archives(
+            &archives,
+            &HashMap::new(),
+            &managed_keys,
+        ))
         .collect();
 
     let target = select_highest_loader_version(
@@ -843,6 +858,33 @@ pub async fn get_bundles_with_update_status(
         })
         .collect();
 
+    // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
+    let live_bundles = addition_eligible_bundles(
+        ctx,
+        &archives,
+        &bundle_packages,
+        &all_linked,
+        &overrides,
+        &overrides_map,
+    )
+    .await?;
+
+    let (installed_managed_keys, installed_external_hashes) =
+        installed_bundle_keys(ctx, &all_linked).await?;
+    let mut installed_keys = installed_managed_keys;
+    installed_keys.extend(installed_external_keys(
+        &installed_external_hashes,
+        &bundle_packages,
+    ));
+    let opt_outs = TypeOptOuts::load(
+        cluster_id,
+        &archives,
+        &live_bundles,
+        &overrides,
+        &installed_keys,
+        ctx,
+    )
+    .await?;
     let mut results = Vec::new();
 
     for archive in archives {
@@ -873,7 +915,21 @@ pub async fn get_bundles_with_update_status(
             files.push((file.clone(), status));
         }
 
+        let opted_in_types = if live_bundles.contains(&archive.manifest.name) {
+            let suppressed = opt_outs.suppressed(&archive);
+            archive
+                .manifest
+                .files
+                .iter()
+                .map(|f| f.content_type())
+                .filter(|ct| !suppressed.contains(ct))
+                .collect()
+        } else {
+            HashSet::new()
+        };
+
         results.push(BundleWithUpdateStatus {
+            opted_in_types,
             archive,
             files,
             has_updates,
@@ -904,39 +960,214 @@ fn bundle_package_key(
     }
 }
 
+/// Keys both the exact file and the id it was tracked under so a GitHub-hosted file still counts as installed once the bundle moves to a newer release
+fn installed_external_keys(
+    hashes: &HashSet<String>,
+    bundle_packages: &[BundleTrackedArtifactRow],
+) -> HashSet<String> {
+    let tracked_package_by_hash: HashMap<&str, &str> = bundle_packages
+        .iter()
+        .filter_map(|bp| Some((bp.hash.as_str(), bp.package_id.as_deref()?)))
+        .collect();
+    hashes
+        .iter()
+        .flat_map(|hash| {
+            std::iter::once(hash.as_str())
+                .chain(tracked_package_by_hash.get(hash.as_str()).copied())
+        })
+        .map(external_bundle_key)
+        .collect()
+}
+
+fn keys_shipped_by_several_bundles<'a>(
+    archives: impl IntoIterator<Item = &'a BundleArchive>,
+) -> HashSet<String> {
+    let mut counts: HashMap<String, usize> = HashMap::new();
+
+    for archive in archives {
+        let mut seen: HashSet<String> = HashSet::new();
+        for file in &archive.manifest.files {
+            let key = file.kind.bundle_key();
+            if seen.insert(key.clone()) {
+                *counts.entry(key).or_default() += 1;
+            }
+        }
+    }
+
+    counts
+        .into_iter()
+        .filter_map(|(key, count)| (count > 1).then_some(key))
+        .collect()
+}
+
+struct TypeOptOuts<'a> {
+    cluster_id: i64,
+    overrides: &'a [ClusterBundleOverrideRow],
+    stray_overrides: Vec<ClusterBundleOverrideRow>,
+    installed_keys: &'a HashSet<String>,
+    shared_keys: HashSet<String>,
+    remembered: HashMap<String, HashSet<ContentType>>,
+}
+
+impl<'a> TypeOptOuts<'a> {
+    async fn load(
+        cluster_id: i64,
+        archives: &[BundleArchive],
+        live: &HashSet<String>,
+        overrides: &'a [ClusterBundleOverrideRow],
+        installed_keys: &'a HashSet<String>,
+        ctx: &ContentCtx,
+    ) -> ContentResult<Self> {
+        let shipped: HashSet<(&str, String)> = archives
+            .iter()
+            .flat_map(|a| {
+                a.manifest
+                    .files
+                    .iter()
+                    .map(|f| (a.manifest.name.as_str(), f.kind.package_id()))
+            })
+            .collect();
+        let stray_overrides = overrides
+            .iter()
+            .filter(|o| !shipped.contains(&(o.bundle_name.as_str(), o.package_id.clone())))
+            .cloned()
+            .collect();
+
+        let mut remembered: HashMap<String, HashSet<ContentType>> = HashMap::new();
+        for (bundle_name, content_type) in
+            bundle_dao::list_type_opt_outs(&ctx.db, cluster_id).await?
+        {
+            if let Some(ct) = ContentType::from_repr(content_type as u8) {
+                remembered.entry(bundle_name).or_default().insert(ct);
+            }
+        }
+
+        Ok(Self {
+            cluster_id,
+            overrides,
+            stray_overrides,
+            installed_keys,
+            shared_keys: keys_shipped_by_several_bundles(
+                archives.iter().filter(|a| live.contains(&a.manifest.name)),
+            ),
+            remembered,
+        })
+    }
+
+    fn signals(&self, archive: &BundleArchive) -> (HashSet<ContentType>, HashSet<ContentType>) {
+        let bundle_name = &archive.manifest.name;
+        let mut all_suppressed: HashMap<ContentType, bool> = HashMap::new();
+
+        for file in archive.manifest.files.iter().filter(|f| !f.hidden) {
+            let package_id = file.kind.package_id();
+            let override_type = find_override(self.overrides, bundle_name, &package_id)
+                .or_else(|| find_user_suppression(&self.stray_overrides, &package_id));
+            let key = file.kind.bundle_key();
+            let installed = self.installed_keys.contains(&key)
+                || matches!(&file.kind, BundleFileKind::External { file: ext, .. }
+                    if self.installed_keys.contains(&external_bundle_key(&ext.sha1)));
+            if override_type.is_none() && !installed {
+                continue;
+            }
+            if self.shared_keys.contains(&key) {
+                continue;
+            }
+
+            let suppressed = matches!(
+                override_type,
+                Some(OverrideType::Disabled | OverrideType::Removed)
+            );
+            let entry = all_suppressed.entry(file.content_type()).or_insert(true);
+            *entry = *entry && suppressed;
+        }
+
+        let seen = all_suppressed.keys().copied().collect();
+        let suppressed = all_suppressed
+            .into_iter()
+            .filter_map(|(ct, all)| all.then_some(ct))
+            .collect();
+        (seen, suppressed)
+    }
+
+    fn suppressed(&self, archive: &BundleArchive) -> HashSet<ContentType> {
+        let (seen, mut suppressed) = self.signals(archive);
+        suppressed.extend(
+            self.remembered
+                .get(&archive.manifest.name)
+                .into_iter()
+                .flatten()
+                .filter(|ct| !seen.contains(ct)),
+        );
+        suppressed
+    }
+
+    async fn remember(
+        &self,
+        archive: &BundleArchive,
+        ctx: &ContentCtx,
+    ) -> ContentResult<HashSet<ContentType>> {
+        let bundle_name = &archive.manifest.name;
+        let (seen, suppressed) = self.signals(archive);
+        let remembered = self.remembered.get(bundle_name);
+
+        for ct in &seen {
+            let opted_out = suppressed.contains(ct);
+            if opted_out != remembered.is_some_and(|r| r.contains(ct)) {
+                bundle_dao::set_type_opt_out(
+                    &ctx.db,
+                    self.cluster_id,
+                    bundle_name,
+                    *ct as i64,
+                    opted_out,
+                )
+                .await?;
+            }
+        }
+
+        Ok(self.suppressed(archive))
+    }
+}
+
 /// Stricter than subscription
 /// emptying a bundle is how a user opts out and an absent override is not
 /// consent for a file that did not exist back then
 #[tracing::instrument(level = "debug", skip_all)]
 async fn addition_eligible_bundles(
     ctx: &ContentCtx,
+    archives: &[BundleArchive],
     bundle_packages: &[BundleTrackedArtifactRow],
     all_linked: &[LinkedArtifactInfo],
-    candidate_keys_by_bundle: &HashMap<String, HashSet<String>>,
     overrides: &[ClusterBundleOverrideRow],
+    overrides_map: &HashMap<(String, String), OverrideType>,
 ) -> ContentResult<HashSet<String>> {
     let live: Vec<_> = all_linked.iter().filter(|item| item.enabled).collect();
     let (live_managed_keys, _) = installed_bundle_keys(ctx, live).await?;
 
-    let mut eligible: HashSet<String> = bundle_packages
-        .iter()
-        .filter(|bp| bp.enabled != 0)
-        .filter_map(|bp| bp.bundle_name.clone())
-        .collect();
-
-    eligible.extend(infer_bundle_names_from_unique_installed_keys(
-        candidate_keys_by_bundle,
+    let mut eligible = live_bundle_names(bundle_packages, overrides);
+    eligible.extend(infer_subscribed_from_archives(
+        archives,
+        overrides_map,
         &live_managed_keys,
     ));
 
-    eligible.extend(
-        overrides
-            .iter()
-            .filter(|o| OverrideType::parse(&o.override_type) == Some(OverrideType::Enabled))
-            .map(|o| o.bundle_name.clone()),
-    );
-
     Ok(eligible)
+}
+
+fn live_bundle_names(
+    bundle_packages: &[BundleTrackedArtifactRow],
+    overrides: &[ClusterBundleOverrideRow],
+) -> HashSet<String> {
+    bundle_packages
+        .iter()
+        .filter(|bp| bp.enabled != 0)
+        .filter_map(|bp| bp.bundle_name.clone())
+        .chain(
+            overrides
+                .iter()
+                .filter(|o| OverrideType::parse(&o.override_type) == Some(OverrideType::Enabled))
+                .map(|o| o.bundle_name.clone()),
+        )
+        .collect()
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -1005,13 +1236,17 @@ fn infer_bundle_names_from_unique_installed_keys(
 
 fn infer_subscribed_from_archives(
     archives: &[BundleArchive],
+    overrides_map: &HashMap<(String, String), OverrideType>,
     managed_keys: &HashSet<String>,
 ) -> HashSet<String> {
     let mut candidate_keys_by_bundle = HashMap::new();
     for archive in archives {
         let mut keys = HashSet::new();
         for file in &archive.manifest.files {
-            if !file.enabled {
+            let user_override = overrides_map
+                .get(&(archive.manifest.name.clone(), file.kind.package_id()))
+                .copied();
+            if !crate::bundles::effective_enabled(file, user_override) {
                 continue;
             }
             if let BundleFileKind::Managed {

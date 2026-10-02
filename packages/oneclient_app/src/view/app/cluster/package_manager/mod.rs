@@ -144,10 +144,13 @@ pub fn bundle_packages(
         }
     }
 
+    let mut ordered: Vec<&BundleWithUpdateStatus> = bundles.iter().collect();
+    ordered.sort_by_key(|b| !b.opted_in_types.contains(&content_type));
+
     let mut rows = Vec::new();
     let mut seen: HashSet<String> = HashSet::new();
 
-    for bundle in bundles {
+    for bundle in ordered {
         let bundle_name = &bundle.archive.manifest.name;
         let category = bundle.archive.manifest.category.clone();
         for (file, status) in &bundle.files {
@@ -199,6 +202,8 @@ pub fn bundle_packages(
                 vec![category.clone()]
             };
 
+            let opted_in =
+                installed_info.is_some() || bundle.opted_in_types.contains(&content_type);
             let mut row = make_row(
                 pid,
                 Some(bundle_name.clone()),
@@ -214,6 +219,7 @@ pub fn bundle_packages(
                 false,
                 // Flagged rather than dropped `HiddenFilter` filters on the row and the seen id stops the loose-content pass resurrecting it as a local file
                 file.hidden,
+                opted_in,
             );
             row.advanced = advanced;
             rows.push(row);
@@ -246,6 +252,7 @@ pub fn bundle_packages(
                 .unwrap_or_else(|| info.file_name.clone()),
             outdated,
             false,
+            true,
         ));
     }
 
@@ -267,6 +274,7 @@ fn make_row(
     fallback_name: String,
     update_available: bool,
     hidden: bool,
+    opted_in: bool,
 ) -> PackageEntry {
     let name = m
         .map(|p| p.name.clone())
@@ -305,6 +313,7 @@ fn make_row(
         hash: installed_info.map(|i| i.hash.clone()),
         update_available,
         hidden,
+        opted_in,
         advanced: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
     }
@@ -330,7 +339,7 @@ impl Tab {
 
     pub(super) fn matches(&self, p: &PackageEntry) -> bool {
         match self {
-            Tab::All => true,
+            Tab::All => p.opted_in,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
             Tab::Browser => (p.is_remote() || p.github_hosted) && !p.in_bundle(),
             Tab::Local => !p.is_remote() && !p.github_hosted,
@@ -685,5 +694,69 @@ impl Component for PackageManager {
                 .notices(notices),
             )
             .maybe_child(delete_dialog)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::view::onboarding::test_support::{archive, file};
+    use oneclient_core::{BundleFile, FileUpdateStatus};
+
+    fn bundle(category: &str, opted_in: bool, files: Vec<BundleFile>) -> BundleWithUpdateStatus {
+        BundleWithUpdateStatus {
+            files: files
+                .iter()
+                .cloned()
+                .map(|f| (f, FileUpdateStatus::NotInstalled))
+                .collect(),
+            archive: archive(category, true, files),
+            has_updates: false,
+            opted_in_types: if opted_in {
+                [ContentType::Mod].into()
+            } else {
+                HashSet::new()
+            },
+        }
+    }
+
+    #[test]
+    fn all_tab_skips_bundles_not_opted_into() {
+        let bundles = [
+            bundle(
+                "Declined",
+                false,
+                vec![
+                    file("only-declined", true, false),
+                    file("shared", true, false),
+                ],
+            ),
+            bundle(
+                "Taken",
+                true,
+                vec![file("shared", true, false), file("only-taken", true, false)],
+            ),
+        ];
+        let rows = bundle_packages(
+            Vec::new(),
+            &bundles,
+            &HashMap::new(),
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+        let all: Vec<&str> = rows
+            .iter()
+            .filter(|p| Tab::All.matches(p))
+            .map(|p| p.package_id.as_str())
+            .collect();
+        assert_eq!(all, ["shared", "only-taken"]);
+        let shared = rows.iter().find(|p| p.package_id == "shared").unwrap();
+        assert_eq!(shared.categories, ["Taken"]);
+        let declined = Tab::Category("Declined".into());
+        assert!(
+            rows.iter()
+                .any(|p| p.package_id == "only-declined" && declined.matches(p))
+        );
     }
 }

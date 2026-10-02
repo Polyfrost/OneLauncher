@@ -8,17 +8,20 @@ use oneclient_core::clusters::ModpackSource;
 use crate::components::{ScrollArea, use_shared_delete};
 use crate::hooks::use_cluster;
 use crate::hooks::{
-    bundles_with_status_items, cluster_content_items, content_type_for_slug, package_meta_batch,
-    project_detail, use_browser_compat, use_bundles_with_status, use_cluster_content,
+    ALL_VERSIONS, VERSIONS_PAGE_SIZE, bundle_overrides_map, bundles_with_status_items,
+    cluster_content_items, content_type_for_slug, package_meta_batch, project_detail,
+    use_browser_compat, use_bundle_overrides, use_bundles_with_status, use_cluster_content,
     use_dispatch, use_installs_snapshot, use_link_confirm, use_package_meta_batch,
-    use_package_project, use_package_versions, version_list, versions_total,
+    use_package_project, use_package_versions_when,
+    version_list, versions_total,
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
 use super::{
-    Installed, InstalledVersion, PackageBanner, Thumbnail, WorldInstallPrompt, activity_badge,
-    installed_badge, installed_map, preferred_version,
+    EnableButton, EnableVariant, Installed, InstalledVersion, ModpackVersionPrompt, PackageBanner,
+    Thumbnail, WorldInstallPrompt, activity_badge, installed_badge, installed_map,
+    minecraft_choices, preferred_version,
 };
 use crate::utils::abbreviate_number;
 
@@ -40,9 +43,17 @@ struct Installer {
     provider: ProviderId,
     world_prompt: Option<State<Option<String>>>,
     modpack: bool,
+    modpack_prompt: Option<State<bool>>,
 }
 
 impl Installer {
+    fn install_latest(&self, project_id: String, version_id: String) {
+        match self.modpack_prompt {
+            Some(mut prompt) => prompt.set(true),
+            None => self.install(project_id, version_id),
+        }
+    }
+
     fn install(&self, project_id: String, version_id: String) {
         if self.modpack {
             self.dispatch.install_modpack(ModpackSource::Provider {
@@ -148,13 +159,15 @@ impl Component for BrowserPackage {
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
         let world_prompt = use_state(|| None::<String>);
+        let modpack_prompt = use_state(|| false);
         let is_datapack = content_type == ContentType::DataPack;
-        let installer = Installer {
+        let mut installer = Installer {
             dispatch: dispatch.clone(),
             cluster_id,
             provider,
             world_prompt: is_datapack.then_some(world_prompt),
             modpack: content_type == ContentType::Modpack,
+            modpack_prompt: None,
         };
 
         let cluster = use_cluster(cluster_id);
@@ -178,13 +191,25 @@ impl Component for BrowserPackage {
         }
 
         let project_query = use_package_project(provider, project_id.clone());
-        let versions_query = use_package_versions(
+        let is_modpack = content_type == ContentType::Modpack;
+        let versions_query = use_package_versions_when(
+            !is_modpack,
             provider,
             project_id.clone(),
             game_version,
             loader,
             *versions_page.read(),
+            VERSIONS_PAGE_SIZE,
         );
+        let all_versions = version_list(&use_package_versions_when(
+            is_modpack,
+            provider,
+            project_id.clone(),
+            None,
+            None,
+            0,
+            ALL_VERSIONS,
+        ));
 
         let (installing, waiting) = use_installs_snapshot().package_busy(
             content_type == ContentType::Modpack,
@@ -196,6 +221,7 @@ impl Component for BrowserPackage {
         let installed = installed_map(
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
+            &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
         )
         .remove(&(provider, project_id.clone()))
         .filter(|_| !is_datapack);
@@ -216,8 +242,20 @@ impl Component for BrowserPackage {
             }
         });
 
-        let versions = version_list(&versions_query);
-        let total_versions = versions_total(&versions_query);
+        let (versions, total_versions) = if is_modpack {
+            let page = all_versions
+                .iter()
+                .skip(versions_page.read().saturating_mul(VERSIONS_PAGE_SIZE))
+                .take(VERSIONS_PAGE_SIZE)
+                .cloned()
+                .collect();
+            (page, all_versions.len())
+        } else {
+            (
+                version_list(&versions_query),
+                versions_total(&versions_query),
+            )
+        };
         let dependency_ids: Vec<String> = versions
             .iter()
             .flat_map(|v| &v.dependencies)
@@ -229,8 +267,11 @@ impl Component for BrowserPackage {
                 .into_iter()
                 .map(|(id, meta)| (id, meta.name))
                 .collect();
+        let latest_source = if is_modpack { &all_versions } else { &versions };
         let latest_version =
-            preferred_version(&versions, content_type).map(|v| v.version_id.clone());
+            preferred_version(latest_source, content_type).map(|v| v.version_id.clone());
+        let choices = minecraft_choices(&all_versions);
+        installer.modpack_prompt = (choices.len() > 1).then_some(modpack_prompt);
 
         let gallery = project
             .as_ref()
@@ -302,6 +343,12 @@ impl Component for BrowserPackage {
                 provider,
                 project_id: project_id.clone(),
                 pending: world_prompt,
+            }))
+            .maybe_child(modpack_prompt.read().then(|| ModpackVersionPrompt {
+                provider,
+                project_id: project_id.clone(),
+                choices,
+                open: modpack_prompt,
             }))
             .into_element()
     }

@@ -108,11 +108,20 @@ impl MetadataStore {
                 let ctx = ctx.clone();
                 let mut saved = metadata.inner.clone();
                 tokio::spawn(async move {
-                    let _ = oneclient_net::status::subscribe()
-                        .wait_for(|status| status.online)
-                        .await;
-                    let mut fresh = MetadataInner::default();
-                    fresh.fetch_all(&ctx).await;
+                    let mut status = oneclient_net::status::subscribe();
+                    let fresh = loop {
+                        if status.wait_for(|status| status.online).await.is_err() {
+                            return;
+                        }
+                        let mut fresh = MetadataInner::default();
+                        fresh.fetch_all(&ctx).await;
+                        if fresh.has_any() {
+                            break fresh;
+                        }
+                        if status.wait_for(|status| !status.online).await.is_err() {
+                            return;
+                        }
+                    };
                     saved.merge(fresh.clone());
                     if let Err(err) = polyio::write_json_atomic(&path, &saved).await {
                         tracing::warn!("failed to save refreshed metadata manifest: {err}");
@@ -282,6 +291,15 @@ impl MetadataInner {
         keep_fetched(&mut self.fabric, fabric);
         keep_fetched(&mut self.quilt, quilt);
         keep_fetched(&mut self.ornithe, ornithe);
+    }
+
+    const fn has_any(&self) -> bool {
+        self.minecraft.is_some()
+            || self.forge.is_some()
+            || self.neo.is_some()
+            || self.fabric.is_some()
+            || self.quilt.is_some()
+            || self.ornithe.is_some()
     }
 
     fn merge(&mut self, fresh: Self) {

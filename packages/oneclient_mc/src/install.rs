@@ -1,7 +1,6 @@
-use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::Duration;
+use std::sync::Mutex;
 
 use futures_util::{StreamExt, stream};
 use interfrost::api::minecraft::{
@@ -703,10 +702,7 @@ pub async fn confirm_incomplete_install(
     }
 }
 
-const VERSION_INFO_REFRESH_WAIT: Duration = Duration::from_secs(2);
-
-static VERSION_INFO_REFRESH: Mutex<BTreeMap<PathBuf, Arc<tokio::sync::Mutex<bool>>>> =
-    Mutex::new(BTreeMap::new());
+static VERSION_INFO_REFRESHED: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
 
 #[tracing::instrument(skip(ctx, progress), level = "debug")]
 pub async fn download_version_info(
@@ -742,68 +738,38 @@ pub async fn download_version_info(
         cached
     };
 
-    let lock = loader.map(|_| {
-        VERSION_INFO_REFRESH
-            .lock()
-            .unwrap()
-            .entry(path.clone())
-            .or_default()
-            .clone()
-    });
-
     if let Some(cached) = cached {
-        if let Some(Ok(mut done)) = lock.map(|lock| lock.try_lock_owned())
-            && !*done
+        if loader.is_some()
             && oneclient_net::status::current().online
+            && VERSION_INFO_REFRESHED.lock().unwrap().insert(path.clone())
         {
-            *done = true;
             let ctx = ctx.clone();
             let version = version.clone();
             let loader = loader.cloned();
-            let refresh = tokio::spawn(async move {
-                let _done = done;
+            tokio::spawn(async move {
                 let refresh = async {
                     let info =
                         fetch_version_info(&ctx, None, &version, loader.as_ref(), &version_id)
                             .await?;
                     polyio::write_json_atomic(&path, &info).await?;
-                    McResult::Ok(info)
+                    McResult::Ok(())
                 };
-                refresh
-                    .await
-                    .inspect_err(|err| {
-                        tracing::warn!(
-                            version_id = %version_id,
-                            "could not refresh version metadata, keeping cached copy: {err}"
-                        );
-                    })
-                    .ok()
+                if let Err(err) = refresh.await {
+                    tracing::warn!(
+                        version_id = %version_id,
+                        "could not refresh version metadata, keeping cached copy: {err}"
+                    );
+                }
             });
-            if let Ok(Ok(Some(info))) =
-                tokio::time::timeout(VERSION_INFO_REFRESH_WAIT, refresh).await
-            {
-                return Ok(info);
-            }
         }
         return Ok(cached);
     }
 
-    let mut done = match lock {
-        Some(lock) => Some(lock.lock_owned().await),
-        None => None,
-    };
-    if !force
-        && done.is_some()
-        && let Some(cached) = read_cached_version_info(&path).await
-    {
-        return Ok(cached);
-    }
-    if let Some(done) = &mut done {
-        **done = true;
-    }
-
     let info = fetch_version_info(ctx, progress, version, loader, &version_id).await?;
     polyio::write_json_atomic(&path, &info).await?;
+    if loader.is_some() {
+        VERSION_INFO_REFRESHED.lock().unwrap().insert(path);
+    }
     Ok(info)
 }
 

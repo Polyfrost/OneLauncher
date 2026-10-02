@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use futures_util::{StreamExt, stream};
 use interfrost::api::minecraft::{
@@ -702,6 +703,8 @@ pub async fn confirm_incomplete_install(
     }
 }
 
+const VERSION_INFO_REFRESH_WAIT: Duration = Duration::from_secs(2);
+
 static VERSION_INFO_REFRESH: Mutex<BTreeMap<PathBuf, Arc<tokio::sync::Mutex<bool>>>> =
     Mutex::new(BTreeMap::new());
 
@@ -749,9 +752,6 @@ pub async fn download_version_info(
     });
 
     if let Some(cached) = cached {
-        // Serve the cache now and refresh it in the background once per run,
-        // so a slow meta host never holds up a launch. A caller that arrives
-        // while the refresh is running gets the cached copy too.
         if let Some(Ok(mut done)) = lock.map(|lock| lock.try_lock_owned())
             && !*done
             && oneclient_net::status::current().online
@@ -760,22 +760,30 @@ pub async fn download_version_info(
             let ctx = ctx.clone();
             let version = version.clone();
             let loader = loader.cloned();
-            tokio::spawn(async move {
+            let refresh = tokio::spawn(async move {
                 let _done = done;
                 let refresh = async {
                     let info =
                         fetch_version_info(&ctx, None, &version, loader.as_ref(), &version_id)
                             .await?;
                     polyio::write_json_atomic(&path, &info).await?;
-                    McResult::Ok(())
+                    McResult::Ok(info)
                 };
-                if let Err(err) = refresh.await {
-                    tracing::warn!(
-                        version_id = %version_id,
-                        "could not refresh version metadata, keeping cached copy: {err}"
-                    );
-                }
+                refresh
+                    .await
+                    .inspect_err(|err| {
+                        tracing::warn!(
+                            version_id = %version_id,
+                            "could not refresh version metadata, keeping cached copy: {err}"
+                        );
+                    })
+                    .ok()
             });
+            if let Ok(Ok(Some(info))) =
+                tokio::time::timeout(VERSION_INFO_REFRESH_WAIT, refresh).await
+            {
+                return Ok(info);
+            }
         }
         return Ok(cached);
     }

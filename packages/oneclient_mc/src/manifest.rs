@@ -21,7 +21,7 @@ pub struct MetadataStore {
     pending: Option<oneshot::Receiver<MetadataInner>>,
 }
 
-#[derive(Debug, Default, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 struct MetadataInner {
     minecraft: Option<VanillaManifest>,
     forge: Option<ModdedManifest>,
@@ -106,18 +106,18 @@ impl MetadataStore {
                 let (tx, rx) = oneshot::channel();
                 metadata.pending = Some(rx);
                 let ctx = ctx.clone();
+                let mut saved = metadata.inner.clone();
                 tokio::spawn(async move {
                     let _ = oneclient_net::status::subscribe()
                         .wait_for(|status| status.online)
                         .await;
-                    let mut inner = polyio::read_json::<MetadataInner>(&path)
-                        .await
-                        .unwrap_or_default();
-                    inner.fetch_all(&ctx).await;
-                    if let Err(err) = polyio::write_json_atomic(&path, &inner).await {
+                    let mut fresh = MetadataInner::default();
+                    fresh.fetch_all(&ctx).await;
+                    saved.merge(fresh.clone());
+                    if let Err(err) = polyio::write_json_atomic(&path, &saved).await {
                         tracing::warn!("failed to save refreshed metadata manifest: {err}");
                     }
-                    let _ = tx.send(inner);
+                    let _ = tx.send(fresh);
                 });
             }
             Err(err) => {
@@ -145,8 +145,8 @@ impl MetadataStore {
 
         if let Some(pending) = &mut self.pending {
             match pending.try_recv() {
-                Ok(inner) => {
-                    self.inner = inner;
+                Ok(fresh) => {
+                    self.inner.merge(fresh);
                     self.version_loader_cache.clear();
                     self.pending = None;
                 }
@@ -283,6 +283,23 @@ impl MetadataInner {
         keep_fetched(&mut self.quilt, quilt);
         keep_fetched(&mut self.ornithe, ornithe);
     }
+
+    fn merge(&mut self, fresh: Self) {
+        let Self {
+            minecraft,
+            forge,
+            neo,
+            fabric,
+            quilt,
+            ornithe,
+        } = fresh;
+        self.minecraft = minecraft.or(self.minecraft.take());
+        self.forge = forge.or(self.forge.take());
+        self.neo = neo.or(self.neo.take());
+        self.fabric = fabric.or(self.fabric.take());
+        self.quilt = quilt.or(self.quilt.take());
+        self.ornithe = ornithe.or(self.ornithe.take());
+    }
 }
 
 const LEGACY_DUMMY_REPLACE_STRING: &str = "${interpulse.gameVersion}";
@@ -385,7 +402,7 @@ async fn fetch_manifest<T: DeserializeOwned>(ctx: &McCtx, loader: GameLoader) ->
 
 #[cfg(test)]
 mod tests {
-    use super::{ModdedManifest, concrete_version_ids, manifest_supports_version};
+    use super::{MetadataInner, ModdedManifest, concrete_version_ids, manifest_supports_version};
 
     fn manifest(raw: &str) -> ModdedManifest {
         serde_json::from_str(raw).unwrap()
@@ -430,5 +447,24 @@ mod tests {
             concrete_version_ids(&fabric_shaped()),
             Some(vec!["1.21.1".to_string(), "1.14".to_string()])
         );
+    }
+
+    #[test]
+    fn a_failed_background_fetch_keeps_what_the_store_already_has() {
+        let mut store = MetadataInner {
+            forge: Some(fabric_shaped()),
+            fabric: Some(fabric_shaped()),
+            ..Default::default()
+        };
+        let fresh = MetadataInner {
+            fabric: Some(manifest(r#"{"gameVersions": []}"#)),
+            ..Default::default()
+        };
+
+        store.merge(fresh);
+
+        assert_eq!(store.forge.unwrap().game_versions.len(), 3);
+        assert!(store.fabric.unwrap().game_versions.is_empty());
+        assert!(store.neo.is_none());
     }
 }

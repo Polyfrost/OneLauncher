@@ -11,7 +11,9 @@ use sysinfo::MemoryRefreshKind;
 use sysinfo::RefreshKind;
 use sysinfo::System;
 
-use crate::components::{Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput};
+use crate::components::{
+    Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput, TooltipPlacement, use_tooltip_anchor,
+};
 use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
 use crate::routes::Route;
 use crate::theme::colors;
@@ -730,6 +732,10 @@ impl SidebarInfo {
 impl Component for SidebarInfo {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
+        let tooltip = use_tooltip_anchor(
+            Some("Click to copy to clipboard".into()),
+            TooltipPlacement::Top,
+        );
 
         let items: [Cow<'static, str>; 4] = [
             Cow::Borrowed(concat!(
@@ -771,20 +777,22 @@ impl Component for SidebarInfo {
             }
         };
 
-        rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(4.)
-            .font_size(12.)
-            .padding(Gaps::new(15., 0., 0., 0.))
-            .color(colors::fg_secondary())
-            .children(
-                items
-                    .into_iter()
-                    .map(|item| label().text(item).into_element()),
-            )
-            .cursor(CursorIcon::Pointer)
-            .on_press(copy_to_clipboard)
+        tooltip.attach(
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(4.)
+                .font_size(12.)
+                .padding(Gaps::new(15., 0., 0., 0.))
+                .color(colors::fg_secondary())
+                .children(
+                    items
+                        .into_iter()
+                        .map(|item| label().text(item).into_element()),
+                )
+                .cursor(CursorIcon::Pointer)
+                .on_press(copy_to_clipboard),
+        )
     }
 }
 

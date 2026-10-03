@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use interfrost::api::minecraft::ArgumentType;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
 use crate::ClusterStage;
@@ -395,6 +395,18 @@ async fn start(
         .args(mc_args)
         .current_dir(&cwd);
 
+    let header = format!(
+        "OneClient {} · {} · {version_name} · Java {}\n\n{}\n\n",
+        env!("CARGO_PKG_VERSION"),
+        cluster.name,
+        java.major,
+        command_line(
+            command.as_std(),
+            &version_info.main_class,
+            &account.access_token
+        ),
+    );
+
     let log_path = oneclient_cluster::logs::cluster_output_log(&cluster)?;
     if let Some(parent) = log_path.parent() {
         polyio::create_dir_all(parent).await.ok();
@@ -405,10 +417,20 @@ async fn start(
     // The cloned handle shares the file offset
     // so stdout and stderr interleave instead of overwriting
     let handles = match tokio::fs::File::create(&log_path).await {
-        Ok(out) => match out.try_clone().await {
-            Ok(err) => Ok((out.into_std().await, err.into_std().await)),
-            Err(err) => Err(err),
-        },
+        Ok(mut out) => {
+            let written = async {
+                out.write_all(header.as_bytes()).await?;
+                out.flush().await
+            }
+            .await;
+            if let Err(err) = written {
+                tracing::warn!(cluster_id, error = %err, "failed to write the launch header");
+            }
+            match out.try_clone().await {
+                Ok(err) => Ok((out.into_std().await, err.into_std().await)),
+                Err(err) => Err(err),
+            }
+        }
         Err(err) => Err(err),
     };
 
@@ -750,6 +772,72 @@ fn base_command(profile: &GameSettingsProfile, java_path: &str) -> (Command, Opt
     command.args(split);
     command.arg(java_path);
     (command, Some(program.to_string()))
+}
+
+fn command_line(command: &std::process::Command, main_class: &str, token: &str) -> String {
+    #[cfg(not(windows))]
+    const CONTINUATION: &str = " \\\n  ";
+    #[cfg(windows)]
+    const CONTINUATION: &str = " `\n  ";
+
+    let mut out = String::new();
+    if let Some(dir) = command.get_current_dir() {
+        out += &format!("cd {}\n", shell_quote(&dir.to_string_lossy()));
+    }
+
+    for (key, value) in command.get_envs() {
+        let (key, Some(value)) = (key.to_string_lossy(), value) else {
+            continue;
+        };
+        let value = shell_quote(&value.to_string_lossy());
+        #[cfg(not(windows))]
+        {
+            out += &format!("{key}={value} ");
+        }
+        #[cfg(windows)]
+        {
+            out += &format!("$env:{key} = {value}\n");
+        }
+    }
+
+    #[cfg(windows)]
+    {
+        out += "& ";
+    }
+    out += &shell_quote(&command.get_program().to_string_lossy());
+
+    for arg in command.get_args() {
+        let mut arg = arg.to_string_lossy().into_owned();
+        if !token.is_empty() {
+            arg = arg.replace(token, oneclient_cluster::logs::CENSORED);
+        }
+        out += if arg.starts_with('-') || arg == main_class {
+            CONTINUATION
+        } else {
+            " "
+        };
+        out += &shell_quote(&arg);
+    }
+
+    out
+}
+
+#[cfg(not(windows))]
+fn shell_quote(arg: &str) -> String {
+    let plain = !arg.is_empty()
+        && arg
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-./=:,+@%".contains(&b));
+    if plain {
+        arg.to_string()
+    } else {
+        format!("'{}'", arg.replace('\'', r"'\''"))
+    }
+}
+
+#[cfg(windows)]
+fn shell_quote(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "''"))
 }
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {

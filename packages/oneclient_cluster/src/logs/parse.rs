@@ -1,4 +1,22 @@
+use std::borrow::Cow;
+use std::sync::LazyLock;
+
+use regex::Regex;
+
 use super::LogLevel;
+
+pub const CENSORED: &str = "[censored]";
+
+static SECRET: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"(--accessToken|--session(?:Id)?)([\s,=]+)[^\s,\[\]'"]+|(token:)[^:\s]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"#,
+    )
+    .expect("secret pattern")
+});
+
+pub fn censor(line: &str) -> Cow<'_, str> {
+    SECRET.replace_all(line, "${1}${2}${3}[censored]")
+}
 
 pub fn parse_level(line: &str) -> Option<LogLevel> {
     let bytes = line.as_bytes();

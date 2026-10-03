@@ -4995,6 +4995,7 @@ dependencies = [
  "oneclient_db",
  "oneclient_net",
  "polyio",
+ "regex",
  "reqwest 0.13.5",
  "serde",
  "serde_json",

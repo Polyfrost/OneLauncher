@@ -269,14 +269,14 @@ fn drop_repeated_arguments(args: &mut Vec<String>) {
 pub fn append_profile_game_arguments(
     args: &mut Vec<String>,
     force_fullscreen: Option<bool>,
-    launch_args: Option<&str>,
+    game_args: Option<&str>,
 ) {
     if force_fullscreen.unwrap_or(false) {
         args.push("--fullscreen".to_string());
     }
 
-    if let Some(extra) = launch_args.map(str::trim).filter(|s| !s.is_empty()) {
-        args.push(extra.to_string());
+    if let Some(extra) = game_args {
+        args.extend(split_custom_args(extra));
     }
 }
 
@@ -604,7 +604,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        HashMap, Library, Path, SidedDataEntry, ZGC_MIN_HEAP_MB, classpaths,
+        HashMap, Library, Path, SidedDataEntry, ZGC_MIN_HEAP_MB, append_profile_game_arguments,
+        classpaths,
         drop_repeated_arguments, get_library, is_collector_flag, java_arguments,
         minecraft_arguments, performance_flags, processor_arguments, split_custom_args,
     };
@@ -629,6 +630,16 @@ mod tests {
         assert_eq!(
             split_custom_args(r#"-Dname="My Server" -Xss1M"#),
             vec!["-Dname=My Server", "-Xss1M"]
+        );
+    }
+
+    #[test]
+    fn game_arguments_are_split_after_fullscreen() {
+        let mut args = vec!["--username".to_string(), "Steve".to_string()];
+        append_profile_game_arguments(&mut args, Some(true), Some("--tracy  --tracyNoImages"));
+        assert_eq!(
+            args,
+            vec!["--username", "Steve", "--fullscreen", "--tracy", "--tracyNoImages"]
         );
     }
 

@@ -321,7 +321,6 @@ async fn start(
     )?;
 
     let mut jvm_args = arguments::java_arguments(
-        updated,
         arg_map.get(&ArgumentType::Jvm).map(Vec::as_slice),
         &natives,
         &libraries,
@@ -347,7 +346,6 @@ async fn start(
     }
 
     let mut mc_args = arguments::minecraft_arguments(
-        updated,
         arg_map.get(&ArgumentType::Game).map(Vec::as_slice),
         version_info.minecraft_arguments.as_deref(),
         &account.access_token,

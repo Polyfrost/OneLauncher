@@ -4,9 +4,9 @@ use freya::animation::{
 use freya::prelude::*;
 
 use super::settings_page;
-use crate::components::{Icon, IconType};
+use crate::components::{Icon, IconType, Markdown, MarkdownStyle};
 use crate::hooks::{
-    changelog_error, changelog_groups, changelog_is_loading, latest_changelog_version,
+    changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,
     use_changelog, use_dispatch, use_settings_snapshot,
 };
 use crate::theme::colors;
@@ -55,15 +55,15 @@ impl Component for SettingsChangelog {
                 .into_element();
         }
 
-        let groups = changelog_groups(&query).unwrap_or_default();
+        let entries = changelog_entries(&query).unwrap_or_default();
 
         settings_page()
-            .children(groups.into_iter().enumerate().map(|(i, group)| {
-                let current = group.version == installed_version;
+            .children(entries.into_iter().enumerate().map(|(i, entry)| {
+                let current = entry.version == installed_version;
                 ReleaseCard {
-                    version: group.version,
+                    version: entry.version,
                     current,
-                    changes: group.changes,
+                    body: entry.body,
                     initially_open: i == 0,
                 }
                 .into_element()
@@ -79,7 +79,7 @@ const CHEVRON_CLOSED_DEG: f32 = -90.;
 struct ReleaseCard {
     version: String,
     current: bool,
-    changes: Vec<String>,
+    body: String,
     initially_open: bool,
 }
 
@@ -109,8 +109,6 @@ impl Component for ReleaseCard {
         } else {
             self.version.clone()
         };
-
-        let changes = self.changes.clone();
 
         rect()
             .vertical()
@@ -144,48 +142,30 @@ impl Component for ReleaseCard {
                     ),
             )
             .maybe_child(is_open.then(|| {
-                rect()
-                    .vertical()
-                    .width(Size::fill())
-                    .spacing(4.)
-                    .padding(Gaps::new(0., 0., 0., 6.))
-                    .children(if changes.is_empty() {
-                        vec![
-                            rect()
-                                .child(
-                                    label()
-                                        .text("No changes recorded for this version.")
-                                        .font_size(12.)
-                                        .color(colors::fg_secondary()),
-                                )
-                                .into_element(),
-                        ]
-                    } else {
-                        changes
-                            .into_iter()
-                            .map(|change| {
-                                rect()
-                                    .horizontal()
-                                    .width(Size::fill())
-                                    .spacing(8.)
-                                    .child(
-                                        label()
-                                            .text("•")
-                                            .font_size(12.)
-                                            .color(colors::fg_secondary()),
-                                    )
-                                    .child(
-                                        label()
-                                            .text(change)
-                                            .font_size(12.)
-                                            .width(Size::flex(1.0))
-                                            .color(colors::fg_primary()),
-                                    )
-                                    .into_element()
-                            })
-                            .collect()
-                    })
-                    .into_element()
+                if self.body.trim().is_empty() {
+                    label()
+                        .text("No changes recorded for this version.")
+                        .font_size(12.)
+                        .color(colors::fg_secondary())
+                        .into_element()
+                } else {
+                    Markdown::new(self.body.clone())
+                        .width(Size::fill())
+                        .style(MarkdownStyle {
+                            color: colors::fg_primary(),
+                            color_link: colors::code_info(),
+                            color_code: colors::fg_primary(),
+                            background_code: colors::component_bg(),
+                            background_blockquote: colors::component_bg(),
+                            border_blockquote: colors::brand(),
+                            background_divider: colors::component_border(),
+                            headings: [18., 16., 14., 13., 12., 12.],
+                            paragraph_size: 12.,
+                            code_font_size: 11.,
+                            ..MarkdownStyle::default()
+                        })
+                        .into_element()
+                }
             }))
             .into_element()
     }

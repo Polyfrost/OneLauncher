@@ -1,7 +1,9 @@
 use freya::prelude::*;
 
-use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup};
-use crate::hooks::use_link_confirm;
+use crate::components::{
+    Button, CodeBlock, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, copy_button,
+};
+use crate::hooks::{use_dispatch, use_link_confirm};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -13,6 +15,7 @@ pub struct ConfirmLinkOverlay;
 impl Component for ConfirmLinkOverlay {
     fn render(&self) -> impl IntoElement {
         let mut pending = use_link_confirm();
+        let dispatch = use_dispatch();
         let Some(url) = pending.read().clone() else {
             return rect().into_element();
         };
@@ -73,20 +76,9 @@ impl Component for ConfirmLinkOverlay {
                                     .color(colors::fg_secondary()),
                             )
                             .child(
-                                rect()
-                                    .width(Size::fill())
-                                    .padding(Gaps::new_all(10.))
-                                    .corner_radius(CornerRadius::new_all(8.))
-                                    .background(colors::component_bg())
-                                    .border(border_all_color(1., colors::component_border()))
-                                    .child(
-                                        label()
-                                            .text(url.clone())
-                                            .font_size(12.)
-                                            .max_lines(4)
-                                            .width(Size::fill())
-                                            .color(colors::code_info()),
-                                    ),
+                                CodeBlock::new(url.clone())
+                                    .color(colors::code_info())
+                                    .max_lines(4),
                             )
                             .child(
                                 rect()
@@ -94,6 +86,11 @@ impl Component for ConfirmLinkOverlay {
                                     .width(Size::fill())
                                     .main_align(Alignment::End)
                                     .spacing(8.)
+                                    .child(copy_button(
+                                        url.clone(),
+                                        "Link copied to your clipboard.",
+                                        dispatch,
+                                    ))
                                     .child(
                                         Button::new()
                                             .secondary()

@@ -401,11 +401,7 @@ async fn start(
         env!("CARGO_PKG_VERSION"),
         cluster.name,
         java.major,
-        command_line(
-            command.as_std(),
-            &version_info.main_class,
-            &account.access_token
-        ),
+        command_line(command.as_std(), &version_info.main_class),
     );
 
     let log_path = oneclient_cluster::logs::cluster_output_log(&cluster)?;
@@ -419,12 +415,7 @@ async fn start(
     // so stdout and stderr interleave instead of overwriting
     let handles = match tokio::fs::File::create(&log_path).await {
         Ok(mut out) => {
-            let written = async {
-                out.write_all(header.as_bytes()).await?;
-                out.flush().await
-            }
-            .await;
-            if let Err(err) = written {
+            if let Err(err) = out.write_all(header.as_bytes()).await {
                 tracing::warn!(cluster_id, error = %err, "failed to write the launch header");
             }
             match out.try_clone().await {
@@ -775,7 +766,7 @@ fn base_command(profile: &GameSettingsProfile, java_path: &str) -> (Command, Opt
     (command, Some(program.to_string()))
 }
 
-fn command_line(command: &std::process::Command, main_class: &str, token: &str) -> String {
+fn command_line(command: &std::process::Command, main_class: &str) -> String {
     #[cfg(not(windows))]
     const CONTINUATION: &str = " \\\n  ";
     #[cfg(windows)]
@@ -804,10 +795,8 @@ fn command_line(command: &std::process::Command, main_class: &str, token: &str) 
     out += &shell_quote(&command.get_program().to_string_lossy());
 
     for arg in command.get_args() {
-        let mut arg = arg.to_string_lossy().into_owned();
-        if !token.is_empty() {
-            arg = arg.replace(token, oneclient_cluster::logs::CENSORED);
-        }
+        let arg = arg.to_string_lossy();
+        let arg = oneclient_cluster::logs::censor(&arg);
         out += if arg.starts_with('-') || arg == main_class {
             CONTINUATION
         } else {

@@ -5,8 +5,6 @@ use regex::Regex;
 
 use super::LogLevel;
 
-pub const CENSORED: &str = "[censored]";
-
 static SECRET: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
         r#"(--accessToken|--session(?:Id)?)([\s,=]+)[^\s,\[\]'"]+|(token:)[^:\s]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"#,

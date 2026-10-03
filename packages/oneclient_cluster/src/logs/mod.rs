@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 pub use error::LogsError;
 pub use manage::{cluster_output_log, delete_log_at, list_cluster_logs, read_log_at};
 pub use mclogs::upload_log_at;
-pub use parse::{CENSORED, censor, parse_level};
+pub use parse::{censor, parse_level};
 
 /// No launcher variant on purpose the launcher's own logs live in the log console
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

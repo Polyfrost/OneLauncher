@@ -120,7 +120,7 @@ pub use tab_bar::{TabBar, TabItem};
 pub use text_input::{TextInput, validate_memory, validate_number};
 pub use toasts::Toasts;
 pub use toggle::{toggle, toggle_controlled};
-pub use tooltip::{TooltipHost, TooltipPlacement, use_provide_tooltips};
+pub use tooltip::{TooltipHost, TooltipPlacement, use_provide_tooltips, use_tooltip_anchor};
 pub use update_prompt::UpdatePromptOverlay;
 pub use version_art_gallery::{GALLERY_COVER_EDGE, VersionArtGallery};
 pub use version_card::VersionCard;

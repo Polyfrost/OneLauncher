@@ -23,7 +23,7 @@ pub mod tos;
 pub mod verify;
 pub mod versions;
 
-pub use changelog::{ChangelogGroup, fetch_changelog, parse_changelog};
+pub use changelog::{ChangelogEntry, fetch_changelog};
 pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
     apply_bundle_java_override, ensure_from_bundles, ensure_from_versions,

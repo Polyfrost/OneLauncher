@@ -67,6 +67,11 @@ cargo packager --release -p oneclient_app --formats <targets>
 
 The workspace shares a single version, defined in the root [`Cargo.toml`](./Cargo.toml) under `[workspace.package]`.
 
+Versions and release notes come from [Knope](https://knope.tech) change files in [`.changeset/`](./.changeset).
+Add one per user-facing change with `knope document-change` (installed via `cargo install knope`). The
+`OneClient Release Build` workflow consumes them, bumps the version, writes [`CHANGELOG.md`](./CHANGELOG.md),
+and uses the new entry as the GitHub release body, which is what the launcher's changelog page shows.
+
 
 ## Code signing
 

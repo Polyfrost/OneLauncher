@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -782,7 +783,7 @@ fn command_line(command: &std::process::Command, main_class: &str, token: &str) 
 
     let mut out = String::new();
     if let Some(dir) = command.get_current_dir() {
-        out += &format!("cd {}\n", shell_quote(&dir.to_string_lossy()));
+        let _ = writeln!(out, "cd {}", shell_quote(&dir.to_string_lossy()));
     }
 
     for (key, value) in command.get_envs() {
@@ -791,13 +792,9 @@ fn command_line(command: &std::process::Command, main_class: &str, token: &str) 
         };
         let value = shell_quote(&value.to_string_lossy());
         #[cfg(not(windows))]
-        {
-            out += &format!("{key}={value} ");
-        }
+        let _ = write!(out, "{key}={value} ");
         #[cfg(windows)]
-        {
-            out += &format!("$env:{key} = {value}\n");
-        }
+        let _ = writeln!(out, "$env:{key} = {value}");
     }
 
     #[cfg(windows)]

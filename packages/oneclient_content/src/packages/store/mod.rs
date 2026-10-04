@@ -366,13 +366,8 @@ impl PackageStore {
         let live = if enabled {
             link::try_link_materialized(&cluster, &artifact, &file_name).await
         } else {
-            link::try_unlink_materialized(
-                &cluster,
-                content_type,
-                &link.cluster_file_name,
-                &ctx.db,
-            )
-            .await;
+            link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db)
+                .await;
             if link.cluster_file_name != file_name {
                 link::try_unlink_materialized(&cluster, content_type, &file_name, &ctx.db).await;
             }

@@ -1272,7 +1272,10 @@ mod package_update_tests {
         let id = state.push_custom(&mut inbox, spec("kept"));
         state.expire_toast(&mut inbox, id);
 
-        assert!(inbox.iter().any(|e| e.id == id), "the inbox entry must stay");
+        assert!(
+            inbox.iter().any(|e| e.id == id),
+            "the inbox entry must stay"
+        );
     }
 
     #[test]

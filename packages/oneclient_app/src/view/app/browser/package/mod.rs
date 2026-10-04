@@ -12,8 +12,7 @@ use crate::hooks::{
     cluster_content_items, content_type_for_slug, package_meta_batch, project_detail,
     use_browser_compat, use_bundle_overrides, use_bundles_with_status, use_cluster_content,
     use_dispatch, use_installs_snapshot, use_link_confirm, use_package_meta_batch,
-    use_package_project, use_package_versions_when,
-    version_list, versions_total,
+    use_package_project, use_package_versions_when, version_list, versions_total,
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;

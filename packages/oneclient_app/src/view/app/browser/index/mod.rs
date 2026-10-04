@@ -84,7 +84,12 @@ pub(crate) fn browsable_type(package_type: &str, cluster: &Cluster) -> String {
     if cluster.lacks_mod_loader() {
         let unsupported = LOADER_SLUGS.contains(&package_type)
             || (package_type == DATAPACK_SLUG && !supports_datapacks(&cluster.mc_version));
-        return if unsupported { TEXTURE_SLUG } else { package_type }.to_string();
+        return if unsupported {
+            TEXTURE_SLUG
+        } else {
+            package_type
+        }
+        .to_string();
     }
     if package_type == DATAPACK_SLUG && !supports_datapacks(&cluster.mc_version) {
         BROWSE_TYPES[0].0.to_string()

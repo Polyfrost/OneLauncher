@@ -6,9 +6,8 @@ use oneclient_core::SeenStatus;
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
 use crate::essential::EssentialPackage;
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings,
-    loaded_image, use_cached_image, use_cluster_mutation, use_disable_warnings,
-    use_essential_guard,
+    ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings, loaded_image,
+    use_cached_image, use_cluster_mutation, use_disable_warnings, use_essential_guard,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -197,7 +196,14 @@ impl Component for PackageRow {
 
         let (card, radius) = match layout {
             CardLayout::List => (
-                list_card(&item, package_type, cluster_id, icon, on_toggle, on_context.clone()),
+                list_card(
+                    &item,
+                    package_type,
+                    cluster_id,
+                    icon,
+                    on_toggle,
+                    on_context.clone(),
+                ),
                 8.,
             ),
             CardLayout::Grid => (
@@ -290,7 +296,9 @@ pub(crate) fn disable_warning_body(
 
     match warnings {
         Some(warnings) if bundled => warnings.body_for(&item.package_id).map(str::to_string),
-        _ => item.essential.map(|package| package.disable_body.to_string()),
+        _ => item
+            .essential
+            .map(|package| package.disable_body.to_string()),
     }
 }
 
@@ -398,16 +406,12 @@ pub(crate) fn grid_card(
     let hovering = *hovered.read();
 
     let bg = match (enabled, hovering) {
-		(_, true) => colors::component_bg_hover(),
+        (_, true) => colors::component_bg_hover(),
         (true, false) => colors::component_bg(),
-		(false, false) => colors::component_bg_disabled(),
+        (false, false) => colors::component_bg_disabled(),
     };
 
-	let alpha = if enabled {
-		255u8
-	} else {
-		115u8
-	};
+    let alpha = if enabled { 255u8 } else { 115u8 };
 
     let border = if !hovering {
         colors::component_border()
@@ -421,11 +425,7 @@ pub(crate) fn grid_card(
         // .cross_align(Alignment::Center)
         .spacing(11.)
         .content(Content::Flex)
-        .child(
-			rect()
-				.opacity(alpha as f32 / 255.)
-				.child(icon)
-		)
+        .child(rect().opacity(alpha as f32 / 255.).child(icon))
         .child(
             rect()
                 .vertical()

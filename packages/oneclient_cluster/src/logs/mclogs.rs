@@ -32,7 +32,7 @@ pub async fn upload_log_at(
     path: &Path,
 ) -> ClusterResult<MclogsUploadResponse> {
     let path = ensure_allowed(path)?;
-    let mut content = read_file_string(&path).await?;
+    let mut content = super::censor(&read_file_string(&path).await?).into_owned();
 
     let line_count = content.lines().count();
     if line_count > MAX_LINES {

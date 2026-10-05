@@ -10,11 +10,10 @@ use skia_safe::sampling_options::CubicResampler;
 use crate::Route;
 use crate::components::Button;
 use crate::components::{
-    ART_PREVIEW_EDGE, AppNavbar, DynamicArt, FileDropOverlay, Icon, IconType, OverlayPopup,
-    ScrollArea, accept_drop,
+    ART_PREVIEW_EDGE, AppNavbar, CodeBlock, DynamicArt, FileDropOverlay, Icon, IconType,
+    OverlayPopup, accept_drop, copy_button,
 };
 use crate::layout::AnimatedAppOutlet;
-use crate::theme;
 use crate::use_settings_snapshot;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
@@ -121,20 +120,6 @@ struct LaunchErrorDialog {
 impl Component for LaunchErrorDialog {
     fn render(&self) -> impl IntoElement {
         let dispatch = crate::hooks::use_dispatch();
-        let lines: Vec<Element> = self
-            .message
-            .lines()
-            .map(|line| {
-                label()
-                    .text(line.to_string())
-                    .font_family(theme::MONO_FONT)
-                    .font_size(12.)
-                    .width(Size::fill())
-                    .color(colors::fg_primary())
-                    .into_element()
-            })
-            .collect();
-
         let close = dispatch.clone();
         let outside_close = dispatch.clone();
         let copy_dispatch = dispatch.clone();
@@ -181,19 +166,9 @@ impl Component for LaunchErrorDialog {
                                     .color(colors::fg_secondary()),
                             )
                             .child(
-                                rect()
-                                    .width(Size::fill())
-                                    .height(Size::px(260.))
+                                CodeBlock::new(self.message.clone())
                                     .background(CODE_BG)
-                                    .corner_radius(CornerRadius::new_all(8.))
-                                    .padding(Gaps::new_all(12.))
-                                    .overflow(Overflow::Clip)
-                                    .child(
-                                        ScrollArea::new()
-                                            .width(Size::fill())
-                                            .height(Size::fill())
-                                            .children(lines),
-                                    ),
+                                    .height(260.),
                             )
                             .child(
                                 rect()
@@ -201,7 +176,11 @@ impl Component for LaunchErrorDialog {
                                     .width(Size::fill())
                                     .main_align(Alignment::End)
                                     .spacing(10.)
-                                    .child(copy_error_button(&self.message, copy_dispatch))
+                                    .child(copy_button(
+                                        self.message.clone(),
+                                        "Error message copied to your clipboard.",
+                                        copy_dispatch,
+                                    ))
                                     .child(
                                         Button::new()
                                             .primary()
@@ -212,34 +191,6 @@ impl Component for LaunchErrorDialog {
                     ),
             )
     }
-}
-
-fn copy_error_button(message: &str, dispatch: crate::Actions) -> impl IntoElement {
-    let message = message.to_string();
-    Button::new()
-        .secondary()
-        .on_press(move |_| {
-            if let Err(err) = freya::text_edit::Clipboard::set(message.clone()) {
-                tracing::warn!("clipboard copy failed: {err:?}");
-                dispatch
-                    .notify("Copy failed")
-                    .body("Could not copy the error to the clipboard.")
-                    .error()
-                    .toast_only()
-                    .send();
-            } else {
-                dispatch
-                    .notify("Copied to clipboard")
-                    .body("Error message copied to your clipboard.")
-                    .info()
-                    .icon(IconType::ClipboardCheck)
-                    .toast_only()
-                    .send();
-            }
-        })
-        .child(Icon::new(IconType::Copy01).size(14.))
-        .text("Copy")
-        .into_element()
 }
 
 pub(crate) fn appshell_overlay(alpha: f32) -> Rect {

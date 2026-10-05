@@ -57,7 +57,7 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
     let cards = [
         (
             TypeChoice::OneClient,
-            IconType::Rocket02,
+            IconType::IconLogo,
             "OneClient",
             Some("Recommended"),
             "The most bleeding edge performance, QoL mods and world hosting in one instance.",

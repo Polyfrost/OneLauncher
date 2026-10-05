@@ -116,7 +116,7 @@ impl Component for EditInstanceModal {
                 ),
                 tags,
             }),
-            eyebrow: "Instance details".to_string(),
+            eyebrow: Some("Instance details".to_string()),
             title: "Edit the instance".to_string(),
             subtitle: "Only how it is presented changes here. The version, loader and installed content stay as they are."
                 .to_string(),

@@ -14,7 +14,6 @@ use oneclient_common::paths;
 
 #[allow(clippy::too_many_arguments)]
 pub fn java_arguments(
-    version_updated: bool,
     arguments: Option<&[Argument]>,
     natives_path: &Path,
     libraries_path: &Path,
@@ -28,7 +27,6 @@ pub fn java_arguments(
     let mut parsed = Vec::new();
     if let Some(args) = arguments {
         parse_arguments(
-            version_updated,
             args,
             &mut parsed,
             |a| {
@@ -172,7 +170,6 @@ fn split_custom_args(raw: &str) -> Vec<String> {
 
 #[allow(clippy::too_many_arguments)]
 pub fn minecraft_arguments(
-    version_updated: bool,
     args: Option<&[Argument]>,
     legacy_args: Option<&str>,
     access_token: &str,
@@ -209,7 +206,6 @@ pub fn minecraft_arguments(
 
     if let Some(args) = args {
         parse_arguments(
-            version_updated,
             args,
             &mut parsed,
             |arg| {
@@ -562,7 +558,6 @@ pub fn get_library(libraries_path: &Path, library: &str, allow_missing: bool) ->
 }
 
 fn parse_arguments<ParseFn>(
-    version_updated: bool,
     args: &[Argument],
     parsed: &mut Vec<String>,
     parse_function: ParseFn,
@@ -580,7 +575,7 @@ where
                 }
             }
             Argument::Ruled { rules, value } => {
-                if validate_rules(rules, java_arch, version_updated) {
+                if validate_rules(rules, java_arch, true) {
                     match value {
                         ArgumentValue::Single(arg) => {
                             parsed.push(parse_function(&arg.replace(' ', DUMMY_REPLACE_NEWLINE))?);
@@ -1043,7 +1038,6 @@ mod tests {
         let natives = std::env::temp_dir();
 
         let args = java_arguments(
-            false,
             Some(&loader_jvm),
             &natives,
             &natives,
@@ -1063,13 +1057,40 @@ mod tests {
     }
 
     #[test]
+    fn an_osx_ruled_loader_flag_reaches_the_jvm_only_on_macos() {
+        let loader_jvm: Vec<interfrost::api::minecraft::Argument> = serde_json::from_str(
+            r#"["-Dfabric.fixPackageAccess=true", "-Dfabric.gameVersion=1.8.9",
+                {"rules": [{"action": "allow", "os": {"name": "osx"}}], "value": "-XstartOnFirstThread"}]"#,
+        )
+        .unwrap();
+        let natives = std::env::temp_dir();
+
+        let args = java_arguments(
+            Some(&loader_jvm),
+            &natives,
+            &natives,
+            "/libs/fabric-loader.jar",
+            "1.8.9",
+            2048,
+            String::new(),
+            "aarch64",
+            25,
+        )
+        .unwrap();
+
+        assert_eq!(
+            args.contains(&"-XstartOnFirstThread".to_string()),
+            cfg!(target_os = "macos")
+        );
+    }
+
+    #[test]
     fn a_loader_game_argument_does_not_replace_the_legacy_string() {
         let loader_game: Vec<interfrost::api::minecraft::Argument> =
             serde_json::from_str(r#"["--fabric"]"#).unwrap();
         let dir = std::env::temp_dir();
 
         let args = minecraft_arguments(
-            false,
             Some(&loader_game),
             Some("--username ${auth_player_name} --gameDir ${game_directory}"),
             "token",
@@ -1100,7 +1121,6 @@ mod tests {
         let dir = std::env::temp_dir();
 
         let args = minecraft_arguments(
-            false,
             Some(&loader_game),
             Some(
                 "--username ${auth_player_name} --gameDir ${game_directory}                  --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",

@@ -53,8 +53,8 @@ pub use oneclient_cluster::worlds::{
     delete_world, delete_world_datapack, list_cluster_worlds, list_world_datapacks, world_size,
 };
 pub use oneclient_content::bundles::{
-    ApplyBundleUpdatesResult, Bundle, BundleArchive, BundleError, BundleFile, BundleFileKind,
-    BundleFileType, BundleManifest, BundleOptionalPackage, BundleUpdateCheckResult,
+    ApplyBundleUpdatesResult, BUNDLE_CONSENT, Bundle, BundleArchive, BundleError, BundleFile,
+    BundleFileKind, BundleFileType, BundleManifest, BundleOptionalPackage, BundleUpdateCheckResult,
     BundleWithUpdateStatus, BundlesManager, FileUpdateStatus, PendingOptionalMod,
     apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,
     cluster_has_bundle_content, clusters_sharing_artifact, delete_artifact, effective_enabled,
@@ -82,6 +82,5 @@ pub use tos::{TermsDocument, fetch_terms};
 pub use verify::{ClusterVerifyReport, verify_cluster_files};
 pub use versions::{
     ReleaseTarget, RemoteMigration, VersionArts, VersionMetadata, VersionsManager,
-    VersionsManifest,
-    resolve_migration_chain,
+    VersionsManifest, resolve_migration_chain,
 };

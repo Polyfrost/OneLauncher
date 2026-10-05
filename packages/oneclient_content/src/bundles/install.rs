@@ -22,6 +22,344 @@ fn is_base62(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric())
 }
 
+pub const BUNDLE_CONSENT: &str = "*";
+
+fn takes_bundle(archive: &BundleArchive, live: &std::collections::HashSet<String>) -> bool {
+    archive.manifest.enabled || live.contains(&archive.manifest.name)
+}
+
+fn whole_bundle_names(
+    tracked: &[oneclient_db::models::BundleTrackedArtifactRow],
+    overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+) -> std::collections::HashSet<String> {
+    tracked
+        .iter()
+        .filter(|row| row.enabled != 0)
+        .filter_map(|row| row.bundle_name.clone())
+        .chain(
+            overrides
+                .iter()
+                .filter(|o| {
+                    o.package_id == BUNDLE_CONSENT
+                        && o.bundle_name != BUNDLE_CONSENT
+                        && OverrideType::parse(&o.override_type) == Some(OverrideType::Enabled)
+                })
+                .map(|o| o.bundle_name.clone()),
+        )
+        .collect()
+}
+
+fn taken_bundles(
+    tracked: &[oneclient_db::models::BundleTrackedArtifactRow],
+    overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+) -> (
+    std::collections::HashSet<String>,
+    std::collections::HashSet<String>,
+) {
+    (
+        super::updates::live_bundle_names(tracked, overrides),
+        whole_bundle_names(tracked, overrides),
+    )
+}
+
+fn awaits_bundle_prompt(overrides: &[oneclient_db::models::ClusterBundleOverrideRow]) -> bool {
+    find_override(overrides, BUNDLE_CONSENT, BUNDLE_CONSENT).is_some()
+}
+
+pub async fn taken_bundle_names(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<std::collections::HashSet<String>> {
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let (live, _) = taken_bundles(&tracked, &overrides);
+    Ok(archives
+        .iter()
+        .filter(|archive| takes_bundle(archive, &live))
+        .map(|archive| archive.manifest.name.clone())
+        .collect())
+}
+
+fn unpicked_defaults(
+    archive: &BundleArchive,
+    archives: &[BundleArchive],
+    live: &std::collections::HashSet<String>,
+    whole: &std::collections::HashSet<String>,
+    overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+) -> std::collections::HashSet<String> {
+    let bundle_name = &archive.manifest.name;
+    if archive.manifest.enabled || !live.contains(bundle_name) || whole.contains(bundle_name) {
+        return Default::default();
+    }
+
+    archive
+        .manifest
+        .files
+        .iter()
+        .filter(|file| file.enabled && !file.hidden)
+        .map(|file| file.kind.package_id())
+        .filter(|package_id| find_override(overrides, bundle_name, package_id).is_none())
+        .filter(|package_id| {
+            !archives.iter().any(|other| {
+                other.manifest.name != *bundle_name
+                    && takes_bundle(other, live)
+                    && other
+                        .manifest
+                        .files
+                        .iter()
+                        .any(|f| f.enabled && f.kind.package_id() == *package_id)
+            })
+        })
+        .collect()
+}
+
+pub(crate) async fn decline_unpicked_defaults(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    if awaits_bundle_prompt(&overrides) {
+        return Ok(());
+    }
+    let (live, whole) = taken_bundles(&tracked, &overrides);
+    let declined: Vec<_> = archives
+        .iter()
+        .flat_map(|archive| {
+            unpicked_defaults(archive, archives, &live, &whole, &overrides)
+                .into_iter()
+                .map(|package_id| {
+                    (
+                        archive.manifest.name.clone(),
+                        package_id,
+                        OverrideType::Removed,
+                    )
+                })
+        })
+        .collect();
+    bundle_dao::save_overrides(&ctx.db, cluster_id, &declined).await?;
+    Ok(())
+}
+
+fn inherited_consents(
+    source_tracked: &[oneclient_db::models::BundleTrackedArtifactRow],
+    source_overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+    target_tracked: &[oneclient_db::models::BundleTrackedArtifactRow],
+    target_overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+    declined: &std::collections::HashSet<String>,
+) -> Vec<(String, String, OverrideType)> {
+    let mut names: Vec<String> = whole_bundle_names(source_tracked, source_overrides)
+        .into_iter()
+        .filter(|name| {
+            !target_overrides.iter().any(|o| o.bundle_name == *name)
+                && !target_tracked
+                    .iter()
+                    .any(|row| row.bundle_name.as_deref() == Some(name.as_str()))
+        })
+        .collect();
+    names.sort();
+
+    let mut rows = Vec::new();
+    for name in names {
+        for o in source_overrides
+            .iter()
+            .filter(|o| o.bundle_name == name && o.package_id != BUNDLE_CONSENT)
+        {
+            if let Some(ty @ (OverrideType::Removed | OverrideType::Disabled)) =
+                OverrideType::parse(&o.override_type)
+            {
+                rows.push((name.clone(), o.package_id.clone(), ty));
+            }
+        }
+        for row in source_tracked.iter().filter(|row| {
+            row.bundle_name.as_deref() == Some(name.as_str()) && declined.contains(&row.hash)
+        }) {
+            if let Some(package_id) = &row.package_id {
+                rows.push((name.clone(), package_id.clone(), OverrideType::Removed));
+            }
+        }
+        rows.push((name, BUNDLE_CONSENT.to_string(), OverrideType::Enabled));
+    }
+    if awaits_bundle_prompt(source_overrides) {
+        rows.push((
+            BUNDLE_CONSENT.to_string(),
+            BUNDLE_CONSENT.to_string(),
+            OverrideType::Enabled,
+        ));
+    }
+    rows
+}
+
+#[tracing::instrument(level = "debug", skip(declined, ctx))]
+pub async fn inherit_bundle_consent(
+    source_cluster_id: i64,
+    target_cluster_id: i64,
+    declined: &std::collections::HashSet<String>,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    if bundle_cluster(source_cluster_id, ctx).await?.is_none()
+        || bundle_cluster(target_cluster_id, ctx).await?.is_none()
+    {
+        return Ok(());
+    }
+
+    let consents = inherited_consents(
+        &bundle_dao::list_bundle_tracked(&ctx.db, source_cluster_id).await?,
+        &bundle_dao::list_overrides(&ctx.db, source_cluster_id).await?,
+        &bundle_dao::list_bundle_tracked(&ctx.db, target_cluster_id).await?,
+        &bundle_dao::list_overrides(&ctx.db, target_cluster_id).await?,
+        declined,
+    );
+    bundle_dao::save_overrides(&ctx.db, target_cluster_id, &consents).await?;
+    Ok(())
+}
+
+async fn cluster_archives(
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<BundleArchive>> {
+    let Some(cluster) = bundle_cluster(cluster_id, ctx).await? else {
+        return Ok(Vec::new());
+    };
+    let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
+    bundles.archives_for(ctx, &cluster.mc_version, loader).await
+}
+
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
+pub async fn pending_bundle_choices(
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<(String, bool)>> {
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    if !awaits_bundle_prompt(&overrides) {
+        return Ok(Vec::new());
+    }
+    let archives = cluster_archives(cluster_id, bundles, ctx).await?;
+    if archives.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    let (live, _) = taken_bundles(&tracked, &overrides);
+    let choices: Vec<_> = archives
+        .iter()
+        .filter(|archive| !archive.manifest.enabled && !archive.bundle.hidden)
+        .map(|archive| {
+            let name = archive.manifest.name.clone();
+            let held = live.contains(&name);
+            (name, held)
+        })
+        .collect();
+    if choices.is_empty() {
+        bundle_dao::remove_override(&ctx.db, cluster_id, BUNDLE_CONSENT, BUNDLE_CONSENT).await?;
+    }
+    Ok(choices)
+}
+
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
+pub async fn choose_bundles(
+    cluster_id: i64,
+    chosen: &std::collections::HashSet<String>,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let archives = cluster_archives(cluster_id, bundles, ctx).await?;
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    let (live, _) = taken_bundles(&tracked, &overrides);
+    let kept = |archive: &BundleArchive| {
+        archive.manifest.enabled || chosen.contains(&archive.manifest.name)
+    };
+
+    for archive in archives
+        .iter()
+        .filter(|archive| !archive.manifest.enabled && !archive.bundle.hidden)
+    {
+        let name = &archive.manifest.name;
+        let held = live.contains(name);
+        let stale = if kept(archive) {
+            OverrideType::Removed
+        } else {
+            OverrideType::Enabled
+        };
+        if kept(archive) != held {
+            for o in overrides.iter().filter(|o| {
+                o.bundle_name == *name && OverrideType::parse(&o.override_type) == Some(stale)
+            }) {
+                bundle_dao::remove_override(&ctx.db, cluster_id, name, &o.package_id).await?;
+            }
+        }
+        if kept(archive) {
+            bundle_dao::save_override(
+                &ctx.db,
+                cluster_id,
+                name,
+                BUNDLE_CONSENT,
+                OverrideType::Enabled,
+            )
+            .await?;
+            continue;
+        }
+
+        for row in tracked
+            .iter()
+            .filter(|row| row.bundle_name.as_deref() == Some(name.as_str()))
+        {
+            let rehome = row.package_id.as_deref().and_then(|package_id| {
+                archives
+                    .iter()
+                    .filter(|other| other.manifest.name != *name && kept(other))
+                    .find_map(|other| {
+                        let file = other
+                            .manifest
+                            .files
+                            .iter()
+                            .find(|f| f.enabled && f.kind.package_id() == package_id)?;
+                        Some((
+                            &other.manifest.name,
+                            file.kind.bundle_version_id(),
+                            package_id,
+                        ))
+                    })
+            });
+            match rehome {
+                Some((bundle_name, version_id, package_id)) => {
+                    bundle_dao::track_bundle_artifact(
+                        &ctx.db,
+                        cluster_id,
+                        &row.hash,
+                        bundle_name,
+                        &version_id,
+                        package_id,
+                    )
+                    .await?;
+                }
+                None => remove_artifact_from_cluster(cluster_id, &row.hash, false, ctx).await?,
+            }
+        }
+    }
+
+    bundle_dao::remove_override(&ctx.db, cluster_id, BUNDLE_CONSENT, BUNDLE_CONSENT).await?;
+    Ok(())
+}
+
+fn every_file_switched_off(
+    archive: &BundleArchive,
+    overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+) -> bool {
+    let bundle_name = &archive.manifest.name;
+    !archive.manifest.files.iter().any(|file| {
+        effective_enabled(
+            file,
+            find_override(overrides, bundle_name, &file.kind.package_id()),
+        )
+    })
+}
+
 pub fn effective_enabled(file: &BundleFile, user_override: Option<OverrideType>) -> bool {
     match user_override {
         Some(OverrideType::Removed | OverrideType::Disabled) => false,
@@ -562,14 +900,18 @@ pub async fn enabled_bundle_bytes(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    let (live, whole) = taken_bundles(&tracked, &overrides);
     let present = PresentContent::load(cluster_id, ctx).await?;
 
     let mut total = 0u64;
-    for archive in &archives {
+    for archive in archives.iter().filter(|a| takes_bundle(a, &live)) {
         let bundle_name = &archive.manifest.name;
+        let unpicked = unpicked_defaults(archive, &archives, &live, &whole, &overrides);
         for file in &archive.manifest.files {
             let package_id = file.kind.package_id();
             if !effective_enabled(file, find_override(&overrides, bundle_name, &package_id))
+                || unpicked.contains(&package_id)
                 || present.contains(file)
             {
                 continue;
@@ -693,15 +1035,20 @@ pub async fn enabled_bundle_projects(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    let (live, whole) = taken_bundles(&tracked, &overrides);
 
     let mut projects = std::collections::HashSet::new();
-    for archive in &archives {
+    for archive in archives.iter().filter(|a| takes_bundle(a, &live)) {
         let bundle_name = &archive.manifest.name;
+        let unpicked = unpicked_defaults(archive, &archives, &live, &whole, &overrides);
         for file in &archive.manifest.files {
             let BundleFileKind::Managed { project_id, .. } = &file.kind else {
                 continue;
             };
-            if effective_enabled(file, find_override(&overrides, bundle_name, project_id)) {
+            if effective_enabled(file, find_override(&overrides, bundle_name, project_id))
+                && !unpicked.contains(project_id)
+            {
                 projects.insert(project_id.clone());
             }
         }
@@ -746,9 +1093,27 @@ pub async fn install_cluster_bundles(
         bundles = archives.len(),
         "installing enabled bundle content"
     );
+    heal_bundle_activity(cluster_id, &archives, ctx).await?;
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    decline_unpicked_defaults(cluster_id, &archives, ctx).await?;
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let live = super::updates::live_bundle_names(&tracked, &overrides);
     for archive in &archives {
+        if !takes_bundle(archive, &live) {
+            continue;
+        }
         let installed =
             install_enabled_bundle_files(archive, cluster_id, true, progress, ctx).await?;
+        let bundle_name = &archive.manifest.name;
+        let has_content = !installed.is_empty()
+            || tracked.iter().any(|row| {
+                row.enabled != 0 && row.bundle_name.as_deref() == Some(bundle_name.as_str())
+            });
+        if find_override(&overrides, bundle_name, BUNDLE_CONSENT).is_some()
+            && (has_content || every_file_switched_off(archive, &overrides))
+        {
+            bundle_dao::remove_override(&ctx.db, cluster_id, bundle_name, BUNDLE_CONSENT).await?;
+        }
         tracing::info!(
             cluster_id,
             bundle = %archive.manifest.name,
@@ -881,8 +1246,7 @@ pub async fn remove_artifact_from_cluster(
     // Best-effort folder cleanup failure here is not an error
     let deferred = match (target, link) {
         (Some(content_type), Some(link)) => {
-            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db)
-                .await
+            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db).await
                 == LiveSync::Deferred
         }
         _ => false,
@@ -1051,6 +1415,196 @@ mod tests {
             package_id: pid.to_string(),
             override_type: ty.as_str().to_string(),
         }
+    }
+
+    fn archive(name: &str, enabled: bool, files: Vec<BundleFile>) -> BundleArchive {
+        BundleArchive {
+            bundle: crate::bundles::Bundle {
+                remote_path: format!("/bundles/{name}.mrpack"),
+                mc_version: "1.21.11".to_string(),
+                loader: GameLoader::Fabric,
+                file_name: format!("{name}.mrpack"),
+                name: name.to_string(),
+                version_id: "1.0.0".to_string(),
+                category: name.to_string(),
+                loader_version: "0.16.0".to_string(),
+                path: std::path::PathBuf::from("/tmp/unused.mrpack"),
+                hidden: false,
+            },
+            manifest: crate::bundles::BundleManifest {
+                name: name.to_string(),
+                version_id: "1.0.0".to_string(),
+                category: name.to_string(),
+                mc_version: "1.21.11".to_string(),
+                loader: GameLoader::Fabric,
+                loader_version: "0.16.0".to_string(),
+                enabled,
+                java_version_override: None,
+                files,
+            },
+        }
+    }
+
+    fn live(rows: &[ClusterBundleOverrideRow]) -> std::collections::HashSet<String> {
+        crate::bundles::updates::live_bundle_names(&[], rows)
+    }
+
+    #[test]
+    fn an_opt_in_bundle_installs_only_on_a_recorded_choice() {
+        let opt_in = archive("SkyBlock", false, vec![file(true)]);
+        let default = archive("QoL", true, vec![file(true)]);
+        let consent = [row("SkyBlock", BUNDLE_CONSENT, OverrideType::Enabled)];
+
+        assert!(!takes_bundle(&opt_in, &live(&[])));
+        assert!(takes_bundle(&opt_in, &live(&consent)));
+        assert!(takes_bundle(&default, &live(&[])));
+        assert!(!takes_bundle(
+            &opt_in,
+            &live(&[
+                row("QoL", BUNDLE_CONSENT, OverrideType::Enabled),
+                row("SkyBlock", "abc123", OverrideType::Removed),
+            ])
+        ));
+    }
+
+    #[test]
+    fn the_consent_row_leaves_the_files_on_their_catalog_defaults() {
+        let rows = [row("SkyBlock", BUNDLE_CONSENT, OverrideType::Enabled)];
+        let shipped = file(false);
+
+        assert!(!effective_enabled(
+            &shipped,
+            find_override(&rows, "SkyBlock", &shipped.kind.package_id())
+        ));
+    }
+
+    #[test]
+    fn consent_is_spent_once_every_file_is_switched_off() {
+        let opt_in = archive("SkyBlock", false, vec![named("main")]);
+        let switched_off = [row("SkyBlock", "main", OverrideType::Removed)];
+
+        assert!(!every_file_switched_off(&opt_in, &[]));
+        assert!(every_file_switched_off(&opt_in, &switched_off));
+    }
+
+    fn named(sha1: &str) -> BundleFile {
+        let mut named = file(true);
+        if let BundleFileKind::External { file, .. } = &mut named.kind {
+            file.sha1 = sha1.to_string();
+        }
+        named
+    }
+
+    fn tracked(bundle: &str, enabled: bool) -> oneclient_db::models::BundleTrackedArtifactRow {
+        oneclient_db::models::BundleTrackedArtifactRow {
+            cluster_id: 1,
+            hash: "h".to_string(),
+            cluster_file_name: "f.jar".to_string(),
+            enabled: i64::from(enabled),
+            bundle_name: Some(bundle.to_string()),
+            bundle_version_id: None,
+            package_id: None,
+            installed_at: None,
+        }
+    }
+
+    #[test]
+    fn picking_one_file_of_an_opt_in_bundle_declines_its_other_defaults() {
+        let mut lib = named("lib");
+        lib.hidden = true;
+        let mut extra = named("extra");
+        extra.enabled = false;
+        let archives = [
+            archive(
+                "SkyBlock",
+                false,
+                vec![named("main"), named("shared"), extra, lib],
+            ),
+            archive("QoL", true, vec![named("shared")]),
+        ];
+        let pick = [row("SkyBlock", "extra", OverrideType::Enabled)];
+        let unpicked = |tracked: &[_], rows: &[_]| {
+            let (live, whole) = taken_bundles(tracked, rows);
+            unpicked_defaults(&archives[0], &archives, &live, &whole, rows)
+        };
+
+        assert_eq!(unpicked(&[], &pick), ["main".to_string()].into());
+        let consented = [
+            pick[0].clone(),
+            row("SkyBlock", BUNDLE_CONSENT, OverrideType::Enabled),
+        ];
+        assert!(unpicked(&[], &consented).is_empty());
+        assert!(unpicked(&[tracked("SkyBlock", true)], &pick).is_empty());
+    }
+
+    #[test]
+    fn a_migration_target_inherits_the_bundles_its_source_took_whole() {
+        let source_tracked = [tracked("Installed", true), tracked("Emptied", false)];
+        let source_rows = [
+            row("Consented", BUNDLE_CONSENT, OverrideType::Enabled),
+            row("Picked", "extra", OverrideType::Enabled),
+            row("Declined here", BUNDLE_CONSENT, OverrideType::Enabled),
+        ];
+        let target_rows = [row("Declined here", "main", OverrideType::Removed)];
+        let none = std::collections::HashSet::new();
+
+        let names: Vec<String> =
+            inherited_consents(&source_tracked, &source_rows, &[], &target_rows, &none)
+                .into_iter()
+                .map(|(name, ..)| name)
+                .collect();
+        assert_eq!(names, ["Consented", "Installed"]);
+        assert!(
+            inherited_consents(
+                &source_tracked[..1],
+                &[],
+                &[tracked("Installed", false)],
+                &[],
+                &none
+            )
+            .is_empty()
+        );
+        let flag = row(BUNDLE_CONSENT, BUNDLE_CONSENT, OverrideType::Enabled);
+        assert_eq!(
+            inherited_consents(&[], std::slice::from_ref(&flag), &[], &[], &none),
+            vec![(
+                BUNDLE_CONSENT.to_string(),
+                BUNDLE_CONSENT.to_string(),
+                OverrideType::Enabled
+            )]
+        );
+    }
+
+    #[test]
+    fn inherited_consent_carries_what_the_source_and_the_prompt_declined() {
+        let mut left_behind = tracked("SkyBlock", true);
+        left_behind.package_id = Some("unticked".to_string());
+        let source_rows = [
+            row("SkyBlock", "removed", OverrideType::Removed),
+            row("SkyBlock", "picked", OverrideType::Enabled),
+            row("Other", "x", OverrideType::Removed),
+        ];
+        let declined = [left_behind.hash.clone()].into();
+        let removed = |id: &str| {
+            (
+                "SkyBlock".to_string(),
+                id.to_string(),
+                OverrideType::Removed,
+            )
+        };
+
+        assert_eq!(
+            inherited_consents(&[left_behind], &source_rows, &[], &[], &declined),
+            vec![
+                removed("removed"),
+                removed("unticked"),
+                (
+                    "SkyBlock".to_string(),
+                    BUNDLE_CONSENT.to_string(),
+                    OverrideType::Enabled
+                ),
+            ]
+        );
     }
 
     #[test]

@@ -104,6 +104,12 @@ impl BlockedDownloads {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct BundleChoices {
+    pub cluster_name: String,
+    pub bundles: Vec<(String, bool)>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct OptionalModsGroup {
     pub cluster_id: ClusterId,
     pub cluster_name: String,
@@ -251,6 +257,7 @@ pub struct NotificationSnapshot {
     pub pending_prompt: Option<PendingPromptView>,
     pub cluster_update: Option<Vec<ClusterUpdateSummary>>,
     pub optional_mods: Option<Vec<OptionalModsGroup>>,
+    pub bundle_choices: Option<BundleChoices>,
     pub package_updates: Option<Vec<PackageUpdateGroup>>,
     pub blocked_downloads: Option<BlockedDownloads>,
     pub open_cluster: Option<ClusterId>,
@@ -274,6 +281,7 @@ pub struct NotificationState {
     pending_timers: Vec<ToastDismissTimer>,
     cluster_update: Option<Vec<ClusterUpdateSummary>>,
     optional_mods: Option<Vec<OptionalModsGroup>>,
+    bundle_choices: Option<BundleChoices>,
     package_updates: Option<Vec<PackageUpdateGroup>>,
     blocked_downloads: Option<BlockedDownloads>,
     open_cluster: Option<ClusterId>,
@@ -283,6 +291,7 @@ pub struct NotificationState {
     /// because every way the modal can end goes through this state
     package_updates_done: Option<oneshot::Sender<Vec<BrowserPackageUpdate>>>,
     optional_mods_done: Option<oneshot::Sender<OptionalModsOutcome>>,
+    bundle_choices_done: Option<oneshot::Sender<Option<HashSet<String>>>>,
 }
 
 const CATEGORY_ORDER: [TaskCategory; 7] = [
@@ -390,6 +399,7 @@ impl NotificationState {
             pending_prompt,
             cluster_update: self.cluster_update.clone(),
             optional_mods: self.optional_mods.clone(),
+            bundle_choices: self.bundle_choices.clone(),
             package_updates: self.package_updates.clone(),
             blocked_downloads: self.blocked_downloads.clone(),
             open_cluster: self.open_cluster,
@@ -467,6 +477,23 @@ impl NotificationState {
             .filter(|blocked| blocked.cluster_id == cluster_id)
         {
             blocked.added.extend(sha1s.iter().cloned());
+        }
+    }
+
+    pub fn open_bundle_choices(
+        &mut self,
+        choices: BundleChoices,
+        done: oneshot::Sender<Option<HashSet<String>>>,
+    ) {
+        self.finish_bundle_choices(None);
+        self.bundle_choices = Some(choices);
+        self.bundle_choices_done = Some(done);
+    }
+
+    pub fn finish_bundle_choices(&mut self, chosen: Option<HashSet<String>>) {
+        self.bundle_choices = None;
+        if let Some(done) = self.bundle_choices_done.take() {
+            let _ = done.send(chosen);
         }
     }
 

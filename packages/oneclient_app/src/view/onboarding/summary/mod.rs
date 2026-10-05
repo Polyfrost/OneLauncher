@@ -2,7 +2,9 @@ use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
-use oneclient_core::{BundleArchive, BundleFile, ImportTarget, MigrationSource, SentryExclusion};
+use oneclient_core::{
+    BUNDLE_CONSENT, BundleArchive, BundleFile, ImportTarget, MigrationSource, SentryExclusion,
+};
 use oneclient_db::models::OverrideType;
 
 use crate::components::ART_PREVIEW_EDGE;
@@ -13,7 +15,7 @@ use crate::hooks::{
 };
 use crate::routes::Route;
 use crate::utils::{home_cluster, sort_clusters_for_home};
-use crate::view::onboarding::{matching_new_cluster_id, pkg_key};
+use crate::view::onboarding::{is_default_bundle, matching_new_cluster_id, pkg_key};
 
 mod view;
 use view::{SummaryView, summary_view};
@@ -272,6 +274,13 @@ fn archive_overrides(
 
         overrides.push((bundle_name.clone(), file.kind.package_id(), override_type));
     }
+    if takes_hidden && !is_default_bundle(archive) {
+        overrides.push((
+            bundle_name.clone(),
+            BUNDLE_CONSENT.to_string(),
+            OverrideType::Enabled,
+        ));
+    }
     overrides
 }
 
@@ -433,10 +442,26 @@ mod tests {
     }
 
     #[test]
-    fn accepting_a_bundle_records_nothing_for_its_defaults() {
+    fn accepting_an_opt_in_bundle_records_the_choice() {
         let sb = skyblock();
         let selected = keys(&sb, &["skyblock-main"]);
         let plans = build_plans(&items(vec![sb.clone()]), &selected);
+
+        assert_eq!(
+            plans[0].overrides,
+            vec![(
+                sb.manifest.name.clone(),
+                BUNDLE_CONSENT.to_string(),
+                OverrideType::Enabled
+            )]
+        );
+    }
+
+    #[test]
+    fn accepting_a_default_bundle_records_nothing() {
+        let qol = archive("QoL", true, vec![file("qol-a", true, false)]);
+        let selected = keys(&qol, &["qol-a"]);
+        let plans = build_plans(&items(vec![qol]), &selected);
 
         assert!(plans[0].overrides.is_empty());
     }
@@ -449,11 +474,18 @@ mod tests {
 
         assert_eq!(
             plans[0].overrides,
-            vec![(
-                sb.manifest.name.clone(),
-                "skycubed".to_string(),
-                OverrideType::Enabled
-            )]
+            vec![
+                (
+                    sb.manifest.name.clone(),
+                    "skycubed".to_string(),
+                    OverrideType::Enabled
+                ),
+                (
+                    sb.manifest.name.clone(),
+                    BUNDLE_CONSENT.to_string(),
+                    OverrideType::Enabled
+                ),
+            ]
         );
     }
 
@@ -505,7 +537,14 @@ mod tests {
         let selected: HashSet<String> = [pkg_key(1, &sb.manifest.name, "skyblock-main")].into();
         let plans = build_plans(&both, &selected);
 
-        assert!(plans[0].overrides.is_empty());
+        assert_eq!(
+            plans[0].overrides,
+            vec![(
+                sb.manifest.name.clone(),
+                BUNDLE_CONSENT.to_string(),
+                OverrideType::Enabled
+            )]
+        );
         assert!(
             plans[1]
                 .overrides

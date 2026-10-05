@@ -40,12 +40,21 @@ pub async fn apply_bundle_java_override(
         return Ok(());
     }
 
-    let mut overrides = archives.iter().filter_map(|archive| {
-        archive
-            .manifest
-            .java_version_override
-            .map(|major| (archive.manifest.name.as_str(), major))
-    });
+    let taken = oneclient_content::bundles::taken_bundle_names(
+        cluster_id,
+        &archives,
+        &state.services.content(),
+    )
+    .await?;
+    let mut overrides = archives
+        .iter()
+        .filter(|archive| taken.contains(&archive.manifest.name))
+        .filter_map(|archive| {
+            archive
+                .manifest
+                .java_version_override
+                .map(|major| (archive.manifest.name.as_str(), major))
+        });
 
     let Some((bundle, major)) = overrides.next() else {
         return Ok(());

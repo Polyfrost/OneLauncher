@@ -31,8 +31,8 @@ use tokio::sync::mpsc;
 use crate::components::IconType;
 use crate::launcher::off_ui;
 use crate::notifications::{
-    ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef, OptionalModsGroup,
-    OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
+    BundleChoices, ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef,
+    OptionalModsGroup, OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
 };
 use crate::state::{AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, RelocationState};
 use crate::{invalidate_java_queries, launcher};
@@ -754,6 +754,10 @@ impl Actions {
         done: Option<tokio::sync::oneshot::Sender<OptionalModsOutcome>>,
     ) {
         self.with_engine(move |state| state.notifications.open_optional_mods(groups, done));
+    }
+
+    pub fn close_bundle_choices(&self, chosen: Option<std::collections::HashSet<String>>) {
+        self.with_engine(move |state| state.notifications.finish_bundle_choices(chosen));
     }
 
     pub fn close_optional_mods(&self, outcome: OptionalModsOutcome) {
@@ -1796,6 +1800,79 @@ impl Actions {
         }
     }
 
+    async fn resolve_bundle_choices_before_launch(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        cluster_id: ClusterId,
+    ) {
+        let bundles = match off_ui({
+            let state = state.clone();
+            async move {
+                oneclient_content::bundles::pending_bundle_choices(
+                    cluster_id,
+                    state.bundles.as_ref(),
+                    &state.services.content(),
+                )
+                .await
+            }
+        })
+        .await
+        {
+            Ok(bundles) if !bundles.is_empty() => bundles,
+            Ok(_) => return,
+            Err(err) => {
+                tracing::warn!(cluster_id, error = %err, "could not read the bundles to ask about, launching anyway");
+                return;
+            }
+        };
+
+        let choices = BundleChoices {
+            cluster_name: crate::install::cluster_display_name(cluster_id, &state.services).await,
+            bundles,
+        };
+        let (done, wait) = tokio::sync::oneshot::channel();
+        self.with_engine(move |state| {
+            state.notifications.open_bundle_choices(choices, done);
+            state.center_open = false;
+        });
+        let Ok(Some(chosen)) = wait.await else { return };
+
+        off_ui({
+            let state = state.clone();
+            async move {
+                let content = state.services.content();
+                if let Err(err) = oneclient_content::bundles::choose_bundles(
+                    cluster_id,
+                    &chosen,
+                    state.bundles.as_ref(),
+                    &content,
+                )
+                .await
+                {
+                    tracing::warn!(cluster_id, error = %err, "could not record the bundle choices");
+                    return;
+                }
+                let session = oneclient_events::GroupedProgressSession::start(
+                    &state.services.events,
+                    "Applying your bundle choices".to_string(),
+                );
+                if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
+                    cluster_id,
+                    state.bundles.as_ref(),
+                    Some(&session),
+                    &content,
+                )
+                .await
+                {
+                    tracing::warn!(cluster_id, error = %err, "failed to install the chosen bundles");
+                }
+                session.finish();
+            }
+        })
+        .await;
+        super::invalidate_cluster_queries().await;
+    }
+
     async fn resolve_optional_mods_before_launch(
         &self,
         state: &Arc<oneclient_core::LauncherState>,
@@ -2002,6 +2079,9 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
 
     // Before the game process never after Minecraft reads its mods once at
     // startup
+    actions
+        .resolve_bundle_choices_before_launch(&state, cluster_id)
+        .await;
     actions
         .resolve_bundle_updates_before_launch(&state, cluster_id)
         .await;

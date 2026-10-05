@@ -17,9 +17,9 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, bundle_cluster, disable_was_deliberate, external_ids_by_sha1,
-    find_override, find_user_suppression, heal_bundle_activity, install_package_from_bundle,
-    remove_artifact_from_cluster, set_artifact_enabled_to,
+    BUNDLE_INSTALL_CONCURRENCY, bundle_cluster, decline_unpicked_defaults, disable_was_deliberate,
+    external_ids_by_sha1, find_override, find_user_suppression, heal_bundle_activity,
+    install_package_from_bundle, remove_artifact_from_cluster, set_artifact_enabled_to,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -462,6 +462,7 @@ pub async fn apply_bundle_updates_with(
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
         if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
             heal_bundle_activity(cluster_id, &archives, ctx).await?;
+            decline_unpicked_defaults(cluster_id, &archives, ctx).await?;
         }
     }
 
@@ -1144,16 +1145,21 @@ async fn addition_eligible_bundles(
     let (live_managed_keys, _) = installed_bundle_keys(ctx, live).await?;
 
     let mut eligible = live_bundle_names(bundle_packages, overrides);
-    eligible.extend(infer_subscribed_from_archives(
-        archives,
-        overrides_map,
-        &live_managed_keys,
-    ));
+    let default_on = |name: &String| {
+        archives
+            .iter()
+            .any(|archive| archive.manifest.enabled && archive.manifest.name == *name)
+    };
+    eligible.extend(
+        infer_subscribed_from_archives(archives, overrides_map, &live_managed_keys)
+            .into_iter()
+            .filter(default_on),
+    );
 
     Ok(eligible)
 }
 
-fn live_bundle_names(
+pub(crate) fn live_bundle_names(
     bundle_packages: &[BundleTrackedArtifactRow],
     overrides: &[ClusterBundleOverrideRow],
 ) -> HashSet<String> {

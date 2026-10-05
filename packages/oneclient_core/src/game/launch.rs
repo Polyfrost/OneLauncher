@@ -360,7 +360,11 @@ async fn start(
         profile.resolution.unwrap_or_default(),
         &java.os_arch,
     )?;
-    arguments::append_profile_game_arguments(&mut mc_args, profile.force_fullscreen, None);
+    arguments::append_profile_game_arguments(
+        &mut mc_args,
+        profile.force_fullscreen,
+        profile.game_args.as_deref(),
+    );
 
     if let Some(reason) = run_hook(profile.hook_pre.as_deref(), &cwd).await {
         events

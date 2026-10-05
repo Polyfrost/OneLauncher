@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
+use oneclient_db::dao::cluster_bundle as bundle_dao;
 
 use crate::LauncherResult;
 use crate::clusters::Cluster;
@@ -1182,7 +1183,165 @@ async fn desired_linked(
         });
     }
 
-    Ok(desired)
+    Ok(skip_shadowed_bundle_mods(services, cluster, desired).await)
+}
+
+async fn skip_shadowed_bundle_mods(
+    services: &LauncherServices,
+    cluster: &Cluster,
+    mut desired: Vec<Desired>,
+) -> Vec<Desired> {
+    let mods: Vec<(String, PathBuf)> = desired
+        .iter()
+        .filter(|item| item.content_type == ContentType::Mod)
+        .map(|item| (item.hash.clone(), item.src.clone()))
+        .collect();
+    let shadowed = shadowed_bundle_hashes(services, cluster.id, &mods).await;
+    if shadowed.is_empty() {
+        return desired;
+    }
+
+    static SAID: std::sync::Mutex<std::collections::BTreeSet<(i64, String)>> =
+        std::sync::Mutex::new(std::collections::BTreeSet::new());
+
+    let mut newly_skipped = Vec::new();
+    if let Ok(cluster_dir) = cluster.dir() {
+        let in_cluster = manifest::mods_live_in_cluster(&cluster_dir).await;
+        for item in desired.iter().filter(|item| shadowed.contains(&item.hash)) {
+            let newly = if in_cluster {
+                polyio::symlink_metadata(cluster_dir.join(item.relative_path()))
+                    .await
+                    .is_ok()
+            } else {
+                SAID.lock().unwrap().insert((cluster.id, item.hash.clone()))
+            };
+            if newly {
+                newly_skipped.push(item.file_name.clone());
+            }
+        }
+    }
+    if !newly_skipped.is_empty() {
+        services
+            .events
+            .notify("Bundle mod skipped")
+            .body(format!(
+                "Your own copy of {} is used instead of the bundle's. Remove yours to get the bundle's back.",
+                removal_summary(&newly_skipped)
+            ))
+            .send();
+    }
+
+    desired.retain(|item| {
+        let skip = shadowed.contains(&item.hash);
+        if skip {
+            tracing::info!(
+                cluster_id = cluster.id,
+                file = %item.file_name,
+                "skipping a bundle mod the user added their own copy of"
+            );
+        }
+        !skip
+    });
+
+    desired
+}
+
+pub async fn shadowed_bundle_mods(state: &LauncherState, cluster_id: i64) -> HashSet<String> {
+    let services = &state.services;
+    let Ok(linked) = PackageStore::list_linked_artifacts(cluster_id, &services.content()).await
+    else {
+        return HashSet::new();
+    };
+
+    let mut mods = Vec::new();
+    for link in linked
+        .iter()
+        .filter(|link| link.content_type == ContentType::Mod && link.enabled)
+    {
+        if let Ok(Some(artifact)) =
+            artifact_dao::get_artifact_by_hash(&services.db, &link.hash).await
+            && let Ok(path) = artifact_absolute_path(&artifact.path)
+        {
+            mods.push((link.hash.clone(), path));
+        }
+    }
+
+    shadowed_bundle_hashes(services, cluster_id, &mods).await
+}
+
+async fn shadowed_bundle_hashes(
+    services: &LauncherServices,
+    cluster_id: i64,
+    mods: &[(String, PathBuf)],
+) -> HashSet<String> {
+    let bundled: HashSet<String> = match bundle_dao::list_bundle_tracked(&services.db, cluster_id)
+        .await
+    {
+        Ok(rows) => rows.into_iter().map(|row| row.hash).collect(),
+        Err(err) => {
+            tracing::warn!(error = %err, "cannot list bundle mods; not checking for duplicates");
+            return HashSet::new();
+        }
+    };
+    if bundled.is_empty() {
+        return HashSet::new();
+    }
+
+    let mut copies = Vec::new();
+    for bundle_pass in [false, true] {
+        let pass = mods
+            .iter()
+            .filter(|(hash, _)| bundled.contains(hash) == bundle_pass);
+        copies.extend(
+            futures_util::future::join_all(pass.map(async |(hash, jar)| ModCopy {
+                hash: hash.clone(),
+                bundled: bundle_pass,
+                mod_id: cached_mod_id(hash, jar).await,
+            }))
+            .await,
+        );
+
+        if !bundle_pass && copies.iter().all(|copy| copy.mod_id.is_none()) {
+            return HashSet::new();
+        }
+    }
+
+    shadowed_bundle_copies(&copies)
+}
+
+async fn cached_mod_id(hash: &str, jar: &Path) -> Option<String> {
+    static IDS: std::sync::Mutex<std::collections::BTreeMap<String, Option<String>>> =
+        std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+    if let Some(id) = IDS.lock().unwrap().get(hash) {
+        return id.clone();
+    }
+
+    let id = oneclient_content::packages::local_manifest::read_jar_mod_id(jar).await;
+    if id.is_some() || polyio::try_exists(jar).await.unwrap_or(false) {
+        IDS.lock().unwrap().insert(hash.to_owned(), id.clone());
+    }
+    id
+}
+
+struct ModCopy {
+    hash: String,
+    bundled: bool,
+    mod_id: Option<String>,
+}
+
+fn shadowed_bundle_copies(mods: &[ModCopy]) -> HashSet<String> {
+    let users: HashSet<&str> = mods
+        .iter()
+        .filter(|copy| !copy.bundled)
+        .filter_map(|copy| copy.mod_id.as_deref())
+        .collect();
+
+    mods.iter()
+        .filter(|copy| copy.bundled)
+        .filter(|copy| copy.mod_id.as_deref().is_some_and(|id| users.contains(id)))
+        .map(|copy| copy.hash.clone())
+        .collect()
 }
 
 async fn cached_file(
@@ -2697,6 +2856,25 @@ mod tests {
                 })
                 .collect(),
         )
+    }
+
+    #[test]
+    fn a_bundle_mod_the_user_added_their_own_copy_of_is_skipped() {
+        let copy = |hash: &str, bundled: bool, mod_id: Option<&str>| ModCopy {
+            hash: hash.into(),
+            bundled,
+            mod_id: mod_id.map(Into::into),
+        };
+
+        let shadowed = shadowed_bundle_copies(&[
+            copy("bundle-argentum", true, Some("argentum")),
+            copy("user-argentum", false, Some("argentum")),
+            copy("bundle-sodium", true, Some("sodium")),
+            copy("bundle-unreadable", true, None),
+            copy("user-unreadable", false, None),
+        ]);
+
+        assert_eq!(shadowed, HashSet::from(["bundle-argentum".to_owned()]));
     }
 
     #[test]

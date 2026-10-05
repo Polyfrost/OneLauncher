@@ -92,6 +92,29 @@ pub fn use_migratable_routes(
     super::state::settled_or_loading(&query).unwrap_or_default()
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ShadowedModsQuery;
+
+impl QueryCapability for ShadowedModsQuery {
+    type Ok = Arc<HashSet<String>>;
+    type Err = LauncherError;
+    type Keys = ClusterId;
+
+    async fn run(&self, cluster_id: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state()?;
+        let cluster_id = *cluster_id;
+        Ok(off_ui(async move {
+            Arc::new(oneclient_core::game::shadowed_bundle_mods(&state, cluster_id).await)
+        })
+        .await)
+    }
+}
+
+pub fn use_shadowed_mods(cluster_id: ClusterId) -> Arc<HashSet<String>> {
+    let query = use_query(Query::new(cluster_id, ShadowedModsQuery));
+    super::state::settled_or_loading(&query).unwrap_or_default()
+}
+
 pub fn use_mods_folder_sync(cluster_id: ClusterId, folder: Option<PathBuf>) {
     let sync = move || {
         spawn(async move {

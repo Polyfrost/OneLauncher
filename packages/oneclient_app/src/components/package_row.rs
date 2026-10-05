@@ -66,7 +66,6 @@ pub struct PackageEntry {
     pub advanced: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
-    pub shadowed: bool,
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
     pub essential: Option<&'static EssentialPackage>,
@@ -470,8 +469,7 @@ pub(crate) fn grid_card(
             .into_element()
     });
 
-    let badged = item.is_outdated() || item.shadowed || item.recency_badge().is_some();
-    let floating = badged.then(|| {
+    let floating = (item.is_outdated() || item.recency_badge().is_some()).then(|| {
         rect()
             .horizontal()
             .width(Size::fill())
@@ -484,7 +482,6 @@ pub(crate) fn grid_card(
             .cross_align(Alignment::Center)
             .spacing(4.)
             .maybe_child(item.is_outdated().then(outdated_badge))
-            .maybe_child(item.shadowed.then(shadowed_badge))
             .maybe_child(item.recency_badge())
             .into_element()
     });
@@ -770,7 +767,6 @@ fn package_info(
                             local_badge()
                         })
                         .maybe_child(item.is_outdated().then(outdated_badge))
-                        .maybe_child(item.shadowed.then(shadowed_badge))
                         .maybe_child(item.recency_badge()),
                 )
                 .maybe(!item.author.is_empty(), |el| {
@@ -870,10 +866,6 @@ pub fn github_badge() -> Element {
 
 fn outdated_badge() -> Element {
     status_tag("Update available", colors::brand())
-}
-
-fn shadowed_badge() -> Element {
-    status_tag("Using your copy", colors::brand())
 }
 
 fn new_badge() -> Element {

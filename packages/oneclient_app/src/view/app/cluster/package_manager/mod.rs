@@ -316,7 +316,6 @@ fn make_row(
         update_available,
         hidden,
         opted_in,
-        shadowed: false,
         advanced: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
     }

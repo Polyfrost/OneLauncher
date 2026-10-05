@@ -10,8 +10,8 @@ pub use gc::{
     remove_unreferenced_files,
 };
 pub use link::{
-    LiveSync, link_or_copy, remove_entry, sweep_staging_files, try_link_materialized,
-    drop_unmanaged_mod, try_unlink_materialized,
+    LiveSync, drop_unmanaged_mod, link_or_copy, remove_entry, sweep_staging_files,
+    try_link_materialized, try_unlink_materialized,
 };
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 
@@ -184,7 +184,8 @@ impl PackageStore {
         artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
         if let (Some(content_type), Some(link)) = (content_type, &link) {
-            link::drop_unmanaged_mod(&cluster, content_type, &link.cluster_file_name, hash).await;
+            let name = &link.cluster_file_name;
+            drop_unmanaged_mod(&cluster, content_type, name, hash, &ctx.db).await;
         }
 
         if let (Some(content_type), Some(link)) = (content_type, link)
@@ -413,24 +414,17 @@ impl PackageStore {
         cluster_id: i64,
         ctx: &ContentCtx,
     ) -> ContentResult<LocalImportReport> {
-        let report = Self::store_local_files(files, cluster_id, ctx).await?;
-        Self::describe_local_files(&report.imported, ctx).await;
-        Ok(report)
-    }
-
-    #[tracing::instrument(level = "debug", skip(files, ctx), fields(files = files.len()))]
-    pub async fn store_local_files(
-        files: &[(PathBuf, ContentType)],
-        cluster_id: i64,
-        ctx: &ContentCtx,
-    ) -> ContentResult<LocalImportReport> {
         let cluster = Self::get_cluster(cluster_id, ctx).await?;
 
         let mut report = LocalImportReport::default();
+        let mut stored = Vec::with_capacity(files.len());
 
         for (path, content_type) in files {
             match store_local_file(path, *content_type, &cluster, ctx).await {
-                Ok(row) => report.imported.push(row),
+                Ok(row) => {
+                    stored.push((row.clone(), *content_type));
+                    report.imported.push(row);
+                }
                 Err(err) => {
                     tracing::warn!("could not import {}: {err}", path.display());
                     report.failed.push((path.clone(), err));
@@ -438,15 +432,8 @@ impl PackageStore {
             }
         }
 
+        describe_imports(&stored, ctx).await;
         Ok(report)
-    }
-
-    pub async fn describe_local_files(rows: &[ArtifactRow], ctx: &ContentCtx) {
-        let imports: Vec<_> = rows
-            .iter()
-            .filter_map(|row| Some((row.clone(), ContentType::from_repr(row.content_type as u8)?)))
-            .collect();
-        describe_imports(&imports, ctx).await;
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]

@@ -98,8 +98,9 @@ pub async fn drop_unmanaged_mod(
     content_type: ContentType,
     file_name: &str,
     hash: &str,
+    db: &DbPool,
 ) {
-    if content_type != ContentType::Mod {
+    if content_type != ContentType::Mod || session_owns(cluster, db).await {
         return;
     }
     let Ok(dir) = paths::cluster_dir(&cluster.folder_name) else {

@@ -881,7 +881,8 @@ pub async fn remove_artifact_from_cluster(
     artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
     if let (Some(content_type), Some(link)) = (target, &link) {
-        drop_unmanaged_mod(&cluster, content_type, &link.cluster_file_name, hash).await;
+        let name = &link.cluster_file_name;
+        drop_unmanaged_mod(&cluster, content_type, name, hash, &ctx.db).await;
     }
 
     // Best-effort folder cleanup failure here is not an error

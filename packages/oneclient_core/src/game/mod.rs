@@ -40,5 +40,5 @@ pub use process::{
 pub use reattach::recover_sessions;
 pub use shared_dir::{
     dematerialize_content, import_manual_content, link_cluster_logs, materialize_content,
-    shadowed_bundle_mods, sync_cluster_mods, unlink_cluster_logs, write_allowed_symlinks,
+    sync_cluster_mods, unlink_cluster_logs, write_allowed_symlinks,
 };

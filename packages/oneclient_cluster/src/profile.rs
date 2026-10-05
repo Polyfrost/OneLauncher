@@ -31,8 +31,8 @@ pub use oneclient_common::domain::PackageUpdateMode;
 pub struct SettingsOsExtra {
     #[cfg(target_os = "linux")]
     pub enable_gamemode: Option<bool>,
-    #[cfg(any(target_os = "linux", windows))]
-    pub use_discrete_gpu: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu: Option<String>,
     #[serde(flatten)]
     pub unknown: serde_json::Map<String, serde_json::Value>,
 }
@@ -42,8 +42,7 @@ impl Default for SettingsOsExtra {
         Self {
             #[cfg(target_os = "linux")]
             enable_gamemode: Some(true),
-            #[cfg(any(target_os = "linux", windows))]
-            use_discrete_gpu: Some(true),
+            gpu: None,
             unknown: serde_json::Map::new(),
         }
     }
@@ -67,15 +66,8 @@ impl GameSettingsProfile {
         }
     }
 
-    pub fn use_discrete_gpu(&self) -> bool {
-        cfg_select! {
-            any(target_os = "linux", target_os = "windows") => self
-                .os_extra
-                .as_ref()
-                .and_then(|extra| extra.use_discrete_gpu)
-                .unwrap_or(true),
-            _ => false
-        }
+    pub fn gpu(&self) -> Option<&str> {
+        self.os_extra.as_ref()?.gpu.as_deref()
     }
 
     pub fn is_global(&self) -> bool {

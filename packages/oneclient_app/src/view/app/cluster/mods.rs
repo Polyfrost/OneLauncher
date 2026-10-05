@@ -1,9 +1,13 @@
+use std::hash::{DefaultHasher, Hash, Hasher};
+use std::path::PathBuf;
+
 use freya::prelude::*;
 use oneclient_content::packages::ContentType;
 
 use crate::hooks::{
     bundle_overrides_map, bundles_with_status_items, cluster_content_items, stale_hashes,
-    use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_package_updates,
+    use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_mods_folder_sync,
+    use_package_updates, use_shadowed_mods,
 };
 use crate::layout::cluster_content;
 
@@ -24,16 +28,17 @@ impl Component for ClusterMods {
         let bundles = use_bundles_with_status(self.cluster_id);
         let overrides = use_bundle_overrides(self.cluster_id);
         let updates = use_package_updates(self.cluster_id);
+        let shadowed = use_shadowed_mods(self.cluster_id);
         let bundle_items = bundles_with_status_items(&bundles);
         let content_items = cluster_content_items(&content);
         let meta = use_content_meta(&content_items, &bundle_items, ContentType::Mod);
 
-        let Some(_cluster) = use_cluster(self.cluster_id) else {
+        let Some(cluster) = use_cluster(self.cluster_id) else {
             return cluster_not_found();
         };
 
         let all_categories = bundle_categories(&bundle_items);
-        let items = bundle_packages(
+        let mut items = bundle_packages(
             content_items,
             &bundle_items,
             &bundle_overrides_map(&overrides),
@@ -41,8 +46,18 @@ impl Component for ClusterMods {
             &stale_hashes(&updates),
             ContentType::Mod,
         );
+        for item in &mut items {
+            item.shadowed = item
+                .hash
+                .as_ref()
+                .is_some_and(|hash| shadowed.contains(hash));
+        }
 
         cluster_content()
+            .child(ModsFolderSync {
+                cluster_id: self.cluster_id,
+                folder: oneclient_common::paths::cluster_mods_dir(&cluster.folder_name).ok(),
+            })
             .child(
                 PackageManager::new(
                     "Mods",
@@ -56,5 +71,24 @@ impl Component for ClusterMods {
                 .into_element(),
             )
             .into_element()
+    }
+}
+
+#[derive(PartialEq)]
+struct ModsFolderSync {
+    cluster_id: i64,
+    folder: Option<PathBuf>,
+}
+
+impl Component for ModsFolderSync {
+    fn render(&self) -> impl IntoElement {
+        use_mods_folder_sync(self.cluster_id, self.folder.clone());
+        rect()
+    }
+
+    fn render_key(&self) -> DiffKey {
+        let mut hasher = DefaultHasher::new();
+        (self.cluster_id, &self.folder).hash(&mut hasher);
+        DiffKey::U64(hasher.finish())
     }
 }

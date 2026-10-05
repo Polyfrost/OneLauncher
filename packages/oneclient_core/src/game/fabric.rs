@@ -22,12 +22,17 @@ fn parse_version(raw: &str) -> Option<Version> {
 }
 
 #[must_use]
+pub fn loader_takes_mods_folder(loader: GameLoader) -> bool {
+    matches!(loader, GameLoader::Fabric | GameLoader::Ornithe)
+}
+
+#[must_use]
 pub fn uses_cluster_mods_folder(
     loader: GameLoader,
     loader_version: Option<&str>,
     custom_args: &str,
 ) -> bool {
-    if !matches!(loader, GameLoader::Fabric | GameLoader::Ornithe) {
+    if !loader_takes_mods_folder(loader) {
         return false;
     }
 

@@ -222,6 +222,7 @@ pub fn bundle_packages(
                 opted_in,
             );
             row.advanced = advanced;
+            row.github_url = file.github_repo_url();
             rows.push(row);
         }
     }
@@ -299,6 +300,7 @@ fn make_row(
         bundle_name,
         provider,
         github_hosted,
+        github_url: None,
         name,
         file_name,
         author,

@@ -19,7 +19,7 @@ pub mod worlds;
 pub use cluster::{Cluster, ClusterLinkTarget, encode_tags, remove_mods_link};
 pub use error::{ClusterError, ClusterResult};
 pub use identity::InstanceIdentity;
-pub use manager::ClusterManager;
+pub use manager::{ClusterManager, unlinked_mods_repair_id};
 pub use oneclient_db::models::ClusterKind;
 pub use options::{ClusterUpdate, CreateClusterOptions};
 pub use profile::{GameSettingsProfile, PackageUpdateMode, SettingsOsExtra};

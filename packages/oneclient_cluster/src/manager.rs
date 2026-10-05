@@ -1,4 +1,6 @@
-use oneclient_db::dao::{cluster as cluster_dao, setting_profile as profile_dao};
+use oneclient_db::dao::{
+    applied_migration as migration_dao, cluster as cluster_dao, setting_profile as profile_dao,
+};
 use oneclient_db::models::{ClusterId, ClusterKind, ClusterPatch, NewCluster};
 
 use crate::error::ClusterResult;
@@ -169,6 +171,12 @@ impl ClusterManager {
         {
             Ok(cluster) => {
                 tracing::info!(cluster_id = cluster.id, name = %cluster.name, "created cluster");
+                if let Err(err) =
+                    migration_dao::mark_applied(&self.db, &unlinked_mods_repair_id(cluster.id))
+                        .await
+                {
+                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record a one-time repair");
+                }
                 Ok(cluster)
             }
             Err(err) => {
@@ -673,6 +681,10 @@ fn identity_of(cluster: &Cluster) -> crate::identity::InstanceIdentity {
         tags: cluster.tags.clone(),
         cover_path: cluster.cover_path.clone(),
     }
+}
+
+pub fn unlinked_mods_repair_id(cluster_id: ClusterId) -> String {
+    format!("clear-unlinked-mods:{cluster_id}")
 }
 
 #[tracing::instrument(level = "debug", skip(pool))]

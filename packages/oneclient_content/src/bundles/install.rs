@@ -13,7 +13,9 @@ use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
-use crate::packages::store::{LiveSync, PackageStore, evict_if_unused, try_unlink_materialized};
+use crate::packages::store::{
+    LiveSync, PackageStore, drop_unmanaged_mod, evict_if_unused, try_unlink_materialized,
+};
 use crate::packages::types::ExternalFile;
 use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
@@ -983,6 +985,11 @@ pub async fn remove_artifact_from_cluster(
     // link which used to fail the whole removal
     // The folder is rebuilt from the database at the next launch
     artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+
+    if let (Some(content_type), Some(link)) = (target, &link) {
+        let name = &link.cluster_file_name;
+        drop_unmanaged_mod(&cluster, content_type, name, hash, &ctx.db).await;
+    }
 
     // Best-effort folder cleanup failure here is not an error
     let deferred = match (target, link) {

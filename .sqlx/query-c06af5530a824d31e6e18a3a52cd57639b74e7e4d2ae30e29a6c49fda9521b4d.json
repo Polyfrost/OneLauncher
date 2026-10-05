@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT OR REPLACE INTO cluster_bundle_choices (cluster_id, bundle_name, accepted)\n            VALUES (?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "c06af5530a824d31e6e18a3a52cd57639b74e7e4d2ae30e29a6c49fda9521b4d"
+}

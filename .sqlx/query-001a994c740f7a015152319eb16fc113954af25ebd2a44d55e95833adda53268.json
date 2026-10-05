@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT OR IGNORE INTO cluster_bundle_choices (cluster_id, bundle_name, accepted)\n        SELECT ?, bundle_name, accepted\n        FROM cluster_bundle_choices\n        WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "001a994c740f7a015152319eb16fc113954af25ebd2a44d55e95833adda53268"
+}

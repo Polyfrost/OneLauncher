@@ -684,6 +684,22 @@ impl Actions {
             }
         }
 
+        if let Some(source) = prompt.source() {
+            let (source_id, target_id) = (source.id, prompt.target.id);
+            spawn_forever(async move {
+                let Ok(state) = launcher::state() else { return };
+                if let Err(err) = oneclient_content::bundles::inherit_bundle_choices(
+                    source_id,
+                    target_id,
+                    &state.services.content(),
+                )
+                .await
+                {
+                    tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
+                }
+            });
+        }
+
         if packages.is_empty() {
             return;
         }
@@ -708,32 +724,14 @@ impl Actions {
             ),
             _ => (Vec::new(), Vec::new()),
         };
-        let declined: HashSet<String> = match prompt.plans.get(&prompt.selected) {
-            Some(ReleasePlanState::Ready(plan)) => plan
-                .packages
-                .iter()
-                .map(|package| package.source_hash.clone())
-                .filter(|hash| !chosen.contains(hash))
-                .collect(),
-            _ => HashSet::new(),
-        };
         let waitlisted = !prompt.is_cross_loader();
 
         let actions = self.clone();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
             let content = state.services.content();
-            let consent_from = prompt.source().map(|source| source.id);
             let source = prompt.source().filter(|_| copy_configs_too).cloned();
             let target = prompt.target;
-            if let Some(source_id) = consent_from
-                && let Err(err) = oneclient_content::bundles::inherit_bundle_consent(
-                    source_id, target.id, &declined, &content,
-                )
-                .await
-            {
-                tracing::warn!(error = %err, "could not carry the bundle choices over to the target");
-            }
             let total = packages.len() + dependencies.len();
 
             let session = oneclient_events::GroupedProgressSession::start(

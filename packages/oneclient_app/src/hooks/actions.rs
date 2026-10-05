@@ -1826,6 +1826,7 @@ impl Actions {
             }
         };
 
+        let choices_for = bundles.clone();
         let choices = BundleChoices {
             cluster_name: crate::install::cluster_display_name(cluster_id, &state.services).await,
             bundles,
@@ -1837,40 +1838,25 @@ impl Actions {
         });
         let Ok(Some(chosen)) = wait.await else { return };
 
-        off_ui({
+        let choices: Vec<_> = choices_for
+            .iter()
+            .map(|name| (name.clone(), chosen.contains(name)))
+            .collect();
+        if let Err(err) = off_ui({
             let state = state.clone();
             async move {
-                let content = state.services.content();
-                if let Err(err) = oneclient_content::bundles::choose_bundles(
+                oneclient_content::bundles::set_bundle_choices(
                     cluster_id,
-                    &chosen,
-                    state.bundles.as_ref(),
-                    &content,
+                    &choices,
+                    &state.services.content(),
                 )
                 .await
-                {
-                    tracing::warn!(cluster_id, error = %err, "could not record the bundle choices");
-                    return;
-                }
-                let session = oneclient_events::GroupedProgressSession::start(
-                    &state.services.events,
-                    "Applying your bundle choices".to_string(),
-                );
-                if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
-                    cluster_id,
-                    state.bundles.as_ref(),
-                    Some(&session),
-                    &content,
-                )
-                .await
-                {
-                    tracing::warn!(cluster_id, error = %err, "failed to install the chosen bundles");
-                }
-                session.finish();
             }
         })
-        .await;
-        super::invalidate_cluster_queries().await;
+        .await
+        {
+            tracing::warn!(cluster_id, error = %err, "could not record the bundle choices");
+        }
     }
 
     async fn resolve_optional_mods_before_launch(

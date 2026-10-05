@@ -1,7 +1,7 @@
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
 use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::LiveSync;
-use oneclient_core::{BUNDLE_CONSENT, BundleArchive};
+use oneclient_core::BundleArchive;
 use oneclient_db::models::{ClusterId, ClusterKind, OverrideType};
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -125,18 +125,6 @@ fn bundle_selection_overrides(
     }
 
     let mut overrides = Vec::new();
-    let default_on = |name: &String| {
-        archives
-            .iter()
-            .any(|archive| archive.manifest.name == *name && archive.manifest.enabled)
-    };
-    for name in selected.iter().filter(|name| !default_on(name)) {
-        overrides.push((
-            name.clone(),
-            BUNDLE_CONSENT.to_string(),
-            OverrideType::Enabled,
-        ));
-    }
     for archive in archives.iter().filter(|archive| !taken(archive)) {
         for file in archive.manifest.files.iter().filter(|file| file.enabled) {
             let package_id = file.kind.package_id();
@@ -365,6 +353,21 @@ impl MutationCapability for ClusterMutation {
                                 {
                                     tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
                                 }
+                                let choices: Vec<_> = archives
+                                    .iter()
+                                    .filter(|archive| !archive.manifest.enabled)
+                                    .map(|archive| {
+                                        let name = &archive.manifest.name;
+                                        (name.clone(), selected.contains(name))
+                                    })
+                                    .collect();
+                                if let Err(err) = oneclient_content::bundles::set_bundle_choices(
+                                    cluster.id, &choices, content,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
+                                }
                             }
 
                             let session = oneclient_events::GroupedProgressSession::start(
@@ -509,56 +512,4 @@ impl MutationCapability for ClusterMutation {
 
 pub fn use_cluster_mutation() -> UseMutation<ClusterMutation> {
     use_mutation(Mutation::new(ClusterMutation))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::view::onboarding::test_support::{archive, file};
-
-    #[test]
-    fn taking_an_opt_in_bundle_records_the_choice_whatever_it_ships() {
-        let extras = archive(
-            "Extras",
-            false,
-            vec![file("extra", false, false), file("dep", true, true)],
-        );
-        let qol = archive("QoL", true, vec![file("qol-a", true, false)]);
-        let selected = vec![extras.manifest.name.clone(), qol.manifest.name.clone()];
-
-        assert_eq!(
-            bundle_selection_overrides(&[extras.clone(), qol], &selected),
-            vec![(
-                extras.manifest.name,
-                BUNDLE_CONSENT.to_string(),
-                OverrideType::Enabled
-            )]
-        );
-    }
-
-    #[test]
-    fn a_pick_survives_a_catalog_that_failed_to_load() {
-        assert_eq!(
-            bundle_selection_overrides(&[], &["Extras".to_string()]),
-            vec![(
-                "Extras".to_string(),
-                BUNDLE_CONSENT.to_string(),
-                OverrideType::Enabled
-            )]
-        );
-    }
-
-    #[test]
-    fn leaving_an_opt_in_bundle_records_no_choice_for_it() {
-        let sb = archive("SkyBlock", false, vec![file("sb-main", true, false)]);
-
-        assert_eq!(
-            bundle_selection_overrides(std::slice::from_ref(&sb), &[]),
-            vec![(
-                sb.manifest.name.clone(),
-                "sb-main".to_string(),
-                OverrideType::Removed
-            )]
-        );
-    }
 }

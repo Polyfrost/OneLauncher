@@ -1313,105 +1313,28 @@ async fn seed_bundle_with_pack(state: &LauncherState, m: BundleManifest) {
     std::fs::write(dir.join(format!("{name}.mrpack")), empty_zip).unwrap();
 }
 
-async fn flag_for_the_prompt(state: &LauncherState, cluster_id: i64) {
-    bundle_dao::save_override(
-        &state.services.db,
-        cluster_id,
-        "*",
-        "*",
-        OverrideType::Enabled,
-    )
-    .await
-    .unwrap();
-}
-
-async fn answer_the_prompt(state: &LauncherState, cluster_id: i64, chosen: &[&str]) {
-    oneclient_content::bundles::choose_bundles(
-        cluster_id,
-        &chosen.iter().map(|name| name.to_string()).collect(),
-        state.bundles.as_ref(),
-        &state.services.content(),
-    )
-    .await
-    .unwrap();
-}
-
-#[tokio::test]
-async fn a_flagged_cluster_keeps_what_it_holds_until_it_is_asked() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    seed_opt_in_bundle(&state, BUNDLE).await;
-    let cluster_id = cluster_with_tracked_mod(&state).await;
-    flag_for_the_prompt(&state, cluster_id).await;
-    let ctx = state.services.content();
-
-    install_cluster_bundles(cluster_id, state.bundles.as_ref(), None, &ctx)
-        .await
-        .unwrap();
-
-    let db = &state.services.db;
-    let tracked = bundle_dao::list_bundle_tracked(db, cluster_id)
-        .await
-        .unwrap();
-    assert_eq!(tracked.len(), 1, "the bundle should stay: {tracked:?}");
-    let pending = oneclient_content::bundles::pending_bundle_choices(
-        cluster_id,
-        state.bundles.as_ref(),
-        &ctx,
-    )
-    .await
-    .unwrap();
-    assert_eq!(pending, [(BUNDLE.to_string(), true)]);
-}
-
-#[tokio::test]
-async fn leaving_a_bundle_at_the_prompt_takes_its_content_back() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    seed_opt_in_bundle(&state, BUNDLE).await;
-    let cluster_id = cluster_with_tracked_mod(&state).await;
-    flag_for_the_prompt(&state, cluster_id).await;
-
-    answer_the_prompt(&state, cluster_id, &[]).await;
-
-    let db = &state.services.db;
-    let tracked = bundle_dao::list_bundle_tracked(db, cluster_id)
-        .await
-        .unwrap();
-    assert!(tracked.is_empty(), "the bundle should be gone: {tracked:?}");
-    let left = bundle_dao::list_overrides(db, cluster_id).await.unwrap();
-    assert!(left.is_empty(), "the flag should be spent: {left:?}");
-}
-
 #[tokio::test]
 async fn taking_a_bundle_at_the_prompt_records_the_choice() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     seed_opt_in_bundle(&state, "Opt In").await;
     let cluster_id = cluster_with_tracked_mod(&state).await;
-    flag_for_the_prompt(&state, cluster_id).await;
     let ctx = state.services.content();
+    let pending = || async {
+        oneclient_content::bundles::pending_bundle_choices(cluster_id, state.bundles.as_ref(), &ctx)
+            .await
+            .unwrap()
+    };
 
-    let pending = oneclient_content::bundles::pending_bundle_choices(
+    assert_eq!(pending().await, ["Opt In".to_string()]);
+
+    oneclient_content::bundles::set_bundle_choices(
         cluster_id,
-        state.bundles.as_ref(),
+        &[("Opt In".to_string(), false)],
         &ctx,
     )
     .await
     .unwrap();
-    assert_eq!(pending, [("Opt In".to_string(), false)]);
-
-    answer_the_prompt(&state, cluster_id, &["Opt In"]).await;
-
-    let left = bundle_dao::list_overrides(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    let left: Vec<_> = left
-        .iter()
-        .map(|o| (o.bundle_name.as_str(), o.package_id.as_str()))
-        .collect();
-    assert_eq!(
-        left,
-        [("Opt In", "*")],
-        "the consent should replace the flag"
-    );
+    assert!(pending().await.is_empty());
 }
 
 #[tokio::test]
@@ -1460,43 +1383,14 @@ async fn an_opt_in_bundle_counts_as_taken_only_on_a_recorded_choice() {
 
     assert!(!taken().await.contains("Opt In"));
 
-    bundle_dao::save_override(
-        &state.services.db,
+    oneclient_content::bundles::set_bundle_choices(
         cluster_id,
-        "Opt In",
-        "*",
-        OverrideType::Enabled,
+        &[("Opt In".to_string(), true)],
+        &ctx,
     )
     .await
     .unwrap();
     assert!(taken().await.contains("Opt In"));
-}
-
-#[tokio::test]
-async fn a_file_a_default_bundle_ships_moves_to_it_when_the_opt_in_bundle_is_left() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let mut m = named_manifest(BUNDLE, vec![managed_file(true), fabric_api_file()]);
-    m.enabled = false;
-    seed_bundle_with_pack(&state, m).await;
-    seed_bundle_with_pack(&state, named_manifest("QoL", vec![fabric_api_file()])).await;
-    let cluster_id = cluster_with_tracked_mod(&state).await;
-    install_fabric_api(&state, cluster_id).await;
-    let db = &state.services.db;
-    bundle_dao::track_bundle_artifact(db, cluster_id, FABRIC_API_HASH, BUNDLE, "v1", "fabric-api")
-        .await
-        .unwrap();
-    flag_for_the_prompt(&state, cluster_id).await;
-
-    answer_the_prompt(&state, cluster_id, &[]).await;
-
-    let tracked = bundle_dao::list_bundle_tracked(db, cluster_id)
-        .await
-        .unwrap();
-    let rows: Vec<_> = tracked
-        .iter()
-        .map(|row| (row.hash.as_str(), row.bundle_name.as_deref()))
-        .collect();
-    assert_eq!(rows, [(FABRIC_API_HASH, Some("QoL"))]);
 }
 
 #[tokio::test]

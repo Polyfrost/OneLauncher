@@ -18,28 +18,21 @@ impl Component for BundleChoicesPopup {
     fn render(&self) -> impl IntoElement {
         let snapshot = use_notifications_snapshot();
         let dispatch = use_dispatch();
-        let mut flipped = use_state(HashSet::<String>::new);
+        let mut chosen = use_state(HashSet::<String>::new);
 
         let Some(choices) = snapshot.bundle_choices.clone() else {
             return rect().into_element();
         };
 
-        let chosen: HashSet<String> = choices
-            .bundles
-            .iter()
-            .filter(|(name, held)| *held != flipped.read().contains(name))
-            .map(|(name, _)| name.clone())
-            .collect();
-
         let mut list = rect().vertical().width(Size::fill()).spacing(6.);
-        for (name, _) in &choices.bundles {
+        for name in &choices.bundles {
             let key = name.clone();
             let on_toggle: EventHandler<()> = (move |()| {
-                let mut next = flipped.read().clone();
+                let mut next = chosen.read().clone();
                 if !next.remove(&key) {
                     next.insert(key.clone());
                 }
-                flipped.set(next);
+                chosen.set(next);
             })
             .into();
             list = list.child(
@@ -59,7 +52,7 @@ impl Component for BundleChoicesPopup {
                             .width(Size::flex(1.0))
                             .color(colors::fg_primary()),
                     )
-                    .child(toggle_controlled(chosen.contains(name), on_toggle)),
+                    .child(toggle_controlled(chosen.read().contains(name), on_toggle)),
             );
         }
 
@@ -68,7 +61,7 @@ impl Component for BundleChoicesPopup {
 
         OverlayPopup::new()
             .on_close(move |_| {
-                flipped.set(HashSet::new());
+                chosen.set(HashSet::new());
                 close.close_bundle_choices(None);
             })
             .child(
@@ -98,7 +91,7 @@ impl Component for BundleChoicesPopup {
                             .child(
                                 label()
                                     .text(format!(
-                                        "{} was set up with optional bundles you were never asked about. Keep the ones you want, the rest are removed.",
+                                        "{} has optional bundles you have not chosen yet. Turn on the ones you want.",
                                         choices.cluster_name
                                     ))
                                     .font_size(12.5)
@@ -122,7 +115,7 @@ impl Component for BundleChoicesPopup {
                                         Button::new()
                                             .ghost()
                                             .on_press(move |_| {
-                                                flipped.set(HashSet::new());
+                                                chosen.set(HashSet::new());
                                                 later.close_bundle_choices(None);
                                             })
                                             .text("Ask me later"),
@@ -131,8 +124,9 @@ impl Component for BundleChoicesPopup {
                                         Button::new()
                                             .primary()
                                             .on_press(move |_| {
-                                                flipped.set(HashSet::new());
-                                                dispatch.close_bundle_choices(Some(chosen.clone()));
+                                                let picked = chosen.read().clone();
+                                                chosen.set(HashSet::new());
+                                                dispatch.close_bundle_choices(Some(picked));
                                             })
                                             .child(Icon::new(IconType::Check).size(15.))
                                             .text("Confirm & launch"),

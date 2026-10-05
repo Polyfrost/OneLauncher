@@ -106,7 +106,7 @@ impl BlockedDownloads {
 #[derive(Clone, Debug, PartialEq)]
 pub struct BundleChoices {
     pub cluster_name: String,
-    pub bundles: Vec<(String, bool)>,
+    pub bundles: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

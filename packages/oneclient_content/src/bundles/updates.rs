@@ -17,9 +17,10 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, bundle_cluster, decline_unpicked_defaults, disable_was_deliberate,
+    BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, disable_was_deliberate,
     external_ids_by_sha1, find_override, find_user_suppression, heal_bundle_activity,
     install_package_from_bundle, remove_artifact_from_cluster, set_artifact_enabled_to,
+    takes_bundle,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -322,6 +323,7 @@ async fn check_bundle_updates_inner(
 
     let addition_eligible_bundles = addition_eligible_bundles(
         ctx,
+        cluster_id,
         &archives,
         &bundle_packages,
         &all_linked,
@@ -462,7 +464,6 @@ pub async fn apply_bundle_updates_with(
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
         if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
             heal_bundle_activity(cluster_id, &archives, ctx).await?;
-            decline_unpicked_defaults(cluster_id, &archives, ctx).await?;
         }
     }
 
@@ -622,7 +623,8 @@ pub async fn apply_bundle_updates_with(
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
         if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
-            for archive in archives {
+            let accepted = accepted_bundles(cluster_id, ctx).await?;
+            for archive in archives.iter().filter(|a| takes_bundle(a, &accepted)) {
                 if let Err(err) = overrides::sync_bundle_overrides(
                     &archive.bundle.path,
                     &archive.manifest.name,
@@ -862,6 +864,7 @@ pub async fn get_bundles_with_update_status(
     // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
     let live_bundles = addition_eligible_bundles(
         ctx,
+        cluster_id,
         &archives,
         &bundle_packages,
         &all_linked,
@@ -1135,6 +1138,7 @@ impl<'a> TypeOptOuts<'a> {
 #[tracing::instrument(level = "debug", skip_all)]
 async fn addition_eligible_bundles(
     ctx: &ContentCtx,
+    cluster_id: i64,
     archives: &[BundleArchive],
     bundle_packages: &[BundleTrackedArtifactRow],
     all_linked: &[LinkedArtifactInfo],
@@ -1145,21 +1149,22 @@ async fn addition_eligible_bundles(
     let (live_managed_keys, _) = installed_bundle_keys(ctx, live).await?;
 
     let mut eligible = live_bundle_names(bundle_packages, overrides);
-    let default_on = |name: &String| {
-        archives
+    eligible.extend(infer_subscribed_from_archives(
+        archives,
+        overrides_map,
+        &live_managed_keys,
+    ));
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
+    eligible.retain(|name| {
+        !archives
             .iter()
-            .any(|archive| archive.manifest.enabled && archive.manifest.name == *name)
-    };
-    eligible.extend(
-        infer_subscribed_from_archives(archives, overrides_map, &live_managed_keys)
-            .into_iter()
-            .filter(default_on),
-    );
+            .any(|archive| archive.manifest.name == *name && !takes_bundle(archive, &accepted))
+    });
 
     Ok(eligible)
 }
 
-pub(crate) fn live_bundle_names(
+fn live_bundle_names(
     bundle_packages: &[BundleTrackedArtifactRow],
     overrides: &[ClusterBundleOverrideRow],
 ) -> HashSet<String> {

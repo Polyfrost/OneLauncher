@@ -1826,10 +1826,18 @@ impl Actions {
             }
         };
 
-        let choices_for = bundles.clone();
+        let choices_for: Vec<String> = bundles.iter().map(|a| a.manifest.name.clone()).collect();
         let choices = BundleChoices {
             cluster_name: crate::install::cluster_display_name(cluster_id, &state.services).await,
-            bundles,
+            bundles: bundles
+                .iter()
+                .map(|a| {
+                    (
+                        a.manifest.name.clone(),
+                        crate::utils::bundle_display_name(a),
+                    )
+                })
+                .collect(),
         };
         let (done, wait) = tokio::sync::oneshot::channel();
         self.with_engine(move |state| {

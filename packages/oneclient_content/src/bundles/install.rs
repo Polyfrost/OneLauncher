@@ -66,7 +66,7 @@ pub async fn pending_bundle_choices(
     cluster_id: i64,
     bundles: &BundlesManager,
     ctx: &ContentCtx,
-) -> ContentResult<Vec<String>> {
+) -> ContentResult<Vec<BundleArchive>> {
     let Some(cluster) = bundle_cluster(cluster_id, ctx).await? else {
         return Ok(Vec::new());
     };
@@ -86,7 +86,6 @@ pub async fn pending_bundle_choices(
                 && !archive.bundle.hidden
                 && !decided.contains(&archive.manifest.name)
         })
-        .map(|archive| archive.manifest.name)
         .collect())
 }
 

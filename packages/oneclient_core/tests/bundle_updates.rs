@@ -1323,6 +1323,9 @@ async fn taking_a_bundle_at_the_prompt_records_the_choice() {
         oneclient_content::bundles::pending_bundle_choices(cluster_id, state.bundles.as_ref(), &ctx)
             .await
             .unwrap()
+            .into_iter()
+            .map(|archive| archive.manifest.name)
+            .collect::<Vec<_>>()
     };
 
     assert_eq!(pending().await, ["Opt In".to_string()]);

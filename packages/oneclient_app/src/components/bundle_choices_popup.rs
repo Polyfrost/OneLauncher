@@ -25,7 +25,7 @@ impl Component for BundleChoicesPopup {
         };
 
         let mut list = rect().vertical().width(Size::fill()).spacing(6.);
-        for name in &choices.bundles {
+        for (name, title) in &choices.bundles {
             let key = name.clone();
             let on_toggle: EventHandler<()> = (move |()| {
                 let mut next = chosen.read().clone();
@@ -40,13 +40,14 @@ impl Component for BundleChoicesPopup {
                     .key(name.clone())
                     .horizontal()
                     .width(Size::fill())
+                    .content(Content::Flex)
                     .cross_align(Alignment::Center)
                     .padding(Gaps::new_symmetric(8., 10.))
                     .corner_radius(CornerRadius::new_all(8.))
                     .background(colors::component_bg())
                     .child(
                         label()
-                            .text(name.clone())
+                            .text(title.clone())
                             .font_size(13.)
                             .max_lines(1)
                             .width(Size::flex(1.0))

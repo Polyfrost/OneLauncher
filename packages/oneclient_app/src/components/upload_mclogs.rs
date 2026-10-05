@@ -33,35 +33,49 @@ impl Component for UploadToMclogs {
 
 pub fn use_mclogs_feedback(upload: UseUploadLog) {
     let dispatch = use_dispatch();
-    let mut handled = use_state(|| None::<String>);
-
-    use_side_effect(move || match &*upload.read().state() {
+    let mut handled = use_state(|| match &*upload.peek().state() {
         MutationStateData::Settled {
-            res: Ok(result), ..
-        } => {
-            if handled.peek().as_deref() == Some(result.url.as_str()) {
-                return;
-            }
+            settlement_instant, ..
+        } => Some(*settlement_instant),
+        _ => None,
+    });
 
-            handled.set(Some(result.url.clone()));
-            let _ = Clipboard::set(result.url.clone());
+    use_side_effect(move || {
+        let reader = upload.read();
+        let state = reader.state();
+        let MutationStateData::Settled {
+            res,
+            settlement_instant,
+        } = &*state
+        else {
+            return;
+        };
 
-            dispatch
-                .notify("Uploaded to mclo.gs")
-                .body(format!("{} (copied to clipboard)", result.url))
-                .info()
-                .icon(IconType::LinkExternal01)
-                .send();
+        if *handled.peek() == Some(*settlement_instant) {
+            return;
         }
-        MutationStateData::Settled { res: Err(err), .. } => {
-            let msg = err.to_string();
-            if handled.peek().as_deref() == Some(msg.as_str()) {
-                return;
-            }
+        handled.set(Some(*settlement_instant));
 
-            handled.set(Some(msg.clone()));
-            dispatch.notify("Upload failed").body(msg).error().send();
+        match res {
+            Ok(result) => {
+                if let Err(err) = Clipboard::set(result.url.clone()) {
+                    tracing::warn!("clipboard copy failed: {err:?}");
+                }
+
+                dispatch
+                    .notify("Uploaded to mclo.gs")
+                    .body(format!("{} (copied to clipboard)", result.url))
+                    .info()
+                    .icon(IconType::LinkExternal01)
+                    .send();
+            }
+            Err(err) => {
+                dispatch
+                    .notify("Upload failed")
+                    .body(err.to_string())
+                    .error()
+                    .send();
+            }
         }
-        _ => {}
     });
 }

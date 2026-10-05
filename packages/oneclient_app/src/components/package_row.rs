@@ -45,6 +45,7 @@ pub struct PackageEntry {
     pub bundle_name: Option<String>,
     pub provider: ProviderId,
     pub github_hosted: bool,
+    pub github_url: Option<String>,
     pub name: String,
     pub file_name: String,
     pub author: String,
@@ -330,6 +331,12 @@ pub fn package_context_menu(
         });
     }
 
+    if let Some(url) = item.github_url.clone() {
+        menu = menu.action(IconType::LinkExternal01, "View in browser", move |()| {
+            crate::platform::open_url(&url);
+        });
+    }
+
     if let Some(hash) = item.hash.clone() {
         menu = menu.action(
             IconType::Folder,
@@ -520,14 +527,27 @@ fn grid_meta(
 ) -> Element {
     let muted = CARD_NAME.with_a(scale_a(alpha, 0.5));
 
-    let source = if item.github_hosted {
+    let source = if let Some(url) = item.github_url.clone() {
+        SourceLink {
+            text: "GitHub".to_string(),
+            on_press: EventHandler::new(move |()| crate::platform::open_url(&url)),
+            alpha,
+        }
+        .into_element()
+    } else if item.github_hosted {
         meta_text("GitHub".to_string(), muted)
     } else if item.is_remote() && navigable {
+        let provider = item.provider;
+        let package_id = item.package_id.clone();
         SourceLink {
-            provider: item.provider,
-            package_id: item.package_id.clone(),
-            package_type,
-            cluster_id,
+            text: provider.to_string(),
+            on_press: EventHandler::new(move |()| {
+                let _ = RouterContext::get().push(Route::BrowserPackage {
+                    cluster_id,
+                    package_type: package_type.to_string(),
+                    package_id: format!("{}:{}", provider as u8, package_id),
+                });
+            }),
             alpha,
         }
         .into_element()
@@ -565,10 +585,8 @@ fn grid_meta(
 
 #[derive(PartialEq)]
 struct SourceLink {
-    provider: ProviderId,
-    package_id: String,
-    package_type: &'static str,
-    cluster_id: i64,
+    text: String,
+    on_press: EventHandler<()>,
     alpha: u8,
 }
 
@@ -585,10 +603,7 @@ impl Component for SourceLink {
             CARD_NAME.with_a(scale_a(self.alpha, 0.68))
         };
 
-        let provider = self.provider;
-        let package_id = self.package_id.clone();
-        let package_type = self.package_type.to_string();
-        let cluster_id = self.cluster_id;
+        let on_press = self.on_press.clone();
 
         rect()
             .cursor(CursorIcon::Pointer)
@@ -601,13 +616,9 @@ impl Component for SourceLink {
             .on_press(move |e: Event<PressEventData>| {
                 e.stop_propagation();
                 pressed.set(false);
-                let _ = RouterContext::get().push(Route::BrowserPackage {
-                    cluster_id,
-                    package_type: package_type.clone(),
-                    package_id: format!("{}:{}", provider as u8, package_id),
-                });
+                on_press.call(());
             })
-            .child(meta_text(provider.to_string(), color))
+            .child(meta_text(self.text.clone(), color))
     }
 }
 
@@ -739,7 +750,16 @@ fn package_info(
                                 .max_width(Size::percent(60.))
                                 .color(CARD_NAME),
                         )
-                        .child(if item.github_hosted {
+                        .child(if let Some(url) = item.github_url.clone() {
+                            rect()
+                                .cursor(CursorIcon::Pointer)
+                                .on_press(move |e: Event<PressEventData>| {
+                                    e.stop_propagation();
+                                    crate::platform::open_url(&url);
+                                })
+                                .child(github_badge())
+                                .into_element()
+                        } else if item.github_hosted {
                             github_badge()
                         } else if remote {
                             provider_badge(item.provider)

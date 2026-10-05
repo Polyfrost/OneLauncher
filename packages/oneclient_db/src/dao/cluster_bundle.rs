@@ -298,3 +298,65 @@ pub async fn set_type_opt_out(
     }
     Ok(())
 }
+
+pub async fn list_bundle_choices(
+    pool: &SqlitePool,
+    cluster_id: i64,
+) -> Result<Vec<(String, bool)>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT bundle_name, accepted
+        FROM cluster_bundle_choices
+        WHERE cluster_id = ?
+        "#,
+        cluster_id
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.bundle_name, r.accepted != 0))
+        .collect())
+}
+
+pub async fn save_bundle_choices(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    choices: &[(String, bool)],
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for (bundle_name, accepted) in choices {
+        sqlx::query!(
+            r#"
+            INSERT OR REPLACE INTO cluster_bundle_choices (cluster_id, bundle_name, accepted)
+            VALUES (?, ?, ?)
+            "#,
+            cluster_id,
+            bundle_name,
+            accepted
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await
+}
+
+pub async fn copy_bundle_choices(
+    pool: &SqlitePool,
+    source_cluster_id: i64,
+    target_cluster_id: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        INSERT OR IGNORE INTO cluster_bundle_choices (cluster_id, bundle_name, accepted)
+        SELECT ?, bundle_name, accepted
+        FROM cluster_bundle_choices
+        WHERE cluster_id = ?
+        "#,
+        target_cluster_id,
+        source_cluster_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}

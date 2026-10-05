@@ -85,14 +85,16 @@ fn navbar_left(show_logo: bool) -> impl IntoElement {
             Size::auto()
         })
         .cross_align(Alignment::Center)
-		.spacing(NAV_LINK_SPACING_PX / 2.)
+        .spacing(NAV_LINK_SPACING_PX / 2.)
         .maybe(!show_logo, |el| {
             el.padding(Gaps::new(0., NAV_LINK_SPACING_PX, 0., 0.))
         })
-		.child(Icon::new(IconType::IconLogo)
+        .child(
+            Icon::new(IconType::IconLogo)
                 .size(COMPACT_LOGO_PX)
-                .into_element())
-		.maybe(show_logo, |rect| rect.child(NavbarLogo.into_element()))
+                .into_element(),
+        )
+        .maybe(show_logo, |rect| rect.child(NavbarLogo.into_element()))
 }
 
 #[derive(PartialEq)]
@@ -134,7 +136,7 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             target: NavTarget::Route(Route::Clusters {}),
             nav_label: "Versions",
         })
-		.child(NavLink {
+        .child(NavLink {
             active: matches!(
                 route,
                 Route::Browser {
@@ -203,7 +205,7 @@ impl Component for NavLink {
         } else if hovering() || focused().is_focused() {
             theme::colors::ghost_overlay_hover()
         } else {
-			Color::TRANSPARENT
+            Color::TRANSPARENT
         };
 
         rect()

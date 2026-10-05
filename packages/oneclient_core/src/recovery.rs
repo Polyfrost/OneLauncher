@@ -236,10 +236,9 @@ async fn adopt_cluster(
     let profile =
         create_profile_from_global(&state.services.db, &global, folder_name, None, None).await?;
 
-    let tags = recorded.as_ref().map_or_else(
-        || "[]".to_string(),
-        |identity| encode_tags(&identity.tags),
-    );
+    let tags = recorded
+        .as_ref()
+        .map_or_else(|| "[]".to_string(), |identity| encode_tags(&identity.tags));
 
     let row = cluster_dao::insert(
         &state.services.db,

@@ -101,7 +101,12 @@ pub fn shell(parts: Shell) -> Element {
         .into_element()
 }
 
-fn header(eyebrow: Option<String>, title: String, subtitle: String, on_close: EventHandler<()>) -> Element {
+fn header(
+    eyebrow: Option<String>,
+    title: String,
+    subtitle: String,
+    on_close: EventHandler<()>,
+) -> Element {
     rect()
         .horizontal()
         .width(Size::fill())

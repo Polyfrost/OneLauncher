@@ -479,7 +479,9 @@ impl Component for PackageManager {
         let shares_content = cluster
             .as_ref()
             .map(|cluster| cluster.shares_content(content_type));
-        let uses_bundles = cluster.as_ref().is_none_or(|cluster| cluster.uses_bundles());
+        let uses_bundles = cluster
+            .as_ref()
+            .is_none_or(|cluster| cluster.uses_bundles());
         let active = use_state(|| 0usize);
 
         let search = use_state(String::new);

@@ -353,6 +353,21 @@ impl MutationCapability for ClusterMutation {
                                 {
                                     tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
                                 }
+                                let choices: Vec<_> = archives
+                                    .iter()
+                                    .filter(|archive| !archive.manifest.enabled)
+                                    .map(|archive| {
+                                        let name = &archive.manifest.name;
+                                        (name.clone(), selected.contains(name))
+                                    })
+                                    .collect();
+                                if let Err(err) = oneclient_content::bundles::set_bundle_choices(
+                                    cluster.id, &choices, content,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
+                                }
                             }
 
                             let session = oneclient_events::GroupedProgressSession::start(

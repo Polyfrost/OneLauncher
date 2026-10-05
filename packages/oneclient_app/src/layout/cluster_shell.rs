@@ -112,10 +112,7 @@ impl Component for ClusterShell {
         let game = use_game_snapshot();
         let launcher = use_launcher();
         let cluster = use_cluster(cluster_id);
-        let syncing = launch_syncing(
-            &launcher,
-            cluster.as_ref().is_none_or(|c| c.uses_bundles()),
-        );
+        let syncing = launch_syncing(&launcher, cluster.as_ref().is_none_or(|c| c.uses_bundles()));
 
         let show_game_log = game.is_active(cluster_id);
         let show_datapacks = cluster

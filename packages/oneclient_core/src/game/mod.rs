@@ -1,7 +1,7 @@
 mod analytics;
 mod error;
 pub mod fabric;
-mod gpu;
+pub mod gpu;
 mod heal;
 mod launch;
 mod log_replay;

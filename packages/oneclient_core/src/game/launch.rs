@@ -382,8 +382,8 @@ async fn start(
 
     let (mut command, wrapper) = base_command(&profile, &java.absolute_path);
 
-    if profile.use_discrete_gpu() {
-        crate::game::gpu::prefer_discrete(&mut command, &java.absolute_path).await;
+    if let Some(gpu) = profile.gpu() {
+        crate::game::gpu::select(&mut command, &java.absolute_path, gpu).await;
     }
 
     apply_env(&mut command, &profile);

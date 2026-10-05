@@ -98,6 +98,11 @@ impl App for OneClientApp {
 }
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    unsafe {
+        gtk_sys::gtk_disable_setlocale();
+    }
+
     let cli = cli::parse();
 
     let mut builder = Builder::new_multi_thread();

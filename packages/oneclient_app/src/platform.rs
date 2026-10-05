@@ -108,6 +108,28 @@ fn has_allowed_scheme(url: &str) -> bool {
         .any(|allowed| scheme.eq_ignore_ascii_case(allowed))
 }
 
+#[cfg(target_os = "linux")]
+fn open_target(target: &str) {
+    use std::process::Stdio;
+
+    let spawned = open::commands(target).into_iter().find_map(|mut command| {
+        command
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .ok()
+    });
+
+    match spawned {
+        Some(mut child) => {
+            std::thread::spawn(move || child.wait());
+        }
+        None => tracing::warn!("failed to open {target}"),
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
 fn open_target(target: &str) {
     if let Err(err) = open::that_detached(target) {
         tracing::warn!("failed to open {target}: {err}");

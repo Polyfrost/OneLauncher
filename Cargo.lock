@@ -4928,6 +4928,7 @@ dependencies = [
  "freya-skia-safe",
  "freya-testing",
  "futures-util",
+ "gtk-sys",
  "image",
  "libloading 0.8.9",
  "mimalloc",

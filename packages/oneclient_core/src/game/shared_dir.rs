@@ -631,7 +631,7 @@ pub async fn sync_cluster_mods(state: &LauncherState, cluster_id: i64) -> bool {
         .map(|(name, _)| name.as_str())
         .collect();
 
-    import_added(&state.services, &cluster, &dir, &added).await
+    import_added(&state.services, &cluster, &dir, &added, true).await
 }
 
 async fn launch_uses_cluster_mods(state: &LauncherState, cluster: &Cluster) -> bool {
@@ -653,10 +653,18 @@ async fn import_added(
     cluster: &Cluster,
     dir: &Path,
     added: &[&str],
+    discard_stale: bool,
 ) -> bool {
     let mut changed = false;
     for name in added {
-        let Some(Ok(row)) = adopt_file(services, cluster, &dir.join(name), ContentType::Mod).await
+        let Some(Ok(row)) = adopt_file(
+            services,
+            cluster,
+            &dir.join(name),
+            ContentType::Mod,
+            discard_stale,
+        )
+        .await
         else {
             continue;
         };
@@ -769,7 +777,7 @@ async fn sync_mods_folder(services: &LauncherServices, cluster: &Cluster) -> boo
         added.push(name.as_str());
     }
 
-    changed |= import_added(services, cluster, &dir, &added).await;
+    changed |= import_added(services, cluster, &dir, &added, false).await;
 
     let Some(linked) = linked_mods(cluster, &ctx).await else {
         return changed;
@@ -1834,7 +1842,7 @@ async fn import_from_dir(
             continue;
         }
 
-        match adopt_file(services, cluster, &path, content_type).await {
+        match adopt_file(services, cluster, &path, content_type, true).await {
             Some(Ok(row)) => {
                 tracing::debug!(file = name, "registered manually-added content");
                 if discard_originals {
@@ -1856,8 +1864,9 @@ async fn adopt_file(
     cluster: &Cluster,
     path: &Path,
     content_type: ContentType,
+    discard_stale: bool,
 ) -> Option<oneclient_content::ContentResult<oneclient_db::models::ArtifactRow>> {
-    if !cluster.is_isolated() && is_stale_launcher_content(services, path).await {
+    if discard_stale && !cluster.is_isolated() && is_stale_launcher_content(services, path).await {
         tracing::debug!(
             file = %path.display(),
             "discarding stale launcher content; the cache still holds it"

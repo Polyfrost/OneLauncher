@@ -7,6 +7,16 @@ use crate::components::{Button, Icon, IconType};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
+const BUTTON_NAME_CHARS: usize = 22;
+
+fn short_name(name: &str) -> String {
+    if name.chars().count() <= BUTTON_NAME_CHARS {
+        return name.to_string();
+    }
+    let kept: String = name.chars().take(BUTTON_NAME_CHARS - 1).collect();
+    format!("{}\u{2026}", kept.trim_end())
+}
+
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
     latest_version: Option<String>,
@@ -116,18 +126,28 @@ pub(super) fn sidebar(
                 .primary()
                 .width(Size::fill())
                 .enabled(can_install)
-                .on_press(move |_| {
-                    if let Some(version_id) = latest_version.clone() {
-                        installer.install_latest(project_id.clone(), version_id);
+                .on_press({
+                    let installer = installer.clone();
+                    move |_| {
+                        if let Some(version_id) = latest_version.clone() {
+                            installer.install_latest(project_id.clone(), version_id);
+                        }
                     }
                 })
                 .child(Icon::new(IconType::Download01).size(14.))
-                .text(if installing {
-                    "Installing..."
+                .text(if installing && installer.add_to_cluster {
+                    "Adding...".to_string()
+                } else if installing {
+                    "Installing...".to_string()
+                } else if installer.add_to_cluster {
+                    match &installer.cluster_name {
+                        Some(name) => format!("Add to {}", short_name(name)),
+                        None => "Add to this instance".to_string(),
+                    }
                 } else if have_latest {
-                    "Latest installed"
+                    "Latest installed".to_string()
                 } else {
-                    "Install latest"
+                    "Install latest".to_string()
                 })
                 .into_element(),
         })

@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use freya::prelude::*;
 use oneclient_content::modpacks::ModpackSummary;
 use oneclient_content::packages::ResolvedAlternative;
-use oneclient_core::clusters::{FlaggedModpack, FlaggedPackMod};
+use oneclient_core::clusters::{ExistingPack, FlaggedModpack, FlaggedPackMod};
 
 use super::flagged_install_popup::explanation_panel;
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, remote_icon};
 use crate::hooks::{use_cached_image, use_dispatch, use_notifications_snapshot};
-use crate::notifications::{FlaggedChoice, ModpackConfirm, ModpackImportView};
+use crate::notifications::{ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
@@ -61,6 +61,7 @@ impl Component for ConfirmDialog {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let choices: Choices = use_state(HashMap::new);
+        let existing = use_state(ExistingPack::default);
         let header_h = use_state(|| 0f32);
         let footer_h = use_state(|| 0f32);
         let content_h = use_state(|| 0f32);
@@ -79,6 +80,7 @@ impl Component for ConfirmDialog {
         dialog(
             &self.confirm,
             choices,
+            existing,
             dispatch,
             Measured {
                 header_h,
@@ -216,6 +218,7 @@ fn intro(confirm: &ModpackConfirm) -> (String, String) {
 fn dialog(
     confirm: &ModpackConfirm,
     choices: Choices,
+    existing: State<ExistingPack>,
     dispatch: crate::Actions,
     measured: Measured,
 ) -> impl IntoElement {
@@ -249,6 +252,29 @@ fn dialog(
     let cancel = dispatch.clone();
     let add = dispatch;
     let importing = confirm.import.is_some();
+    let existing_section = confirm.import.as_ref().and_then(|import| {
+        import
+            .existing
+            .as_ref()
+            .map(|pack| existing_section(pack, existing).into_element())
+    });
+    let import_notes: Vec<Element> = confirm
+        .import
+        .iter()
+        .flat_map(|import| import.notes.iter())
+        .map(|(text, warn)| {
+            label()
+                .text(text.clone())
+                .font_size(12.)
+                .max_lines(4)
+                .color(if *warn {
+                    colors::code_warn()
+                } else {
+                    colors::fg_secondary()
+                })
+                .into_element()
+        })
+        .collect();
     let flagged_section = confirm
         .import
         .as_ref()
@@ -260,7 +286,7 @@ fn dialog(
         .map(|flagged| flagged_pack_section(&confirm.pack_name, flagged).into_element());
     let add_button = Button::new().on_press(move |_| {
         if importing {
-            add.confirm_modpack_import(choices.read().clone());
+            add.confirm_modpack_import(choices.read().clone(), *existing.read());
         } else {
             add.confirm_modpack();
         }
@@ -351,6 +377,8 @@ fn dialog(
                                         .color(color)
                                         .into_element()
                                 }))
+                                .children(import_notes)
+                                .maybe_child(existing_section)
                                 .maybe_child(flagged_section),
                         ),
                 )
@@ -370,6 +398,50 @@ fn dialog(
                         )
                         .child(add_button),
                 ),
+        )
+}
+
+fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> impl IntoElement {
+    let current = *existing.read();
+    let version = if pack.version.trim().is_empty() {
+        String::new()
+    } else {
+        format!(" (version {})", pack.version)
+    };
+    let mut replace = existing;
+    let mut keep_both = existing;
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(8.)
+        .padding(Gaps::new_all(12.))
+        .corner_radius(CornerRadius::new_all(10.))
+        .background(colors::component_bg())
+        .border(border_all_color(1., colors::component_border()))
+        .child(
+            label()
+                .text(format!(
+                    "This instance already has {}{version}. If it is the same pack, replace it so its old mods are removed. If it is a different pack, keep both.",
+                    pack.name
+                ))
+                .font_size(12.)
+                .max_lines(4)
+                .color(colors::fg_primary()),
+        )
+        .child(
+            rect()
+                .horizontal()
+                .spacing(8.)
+                .child(choice_button(
+                    "Replace",
+                    current == ExistingPack::Replace,
+                    move || replace.set(ExistingPack::Replace),
+                ))
+                .child(choice_button(
+                    "Keep both",
+                    current == ExistingPack::KeepBoth,
+                    move || keep_both.set(ExistingPack::KeepBoth),
+                )),
         )
 }
 

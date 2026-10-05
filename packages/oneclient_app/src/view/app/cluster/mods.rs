@@ -2,8 +2,9 @@ use freya::prelude::*;
 use oneclient_content::packages::ContentType;
 
 use crate::hooks::{
-    bundle_overrides_map, bundles_with_status_items, cluster_content_items, stale_hashes,
-    use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_package_updates,
+    bundle_overrides_map, bundles_with_status_items, cluster_content_items, modpack_sources_map,
+    stale_hashes, use_bundle_overrides, use_bundles_with_status, use_cluster_content,
+    use_modpack_sources, use_package_updates,
 };
 use crate::layout::cluster_content;
 
@@ -24,6 +25,7 @@ impl Component for ClusterMods {
         let bundles = use_bundles_with_status(self.cluster_id);
         let overrides = use_bundle_overrides(self.cluster_id);
         let updates = use_package_updates(self.cluster_id);
+        let sources = use_modpack_sources(self.cluster_id);
         let bundle_items = bundles_with_status_items(&bundles);
         let content_items = cluster_content_items(&content);
         let meta = use_content_meta(&content_items, &bundle_items, ContentType::Mod);
@@ -33,7 +35,7 @@ impl Component for ClusterMods {
         };
 
         let all_categories = bundle_categories(&bundle_items);
-        let items = bundle_packages(
+        let mut items = bundle_packages(
             content_items,
             &bundle_items,
             &bundle_overrides_map(&overrides),
@@ -41,6 +43,10 @@ impl Component for ClusterMods {
             &stale_hashes(&updates),
             ContentType::Mod,
         );
+        let sources = modpack_sources_map(&sources);
+        for item in &mut items {
+            item.modpack = item.hash.as_ref().and_then(|hash| sources.get(hash).cloned());
+        }
 
         cluster_content()
             .child(

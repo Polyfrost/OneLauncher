@@ -131,6 +131,7 @@ fn entry_from_item(
         update_available: false,
         // Offered, not installed, so there is no recency badge to show
         seen_status: SeenStatus::default(),
+        modpack: None,
     }
 }
 

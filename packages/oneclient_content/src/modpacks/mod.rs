@@ -1,5 +1,6 @@
 mod checker;
 mod curseforge;
+mod duplicates;
 mod install;
 mod mrpack;
 mod remove;
@@ -24,11 +25,14 @@ pub use install::{
     ModpackInstallReport, find_blocked_downloads, import_blocked_files, install_modpack,
     store_modpack_archive,
 };
-pub use remove::remove_modpack_files;
+pub use remove::{
+    remove_modpack_files, remove_tracked_packages, restore_disabled, retrack_file,
+};
 pub use screen::{FlaggedPackFile, bundled_mods, screen_modpack};
 
 pub const MODPACK_BUNDLE_NAME: &str = "modpack";
 const IMPORTED_PREFIX: &str = "modpack:";
+const FILE_BUNDLE_PREFIX: &str = "modpack:file:";
 
 #[must_use]
 pub fn imported_bundle_name(release: Option<(ProviderId, &str)>, pack_name: &str) -> String {
@@ -36,13 +40,76 @@ pub fn imported_bundle_name(release: Option<(ProviderId, &str)>, pack_name: &str
         Some((provider, project_id)) => {
             format!("{IMPORTED_PREFIX}{}:{project_id}", provider.dir_name())
         }
-        None => format!("{IMPORTED_PREFIX}file:{}", slug(pack_name)),
+        None => format!("{FILE_BUNDLE_PREFIX}{}", slug(pack_name)),
     }
 }
 
 #[must_use]
 pub fn is_imported_bundle(bundle_name: &str) -> bool {
     bundle_name.starts_with(IMPORTED_PREFIX)
+}
+
+#[must_use]
+pub fn is_file_bundle(bundle_name: &str) -> bool {
+    bundle_name.starts_with(FILE_BUNDLE_PREFIX)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WantedFile {
+    pub sha1: String,
+    pub package_id: String,
+    pub version_id: String,
+}
+
+#[must_use]
+pub fn shares_game_dir(cluster: &oneclient_db::models::ClusterRow) -> bool {
+    !cluster.is_isolated() && !oneclient_common::paths::cluster_uses_dedicated_dir(&cluster.folder_name)
+}
+
+#[must_use]
+pub fn shared_lock_key(bundle_name: &str, cluster_id: i64) -> String {
+    format!("{bundle_name}@{cluster_id}")
+}
+
+pub(crate) fn lock_key(cluster: &oneclient_db::models::ClusterRow, bundle_name: &str) -> String {
+    if shares_game_dir(cluster) {
+        shared_lock_key(bundle_name, cluster.id)
+    } else {
+        bundle_name.to_string()
+    }
+}
+
+#[must_use]
+pub fn manifest_wanted(manifest: &ModpackManifest) -> Vec<WantedFile> {
+    let mut wanted: Vec<WantedFile> = manifest
+        .contents
+        .files
+        .iter()
+        .map(|file| WantedFile {
+            sha1: file_sha1(file).to_string(),
+            package_id: file.kind.package_id(),
+            version_id: file.kind.bundle_version_id(),
+        })
+        .collect();
+    wanted.extend(manifest.contents.blocked.iter().map(|file| WantedFile {
+        sha1: file.sha1.clone(),
+        package_id: file.project_id.clone(),
+        version_id: file.version_id.clone(),
+    }));
+    wanted
+}
+
+#[must_use]
+pub fn separate_bundle_name(bundle_name: &str, taken: &HashSet<&str>) -> String {
+    (2..)
+        .map(|n| format!("{bundle_name}-{n}"))
+        .find(|candidate| !taken.contains(candidate.as_str()))
+        .unwrap_or_else(|| bundle_name.to_string())
+}
+
+#[must_use]
+pub fn is_newer_version(candidate: &str, current: &str) -> bool {
+    crate::bundles::compare_version_like(candidate, current).is_gt()
 }
 
 fn slug(text: &str) -> String {

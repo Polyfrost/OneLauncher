@@ -9,7 +9,8 @@ use oneclient_content::modpacks::{
 };
 use oneclient_content::packages::ResolvedAlternative;
 use oneclient_core::clusters::{
-    ModpackCluster, ModpackSource, PreparedImport, PreparedModpack, create_modpack_instance,
+    ExistingPack, LoaderPlan, ModpackCluster, ModpackSource, PreparedImport, PreparedModpack,
+    create_modpack_instance,
     import_modpack_into_cluster, install_modpack_instance, prepare_modpack, prepare_modpack_import,
     remove_imported_modpack, repair_modpack_cluster, update_modpack_cluster,
 };
@@ -18,14 +19,16 @@ use oneclient_events::GroupedProgressSession;
 
 use super::Actions;
 use crate::launcher::{self, off_ui};
-use crate::notifications::{BlockedDownloads, FlaggedChoice, ModpackConfirm, ModpackImportView};
+use crate::notifications::{
+    BlockedDownloads, ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView,
+};
 use crate::state::AppChannel;
 
 const MAX_LISTED: usize = 3;
 
 enum JobSlot {
     Idle,
-    Preparing,
+    Preparing(Option<ClusterId>),
     AwaitingConfirm(Box<PreparedModpack>),
     AwaitingImport(Box<PreparedImport>),
     Running(ClusterId),
@@ -40,11 +43,15 @@ fn with_slot<R>(change: impl FnOnce(&mut JobSlot) -> R) -> R {
 
 #[must_use]
 pub fn modpack_job_running(cluster_id: ClusterId) -> bool {
-    with_slot(|slot| matches!(slot, JobSlot::Running(id) if *id == cluster_id))
+    with_slot(|slot| match slot {
+        JobSlot::Running(id) | JobSlot::Preparing(Some(id)) => *id == cluster_id,
+        JobSlot::AwaitingImport(import) => import.cluster_id == cluster_id,
+        _ => false,
+    })
 }
 
 fn take_prepared() -> Option<PreparedModpack> {
-    with_slot(|slot| match std::mem::replace(slot, JobSlot::Preparing) {
+    with_slot(|slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
         JobSlot::AwaitingConfirm(prepared) => Some(*prepared),
         other => {
             *slot = other;
@@ -54,8 +61,11 @@ fn take_prepared() -> Option<PreparedModpack> {
 }
 
 fn take_prepared_import() -> Option<PreparedImport> {
-    with_slot(|slot| match std::mem::replace(slot, JobSlot::Preparing) {
-        JobSlot::AwaitingImport(prepared) => Some(*prepared),
+    with_slot(|slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
+        JobSlot::AwaitingImport(prepared) => {
+            *slot = JobSlot::Preparing(Some(prepared.cluster_id));
+            Some(*prepared)
+        }
         other => {
             *slot = other;
             None
@@ -67,6 +77,7 @@ enum ModpackJob {
     Install(Box<PreparedModpack>),
     Import {
         import: Box<PreparedImport>,
+        existing: ExistingPack,
         skipped: HashSet<String>,
         alternatives: Vec<ResolvedAlternative>,
     },
@@ -164,15 +175,54 @@ fn import_view(import: &PreparedImport) -> ModpackConfirm {
     let mut view = confirm_view(&import.prepared);
     view.pack_name = import.pack_name();
     view.instance_name = import.cluster_name.clone();
+    let existing = import.existing().map(|pack| ExistingPackView {
+        name: pack.name.clone(),
+        version: pack.version.clone(),
+    });
     view.import = Some(ModpackImportView {
         cluster_name: import.cluster_name.clone(),
         previous_version: import
             .previous
             .as_ref()
+            .filter(|_| existing.is_none())
             .map(|previous| previous.version.clone()),
+        existing,
+        notes: import_notes(import),
         flagged: import.flagged.clone(),
     });
     view
+}
+
+fn import_notes(import: &PreparedImport) -> Vec<(String, bool)> {
+    let loader = import.prepared.manifest.loader;
+    let mut notes = Vec::new();
+    match &import.loader {
+        LoaderPlan::Raise {
+            from: Some(from),
+            to,
+        } => notes.push((
+            format!("{loader} will be updated from {from} to {to}, the version this pack needs."),
+            false,
+        )),
+        LoaderPlan::Behind { current, needed } => notes.push((
+            format!(
+                "This pack was made for {loader} {needed}, but {} uses {current}, which OneClient manages. Some of its mods may not load.",
+                import.cluster_name
+            ),
+            true,
+        )),
+        LoaderPlan::Raise { from: None, .. } | LoaderPlan::Keep => {}
+    }
+    if import.shared_game_dir {
+        notes.push((
+            format!(
+                "{} shares its game folder with your other OneClient instances, so the pack's config files apply to them too.",
+                import.cluster_name
+            ),
+            false,
+        ));
+    }
+    notes
 }
 
 fn split_choices(
@@ -206,10 +256,10 @@ fn split_choices(
 }
 
 impl Actions {
-    fn claim_modpack_job(&self) -> bool {
+    fn claim_modpack_job(&self, target: Option<ClusterId>) -> bool {
         let claimed = with_slot(|slot| match slot {
             JobSlot::Idle => {
-                *slot = JobSlot::Preparing;
+                *slot = JobSlot::Preparing(target);
                 true
             }
             _ => false,
@@ -248,7 +298,7 @@ impl Actions {
     }
 
     pub fn install_modpack(&self, source: ModpackSource) {
-        if !self.claim_modpack_job() {
+        if !self.claim_modpack_job(None) {
             return;
         }
         let from_browser = match &source {
@@ -317,7 +367,7 @@ impl Actions {
     }
 
     pub fn import_modpack(&self, cluster_id: ClusterId, source: ModpackSource) {
-        if self.refuse_while_running(cluster_id) || !self.claim_modpack_job() {
+        if self.refuse_while_running(cluster_id) || !self.claim_modpack_job(Some(cluster_id)) {
             return;
         }
         if let ModpackSource::Provider {
@@ -371,13 +421,28 @@ impl Actions {
         });
     }
 
-    pub fn confirm_modpack_import(&self, choices: HashMap<String, FlaggedChoice>) {
+    pub fn confirm_modpack_import(
+        &self,
+        choices: HashMap<String, FlaggedChoice>,
+        existing: ExistingPack,
+    ) {
+        let pending = with_slot(|slot| match slot {
+            JobSlot::AwaitingImport(import) => Some(import.cluster_id),
+            _ => None,
+        });
+        if let Some(cluster_id) = pending
+            && self.refuse_while_running(cluster_id)
+        {
+            return;
+        }
+
         self.with_engine(|app| app.notifications.close_modpack_confirm());
         match take_prepared_import() {
             Some(import) => {
                 let (skipped, alternatives) = split_choices(&import, &choices);
                 self.run_modpack_job(ModpackJob::Import {
                     import: Box::new(import),
+                    existing,
                     skipped,
                     alternatives,
                 });
@@ -392,7 +457,7 @@ impl Actions {
         bundle_name: String,
         name: String,
     ) {
-        if self.refuse_while_running(cluster_id) || !self.claim_modpack_job() {
+        if self.refuse_while_running(cluster_id) || !self.claim_modpack_job(Some(cluster_id)) {
             return;
         }
         self.lock_modpack_cluster(cluster_id);
@@ -447,7 +512,7 @@ impl Actions {
     }
 
     pub fn update_modpack(&self, cluster_id: ClusterId, version_id: String) {
-        if self.refuse_while_running(cluster_id) || !self.claim_modpack_job() {
+        if self.refuse_while_running(cluster_id) || !self.claim_modpack_job(Some(cluster_id)) {
             return;
         }
         self.run_modpack_job(ModpackJob::Update {
@@ -457,7 +522,7 @@ impl Actions {
     }
 
     pub fn repair_modpack(&self, cluster_id: ClusterId) {
-        if self.refuse_while_running(cluster_id) || !self.claim_modpack_job() {
+        if self.refuse_while_running(cluster_id) || !self.claim_modpack_job(Some(cluster_id)) {
             return;
         }
         self.run_modpack_job(ModpackJob::Repair { cluster_id });
@@ -527,10 +592,19 @@ impl Actions {
                                 .await
                         }
                         ModpackJob::Import {
-                            import, skipped, ..
+                            import,
+                            existing,
+                            skipped,
+                            ..
                         } => {
-                            import_modpack_into_cluster(&state, import, skipped, Some(&session))
-                                .await
+                            import_modpack_into_cluster(
+                                &state,
+                                import,
+                                skipped,
+                                *existing,
+                                Some(&session),
+                            )
+                            .await
                         }
                         ModpackJob::Update { version_id, .. } => {
                             update_modpack_cluster(&state, cluster_id, version_id, Some(&session))
@@ -554,7 +628,9 @@ impl Actions {
 
                     let opens_page = matches!(job, ModpackJob::Install(_));
                     let bundle_name = match &job {
-                        ModpackJob::Import { import, .. } => import.bundle_name.clone(),
+                        ModpackJob::Import {
+                            import, existing, ..
+                        } => import.target_bundle_name(*existing).to_string(),
                         _ => MODPACK_BUNDLE_NAME.to_string(),
                     };
                     if !report.blocked.is_empty() {
@@ -591,9 +667,24 @@ impl Actions {
                                 ),
                             }
                         }
-                        ModpackJob::Import { .. } => format!(
-                            "{err} Files added before the error were kept. Add the modpack again to finish."
-                        ),
+                        ModpackJob::Import { alternatives, .. } => {
+                            let picked: Vec<String> = alternatives
+                                .iter()
+                                .filter(|alternative| alternative.version_id.is_some())
+                                .map(|alternative| alternative.name.clone())
+                                .collect();
+                            let replacements = if picked.is_empty() {
+                                String::new()
+                            } else {
+                                format!(
+                                    " The replacements you picked were not installed: {}.",
+                                    listed(picked.into_iter())
+                                )
+                            };
+                            format!(
+                                "{err} Files added before the error were kept. Add the modpack again to finish, or remove it under Added Modpacks in the instance's settings.{replacements}"
+                            )
+                        }
                         _ => format!(
                             "{err} Use Reinstall Missing Files in the instance's settings to try again."
                         ),
@@ -727,10 +818,18 @@ fn notify_outcome(
         1 => " 1 file already in the instance was kept instead of the pack's copy.".to_string(),
         n => format!(" {n} files already in the instance were kept instead of the pack's copies."),
     };
+    let duplicates = if report.disabled_duplicates.is_empty() {
+        String::new()
+    } else {
+        format!(
+            " Turned off older copies of {} because a newer version is installed.",
+            listed(report.disabled_duplicates.iter().cloned())
+        )
+    };
     if report.failed.is_empty() {
         actions
             .notify(texts.done)
-            .body(format!("{}{kept}", job.done_body(cluster_name)))
+            .body(format!("{}{kept}{duplicates}", job.done_body(cluster_name)))
             .send();
         return;
     }

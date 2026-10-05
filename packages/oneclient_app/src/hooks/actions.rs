@@ -993,7 +993,7 @@ impl Actions {
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
         if modpack_job_running(cluster_id) {
             self.notify("The modpack is still being set up")
-                .body("Wait for it to finish installing, then press Play again.")
+                .body("Wait for the modpack to finish, or close its dialog, then press Play again.")
                 .send();
             return;
         }

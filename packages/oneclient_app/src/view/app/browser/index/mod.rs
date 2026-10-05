@@ -163,9 +163,10 @@ impl Component for BrowserBody {
         let cluster_id = self.cluster_id;
         let package_type = self.package_type.clone();
         let content_type = content_type_for_slug(&package_type);
+        let cluster_modpacks = content_type == ContentType::Modpack && !self.pick_cluster;
 
         let store = use_browser_state_store();
-        let state_key = if content_type == ContentType::Modpack {
+        let state_key = if content_type == ContentType::Modpack && !cluster_modpacks {
             package_type.clone()
         } else {
             format!("{cluster_id}:{package_type}")
@@ -207,9 +208,12 @@ impl Component for BrowserBody {
         let cats = selected_categories.read().clone();
 
         let targets_cluster = content_type != ContentType::Modpack;
-        let (game_versions, loaders) = match (compat && targets_cluster, &cluster) {
+        let filters_cluster = compat && (targets_cluster || cluster_modpacks);
+        let (game_versions, loaders) = match (filters_cluster, &cluster) {
             (true, Some(c)) => {
-                let loaders = if content_type == ContentType::Mod {
+                let loaders = if content_type == ContentType::Mod
+                    || (cluster_modpacks && c.mc_loader.is_modded())
+                {
                     vec![c.mc_loader]
                 } else {
                     Vec::new()
@@ -309,11 +313,26 @@ impl Component for BrowserBody {
                         packages.chunks(cols).map(|c| c.to_vec()).collect();
 
                     sa.lazy(rows.len(), CARD_H, GRID_SPACING, move |i| {
-                        grid_row(rows[i].clone(), cluster_id, &pkg, &installed, cols).into_element()
+                        grid_row(
+                            rows[i].clone(),
+                            cluster_id,
+                            &pkg,
+                            &installed,
+                            cols,
+                            cluster_modpacks,
+                        )
+                        .into_element()
                     })
                 }
                 ViewLayout::List => sa.lazy(packages.len(), LIST_ROW_H, LIST_SPACING, move |i| {
-                    list_row(packages[i].clone(), cluster_id, &pkg, &installed).into_element()
+                    list_row(
+                        packages[i].clone(),
+                        cluster_id,
+                        &pkg,
+                        &installed,
+                        cluster_modpacks,
+                    )
+                    .into_element()
                 }),
             }
         } else if pending {
@@ -344,8 +363,15 @@ impl Component for BrowserBody {
                 &package_type,
                 cluster
                     .as_ref()
-                    .filter(|_| targets_cluster)
-                    .map(|c| c.name.clone()),
+                    .filter(|_| targets_cluster || cluster_modpacks)
+                    .map(|c| {
+                        let verb = if cluster_modpacks {
+                            "Adding to"
+                        } else {
+                            "Installing to"
+                        };
+                        (verb, c.name.clone())
+                    }),
                 (self.pick_cluster && targets_cluster).then(|| ClusterPicker {
                     cluster_id,
                     package_type: package_type.clone(),
@@ -422,7 +448,7 @@ impl Component for BrowserBody {
 
 fn header(
     package_type: &str,
-    cluster_name: Option<String>,
+    target: Option<(&'static str, String)>,
     picker: Option<ClusterPicker>,
     provider: State<ProviderId>,
     query: State<String>,
@@ -462,7 +488,7 @@ fn header(
                 .maybe_child(match picker {
                     Some(picker) => Some(picker.into_element()),
                     // Without the picker the cluster is fixed so the same pill is read-only
-                    None => cluster_name.map(|name| target_pill(&name).into_element()),
+                    None => target.map(|(verb, name)| target_pill(verb, &name).into_element()),
                 }),
         )
         .child(rect().width(Size::flex(1.0)))
@@ -493,7 +519,7 @@ fn header(
 }
 
 /// Reads like the cluster dropdown next to it so a fixed target doesn't look like a missing control
-fn target_pill(name: &str) -> impl IntoElement {
+fn target_pill(verb: &'static str, name: &str) -> impl IntoElement {
     rect()
         .horizontal()
         .cross_align(Alignment::Center)
@@ -504,7 +530,7 @@ fn target_pill(name: &str) -> impl IntoElement {
         .background(colors::ghost_overlay())
         .child(
             label()
-                .text("Installing to")
+                .text(verb)
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )

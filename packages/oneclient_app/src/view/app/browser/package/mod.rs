@@ -21,7 +21,8 @@ use crate::ui::border_all_color;
 use super::{
     EnableButton, EnableVariant, Installed, InstalledVersion, ModpackInstancePrompt,
     ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt, activity_badge,
-    installed_badge, installed_map, instance_choices, minecraft_choices, preferred_version,
+    cluster_version, cluster_versions, installed_badge, installed_map, instance_choices,
+    minecraft_choices, preferred_version,
 };
 use crate::utils::abbreviate_number;
 
@@ -45,6 +46,8 @@ struct Installer {
     modpack: bool,
     modpack_prompt: Option<State<bool>>,
     import_prompt: Option<State<bool>>,
+    add_to_cluster: bool,
+    cluster_name: Option<String>,
 }
 
 impl Installer {
@@ -56,6 +59,17 @@ impl Installer {
     }
 
     fn install(&self, project_id: String, version_id: String) {
+        if self.add_to_cluster {
+            self.dispatch.import_modpack(
+                self.cluster_id,
+                ModpackSource::Provider {
+                    provider: self.provider,
+                    project_id,
+                    version_id,
+                },
+            );
+            return;
+        }
         if self.modpack {
             self.dispatch.install_modpack(ModpackSource::Provider {
                 provider: self.provider,
@@ -146,6 +160,7 @@ pub struct BrowserPackage {
     pub cluster_id: i64,
     pub package_type: String,
     pub package_id: String,
+    pub add_to_cluster: bool,
 }
 
 impl Component for BrowserPackage {
@@ -164,6 +179,7 @@ impl Component for BrowserPackage {
         let import_prompt = use_state(|| false);
         let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
         let is_datapack = content_type == ContentType::DataPack;
+        let add_to_cluster = self.add_to_cluster && content_type == ContentType::Modpack;
         let mut installer = Installer {
             dispatch: dispatch.clone(),
             cluster_id,
@@ -171,10 +187,14 @@ impl Component for BrowserPackage {
             world_prompt: is_datapack.then_some(world_prompt),
             modpack: content_type == ContentType::Modpack,
             modpack_prompt: None,
-            import_prompt: (content_type == ContentType::Modpack).then_some(import_prompt),
+            import_prompt: (content_type == ContentType::Modpack && !add_to_cluster)
+                .then_some(import_prompt),
+            add_to_cluster,
+            cluster_name: None,
         };
 
         let cluster = use_cluster(cluster_id);
+        installer.cluster_name = cluster.as_ref().map(|c| c.name.clone());
         let compat = *compatible_only.read();
         let narrows = content_type != ContentType::Modpack;
         let (game_version, loader) = match (compat && narrows, &cluster) {
@@ -214,6 +234,10 @@ impl Component for BrowserPackage {
             0,
             ALL_VERSIONS,
         ));
+        let all_versions = match (add_to_cluster, &cluster) {
+            (true, Some(c)) => cluster_versions(&all_versions, c),
+            _ => all_versions,
+        };
 
         let (installing, waiting) = use_installs_snapshot().package_busy(
             content_type == ContentType::Modpack,
@@ -272,10 +296,17 @@ impl Component for BrowserPackage {
                 .map(|(id, meta)| (id, meta.name))
                 .collect();
         let latest_source = if is_modpack { &all_versions } else { &versions };
-        let latest_version =
-            preferred_version(latest_source, content_type).map(|v| v.version_id.clone());
+        let latest_version = if add_to_cluster {
+            cluster
+                .as_ref()
+                .and_then(|c| cluster_version(latest_source, c))
+        } else {
+            preferred_version(latest_source, content_type)
+        }
+        .map(|v| v.version_id.clone());
         let choices = minecraft_choices(&all_versions);
-        installer.modpack_prompt = (choices.len() > 1).then_some(modpack_prompt);
+        installer.modpack_prompt =
+            (choices.len() > 1 && !add_to_cluster).then_some(modpack_prompt);
 
         let gallery = project
             .as_ref()

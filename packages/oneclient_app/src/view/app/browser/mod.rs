@@ -7,7 +7,8 @@ pub(crate) use index::{browsable_type, encode_package_id};
 mod modpack_prompt;
 mod world_prompt;
 use modpack_prompt::{
-    ModpackInstancePrompt, ModpackVersionPrompt, instance_choices, minecraft_choices,
+    ModpackInstancePrompt, ModpackVersionPrompt, cluster_version, cluster_versions,
+    instance_choices, minecraft_choices,
 };
 use world_prompt::WorldInstallPrompt;
 

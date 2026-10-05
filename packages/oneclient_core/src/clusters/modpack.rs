@@ -271,8 +271,17 @@ pub async fn update_modpack_cluster(
     )
     .await?;
 
+    let keeps_newer_loader = match (&manifest.loader_version, &cluster.mc_loader_version) {
+        (Some(version), Some(current)) => {
+            modpacks::is_newer_version(current, version)
+                && super::modpack_import::has_imported_packs(&cluster).await
+        }
+        _ => false,
+    };
     let loader_version = match &manifest.loader_version {
-        Some(version) if cluster.mc_loader_version.as_ref() != Some(version) => {
+        Some(version)
+            if cluster.mc_loader_version.as_ref() != Some(version) && !keeps_newer_loader =>
+        {
             Patch::Set(version.clone())
         }
         _ => Patch::Unchanged,

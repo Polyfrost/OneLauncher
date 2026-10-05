@@ -14,7 +14,8 @@ pub use modpack::{
     install_modpack_instance, prepare_modpack, repair_modpack_cluster, update_modpack_cluster,
 };
 pub use modpack_import::{
-    FlaggedPackMod, ImportedModpack, PreparedImport, import_modpack_into_cluster,
+    ExistingPack, FlaggedPackMod, ImportedModpack, LoaderPlan, PreparedImport,
+    import_modpack_into_cluster, modpack_file_sources,
     list_imported_modpacks, prepare_modpack_import, remove_imported_modpack,
 };
 pub use prepare::{

@@ -95,7 +95,15 @@ pub enum FlaggedChoice {
 pub struct ModpackImportView {
     pub cluster_name: String,
     pub previous_version: Option<String>,
+    pub existing: Option<ExistingPackView>,
+    pub notes: Vec<(String, bool)>,
     pub flagged: Vec<FlaggedPackMod>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExistingPackView {
+    pub name: String,
+    pub version: String,
 }
 
 #[derive(Clone, Debug, PartialEq)]

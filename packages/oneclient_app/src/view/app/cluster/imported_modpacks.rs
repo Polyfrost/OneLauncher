@@ -1,14 +1,17 @@
 use freya::prelude::*;
+use freya::router::RouterContext;
 use oneclient_core::clusters::{ImportedModpack, ModpackSource, list_imported_modpacks};
 
 use super::folder_list::dialog;
 use crate::components::{Button, Icon, IconType, remote_icon};
 use crate::hooks::{use_cached_image, use_dispatch, use_installs_snapshot};
 use crate::launcher::{self, off_ui};
+use crate::routes::Route;
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
 
 const MODPACK_EXTENSIONS: [&str; 2] = ["mrpack", "zip"];
+const MODPACK_BROWSE_TYPE: &str = "modpack";
 const PACK_ICON: f32 = 32.;
 
 fn load_packs(cluster_id: i64, mut packs: State<Vec<ImportedModpack>>) {
@@ -38,6 +41,14 @@ fn pick_modpack(cluster_id: i64, dispatch: crate::Actions) {
     });
 }
 
+fn browse_modpacks(cluster_id: i64) {
+    let _ = RouterContext::get().push(Route::Browser {
+        cluster_id,
+        package_type: MODPACK_BROWSE_TYPE.to_string(),
+        pick_cluster: false,
+    });
+}
+
 #[derive(PartialEq)]
 pub struct ImportedModpacksSection {
     pub cluster_id: i64,
@@ -52,7 +63,11 @@ impl Component for ImportedModpacksSection {
         let pending_remove = use_state(|| None::<ImportedModpack>);
         let busy = installs.modpack_busy;
 
-        use_hook(move || load_packs(cluster_id, packs));
+        use_side_effect_with_deps(&cluster_id, move |cluster_id| {
+            let mut pending = pending_remove;
+            pending.set(None);
+            load_packs(*cluster_id, packs);
+        });
 
         let mut was_busy = use_state(|| busy);
         if *was_busy.peek() != busy {
@@ -71,6 +86,18 @@ impl Component for ImportedModpacksSection {
                 el.on_press(move |_| pick_modpack(cluster_id, import.clone()))
             })
             .text(if busy { "Working..." } else { "Choose file" });
+        let add_buttons = rect()
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(8.)
+            .child(
+                Button::new()
+                    .small()
+                    .secondary()
+                    .on_press(move |_| browse_modpacks(cluster_id))
+                    .text("Browse"),
+            )
+            .child(add_button);
 
         let rows: Vec<Element> = packs
             .read()
@@ -129,7 +156,7 @@ impl Component for ImportedModpacksSection {
                 IconType::FilePlus02,
                 "Add a Modpack",
                 "Add the mods from a Modrinth .mrpack or CurseForge .zip to this instance. The pack must be for the same Minecraft version and loader.",
-                add_button,
+                add_buttons,
             ))
             .children(rows)
             .maybe_child(confirm)

@@ -100,6 +100,24 @@ fn fits_cluster(version: &VersionSummary, cluster: &Cluster) -> bool {
     }
 }
 
+pub(crate) fn cluster_versions(versions: &[VersionSummary], cluster: &Cluster) -> Vec<VersionSummary> {
+    versions
+        .iter()
+        .filter(|v| fits_cluster(v, cluster))
+        .cloned()
+        .collect()
+}
+
+pub(crate) fn cluster_version<'a>(
+    versions: &'a [VersionSummary],
+    cluster: &Cluster,
+) -> Option<&'a VersionSummary> {
+    let fitting = || versions.iter().filter(|v| fits_cluster(v, cluster));
+    fitting()
+        .find(|v| matches!(v.release_type, ReleaseType::Release))
+        .or_else(|| fitting().next())
+}
+
 pub(crate) fn instance_choices(
     versions: &[VersionSummary],
     clusters: &[Cluster],
@@ -107,10 +125,7 @@ pub(crate) fn instance_choices(
     clusters
         .iter()
         .filter_map(|cluster| {
-            let fitting = || versions.iter().filter(|v| fits_cluster(v, cluster));
-            let pick = fitting()
-                .find(|v| matches!(v.release_type, ReleaseType::Release))
-                .or_else(|| fitting().next())?;
+            let pick = cluster_version(versions, cluster)?;
             let loader = if cluster.mc_loader.is_modded() {
                 cluster.mc_loader.to_string()
             } else {

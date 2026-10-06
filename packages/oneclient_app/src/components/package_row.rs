@@ -473,11 +473,10 @@ pub(crate) fn grid_card(
             .into_element()
     });
 
-    let floating = (item.is_outdated()
-        || item.recency_badge().is_some()
-        || item.modpack.is_some())
-    .then(|| {
-    let badged = item.is_outdated() || item.shadowed || item.recency_badge().is_some();
+    let badged = item.is_outdated()
+        || item.shadowed
+        || item.modpack.is_some()
+        || item.recency_badge().is_some();
     let floating = badged.then(|| {
         rect()
             .horizontal()
@@ -557,6 +556,7 @@ fn grid_meta(
                     cluster_id,
                     package_type: package_type.to_string(),
                     package_id: format!("{}:{}", provider as u8, package_id),
+                    add_to_cluster: false,
                 });
             }),
             alpha,
@@ -627,12 +627,6 @@ impl Component for SourceLink {
             .on_press(move |e: Event<PressEventData>| {
                 e.stop_propagation();
                 pressed.set(false);
-                let _ = RouterContext::get().push(Route::BrowserPackage {
-                    cluster_id,
-                    package_type: package_type.clone(),
-                    package_id: format!("{}:{}", provider as u8, package_id),
-                    add_to_cluster: false,
-                });
                 on_press.call(());
             })
             .child(meta_text(self.text.clone(), color))

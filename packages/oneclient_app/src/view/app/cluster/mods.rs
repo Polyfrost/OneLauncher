@@ -7,10 +7,7 @@ use oneclient_content::packages::ContentType;
 use crate::hooks::{
     bundle_overrides_map, bundles_with_status_items, cluster_content_items, modpack_sources_map,
     stale_hashes, use_bundle_overrides, use_bundles_with_status, use_cluster_content,
-    use_modpack_sources, use_package_updates,
-    bundle_overrides_map, bundles_with_status_items, cluster_content_items, stale_hashes,
-    use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_mods_folder_sync,
-    use_package_updates, use_shadowed_mods,
+    use_modpack_sources, use_mods_folder_sync, use_package_updates, use_shadowed_mods,
 };
 use crate::layout::cluster_content;
 
@@ -53,7 +50,6 @@ impl Component for ClusterMods {
         let sources = modpack_sources_map(&sources);
         for item in &mut items {
             item.modpack = item.hash.as_ref().and_then(|hash| sources.get(hash).cloned());
-        for item in &mut items {
             item.shadowed = item
                 .hash
                 .as_ref()

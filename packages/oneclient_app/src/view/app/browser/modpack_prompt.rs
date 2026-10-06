@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 
 use freya::prelude::*;
+use oneclient_common::domain::GameLoader;
 use oneclient_common::version::parse_mc_version;
 use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ReleaseType, VersionSummary};
@@ -79,6 +80,125 @@ fn push_choice(choices: &mut Vec<MinecraftChoice>, mc: &str, pick: &VersionSumma
         version_id: pick.version_id.clone(),
         detail: detail.join("  ·  "),
     });
+}
+
+#[derive(Clone, PartialEq)]
+pub(crate) struct LoaderOption {
+    pub loader: GameLoader,
+    pub choices: Vec<MinecraftChoice>,
+}
+
+pub(crate) fn loader_options(versions: &[VersionSummary]) -> Vec<LoaderOption> {
+    let mut loaders: Vec<GameLoader> = Vec::new();
+    for loader in versions.iter().flat_map(|v| &v.loaders) {
+        if loader.is_modded() && !loaders.contains(loader) {
+            loaders.push(*loader);
+        }
+    }
+    loaders
+        .into_iter()
+        .map(|loader| {
+            let fitting: Vec<VersionSummary> = versions
+                .iter()
+                .filter(|v| {
+                    v.loaders.contains(&loader) || v.loaders.iter().all(|l| !l.is_modded())
+                })
+                .cloned()
+                .collect();
+            LoaderOption {
+                loader,
+                choices: minecraft_choices(&fitting),
+            }
+        })
+        .filter(|option| !option.choices.is_empty())
+        .collect()
+}
+
+fn loader_detail(option: &LoaderOption) -> String {
+    const SHOWN: usize = 3;
+    let versions: Vec<&str> = option.choices.iter().map(|c| c.mc.as_str()).collect();
+    let listed = versions
+        .iter()
+        .take(SHOWN)
+        .copied()
+        .collect::<Vec<_>>()
+        .join(", ");
+    match versions.len().saturating_sub(SHOWN) {
+        0 => format!("Minecraft {listed}"),
+        more => format!("Minecraft {listed} and {more} more"),
+    }
+}
+
+#[derive(PartialEq)]
+pub(crate) struct ModpackLoaderPrompt {
+    pub options: Vec<LoaderOption>,
+    pub open: State<bool>,
+    pub chosen: State<Option<GameLoader>>,
+    pub version_open: State<bool>,
+}
+
+impl Component for ModpackLoaderPrompt {
+    fn render(&self) -> impl IntoElement {
+        let mut open = self.open;
+        let mut chosen = self.chosen;
+        let mut version_open = self.version_open;
+        let mut selected = use_state(|| 0usize);
+        let current = (*selected.read()).min(self.options.len().saturating_sub(1));
+
+        let rows: Vec<Element> = self
+            .options
+            .iter()
+            .enumerate()
+            .map(|(i, option)| {
+                radio_row(
+                    option.loader.to_string(),
+                    loader_detail(option),
+                    i == current,
+                    move || selected.set(i),
+                )
+                .into_element()
+            })
+            .collect();
+        let shown = self.options.len().min(VISIBLE_ROWS) as f32;
+        let list_h = shown * ROW_H + (shown - 1.).max(0.) * ROW_GAP;
+        let control = ScrollArea::new()
+            .width(Size::fill())
+            .height(Size::px(list_h))
+            .spacing(ROW_GAP)
+            .children(rows)
+            .into_element();
+
+        let picked = self.options.get(current).cloned();
+        let next = move |_| {
+            let Some(option) = picked.clone() else {
+                return;
+            };
+            chosen.set(Some(option.loader));
+            open.set(false);
+            version_open.set(true);
+        };
+
+        dialog(
+            "Which loader?".to_string(),
+            "This modpack is made for more than one mod loader. Pick the one to install."
+                .to_string(),
+            Some(control),
+            move || open.set(false),
+            [
+                Button::new()
+                    .secondary()
+                    .on_press(move |_| open.set(false))
+                    .text("Cancel")
+                    .into_element(),
+                Button::new()
+                    .primary()
+                    .on_press(next)
+                    .child(Icon::new(IconType::ArrowRight).size(14.))
+                    .text("Continue")
+                    .into_element(),
+            ],
+        )
+    }
 }
 
 #[derive(Clone, PartialEq)]
@@ -419,6 +539,31 @@ mod tests {
         assert_eq!(
             picks,
             expect.map(|(a, b)| (a.to_string(), b.to_string())).to_vec()
+        );
+    }
+
+    #[test]
+    fn loader_options_split_versions_by_loader() {
+        let with = |id, mc: &[&str], loaders: Vec<GameLoader>| VersionSummary {
+            loaders,
+            ..version(id, mc, ReleaseType::Release)
+        };
+        let versions = [
+            with("fabric-26", &["26.3"], vec![GameLoader::Fabric]),
+            with("neo-26", &["26.3"], vec![GameLoader::NeoForge]),
+            with("fabric-21", &["1.21.1"], vec![GameLoader::Fabric]),
+        ];
+        let options = loader_options(&versions);
+        let summary: Vec<(GameLoader, Vec<String>)> = options
+            .iter()
+            .map(|o| (o.loader, o.choices.iter().map(|c| c.version_id.clone()).collect()))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                (GameLoader::Fabric, vec!["fabric-26".to_string(), "fabric-21".to_string()]),
+                (GameLoader::NeoForge, vec!["neo-26".to_string()]),
+            ]
         );
     }
 

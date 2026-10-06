@@ -16,6 +16,7 @@ pub struct DeleteInstanceModal {
     cluster_id: i64,
     name: String,
     on_close: EventHandler<()>,
+    stay: bool,
 }
 
 impl DeleteInstanceModal {
@@ -24,7 +25,13 @@ impl DeleteInstanceModal {
             cluster_id,
             name,
             on_close: on_close.into(),
+            stay: false,
         }
+    }
+
+    pub fn stay_on_page(mut self) -> Self {
+        self.stay = true;
+        self
     }
 }
 
@@ -34,6 +41,7 @@ impl Component for DeleteInstanceModal {
         let mut active_id = use_active_cluster_id();
         let game = use_game_snapshot();
         let cluster_id = self.cluster_id;
+        let stay = self.stay;
         let running = game.is_running(cluster_id);
         let cluster = use_cluster(cluster_id);
         let dedicated = cluster.as_ref().is_none_or(|c| c.uses_dedicated_dir());
@@ -121,7 +129,9 @@ impl Component for DeleteInstanceModal {
                                                 if *active_id.peek() == Some(cluster_id) {
                                                     *active_id.write() = None;
                                                 }
-                                                let _ = RouterContext::get().push(Route::Home {});
+                                                if !stay {
+                                                    let _ = RouterContext::get().push(Route::Home {});
+                                                }
                                                 close_delete.call(());
                                             })
                                             .text("Delete"),

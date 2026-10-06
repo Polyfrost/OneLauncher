@@ -7,6 +7,7 @@ use oneclient_core::clusters::Cluster;
 
 use freya::elements::image::{AspectRatio, ImageCover, ImageHandle, image};
 
+use super::cluster_menu::cluster_menu_entries;
 use super::dynamic_art::use_art_bytes;
 use super::local_image::decode;
 use crate::components::{ART_PREVIEW_EDGE, ContextMenu, DynamicArt, Icon, IconType, LocalImage};
@@ -113,45 +114,6 @@ fn stagger_eased(progress: f32, index: usize, items: usize) -> f32 {
     1.0 - (1.0 - local).powi(3)
 }
 
-fn cluster_menu_entries(cluster_id: i64) -> [(IconType, &'static str, Route); 7] {
-    [
-        (
-            IconType::InfoCircle,
-            "Overview",
-            Route::ClusterOverview { cluster_id },
-        ),
-        (
-            IconType::Terminal,
-            "Logs",
-            Route::ClusterLogs { cluster_id },
-        ),
-        (
-            IconType::Eye,
-            "Screenshots",
-            Route::ClusterScreenshots { cluster_id },
-        ),
-        (
-            IconType::CodeSnippet02,
-            "Mods",
-            Route::ClusterMods { cluster_id },
-        ),
-        (
-            IconType::PaintPour,
-            "Shaders",
-            Route::ClusterShaders { cluster_id },
-        ),
-        (
-            IconType::Colors,
-            "Textures",
-            Route::ClusterTextures { cluster_id },
-        ),
-        (
-            IconType::Settings01,
-            "Settings",
-            Route::ClusterSettings { cluster_id },
-        ),
-    ]
-}
 
 struct ClusterCard {
     cluster: Cluster,

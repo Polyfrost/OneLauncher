@@ -115,15 +115,16 @@ impl PreparedImport {
     }
 }
 
-#[tracing::instrument(skip(state))]
+#[tracing::instrument(skip(state, progress))]
 pub async fn prepare_modpack_import(
     state: &Arc<LauncherState>,
     cluster_id: i64,
     source: &ModpackSource,
+    progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<PreparedImport> {
     let content = state.services.content();
     let cluster = state.clusters.get(cluster_id).await?;
-    let prepared = prepare_modpack(state, source).await?;
+    let prepared = prepare_modpack(state, source, progress).await?;
     let manifest = &prepared.manifest;
 
     let release = match modpacks::identify_modpack(&prepared.artifact_hash, &content).await {

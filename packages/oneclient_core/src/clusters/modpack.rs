@@ -52,10 +52,11 @@ pub struct FlaggedModpack {
     pub explanation: Option<String>,
 }
 
-#[tracing::instrument(skip(state))]
+#[tracing::instrument(skip(state, progress))]
 pub async fn prepare_modpack(
     state: &Arc<LauncherState>,
     source: &ModpackSource,
+    progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<PreparedModpack> {
     let content = state.services.content();
 
@@ -65,7 +66,10 @@ pub async fn prepare_modpack(
             provider,
             project_id,
             version_id,
-        } => PackageStore::resolve_or_download(*provider, project_id, version_id, &content).await?,
+        } => {
+            PackageStore::resolve_or_download(*provider, project_id, version_id, progress, &content)
+                .await?
+        }
     };
     let archive_path = artifact_absolute_path(&artifact.path)?;
     let manifest = modpacks::read_modpack(&archive_path, &content).await?;
@@ -245,6 +249,7 @@ pub async fn update_modpack_cluster(
         current.provider,
         &current.project_id,
         version_id,
+        progress,
         &content,
     )
     .await?;

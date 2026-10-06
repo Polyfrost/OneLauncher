@@ -144,6 +144,8 @@ pub(super) fn sidebar(
                         Some(name) => format!("Add to {}", short_name(name)),
                         None => "Add to this instance".to_string(),
                     }
+                } else if installer.modpack {
+                    "Install...".to_string()
                 } else if have_latest {
                     "Latest installed".to_string()
                 } else {

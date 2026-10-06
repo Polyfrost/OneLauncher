@@ -1,7 +1,8 @@
 use freya::prelude::*;
 use oneclient_core::clusters::Cluster;
 
-use crate::components::{ART_PREVIEW_EDGE, DynamicArt};
+use crate::components::cluster_menu::open_menu_at;
+use crate::components::{ART_PREVIEW_EDGE, ClusterContextMenu, ClusterMenuTarget, DynamicArt};
 use crate::theme::colors;
 use crate::ui::{border_all_color, last_played_label};
 use crate::utils::{GridSelection, ReleaseLine, line_art_key, line_title};
@@ -17,9 +18,15 @@ pub struct InstanceRow {
     art: DynamicArt,
     selected: bool,
     on_press: EventHandler<Event<PressEventData>>,
+    menu: Option<ClusterMenuTarget>,
 }
 
 impl InstanceRow {
+    pub fn menu(mut self, target: Option<ClusterMenuTarget>) -> Self {
+        self.menu = target;
+        self
+    }
+
     pub fn new(
         cluster: &Cluster,
         selected: bool,
@@ -33,6 +40,7 @@ impl InstanceRow {
             art: DynamicArt::for_cluster(cluster).max_edge(ART_PREVIEW_EDGE),
             selected,
             on_press: on_press.into(),
+            menu: None,
         }
     }
 
@@ -52,6 +60,7 @@ impl InstanceRow {
                 .max_edge(ART_PREVIEW_EDGE),
             selected,
             on_press: on_press.into(),
+            menu: None,
         }
     }
 }
@@ -64,12 +73,14 @@ impl PartialEq for InstanceRow {
             && self.played == other.played
             && self.art == other.art
             && self.selected == other.selected
+            && self.menu == other.menu
     }
 }
 
 impl Component for InstanceRow {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
+        let menu_at = use_state(|| None::<(f32, f32)>);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -111,8 +122,16 @@ impl Component for InstanceRow {
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
             .on_press(move |e| on_press.call(e))
+            .maybe(self.menu.is_some(), |el| el.on_secondary_down(open_menu_at(menu_at)))
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
+            .maybe_child(self.menu.clone().map(|target| {
+                ClusterContextMenu {
+                    target,
+                    position: menu_at,
+                }
+                .into_element()
+            }))
             .child(
                 rect()
                     .width(Size::px(THUMB_PX))

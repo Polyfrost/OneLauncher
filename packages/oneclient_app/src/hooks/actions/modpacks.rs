@@ -329,7 +329,7 @@ impl Actions {
                 async move {
                     let session =
                         GroupedProgressSession::start(&state.services.events, "Reading modpack");
-                    let prepared = prepare_modpack(&state, &source).await;
+                    let prepared = prepare_modpack(&state, &source, Some(&session)).await;
                     session.finish();
                     prepared
                 }
@@ -395,7 +395,8 @@ impl Actions {
                 async move {
                     let session =
                         GroupedProgressSession::start(&state.services.events, "Reading modpack");
-                    let prepared = prepare_modpack_import(&state, cluster_id, &source).await;
+                    let prepared =
+                        prepare_modpack_import(&state, cluster_id, &source, Some(&session)).await;
                     session.finish();
                     prepared
                 }

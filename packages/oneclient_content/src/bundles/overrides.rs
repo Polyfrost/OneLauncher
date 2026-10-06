@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::bundles::BundlesManager;
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
-use oneclient_events::EventBus;
+use oneclient_events::{EventBus, GroupedProgressSession, TaskCategory, TaskPhase};
 use polyio::{ZipEntryCursor, sha1_bytes, sha1_file};
 
 const ALWAYS_UPDATE_GLOBS: &[&str] = &["config/fabric_loader_dependencies.json"];
@@ -144,6 +144,10 @@ impl OverrideLayers {
         &self.entries
     }
 
+    pub(crate) fn size(&self, entry: &str) -> u64 {
+        self.cursor.uncompressed_size(entry).unwrap_or(0)
+    }
+
     pub(crate) async fn read(&mut self, entry: &str) -> Option<Vec<u8>> {
         match self.cursor.read(entry).await {
             Ok(bytes) => Some(bytes),
@@ -155,7 +159,6 @@ impl OverrideLayers {
     }
 }
 
-#[tracing::instrument(level = "debug", skip(keep, events))]
 pub(crate) async fn sync_layered_overrides(
     archive_path: &Path,
     bundle_name: &str,
@@ -165,6 +168,33 @@ pub(crate) async fn sync_layered_overrides(
     adopt_existing: bool,
     events: Option<&EventBus>,
 ) -> ContentResult<OverrideSyncReport> {
+    sync_layered_overrides_tracked(
+        archive_path,
+        bundle_name,
+        root,
+        prefixes,
+        keep,
+        adopt_existing,
+        events,
+        None,
+    )
+    .await
+}
+
+const PROGRESS_STEPS: u64 = 200;
+
+#[allow(clippy::too_many_arguments)]
+#[tracing::instrument(level = "debug", skip(keep, events, progress))]
+pub(crate) async fn sync_layered_overrides_tracked(
+    archive_path: &Path,
+    bundle_name: &str,
+    root: &Path,
+    prefixes: &[&str],
+    keep: &(dyn Fn(&str) -> bool + Sync),
+    adopt_existing: bool,
+    events: Option<&EventBus>,
+    progress: Option<&GroupedProgressSession>,
+) -> ContentResult<OverrideSyncReport> {
     let mut layers = OverrideLayers::open(archive_path, prefixes).await?;
     let entries: Vec<(String, String)> = layers
         .entries()
@@ -173,6 +203,21 @@ pub(crate) async fn sync_layered_overrides(
         .cloned()
         .collect();
 
+    let total_bytes: u64 = entries.iter().map(|(_, entry)| layers.size(entry)).sum();
+    let tracker = progress.filter(|_| !entries.is_empty()).map(|session| {
+        session.expect(TaskCategory::Packages, 1, total_bytes.max(1));
+        let child = session.child(
+            format!("Pack files ({})", entries.len()),
+            total_bytes.max(1),
+            TaskCategory::Packages,
+        );
+        child.set_phase(TaskPhase::Extracting);
+        child
+    });
+    let step = (total_bytes / PROGRESS_STEPS).max(1);
+    let mut done_bytes: u64 = 0;
+    let mut reported_bytes: u64 = 0;
+
     let mut lock = OverrideLock::load(root).await;
     let previous = lock.bundles.remove(bundle_name).unwrap_or_default();
     let mut next: HashMap<String, String> = HashMap::new();
@@ -180,6 +225,13 @@ pub(crate) async fn sync_layered_overrides(
     let mut merged_parts: HashSet<String> = HashSet::new();
 
     for (rel, entry) in entries {
+        if let Some(child) = &tracker
+            && done_bytes - reported_bytes >= step
+        {
+            child.set_progress(done_bytes, Some(total_bytes.max(1)));
+            reported_bytes = done_bytes;
+        }
+        done_bytes += layers.size(&entry);
         let rel = rel.as_str();
         let merges = !adopt_existing && matches_always_update(rel);
         let Some(bytes) = layers.read(&entry).await else {
@@ -297,6 +349,11 @@ pub(crate) async fn sync_layered_overrides(
         {
             report.deleted.push(rel.clone());
         }
+    }
+
+    if let Some(child) = &tracker {
+        child.set_progress(total_bytes.max(1), Some(total_bytes.max(1)));
+        child.finish();
     }
 
     if !adopt_existing {

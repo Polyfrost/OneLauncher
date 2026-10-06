@@ -7,6 +7,7 @@ use oneclient_common::{VersionKey, parse_mc_version};
 use oneclient_core::clusters::Cluster;
 use oneclient_core::settings::ViewLayout;
 
+use crate::components::ClusterMenuTarget;
 use crate::components::{
     ART_PREVIEW_EDGE, Button, Dropdown, DynamicArt, FilterMenu, FilterOption, Icon, IconType,
     InstanceRow, ScrollArea, Segment, SegmentedControl, TabBar, TabItem, TextInput, VersionCard,
@@ -263,10 +264,20 @@ impl Component for Clusters {
             TabItem::new(name, active_filter == value).on_press(move |_| filter.set(value))
         });
 
+        let active_cluster = clusters
+            .iter()
+            .find(|c| Some(c.id) == *active_id.read())
+            .cloned();
         let line_cards: Vec<Element> = shown_lines
             .iter()
             .map(|&line| {
                 let list = &groups[&line];
+                let line_menu = match list.as_slice() {
+                    [only] => Some(ClusterMenuTarget::for_cluster(only, true)),
+                    _ => default_line_cluster(list, active_cluster.as_ref())
+                        .and_then(|id| list.iter().find(|c| c.id == id))
+                        .map(|c| ClusterMenuTarget::for_cluster(c, false)),
+                };
                 let item = GridSelection::Line(line);
                 let is_selected = current == Some(item);
                 let caption = match (is_selected, &cluster, list.as_slice()) {
@@ -278,9 +289,13 @@ impl Component for Clusters {
                     selected_cluster.set(None);
                 };
                 if grid {
-                    VersionCard::new(line, list, caption, is_selected, on_press).into_element()
+                    VersionCard::new(line, list, caption, is_selected, on_press)
+                        .menu(line_menu)
+                        .into_element()
                 } else {
-                    InstanceRow::for_line(line, list, caption, is_selected, on_press).into_element()
+                    InstanceRow::for_line(line, list, caption, is_selected, on_press)
+                        .menu(line_menu)
+                        .into_element()
                 }
             })
             .collect();
@@ -291,10 +306,15 @@ impl Component for Clusters {
                     let item = GridSelection::Instance(c.id);
                     let is_selected = current == Some(item);
                     let on_press = move |_| selected.set(Some(item));
+                    let menu = Some(ClusterMenuTarget::for_cluster(c, true));
                     if grid {
-                        VersionCard::for_instance(c, is_selected, on_press).into_element()
+                        VersionCard::for_instance(c, is_selected, on_press)
+                            .menu(menu)
+                            .into_element()
                     } else {
-                        InstanceRow::new(c, is_selected, on_press).into_element()
+                        InstanceRow::new(c, is_selected, on_press)
+                            .menu(menu)
+                            .into_element()
                     }
                 })
                 .collect()

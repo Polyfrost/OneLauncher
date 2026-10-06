@@ -19,7 +19,7 @@ use crate::bundles::install::{
     remove_artifact_from_cluster,
 };
 use crate::bundles::overrides::{
-    OverrideLayers, lock_entries, sync_file_lock, sync_layered_overrides,
+    OverrideLayers, lock_entries, sync_file_lock, sync_layered_overrides_tracked,
 };
 use crate::bundles::{BundleFile, BundleFileKind};
 use crate::ctx::ContentCtx;
@@ -231,7 +231,7 @@ pub async fn install_modpack(
         .iter()
         .map(String::as_str)
         .collect();
-    let synced = sync_layered_overrides(
+    let synced = sync_layered_overrides_tracked(
         archive_path,
         &lock_key,
         &root,
@@ -239,6 +239,7 @@ pub async fn install_modpack(
         &|rel| tracked_content_type(rel).is_none(),
         !imported,
         (!imported).then_some(&ctx.events),
+        progress,
     )
     .await?;
     if imported {

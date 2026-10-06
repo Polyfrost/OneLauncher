@@ -499,7 +499,7 @@ fn section(title: &str, caption: &str, grid: Element) -> Element {
         .child(
             rect()
                 .horizontal()
-                .cross_align(Alignment::End)
+                .cross_align(Alignment::Center)
                 .spacing(10.)
                 .child(
                     label()

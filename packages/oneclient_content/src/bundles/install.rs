@@ -13,13 +13,102 @@ use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
-use crate::packages::store::{LiveSync, PackageStore, evict_if_unused, try_unlink_materialized};
+use crate::packages::store::{
+    LiveSync, PackageStore, drop_unmanaged_mod, evict_if_unused, try_unlink_materialized,
+};
 use crate::packages::types::ExternalFile;
 use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 
 fn is_base62(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+pub(crate) fn takes_bundle(
+    archive: &BundleArchive,
+    accepted: &std::collections::HashSet<String>,
+) -> bool {
+    archive.manifest.enabled || accepted.contains(&archive.manifest.name)
+}
+
+fn wants_file(file: &BundleFile, user_override: Option<OverrideType>, taken: bool) -> bool {
+    if taken {
+        effective_enabled(file, user_override)
+    } else {
+        user_override == Some(OverrideType::Enabled)
+    }
+}
+
+pub(crate) async fn accepted_bundles(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<std::collections::HashSet<String>> {
+    Ok(bundle_dao::list_bundle_choices(&ctx.db, cluster_id)
+        .await?
+        .into_iter()
+        .filter_map(|(name, accepted)| accepted.then_some(name))
+        .collect())
+}
+
+pub async fn taken_bundle_names(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<std::collections::HashSet<String>> {
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
+    Ok(archives
+        .iter()
+        .filter(|archive| takes_bundle(archive, &accepted))
+        .map(|archive| archive.manifest.name.clone())
+        .collect())
+}
+
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
+pub async fn pending_bundle_choices(
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<BundleArchive>> {
+    let Some(cluster) = bundle_cluster(cluster_id, ctx).await? else {
+        return Ok(Vec::new());
+    };
+    let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
+    let decided: std::collections::HashSet<String> =
+        bundle_dao::list_bundle_choices(&ctx.db, cluster_id)
+            .await?
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+    Ok(bundles
+        .archives_for(ctx, &cluster.mc_version, loader)
+        .await?
+        .into_iter()
+        .filter(|archive| {
+            !archive.manifest.enabled
+                && !archive.bundle.hidden
+                && !decided.contains(&archive.manifest.name)
+        })
+        .collect())
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn set_bundle_choices(
+    cluster_id: i64,
+    choices: &[(String, bool)],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    bundle_dao::save_bundle_choices(&ctx.db, cluster_id, choices).await?;
+    Ok(())
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn inherit_bundle_choices(
+    source_cluster_id: i64,
+    target_cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    bundle_dao::copy_bundle_choices(&ctx.db, source_cluster_id, target_cluster_id).await?;
+    Ok(())
 }
 
 pub fn effective_enabled(file: &BundleFile, user_override: Option<OverrideType>) -> bool {
@@ -190,7 +279,7 @@ pub async fn install_bundle(
         .find(|a| a.manifest.name == bundle_name)
         .ok_or(BundleError::NotFound(bundle_name.to_string()))?;
 
-    install_enabled_bundle_files(&archive, cluster_id, skip_compatibility, None, ctx).await
+    install_enabled_bundle_files(&archive, cluster_id, true, skip_compatibility, None, ctx).await
 }
 
 /// `suppression` comes from [`find_user_suppression`] so a choice filed under a
@@ -393,11 +482,14 @@ pub async fn heal_bundle_activity(
 pub async fn install_enabled_bundle_files(
     archive: &BundleArchive,
     cluster_id: i64,
+    taken: bool,
     skip_compatibility: bool,
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<String>> {
-    extract_bundle_overrides_for_cluster(archive, cluster_id, ctx).await?;
+    if taken {
+        extract_bundle_overrides_for_cluster(archive, cluster_id, ctx).await?;
+    }
     heal_bundle_activity(cluster_id, std::slice::from_ref(archive), ctx).await?;
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
@@ -415,8 +507,11 @@ pub async fn install_enabled_bundle_files(
         .iter()
         .filter(|file| {
             let package_id = file.kind.package_id();
-            effective_enabled(file, find_override(&overrides, &bundle_name, &package_id))
-                && !present.contains(file)
+            wants_file(
+                file,
+                find_override(&overrides, &bundle_name, &package_id),
+                taken,
+            ) && !present.contains(file)
         })
         .cloned()
         .collect();
@@ -562,15 +657,20 @@ pub async fn enabled_bundle_bytes(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
     let present = PresentContent::load(cluster_id, ctx).await?;
 
     let mut total = 0u64;
     for archive in &archives {
         let bundle_name = &archive.manifest.name;
+        let taken = takes_bundle(archive, &accepted);
         for file in &archive.manifest.files {
             let package_id = file.kind.package_id();
-            if !effective_enabled(file, find_override(&overrides, bundle_name, &package_id))
-                || present.contains(file)
+            if !wants_file(
+                file,
+                find_override(&overrides, bundle_name, &package_id),
+                taken,
+            ) || present.contains(file)
             {
                 continue;
             }
@@ -693,15 +793,21 @@ pub async fn enabled_bundle_projects(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
 
     let mut projects = std::collections::HashSet::new();
     for archive in &archives {
         let bundle_name = &archive.manifest.name;
+        let taken = takes_bundle(archive, &accepted);
         for file in &archive.manifest.files {
             let BundleFileKind::Managed { project_id, .. } = &file.kind else {
                 continue;
             };
-            if effective_enabled(file, find_override(&overrides, bundle_name, project_id)) {
+            if wants_file(
+                file,
+                find_override(&overrides, bundle_name, project_id),
+                taken,
+            ) {
                 projects.insert(project_id.clone());
             }
         }
@@ -746,9 +852,11 @@ pub async fn install_cluster_bundles(
         bundles = archives.len(),
         "installing enabled bundle content"
     );
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
     for archive in &archives {
+        let taken = takes_bundle(archive, &accepted);
         let installed =
-            install_enabled_bundle_files(archive, cluster_id, true, progress, ctx).await?;
+            install_enabled_bundle_files(archive, cluster_id, taken, true, progress, ctx).await?;
         tracing::info!(
             cluster_id,
             bundle = %archive.manifest.name,
@@ -878,11 +986,15 @@ pub async fn remove_artifact_from_cluster(
     // The folder is rebuilt from the database at the next launch
     artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
+    if let (Some(content_type), Some(link)) = (target, &link) {
+        let name = &link.cluster_file_name;
+        drop_unmanaged_mod(&cluster, content_type, name, hash, &ctx.db).await;
+    }
+
     // Best-effort folder cleanup failure here is not an error
     let deferred = match (target, link) {
         (Some(content_type), Some(link)) => {
-            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db)
-                .await
+            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db).await
                 == LiveSync::Deferred
         }
         _ => false,

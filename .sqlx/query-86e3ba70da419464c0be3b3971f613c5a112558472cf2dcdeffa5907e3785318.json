@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode\n\t\tFROM setting_profiles\n\t\tORDER BY name ASC\n\t\t",
+  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode\n\t\tFROM setting_profiles\n\t\tWHERE name = ?\n\t\t",
   "describe": {
     "columns": [
       {
@@ -70,8 +70,19 @@
         }
       },
       {
-        "name": "launch_env",
+        "name": "game_args",
         "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "game_args"
+          }
+        }
+      },
+      {
+        "name": "launch_env",
+        "ordinal": 7,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -82,7 +93,7 @@
       },
       {
         "name": "hook_pre",
-        "ordinal": 7,
+        "ordinal": 8,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -93,7 +104,7 @@
       },
       {
         "name": "hook_wrapper",
-        "ordinal": 8,
+        "ordinal": 9,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -104,7 +115,7 @@
       },
       {
         "name": "hook_post",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -115,7 +126,7 @@
       },
       {
         "name": "os_extra",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -126,7 +137,7 @@
       },
       {
         "name": "browser_update_mode",
-        "ordinal": 11,
+        "ordinal": 12,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -137,7 +148,7 @@
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 1
     },
     "nullable": [
       false,
@@ -151,8 +162,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "f68b9ade92feb989828ca81582c5960bf2968c4b75705e1a0e6800e97c3f4628"
+  "hash": "86e3ba70da419464c0be3b3971f613c5a112558472cf2dcdeffa5907e3785318"
 }

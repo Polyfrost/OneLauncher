@@ -10,6 +10,8 @@ use super::bundles::{
     BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery, ModpackSourcesQuery,
 };
 use super::cluster_content::{ClusterContentQuery, MigratableRoutesQuery};
+use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
+use super::cluster_content::{ClusterContentQuery, MigratableRoutesQuery, ShadowedModsQuery};
 use super::clusters::ListClustersQuery;
 use super::package_updates::PackageUpdatesQuery;
 use super::settings_profiles::{
@@ -32,6 +34,11 @@ pub async fn invalidate_cluster_queries() {
     timed(
         "cluster_content",
         QueriesStorage::<ClusterContentQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "shadowed_mods",
+        QueriesStorage::<ShadowedModsQuery>::invalidate_all(),
     )
     .await;
     timed(
@@ -355,6 +362,21 @@ impl MutationCapability for ClusterMutation {
                                 let overrides = bundle_selection_overrides(&archives, selected);
                                 if let Err(err) = oneclient_core::set_bundle_package_overrides(
                                     cluster.id, &overrides, content,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
+                                }
+                                let choices: Vec<_> = archives
+                                    .iter()
+                                    .filter(|archive| !archive.manifest.enabled)
+                                    .map(|archive| {
+                                        let name = &archive.manifest.name;
+                                        (name.clone(), selected.contains(name))
+                                    })
+                                    .collect();
+                                if let Err(err) = oneclient_content::bundles::set_bundle_choices(
+                                    cluster.id, &choices, content,
                                 )
                                 .await
                                 {

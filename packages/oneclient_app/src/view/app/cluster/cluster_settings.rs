@@ -177,6 +177,7 @@ impl Component for ClusterSettings {
                         .into_element(),
                     )
                     .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
+                    .child(text_row(cluster_id, TextField::GameArgs, &profile, &global))
                     .child(section_header("PROCESS"))
                     .child(text_row(cluster_id, TextField::Pre, &profile, &global))
                     .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
@@ -632,6 +633,7 @@ impl Component for ResolutionRow {
 #[derive(Clone, Copy, PartialEq)]
 enum TextField {
     JvmArgs,
+    GameArgs,
     Pre,
     Wrapper,
     Post,
@@ -645,6 +647,12 @@ impl TextField {
                 "JVM Arguments",
                 "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",
                 "-XX:+UseG1GC",
+            ),
+            Self::GameArgs => (
+                IconType::Play,
+                "Game Arguments",
+                "Extra arguments passed to Minecraft. Separate them with spaces; quote values containing spaces.",
+                "--tracy --tracyNoImages",
             ),
             Self::Pre => (
                 IconType::FilePlus02,
@@ -670,6 +678,7 @@ impl TextField {
     fn value(self, profile: &GameSettingsProfile) -> Option<String> {
         match self {
             Self::JvmArgs => profile.launch_args.clone(),
+            Self::GameArgs => profile.game_args.clone(),
             Self::Pre => profile.hook_pre.clone(),
             Self::Wrapper => profile.hook_wrapper.clone(),
             Self::Post => profile.hook_post.clone(),
@@ -680,6 +689,7 @@ impl TextField {
         let mut u = ProfileUpdate::default();
         match self {
             Self::JvmArgs => u.launch_args = value,
+            Self::GameArgs => u.game_args = value,
             Self::Pre => u.hook_pre = value,
             Self::Wrapper => u.hook_wrapper = value,
             Self::Post => u.hook_post = value,

@@ -98,6 +98,11 @@ impl App for OneClientApp {
 }
 
 fn main() {
+    #[cfg(target_os = "linux")]
+    unsafe {
+        gtk_sys::gtk_disable_setlocale();
+    }
+
     let cli = cli::parse();
 
     let mut builder = Builder::new_multi_thread();
@@ -243,8 +248,8 @@ fn main() {
                 .and_then(|v| v.parse::<usize>().ok())
                 .unwrap_or(96 * 1024 * 1024),
         )
-		.with_plugin(freya::borderless::BorderlessPlugin::new())
-		.with_plugin(freya::metrics::MetricsPlugin::default())
+        .with_plugin(freya::borderless::BorderlessPlugin::new())
+        .with_plugin(freya::metrics::MetricsPlugin::default())
         .with_default_font(theme::DEFAULT_FONT);
 
     if show_tray_icon && platform::tray::available() {

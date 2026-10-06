@@ -106,6 +106,7 @@ fn entry_from_item(
         bundle_name: item.offer.as_ref().map(|(bundle, _)| bundle.clone()),
         provider: item.provider,
         github_hosted: item.github_hosted,
+        github_url: None,
         name: cached
             .map(|cached| cached.name.clone())
             .filter(|name| !name.is_empty())
@@ -127,6 +128,7 @@ fn entry_from_item(
         manifest_default: false,
         hidden: false,
         opted_in: true,
+        shadowed: false,
         advanced: false,
         update_available: false,
         // Offered, not installed, so there is no recency badge to show

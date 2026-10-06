@@ -8,6 +8,7 @@ pub struct SettingProfileRow {
     pub force_fullscreen: Option<i64>,
     pub mem_max: Option<i64>,
     pub launch_args: Option<String>,
+    pub game_args: Option<String>,
     pub launch_env: Option<String>,
     pub hook_pre: Option<String>,
     pub hook_wrapper: Option<String>,

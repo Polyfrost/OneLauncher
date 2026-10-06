@@ -115,6 +115,7 @@ pub struct ProfileUpdate {
     pub force_fullscreen: Patch<bool>,
     pub mem_max: Patch<u32>,
     pub launch_args: Patch<String>,
+    pub game_args: Patch<String>,
     pub launch_env: Patch<String>,
     pub hook_pre: Patch<String>,
     pub hook_wrapper: Patch<String>,
@@ -132,6 +133,8 @@ impl ProfileUpdate {
         self.mem_max.apply_to_option(&mut profile.mem_max);
         self.launch_args
             .apply_to_command_option(&mut profile.launch_args);
+        self.game_args
+            .apply_to_command_option(&mut profile.game_args);
         self.launch_env
             .apply_to_command_option(&mut profile.launch_env);
         self.hook_pre.apply_to_command_option(&mut profile.hook_pre);

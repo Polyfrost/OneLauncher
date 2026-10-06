@@ -97,6 +97,49 @@ pub async fn read_jar_manifest(jar: &Path) -> JarManifest {
 }
 
 #[tracing::instrument(level = "debug", fields(jar = %jar.display()))]
+pub async fn read_jar_mod_id(jar: &Path) -> Option<String> {
+    let entries = polyio::read_zip_file_entries(jar, |name| MANIFESTS.contains(&name))
+        .await
+        .inspect_err(|err| tracing::debug!("could not read {}: {err}", jar.display()))
+        .ok()?;
+
+    MANIFESTS.into_iter().find_map(|wanted| {
+        let (_, bytes) = entries.iter().find(|(name, _)| name == wanted)?;
+        parse_mod_id(wanted, std::str::from_utf8(bytes).ok()?)
+    })
+}
+
+fn parse_mod_id(manifest: &str, text: &str) -> Option<String> {
+    let id = match manifest {
+        NEOFORGE | FORGE => toml::from_str::<toml::Value>(text)
+            .ok()?
+            .get("mods")?
+            .get(0)?
+            .get("modId")?
+            .as_str()?
+            .to_owned(),
+        _ => {
+            let json: serde_json::Value = serde_json::from_str(text).ok()?;
+            let pointers: &[&str] = match manifest {
+                FABRIC => &["/id"],
+                QUILT => &["/quilt_loader/id"],
+                _ => &["/0/modid", "/modList/0/modid"],
+            };
+            pointers
+                .iter()
+                .find_map(|pointer| json.pointer(pointer)?.as_str())?
+                .to_owned()
+        }
+    };
+
+    clean(Some(id)).filter(|id| !is_placeholder_id(id))
+}
+
+fn is_placeholder_id(id: &str) -> bool {
+    id.contains('$') || id.eq_ignore_ascii_case("examplemod")
+}
+
+#[tracing::instrument(level = "debug", fields(jar = %jar.display()))]
 pub async fn read_jar_loader(jar: &Path) -> Option<GameLoader> {
     let entries = polyio::read_zip_file_entries(jar, |name| MANIFESTS.contains(&name))
         .await
@@ -399,6 +442,39 @@ fn entry_path(raw: String) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_loader_names_its_mod_id() {
+        assert_eq!(
+            parse_mod_id(FABRIC, r#"{"id":"argentum","name":"Argentum"}"#).as_deref(),
+            Some("argentum")
+        );
+        assert_eq!(
+            parse_mod_id(QUILT, r#"{"quilt_loader":{"id":"qsl"}}"#).as_deref(),
+            Some("qsl")
+        );
+        assert_eq!(
+            parse_mod_id(FORGE, "[[mods]]\nmodId = \"jei\"\n").as_deref(),
+            Some("jei")
+        );
+        assert_eq!(
+            parse_mod_id(LEGACY_FORGE, r#"[{"modid":"patcher"}]"#).as_deref(),
+            Some("patcher")
+        );
+        assert_eq!(
+            parse_mod_id(LEGACY_FORGE, r#"{"modList":[{"modid":"oneconfig"}]}"#).as_deref(),
+            Some("oneconfig")
+        );
+        assert_eq!(parse_mod_id(FABRIC, r#"{"id":"  "}"#), None);
+        assert_eq!(
+            parse_mod_id(LEGACY_FORGE, r#"[{"modid":"examplemod"}]"#),
+            None
+        );
+        assert_eq!(
+            parse_mod_id(LEGACY_FORGE, r#"[{"modid":"${modid}"}]"#),
+            None
+        );
+    }
 
     #[test]
     fn fabric_reads_every_field() {

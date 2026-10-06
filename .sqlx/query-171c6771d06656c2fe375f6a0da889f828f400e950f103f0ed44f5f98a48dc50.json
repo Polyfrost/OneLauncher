@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT bundle_name, accepted\n        FROM cluster_bundle_choices\n        WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "bundle_name",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bundle_choices",
+            "name": "bundle_name"
+          }
+        }
+      },
+      {
+        "name": "accepted",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bundle_choices",
+            "name": "accepted"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "171c6771d06656c2fe375f6a0da889f828f400e950f103f0ed44f5f98a48dc50"
+}

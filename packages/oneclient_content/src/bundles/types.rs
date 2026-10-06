@@ -73,6 +73,20 @@ impl BundleFile {
         })
     }
 
+    pub fn github_repo_url(&self) -> Option<String> {
+        let BundleFileKind::External { file, .. } = &self.kind else {
+            return None;
+        };
+        let url = url::Url::parse(&file.url).ok()?;
+        if !matches!(url.host_str()?, "github.com" | "raw.githubusercontent.com") {
+            return None;
+        }
+        let mut segments = url.path_segments()?.filter(|s| !s.is_empty());
+        let owner = segments.next()?;
+        let repo = segments.next()?;
+        Some(format!("https://github.com/{owner}/{repo}"))
+    }
+
     pub fn display_name(&self) -> String {
         if let BundleFileKind::External {
             meta: Some(meta), ..

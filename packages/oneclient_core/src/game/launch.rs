@@ -360,7 +360,11 @@ async fn start(
         profile.resolution.unwrap_or_default(),
         &java.os_arch,
     )?;
-    arguments::append_profile_game_arguments(&mut mc_args, profile.force_fullscreen, None);
+    arguments::append_profile_game_arguments(
+        &mut mc_args,
+        profile.force_fullscreen,
+        profile.game_args.as_deref(),
+    );
 
     if let Some(reason) = run_hook(profile.hook_pre.as_deref(), &cwd).await {
         events
@@ -382,8 +386,8 @@ async fn start(
 
     let (mut command, wrapper) = base_command(&profile, &java.absolute_path);
 
-    if profile.use_discrete_gpu() {
-        crate::game::gpu::prefer_discrete(&mut command, &java.absolute_path).await;
+    if let Some(gpu) = profile.gpu() {
+        crate::game::gpu::select(&mut command, &java.absolute_path, gpu).await;
     }
 
     apply_env(&mut command, &profile);

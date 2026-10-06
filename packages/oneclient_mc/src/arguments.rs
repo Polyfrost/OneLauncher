@@ -232,31 +232,27 @@ pub fn minecraft_arguments(
 }
 
 fn drop_repeated_arguments(args: &mut Vec<String>) {
-    let mut seen: HashSet<(String, Option<String>)> = HashSet::new();
-    let mut kept: Vec<String> = Vec::with_capacity(args.len());
-    let mut index = 0;
+    let mut seen = HashSet::new();
+    retain_arguments(args, |option, value| {
+        seen.insert((option.to_owned(), value.map(str::to_owned)))
+    });
+}
 
-    while index < args.len() {
-        let token = &args[index];
+fn retain_arguments(args: &mut Vec<String>, mut keep: impl FnMut(&str, Option<&str>) -> bool) {
+    let mut kept = Vec::with_capacity(args.len());
+    let mut tokens = std::mem::take(args).into_iter().peekable();
+
+    while let Some(token) = tokens.next() {
         if !token.starts_with("--") {
-            kept.push(token.clone());
-            index += 1;
+            kept.push(token);
             continue;
         }
 
-        let value = args
-            .get(index + 1)
-            .filter(|next| !next.starts_with("--"))
-            .cloned();
-
-        if seen.insert((token.clone(), value.clone())) {
-            kept.push(token.clone());
-            if let Some(value) = &value {
-                kept.push(value.clone());
-            }
+        let value = tokens.next_if(|next| !next.starts_with("--"));
+        if keep(&token, value.as_deref()) {
+            kept.push(token);
+            kept.extend(value);
         }
-
-        index += if value.is_some() { 2 } else { 1 };
     }
 
     *args = kept;
@@ -265,15 +261,17 @@ fn drop_repeated_arguments(args: &mut Vec<String>) {
 pub fn append_profile_game_arguments(
     args: &mut Vec<String>,
     force_fullscreen: Option<bool>,
-    launch_args: Option<&str>,
+    game_args: Option<&str>,
 ) {
     if force_fullscreen.unwrap_or(false) {
         args.push("--fullscreen".to_string());
     }
 
-    if let Some(extra) = launch_args.map(str::trim).filter(|s| !s.is_empty()) {
-        args.push(extra.to_string());
-    }
+    let extra = game_args.map(split_custom_args).unwrap_or_default();
+    retain_arguments(args, |option, _| {
+        option == "--tweakClass" || !extra.iter().any(|arg| arg == option)
+    });
+    args.extend(extra);
 }
 
 pub fn processor_arguments<T: AsRef<str>, S: std::hash::BuildHasher>(
@@ -599,8 +597,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        HashMap, Library, Path, SidedDataEntry, ZGC_MIN_HEAP_MB, classpaths,
-        drop_repeated_arguments, get_library, is_collector_flag, java_arguments,
+        HashMap, Library, Path, SidedDataEntry, ZGC_MIN_HEAP_MB, append_profile_game_arguments,
+        classpaths, drop_repeated_arguments, get_library, is_collector_flag, java_arguments,
         minecraft_arguments, performance_flags, processor_arguments, split_custom_args,
     };
     use oneclient_common::Resolution;
@@ -624,6 +622,32 @@ mod tests {
         assert_eq!(
             split_custom_args(r#"-Dname="My Server" -Xss1M"#),
             vec!["-Dname=My Server", "-Xss1M"]
+        );
+    }
+
+    #[test]
+    fn game_arguments_are_split_after_fullscreen() {
+        let mut args = ["--username", "Steve", "--width", "854", "--height", "480"]
+            .map(String::from)
+            .to_vec();
+        append_profile_game_arguments(
+            &mut args,
+            Some(true),
+            Some("--tracy  --tracyNoImages --width 1920 --fullscreen"),
+        );
+        assert_eq!(
+            args,
+            vec![
+                "--username",
+                "Steve",
+                "--height",
+                "480",
+                "--tracy",
+                "--tracyNoImages",
+                "--width",
+                "1920",
+                "--fullscreen"
+            ]
         );
     }
 

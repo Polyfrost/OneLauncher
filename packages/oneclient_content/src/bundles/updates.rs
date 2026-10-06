@@ -17,9 +17,10 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, bundle_cluster, disable_was_deliberate, external_ids_by_sha1,
-    find_override, find_user_suppression, heal_bundle_activity, install_package_from_bundle,
-    remove_artifact_from_cluster, set_artifact_enabled_to,
+    BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, disable_was_deliberate,
+    external_ids_by_sha1, find_override, find_user_suppression, heal_bundle_activity,
+    install_package_from_bundle, remove_artifact_from_cluster, set_artifact_enabled_to,
+    takes_bundle,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -322,6 +323,7 @@ async fn check_bundle_updates_inner(
 
     let addition_eligible_bundles = addition_eligible_bundles(
         ctx,
+        cluster_id,
         &archives,
         &bundle_packages,
         &all_linked,
@@ -621,7 +623,8 @@ pub async fn apply_bundle_updates_with(
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
         if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
-            for archive in archives {
+            let accepted = accepted_bundles(cluster_id, ctx).await?;
+            for archive in archives.iter().filter(|a| takes_bundle(a, &accepted)) {
                 if let Err(err) = overrides::sync_bundle_overrides(
                     &archive.bundle.path,
                     &archive.manifest.name,
@@ -861,6 +864,7 @@ pub async fn get_bundles_with_update_status(
     // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
     let mut live_bundles = addition_eligible_bundles(
         ctx,
+        cluster_id,
         &archives,
         &bundle_packages,
         &all_linked,
@@ -1171,6 +1175,7 @@ fn bundles_awaiting_first_install(
 
 async fn addition_eligible_bundles(
     ctx: &ContentCtx,
+    cluster_id: i64,
     archives: &[BundleArchive],
     bundle_packages: &[BundleTrackedArtifactRow],
     all_linked: &[LinkedArtifactInfo],
@@ -1186,6 +1191,12 @@ async fn addition_eligible_bundles(
         overrides_map,
         &live_managed_keys,
     ));
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
+    eligible.retain(|name| {
+        !archives
+            .iter()
+            .any(|archive| archive.manifest.name == *name && !takes_bundle(archive, &accepted))
+    });
 
     Ok(eligible)
 }

@@ -9,8 +9,8 @@ use oneclient_core::{
 use oneclient_db::models::OverrideType;
 
 use crate::components::{
-    CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry, disable_warning_body,
-    toggle_action,
+    CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry, bundled_delete_action,
+    disable_warning_body, toggle_action,
 };
 use crate::hooks::{
     ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings, package_meta_batch,
@@ -144,6 +144,12 @@ pub fn bundle_packages(
         }
     }
 
+    let removed: HashSet<&str> = overrides
+        .iter()
+        .filter(|(_, ty)| OverrideType::parse(ty) == Some(OverrideType::Removed))
+        .map(|((_, pid), _)| pid.as_str())
+        .collect();
+
     let mut ordered: Vec<&BundleWithUpdateStatus> = bundles.iter().collect();
     ordered.sort_by_key(|b| !b.opted_in_types.contains(&content_type));
 
@@ -222,6 +228,8 @@ pub fn bundle_packages(
                 opted_in,
             );
             row.advanced = advanced;
+            row.deleted = installed_info.is_some_and(|info| !info.enabled)
+                && removed.contains(row.package_id.as_str());
             row.github_url = file.github_repo_url();
             rows.push(row);
         }
@@ -318,6 +326,7 @@ fn make_row(
         opted_in,
         shadowed: false,
         advanced: false,
+        deleted: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
     }
 }
@@ -328,6 +337,7 @@ pub(super) enum Tab {
     Category(String),
     Browser,
     Local,
+    Deleted,
 }
 
 impl Tab {
@@ -337,15 +347,20 @@ impl Tab {
             Tab::Category(c) => c.clone(),
             Tab::Browser => "Online".to_string(),
             Tab::Local => "Local".to_string(),
+            Tab::Deleted => "Deleted".to_string(),
         }
     }
 
     pub(super) fn matches(&self, p: &PackageEntry) -> bool {
+        if p.deleted {
+            return matches!(self, Tab::Deleted);
+        }
         match self {
             Tab::All => p.opted_in,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
             Tab::Browser => (p.is_remote() || p.github_hosted) && !p.in_bundle(),
             Tab::Local => !p.is_remote() && !p.github_hosted,
+            Tab::Deleted => false,
         }
     }
 }
@@ -408,6 +423,9 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
 
     tabs.push(Tab::Browser);
     tabs.push(Tab::Local);
+    if items.iter().any(|p| hidden.keep(p) && p.deleted) {
+        tabs.push(Tab::Deleted);
+    }
     tabs
 }
 
@@ -580,6 +598,12 @@ impl Component for PackageManager {
             .filter(|p| p.installed && !p.in_bundle())
             .filter_map(|p| p.hash.clone())
             .collect();
+        let bundled_deletable: Vec<PackageEntry> = chosen
+            .iter()
+            .filter(|_| content_type == ContentType::Mod)
+            .filter(|p| p.installed && p.in_bundle() && !p.deleted)
+            .cloned()
+            .collect();
 
         let set_enabled: EventHandler<bool> = {
             let chosen = chosen.clone();
@@ -625,13 +649,13 @@ impl Component for PackageManager {
             selection,
             order,
             count: chosen.len(),
-            deletable: deletable.len(),
+            deletable: deletable.len() + bundled_deletable.len(),
             set_enabled,
             delete: (move |()| confirm_delete.set(true)).into(),
         };
 
         let delete_dialog = confirm_delete.read().then(|| {
-            let count = deletable.len();
+            let count = deletable.len() + bundled_deletable.len();
             let noun = if count == 1 {
                 package_type
             } else {
@@ -642,20 +666,59 @@ impl Component for PackageManager {
             } else {
                 String::new()
             };
+            let body = match (deletable.is_empty(), bundled_deletable.is_empty()) {
+                (_, true) => format!("This can't be undone.{shared}"),
+                (true, false) => format!(
+                    "Bundled {noun_plural} are turned off and moved to the Deleted tab, where you can restore them."
+                ),
+                (false, false) => format!(
+                    "Bundled {noun_plural} are turned off and moved to the Deleted tab, where you can restore them. The rest can't be undone.{shared}"
+                ),
+            };
+            let warnings = disable_warnings(&warnings_query);
             confirm_dialog(
                 format!("Delete {count} {noun}?"),
-                format!("This can't be undone.{shared}"),
+                body,
                 move || confirm_delete.set(false),
                 move || {
-                    mutation.mutate(ClusterAction::Batch(
+                    let action = ClusterAction::Batch(
                         deletable
                             .iter()
                             .map(|hash| ClusterAction::RemoveArtifact {
                                 cluster_id,
                                 hash: hash.clone(),
                             })
+                            .chain(
+                                bundled_deletable
+                                    .iter()
+                                    .filter_map(|p| bundled_delete_action(p, cluster_id)),
+                            )
                             .collect(),
-                    ));
+                    );
+                    let warned: Vec<String> = bundled_deletable
+                        .iter()
+                        .filter_map(|p| {
+                            disable_warning_body(p, warnings.clone())
+                                .map(|body| format!("**{}**
+
+{body}", p.name))
+                        })
+                        .collect();
+                    if warned.is_empty() {
+                        mutation.mutate(action);
+                    } else {
+                        guard.set(Some(PendingEssential {
+                            name: match (deletable.as_slice(), bundled_deletable.as_slice()) {
+                                ([], [only]) => only.name.clone(),
+                                _ => format!("{count} {noun}"),
+                            },
+                            body: warned.join("
+
+"),
+                            kind: EssentialGuardKind::Remove,
+                            action,
+                        }));
+                    }
                     selection.exit();
                     confirm_delete.set(false);
                 },

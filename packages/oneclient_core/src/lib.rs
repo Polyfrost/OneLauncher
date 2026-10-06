@@ -7,6 +7,7 @@ pub mod changelog;
 pub mod clusters;
 pub mod disable_warnings;
 mod error;
+pub mod export;
 pub mod game;
 pub mod images;
 mod java_store;

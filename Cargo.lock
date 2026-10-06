@@ -5054,6 +5054,7 @@ dependencies = [
 name = "oneclient_core"
 version = "2.7.0"
 dependencies = [
+ "anyhow",
  "async-compression",
  "async-stream",
  "async-tempfile",

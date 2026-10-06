@@ -4,6 +4,7 @@ mod package_manager;
 
 mod cluster_settings;
 mod datapacks;
+mod exporting;
 mod folder_list;
 mod modpack_settings;
 mod mods;

@@ -18,7 +18,6 @@ depends=(
   'dbus'
   'gtk3'
   'libayatana-appindicator'
-  'xdotool'
 )
 makedepends=(
   'rust'

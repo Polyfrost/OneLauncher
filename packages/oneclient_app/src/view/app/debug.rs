@@ -9,7 +9,10 @@ use oneclient_net::status::{self, ServiceStatus};
 
 use crate::Actions;
 use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialog, toggle};
-use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch};
+use crate::hooks::{
+    invalidate_auth_queries, settled_or_loading, try_default_account, use_active_cluster_id,
+    use_clusters, use_current_account, use_dispatch,
+};
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
     OptionalModsGroup,
@@ -95,6 +98,11 @@ impl Component for Debug {
                     .child(section(
                         "Auth Error Guidance",
                         vec![AuthGuidancePreview.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
+                        "Session Expiry",
+                        vec![SessionExpirySimulator.into_element()],
                     ))
                     .child(divider())
                     .child(section(
@@ -924,6 +932,121 @@ impl Component for AuthGuidancePreview {
             .maybe_child(popup)
             .into_element()
     }
+}
+
+#[derive(PartialEq)]
+struct SessionExpirySimulator;
+
+#[derive(Clone, Copy)]
+enum ExpiryKind {
+    /// Skips the network and flips the account straight to signed out
+    SignedOut,
+    /// Leaves detection to Microsoft on the next launch
+    RejectedToken,
+}
+
+impl Component for SessionExpirySimulator {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let current = use_current_account();
+
+        let account = try_default_account(&current).filter(|a| a.is_microsoft());
+        let target = account.as_ref().map(|a| (a.id, a.username.clone()));
+        let usable = account.as_ref().is_some_and(|a| !a.needs_sign_in());
+
+        let description = match &account {
+            Some(a) if a.needs_sign_in() => format!("{} is already signed out.", a.username),
+            Some(a) => format!("Acts on the active account, {}.", a.username),
+            None => "The active account must be a Microsoft account.".to_string(),
+        };
+
+        let button = |text: &'static str, icon: IconType, kind: ExpiryKind| {
+            let dispatch = dispatch.clone();
+            let target = target.clone();
+            Button::new()
+                .danger()
+                .enabled(usable)
+                .child(Icon::new(icon).size(16.))
+                .text(text)
+                .on_press(move |_| {
+                    if let Some((id, username)) = target.clone() {
+                        run_expiry(&dispatch, kind, id, username);
+                    }
+                })
+        };
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                label()
+                    .text(description)
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .spacing(8.)
+                    .child(button(
+                        "Force signed out",
+                        IconType::AlertTriangle,
+                        ExpiryKind::SignedOut,
+                    ))
+                    .child(button(
+                        "Invalidate refresh token",
+                        IconType::RefreshCw01,
+                        ExpiryKind::RejectedToken,
+                    )),
+            )
+            .child(
+                label()
+                    .text("Invalidate keeps the account looking fine until the next launch, where Microsoft answers invalid_grant.")
+                    .font_size(11.)
+                    .color(colors::fg_secondary()),
+            )
+            .into_element()
+    }
+}
+
+fn run_expiry(dispatch: &crate::Actions, kind: ExpiryKind, id: uuid::Uuid, username: String) {
+    let dispatch = dispatch.clone();
+    spawn(async move {
+        let result = match crate::launcher::state() {
+            Ok(state) => match kind {
+                ExpiryKind::SignedOut => state.auth.mark_signed_out(id).await,
+                ExpiryKind::RejectedToken => state.auth.corrupt_refresh_token(id).await,
+            }
+            .map_err(|err| err.to_string()),
+            Err(err) => Err(err.to_string()),
+        };
+        invalidate_auth_queries(Some(id)).await;
+
+        match result {
+            Ok(()) => {
+                let body = match kind {
+                    ExpiryKind::SignedOut => format!("{username} is now signed out"),
+                    ExpiryKind::RejectedToken => {
+                        format!("{username} will be rejected on the next launch")
+                    }
+                };
+                dispatch
+                    .notify("Session expiry simulated")
+                    .body(body)
+                    .icon(IconType::AlertTriangle)
+                    .send();
+            }
+            Err(err) => {
+                dispatch
+                    .notify("Simulation failed")
+                    .body(err)
+                    .error()
+                    .send();
+            }
+        }
+    });
 }
 
 /// Presets are grouped by which layer should catch them same-length corruption only the hashing pass finds truncation the launch-time size check

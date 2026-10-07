@@ -63,11 +63,25 @@ pub struct GameProcessManager {
     inner: Mutex<HashMap<i64, GameProcess>>,
     kills: Mutex<HashMap<i64, oneshot::Sender<()>>>,
     dirs: Mutex<HashMap<i64, PathBuf>>,
+    natives: Mutex<HashMap<i64, PathBuf>>,
+    launching: tokio::sync::Mutex<()>,
 }
 
 impl GameProcessManager {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// One launch prepares at a time two launches at once would install the
+    /// same Java or download the same game files into the same paths
+    /// Held from the checks until the process spawns not for the whole session
+    pub async fn launch_slot(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.launching.lock().await
+    }
+
+    /// `None` while another launch holds the slot
+    pub fn try_launch_slot(&self) -> Option<tokio::sync::MutexGuard<'_, ()>> {
+        self.launching.try_lock().ok()
     }
 
     pub fn register_kill(&self, cluster_id: i64, tx: oneshot::Sender<()>) {
@@ -110,21 +124,44 @@ impl GameProcessManager {
         self.inner.lock().unwrap().remove(&cluster_id);
         self.kills.lock().unwrap().remove(&cluster_id);
         self.dirs.lock().unwrap().remove(&cluster_id);
+        self.natives.lock().unwrap().remove(&cluster_id);
+    }
+
+    pub fn set_natives(&self, cluster_id: i64, dir: PathBuf) {
+        self.natives.lock().unwrap().insert(cluster_id, dir);
+    }
+
+    pub fn natives_in_use_by(&self, dir: &Path, exclude: Option<i64>) -> Option<i64> {
+        self.natives
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(id, d)| Some(**id) != exclude && d.as_path() == dir)
+            .map(|(id, _)| *id)
     }
 
     pub fn set_dir(&self, cluster_id: i64, dir: PathBuf) {
         self.dirs.lock().unwrap().insert(cluster_id, dir);
     }
 
-    /// Like [`Self::dir_in_use_by`] but counts a cluster's own session too the
-    /// shared game directory holds one game at a time whoever it belongs to
-    pub fn dir_in_use(&self, dir: &Path) -> Option<i64> {
-        self.dirs
-            .lock()
-            .unwrap()
+    /// Check and record under one lock so two launches racing on separate
+    /// threads cannot both find the directory free
+    /// `exclusive` is for the shared game directory which holds one game at a
+    /// time whoever it belongs to counting the cluster's own session too
+    /// Returns the cluster already holding `dir`
+    pub fn claim_dir(&self, cluster_id: i64, dir: &Path, exclusive: bool) -> Result<(), i64> {
+        let mut dirs = self.dirs.lock().unwrap();
+
+        let holder = dirs
             .iter()
-            .find(|(_, d)| d.as_path() == dir)
-            .map(|(id, _)| *id)
+            .find(|(id, d)| (exclusive || **id != cluster_id) && d.as_path() == dir)
+            .map(|(id, _)| *id);
+        if let Some(holder) = holder {
+            return Err(holder);
+        }
+
+        dirs.insert(cluster_id, dir.to_path_buf());
+        Ok(())
     }
 
     pub fn dir_in_use_by(&self, dir: &Path, exclude: i64) -> Option<i64> {
@@ -175,5 +212,45 @@ impl GameProcessManager {
             .filter(|(_, p)| p.stage == LaunchStage::Running)
             .map(|(id, _)| *id)
             .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_shared_dir_takes_one_game() {
+        let games = GameProcessManager::new();
+        let shared = Path::new("shared");
+
+        assert_eq!(games.claim_dir(1, shared, true), Ok(()));
+        assert_eq!(games.claim_dir(2, shared, true), Err(1));
+
+        games.remove(1);
+        assert_eq!(games.claim_dir(2, shared, true), Ok(()));
+    }
+
+    #[test]
+    fn dedicated_dirs_do_not_get_in_each_others_way() {
+        let games = GameProcessManager::new();
+
+        assert_eq!(games.claim_dir(1, Path::new("one"), false), Ok(()));
+        assert_eq!(games.claim_dir(2, Path::new("two"), false), Ok(()));
+        assert_eq!(games.claim_dir(3, Path::new("one"), false), Err(1));
+    }
+
+    #[test]
+    fn natives_are_held_until_the_game_is_removed() {
+        let games = GameProcessManager::new();
+        let natives = Path::new("natives/1.8.9");
+
+        games.set_natives(1, natives.to_path_buf());
+        assert_eq!(games.natives_in_use_by(natives, None), Some(1));
+        assert_eq!(games.natives_in_use_by(natives, Some(1)), None);
+        assert_eq!(games.natives_in_use_by(Path::new("natives/1.21"), None), None);
+
+        games.remove(1);
+        assert_eq!(games.natives_in_use_by(natives, None), None);
     }
 }

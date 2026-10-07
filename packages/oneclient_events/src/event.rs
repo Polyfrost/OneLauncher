@@ -109,6 +109,8 @@ pub enum GameEvent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LaunchStage {
     Checking,
+    /// Queued behind another cluster's launch
+    Waiting,
     Downloading,
     Launching,
     Running,
@@ -118,7 +120,10 @@ pub enum LaunchStage {
 impl LaunchStage {
     #[must_use]
     pub fn is_busy(self) -> bool {
-        matches!(self, Self::Checking | Self::Downloading | Self::Launching)
+        matches!(
+            self,
+            Self::Checking | Self::Waiting | Self::Downloading | Self::Launching
+        )
     }
 }
 

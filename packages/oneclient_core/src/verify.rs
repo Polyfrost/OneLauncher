@@ -25,6 +25,7 @@ pub struct ClusterVerifyReport {
     pub unrepairable: Vec<String>,
     /// Game files re-downloaded uncounted because the assets index was gone too
     pub reinstalled_game_files: bool,
+    pub natives_in_use_by: Option<String>,
 }
 
 impl ClusterVerifyReport {
@@ -38,6 +39,16 @@ impl ClusterVerifyReport {
 
     #[must_use]
     pub fn summary(&self) -> String {
+        let summary = self.counts_summary();
+        match &self.natives_in_use_by {
+            Some(name) => format!(
+                "{summary} Native libraries were skipped because {name} is running, verify again after closing it."
+            ),
+            None => summary,
+        }
+    }
+
+    fn counts_summary(&self) -> String {
         if self.is_clean() {
             return format!("All {} files verified.", self.checked);
         }
@@ -155,6 +166,7 @@ async fn run_verify(
     // Counted apart from content which repairs itself as it goes one bucket
     // would count the content ones twice
     let mut game_broken = 0;
+    let mut natives_broken = 0;
 
     // The index lives in the assets directory so its absence usually means that
     // whole directory is gone hand the work to prepare
@@ -174,6 +186,7 @@ async fn run_verify(
         report.corrupt += game.corrupt;
         report.missing += game.missing;
         game_broken = game.corrupt + game.missing;
+        natives_broken = game.natives_unextracted;
     } else {
         tracing::warn!("assets index is missing; re-downloading the game files wholesale");
     }
@@ -182,9 +195,26 @@ async fn run_verify(
 
     // Runs `prepare` directly not the launch path which skips clusters already
     // marked `Ready` and so never heals one with deleted files
-    if game_broken > 0 || reinstalled_game_files {
+    let natives_holder = crate::game::natives::natives_holder(state, &version_info.id, None)
+        .filter(|_| natives_broken > 0);
+    let repairable = if natives_holder.is_some() {
+        game_broken.saturating_sub(natives_broken)
+    } else {
+        game_broken
+    };
+
+    if repairable > 0 || reinstalled_game_files {
         prepare_cluster_locked(state, cluster_id, false, true, true, Some(progress)).await?;
-        report.repaired += game_broken;
+        report.repaired += repairable;
+    }
+
+    if let Some(holder) = natives_holder {
+        let name = state
+            .clusters
+            .get(holder)
+            .await
+            .map_or_else(|_| "another cluster".to_string(), |cluster| cluster.name);
+        report.natives_in_use_by = Some(name);
     }
 
     report.reinstalled_game_files = reinstalled_game_files;
@@ -358,6 +388,7 @@ mod tests {
             repaired: 4,
             unrepairable: Vec::new(),
             reinstalled_game_files: false,
+            natives_in_use_by: None,
         };
 
         assert!(!report.is_clean());
@@ -379,6 +410,20 @@ mod tests {
         assert_eq!(
             report.summary(),
             "Game files were missing and have been re-downloaded."
+        );
+    }
+
+    #[test]
+    fn skipped_natives_are_named_rather_than_counted_as_repaired() {
+        let report = ClusterVerifyReport {
+            checked: 40,
+            natives_in_use_by: Some("Hypixel".to_string()),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            report.summary(),
+            "All 40 files verified. Native libraries were skipped because Hypixel is running, verify again after closing it."
         );
     }
 

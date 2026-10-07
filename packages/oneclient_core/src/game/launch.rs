@@ -45,8 +45,9 @@ pub async fn launch_cluster(
 ) -> LauncherResult<LaunchedGame> {
     tracing::info!(cluster_id, search_for_java, "launching cluster");
 
-    let parallel = state.settings.read().allow_parallel_running_clusters;
-    if !parallel && state.games.is_active(cluster_id) {
+    // Parallel clusters or not a cluster runs only once a second game would
+    // share its directory and its slot in the process manager
+    if state.games.is_active(cluster_id) {
         tracing::warn!(
             cluster_id,
             "cluster already launching or running; refusing launch"
@@ -54,13 +55,9 @@ pub async fn launch_cluster(
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
 
-    // A parallel attempt shares its entry with the session already under way, so
-    // clearing it here would drop that game's kill sender and pid
-    let adopted = state.games.is_active(cluster_id);
-
     let result = start(state, cluster_id, account, search_for_java).await;
 
-    if result.is_err() && !adopted {
+    if result.is_err() {
         state.games.remove(cluster_id);
         state
             .services
@@ -83,7 +80,19 @@ async fn start(
         events.game_stage(cluster_id, s);
     };
 
+    // The stage goes first so a click while this waits is refused as already
+    // active rather than queued behind it
     stage(LaunchStage::Checking);
+    let launch_slot = match state.games.try_launch_slot() {
+        Some(slot) => slot,
+        None => {
+            tracing::debug!(cluster_id, "another launch is preparing; waiting for it");
+            stage(LaunchStage::Waiting);
+            let slot = state.games.launch_slot().await;
+            stage(LaunchStage::Checking);
+            slot
+        }
+    };
 
     let existing = state.clusters.get(cluster_id).await?;
 
@@ -92,19 +101,14 @@ async fn start(
 
     // Non-dedicated clusters share one directory so a second game there would
     // materialize over the running one's
-    // `dir_in_use_by` waves a cluster past
-    // its own session which parallel launches make reachable
-    if !dedicated && let Some(other) = state.games.dir_in_use(&game_dir) {
+    if let Err(other) = state.games.claim_dir(cluster_id, &game_dir, !dedicated) {
+        if dedicated {
+            return Err(GameError::DirectoryInUse(other).into());
+        }
         tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
         let name = running_cluster_name(state, other).await;
         return Err(GameError::SharedDirectoryBusy(name).into());
     }
-
-    if let Some(other) = state.games.dir_in_use_by(&game_dir, cluster_id) {
-        return Err(GameError::DirectoryInUse(other).into());
-    }
-
-    state.games.set_dir(cluster_id, game_dir.clone());
 
     match state.clusters.mark_played(cluster_id).await {
         Ok(()) => events.signal(oneclient_events::Signal::ClustersChanged),
@@ -221,6 +225,10 @@ async fn start(
         "resolved launch metadata"
     );
 
+    if let Some(dir) = crate::game::natives::natives_dir(&version_name) {
+        state.games.set_natives(cluster_id, dir);
+    }
+
     let java = if let Some(runtime) = state
         .java
         .runtime_for_profile(profile.java_path.as_deref())
@@ -248,6 +256,8 @@ async fn start(
                 .set_stage(cluster_id, ClusterStage::Repairing)
                 .await;
             stage(LaunchStage::Downloading);
+            let natives_mode =
+                crate::game::natives::natives_mode(state, &version_name, Some(cluster_id));
             if let Err(err) = download_minecraft(
                 &state.services.mc(),
                 &progress,
@@ -255,6 +265,7 @@ async fn start(
                 &java.os_arch,
                 updated,
                 false,
+                natives_mode,
             )
             .await
             {
@@ -365,6 +376,8 @@ async fn start(
         profile.force_fullscreen,
         profile.game_args.as_deref(),
     );
+
+    drop(launch_slot);
 
     if let Some(reason) = run_hook(profile.hook_pre.as_deref(), &cwd).await {
         events

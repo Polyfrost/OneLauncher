@@ -82,6 +82,5 @@ pub use tos::{TermsDocument, fetch_terms};
 pub use verify::{ClusterVerifyReport, verify_cluster_files};
 pub use versions::{
     ReleaseTarget, RemoteMigration, VersionArts, VersionMetadata, VersionsManager,
-    VersionsManifest,
-    resolve_migration_chain,
+    VersionsManifest, resolve_migration_chain,
 };

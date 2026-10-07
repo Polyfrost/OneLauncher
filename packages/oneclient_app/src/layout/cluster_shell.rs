@@ -10,7 +10,7 @@ use crate::hooks::{
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::entrance_motion_layer;
-use crate::view::app::{launch_button_state, launch_syncing};
+use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken};
 
 const HEADER_HEIGHT: f32 = 64.;
 const TABS_HEIGHT: f32 = 38.;
@@ -113,13 +113,14 @@ impl Component for ClusterShell {
         let launcher = use_launcher();
         let cluster = use_cluster(cluster_id);
         let syncing = launch_syncing(&launcher, cluster.as_ref().is_none_or(|c| c.uses_bundles()));
+        let shared_dir_taken = use_shared_dir_taken(cluster_id);
 
         let show_game_log = game.is_active(cluster_id);
         let show_datapacks = cluster
             .as_ref()
             .is_none_or(|c| crate::view::app::cluster::supports_datapacks(&c.mc_version));
         let show_mod_tabs = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
-        let launch_state = launch_button_state(&game, cluster_id, syncing);
+        let launch_state = launch_button_state(&game, cluster_id, syncing, shared_dir_taken);
 
         let hidden_tab = !show_mod_tabs
             && matches!(

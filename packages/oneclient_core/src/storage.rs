@@ -156,25 +156,11 @@ async fn natives_in_use(state: &LauncherState) -> Option<HashSet<String>> {
 
     let mut in_use = HashSet::new();
     for cluster in clusters {
-        let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
-
-        if cluster.mc_loader == oneclient_common::domain::GameLoader::Vanilla {
-            in_use.insert(mc_version);
-            continue;
-        }
-
-        let resolved = oneclient_mc::get_loader_version_cached(
-            &metadata,
-            &mc_version,
-            cluster.mc_loader,
-            cluster.mc_loader_version.as_deref(),
-        );
-
-        match resolved {
-            Ok(Some(loader)) => {
-                in_use.insert(format!("{mc_version}-{}", loader.id));
+        match crate::game::natives::cached_version_name(&metadata, &cluster) {
+            Some(version_name) => {
+                in_use.insert(version_name);
             }
-            Ok(None) | Err(_) => {
+            None => {
                 tracing::info!(
                     cluster = %cluster.name,
                     loader = %cluster.mc_loader,

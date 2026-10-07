@@ -155,6 +155,15 @@ async fn readopt(
     state.games.set_stage(cluster_id, LaunchStage::Running);
     state.games.set_pid(cluster_id, Some(pid));
     state.games.set_dir(cluster_id, cwd.clone());
+    let version_name = state
+        .metadata
+        .try_lock()
+        .ok()
+        .and_then(|metadata| crate::game::natives::cached_version_name(&metadata, &cluster));
+    match version_name.as_deref().and_then(crate::game::natives::natives_dir) {
+        Some(dir) => state.games.set_natives(cluster_id, dir),
+        None => tracing::debug!(cluster_id, "could not resolve the re-adopted game's natives"),
+    }
     state
         .services
         .events

@@ -873,7 +873,10 @@ mod tests {
         let err = stale_refresh_error(reqwest::StatusCode::BAD_REQUEST, EXPIRED)
             .expect("invalid_grant is the stale refresh token");
 
-        assert!(matches!(err, MinecraftAuthError::StaleRefreshToken), "{err}");
+        assert!(
+            matches!(err, MinecraftAuthError::StaleRefreshToken),
+            "{err}"
+        );
     }
 
     #[test]

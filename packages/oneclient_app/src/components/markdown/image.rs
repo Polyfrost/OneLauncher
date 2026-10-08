@@ -84,7 +84,9 @@ fn svg_size(bytes: &[u8]) -> Option<(u32, u32)> {
     let (width, height) = declared.or_else(|| {
         // Without usable lengths the coordinate system is all there is
         let view_box = svg_attr(tag, "viewBox")?;
-        let mut numbers = view_box.split_whitespace().filter_map(|n| n.parse::<f32>().ok());
+        let mut numbers = view_box
+            .split_whitespace()
+            .filter_map(|n| n.parse::<f32>().ok());
         let _origin = (numbers.next()?, numbers.next()?);
         Some((numbers.next()?, numbers.next()?))
     })?;

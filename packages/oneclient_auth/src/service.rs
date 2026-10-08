@@ -493,9 +493,9 @@ mod tests {
             "nothing should keep replaying a token Microsoft already refused"
         );
 
-        let Some(oneclient_events::Event::Notification(
-            oneclient_events::Notification::Message(message),
-        )) = rx.recv().await
+        let Some(oneclient_events::Event::Notification(oneclient_events::Notification::Message(
+            message,
+        ))) = rx.recv().await
         else {
             panic!("the user should be told why the account disappeared");
         };

@@ -120,6 +120,18 @@ impl HiddenFilter {
     }
 }
 
+/// The view state persists this choice as a plain flag so the toolbar and the
+/// list have to agree on what it means
+impl From<bool> for HiddenFilter {
+    fn from(show: bool) -> Self {
+        if show {
+            HiddenFilter::Show
+        } else {
+            HiddenFilter::Hide
+        }
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub(super) struct Bulk {
     pub(super) selection: Selection<String>,
@@ -1009,4 +1021,15 @@ fn local_empty(
         .child(rect().height(Size::px(6.)))
         .child(add_from_file_button(cluster_id, content_type, dispatch))
         .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stored_flag_decides_which_hidden_packages_are_listed() {
+        assert!(HiddenFilter::from(false) == HiddenFilter::Hide);
+        assert!(HiddenFilter::from(true) == HiddenFilter::Show);
+    }
 }

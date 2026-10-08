@@ -860,3 +860,34 @@ where
 
     resp
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const EXPIRED: &str =
+        r#"{"error":"invalid_grant","error_description":"AADSTS70000: Refresh token has expired"}"#;
+
+    #[test]
+    fn a_refresh_token_microsoft_refuses_reads_as_a_stale_session() {
+        let err = stale_refresh_error(reqwest::StatusCode::BAD_REQUEST, EXPIRED)
+            .expect("invalid_grant is the stale refresh token");
+
+        assert!(matches!(err, MinecraftAuthError::StaleRefreshToken), "{err}");
+    }
+
+    #[test]
+    fn a_refresh_that_succeeds_is_never_treated_as_stale() {
+        assert!(stale_refresh_error(reqwest::StatusCode::OK, EXPIRED).is_none());
+    }
+
+    #[test]
+    fn other_oauth_failures_are_left_to_the_general_handler() {
+        let other = r#"{"error":"invalid_client","error_description":"unknown client"}"#;
+        assert!(stale_refresh_error(reqwest::StatusCode::BAD_REQUEST, other).is_none());
+        // A proxy or gateway error page is not an OAuth answer at all
+        assert!(
+            stale_refresh_error(reqwest::StatusCode::BAD_REQUEST, "<html>400</html>").is_none()
+        );
+    }
+}

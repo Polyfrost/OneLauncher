@@ -35,6 +35,14 @@ pub enum GameError {
     )]
     SharedDirectoryBusy(String),
 
+    #[error("this instance is being reset; wait for the reset to finish before launching it")]
+    Resetting,
+
+    #[error(
+        "this instance's last reset didn't finish; run Reset Instance again from its settings before launching it"
+    )]
+    ResetUnfinished,
+
     #[error("failed to spawn the game process: {0}")]
     Spawn(String),
 

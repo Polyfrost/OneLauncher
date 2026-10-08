@@ -38,6 +38,7 @@ pub use process::{
     GameProcess, GameProcessManager, is_process_alive, kill_process, process_start_time,
 };
 pub use reattach::recover_sessions;
+pub(crate) use shared_dir::lock_mods_sync;
 pub use shared_dir::{
     dematerialize_content, import_manual_content, link_cluster_logs, materialize_content,
     shadowed_bundle_mods, sync_cluster_mods, unlink_cluster_logs, write_allowed_symlinks,

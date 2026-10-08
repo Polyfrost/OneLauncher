@@ -1001,6 +1001,12 @@ impl Actions {
                 .send();
             return;
         }
+        if oneclient_core::clusters::is_resetting(cluster_id) {
+            self.notify("This instance is being reset")
+                .body("Wait for the reset to finish, then press Play again.")
+                .send();
+            return;
+        }
 
         let claimed = self
             .station

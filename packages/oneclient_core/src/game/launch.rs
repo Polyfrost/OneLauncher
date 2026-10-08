@@ -85,6 +85,20 @@ async fn start(
 
     stage(LaunchStage::Checking);
 
+    // Checked only once this launch counts as active, a reset claims itself before checking
+    // for that, so the two can't both go ahead
+    if crate::clusters::is_resetting(cluster_id) {
+        return Err(GameError::Resetting.into());
+    }
+    match crate::clusters::reset_unfinished(state, cluster_id).await {
+        Ok(true) => return Err(GameError::ResetUnfinished.into()),
+        Ok(false) => {}
+        // Only a guard against launching a half-reset cluster, not worth failing every launch over
+        Err(err) => {
+            tracing::warn!(cluster_id, error = %err, "could not check for an unfinished reset; launching anyway");
+        }
+    }
+
     let existing = state.clusters.get(cluster_id).await?;
 
     let game_dir = existing.game_dir()?;

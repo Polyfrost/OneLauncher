@@ -573,7 +573,7 @@ async fn disable_removed(
     disabled
 }
 
-async fn lock_mods_sync(cluster_id: i64) -> tokio::sync::OwnedMutexGuard<()> {
+pub(crate) async fn lock_mods_sync(cluster_id: i64) -> tokio::sync::OwnedMutexGuard<()> {
     static LOCKS: std::sync::Mutex<
         std::collections::BTreeMap<i64, std::sync::Arc<tokio::sync::Mutex<()>>>,
     > = std::sync::Mutex::new(std::collections::BTreeMap::new());

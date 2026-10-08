@@ -44,6 +44,10 @@ pub enum MinecraftAuthError {
         #[source]
         source: reqwest::Error,
     },
+    /// Microsoft refuses a refresh token it has expired or revoked with
+    /// `invalid_grant` no retry revives it the only way out is a fresh sign-in
+    #[error("this Microsoft sign-in has expired")]
+    StaleRefreshToken,
     #[error("waiting for user to complete device authorization")]
     DeviceAuthorizationPending,
     #[error("device authorization polling interval increased; retrying")]

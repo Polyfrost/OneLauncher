@@ -482,9 +482,40 @@ async fn refresh_msa_token(
         source,
     })?;
 
-    parse_json_response(res, MinecraftAuthStep::RefreshToken)
+    let status = res.status();
+    let text = res
+        .text()
         .await
-        .map(MsaToken::from_response)
+        .map_err(|source| MinecraftAuthError::RequestError {
+            step: MinecraftAuthStep::RefreshToken,
+            source,
+        })?;
+
+    if let Some(err) = stale_refresh_error(status, &text) {
+        tracing::warn!(%status, body = %text, "Microsoft rejected the refresh token");
+        return Err(err);
+    }
+
+    parse_json_body(status, text, MinecraftAuthStep::RefreshToken).map(MsaToken::from_response)
+}
+
+/// A refresh token Microsoft answers with `invalid_grant` is dead the launcher
+/// cannot renew it so the caller has to treat the stored session as gone
+fn stale_refresh_error(status: reqwest::StatusCode, body: &str) -> Option<MinecraftAuthError> {
+    if status.is_success() {
+        return None;
+    }
+
+    let oauth = serde_json::from_str::<OAuthErrorResponse>(body).ok()?;
+    if oauth.error != "invalid_grant" {
+        return None;
+    }
+
+    tracing::debug!(
+        description = oauth.error_description.as_deref().unwrap_or_default(),
+        "refresh token expired or was revoked"
+    );
+    Some(MinecraftAuthError::StaleRefreshToken)
 }
 
 struct MsaToken {
@@ -779,6 +810,14 @@ async fn parse_json_response<T: for<'de> Deserialize<'de>>(
         .await
         .map_err(|source| MinecraftAuthError::RequestError { step, source })?;
 
+    parse_json_body(status, text, step)
+}
+
+fn parse_json_body<T: for<'de> Deserialize<'de>>(
+    status: reqwest::StatusCode,
+    text: String,
+    step: MinecraftAuthStep,
+) -> Result<T, MinecraftAuthError> {
     if !status.is_success() {
         tracing::error!(sentry = false, ?step, %status, body = %text, "MSA endpoint returned a non-success status");
     }

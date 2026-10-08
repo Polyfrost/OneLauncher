@@ -11,6 +11,7 @@ use super::cards::{
 };
 use super::data::Picks;
 use super::details::details_body;
+use super::import::ImportStep;
 use super::model::{LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard};
 use super::model::{VERSION_KINDS, kind_bit};
 use super::rail::version_art;
@@ -28,6 +29,14 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
         Step::Version => ("step-version", version_step(wizard, picks)),
         Step::Bundles => ("step-bundles", bundles_step(wizard, picks)),
         Step::Modpack => ("step-modpack", modpack_step(wizard, picks)),
+        Step::Import => (
+            "step-import",
+            ImportStep {
+                chosen: wizard.import_chosen,
+                extra: wizard.import_extra,
+            }
+            .into_element(),
+        ),
         Step::Customize => (
             "step-details",
             details_body(
@@ -44,7 +53,7 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
     rect()
         .key(key)
         .width(Size::fill())
-        .height(if picks.step == Step::Version {
+        .height(if matches!(picks.step, Step::Version | Step::Import) {
             Size::fill()
         } else {
             Size::auto()
@@ -78,6 +87,14 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
             None,
             "Install a pack from Modrinth or CurseForge, or a file you downloaded.",
             "Has its own game folder.",
+        ),
+        (
+            TypeChoice::Import,
+            IconType::FolderDownload,
+            "Import from another launcher",
+            None,
+            "Bring over instances from Prism Launcher, MultiMC or the Modrinth App.",
+            "Each keeps its own game folder.",
         ),
     ];
 

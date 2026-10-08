@@ -78,6 +78,7 @@ pub use queries::{
     spawn_world_task, try_cluster_worlds, try_world_datapacks, try_world_size, use_cluster_worlds,
     use_saves_folder_watch, use_world_datapacks, use_world_size,
 };
+pub use queries::{external_launchers, use_external_launchers};
 
 use crate::notifications::NotificationSnapshot;
 use crate::state::{

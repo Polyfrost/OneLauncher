@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use freya::prelude::*;
 use oneclient_common::domain::GameLoader;
-use oneclient_core::GameVersionKind;
+use oneclient_core::{ExternalDetection, ExternalInstance, GameVersionKind};
 
 use super::details::DetailsState;
 use crate::hooks::GameVersion;
@@ -28,6 +28,7 @@ pub enum TypeChoice {
     OneClient,
     Scratch,
     Modpack,
+    Import,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -118,6 +119,7 @@ pub enum Step {
     Bundles,
     Customize,
     Modpack,
+    Import,
 }
 
 impl Step {
@@ -129,6 +131,7 @@ impl Step {
             Self::Bundles => "Bundles",
             Self::Customize => "Details",
             Self::Modpack => "Source",
+            Self::Import => "Instances",
         }
     }
 }
@@ -136,12 +139,14 @@ impl Step {
 const ONECLIENT_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Bundles, Step::Customize];
 const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Loader, Step::Customize];
 const MODPACK_STEPS: [Step; 2] = [Step::Type, Step::Modpack];
+const IMPORT_STEPS: [Step; 2] = [Step::Type, Step::Import];
 
 pub fn step_order(choice: TypeChoice) -> &'static [Step] {
     match choice {
         TypeChoice::OneClient => &ONECLIENT_STEPS,
         TypeChoice::Scratch => &SCRATCH_STEPS,
         TypeChoice::Modpack => &MODPACK_STEPS,
+        TypeChoice::Import => &IMPORT_STEPS,
     }
 }
 
@@ -201,5 +206,9 @@ pub struct Wizard {
     pub loader_version: State<Option<String>>,
     pub declined: State<Option<HashSet<String>>>,
     pub modpack_origin: State<ModpackOrigin>,
+    /// Instances ticked on the import step, in the order they were ticked
+    pub import_chosen: State<Vec<ExternalInstance>>,
+    /// Installs the user pointed at by hand (portable launchers)
+    pub import_extra: State<Vec<ExternalDetection>>,
     pub details: DetailsState,
 }

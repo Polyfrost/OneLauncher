@@ -264,7 +264,15 @@ impl AuthService {
         }
 
         tracing::info!(username = %existing.username, "renewing Microsoft access token");
-        match msa::refresh_microsoft_account(self.net.http(), &existing).await {
+        let renewed = msa::refresh_microsoft_account(self.net.http(), &existing).await;
+
+        // A token Microsoft refused with `invalid_grant` is dead keeping the
+        // account would only replay the same failure on every launch
+        if matches!(renewed, Err(MinecraftAuthError::StaleRefreshToken)) {
+            self.sign_out_stale_account(id, &existing).await;
+        }
+
+        match renewed {
             Ok(refreshed) => {
                 self.store
                     .lock()
@@ -283,6 +291,26 @@ impl AuthService {
                 }
             }
         }
+    }
+
+    /// The refresh token is beyond repair so the account goes rather than
+    /// haunting the list and the user is told a fresh sign-in is the way back
+    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
+    async fn sign_out_stale_account(&self, id: Uuid, account: &MinecraftAccount) {
+        let username = account.username.clone();
+        tracing::warn!(%username, "refresh token expired signing the account out");
+
+        if let Err(err) = self.store.lock().await.remove_account(id).await {
+            tracing::warn!(%err, "failed to persist the sign-out");
+        }
+
+        self.events
+            .notify("Sign-in expired")
+            .body(format!(
+                "{username} was signed out add the account again to keep playing."
+            ))
+            .error()
+            .send();
     }
 
     #[tracing::instrument(level = "debug", skip(self), fields(%id))]

@@ -11,9 +11,11 @@ use crate::LauncherResult;
 use crate::clusters::Cluster;
 use crate::state::{LauncherServices, LauncherState};
 use oneclient_cluster::remove_mods_link;
-use oneclient_common::domain::{ContentType, ProviderId};
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_common::paths;
 use oneclient_content::packages::PackageStore;
+use oneclient_content::packages::fabric_version;
+use oneclient_content::packages::local_manifest::JarModId;
 use oneclient_content::packages::store::manifest::{self, ManifestEntry, MaterializedManifest};
 use oneclient_content::packages::store::{
     artifact_absolute_path, link_or_copy, remove_entry, sweep_staging_files,
@@ -1204,7 +1206,14 @@ async fn skip_shadowed_bundle_mods(
         .filter(|item| item.content_type == ContentType::Mod)
         .map(|item| (item.hash.clone(), item.src.clone()))
         .collect();
-    let shadowed = shadowed_bundle_hashes(services, cluster.id, &mods).await;
+    let shadowed = shadowed_bundle_hashes(
+        services,
+        cluster.id,
+        cluster.mc_loader == GameLoader::Fabric,
+        &mods,
+    )
+    .await
+    .shadowed;
     if shadowed.is_empty() {
         return desired;
     }
@@ -1254,11 +1263,11 @@ async fn skip_shadowed_bundle_mods(
     desired
 }
 
-pub async fn shadowed_bundle_mods(state: &LauncherState, cluster_id: i64) -> HashSet<String> {
+pub async fn shadowed_bundle_mods(state: &LauncherState, cluster_id: i64) -> DuplicateMods {
     let services = &state.services;
     let Ok(linked) = PackageStore::list_linked_artifacts(cluster_id, &services.content()).await
     else {
-        return HashSet::new();
+        return DuplicateMods::default();
     };
 
     let mut mods = Vec::new();
@@ -1274,25 +1283,32 @@ pub async fn shadowed_bundle_mods(state: &LauncherState, cluster_id: i64) -> Has
         }
     }
 
-    shadowed_bundle_hashes(services, cluster_id, &mods).await
+    let loader_picks_newer = cluster_dao::get_by_id(&services.db, cluster_id)
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|row| row.mc_loader == GameLoader::Fabric as i64);
+
+    shadowed_bundle_hashes(services, cluster_id, loader_picks_newer, &mods).await
 }
 
 async fn shadowed_bundle_hashes(
     services: &LauncherServices,
     cluster_id: i64,
+    loader_picks_newer: bool,
     mods: &[(String, PathBuf)],
-) -> HashSet<String> {
+) -> DuplicateMods {
     let bundled: HashSet<String> = match bundle_dao::list_bundle_tracked(&services.db, cluster_id)
         .await
     {
         Ok(rows) => rows.into_iter().map(|row| row.hash).collect(),
         Err(err) => {
             tracing::warn!(error = %err, "cannot list bundle mods; not checking for duplicates");
-            return HashSet::new();
+            return DuplicateMods::default();
         }
     };
     if bundled.is_empty() {
-        return HashSet::new();
+        return DuplicateMods::default();
     }
 
     let mut copies = Vec::new();
@@ -1310,15 +1326,15 @@ async fn shadowed_bundle_hashes(
         );
 
         if !bundle_pass && copies.iter().all(|copy| copy.mod_id.is_none()) {
-            return HashSet::new();
+            return DuplicateMods::default();
         }
     }
 
-    shadowed_bundle_copies(&copies)
+    shadowed_bundle_copies(&copies, loader_picks_newer)
 }
 
-async fn cached_mod_id(hash: &str, jar: &Path) -> Option<String> {
-    static IDS: std::sync::Mutex<std::collections::BTreeMap<String, Option<String>>> =
+async fn cached_mod_id(hash: &str, jar: &Path) -> Option<JarModId> {
+    static IDS: std::sync::Mutex<std::collections::BTreeMap<String, Option<JarModId>>> =
         std::sync::Mutex::new(std::collections::BTreeMap::new());
 
     if let Some(id) = IDS.lock().unwrap().get(hash) {
@@ -1335,21 +1351,49 @@ async fn cached_mod_id(hash: &str, jar: &Path) -> Option<String> {
 struct ModCopy {
     hash: String,
     bundled: bool,
-    mod_id: Option<String>,
+    mod_id: Option<JarModId>,
 }
 
-fn shadowed_bundle_copies(mods: &[ModCopy]) -> HashSet<String> {
-    let users: HashSet<&str> = mods
-        .iter()
-        .filter(|copy| !copy.bundled)
-        .filter_map(|copy| copy.mod_id.as_deref())
-        .collect();
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct DuplicateMods {
+    pub shadowed: HashSet<String>,
+    pub outranked: HashSet<String>,
+}
 
-    mods.iter()
-        .filter(|copy| copy.bundled)
-        .filter(|copy| copy.mod_id.as_deref().is_some_and(|id| users.contains(id)))
-        .map(|copy| copy.hash.clone())
-        .collect()
+fn shadowed_bundle_copies(mods: &[ModCopy], loader_picks_newer: bool) -> DuplicateMods {
+    let mut duplicates = DuplicateMods::default();
+
+    for copy in mods.iter().filter(|copy| copy.bundled) {
+        let Some(bundle) = &copy.mod_id else {
+            continue;
+        };
+        let users: Vec<(&str, &JarModId)> = mods
+            .iter()
+            .filter(|copy| !copy.bundled)
+            .filter_map(|copy| Some((copy.hash.as_str(), copy.mod_id.as_ref()?)))
+            .filter(|(_, user)| user.id == bundle.id)
+            .collect();
+        if users.is_empty() {
+            continue;
+        }
+
+        if loader_picks_newer && users.iter().all(|(_, user)| is_older(user, bundle)) {
+            duplicates
+                .outranked
+                .extend(users.iter().map(|(hash, _)| (*hash).to_owned()));
+        } else {
+            duplicates.shadowed.insert(copy.hash.clone());
+        }
+    }
+
+    duplicates
+}
+
+fn is_older(user: &JarModId, bundle: &JarModId) -> bool {
+    match (&user.version, &bundle.version) {
+        (Some(user), Some(bundle)) => fabric_version::compare(user, bundle).is_lt(),
+        _ => false,
+    }
 }
 
 async fn cached_file(
@@ -2869,21 +2913,67 @@ mod tests {
 
     #[test]
     fn a_bundle_mod_the_user_added_their_own_copy_of_is_skipped() {
-        let copy = |hash: &str, bundled: bool, mod_id: Option<&str>| ModCopy {
+        let versioned = |hash: &str, bundled: bool, id: &str, version: Option<&str>| ModCopy {
             hash: hash.into(),
             bundled,
-            mod_id: mod_id.map(Into::into),
+            mod_id: Some(JarModId {
+                id: id.into(),
+                version: version.map(Into::into),
+            }),
+        };
+        let copy = |hash: &str, bundled: bool, mod_id: Option<&str>| match mod_id {
+            Some(id) => versioned(hash, bundled, id, None),
+            None => ModCopy {
+                hash: hash.into(),
+                bundled,
+                mod_id: None,
+            },
         };
 
-        let shadowed = shadowed_bundle_copies(&[
-            copy("bundle-argentum", true, Some("argentum")),
-            copy("user-argentum", false, Some("argentum")),
-            copy("bundle-sodium", true, Some("sodium")),
-            copy("bundle-unreadable", true, None),
-            copy("user-unreadable", false, None),
-        ]);
+        let duplicates = shadowed_bundle_copies(
+            &[
+                copy("bundle-argentum", true, Some("argentum")),
+                copy("user-argentum", false, Some("argentum")),
+                copy("bundle-sodium", true, Some("sodium")),
+                copy("bundle-unreadable", true, None),
+                copy("user-unreadable", false, None),
+            ],
+            true,
+        );
 
-        assert_eq!(shadowed, HashSet::from(["bundle-argentum".to_owned()]));
+        assert_eq!(
+            duplicates.shadowed,
+            HashSet::from(["bundle-argentum".to_owned()])
+        );
+        assert!(duplicates.outranked.is_empty());
+
+        let versioned_copies = [
+            versioned("bundle-api", true, "fabric-api", Some("0.141.6+1.21.11")),
+            versioned("user-api", false, "fabric-api", Some("0.141.4+1.21.11")),
+            versioned("bundle-sodium", true, "sodium", Some("0.8.3")),
+            versioned("user-sodium", false, "sodium", Some("0.8.5")),
+            versioned("bundle-iris", true, "iris", Some("1.9.0")),
+            versioned("user-iris", false, "iris", Some("1.9.0")),
+        ];
+        let duplicates = shadowed_bundle_copies(&versioned_copies, true);
+
+        assert_eq!(
+            duplicates.shadowed,
+            HashSet::from(["bundle-sodium".to_owned(), "bundle-iris".to_owned()])
+        );
+        assert_eq!(duplicates.outranked, HashSet::from(["user-api".to_owned()]));
+
+        let duplicates = shadowed_bundle_copies(&versioned_copies, false);
+
+        assert_eq!(
+            duplicates.shadowed,
+            HashSet::from([
+                "bundle-api".to_owned(),
+                "bundle-sodium".to_owned(),
+                "bundle-iris".to_owned()
+            ])
+        );
+        assert!(duplicates.outranked.is_empty());
     }
 
     #[test]

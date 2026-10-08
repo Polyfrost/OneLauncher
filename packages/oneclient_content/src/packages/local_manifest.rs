@@ -88,8 +88,14 @@ pub async fn read_jar_manifest(jar: &Path) -> JarManifest {
     out
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct JarModId {
+    pub id: String,
+    pub version: Option<String>,
+}
+
 #[tracing::instrument(level = "debug", fields(jar = %jar.display()))]
-pub async fn read_jar_mod_id(jar: &Path) -> Option<String> {
+pub async fn read_jar_mod_id(jar: &Path) -> Option<JarModId> {
     let entries = polyio::read_zip_file_entries(jar, |name| MANIFESTS.contains(&name))
         .await
         .inspect_err(|err| tracing::debug!("could not read {}: {err}", jar.display()))
@@ -97,19 +103,22 @@ pub async fn read_jar_mod_id(jar: &Path) -> Option<String> {
 
     MANIFESTS.into_iter().find_map(|wanted| {
         let (_, bytes) = entries.iter().find(|(name, _)| name == wanted)?;
-        parse_mod_id(wanted, std::str::from_utf8(bytes).ok()?)
+        parse_mod(wanted, std::str::from_utf8(bytes).ok()?)
     })
 }
 
-fn parse_mod_id(manifest: &str, text: &str) -> Option<String> {
-    let id = match manifest {
-        NEOFORGE | FORGE => toml::from_str::<toml::Value>(text)
-            .ok()?
-            .get("mods")?
-            .get(0)?
-            .get("modId")?
-            .as_str()?
-            .to_owned(),
+fn parse_mod(manifest: &str, text: &str) -> Option<JarModId> {
+    let (id, version) = match manifest {
+        NEOFORGE | FORGE => {
+            let id = toml::from_str::<toml::Value>(text)
+                .ok()?
+                .get("mods")?
+                .get(0)?
+                .get("modId")?
+                .as_str()?
+                .to_owned();
+            (id, None)
+        }
         _ => {
             let json: serde_json::Value = serde_json::from_str(text).ok()?;
             let pointers: &[&str] = match manifest {
@@ -117,14 +126,21 @@ fn parse_mod_id(manifest: &str, text: &str) -> Option<String> {
                 QUILT => &["/quilt_loader/id"],
                 _ => &["/0/modid", "/modList/0/modid"],
             };
-            pointers
+            let id = pointers
                 .iter()
                 .find_map(|pointer| json.pointer(pointer)?.as_str())?
-                .to_owned()
+                .to_owned();
+            let version = (manifest == FABRIC)
+                .then(|| json.pointer("/version")?.as_str().map(str::to_owned))
+                .flatten();
+            (id, version)
         }
     };
 
-    clean(Some(id)).filter(|id| !is_placeholder_id(id))
+    Some(JarModId {
+        id: clean(Some(id)).filter(|id| !is_placeholder_id(id))?,
+        version: clean(version).filter(|version| !version.contains('$')),
+    })
 }
 
 fn is_placeholder_id(id: &str) -> bool {
@@ -412,6 +428,14 @@ fn entry_path(raw: String) -> Option<String> {
 mod tests {
     use super::*;
 
+    fn parse_mod_id(manifest: &str, text: &str) -> Option<String> {
+        parse_mod(manifest, text).map(|parsed| parsed.id)
+    }
+
+    fn parse_mod_version(manifest: &str, text: &str) -> Option<String> {
+        parse_mod(manifest, text)?.version
+    }
+
     #[test]
     fn every_loader_names_its_mod_id() {
         assert_eq!(
@@ -435,6 +459,24 @@ mod tests {
             Some("oneconfig")
         );
         assert_eq!(parse_mod_id(FABRIC, r#"{"id":"  "}"#), None);
+
+        assert_eq!(
+            parse_mod_version(FABRIC, r#"{"id":"fabric-api","version":"0.141.6+1.21.11"}"#)
+                .as_deref(),
+            Some("0.141.6+1.21.11")
+        );
+        assert_eq!(
+            parse_mod_version(QUILT, r#"{"quilt_loader":{"id":"qsl","version":"1.2.3"}}"#),
+            None
+        );
+        assert_eq!(
+            parse_mod_version(FABRIC, r#"{"id":"a","version":"${version}"}"#),
+            None
+        );
+        assert_eq!(
+            parse_mod_version(FORGE, "[[mods]]\nmodId = \"jei\"\nversion = \"1\"\n"),
+            None
+        );
         assert_eq!(
             parse_mod_id(LEGACY_FORGE, r#"[{"modid":"examplemod"}]"#),
             None

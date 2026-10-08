@@ -47,10 +47,11 @@ impl Component for ClusterMods {
             ContentType::Mod,
         );
         for item in &mut items {
-            item.shadowed = item
-                .hash
-                .as_ref()
-                .is_some_and(|hash| shadowed.contains(hash));
+            let Some(hash) = &item.hash else {
+                continue;
+            };
+            item.shadowed = shadowed.shadowed.contains(hash);
+            item.outranked = shadowed.outranked.contains(hash);
         }
 
         cluster_content()

@@ -317,6 +317,7 @@ fn make_row(
         hidden,
         opted_in,
         shadowed: false,
+        outranked: false,
         advanced: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
     }

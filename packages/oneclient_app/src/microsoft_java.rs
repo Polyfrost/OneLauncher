@@ -292,6 +292,12 @@ async fn mark_migrated(state: &Arc<LauncherState>) {
 }
 
 fn opted_out(state: &Arc<LauncherState>) -> bool {
+    if std::env::var_os("ONECLIENT_DISABLE_JAVA_AUTOINSTALL")
+        .is_some_and(|val| val.eq_ignore_ascii_case("1"))
+    {
+        return true;
+    }
+
     let settings = state.settings.read();
     settings.skip_microsoft_java || !settings.seen_onboarding
 }

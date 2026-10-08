@@ -488,7 +488,6 @@ impl Component for PackageManager {
 
         let search = use_state(String::new);
         let enabled_filter = use_state(|| EnabledFilter::All);
-        let hidden_filter = use_state(|| HiddenFilter::Hide);
         let advanced_open = use_state(|| false);
         let toolbar_width = use_state(|| 0f32);
         let selection = use_selection::<String>();
@@ -499,6 +498,7 @@ impl Component for PackageManager {
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
+        let show_hidden = view.show_hidden;
         let query = SearchQuery::new(&search.read());
         let sort_mode = sort
             .read()
@@ -507,7 +507,9 @@ impl Component for PackageManager {
             .unwrap_or(SortMode::NameAsc);
 
         let show = *enabled_filter.read();
-        let hidden = *hidden_filter.read();
+        // The toolbar writes this flag and the persisted view carries it over
+        // to the next run so the choice outlives the screen
+        let hidden = HiddenFilter::from(*show_hidden.read());
         let card_layout = CardLayout::from(*layout.read());
 
         let disabled_essentials: Vec<&'static str> = items
@@ -676,7 +678,7 @@ impl Component for PackageManager {
                 sort,
                 sort_mode,
                 enabled_filter,
-                hidden_filter,
+                show_hidden,
                 uses_bundles,
                 layout,
                 cluster_id,

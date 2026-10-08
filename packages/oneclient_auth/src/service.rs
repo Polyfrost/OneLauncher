@@ -264,7 +264,15 @@ impl AuthService {
         }
 
         tracing::info!(username = %existing.username, "renewing Microsoft access token");
-        match msa::refresh_microsoft_account(self.net.http(), &existing).await {
+        let renewed = msa::refresh_microsoft_account(self.net.http(), &existing).await;
+
+        // A token Microsoft refused with `invalid_grant` is dead keeping the
+        // account would only replay the same failure on every launch
+        if matches!(renewed, Err(MinecraftAuthError::StaleRefreshToken)) {
+            self.sign_out_stale_account(id, &existing).await;
+        }
+
+        match renewed {
             Ok(refreshed) => {
                 self.store
                     .lock()
@@ -285,6 +293,26 @@ impl AuthService {
         }
     }
 
+    /// The refresh token is beyond repair so the account goes rather than
+    /// haunting the list and the user is told a fresh sign-in is the way back
+    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
+    async fn sign_out_stale_account(&self, id: Uuid, account: &MinecraftAccount) {
+        let username = account.username.clone();
+        tracing::warn!(%username, "refresh token expired signing the account out");
+
+        if let Err(err) = self.store.lock().await.remove_account(id).await {
+            tracing::warn!(%err, "failed to persist the sign-out");
+        }
+
+        self.events
+            .notify("Sign-in expired")
+            .body(format!(
+                "{username} was signed out add the account again to keep playing."
+            ))
+            .error()
+            .send();
+    }
+
     #[tracing::instrument(level = "debug", skip(self), fields(%id))]
     pub async fn refresh_account(&self, id: Uuid) -> AuthResult<MinecraftAccount> {
         self.renew_token(id, true).await
@@ -296,7 +324,13 @@ impl AuthService {
         let mut refreshed = Vec::with_capacity(ids.len());
 
         for id in ids {
-            refreshed.push(self.renew_token(id, true).await?);
+            match self.renew_token(id, true).await {
+                Ok(account) => refreshed.push(account),
+                // That account is already signed out and reported the rest of
+                // the list still deserves its renewal
+                Err(AuthError::Minecraft(MinecraftAuthError::StaleRefreshToken)) => continue,
+                Err(err) => return Err(err),
+            }
         }
 
         Ok(refreshed)
@@ -428,5 +462,48 @@ mod tests {
                 MinecraftAuthError::BrowserLoginNotFound
             ))
         ));
+    }
+
+    #[tokio::test]
+    async fn a_dead_refresh_token_takes_the_account_with_it() {
+        oneclient_common::paths::set_launcher_dir(
+            std::env::temp_dir().join(format!("oneclient-auth-signout-{}", Uuid::new_v4())),
+        );
+        let (events, mut rx) = EventBus::channel();
+        let service = service(events);
+        let account = MinecraftAccount {
+            id: Uuid::new_v4(),
+            username: "StaleUser".to_string(),
+            access_token: "access".to_string(),
+            refresh_token: "dead".to_string(),
+            expires: chrono::Utc::now(),
+            kind: crate::data::AccountKind::Microsoft,
+        };
+        service
+            .store
+            .lock()
+            .await
+            .users
+            .insert(account.id, account.clone());
+
+        service.sign_out_stale_account(account.id, &account).await;
+
+        assert!(
+            service.store.lock().await.list_accounts().is_empty(),
+            "nothing should keep replaying a token Microsoft already refused"
+        );
+
+        let Some(oneclient_events::Event::Notification(oneclient_events::Notification::Message(
+            message,
+        ))) = rx.recv().await
+        else {
+            panic!("the user should be told why the account disappeared");
+        };
+        assert_eq!(message.title, "Sign-in expired");
+        assert!(
+            message.body.contains("StaleUser"),
+            "the sign-out names the account: {}",
+            message.body
+        );
     }
 }

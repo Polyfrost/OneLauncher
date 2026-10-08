@@ -120,6 +120,18 @@ impl HiddenFilter {
     }
 }
 
+/// The view state persists this choice as a plain flag so the toolbar and the
+/// list have to agree on what it means
+impl From<bool> for HiddenFilter {
+    fn from(show: bool) -> Self {
+        if show {
+            HiddenFilter::Show
+        } else {
+            HiddenFilter::Hide
+        }
+    }
+}
+
 #[derive(Clone, PartialEq)]
 pub(super) struct Bulk {
     pub(super) selection: Selection<String>,
@@ -266,7 +278,7 @@ pub(super) fn toolbar_bar(
     sort: State<Option<String>>,
     current_sort: SortMode,
     enabled_filter: State<EnabledFilter>,
-    hidden_filter: State<HiddenFilter>,
+    show_hidden: State<bool>,
     uses_bundles: bool,
     layout: State<ViewLayout>,
     cluster_id: i64,
@@ -327,7 +339,7 @@ pub(super) fn toolbar_bar(
             sort,
             current_sort,
             enabled_filter,
-            hidden_filter,
+            show_hidden,
             uses_bundles,
         )
         .into_element(),
@@ -538,11 +550,11 @@ fn filter_button(
     mut sort: State<Option<String>>,
     current_sort: SortMode,
     mut enabled_filter: State<EnabledFilter>,
-    mut hidden_filter: State<HiddenFilter>,
+    mut show_hidden: State<bool>,
     uses_bundles: bool,
 ) -> FilterMenu {
     let show = *enabled_filter.read();
-    let hidden = *hidden_filter.read();
+    let hidden = HiddenFilter::from(*show_hidden.read());
 
     // Hiding hidden packages is the default so it does not count as the filters being touched
     let active = current_sort != SortMode::NameAsc
@@ -574,7 +586,7 @@ fn filter_button(
         "Hidden packages",
         HiddenFilter::ALL.map(|filter| {
             FilterOption::new(filter.label(), filter == hidden, move |()| {
-                hidden_filter.set(filter);
+                show_hidden.set(filter == HiddenFilter::Show);
             })
         }),
     )
@@ -1009,4 +1021,15 @@ fn local_empty(
         .child(rect().height(Size::px(6.)))
         .child(add_from_file_button(cluster_id, content_type, dispatch))
         .into_element()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stored_flag_decides_which_hidden_packages_are_listed() {
+        assert!(HiddenFilter::from(false) == HiddenFilter::Hide);
+        assert!(HiddenFilter::from(true) == HiddenFilter::Show);
+    }
 }

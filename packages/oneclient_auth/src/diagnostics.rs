@@ -36,6 +36,15 @@ pub fn diagnose_auth_error(err: &MinecraftAuthError) -> Option<AuthErrorGuidance
             Some(network_guidance(classify_network_failure(source)))
         }
 
+        MinecraftAuthError::StaleRefreshToken => Some(AuthErrorGuidance::new(
+            "Your saved Microsoft sign-in expired, so OneClient signed you out of that account.",
+            &[
+                "Add the account again from Settings → Accounts",
+                "Complete the Microsoft sign-in in your browser",
+                "Once the sign-in finishes, try launching Minecraft again",
+            ],
+        )),
+
         MinecraftAuthError::BrowserAuthorizationExpired
         | MinecraftAuthError::BrowserLoginNotFound => Some(AuthErrorGuidance::new(
             "The Microsoft sign-in window was closed or expired before sign-in finished.",

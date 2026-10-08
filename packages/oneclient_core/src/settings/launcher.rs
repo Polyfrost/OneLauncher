@@ -45,6 +45,11 @@ pub struct ViewState {
     pub layout: ViewLayout,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort: Option<String>,
+    /// Whether this view shows the rows it usually keeps out such as the
+    /// bundle-managed files in the package manager
+    /// `None` keeps that default of leaving them out
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub show_hidden: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -128,5 +133,44 @@ impl Default for LauncherSettings {
             data_dir: None,
             previous_data_dir: None,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_view_state_saved_before_show_hidden_still_parses() {
+        let saved = r#"{"layout":"list","sort":"name_asc"}"#;
+
+        let state: ViewState = serde_json::from_str(saved).expect("the older shape");
+
+        assert_eq!(state.layout, ViewLayout::List);
+        assert_eq!(state.sort.as_deref(), Some("name_asc"));
+        assert!(
+            state.show_hidden.is_none(),
+            "an absent flag keeps the default of leaving hidden rows out"
+        );
+    }
+
+    #[test]
+    fn a_show_hidden_choice_survives_the_round_trip() {
+        let state = ViewState {
+            show_hidden: Some(true),
+            ..ViewState::default()
+        };
+
+        let written = serde_json::to_string(&state).expect("serialize");
+        let back: ViewState = serde_json::from_str(&written).expect("deserialize");
+
+        assert_eq!(back, state);
+    }
+
+    #[test]
+    fn an_unset_show_hidden_stays_out_of_the_settings_file() {
+        let written = serde_json::to_string(&ViewState::default()).expect("serialize");
+
+        assert!(!written.contains("show_hidden"), "{written}");
     }
 }

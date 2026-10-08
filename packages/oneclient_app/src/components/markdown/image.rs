@@ -64,6 +64,63 @@ impl Component for MarkdownImage {
     }
 }
 
+/// The size lives in the root element, so only the opening tag has to be read
+const SVG_HEAD: usize = 4096;
+
+/// A description must not be able to ask for a huge surface
+const SVG_MAX_EDGE: u32 = 2048;
+
+/// The size an SVG asks to be drawn at, so it lays out like any other image
+fn svg_size(bytes: &[u8]) -> Option<(u32, u32)> {
+    let end = bytes.len().min(SVG_HEAD);
+    let head = String::from_utf8_lossy(&bytes[..end]);
+    let start = head.find("<svg")?;
+    let tag = head.get(start..start + head[start..].find('>')? + 1)?;
+
+    let declared = svg_attr(tag, "width")
+        .and_then(svg_px)
+        .zip(svg_attr(tag, "height").and_then(svg_px));
+    let (width, height) = declared.or_else(|| {
+        // Without usable lengths the coordinate system is all there is
+        let view_box = svg_attr(tag, "viewBox")?;
+        let mut numbers = view_box.split_whitespace().filter_map(|n| n.parse::<f32>().ok());
+        let _origin = (numbers.next()?, numbers.next()?);
+        Some((numbers.next()?, numbers.next()?))
+    })?;
+
+    let width = width.round().clamp(1., SVG_MAX_EDGE as f32) as u32;
+    let height = height.round().clamp(1., SVG_MAX_EDGE as f32) as u32;
+    Some((width, height))
+}
+
+/// Finds `name="value"` on the tag, skipping a name that only ends the same way
+fn svg_attr<'a>(tag: &'a str, name: &str) -> Option<&'a str> {
+    let mut from = 0;
+    while let Some(found) = tag[from..].find(name) {
+        let at = from + found;
+        from = at + name.len();
+        if !tag[..at].ends_with(char::is_whitespace) {
+            continue;
+        }
+        let rest = tag.get(at + name.len()..)?.strip_prefix('=')?;
+        let quote = rest.chars().next()?;
+        if quote != '"' && quote != '\'' {
+            return None;
+        }
+        let rest = &rest[quote.len_utf8()..];
+        return Some(rest.get(..rest.find(quote)?)?.trim());
+    }
+    None
+}
+
+/// Lengths in any other unit are not a size this renderer can honour
+fn svg_px(value: &str) -> Option<f32> {
+    let value = value.trim();
+    let value = value.strip_suffix("px").unwrap_or(value);
+    let value: f32 = value.parse().ok()?;
+    value.is_finite().then_some(value)
+}
+
 #[derive(Clone)]
 pub struct ScaledImage {
     key: DiffKey,
@@ -323,5 +380,34 @@ mod tests {
     #[test]
     fn short_panel_does_not_shrink_the_width() {
         assert_eq!(measured((300., 60.), (600, 200)), Size2D::new(300., 100.));
+    }
+
+    const BADGE: &str = r#"<svg xmlns="http://www.w3.org/2000/svg" width="88" height="20" role="img" aria-label="build: passing"><rect width="88" height="20"/></svg>"#;
+
+    #[test]
+    fn reads_the_size_a_badge_declares() {
+        assert_eq!(svg_size(BADGE.as_bytes()), Some((88, 20)));
+        assert_eq!(
+            svg_size(r#"<svg width="88px" height="20px"/>"#.as_bytes()),
+            Some((88, 20))
+        );
+    }
+
+    #[test]
+    fn falls_back_to_the_drawing_coordinates() {
+        let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 113 20"><rect/></svg>"#;
+        assert_eq!(svg_size(svg.as_bytes()), Some((113, 20)));
+    }
+
+    #[test]
+    fn a_width_that_only_ends_the_same_way_is_not_one() {
+        let svg = r#"<svg max-width="900" height="20" viewBox="0 0 100 20"><rect/></svg>"#;
+        assert_eq!(svg_size(svg.as_bytes()), Some((100, 20)));
+    }
+
+    #[test]
+    fn payloads_that_are_not_svg_are_left_alone() {
+        assert_eq!(svg_size(b"\x89PNG\r\n\x1a\n"), None);
+        assert_eq!(svg_size(b"nothing that is markup at all"), None);
     }
 }

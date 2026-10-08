@@ -696,8 +696,41 @@ impl CfMod {
     }
 }
 
+fn loader_from_name(name: &str) -> Option<GameLoader> {
+    match name.trim().to_ascii_lowercase().as_str() {
+        "forge" => Some(GameLoader::Forge),
+        "neoforge" => Some(GameLoader::NeoForge),
+        "fabric" => Some(GameLoader::Fabric),
+        "quilt" => Some(GameLoader::Quilt),
+        _ => None,
+    }
+}
+
+fn split_loaders(
+    game_versions: Vec<String>,
+    mod_loaders: &[CfLoader],
+) -> (Vec<String>, Vec<GameLoader>) {
+    let mut loaders: Vec<GameLoader> = mod_loaders
+        .iter()
+        .filter_map(|l| cf_loader_to_game(*l))
+        .collect();
+    let mut versions = Vec::with_capacity(game_versions.len());
+    for version in game_versions {
+        match loader_from_name(&version) {
+            Some(loader) => {
+                if !loaders.contains(&loader) {
+                    loaders.push(loader);
+                }
+            }
+            None => versions.push(version),
+        }
+    }
+    (versions, loaders)
+}
+
 impl From<CfFile> for VersionSummary {
     fn from(f: CfFile) -> Self {
+        let (game_versions, loaders) = split_loaders(f.game_versions, &f.mod_loaders);
         VersionSummary {
             version_id: f.id.to_string(),
             project_id: f.mod_id.to_string(),
@@ -709,12 +742,8 @@ impl From<CfFile> for VersionSummary {
                 3 => ReleaseType::Alpha,
                 _ => ReleaseType::Release,
             },
-            game_versions: f.game_versions,
-            loaders: f
-                .mod_loaders
-                .iter()
-                .filter_map(|l| cf_loader_to_game(*l))
-                .collect(),
+            game_versions,
+            loaders,
             downloads: f.download_count,
             file_size: f.file_length,
             dependencies: f.dependencies.into_iter().map(Into::into).collect(),
@@ -724,6 +753,7 @@ impl From<CfFile> for VersionSummary {
 
 impl From<CfFile> for VersionDetail {
     fn from(f: CfFile) -> Self {
+        let (game_versions, loaders) = split_loaders(f.game_versions, &f.mod_loaders);
         let sha1 = f
             .hashes
             .iter()
@@ -737,12 +767,8 @@ impl From<CfFile> for VersionDetail {
             name: f.display_name,
             version_number: f.file_name.clone(),
             changelog: None,
-            game_versions: f.game_versions,
-            loaders: f
-                .mod_loaders
-                .iter()
-                .filter_map(|l| cf_loader_to_game(*l))
-                .collect(),
+            game_versions,
+            loaders,
             published: f.file_date,
             downloads: f.download_count,
             files: vec![VersionFile {
@@ -832,6 +858,30 @@ mod tests {
 
     /// relationType is a bare number
     /// a mismap quietly turns required libraries into optional ones
+    #[test]
+    fn loader_names_in_game_versions_become_loaders() {
+        let raw = serde_json::json!({
+            "id": 1,
+            "modId": 2,
+            "displayName": "Pack",
+            "fileName": "pack.zip",
+            "releaseType": 1,
+            "fileDate": "2025-01-01T00:00:00Z",
+            "downloadCount": 10,
+            "gameVersions": ["1.20.1", "Forge", "NeoForge", "Client"],
+            "hashes": [],
+            "fileFingerprint": 123,
+            "fileLength": 100
+        });
+
+        let version: VersionSummary = serde_json::from_value::<CfFile>(raw)
+            .expect("curseforge file")
+            .into();
+
+        assert_eq!(version.game_versions, ["1.20.1", "Client"]);
+        assert_eq!(version.loaders, [GameLoader::Forge, GameLoader::NeoForge]);
+    }
+
     #[test]
     fn file_carries_its_dependencies() {
         let raw = serde_json::json!({

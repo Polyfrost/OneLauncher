@@ -1,6 +1,7 @@
 mod java_override;
 mod migrate;
 mod modpack;
+mod modpack_import;
 pub(crate) mod prepare;
 mod provision;
 mod release_migration;
@@ -9,8 +10,13 @@ mod unlink_legacy;
 pub use java_override::apply_bundle_java_override;
 pub use migrate::apply_remote_migrations;
 pub use modpack::{
-    ModpackCluster, ModpackSource, PreparedModpack, create_modpack_instance,
+    FlaggedModpack, ModpackCluster, ModpackSource, PreparedModpack, create_modpack_instance,
     install_modpack_instance, prepare_modpack, repair_modpack_cluster, update_modpack_cluster,
+};
+pub use modpack_import::{
+    ExistingPack, FlaggedPackMod, ImportedModpack, LoaderPlan, PreparedImport,
+    import_modpack_into_cluster, modpack_file_sources,
+    list_imported_modpacks, prepare_modpack_import, remove_imported_modpack,
 };
 pub use prepare::{
     estimate_cluster_download, prepare_cluster, prepare_cluster_locked, required_java_major,

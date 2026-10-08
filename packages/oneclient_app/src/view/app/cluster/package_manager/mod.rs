@@ -319,6 +319,7 @@ fn make_row(
         shadowed: false,
         advanced: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
+        modpack: None,
     }
 }
 

@@ -6,7 +6,9 @@ use oneclient_db::models::{ClusterId, ClusterKind, OverrideType};
 use std::collections::HashSet;
 use std::path::PathBuf;
 
-use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
+use super::bundles::{
+    BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery, ModpackSourcesQuery,
+};
 use super::cluster_content::{ClusterContentQuery, MigratableRoutesQuery, ShadowedModsQuery};
 use super::clusters::ListClustersQuery;
 use super::package_updates::PackageUpdatesQuery;
@@ -65,6 +67,11 @@ pub async fn invalidate_cluster_queries() {
     timed(
         "package_updates",
         QueriesStorage::<PackageUpdatesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "modpack_sources",
+        QueriesStorage::<ModpackSourcesQuery>::invalidate_all(),
     )
     .await;
     tracing::debug!(
@@ -455,7 +462,7 @@ impl MutationCapability for ClusterMutation {
             ClusterAction::DeleteInstance { cluster_id } => {
                 if crate::hooks::modpack_job_running(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Wait for the modpack to finish installing before deleting this instance."
+                        reason: "Wait for the modpack to finish, or close its dialog, before deleting this instance."
                             .to_string(),
                     })
                 } else if state.games.is_active(*cluster_id) {

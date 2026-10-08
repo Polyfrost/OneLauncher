@@ -431,11 +431,12 @@ impl PackageStore {
         Ok(report)
     }
 
-    #[tracing::instrument(level = "debug", skip(ctx))]
+    #[tracing::instrument(level = "debug", skip(ctx, progress))]
     pub async fn resolve_or_download(
         provider_id: ProviderId,
         project_id: &str,
         version_id: &str,
+        progress: Option<&oneclient_events::GroupedProgressSession>,
         ctx: &ContentCtx,
     ) -> ContentResult<ArtifactRow> {
         let provider = ctx.providers.get(provider_id)?;
@@ -444,7 +445,31 @@ impl PackageStore {
 
         let project = provider.get_project(project_id, ctx).await?;
 
-        Self::download_and_cache(provider_id, &project, &version, false, None, ctx).await
+        let Some(session) = progress else {
+            return Self::download_and_cache(provider_id, &project, &version, false, None, ctx)
+                .await;
+        };
+        let size = version.primary_file().map_or(0, |file| file.size).max(1);
+        session.expect(oneclient_events::TaskCategory::Packages, 1, size);
+        session
+            .run_child(
+                format!("{} {}", project.name, version.version_number),
+                size,
+                oneclient_events::TaskCategory::Packages,
+                |child| async move {
+                    child.set_phase(oneclient_events::TaskPhase::Downloading);
+                    Self::download_and_cache(
+                        provider_id,
+                        &project,
+                        &version,
+                        false,
+                        Some(&child),
+                        ctx,
+                    )
+                    .await
+                },
+            )
+            .await
     }
 }
 

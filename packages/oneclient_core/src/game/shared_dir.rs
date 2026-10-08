@@ -1375,6 +1375,7 @@ async fn cached_file(
         provider,
         &release.project_id,
         &release.version_id,
+        None,
         &services.content(),
     )
     .await

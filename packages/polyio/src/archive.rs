@@ -279,6 +279,12 @@ impl ZipEntryCursor {
         self.indices.keys()
     }
 
+    #[must_use]
+    pub fn uncompressed_size(&self, name: &str) -> Option<u64> {
+        let index = *self.indices.get(name)?;
+        self.reader.cdrs()[index].uncompressed_size().ok()
+    }
+
     pub async fn read(&mut self, name: &str) -> PolyIOResult<Vec<u8>> {
         let index = *self
             .indices

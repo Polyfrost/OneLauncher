@@ -997,7 +997,7 @@ impl Actions {
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
         if modpack_job_running(cluster_id) {
             self.notify("The modpack is still being set up")
-                .body("Wait for it to finish installing, then press Play again.")
+                .body("Wait for the modpack to finish, or close its dialog, then press Play again.")
                 .send();
             return;
         }
@@ -2068,6 +2068,9 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     tokio::spawn(async move {
         if let Err(err) = oneclient_content::packages::refresh_bad_mods(&content).await {
             tracing::warn!(%err, "bad mods list refresh failed, keeping the last one");
+        }
+        if let Err(err) = oneclient_content::packages::refresh_bad_modpacks(&content).await {
+            tracing::warn!(%err, "bad modpacks list refresh failed, keeping the last one");
         }
     });
 

@@ -7,6 +7,7 @@ mod bundle_choices_popup;
 mod button;
 mod charts;
 mod checkbox;
+mod cluster_menu;
 mod cluster_update_popup;
 mod code_block;
 mod context_menu;
@@ -59,6 +60,7 @@ pub mod upload_mclogs;
 mod version_art_gallery;
 mod version_card;
 
+pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
 pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use asset_image::AssetImage;

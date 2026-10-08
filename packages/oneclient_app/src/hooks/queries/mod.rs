@@ -51,9 +51,9 @@ pub use auth::{
 };
 pub use bundles::{
     AvailableBundlesQuery, ClusterBundles, OnboardingBundlesQuery, available_bundles,
-    bundle_overrides_map, bundles_with_status_items, onboarding_bundles_items,
+    bundle_overrides_map, bundles_with_status_items, modpack_sources_map, onboarding_bundles_items,
     use_available_bundles, use_bundle_overrides, use_bundle_updates, use_bundles_with_status,
-    use_onboarding_bundles,
+    use_modpack_sources, use_onboarding_bundles,
 };
 pub use changelog::{
     changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,

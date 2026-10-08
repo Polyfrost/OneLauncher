@@ -67,7 +67,7 @@ impl ProjectIds {
     }
 }
 
-fn lenient_list<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
+pub(super) fn lenient_list<'de, D, T>(deserializer: D) -> Result<Vec<T>, D::Error>
 where
     D: Deserializer<'de>,
     T: DeserializeOwned,
@@ -92,7 +92,9 @@ fn blank_to_none(value: String) -> Option<String> {
     (!trimmed.is_empty()).then(|| trimmed.to_string())
 }
 
-fn non_blank<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<String>, D::Error> {
+pub(super) fn non_blank<'de, D: Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<String>, D::Error> {
     Ok(Option::<String>::deserialize(deserializer)?.and_then(blank_to_none))
 }
 
@@ -116,6 +118,7 @@ pub struct ResolvedAlternative {
     pub provider: ProviderId,
     pub project_id: String,
     pub name: String,
+    pub version_id: Option<String>,
     pub version_number: Option<String>,
     pub icon_url: Option<String>,
 }
@@ -126,15 +129,27 @@ impl BadModList {
             return None;
         }
 
-        let authors: Vec<&str> = std::iter::once(project.author.as_str())
-            .chain(project.members.iter().map(|member| member.name.as_str()))
-            .collect();
-
         version
             .primary_file()
             .and_then(|file| self.find(&file.sha1))
             .or_else(|| self.find_project(project.provider, &project.id))
-            .or_else(|| self.find_name_and_author(&project.name, &authors))
+            .or_else(|| self.find_by_name_and_author(project))
+    }
+
+    pub fn find_by_name_and_author(&self, project: &ProjectDetail) -> Option<&BadMod> {
+        let authors: Vec<&str> = std::iter::once(project.author.as_str())
+            .chain(project.members.iter().map(|member| member.name.as_str()))
+            .collect();
+        self.find_name_and_author(&project.name, &authors)
+    }
+
+    pub fn has_name_only_entries(&self) -> bool {
+        self.bad_mods.iter().any(|entry| {
+            entry.hash.is_none()
+                && entry.project_ids.is_empty()
+                && entry.name.is_some()
+                && entry.author.is_some()
+        })
     }
 
     pub fn find(&self, sha1: &str) -> Option<&BadMod> {
@@ -147,7 +162,7 @@ impl BadModList {
         })
     }
 
-    fn find_project(&self, provider: ProviderId, project_id: &str) -> Option<&BadMod> {
+    pub fn find_project(&self, provider: ProviderId, project_id: &str) -> Option<&BadMod> {
         self.bad_mods
             .iter()
             .find(|entry| entry.project_ids.get(provider) == Some(project_id))
@@ -169,19 +184,26 @@ impl BadModList {
     }
 }
 
-fn same_text(a: &str, b: &str) -> bool {
+pub(super) fn same_text(a: &str, b: &str) -> bool {
     a.trim().to_lowercase() == b.trim().to_lowercase()
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn fetch_bad_mods(ctx: &ContentCtx) -> ContentResult<BadModList> {
-    let url = format!("{}/oneclient/bad-mods.json", ctx.net.config().meta_url_base);
-    let cache_path = paths::caches_dir()?.join("bad-mods.json");
+    fetch_flag_list("bad-mods.json", ctx).await
+}
+
+pub(super) async fn fetch_flag_list<T: DeserializeOwned>(
+    file_name: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<T> {
+    let url = format!("{}/oneclient/{file_name}", ctx.net.config().meta_url_base);
+    let cache_path = paths::caches_dir()?.join(file_name);
 
     let Some(fetched) = fetch_cached(&ctx.net, &url, &cache_path, EtagPolicy::CommitNow).await?
     else {
         return Err(ContentError::InvalidData {
-            reason: "bad mods list is unavailable and not cached".to_string(),
+            reason: format!("{file_name} is unavailable and not cached"),
         });
     };
 
@@ -214,7 +236,11 @@ pub async fn load_bad_mods(ctx: &ContentCtx) -> Arc<BadModList> {
 const EXPLANATIONS_DIR: &str = "/oneclient/bad_mods_mds/";
 
 fn explanation_file_name(path: &str) -> Option<&str> {
-    let name = path.strip_prefix(EXPLANATIONS_DIR)?;
+    md_file_name(EXPLANATIONS_DIR, path)
+}
+
+pub(super) fn md_file_name<'a>(dir: &str, path: &'a str) -> Option<&'a str> {
+    let name = path.strip_prefix(dir)?;
     let valid = name.ends_with(".md")
         && name.len() > ".md".len()
         && !name.contains("..")
@@ -232,12 +258,20 @@ pub async fn fetch_explanation(entry: &BadMod, ctx: &ContentCtx) -> Option<Strin
         );
         return None;
     };
+    fetch_md_file(path, "bad_mods_mds", file_name, ctx).await
+}
 
+pub(super) async fn fetch_md_file(
+    path: &str,
+    cache_dir: &str,
+    file_name: &str,
+    ctx: &ContentCtx,
+) -> Option<String> {
     let url = format!("{}{path}", ctx.net.config().meta_url_base);
     let cache_path = match paths::caches_dir() {
-        Ok(dir) => dir.join("bad_mods_mds").join(file_name),
+        Ok(dir) => dir.join(cache_dir).join(file_name),
         Err(err) => {
-            tracing::warn!(%err, "cannot resolve the cache dir for bad mod explanations");
+            tracing::warn!(%err, "cannot resolve the cache dir for flagged content explanations");
             return None;
         }
     };
@@ -245,11 +279,11 @@ pub async fn fetch_explanation(entry: &BadMod, ctx: &ContentCtx) -> Option<Strin
     match fetch_cached(&ctx.net, &url, &cache_path, EtagPolicy::CommitNow).await {
         Ok(Some(fetched)) => Some(fetched.text()).filter(|text| !text.trim().is_empty()),
         Ok(None) => {
-            tracing::warn!(path, "bad mod explanation is unavailable and not cached");
+            tracing::warn!(path, "flagged content explanation is unavailable and not cached");
             None
         }
         Err(err) => {
-            tracing::warn!(%err, path, "failed to fetch bad mod explanation");
+            tracing::warn!(%err, path, "failed to fetch flagged content explanation");
             None
         }
     }
@@ -389,6 +423,7 @@ async fn resolve_alternative(
             provider: ProviderId::Modrinth,
             project_id: version.project_id.clone(),
             name,
+            version_id: Some(version.version_id.clone()),
             version_number: Some(version.version_number.clone()),
             icon_url,
         });
@@ -426,11 +461,12 @@ async fn with_newest_version(
         Err(err) => Err(err),
     };
 
-    let version_number = match picked {
-        Ok(pick) => pick.map(|pick| pick.version_number),
+    let (version_id, version_number) = match picked {
+        Ok(Some(pick)) => (Some(pick.version_id), Some(pick.version_number)),
+        Ok(None) => (None, None),
         Err(err) => {
             tracing::warn!(%err, ?provider_id, project_id = %project.id, "failed to pick alternative version");
-            None
+            (None, None)
         }
     };
 
@@ -438,6 +474,7 @@ async fn with_newest_version(
         provider: provider_id,
         project_id: project.id.clone(),
         name: project.name.clone(),
+        version_id,
         version_number,
         icon_url: project.icon_url.clone(),
     }

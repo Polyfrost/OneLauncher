@@ -141,6 +141,43 @@ pub fn use_bundle_overrides(cluster_id: ClusterId) -> UseQuery<BundleOverridesQu
     ))
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ModpackSourcesQuery {
+    pub cluster_id: ClusterId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ModpackSourcesKeys {
+    pub cluster_id: ClusterId,
+}
+
+impl QueryCapability for ModpackSourcesQuery {
+    type Ok = HashMap<String, String>;
+    type Err = LauncherError;
+    type Keys = ModpackSourcesKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let _ = keys;
+        let state = crate::launcher::state()?;
+        let cluster_id = self.cluster_id;
+        off_ui(async move {
+            oneclient_core::clusters::modpack_file_sources(&state, cluster_id).await
+        })
+        .await
+    }
+}
+
+pub fn use_modpack_sources(cluster_id: ClusterId) -> UseQuery<ModpackSourcesQuery> {
+    use_query(Query::new(
+        ModpackSourcesKeys { cluster_id },
+        ModpackSourcesQuery { cluster_id },
+    ))
+}
+
+pub fn modpack_sources_map(query: &UseQuery<ModpackSourcesQuery>) -> HashMap<String, String> {
+    super::state::settled_or_loading(query).unwrap_or_default()
+}
+
 pub fn bundle_overrides_map(
     query: &UseQuery<BundleOverridesQuery>,
 ) -> HashMap<(String, String), String> {

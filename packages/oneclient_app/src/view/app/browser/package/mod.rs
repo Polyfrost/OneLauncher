@@ -2,11 +2,11 @@ use freya::prelude::*;
 use std::collections::HashMap;
 
 use oneclient_content::packages::types::DependencyKind;
-use oneclient_content::packages::{ContentType, ProviderId};
+use oneclient_content::packages::{ContentType, GameLoader, ProviderId};
 use oneclient_core::clusters::ModpackSource;
 
 use crate::components::{ScrollArea, use_shared_delete};
-use crate::hooks::use_cluster;
+use crate::hooks::{settled_or_loading, use_cluster, use_clusters};
 use crate::hooks::{
     ALL_VERSIONS, VERSIONS_PAGE_SIZE, bundle_overrides_map, bundles_with_status_items,
     cluster_content_items, content_type_for_slug, package_meta_batch, project_detail,
@@ -18,9 +18,10 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 
 use super::{
-    EnableButton, EnableVariant, Installed, InstalledVersion, ModpackVersionPrompt, PackageBanner,
-    Thumbnail, WorldInstallPrompt, activity_badge, installed_badge, installed_map,
-    minecraft_choices, preferred_version,
+    EnableButton, EnableVariant, Installed, InstalledVersion, ModpackInstancePrompt,
+    ModpackLoaderPrompt, ModpackVersionPrompt, PackageBanner, Thumbnail, WorldInstallPrompt,
+    activity_badge, cluster_version, cluster_versions, installed_badge, installed_map,
+    instance_choices, loader_options, minecraft_choices, preferred_version,
 };
 use crate::utils::abbreviate_number;
 
@@ -43,10 +44,18 @@ struct Installer {
     world_prompt: Option<State<Option<String>>>,
     modpack: bool,
     modpack_prompt: Option<State<bool>>,
+    loader_prompt: Option<State<bool>>,
+    import_prompt: Option<State<bool>>,
+    add_to_cluster: bool,
+    cluster_name: Option<String>,
 }
 
 impl Installer {
     fn install_latest(&self, project_id: String, version_id: String) {
+        if let Some(mut prompt) = self.loader_prompt {
+            prompt.set(true);
+            return;
+        }
         match self.modpack_prompt {
             Some(mut prompt) => prompt.set(true),
             None => self.install(project_id, version_id),
@@ -54,6 +63,17 @@ impl Installer {
     }
 
     fn install(&self, project_id: String, version_id: String) {
+        if self.add_to_cluster {
+            self.dispatch.import_modpack(
+                self.cluster_id,
+                ModpackSource::Provider {
+                    provider: self.provider,
+                    project_id,
+                    version_id,
+                },
+            );
+            return;
+        }
         if self.modpack {
             self.dispatch.install_modpack(ModpackSource::Provider {
                 provider: self.provider,
@@ -144,6 +164,7 @@ pub struct BrowserPackage {
     pub cluster_id: i64,
     pub package_type: String,
     pub package_id: String,
+    pub add_to_cluster: bool,
 }
 
 impl Component for BrowserPackage {
@@ -159,7 +180,12 @@ impl Component for BrowserPackage {
         let confirm = use_link_confirm();
         let world_prompt = use_state(|| None::<String>);
         let modpack_prompt = use_state(|| false);
+        let loader_prompt = use_state(|| false);
+        let chosen_loader = use_state(|| None::<GameLoader>);
+        let import_prompt = use_state(|| false);
+        let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
         let is_datapack = content_type == ContentType::DataPack;
+        let add_to_cluster = self.add_to_cluster && content_type == ContentType::Modpack;
         let mut installer = Installer {
             dispatch: dispatch.clone(),
             cluster_id,
@@ -167,9 +193,15 @@ impl Component for BrowserPackage {
             world_prompt: is_datapack.then_some(world_prompt),
             modpack: content_type == ContentType::Modpack,
             modpack_prompt: None,
+            loader_prompt: None,
+            import_prompt: (content_type == ContentType::Modpack && !add_to_cluster)
+                .then_some(import_prompt),
+            add_to_cluster,
+            cluster_name: None,
         };
 
         let cluster = use_cluster(cluster_id);
+        installer.cluster_name = cluster.as_ref().map(|c| c.name.clone());
         let compat = *compatible_only.read();
         let narrows = content_type != ContentType::Modpack;
         let (game_version, loader) = match (compat && narrows, &cluster) {
@@ -209,6 +241,10 @@ impl Component for BrowserPackage {
             0,
             ALL_VERSIONS,
         ));
+        let all_versions = match (add_to_cluster, &cluster) {
+            (true, Some(c)) => cluster_versions(&all_versions, c),
+            _ => all_versions,
+        };
 
         let (installing, waiting) = use_installs_snapshot().package_busy(
             content_type == ContentType::Modpack,
@@ -267,10 +303,30 @@ impl Component for BrowserPackage {
                 .map(|(id, meta)| (id, meta.name))
                 .collect();
         let latest_source = if is_modpack { &all_versions } else { &versions };
-        let latest_version =
-            preferred_version(latest_source, content_type).map(|v| v.version_id.clone());
-        let choices = minecraft_choices(&all_versions);
-        installer.modpack_prompt = (choices.len() > 1).then_some(modpack_prompt);
+        let latest_version = if add_to_cluster {
+            cluster
+                .as_ref()
+                .and_then(|c| cluster_version(latest_source, c))
+        } else {
+            preferred_version(latest_source, content_type)
+        }
+        .map(|v| v.version_id.clone());
+        let loaders = if is_modpack && !add_to_cluster {
+            loader_options(&all_versions)
+        } else {
+            Vec::new()
+        };
+        let loader_choices = match *chosen_loader.read() {
+            Some(loader) if loaders.len() > 1 => loaders
+                .iter()
+                .find(|option| option.loader == loader)
+                .map(|option| option.choices.clone()),
+            _ => None,
+        };
+        let choices = loader_choices.unwrap_or_else(|| minecraft_choices(&all_versions));
+        installer.modpack_prompt =
+            (is_modpack && !choices.is_empty() && !add_to_cluster).then_some(modpack_prompt);
+        installer.loader_prompt = (loaders.len() > 1).then_some(loader_prompt);
 
         let gallery = project
             .as_ref()
@@ -343,11 +399,23 @@ impl Component for BrowserPackage {
                 project_id: project_id.clone(),
                 pending: world_prompt,
             }))
+            .maybe_child(loader_prompt.read().then(|| ModpackLoaderPrompt {
+                options: loaders.clone(),
+                open: loader_prompt,
+                chosen: chosen_loader,
+                version_open: modpack_prompt,
+            }))
             .maybe_child(modpack_prompt.read().then(|| ModpackVersionPrompt {
                 provider,
                 project_id: project_id.clone(),
                 choices,
                 open: modpack_prompt,
+            }))
+            .maybe_child(import_prompt.read().then(|| ModpackInstancePrompt {
+                provider,
+                project_id: project_id.clone(),
+                choices: instance_choices(&all_versions, &clusters),
+                open: import_prompt,
             }))
             .into_element()
     }

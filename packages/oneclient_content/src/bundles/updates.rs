@@ -884,7 +884,7 @@ pub async fn get_bundles_with_update_status(
         .collect();
 
     // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
-    let live_bundles = addition_eligible_bundles(
+    let mut live_bundles = addition_eligible_bundles(
         ctx,
         cluster_id,
         &archives,
@@ -894,6 +894,11 @@ pub async fn get_bundles_with_update_status(
         &overrides_map,
     )
     .await?;
+    live_bundles.extend(bundles_awaiting_first_install(
+        &archives,
+        &bundle_packages,
+        &overrides_map,
+    ));
 
     let (installed_managed_keys, installed_external_hashes) =
         installed_bundle_keys(ctx, &all_linked).await?;
@@ -1158,6 +1163,38 @@ impl<'a> TypeOptOuts<'a> {
 /// emptying a bundle is how a user opts out and an absent override is not
 /// consent for a file that did not exist back then
 #[tracing::instrument(level = "debug", skip_all)]
+fn bundles_awaiting_first_install(
+    archives: &[BundleArchive],
+    bundle_packages: &[BundleTrackedArtifactRow],
+    overrides_map: &HashMap<(String, String), OverrideType>,
+) -> HashSet<String> {
+    let names: HashSet<&str> = archives
+        .iter()
+        .map(|archive| archive.manifest.name.as_str())
+        .collect();
+    let installed_any = bundle_packages.iter().any(|row| {
+        row.bundle_name
+            .as_deref()
+            .is_some_and(|name| names.contains(name))
+    });
+    if installed_any {
+        return HashSet::new();
+    }
+
+    archives
+        .iter()
+        .filter(|archive| {
+            archive.manifest.files.iter().any(|file| {
+                let choice = overrides_map
+                    .get(&(archive.manifest.name.clone(), file.kind.package_id()))
+                    .copied();
+                crate::bundles::effective_enabled(file, choice)
+            })
+        })
+        .map(|archive| archive.manifest.name.clone())
+        .collect()
+}
+
 async fn addition_eligible_bundles(
     ctx: &ContentCtx,
     cluster_id: i64,
@@ -1306,7 +1343,7 @@ fn compare_version_segment(left: &str, right: &str) -> Ordering {
     }
 }
 
-fn compare_version_like(left: &str, right: &str) -> Ordering {
+pub(crate) fn compare_version_like(left: &str, right: &str) -> Ordering {
     let left_segments: Vec<String> = left
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|s| !s.is_empty())

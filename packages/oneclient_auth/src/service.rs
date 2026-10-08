@@ -463,4 +463,47 @@ mod tests {
             ))
         ));
     }
+
+    #[tokio::test]
+    async fn a_dead_refresh_token_takes_the_account_with_it() {
+        oneclient_common::paths::set_launcher_dir(
+            std::env::temp_dir().join(format!("oneclient-auth-signout-{}", Uuid::new_v4())),
+        );
+        let (events, mut rx) = EventBus::channel();
+        let service = service(events);
+        let account = MinecraftAccount {
+            id: Uuid::new_v4(),
+            username: "StaleUser".to_string(),
+            access_token: "access".to_string(),
+            refresh_token: "dead".to_string(),
+            expires: chrono::Utc::now(),
+            kind: crate::data::AccountKind::Microsoft,
+        };
+        service
+            .store
+            .lock()
+            .await
+            .users
+            .insert(account.id, account.clone());
+
+        service.sign_out_stale_account(account.id, &account).await;
+
+        assert!(
+            service.store.lock().await.list_accounts().is_empty(),
+            "nothing should keep replaying a token Microsoft already refused"
+        );
+
+        let Some(oneclient_events::Event::Notification(
+            oneclient_events::Notification::Message(message),
+        )) = rx.recv().await
+        else {
+            panic!("the user should be told why the account disappeared");
+        };
+        assert_eq!(message.title, "Sign-in expired");
+        assert!(
+            message.body.contains("StaleUser"),
+            "the sign-out names the account: {}",
+            message.body
+        );
+    }
 }

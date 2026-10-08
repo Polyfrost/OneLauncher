@@ -240,6 +240,56 @@ async fn user_disabled_mod_is_not_treated_as_a_removal() {
 }
 
 #[tokio::test]
+async fn user_disabled_mod_still_takes_updates() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut newer = managed_file(true);
+    if let BundleFileKind::Managed {
+        version_id, sha1, ..
+    } = &mut newer.kind
+    {
+        *version_id = "v2".to_string();
+        *sha1 = "cccccccccccccccccccccccccccccccccccccccc".to_string();
+    }
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![newer]))
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        check
+            .updates_available
+            .iter()
+            .map(|u| u.new_version_id.as_str())
+            .collect::<Vec<_>>(),
+        ["v2"],
+        "a user-disabled mod must still be offered the newer version"
+    );
+    assert!(check.removals_available.is_empty());
+    assert!(check.additions_available.is_empty());
+}
+
+#[tokio::test]
 async fn live_bundle_takes_on_new_catalog_files() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     oneclient_core::dev::seed_bundle_archive(

@@ -147,6 +147,10 @@ async fn check_bundle_updates_inner(
     let mut hidden_dependency_keys_by_bundle: HashMap<String, HashSet<String>> = HashMap::new();
     let mut hidden_explicit_keys_by_bundle: HashMap<String, HashSet<String>> = HashMap::new();
     let mut shipped_keys_by_bundle: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut user_disabled_versions: HashMap<
+        (String, String),
+        (String, crate::bundles::types::BundleFile),
+    > = HashMap::new();
 
     for archive in &archives {
         let mut files_map = HashMap::new();
@@ -161,6 +165,12 @@ async fn check_bundle_updates_inner(
                 .get(&(archive.manifest.name.clone(), file.kind.package_id()))
                 .copied();
             if !crate::bundles::effective_enabled(file, user_override) {
+                if user_override == Some(OverrideType::Disabled) {
+                    user_disabled_versions.insert(
+                        (archive.manifest.name.clone(), file.kind.bundle_key()),
+                        (file.kind.bundle_version_id(), file.clone()),
+                    );
+                }
                 continue;
             }
             let key = file.kind.bundle_key();
@@ -269,6 +279,18 @@ async fn check_bundle_updates_inner(
                     break;
                 }
             }
+        }
+
+        if matched_target.is_none() {
+            matched_target = user_disabled_versions
+                .get(&(bundle_name.clone(), installed_key.clone()))
+                .map(|(new_version_id, new_file)| {
+                    (
+                        bundle_name.clone(),
+                        new_version_id.clone(),
+                        new_file.clone(),
+                    )
+                });
         }
 
         if let Some((resolved_bundle_name, new_version_id, new_file)) = matched_target {

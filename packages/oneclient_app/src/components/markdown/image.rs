@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use std::rc::Rc;
 
 use freya::elements::image::ImageHandle;
-use freya::engine::prelude::{ClipOp, Paint, SkRect};
+use freya::engine::prelude::{ClipOp, FontMgr, Paint, SkRect, raster_n32_premul, svg};
 use freya::prelude::*;
 use freya_core::element::{ClipContext, ElementExt, LayoutContext};
 use freya_core::tree::DiffModifies;
@@ -44,7 +44,8 @@ impl Component for MarkdownImage {
                 return Some(holder);
             }
 
-            let holder = decode(&bytes)?;
+            // Descriptions carry badges as SVG, which the raster decoder rejects
+            let holder = decode(&bytes).or_else(|| decode_svg(&bytes))?;
             cache.set(Some((ptr, holder.clone())));
 
             Some(holder)
@@ -119,6 +120,22 @@ fn svg_px(value: &str) -> Option<f32> {
     let value = value.strip_suffix("px").unwrap_or(value);
     let value: f32 = value.parse().ok()?;
     value.is_finite().then_some(value)
+}
+
+/// Rasterize an SVG so the rest of the pipeline only ever sees pixels
+fn decode_svg(bytes: &Bytes) -> Option<ImageHandle> {
+    let (width, height) = svg_size(bytes)?;
+    let (width, height) = (width as i32, height as i32);
+
+    let mut dom = svg::Dom::from_bytes(bytes, FontMgr::empty()).ok()?;
+    dom.set_container_size((width, height));
+    let mut root = dom.root();
+    root.set_width(svg::Length::new(width as f32, svg::LengthUnit::PX));
+    root.set_height(svg::Length::new(height as f32, svg::LengthUnit::PX));
+
+    let mut surface = raster_n32_premul((width, height))?;
+    dom.render(surface.canvas());
+    Some(ImageHandle::new(surface.image_snapshot(), bytes.clone()))
 }
 
 #[derive(Clone)]
@@ -409,5 +426,14 @@ mod tests {
     fn payloads_that_are_not_svg_are_left_alone() {
         assert_eq!(svg_size(b"\x89PNG\r\n\x1a\n"), None);
         assert_eq!(svg_size(b"nothing that is markup at all"), None);
+    }
+
+    #[test]
+    fn a_badge_rasterizes_where_the_pixel_decoder_gives_up() {
+        let bytes = Bytes::from(BADGE.to_string());
+        assert!(decode(&bytes).is_none());
+        let handle = decode_svg(&bytes).expect("rasterized badge");
+        let size = handle.image.dimensions();
+        assert_eq!((size.width, size.height), (88, 20));
     }
 }

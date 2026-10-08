@@ -324,7 +324,13 @@ impl AuthService {
         let mut refreshed = Vec::with_capacity(ids.len());
 
         for id in ids {
-            refreshed.push(self.renew_token(id, true).await?);
+            match self.renew_token(id, true).await {
+                Ok(account) => refreshed.push(account),
+                // That account is already signed out and reported the rest of
+                // the list still deserves its renewal
+                Err(AuthError::Minecraft(MinecraftAuthError::StaleRefreshToken)) => continue,
+                Err(err) => return Err(err),
+            }
         }
 
         Ok(refreshed)

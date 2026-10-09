@@ -6,6 +6,7 @@ use pulldown_cmark::HeadingLevel;
 mod image;
 mod parse;
 mod render;
+mod svg_compat;
 
 #[derive(Clone, PartialEq)]
 pub struct MarkdownStyle {

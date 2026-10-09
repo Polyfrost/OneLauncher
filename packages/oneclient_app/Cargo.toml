@@ -62,6 +62,8 @@ freya-skia-safe.workspace = true
 freya.workspace = true
 freya-core.workspace = true
 pulldown-cmark.workspace = true
+# inlines svg logos embedded in markdown badges as data urls
+base64.workspace = true
 
 [dev-dependencies]
 freya-testing.workspace = true

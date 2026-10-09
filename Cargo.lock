@@ -4918,6 +4918,7 @@ version = "2.7.0"
 dependencies = [
  "anyhow",
  "arboard",
+ "base64 0.23.1",
  "bytes 1.12.1",
  "cargo-packager-updater",
  "chrono",

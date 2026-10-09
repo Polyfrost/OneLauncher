@@ -42,8 +42,14 @@ pub async fn upload_log_at(
             .collect::<Vec<_>>()
             .join("\n");
     }
-    if content.len() > MAX_BYTES {
-        let mut cut = content.len() - MAX_BYTES;
+    let mut encoded = form_encoded_len(content.as_bytes());
+    if encoded > MAX_BYTES {
+        let bytes = content.as_bytes();
+        let mut cut = 0;
+        while encoded > MAX_BYTES && cut < bytes.len() {
+            encoded -= form_encoded_byte_len(bytes[cut]);
+            cut += 1;
+        }
         while cut < content.len() && !content.is_char_boundary(cut) {
             cut += 1;
         }
@@ -58,7 +64,22 @@ pub async fn upload_log_at(
         .await
         .map_err(RequestError::ReqwestError)?;
 
+    let status = response.status();
     let bytes = response.bytes().await.map_err(RequestError::ReqwestError)?;
+
+    if !status.is_success() {
+        let reason = serde_json::from_slice::<MclogsResponse>(&bytes)
+            .ok()
+            .and_then(|r| r.error)
+            .unwrap_or_else(|| status.to_string());
+        tracing::warn!(
+            %status,
+            body = %String::from_utf8_lossy(&bytes[..bytes.len().min(512)]),
+            "mclogs upload rejected"
+        );
+        return Err(LogsError::Upload(reason).into());
+    }
+
     let parsed: MclogsResponse = serde_json::from_slice(&bytes)?;
 
     if !parsed.success {
@@ -77,4 +98,15 @@ pub async fn upload_log_at(
         url: parsed.url.unwrap_or_default(),
         raw: parsed.raw.unwrap_or_default(),
     })
+}
+
+fn form_encoded_byte_len(byte: u8) -> usize {
+    match byte {
+        b'a'..=b'z' | b'A'..=b'Z' | b'0'..=b'9' | b'*' | b'-' | b'.' | b'_' | b' ' => 1,
+        _ => 3,
+    }
+}
+
+fn form_encoded_len(bytes: &[u8]) -> usize {
+    bytes.iter().map(|&b| form_encoded_byte_len(b)).sum()
 }

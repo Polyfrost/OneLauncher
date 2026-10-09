@@ -221,6 +221,7 @@ impl Component for ToastController {
         let info = dispatch.clone();
         let error = dispatch.clone();
         let prog = dispatch.clone();
+        let truncated = dispatch.clone();
         let reset = dispatch;
 
         rect()
@@ -271,6 +272,15 @@ impl Component for ToastController {
                                     .body(body.read().clone())
                                     .error()
                                     .send();
+                            }),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .child(Icon::new(IconType::AlertTriangle).size(16.))
+                            .text("mclo.gs Shortened")
+                            .on_press(move |_| {
+                                crate::components::upload_mclogs::notify_log_truncated(&truncated);
                             }),
                     )
                     .child(

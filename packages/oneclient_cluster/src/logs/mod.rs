@@ -92,6 +92,7 @@ pub struct MclogsUploadResponse {
     pub id: String,
     pub url: String,
     pub raw: String,
+    pub truncated: bool,
 }
 
 #[cfg(test)]

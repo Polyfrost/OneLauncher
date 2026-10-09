@@ -34,8 +34,10 @@ pub async fn upload_log_at(
     let path = ensure_allowed(path)?;
     let mut content = super::censor(&read_file_string(&path).await?).into_owned();
 
+    let mut truncated = false;
     let line_count = content.lines().count();
     if line_count > MAX_LINES {
+        truncated = true;
         content = content
             .lines()
             .skip(line_count - MAX_LINES)
@@ -44,6 +46,7 @@ pub async fn upload_log_at(
     }
     let mut encoded = form_encoded_len(content.as_bytes());
     if encoded > MAX_BYTES {
+        truncated = true;
         let bytes = content.as_bytes();
         let mut cut = 0;
         while encoded > MAX_BYTES && cut < bytes.len() {
@@ -97,6 +100,7 @@ pub async fn upload_log_at(
         id: parsed.id.unwrap_or_default(),
         url: parsed.url.unwrap_or_default(),
         raw: parsed.raw.unwrap_or_default(),
+        truncated,
     })
 }
 

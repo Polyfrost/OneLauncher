@@ -31,6 +31,15 @@ impl Component for UploadToMclogs {
     }
 }
 
+pub fn notify_log_truncated(dispatch: &crate::Actions) {
+    dispatch
+        .notify("Log was shortened")
+        .body("The log was too large for mclo.gs, so only its most recent part was uploaded.")
+        .info()
+        .icon(IconType::AlertTriangle)
+        .send();
+}
+
 pub fn use_mclogs_feedback(upload: UseUploadLog) {
     let dispatch = use_dispatch();
     let mut handled = use_state(|| match &*upload.peek().state() {
@@ -68,6 +77,10 @@ pub fn use_mclogs_feedback(upload: UseUploadLog) {
                     .info()
                     .icon(IconType::LinkExternal01)
                     .send();
+
+                if result.truncated {
+                    notify_log_truncated(&dispatch);
+                }
             }
             Err(err) => {
                 dispatch

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT OR IGNORE INTO cluster_bisect_edges (cluster_id, from_hash, to_hash)\n            VALUES (?, ?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "bc925af8e5c93c38056a080851f15bd6aa5a9afef7dc58b13c48e4ab8d726ee5"
+}

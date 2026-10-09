@@ -3,6 +3,7 @@
 #[cfg(debug_assertions)]
 pub mod dev;
 
+pub mod bisect;
 pub mod changelog;
 pub mod clusters;
 pub mod disable_warnings;
@@ -23,6 +24,11 @@ pub mod tos;
 pub mod verify;
 pub mod versions;
 
+pub use bisect::{
+    BisectAnswer, BisectError, BisectExit, BisectMod, BisectRole, BisectStatus, answer_bisect,
+    bisect_status, finish_bisect, keep_bisect_mods_on, skip_bisect_answer, start_bisect,
+    undo_bisect_answer,
+};
 pub use changelog::{ChangelogEntry, fetch_changelog};
 pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,

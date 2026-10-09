@@ -28,13 +28,25 @@ pub fn toggle_disabled(value: State<bool>) -> impl IntoElement {
 }
 
 pub fn toggle_controlled(on: bool, on_toggle: EventHandler<()>) -> ToggleControlled {
-    ToggleControlled { on, on_toggle }
+    ToggleControlled {
+        on,
+        on_toggle,
+        disabled: false,
+    }
 }
 
 #[derive(PartialEq)]
 pub struct ToggleControlled {
     on: bool,
     on_toggle: EventHandler<()>,
+    disabled: bool,
+}
+
+impl ToggleControlled {
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
 }
 
 impl Component for ToggleControlled {
@@ -44,7 +56,7 @@ impl Component for ToggleControlled {
         Switch {
             value,
             on_press: self.on_toggle.clone(),
-            disabled: false,
+            disabled: self.disabled,
         }
     }
 }

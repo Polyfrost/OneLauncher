@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT hash FROM cluster_bisect_mods\n        WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "hash",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "759fa21b4cf62c6a3829c25078da13e87078524f68c17e5a3fff190fe346de5a"
+}

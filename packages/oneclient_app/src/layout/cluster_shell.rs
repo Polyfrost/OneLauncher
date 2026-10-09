@@ -5,7 +5,7 @@ use oneclient_common::parse_mc_version;
 
 use crate::components::{Button, Icon, IconType, TabBar, TabItem};
 use crate::hooks::{
-    use_cluster, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata,
+    use_bisect, use_cluster, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -120,6 +120,7 @@ impl Component for ClusterShell {
             .is_none_or(|c| crate::view::app::cluster::supports_datapacks(&c.mc_version));
         let show_mod_tabs = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
         let launch_state = launch_button_state(&game, cluster_id, syncing);
+        let bisecting = use_bisect(cluster_id).is_some();
 
         let hidden_tab = !show_mod_tabs
             && matches!(
@@ -190,6 +191,9 @@ impl Component for ClusterShell {
                     ))
                     .spacing(BAR_SPACING)
                     .maybe_child(header)
+                    .maybe_child(bisecting.then(|| {
+                        crate::view::app::cluster::BisectBanner { cluster_id }.into_element()
+                    }))
                     .child(cluster_tabs(
                         active_tab,
                         cluster_id,
@@ -205,6 +209,11 @@ impl Component for ClusterShell {
                     .overflow(Overflow::Clip)
                     .padding(Gaps::new(0., SIDE_PADDING, SIDE_PADDING, SIDE_PADDING))
                     .child(AnimatedRouter::<Route>::new(ClusterContentOutlet)),
+            )
+            .maybe_child(
+                bisecting.then(|| {
+                    crate::view::app::cluster::BisectQuestion { cluster_id }.into_element()
+                }),
             )
     }
 }

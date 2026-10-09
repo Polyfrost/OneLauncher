@@ -523,6 +523,7 @@ async fn start(
                 outcome,
                 owns_slot: true,
                 diagnosis: crash_watch.take(),
+                missing: crash_watch.take_missing(),
             },
         )
         .await;
@@ -595,6 +596,7 @@ pub(crate) struct SessionEnd {
     /// `None` for a clean exit an unrecognised crash or a session recovered
     /// after the fact with no log watched
     pub diagnosis: Option<crate::game::diagnosis::CrashDiagnosis>,
+    pub missing: Vec<crate::game::diagnosis::MissingDependency>,
 }
 
 /// Shared by the live exit path and by recovery of sessions that outlived the
@@ -658,6 +660,17 @@ pub(crate) async fn finalize_session(
 
     let name = &cluster.name;
     let crashed = !matches!(end.outcome, Exit::Observed { success: true, .. });
+
+    crate::bisect::record_bisect_exit(
+        state,
+        cluster_id,
+        matches!(
+            end.outcome,
+            Exit::Observed { success: false, .. } | Exit::Failed(_)
+        ),
+        end.missing,
+    )
+    .await;
 
     match end.outcome {
         Exit::Observed { success: true, .. } => {}

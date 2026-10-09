@@ -2,6 +2,7 @@ pub mod logs;
 mod overview;
 mod package_manager;
 
+mod bisect;
 mod cluster_settings;
 mod datapacks;
 mod folder_list;
@@ -16,6 +17,7 @@ mod worlds;
 pub use logs::ClusterLogs;
 pub use overview::ClusterOverview;
 
+pub(crate) use bisect::{BisectBanner, BisectQuestion};
 pub use cluster_settings::ClusterSettings;
 pub use datapacks::ClusterDataPacks;
 pub(crate) use folder_list::{dialog, supports_datapacks};

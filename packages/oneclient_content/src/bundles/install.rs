@@ -2,6 +2,7 @@ use futures_util::StreamExt;
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
+use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterRow;
 use oneclient_db::models::OverrideType;
@@ -471,6 +472,11 @@ pub async fn heal_bundle_activity(
     }
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let bisecting: std::collections::HashSet<String> =
+        bisect_dao::session_hashes(&ctx.db, cluster_id)
+            .await?
+            .into_iter()
+            .collect();
 
     let mut live_packages: std::collections::HashSet<String> = tracked
         .iter()
@@ -483,7 +489,7 @@ pub async fn heal_bundle_activity(
             continue;
         };
 
-        if live_packages.contains(package_id) {
+        if live_packages.contains(package_id) || bisecting.contains(&row.hash) {
             continue;
         }
         let Some(is_hidden) = hidden

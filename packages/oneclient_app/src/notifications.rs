@@ -707,6 +707,12 @@ impl NotificationState {
         }
     }
 
+    fn mark_unread(&self, inbox: &mut [InboxEntry], entry_id: u64) {
+        if let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) {
+            entry.read = false;
+        }
+    }
+
     pub fn dismiss_notification(&mut self, inbox: &mut Vec<InboxEntry>, entry_id: u64) {
         if inbox
             .iter()
@@ -813,7 +819,6 @@ impl NotificationState {
             entry.body = body.into();
             entry.progress = progress;
             entry.is_loading = is_loading;
-            entry.read = false;
         }
     }
 
@@ -887,6 +892,8 @@ impl NotificationState {
     ) {
         if let Some(entry_id) = self.progress_entries.remove(&id) {
             self.update_inbox_entry(inbox, entry_id, title, body, None, false);
+            // Progress ticks leave a hovered card read but its outcome is news
+            self.mark_unread(inbox, entry_id);
             self.ensure_progress_toast(entry_id);
         } else {
             let entry_id = self.push_inbox(inbox, title, body, Level::Info, None, false);
@@ -1008,6 +1015,7 @@ impl NotificationState {
                         entry.body = "Complete".to_string();
                         entry.progress = Some((1, 1));
                         entry.is_loading = false;
+                        entry.read = false;
                         entry.tasks = Vec::new();
                         entry.transfer = None;
                     }
@@ -1111,7 +1119,6 @@ impl NotificationState {
         entry.body = body;
         entry.progress = Some((completed, total));
         entry.is_loading = true;
-        entry.read = false;
         entry.tasks = tasks;
         entry.transfer = transfer;
     }
@@ -1290,6 +1297,31 @@ mod package_update_tests {
             toast_only: true,
             ..spec(title)
         }
+    }
+
+    #[test]
+    fn a_hovered_download_stays_read_until_it_finishes() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = Uuid::new_v4();
+
+        state.handle_progress(&mut inbox, id, "Downloading".into(), 1, 10);
+        let entry_id = inbox[0].id;
+        state.mark_read(&mut inbox, entry_id);
+
+        state.handle_progress(&mut inbox, id, "Downloading".into(), 5, 10);
+        assert_eq!(
+            NotificationState::unread_count(&inbox),
+            0,
+            "progress ticks must not undo the hover"
+        );
+
+        state.handle_progress_complete(&mut inbox, id, "Done".into(), String::new());
+        assert_eq!(
+            NotificationState::unread_count(&inbox),
+            1,
+            "the finished result is new again"
+        );
     }
 
     #[test]

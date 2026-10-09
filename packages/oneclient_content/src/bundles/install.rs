@@ -63,6 +63,23 @@ pub async fn taken_bundle_names(
         .collect())
 }
 
+pub(crate) async fn overrides_outside_declined(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    mut overrides: Vec<oneclient_db::models::ClusterBundleOverrideRow>,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<oneclient_db::models::ClusterBundleOverrideRow>> {
+    let taken = taken_bundle_names(cluster_id, archives, ctx).await?;
+    let declined: std::collections::HashSet<&str> = archives
+        .iter()
+        .map(|archive| archive.manifest.name.as_str())
+        .filter(|name| !taken.contains(*name))
+        .collect();
+
+    overrides.retain(|o| !declined.contains(o.bundle_name.as_str()));
+    Ok(overrides)
+}
+
 #[tracing::instrument(level = "debug", skip(bundles, ctx))]
 pub async fn pending_bundle_choices(
     cluster_id: i64,
@@ -470,7 +487,13 @@ pub async fn heal_bundle_activity(
         }
     }
 
-    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let overrides = overrides_outside_declined(
+        cluster_id,
+        archives,
+        bundle_dao::list_overrides(&ctx.db, cluster_id).await?,
+        ctx,
+    )
+    .await?;
 
     let mut live_packages: std::collections::HashSet<String> = tracked
         .iter()

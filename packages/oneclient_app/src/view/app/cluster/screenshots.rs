@@ -36,10 +36,11 @@ pub struct ClusterScreenshots {
 
 impl Component for ClusterScreenshots {
     fn render(&self) -> impl IntoElement {
-        let Some(cluster) = use_cluster(self.cluster_id) else {
-            return cluster_not_found();
-        };
-        let folder = cluster.game_dir().ok().map(|d| d.join("screenshots"));
+        let cluster = use_cluster(self.cluster_id);
+        let folder = cluster
+            .as_ref()
+            .and_then(|c| c.game_dir().ok())
+            .map(|d| d.join("screenshots"));
 
         let query = use_cluster_screenshots(self.cluster_id);
         // Otherwise a screenshot taken in game only shows up on the next visit
@@ -56,6 +57,10 @@ impl Component for ClusterScreenshots {
         let mut confirm_delete = use_state(|| false);
         let grid_width = use_state(|| 0f32);
         let mut menu = use_state(|| None::<(f32, f32, PathBuf)>);
+
+        if cluster.is_none() {
+            return cluster_not_found();
+        }
 
         let order: Vec<PathBuf> = shots.iter().map(|s| s.path.clone()).collect();
         let selected = selection.selected_in(&order);

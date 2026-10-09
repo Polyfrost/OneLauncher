@@ -121,7 +121,7 @@ impl Component for PlayerModel {
 
         let effect = player_effect();
 
-        let render_cb = RenderCallback::new(move |ctx: &mut CanvasContext| {
+        let render_cb = RenderCallback::new(move |ctx: &mut FillRenderContext| {
             let (Some(effect), Some(skin)) = (&effect, &skin_shader) else {
                 return;
             };
@@ -155,18 +155,12 @@ impl Component for PlayerModel {
             ctx.canvas.draw_rect(SkRect::new(0.0, 0.0, w, h), &paint);
         });
 
-        // `canvas` carries no style data, so the cursor rides on a wrapper `rect` that
-        // covers exactly the same area
         rect()
+            .key(src_ptr as u64)
             .width(self.width.clone())
             .height(self.height.clone())
             .cursor(CursorIcon::Grab)
-            .child(
-                canvas(render_cb)
-                    .key(src_ptr as u64)
-                    .width(Size::fill())
-                    .height(Size::fill()),
-            )
+            .background(render_cb)
             .on_pointer_down(move |e: Event<PointerEventData>| {
                 let loc = e.global_location();
                 drag.set(Some((loc.x as f32, loc.y as f32, yaw(), pitch())));

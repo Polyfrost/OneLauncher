@@ -45,15 +45,14 @@ impl Component for ScreenshotViewer {
             move || start
         });
         let mut menu = use_state(|| None::<(f32, f32)>);
+        let action = use_screenshot_action();
+        let dispatch = use_dispatch();
 
         if len == 0 {
             return rect().into_element();
         }
         let idx = (*index.read()).min(len - 1);
         let info = shots[idx].clone();
-
-        let action = use_screenshot_action();
-        let dispatch = use_dispatch();
 
         let close = self.on_close.clone();
         let scrim_close = self.on_close.clone();

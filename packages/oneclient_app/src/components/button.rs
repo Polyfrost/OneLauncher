@@ -258,6 +258,8 @@ impl LayoutExt for Button {
 
 impl ContainerExt for Button {}
 
+impl DecorationExt for Button {}
+
 impl StyleExt for Button {
     fn get_style(&mut self) -> &mut StyleState {
         &mut self.style

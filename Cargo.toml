@@ -144,9 +144,9 @@ syn = {version = "=3.0.6"}
 thiserror = {version = "=2.0.21"}
 
 # ui
-freya = {git = "https://github.com/marc2332/freya", rev = "ed0a7c3e530e4e23334f2333c408198a3d79c42e", features = ["engine", "winit", "router", "remote-asset", "sdk-tokio", "query", "radio", "borderless", "titlebar", "tray", "metrics"]}
-freya-core = {git = "https://github.com/marc2332/freya", rev = "ed0a7c3e530e4e23334f2333c408198a3d79c42e"}
-freya-testing = {git = "https://github.com/marc2332/freya", rev = "ed0a7c3e530e4e23334f2333c408198a3d79c42e"}
+freya = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b", features = ["engine", "winit", "router", "remote-asset", "sdk-tokio", "query", "radio", "borderless", "titlebar", "tray", "metrics"]}
+freya-core = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b"}
+freya-testing = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b"}
 freya-skia-safe = "=0.103.2" # required for the SKSL player renderer
 image = {version = "=0.25.10", default-features = false, features = ["png", "jpeg"]}
 

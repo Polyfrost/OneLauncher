@@ -45,8 +45,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 instance.linked_pack,
             );
 
-            let report =
-                match oneclient_core::import_external_instance(&state, instance, None).await {
+            let choices = oneclient_core::ImportChoices::default();
+            let report = match oneclient_core::import_external_instance(
+                &state, instance, &choices, None,
+            )
+            .await
+            {
                     Ok(report) => report,
                     Err(err) => {
                         println!("    import failed: {err}");

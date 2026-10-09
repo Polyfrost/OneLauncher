@@ -4,6 +4,7 @@
 //! the calling component unmounts this work is app-scoped not component-scoped
 
 mod external_import;
+pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
 pub use modpacks::modpack_job_running;

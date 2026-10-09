@@ -37,9 +37,11 @@ pub use game::{
 };
 pub use images::ImageCacheStore;
 pub use migration::launchers::{
-    ExternalDetection, ExternalImportReport, ExternalInstance, ExternalLauncher,
+    ExternalDetection, ExternalImportReport, ExternalInstance, ExternalLauncher, FlaggedImportMod,
+    ImportAlternative, ImportChoices, ScreenedInstance, alternative_version_id,
     detect_all as detect_external_launchers, detect_folder as detect_external_folder,
     import_instance as import_external_instance, same_folder as same_external_folder,
+    screen_instances as screen_external_instances,
 };
 pub use migration::{
     ImportTarget, MigrationDetection, MigrationSource, SourceInstance, detect as detect_migration,

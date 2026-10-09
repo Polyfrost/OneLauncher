@@ -10,6 +10,7 @@ mod ini;
 mod java;
 pub mod modrinth_app;
 pub mod prism;
+mod screen;
 
 use std::path::{Path, PathBuf};
 
@@ -18,7 +19,8 @@ use serde::{Deserialize, Serialize};
 use crate::LauncherResult;
 use oneclient_common::domain::{GameLoader, ProviderId};
 
-pub use import::{ExternalImportReport, import_instance};
+pub use import::{ExternalImportReport, ImportChoices, alternative_version_id, import_instance};
+pub use screen::{FlaggedImportMod, ImportAlternative, ScreenedInstance, screen_instances};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ExternalLauncher {
@@ -50,7 +52,7 @@ impl ExternalLauncher {
 
 /// Only the overrides the source instance actually set; anything left `None`
 /// falls back to OneClient's global settings
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExternalSettings {
     pub mem_max: Option<u32>,
     pub jvm_args: Option<String>,
@@ -77,14 +79,14 @@ impl ExternalSettings {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LinkedPack {
     pub provider: ProviderId,
     pub project_id: String,
     pub version_id: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ExternalInstance {
     pub launcher: ExternalLauncher,
     /// Source-local key (Prism folder name, Modrinth profile path)

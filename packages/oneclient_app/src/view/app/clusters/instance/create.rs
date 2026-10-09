@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
 use freya::router::RouterContext;
@@ -140,6 +140,8 @@ impl Component for CreateInstanceModal {
             modpack_origin: use_state(|| ModpackOrigin::Browse),
             import_chosen: use_state(Vec::new),
             import_extra: use_state(Vec::new),
+            import_mode: use_state(|| ImportMode::AsIs),
+            import_decisions: use_state(HashMap::new),
             details: DetailsState::blank(),
         };
         let dispatch = use_dispatch();
@@ -152,9 +154,15 @@ impl Component for CreateInstanceModal {
         let first = picks.index == 0;
         let last = picks.step == Step::Customize;
         let modpack_step = picks.step == Step::Modpack;
+        let review_step = picks.step == Step::ImportReview;
         let import_step = picks.step == Step::Import;
+        let improving = picks.import_mode == ImportMode::Improve;
         let import_count = picks.import_count;
-        let import_chosen = wizard.import_chosen;
+        let import_jobs = if (import_step && !improving) || review_step {
+            picks.import_jobs(&wizard.import_chosen.read())
+        } else {
+            Vec::new()
+        };
         let origin = picks.modpack_origin;
         let index = picks.index;
         let mut step = wizard.step;
@@ -172,11 +180,17 @@ impl Component for CreateInstanceModal {
             title: title.to_string(),
             subtitle,
             body: steps::body(wizard, &picks),
-            scrolls_itself: matches!(picks.step, Step::Version | Step::Import),
+            scrolls_itself: matches!(
+                picks.step,
+                Step::Version | Step::Import | Step::ImportReview
+            ),
             note: footer_note(&picks),
             secondary_label: if first { "Cancel" } else { "Back" }.to_string(),
             primary_label: match (modpack_step, origin) {
-                _ if import_step => match import_count {
+                _ if review_step && picks.import_screening.is_none() => {
+                    "Import without checking".to_string()
+                }
+                _ if (import_step && !improving) || review_step => match import_count {
                     0 => "Import".to_string(),
                     1 => "Import instance".to_string(),
                     n => format!("Import {n} instances"),
@@ -197,8 +211,8 @@ impl Component for CreateInstanceModal {
             })
             .into(),
             on_primary: (move |()| {
-                if import_step {
-                    dispatch.import_external_instances(import_chosen.read().clone());
+                if (import_step && !improving) || review_step {
+                    dispatch.import_external_instances(import_jobs.clone());
                     close_import.call(());
                 } else if modpack_step {
                     start_modpack(

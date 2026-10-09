@@ -1,7 +1,7 @@
 use oneclient_cluster::naming::validate_instance_name;
 
 use super::data::Picks;
-use super::model::{ModpackOrigin, Step, TypeChoice, Wizard};
+use super::model::{ImportMode, ModpackOrigin, Step, TypeChoice, Wizard};
 
 pub fn heading(picks: &Picks) -> (&'static str, String) {
     match picks.step {
@@ -44,9 +44,18 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
             "The pack decides the version, the loader and the mods. The instance is named after it."
                 .to_string(),
         ),
+        Step::ImportMode => (
+            "How to import",
+            "Bring instances over untouched, or let OneClient check their mods first.".to_string(),
+        ),
         Step::Import => (
             "Import instances",
             "Each one becomes its own instance with its mods, worlds and settings. The originals stay where they are."
+                .to_string(),
+        ),
+        Step::ImportReview => (
+            "Review mods",
+            "These mods are known to cause problems. Choose what happens to each one before importing."
                 .to_string(),
         ),
     }
@@ -95,10 +104,25 @@ pub fn footer_note(picks: &Picks) -> String {
                 "Takes .mrpack files from Modrinth and .zip files from CurseForge.".to_string()
             }
         },
+        Step::ImportMode => match picks.import_mode {
+            ImportMode::AsIs => "Mods, worlds and settings come over unchanged.".to_string(),
+            ImportMode::Improve => {
+                "Problem mods can be swapped for a better alternative or left out.".to_string()
+            }
+        },
         Step::Import => match picks.import_count {
             0 => "Pick the instances to bring over.".to_string(),
             1 => "1 instance selected. Accounts are not imported; sign in here.".to_string(),
             n => format!("{n} instances selected. Accounts are not imported; sign in here."),
+        },
+        Step::ImportReview => match (&picks.import_screening, picks.flagged_count()) {
+            (None, _) if picks.import_screening_error.is_some() => {
+                "Mods were not checked. Importing brings them over unchanged.".to_string()
+            }
+            (None, _) => "Checking mods...".to_string(),
+            (Some(_), 0) => "Nothing to change. Accounts are not imported; sign in here.".to_string(),
+            (Some(_), 1) => "1 mod flagged. Accounts are not imported; sign in here.".to_string(),
+            (Some(_), n) => format!("{n} mods flagged. Accounts are not imported; sign in here."),
         },
     }
 }
@@ -129,9 +153,20 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
             ModpackOrigin::Browse => "Browse".to_string(),
             ModpackOrigin::File => "From a file".to_string(),
         },
+        Step::ImportMode => match picks.import_mode {
+            ImportMode::AsIs => "As it is".to_string(),
+            ImportMode::Improve => "Improved".to_string(),
+        },
         Step::Import => match picks.import_count {
             0 => "None selected".to_string(),
             n => format!("{n} selected"),
+        },
+        Step::ImportReview => match (&picks.import_screening, picks.flagged_count()) {
+            (None, _) if picks.import_screening_error.is_some() => "Not checked".to_string(),
+            (None, _) => "Checking".to_string(),
+            (Some(_), 0) => "Nothing flagged".to_string(),
+            (Some(_), 1) => "1 flagged".to_string(),
+            (Some(_), n) => format!("{n} flagged"),
         },
         Step::Customize => match wizard.details.tags.read().len() {
             0 => "Optional".to_string(),
@@ -150,6 +185,11 @@ pub fn is_ready(picks: &Picks) -> bool {
                 && (picks.choice == TypeChoice::Scratch || picks.loader.chosen.is_some())
         }
         Step::Customize => validate_instance_name(&picks.name).is_ok(),
+        Step::ImportMode => true,
         Step::Import => picks.import_count > 0,
+        Step::ImportReview => {
+            picks.import_count > 0
+                && (picks.import_screening.is_some() || picks.import_screening_error.is_some())
+        }
     }
 }

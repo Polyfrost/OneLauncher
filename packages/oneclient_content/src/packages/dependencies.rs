@@ -152,7 +152,7 @@ pub(crate) async fn resolve_one(
 }
 
 /// Falls back to the newest prerelease when no release fits the cluster
-pub(crate) async fn pick_version(
+pub async fn pick_version(
     provider: &dyn PackageProvider,
     project_id: &str,
     cluster: &ClusterRow,

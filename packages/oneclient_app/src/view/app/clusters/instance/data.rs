@@ -5,13 +5,14 @@ use oneclient_cluster::naming::{MAX_NAME_CHARS, validate_instance_name};
 use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::ProviderId;
 use oneclient_core::clusters::ClusterKind;
-use oneclient_core::{BundleArchive, GameVersionKind};
+use oneclient_core::{BundleArchive, ExternalInstance, GameVersionKind, ScreenedInstance};
 
 use super::model::*;
 use super::package_names;
 use crate::hooks::{
-    GameVersion, available_bundles, game_versions, java_majors, loader_versions,
-    package_meta_batch, query_error, settled_or_loading, use_available_bundles, use_game_versions,
+    AlternativePick, ExternalImportJob, GameVersion, available_bundles, game_versions,
+    import_screening, java_majors, loader_versions, package_meta_batch, query_error,
+    settled_or_loading, use_available_bundles, use_game_versions, use_import_screening,
     use_java_majors, use_loader_versions, use_package_meta_batch, use_version_loaders,
     use_versions, versions_metadata,
 };
@@ -63,6 +64,10 @@ pub struct Picks {
     pub choice: TypeChoice,
     pub modpack_origin: ModpackOrigin,
     pub import_count: usize,
+    pub import_mode: ImportMode,
+    pub import_screening: Option<Vec<ScreenedInstance>>,
+    pub import_screening_error: Option<String>,
+    pub import_decisions: HashMap<DecisionKey, ModDecision>,
     pub kind: ClusterKind,
     pub name: String,
     pub suggested: String,
@@ -72,6 +77,66 @@ pub struct Picks {
 }
 
 impl Picks {
+    pub fn flagged_count(&self) -> usize {
+        self.import_screening
+            .iter()
+            .flatten()
+            .map(|screened| screened.flagged.len())
+            .sum()
+    }
+
+    pub fn import_jobs(&self, chosen: &[ExternalInstance]) -> Vec<ExternalImportJob> {
+        chosen
+            .iter()
+            .map(|instance| {
+                let mut job = ExternalImportJob::as_is(instance.clone());
+                if self.import_mode != ImportMode::Improve {
+                    return job;
+                }
+                let screened = self
+                    .import_screening
+                    .iter()
+                    .flatten()
+                    .find(|screened| screened.game_dir == instance.game_dir);
+                for flagged in screened.iter().flat_map(|screened| &screened.flagged) {
+                    match decision_for(&self.import_decisions, &instance.game_dir, flagged) {
+                        ModDecision::Keep => {}
+                        ModDecision::Remove => {
+                            job.choices.skip.insert(flagged.hash.clone());
+                        }
+                        ModDecision::Replace {
+                            provider,
+                            project_id,
+                        } => {
+                            job.choices.skip.insert(flagged.hash.clone());
+                            let chosen = flagged.alternatives.iter().find(|a| {
+                                a.resolved.provider == provider
+                                    && a.resolved.project_id == project_id
+                            });
+                            if chosen.is_some_and(|a| a.already_installed) {
+                                continue;
+                            }
+                            let name = chosen
+                                .map_or_else(|| project_id.clone(), |a| a.resolved.name.clone());
+                            if !job
+                                .alternatives
+                                .iter()
+                                .any(|a| a.provider == provider && a.project_id == project_id)
+                            {
+                                job.alternatives.push(AlternativePick {
+                                    provider,
+                                    project_id,
+                                    name,
+                                });
+                            }
+                        }
+                    }
+                }
+                job
+            })
+            .collect()
+    }
+
     pub fn loader_label(&self) -> String {
         match (self.loader.chosen, self.loader.version.as_deref()) {
             (None | Some(GameLoader::Vanilla), _) => "Vanilla".to_string(),
@@ -296,7 +361,8 @@ fn suggested_name(
 
 pub fn resolve(w: Wizard) -> Picks {
     let choice = *w.choice.read();
-    let steps = step_order(choice);
+    let import_mode = *w.import_mode.read();
+    let steps = step_order(choice, import_mode);
     let index = (*w.step.read()).min(steps.len().saturating_sub(1));
     let step = steps[index];
 
@@ -353,6 +419,20 @@ pub fn resolve(w: Wizard) -> Picks {
         _ => None,
     };
 
+    let screening_query = use_import_screening(if step == Step::ImportReview {
+        w.import_chosen.read().clone()
+    } else {
+        Vec::new()
+    });
+    let (import_screening, import_screening_error) = if step == Step::ImportReview {
+        (
+            import_screening(&screening_query),
+            query_error(&screening_query),
+        )
+    } else {
+        (None, None)
+    };
+
     let bundles = use_bundle_context(version.as_ref(), loader, oneclient, step == Step::Bundles);
 
     let kind = kind_for(choice, loader);
@@ -373,6 +453,10 @@ pub fn resolve(w: Wizard) -> Picks {
         choice,
         modpack_origin: *w.modpack_origin.read(),
         import_count: w.import_chosen.read().len(),
+        import_mode,
+        import_screening,
+        import_screening_error,
+        import_decisions: w.import_decisions.read().clone(),
         kind,
         name: w.details.effective_name(&suggested),
         suggested,

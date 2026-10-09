@@ -11,9 +11,9 @@ use oneclient_common::patch::Patch;
 use oneclient_content::ContentCtx;
 use oneclient_content::bundles::{remove_artifact_from_cluster, set_artifact_enabled_to};
 use oneclient_content::modpacks::{BlockedFile, MODPACK_BUNDLE_NAME};
-use oneclient_content::packages::PackageStore;
 use oneclient_content::packages::store::cache_local_file;
-use oneclient_db::dao::cluster_bundle as bundle_dao;
+use oneclient_content::packages::{PackageStore, ProviderId, curseforge_fingerprint, pick_version};
+use oneclient_db::dao::{cluster as cluster_dao, cluster_bundle as bundle_dao};
 use oneclient_events::GroupedProgressSession;
 
 use crate::LauncherResult;
@@ -69,6 +69,7 @@ pub struct ExternalImportReport {
     pub content_failed: Vec<String>,
     /// Mods found in an instance without a mod loader
     pub mods_skipped: usize,
+    pub mods_left_out: usize,
     pub linked_pack: bool,
     pub blocked: Vec<BlockedFile>,
     /// Paths (relative to the source game dir) that could not be read or
@@ -101,9 +102,14 @@ fn java_plan(source: Option<u32>, required: Option<u32>) -> JavaPlan {
     }
 }
 
+#[derive(Debug, Clone, Default)]
+pub struct ImportChoices {
+    pub skip: HashSet<String>,
+}
+
 #[derive(Debug, Clone)]
-struct LocalContent {
-    path: PathBuf,
+pub(super) struct LocalContent {
+    pub(super) path: PathBuf,
     /// What the store sees: `path` itself, or for a disabled file a staged
     /// copy under its real name. The store names an artifact after the file
     /// it was given and every later link reuses that name, so a cached
@@ -111,13 +117,14 @@ struct LocalContent {
     /// never loaded
     import_path: PathBuf,
     content_type: ContentType,
-    enabled: bool,
-    hash: String,
+    pub(super) enabled: bool,
+    pub(super) hash: String,
+    pub(super) cf_fingerprint: Option<u32>,
 }
 
 #[derive(Debug, Default)]
-struct ScannedContent {
-    files: Vec<LocalContent>,
+pub(super) struct ScannedContent {
+    pub(super) files: Vec<LocalContent>,
     /// Folder packs, shader option files and the like, copied verbatim
     /// to the same relative path
     loose: Vec<PathBuf>,
@@ -134,11 +141,17 @@ struct ScannedContent {
 pub async fn import_instance(
     state: &Arc<LauncherState>,
     instance: &ExternalInstance,
+    choices: &ImportChoices,
     progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<ExternalImportReport> {
     let content = state.services.content();
     let staging = polyio::tempdir().await?;
     let mut scanned = scan_content(&instance.game_dir).await;
+    let found = scanned.files.len();
+    scanned
+        .files
+        .retain(|file| !choices.skip.contains(&file.hash));
+    let left_out = found - scanned.files.len();
     stage_disabled(&mut scanned, staging.dir_path()).await;
 
     let taken: Vec<String> = state
@@ -177,12 +190,14 @@ pub async fn import_instance(
         &cluster,
         prepared.as_ref(),
         &scanned,
+        choices,
         progress,
     )
     .await;
     match result {
         Ok(mut report) => {
             report.cluster_id = cluster.id;
+            report.mods_left_out = left_out;
             report.cluster_name = cluster.name.clone();
             tracing::info!(
                 cluster_id = cluster.id,
@@ -266,6 +281,7 @@ async fn populate(
     cluster: &Cluster,
     prepared: Option<&PreparedModpack>,
     scanned: &ScannedContent,
+    choices: &ImportChoices,
     progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<ExternalImportReport> {
     let content = state.services.content();
@@ -278,6 +294,7 @@ async fn populate(
         report.content_failed.extend(installed.report.failed);
         apply_linked_metadata(state, instance, cluster).await;
         drop_pack_files_removed_locally(cluster.id, scanned, &content).await?;
+        drop_skipped_pack_files(cluster.id, &choices.skip, &content).await?;
     }
 
     report
@@ -401,6 +418,44 @@ async fn drop_pack_files_removed_locally(
     }
 
     Ok(())
+}
+
+async fn drop_skipped_pack_files(
+    cluster_id: i64,
+    skip: &HashSet<String>,
+    content: &ContentCtx,
+) -> LauncherResult<()> {
+    if skip.is_empty() {
+        return Ok(());
+    }
+
+    for artifact in PackageStore::list_linked_artifacts(cluster_id, content).await? {
+        if !skip.contains(&polyio::normalize_hash(&artifact.hash)) {
+            continue;
+        }
+        if let Err(err) =
+            remove_artifact_from_cluster(cluster_id, &artifact.hash, true, content).await
+        {
+            tracing::debug!(file = %artifact.cluster_file_name, error = %err, "could not leave out a pack file");
+        }
+    }
+
+    Ok(())
+}
+
+pub async fn alternative_version_id(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    provider: ProviderId,
+    project_id: &str,
+) -> LauncherResult<Option<String>> {
+    let Some(row) = cluster_dao::get_by_id(&state.services.db, cluster_id).await? else {
+        return Ok(None);
+    };
+    let content = state.services.content();
+    let provider = content.providers.get(provider)?;
+    let picked = pick_version(provider, project_id, &row, &content).await?;
+    Ok(picked.map(|pick| pick.version_id))
 }
 
 async fn import_content(
@@ -575,9 +630,17 @@ fn is_archive(content_type: ContentType, name: &str) -> bool {
 /// Never fails: a file that cannot be read is listed in `unreadable` so one
 /// bad jar does not stop the rest of the instance from coming over
 async fn scan_content(game_dir: &Path) -> ScannedContent {
+    scan_folders(game_dir, CONTENT_FOLDERS, false).await
+}
+
+pub(super) async fn scan_folders(
+    game_dir: &Path,
+    folders: &[ContentType],
+    fingerprint: bool,
+) -> ScannedContent {
     let mut scanned = ScannedContent::default();
 
-    for content_type in CONTENT_FOLDERS.iter().copied() {
+    for content_type in folders.iter().copied() {
         let folder = game_dir.join(content_type.folder_name());
         if !folder.is_dir() {
             continue;
@@ -628,10 +691,11 @@ async fn scan_content(game_dir: &Path) -> ScannedContent {
             };
 
             if metadata.is_file() && is_archive(content_type, &name) {
-                match polyio::sha1_file(&path).await {
-                    Ok(hash) => scanned.files.push(LocalContent {
+                match hash_file(&path, fingerprint).await {
+                    Ok((hash, cf_fingerprint)) => scanned.files.push(LocalContent {
                         enabled: !name.to_ascii_lowercase().ends_with(DISABLED_SUFFIX),
                         hash: polyio::normalize_hash(&hash),
+                        cf_fingerprint,
                         import_path: path.clone(),
                         path,
                         content_type,
@@ -655,6 +719,20 @@ async fn scan_content(game_dir: &Path) -> ScannedContent {
 /// Gives every disabled file a copy under its real name for the store; one
 /// that cannot be copied is moved to `unreadable` rather than imported under
 /// the wrong name
+async fn hash_file(
+    path: &Path,
+    fingerprint: bool,
+) -> Result<(String, Option<u32>), polyio::IOError> {
+    if !fingerprint {
+        return Ok((polyio::sha1_file(path).await?, None));
+    }
+    let bytes = tokio::fs::read(path).await?;
+    Ok((
+        polyio::sha1_bytes(&bytes),
+        Some(curseforge_fingerprint(&bytes)),
+    ))
+}
+
 async fn stage_disabled(scanned: &mut ScannedContent, staging: &Path) {
     let mut kept = Vec::with_capacity(scanned.files.len());
     for mut file in std::mem::take(&mut scanned.files) {

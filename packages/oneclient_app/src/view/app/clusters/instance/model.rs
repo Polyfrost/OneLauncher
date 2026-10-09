@@ -1,9 +1,10 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use freya::prelude::*;
-use oneclient_common::domain::GameLoader;
-use oneclient_core::{ExternalDetection, ExternalInstance, GameVersionKind};
+use oneclient_common::domain::{GameLoader, ProviderId};
+use oneclient_core::{ExternalDetection, ExternalInstance, FlaggedImportMod, GameVersionKind};
 
 use super::details::DetailsState;
 use crate::hooks::GameVersion;
@@ -29,6 +30,52 @@ pub enum TypeChoice {
     Scratch,
     Modpack,
     Import,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ImportMode {
+    AsIs,
+    Improve,
+}
+
+#[derive(Clone, PartialEq, Eq)]
+pub enum ModDecision {
+    Keep,
+    Remove,
+    Replace {
+        provider: ProviderId,
+        project_id: String,
+    },
+}
+
+pub type DecisionKey = (PathBuf, String);
+
+pub fn decision_for(
+    decisions: &HashMap<DecisionKey, ModDecision>,
+    game_dir: &Path,
+    flagged: &FlaggedImportMod,
+) -> ModDecision {
+    decisions
+        .get(&(game_dir.to_path_buf(), flagged.hash.clone()))
+        .cloned()
+        .unwrap_or_else(|| default_decision(flagged))
+}
+
+fn default_decision(flagged: &FlaggedImportMod) -> ModDecision {
+    flagged
+        .alternatives
+        .iter()
+        .find(|alternative| alternative.already_installed)
+        .or_else(|| {
+            flagged
+                .alternatives
+                .iter()
+                .find(|alternative| alternative.resolved.version_number.is_some())
+        })
+        .map_or(ModDecision::Keep, |alternative| ModDecision::Replace {
+            provider: alternative.resolved.provider,
+            project_id: alternative.resolved.project_id.clone(),
+        })
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -119,7 +166,9 @@ pub enum Step {
     Bundles,
     Customize,
     Modpack,
+    ImportMode,
     Import,
+    ImportReview,
 }
 
 impl Step {
@@ -131,7 +180,9 @@ impl Step {
             Self::Bundles => "Bundles",
             Self::Customize => "Details",
             Self::Modpack => "Source",
+            Self::ImportMode => "Method",
             Self::Import => "Instances",
+            Self::ImportReview => "Review",
         }
     }
 }
@@ -139,14 +190,21 @@ impl Step {
 const ONECLIENT_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Bundles, Step::Customize];
 const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Loader, Step::Customize];
 const MODPACK_STEPS: [Step; 2] = [Step::Type, Step::Modpack];
-const IMPORT_STEPS: [Step; 2] = [Step::Type, Step::Import];
+const IMPORT_STEPS: [Step; 3] = [Step::Type, Step::ImportMode, Step::Import];
+const IMPROVE_STEPS: [Step; 4] = [
+    Step::Type,
+    Step::ImportMode,
+    Step::Import,
+    Step::ImportReview,
+];
 
-pub fn step_order(choice: TypeChoice) -> &'static [Step] {
-    match choice {
-        TypeChoice::OneClient => &ONECLIENT_STEPS,
-        TypeChoice::Scratch => &SCRATCH_STEPS,
-        TypeChoice::Modpack => &MODPACK_STEPS,
-        TypeChoice::Import => &IMPORT_STEPS,
+pub fn step_order(choice: TypeChoice, mode: ImportMode) -> &'static [Step] {
+    match (choice, mode) {
+        (TypeChoice::OneClient, _) => &ONECLIENT_STEPS,
+        (TypeChoice::Scratch, _) => &SCRATCH_STEPS,
+        (TypeChoice::Modpack, _) => &MODPACK_STEPS,
+        (TypeChoice::Import, ImportMode::AsIs) => &IMPORT_STEPS,
+        (TypeChoice::Import, ImportMode::Improve) => &IMPROVE_STEPS,
     }
 }
 
@@ -210,5 +268,7 @@ pub struct Wizard {
     pub import_chosen: State<Vec<ExternalInstance>>,
     /// Installs the user pointed at by hand (portable launchers)
     pub import_extra: State<Vec<ExternalDetection>>,
+    pub import_mode: State<ImportMode>,
+    pub import_decisions: State<HashMap<DecisionKey, ModDecision>>,
     pub details: DetailsState,
 }

@@ -1,7 +1,11 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use freya::prelude::spawn_forever;
-use oneclient_core::{ExternalImportReport, ExternalInstance, import_external_instance};
+use oneclient_common::domain::ProviderId;
+use oneclient_core::{
+    ExternalImportReport, ExternalInstance, ImportChoices, alternative_version_id,
+    import_external_instance,
+};
 use oneclient_events::GroupedProgressSession;
 
 use super::Actions;
@@ -12,11 +16,35 @@ const MAX_LISTED: usize = 3;
 
 static IMPORTING: AtomicBool = AtomicBool::new(false);
 
+#[derive(Debug, Clone)]
+pub struct ExternalImportJob {
+    pub instance: ExternalInstance,
+    pub choices: ImportChoices,
+    pub alternatives: Vec<AlternativePick>,
+}
+
+#[derive(Debug, Clone)]
+pub struct AlternativePick {
+    pub provider: ProviderId,
+    pub project_id: String,
+    pub name: String,
+}
+
+impl ExternalImportJob {
+    pub fn as_is(instance: ExternalInstance) -> Self {
+        Self {
+            instance,
+            choices: ImportChoices::default(),
+            alternatives: Vec::new(),
+        }
+    }
+}
+
 impl Actions {
     /// Instances go one at a time: each can pull a whole modpack and hash
     /// hundreds of files, and running them side by side only fights over disk
-    pub fn import_external_instances(&self, instances: Vec<ExternalInstance>) {
-        if instances.is_empty() {
+    pub fn import_external_instances(&self, jobs: Vec<ExternalImportJob>) {
+        if jobs.is_empty() {
             return;
         }
         if IMPORTING.swap(true, Ordering::AcqRel) {
@@ -36,8 +64,14 @@ impl Actions {
             let events = state.services.events.clone();
 
             let mut imported: Vec<ExternalImportReport> = Vec::new();
+            let mut unavailable: Vec<String> = Vec::new();
             let mut blocked_shown = false;
-            for instance in instances {
+            for job in jobs {
+                let ExternalImportJob {
+                    instance,
+                    choices,
+                    alternatives,
+                } = job;
                 let name = instance.name.clone();
                 let outcome = off_ui({
                     let state = state.clone();
@@ -47,7 +81,8 @@ impl Actions {
                             format!("Importing {}", instance.name),
                         );
                         let outcome =
-                            import_external_instance(&state, &instance, Some(&session)).await;
+                            import_external_instance(&state, &instance, &choices, Some(&session))
+                                .await;
                         session.finish();
                         outcome
                     }
@@ -69,6 +104,11 @@ impl Actions {
                                 open_when_done: false,
                             });
                         }
+                        unavailable.extend(
+                            actions
+                                .install_alternatives(report.cluster_id, alternatives)
+                                .await,
+                        );
                         imported.push(report);
                     }
                     Err(err) => {
@@ -82,7 +122,7 @@ impl Actions {
                 }
             }
 
-            notify_summary(&actions, &imported);
+            notify_summary(&actions, &imported, &unavailable);
             if let [only] = imported.as_slice() {
                 actions.open_cluster_page(only.cluster_id);
             }
@@ -90,9 +130,48 @@ impl Actions {
             IMPORTING.store(false, Ordering::Release);
         });
     }
+
+    async fn install_alternatives(
+        &self,
+        cluster_id: i64,
+        alternatives: Vec<AlternativePick>,
+    ) -> Vec<String> {
+        let Ok(state) = launcher::state() else {
+            return alternatives.into_iter().map(|pick| pick.name).collect();
+        };
+
+        let mut unavailable = Vec::new();
+        for AlternativePick {
+            provider,
+            project_id,
+            name,
+        } in alternatives
+        {
+            let picked =
+                off_ui({
+                    let state = state.clone();
+                    let project_id = project_id.clone();
+                    async move {
+                        alternative_version_id(&state, cluster_id, provider, &project_id).await
+                    }
+                })
+                .await;
+            match picked {
+                Ok(Some(version_id)) => {
+                    self.start_install(cluster_id, provider, project_id, version_id, None, true);
+                }
+                Ok(None) => unavailable.push(name),
+                Err(err) => {
+                    tracing::warn!(%project_id, error = %err, "could not pick a version of an alternative mod");
+                    unavailable.push(name);
+                }
+            }
+        }
+        unavailable
+    }
 }
 
-fn notify_summary(actions: &Actions, imported: &[ExternalImportReport]) {
+fn notify_summary(actions: &Actions, imported: &[ExternalImportReport], unavailable: &[String]) {
     if imported.is_empty() {
         return;
     }
@@ -109,6 +188,7 @@ fn notify_summary(actions: &Actions, imported: &[ExternalImportReport]) {
         .flat_map(|r| r.content_failed.iter().cloned())
         .collect();
     let skipped: usize = imported.iter().map(|r| r.mods_skipped).sum();
+    let left_out: usize = imported.iter().map(|r| r.mods_left_out).sum();
     let blocked: usize = imported.iter().map(|r| r.blocked.len()).sum();
 
     if !failed.is_empty() {
@@ -121,6 +201,18 @@ fn notify_summary(actions: &Actions, imported: &[ExternalImportReport]) {
         body.push_str(&format!(
             " {skipped} mod{} skipped: the instance has no mod loader.",
             if skipped == 1 { " was" } else { "s were" }
+        ));
+    }
+    if left_out > 0 {
+        body.push_str(&format!(
+            " {left_out} flagged mod{} left out.",
+            if left_out == 1 { " was" } else { "s were" }
+        ));
+    }
+    if !unavailable.is_empty() {
+        body.push_str(&format!(
+            " Could not find a version of {} to install instead.",
+            listed(unavailable.iter().cloned())
         ));
     }
     if blocked > 0 {

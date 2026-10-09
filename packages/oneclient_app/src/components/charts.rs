@@ -93,7 +93,7 @@ impl Component for PieChart {
         let values = self.values.clone();
         let hit_values = self.values.clone();
 
-        let render_cb = RenderCallback::new(move |ctx: &mut CanvasContext| {
+        let render_cb = RenderCallback::new(move |ctx: &mut FillRenderContext| {
             let (w, h) = (ctx.size.width, ctx.size.height);
             if w <= 0.0 || h <= 0.0 {
                 return;
@@ -182,8 +182,13 @@ impl Component for PieChart {
                     .height(Size::fill())
                     .position(Position::new_absolute())
                     .interactive(false)
-                    // Childless canvas auto-sizes to 0x0 without an explicit size
-                    .child(canvas(render_cb).width(Size::fill()).height(Size::fill())),
+                    // Childless rect auto-sizes to 0x0 without an explicit size
+                    .child(
+                        rect()
+                            .width(Size::fill())
+                            .height(Size::fill())
+                            .background(render_cb),
+                    ),
             )
             .child(
                 rect()

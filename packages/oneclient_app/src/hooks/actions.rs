@@ -1503,6 +1503,24 @@ impl Actions {
 
     /// `syncing_bundles` gates every launch button so the readiness check must
     /// happen before the flag is raised not inside the task
+    /// Lets the signed-out bar show at startup instead of on the first launch
+    pub fn check_sessions() {
+        let state = match launcher::state() {
+            Ok(state) => state,
+            Err(err) => {
+                tracing::error!("session check skipped, launcher not ready: {err:#}");
+                return;
+            }
+        };
+
+        spawn_forever(async move {
+            let signed_out = off_ui(async move { state.auth.check_expired_sessions().await }).await;
+            if signed_out {
+                super::invalidate_auth_queries(None).await;
+            }
+        });
+    }
+
     pub fn sync_bundles(&self) {
         let state = match launcher::state() {
             Ok(state) => state,
@@ -2077,6 +2095,12 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         );
         return;
     };
+
+    // The renewal may have just marked the account signed out the accounts
+    // page and the status bar must pick that up while the game still starts
+    if account.needs_sign_in() {
+        super::invalidate_auth_queries(None).await;
+    }
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
 

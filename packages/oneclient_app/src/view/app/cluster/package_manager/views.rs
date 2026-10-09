@@ -273,6 +273,7 @@ pub(super) fn toolbar_bar(
     package_type: &'static str,
     mut toolbar_width: State<f32>,
     bulk: &Bulk,
+    extra: Option<Element>,
 ) -> impl IntoElement {
     let chips = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
@@ -342,6 +343,7 @@ pub(super) fn toolbar_bar(
             .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
             .into_element(),
     );
+    controls.extend(extra);
     controls.push(
         Button::new()
             .primary()
@@ -483,6 +485,12 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
             "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
         ),
     }
+}
+
+pub(super) fn bisect_notice(noun_plural: &'static str) -> String {
+    format!(
+        "A problem mod search is running, so {noun_plural} can't be switched on or off here. Use the panel above to stop it."
+    )
 }
 
 pub(super) fn global_notice(noun_plural: &'static str) -> String {

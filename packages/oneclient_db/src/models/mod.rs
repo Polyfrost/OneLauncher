@@ -2,6 +2,7 @@ mod artifact;
 mod browser_package_update;
 mod bundle;
 mod cluster;
+mod cluster_bisect;
 mod cluster_bundle;
 mod cluster_optional_mod;
 mod game_session;
@@ -17,6 +18,7 @@ pub use artifact::{
 pub use browser_package_update::BrowserPackageUpdateRow;
 pub use bundle::{BundleRow, NewBundle};
 pub use cluster::{ClusterId, ClusterKind, ClusterPatch, ClusterRow, NewCluster};
+pub use cluster_bisect::{BisectExit, ClusterBisectModRow, ClusterBisectSessionRow};
 pub use cluster_bundle::{BundleTrackedArtifactRow, ClusterBundleOverrideRow, OverrideType};
 pub use cluster_optional_mod::{ClusterOptionalModRow, OptionalModStatus};
 pub use game_session::{

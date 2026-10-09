@@ -1,7 +1,7 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
-use oneclient_core::SeenStatus;
+use oneclient_core::{BisectRole, SeenStatus};
 
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
 use crate::essential::EssentialPackage;
@@ -71,6 +71,8 @@ pub struct PackageEntry {
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
     pub essential: Option<&'static EssentialPackage>,
+    pub bisect_role: Option<BisectRole>,
+    pub locked: bool,
 }
 
 impl PackageEntry {
@@ -93,6 +95,16 @@ impl PackageEntry {
             SeenStatus::Updated => Some(updated_badge()),
             SeenStatus::Seen => None,
         }
+    }
+
+    pub fn bisect_badge(&self) -> Option<Element> {
+        let role = self.bisect_role?;
+        let accent = match role {
+            BisectRole::Testing | BisectRole::Helper => colors::brand(),
+            BisectRole::Waiting => colors::fg_secondary(),
+            BisectRole::Cleared => colors::success(),
+        };
+        Some(status_tag(role.label(), accent))
     }
 }
 
@@ -174,7 +186,7 @@ impl Component for PackageRow {
         let icon = package_icon(&item, &icon_query, icon_size);
 
         let on_toggle: EventHandler<()> = {
-            let action = toggle_action(&item, cluster_id, !item.enabled);
+            let action = toggle_action(&item, cluster_id, !item.enabled).filter(|_| !item.locked);
             let enabled_now = item.enabled;
             let name = item.name.clone();
             let mut guard = guard;
@@ -395,7 +407,7 @@ fn list_card(
         .on_secondary_down(on_secondary(on_context.clone()))
         .child(package_info(item, package_type, cluster_id, icon))
         .child(meta_size(item.size))
-        .child(toggle_controlled(item.enabled, on_toggle))
+        .child(toggle_controlled(item.enabled, on_toggle).disabled(item.locked))
         .maybe_child(on_context.map(kebab_button))
         .into_element()
 }
@@ -472,8 +484,11 @@ pub(crate) fn grid_card(
             .into_element()
     });
 
-    let badged =
-        item.is_outdated() || item.shadowed || item.outranked || item.recency_badge().is_some();
+    let badged = item.is_outdated()
+        || item.shadowed
+        || item.outranked
+        || item.bisect_role.is_some()
+        || item.recency_badge().is_some();
     let floating = badged.then(|| {
         rect()
             .horizontal()
@@ -489,6 +504,7 @@ pub(crate) fn grid_card(
             .maybe_child(item.is_outdated().then(outdated_badge))
             .maybe_child(item.shadowed.then(shadowed_badge))
             .maybe_child(item.outranked.then(outranked_badge))
+            .maybe_child(item.bisect_badge())
             .maybe_child(item.recency_badge())
             .into_element()
     });
@@ -776,6 +792,7 @@ fn package_info(
                         .maybe_child(item.is_outdated().then(outdated_badge))
                         .maybe_child(item.shadowed.then(shadowed_badge))
                         .maybe_child(item.outranked.then(outranked_badge))
+                        .maybe_child(item.bisect_badge())
                         .maybe_child(item.recency_badge()),
                 )
                 .maybe(!item.author.is_empty(), |el| {

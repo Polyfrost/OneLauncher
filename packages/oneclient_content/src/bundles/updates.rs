@@ -6,6 +6,7 @@ use std::time::Instant;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::bundle as bundle_catalog_dao;
 use oneclient_db::dao::cluster as cluster_dao;
+use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::dao::cluster_optional_mod as optional_dao;
 use oneclient_db::models::ClusterPatch;
@@ -472,6 +473,14 @@ pub async fn apply_bundle_updates_with(
     deadline: Option<Instant>,
 ) -> ContentResult<ApplyBundleUpdatesResult> {
     if bundle_cluster(cluster_id, ctx).await?.is_none() {
+        return Ok(ApplyBundleUpdatesResult::default());
+    }
+
+    if bisect_dao::is_active(&ctx.db, cluster_id).await? {
+        tracing::info!(
+            cluster_id,
+            "holding bundle updates while a mod bisect is running"
+        );
         return Ok(ApplyBundleUpdatesResult::default());
     }
 

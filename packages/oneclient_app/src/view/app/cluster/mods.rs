@@ -6,8 +6,8 @@ use oneclient_content::packages::ContentType;
 
 use crate::hooks::{
     bundle_overrides_map, bundles_with_status_items, cluster_content_items, stale_hashes,
-    use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_mods_folder_sync,
-    use_package_updates, use_shadowed_mods,
+    use_bisect, use_bundle_overrides, use_bundles_with_status, use_cluster_content,
+    use_mods_folder_sync, use_package_updates, use_shadowed_mods,
 };
 use crate::layout::cluster_content;
 
@@ -29,6 +29,7 @@ impl Component for ClusterMods {
         let overrides = use_bundle_overrides(self.cluster_id);
         let updates = use_package_updates(self.cluster_id);
         let shadowed = use_shadowed_mods(self.cluster_id);
+        let bisect = use_bisect(self.cluster_id);
         let bundle_items = bundles_with_status_items(&bundles);
         let content_items = cluster_content_items(&content);
         let meta = use_content_meta(&content_items, &bundle_items, ContentType::Mod);
@@ -47,11 +48,13 @@ impl Component for ClusterMods {
             ContentType::Mod,
         );
         for item in &mut items {
+            item.locked = bisect.is_some();
             let Some(hash) = &item.hash else {
                 continue;
             };
             item.shadowed = shadowed.shadowed.contains(hash);
             item.outranked = shadowed.outranked.contains(hash);
+            item.bisect_role = bisect.as_ref().and_then(|status| status.role_of(hash));
         }
 
         cluster_content()
@@ -69,6 +72,7 @@ impl Component for ClusterMods {
                     items,
                     all_categories,
                 )
+                .bisect(bisect.is_some())
                 .into_element(),
             )
             .into_element()

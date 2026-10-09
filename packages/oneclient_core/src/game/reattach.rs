@@ -219,6 +219,7 @@ async fn readopt(
                 // cluster's slot only tear down if it is still ours
                 owns_slot: state.games.pid(cluster_id) == Some(pid),
                 diagnosis: crash_watch.take(),
+                missing: crash_watch.take_missing(),
             },
         )
         .await;
@@ -312,6 +313,7 @@ async fn reconcile(
             owns_slot: !state.games.is_active(cluster_id),
             // Nothing watched this log while it ran so no crash was recognised
             diagnosis: None,
+            missing: Vec::new(),
         },
     )
     .await;

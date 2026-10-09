@@ -424,6 +424,191 @@ fn entry_path(raw: String) -> Option<String> {
     Some(path)
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct JarDependencies {
+    pub provides: Vec<String>,
+    pub requires: Vec<String>,
+}
+
+const NESTED_JAR_DIRS: [&str; 2] = ["META-INF/jars/", "META-INF/jarjar/"];
+
+fn is_nested_jar(name: &str) -> bool {
+    name.ends_with(".jar") && NESTED_JAR_DIRS.iter().any(|dir| name.starts_with(dir))
+}
+
+#[tracing::instrument(level = "debug", fields(jar = %jar.display()))]
+pub async fn read_jar_dependencies(jar: &Path) -> JarDependencies {
+    let entries = match polyio::read_zip_file_entries(jar, |name| {
+        MANIFESTS.contains(&name) || is_nested_jar(name)
+    })
+    .await
+    {
+        Ok(entries) => entries,
+        Err(err) => {
+            tracing::debug!("could not read {}: {err}", jar.display());
+            return JarDependencies::default();
+        }
+    };
+
+    let mut out = JarDependencies::default();
+    for (name, bytes) in &entries {
+        if is_nested_jar(name) {
+            out.provides.extend(nested_provides(bytes).await);
+            continue;
+        }
+        let Ok(text) = std::str::from_utf8(bytes) else {
+            continue;
+        };
+        if let Some(parsed) = parse_dependencies(name, text) {
+            out.provides.extend(parsed.provides);
+            out.requires.extend(parsed.requires);
+        }
+    }
+
+    out.provides.sort();
+    out.provides.dedup();
+    out.requires.sort();
+    out.requires.dedup();
+    out.requires
+        .retain(|id| out.provides.binary_search(id).is_err());
+    out
+}
+
+async fn nested_provides(bytes: &[u8]) -> Vec<String> {
+    let mut ids = Vec::new();
+    for wanted in MANIFESTS {
+        let Ok(data) = polyio::try_read_zip_entry_bytes(std::io::Cursor::new(bytes), wanted).await
+        else {
+            continue;
+        };
+        let Ok(text) = std::str::from_utf8(&data) else {
+            continue;
+        };
+        if let Some(parsed) = parse_dependencies(wanted, text) {
+            ids.extend(parsed.provides);
+        }
+    }
+    ids
+}
+
+fn parse_dependencies(manifest: &str, text: &str) -> Option<JarDependencies> {
+    let (provides, requires) = match manifest {
+        FABRIC => {
+            let json: serde_json::Value = serde_json::from_str(text).ok()?;
+            let provides = json
+                .get("id")
+                .into_iter()
+                .chain(
+                    json.get("provides")
+                        .and_then(|v| v.as_array())
+                        .into_iter()
+                        .flatten(),
+                )
+                .filter_map(|v| v.as_str().map(str::to_owned))
+                .collect();
+            let requires = json
+                .get("depends")
+                .and_then(|v| v.as_object())
+                .map(|map| map.keys().cloned().collect())
+                .unwrap_or_default();
+            (provides, requires)
+        }
+        QUILT => {
+            let json: serde_json::Value = serde_json::from_str(text).ok()?;
+            let loader = json.get("quilt_loader")?;
+            let provides = loader
+                .get("id")
+                .and_then(|v| v.as_str())
+                .map(str::to_owned)
+                .into_iter()
+                .chain(
+                    loader
+                        .get("provides")
+                        .and_then(|v| v.as_array())
+                        .into_iter()
+                        .flatten()
+                        .filter_map(quilt_id),
+                )
+                .collect();
+            let requires = loader
+                .get("depends")
+                .and_then(|v| v.as_array())
+                .into_iter()
+                .flatten()
+                .filter(|dep| dep.get("optional").and_then(|v| v.as_bool()) != Some(true))
+                .filter_map(quilt_id)
+                .collect();
+            (provides, requires)
+        }
+        NEOFORGE | FORGE => {
+            let toml: toml::Value = toml::from_str(text).ok()?;
+            let provides = toml
+                .get("mods")
+                .and_then(|v| v.as_array())
+                .into_iter()
+                .flatten()
+                .filter_map(|m| m.get("modId")?.as_str().map(str::to_owned))
+                .collect();
+            let requires = toml
+                .get("dependencies")
+                .and_then(|v| v.as_table())
+                .into_iter()
+                .flat_map(|table| table.values())
+                .filter_map(|v| v.as_array())
+                .flatten()
+                .filter(|dep| forge_required(dep))
+                .filter_map(|dep| dep.get("modId")?.as_str().map(str::to_owned))
+                .collect();
+            (provides, requires)
+        }
+        LEGACY_FORGE => {
+            let json: serde_json::Value = serde_json::from_str(text).ok()?;
+            let mods = json
+                .as_array()
+                .or_else(|| json.get("modList")?.as_array())?;
+            let provides = mods
+                .iter()
+                .filter_map(|m| m.get("modid")?.as_str().map(str::to_owned))
+                .collect();
+            let requires = mods
+                .iter()
+                .filter_map(|m| m.get("requiredMods")?.as_array())
+                .flatten()
+                .filter_map(|v| v.as_str())
+                .map(|spec| spec.split('@').next().unwrap_or(spec).to_owned())
+                .collect();
+            (provides, requires)
+        }
+        _ => return None,
+    };
+
+    Some(JarDependencies {
+        provides: normalize_ids(provides),
+        requires: normalize_ids(requires),
+    })
+}
+
+fn quilt_id(value: &serde_json::Value) -> Option<String> {
+    match value {
+        serde_json::Value::String(id) => Some(id.clone()),
+        other => other.get("id")?.as_str().map(str::to_owned),
+    }
+}
+
+fn forge_required(dep: &toml::Value) -> bool {
+    match dep.get("type").and_then(|v| v.as_str()) {
+        Some(kind) => kind.eq_ignore_ascii_case("required"),
+        None => dep.get("mandatory").and_then(|v| v.as_bool()) == Some(true),
+    }
+}
+
+fn normalize_ids(ids: Vec<String>) -> Vec<String> {
+    ids.into_iter()
+        .map(|id| id.trim().to_ascii_lowercase())
+        .filter(|id| !id.is_empty() && !is_placeholder_id(id))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -678,5 +863,68 @@ credits="Thanks to everyone"
             parse_forge("modLoader=\"javafml\"").is_none(),
             "no mod entry to describe"
         );
+    }
+
+    #[test]
+    fn fabric_dependencies_list_depends_keys() {
+        let parsed = parse_dependencies(
+            FABRIC,
+            r#"{"id":"Sodium-Extra","provides":["extras"],"depends":{"sodium":"*","fabric-api":"*"},"recommends":{"modmenu":"*"}}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.provides, ["sodium-extra", "extras"]);
+        assert_eq!(parsed.requires, ["sodium", "fabric-api"]);
+    }
+
+    #[test]
+    fn quilt_skips_optional_dependencies() {
+        let parsed = parse_dependencies(
+            QUILT,
+            r#"{"quilt_loader":{"id":"a","depends":["b",{"id":"c"},{"id":"d","optional":true}]}}"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.provides, ["a"]);
+        assert_eq!(parsed.requires, ["b", "c"]);
+    }
+
+    #[test]
+    fn forge_reads_mandatory_and_typed_dependencies() {
+        let parsed = parse_dependencies(
+            FORGE,
+            r#"
+            [[mods]]
+            modId = "examplemod2"
+
+            [[dependencies.examplemod2]]
+            modId = "forge"
+            mandatory = true
+
+            [[dependencies.examplemod2]]
+            modId = "jei"
+            mandatory = false
+
+            [[dependencies.examplemod2]]
+            modId = "cloth_config"
+            type = "required"
+
+            [[dependencies.examplemod2]]
+            modId = "emi"
+            type = "optional"
+            "#,
+        )
+        .unwrap();
+        assert_eq!(parsed.provides, ["examplemod2"]);
+        assert_eq!(parsed.requires, ["forge", "cloth_config"]);
+    }
+
+    #[test]
+    fn legacy_forge_strips_version_from_required_mods() {
+        let parsed = parse_dependencies(
+            LEGACY_FORGE,
+            r#"[{"modid":"skyblockaddons","requiredMods":["oneconfig@[1.0,)"]}]"#,
+        )
+        .unwrap();
+        assert_eq!(parsed.provides, ["skyblockaddons"]);
+        assert_eq!(parsed.requires, ["oneconfig"]);
     }
 }

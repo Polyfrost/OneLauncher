@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO cluster_bisect_mods (cluster_id, hash) VALUES (?, ?)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e7e9d1181221272659dd5cc768e7e9d7e713fc7e5fd9463a3357841ae12b6bfa"
+}

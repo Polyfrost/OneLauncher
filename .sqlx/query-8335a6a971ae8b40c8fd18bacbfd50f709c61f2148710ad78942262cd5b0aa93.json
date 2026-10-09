@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT cluster_id, round, pending_exit, started_at, retry_note\n        FROM cluster_bisect_sessions\n        WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "round",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "round"
+          }
+        }
+      },
+      {
+        "name": "pending_exit",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "pending_exit"
+          }
+        }
+      },
+      {
+        "name": "started_at",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "name": "retry_note",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "retry_note"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "8335a6a971ae8b40c8fd18bacbfd50f709c61f2148710ad78942262cd5b0aa93"
+}

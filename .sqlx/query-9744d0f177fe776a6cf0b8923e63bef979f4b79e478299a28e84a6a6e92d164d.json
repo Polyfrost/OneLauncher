@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT cluster_id, hash, cleared_round, testing\n        FROM cluster_bisect_mods\n        WHERE cluster_id = ?\n        ORDER BY hash\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "hash",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "cleared_round",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "cleared_round"
+          }
+        }
+      },
+      {
+        "name": "testing",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "testing"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "9744d0f177fe776a6cf0b8923e63bef979f4b79e478299a28e84a6a6e92d164d"
+}

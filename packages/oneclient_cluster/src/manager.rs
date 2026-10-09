@@ -317,7 +317,9 @@ impl ClusterManager {
                 _ => polyio::remove_file(&path).await,
             };
             match removed {
-                Ok(()) => tracing::info!(entry = %name, "cleared a leftover deleted cluster folder"),
+                Ok(()) => {
+                    tracing::info!(entry = %name, "cleared a leftover deleted cluster folder")
+                }
                 Err(err) => {
                     tracing::warn!(entry = %name, error = %err, "failed to clear a leftover deleted cluster folder")
                 }
@@ -403,12 +405,8 @@ impl ClusterManager {
         let cluster = self.get(cluster_id).await?;
 
         if !cluster.user_created {
-            cluster_dao::dismiss_provision(
-                &self.db,
-                &cluster.mc_version,
-                cluster.mc_loader as i64,
-            )
-            .await?;
+            cluster_dao::dismiss_provision(&self.db, &cluster.mc_version, cluster.mc_loader as i64)
+                .await?;
         }
 
         let trashed = if remove_files && cluster.is_isolated() {

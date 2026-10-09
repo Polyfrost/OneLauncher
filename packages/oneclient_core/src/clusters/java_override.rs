@@ -9,7 +9,7 @@ use oneclient_events::GroupedProgressSession;
 use crate::LauncherResult;
 use crate::state::LauncherState;
 
-const BUNDLE_JAVA_OVERRIDE: &str = "bundle-java-override";
+pub(crate) const BUNDLE_JAVA_OVERRIDE: &str = "bundle-java-override";
 
 #[tracing::instrument(skip(state, progress))]
 pub async fn apply_bundle_java_override(

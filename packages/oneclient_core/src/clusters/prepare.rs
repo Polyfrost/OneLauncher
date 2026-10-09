@@ -143,7 +143,16 @@ async fn game_download_bytes(services: &LauncherServices, info: &VersionInfo) ->
     let _ = services;
     // Runs before a Java runtime is resolved so rules are checked against the
     // host architecture only natives-related edge cases shift
-    match game::plan_downloads(info, assets_index, std::env::consts::ARCH, false, false).await {
+    match game::plan_downloads(
+        info,
+        assets_index,
+        std::env::consts::ARCH,
+        false,
+        false,
+        game::NativesMode::Extract,
+    )
+    .await
+    {
         Ok(plan) => plan.total_bytes(),
         Err(err) => {
             tracing::warn!("download plan failed, estimating full size: {err}");
@@ -311,6 +320,8 @@ async fn install_cluster(
             .await?
     };
 
+    let natives_mode = crate::game::natives::natives_mode(state, &version_info.id, None);
+
     download_minecraft(
         &state.services.mc(),
         progress,
@@ -318,6 +329,7 @@ async fn install_cluster(
         &java.os_arch,
         minecraft_updated,
         force,
+        natives_mode,
     )
     .await?;
 

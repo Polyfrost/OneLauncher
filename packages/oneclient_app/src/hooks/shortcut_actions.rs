@@ -26,12 +26,14 @@ impl Actions {
             .take()
     }
 
+    /// `shared` is every other cluster in the shared game dir when this one
+    /// launches there too see [`crate::state::GameState::launch_block`]
     #[must_use]
-    pub fn launch_block(&self, cluster_id: ClusterId) -> Option<LaunchBlock> {
+    pub fn launch_block(&self, cluster_id: ClusterId, shared: &[ClusterId]) -> Option<LaunchBlock> {
         let station = self.station();
         let snapshot = station.peek();
         let parallel = snapshot.settings.settings.allow_parallel_running_clusters;
-        snapshot.game.launch_block(cluster_id, parallel)
+        snapshot.game.launch_block(cluster_id, parallel, shared)
     }
 
     pub fn report_missing_shortcut_target(&self, folder: &str) {

@@ -17,7 +17,9 @@ pub async fn load_settings(notify: Option<&EventBus>) -> LauncherSettings {
             LauncherSettings::default()
         } else {
             let data = polyio::read(&path).await?;
-            serde_json::from_slice(&data)?
+            let mut settings: LauncherSettings = serde_json::from_slice(&data)?;
+            settings.migrate();
+            settings
         })
     }
     .await

@@ -98,6 +98,52 @@ pub async fn set_bundle_choices(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     bundle_dao::save_bundle_choices(&ctx.db, cluster_id, choices).await?;
+
+    for row in bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await? {
+        let declined = row.bundle_name.as_ref().is_some_and(|name| {
+            choices
+                .iter()
+                .any(|(choice, accepted)| choice == name && !accepted)
+        });
+        if declined {
+            detach_artifact(cluster_id, &row.hash, ctx).await?;
+        }
+    }
+    Ok(())
+}
+
+const UNASKED_SKYBLOCK: &str = "decline_unasked_skyblock";
+
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id = cluster.id))]
+pub(crate) async fn decline_unasked_skyblock(
+    cluster: &ClusterRow,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let marker = format!("{UNASKED_SKYBLOCK}:{}", cluster.id);
+    if migration_dao::is_applied(&ctx.db, &marker).await? {
+        return Ok(());
+    }
+
+    let unasked = cluster.mc_version == "26.3"
+        && bundle_dao::predates_bundle_choices(&ctx.db, cluster.id).await?;
+    if unasked {
+        let declined: Vec<(String, bool)> = archives
+            .iter()
+            .filter(|archive| {
+                !archive.manifest.enabled
+                    && archive
+                        .manifest
+                        .category
+                        .trim()
+                        .eq_ignore_ascii_case("SkyBlock")
+            })
+            .map(|archive| (archive.manifest.name.clone(), false))
+            .collect();
+        set_bundle_choices(cluster.id, &declined, ctx).await?;
+    }
+
+    migration_dao::mark_applied(&ctx.db, &marker).await?;
     Ok(())
 }
 
@@ -971,6 +1017,35 @@ pub async fn remove_artifact_from_cluster(
 ) -> ContentResult<()> {
     let bundle_data = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?;
 
+    detach_artifact(cluster_id, hash, ctx).await?;
+
+    if let Some(tracked) = bundle_data
+        && let (Some(bundle_name), Some(package_id)) =
+            (tracked.bundle_name.clone(), tracked.package_id.clone())
+    {
+        if record_override {
+            bundle_dao::save_override(
+                &ctx.db,
+                cluster_id,
+                &bundle_name,
+                &package_id,
+                OverrideType::Removed,
+            )
+            .await?;
+        } else {
+            let replacement_exists =
+                bundle_dao::has_bundle_mapping_for_package(&ctx.db, cluster_id, &package_id)
+                    .await?;
+            if !replacement_exists {
+                clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
     // Looked up first but never allowed to block removal
     // a package whose artifact row has gone missing must still be removable
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
@@ -1004,29 +1079,6 @@ pub async fn remove_artifact_from_cluster(
     // `evict_if_unused` drops it only once no other cluster still needs it
     if !deferred && let Err(err) = evict_if_unused(hash, ctx).await {
         tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
-    }
-
-    if let Some(tracked) = bundle_data
-        && let (Some(bundle_name), Some(package_id)) =
-            (tracked.bundle_name.clone(), tracked.package_id.clone())
-    {
-        if record_override {
-            bundle_dao::save_override(
-                &ctx.db,
-                cluster_id,
-                &bundle_name,
-                &package_id,
-                OverrideType::Removed,
-            )
-            .await?;
-        } else {
-            let replacement_exists =
-                bundle_dao::has_bundle_mapping_for_package(&ctx.db, cluster_id, &package_id)
-                    .await?;
-            if !replacement_exists {
-                clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
-            }
-        }
     }
 
     Ok(())

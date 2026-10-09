@@ -107,6 +107,7 @@ impl BlockedDownloads {
 pub struct BundleChoices {
     pub cluster_name: String,
     pub bundles: Vec<(String, String)>,
+    pub held: HashSet<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]

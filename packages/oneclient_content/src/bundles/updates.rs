@@ -17,10 +17,10 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, disable_was_deliberate,
-    external_ids_by_sha1, find_override, find_user_suppression, heal_bundle_activity,
-    install_package_from_bundle, remove_artifact_from_cluster, set_artifact_enabled_to,
-    takes_bundle,
+    BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, decline_unasked_skyblock,
+    disable_was_deliberate, external_ids_by_sha1, find_override, find_user_suppression,
+    heal_bundle_activity, install_package_from_bundle, remove_artifact_from_cluster,
+    set_artifact_enabled_to, takes_bundle,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -486,6 +486,7 @@ pub async fn apply_bundle_updates_with(
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
         if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
             heal_bundle_activity(cluster_id, &archives, ctx).await?;
+            decline_unasked_skyblock(&cluster, &archives, ctx).await?;
         }
     }
 

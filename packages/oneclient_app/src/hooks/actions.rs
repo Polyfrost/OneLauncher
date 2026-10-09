@@ -1827,7 +1827,23 @@ impl Actions {
         };
 
         let choices_for: Vec<String> = bundles.iter().map(|a| a.manifest.name.clone()).collect();
+        let held = match oneclient_db::dao::cluster_bundle::list_bundle_tracked(
+            &state.services.db,
+            cluster_id,
+        )
+        .await
+        {
+            Ok(tracked) => tracked
+                .into_iter()
+                .filter_map(|row| row.bundle_name)
+                .collect(),
+            Err(err) => {
+                tracing::warn!(cluster_id, error = %err, "could not read what the cluster holds, launching without asking about bundles");
+                return;
+            }
+        };
         let choices = BundleChoices {
+            held,
             cluster_name: crate::install::cluster_display_name(cluster_id, &state.services).await,
             bundles: bundles
                 .iter()

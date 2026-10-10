@@ -100,9 +100,9 @@ pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
-    CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, disable_warning_body,
-    grid_card, icon_box, kebab_button, meta_size, meta_text, on_secondary, package_icon, pill,
-    remote_icon, set_enabled_action, toggle_action,
+    CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action,
+    disable_warning_body, grid_card, icon_box, kebab_button, meta_size, meta_text, on_secondary,
+    package_icon, pill, remote_icon, set_enabled_action, toggle_action,
 };
 pub use package_row::{
     CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,

@@ -164,6 +164,10 @@ pub enum ClusterAction {
         cluster_id: ClusterId,
         hash: String,
     },
+    DeleteBundledArtifact {
+        cluster_id: ClusterId,
+        hash: String,
+    },
     SetBundlePackageEnabled {
         cluster_id: ClusterId,
         bundle_name: String,
@@ -249,6 +253,16 @@ impl MutationCapability for ClusterMutation {
             }
             ClusterAction::RemoveBundlePackageFromDisk { cluster_id, hash } => {
                 oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, false, content).await
+            }
+            ClusterAction::DeleteBundledArtifact { cluster_id, hash } => {
+                match oneclient_core::set_artifact_enabled_to(*cluster_id, hash, false, content)
+                    .await
+                {
+                    Ok(_) => {
+                        oneclient_core::on_user_remove_artifact(*cluster_id, hash, content).await
+                    }
+                    Err(err) => Err(err),
+                }
             }
             ClusterAction::SetBundlePackageEnabled {
                 cluster_id,

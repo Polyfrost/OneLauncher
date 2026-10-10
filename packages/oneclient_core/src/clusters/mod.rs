@@ -1,6 +1,6 @@
 mod java_override;
 mod migrate;
-mod modpack;
+pub(crate) mod modpack;
 pub(crate) mod prepare;
 mod provision;
 mod release_migration;

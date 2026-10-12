@@ -173,18 +173,20 @@ fn modpack_step(wizard: Wizard, picks: &Picks) -> Element {
 fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
     let cards = [
         (
-            ImportMode::AsIs,
-            IconType::FolderDownload,
-            "Import as it is",
-            "Every mod, world and setting comes over exactly as it was.",
-            "Nothing is checked or changed.",
-        ),
-        (
             ImportMode::Improve,
             IconType::IconLogo,
             "Improve with OneClient",
+            Some("Recommended"),
             "Checks the mods against OneClient's list of suggested improvements.",
             "You choose what happens to each one before importing.",
+        ),
+        (
+            ImportMode::AsIs,
+            IconType::FolderDownload,
+            "Import as it is",
+            None,
+            "Every mod, world and setting comes over exactly as it was.",
+            "Nothing is checked or changed.",
         ),
     ];
 
@@ -192,18 +194,22 @@ fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
         .vertical()
         .width(Size::fill())
         .spacing(10.)
-        .children(cards.into_iter().map(|(mode, icon, title, blurb, meta)| {
-            let mut chosen = wizard.import_mode;
-            wide_card(WideCard {
-                icon,
-                title: title.to_string(),
-                badge: None,
-                blurb: blurb.to_string(),
-                meta: meta.to_string(),
-                selected: picks.import_mode == mode,
-                on_press: (move |()| chosen.set(mode)).into(),
-            })
-        }))
+        .children(
+            cards
+                .into_iter()
+                .map(|(mode, icon, title, badge, blurb, meta)| {
+                    let mut chosen = wizard.import_mode;
+                    wide_card(WideCard {
+                        icon,
+                        title: title.to_string(),
+                        badge: badge.map(str::to_string),
+                        blurb: blurb.to_string(),
+                        meta: meta.to_string(),
+                        selected: picks.import_mode == mode,
+                        on_press: (move |()| chosen.set(mode)).into(),
+                    })
+                }),
+        )
         .into_element()
 }
 

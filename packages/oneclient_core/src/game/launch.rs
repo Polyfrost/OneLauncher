@@ -523,7 +523,7 @@ async fn start(
                 outcome,
                 owns_slot: true,
                 diagnosis: crash_watch.take(),
-                missing: crash_watch.take_missing(),
+                findings: crash_watch.take_missing(),
             },
         )
         .await;
@@ -596,7 +596,7 @@ pub(crate) struct SessionEnd {
     /// `None` for a clean exit an unrecognised crash or a session recovered
     /// after the fact with no log watched
     pub diagnosis: Option<crate::game::diagnosis::CrashDiagnosis>,
-    pub missing: Vec<crate::game::diagnosis::MissingDependency>,
+    pub findings: crate::game::diagnosis::LogFindings,
 }
 
 /// Shared by the live exit path and by recovery of sessions that outlived the
@@ -664,11 +664,14 @@ pub(crate) async fn finalize_session(
     crate::bisect::record_bisect_exit(
         state,
         cluster_id,
-        matches!(
-            end.outcome,
-            Exit::Observed { success: false, .. } | Exit::Failed(_)
-        ),
-        end.missing,
+        match end.outcome {
+            Exit::Observed { success: true, .. } => crate::bisect::GameExit::Clean,
+            Exit::Observed { success: false, .. } => crate::bisect::GameExit::Crashed,
+            Exit::Failed(_) | Exit::Inferred => crate::bisect::GameExit::Unknown,
+        },
+        end.findings,
+        cwd,
+        std::time::SystemTime::from(end.started_at),
     )
     .await;
 

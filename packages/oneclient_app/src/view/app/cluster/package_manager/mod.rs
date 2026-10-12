@@ -423,7 +423,7 @@ pub struct PackageManager {
     cluster_id: i64,
     items: Vec<PackageEntry>,
     categories: Vec<String>,
-    bisect: Option<bool>,
+    bisecting: bool,
 }
 
 impl PackageManager {
@@ -444,12 +444,12 @@ impl PackageManager {
             cluster_id,
             items,
             categories,
-            bisect: None,
+            bisecting: false,
         }
     }
 
-    pub fn bisect(mut self, active: bool) -> Self {
-        self.bisect = Some(active);
+    pub fn bisecting(mut self, active: bool) -> Self {
+        self.bisecting = active;
         self
     }
 }
@@ -519,7 +519,7 @@ impl Component for PackageManager {
         let hidden = *hidden_filter.read();
         let card_layout = CardLayout::from(*layout.read());
 
-        let bisecting = self.bisect == Some(true);
+        let bisecting = self.bisecting;
         let disabled_essentials: Vec<&'static str> = items
             .iter()
             .filter(|_| !bisecting)
@@ -639,15 +639,6 @@ impl Component for PackageManager {
             .into()
         };
 
-        let toolbar_extra = (self.bisect == Some(false)).then(|| {
-            let enabled_mods = items.iter().filter(|p| p.installed && p.enabled).count();
-            super::bisect::StartBisectButton {
-                cluster_id,
-                enabled_mods,
-            }
-            .into_element()
-        });
-
         let bulk = Bulk {
             selection,
             order,
@@ -709,7 +700,6 @@ impl Component for PackageManager {
                 package_type,
                 toolbar_width,
                 &bulk,
-                toolbar_extra,
             ))
             .child(
                 ContentBox::new(

@@ -103,6 +103,7 @@ impl PackageEntry {
             BisectRole::Testing | BisectRole::Helper => colors::brand(),
             BisectRole::Waiting => colors::fg_secondary(),
             BisectRole::Cleared => colors::success(),
+            BisectRole::Found => colors::danger(),
         };
         Some(status_tag(role.label(), accent))
     }

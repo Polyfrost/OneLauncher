@@ -48,6 +48,13 @@ pub enum BisectAction {
     Skip {
         cluster_id: i64,
     },
+    Confirm {
+        cluster_id: i64,
+        reproduced: bool,
+    },
+    Restart {
+        cluster_id: i64,
+    },
     Undo {
         cluster_id: i64,
     },
@@ -58,6 +65,12 @@ pub enum BisectAction {
     KeepOn {
         cluster_id: i64,
         hashes: Vec<String>,
+    },
+    AcceptSuggestion {
+        cluster_id: i64,
+    },
+    DeclineSuggestion {
+        cluster_id: i64,
     },
 }
 
@@ -92,6 +105,17 @@ impl MutationCapability for BisectMutation {
                 BisectAction::Skip { cluster_id } => {
                     oneclient_core::skip_bisect_answer(&state, cluster_id).await
                 }
+                BisectAction::Confirm {
+                    cluster_id,
+                    reproduced,
+                } => oneclient_core::confirm_bisect(&state, cluster_id, reproduced)
+                    .await
+                    .map(|_| ()),
+                BisectAction::Restart { cluster_id } => {
+                    oneclient_core::restart_bisect(&state, cluster_id)
+                        .await
+                        .map(|_| ())
+                }
                 BisectAction::Undo { cluster_id } => {
                     oneclient_core::undo_bisect_answer(&state, cluster_id)
                         .await
@@ -101,6 +125,14 @@ impl MutationCapability for BisectMutation {
                     cluster_id,
                     disable,
                 } => oneclient_core::finish_bisect(&state, cluster_id, &disable).await,
+                BisectAction::AcceptSuggestion { cluster_id } => {
+                    oneclient_core::accept_bisect_suggestion(&state, cluster_id)
+                        .await
+                        .map(|_| ())
+                }
+                BisectAction::DeclineSuggestion { cluster_id } => {
+                    oneclient_core::decline_bisect_suggestion(&state, cluster_id).await
+                }
                 BisectAction::KeepOn { cluster_id, hashes } => {
                     oneclient_core::keep_bisect_mods_on(&state, cluster_id, &hashes)
                         .await
@@ -119,7 +151,7 @@ impl MutationCapability for BisectMutation {
             state
                 .services
                 .events
-                .notify("Problem mod search")
+                .notify("Mod diagnostics")
                 .body(err)
                 .error()
                 .send();

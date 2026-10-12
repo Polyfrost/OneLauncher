@@ -1058,6 +1058,7 @@ async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> Conte
     let target = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
         .await?
         .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
+    crate::packages::store::ensure_mods_unlocked(cluster_id, target, ctx).await?;
 
     let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 

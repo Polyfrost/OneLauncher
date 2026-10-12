@@ -1,10 +1,17 @@
 use freya::prelude::*;
+use oneclient_common::domain::ContentType;
 use oneclient_core::{BisectExit, BisectStatus};
 
 use crate::components::{Button, CARD_BG, Icon, IconType, OverlayPopup, progress_track};
-use crate::hooks::{BisectAction, use_bisect, use_bisect_mutation, use_game_snapshot};
+use freya::query::UseMutation;
+
+use crate::hooks::{
+    BisectAction, BisectMutation, cluster_content_items, use_bisect, use_bisect_mutation,
+    use_cluster_content, use_game_snapshot,
+};
 use crate::theme::colors;
 use crate::ui::border_all_color;
+use crate::view::app::settings::settings_row;
 
 use super::folder_list::dialog;
 
@@ -29,15 +36,47 @@ impl Component for BisectBanner {
         let total = status.mods.len().max(1);
         let suspects = status.suspect_count();
         let culprits: Vec<(String, String)> = status
-            .suspects()
+            .culprits()
+            .into_iter()
             .map(|m| (m.hash.clone(), m.name.clone()))
             .collect();
 
         let (title, body) = banner_text(&status, game_active);
         let note = status.retry_note.clone().filter(|_| !game_active);
+        let warning = (status.mods_changed() && !status.finishing).then(|| changed_text(&status));
 
         let mut buttons: Vec<Element> = Vec::new();
-        if status.finished && !culprits.is_empty() {
+        if status.finishing {
+            buttons.push(
+                Button::new()
+                    .primary()
+                    .height(Size::px(34.))
+                    .font_size(12.)
+                    .enabled(idle)
+                    .on_press(move |_| {
+                        mutation.mutate(BisectAction::Finish {
+                            cluster_id,
+                            disable: Vec::new(),
+                        })
+                    })
+                    .text("Try again")
+                    .into_element(),
+            );
+        }
+        if warning.is_some() {
+            buttons.push(
+                Button::new()
+                    .primary()
+                    .height(Size::px(34.))
+                    .font_size(12.)
+                    .enabled(idle)
+                    .tooltip("Put your mods back and start over with the mods the cluster has now")
+                    .on_press(move |_| mutation.mutate(BisectAction::Restart { cluster_id }))
+                    .text("Restart search")
+                    .into_element(),
+            );
+        }
+        if status.confirmed && !status.finishing && !culprits.is_empty() {
             let disable: Vec<String> = culprits.iter().map(|(hash, _)| hash.clone()).collect();
             let label = if culprits.len() == 1 {
                 "Disable it and restore the rest"
@@ -60,7 +99,7 @@ impl Component for BisectBanner {
                     .into_element(),
             );
         }
-        if status.round > 0 {
+        if (status.round > 0 || status.confirmed) && !status.finishing {
             buttons.push(
                 Button::new()
                     .secondary()
@@ -74,25 +113,27 @@ impl Component for BisectBanner {
                     .into_element(),
             );
         }
-        buttons.push(
-            Button::new()
-                .secondary()
-                .height(Size::px(34.))
-                .font_size(12.)
-                .enabled(idle)
-                .on_press(move |_| {
-                    mutation.mutate(BisectAction::Finish {
-                        cluster_id,
-                        disable: Vec::new(),
+        if !status.finishing {
+            buttons.push(
+                Button::new()
+                    .secondary()
+                    .height(Size::px(34.))
+                    .font_size(12.)
+                    .enabled(idle)
+                    .on_press(move |_| {
+                        mutation.mutate(BisectAction::Finish {
+                            cluster_id,
+                            disable: Vec::new(),
+                        })
                     })
-                })
-                .text(if status.finished {
-                    "Restore everything"
-                } else {
-                    "Stop and restore mods"
-                })
-                .into_element(),
-        );
+                    .text(if status.finished {
+                        "Restore everything"
+                    } else {
+                        "Stop and restore mods"
+                    })
+                    .into_element(),
+            );
+        }
 
         let cleared = total - suspects.min(total);
         let pct = if status.finished {
@@ -101,7 +142,9 @@ impl Component for BisectBanner {
             cleared as f32 / total as f32 * 100.
         };
 
-        let accent = if status.finished {
+        let accent = if status.finishing || warning.is_some() {
+            colors::danger()
+        } else if status.confirmed {
             colors::success()
         } else {
             colors::brand()
@@ -123,7 +166,9 @@ impl Component for BisectBanner {
                     .spacing(12.)
                     .content(Content::Flex)
                     .child(
-                        Icon::new(if status.finished {
+                        Icon::new(if status.finishing || warning.is_some() {
+                            IconType::AlertTriangle
+                        } else if status.confirmed {
                             IconType::CheckCircle
                         } else {
                             IconType::SearchMd
@@ -156,6 +201,14 @@ impl Component for BisectBanner {
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::brand())
                                     .into_element()
+                            }))
+                            .maybe_child(warning.map(|warning| {
+                                label()
+                                    .text(warning)
+                                    .font_size(12.)
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .color(colors::danger())
+                                    .into_element()
                             })),
                     )
                     .child(
@@ -172,41 +225,84 @@ impl Component for BisectBanner {
 }
 
 fn banner_text(status: &BisectStatus, game_active: bool) -> (String, String) {
+    if status.finishing {
+        return (
+            "Restoring your mods".to_string(),
+            "Some mods couldn't be switched back yet. Close anything using the mod files, then try again.".to_string(),
+        );
+    }
+
     let names: Vec<&str> = status.suspects().map(|m| m.name.as_str()).collect();
+    let culprits: Vec<&str> = status.culprits().iter().map(|m| m.name.as_str()).collect();
+    let together = culprits.join(" + ");
 
     if status.finished {
-        return match names.as_slice() {
+        let playing = "Play until you're sure whether the problem happens, then close the game.";
+        return match culprits.as_slice() {
             [] => (
                 "Nothing left to test".to_string(),
                 "Every mod in the search was removed. Restore your mods to finish.".to_string(),
             ),
+            _ if status.confirmed => (
+                format!("Found it: {together}"),
+                if culprits.len() == 1 {
+                    "The problem happens with only this mod and the mods it needs on.".to_string()
+                } else {
+                    "The problem happens with only these mods and the mods they need on."
+                        .to_string()
+                },
+            ),
+            _ if game_active => (format!("Checking {together}"), playing.to_string()),
             [only] => (
-                format!("Found it: {only}"),
-                "This mod is the most likely cause. Right now only it and the mods it needs are on, so you can launch once more to double-check.".to_string(),
+                format!("Probably {only}"),
+                "Launch once more to make sure. Only this mod and the mods it needs are on."
+                    .to_string(),
             ),
             many => (
                 format!("Narrowed it down to {} mods", many.len()),
                 format!(
-                    "{} need each other, so they can't be tested separately.",
+                    "{} are on together. Launch once more to make sure the problem happens with only them.",
                     many.join(", ")
                 ),
             ),
         };
     }
 
-    let title = format!("Finding the problem mod · launch {}", status.round + 1);
+    let title = format!("Running mod diagnostics · launch {}", status.round + 1);
     let left = status.launches_left();
     let plural = if left == 1 { "launch" } else { "launches" };
     let body = if game_active {
         "Play until the problem shows up, or until you're sure it won't. Close the game when you're done.".to_string()
     } else {
+        let partner = if culprits.is_empty() {
+            String::new()
+        } else {
+            format!("Looking for a mod that causes it together with {together}. ")
+        };
         format!(
-            "{} of {} suspects are on. Launch the game and check if the problem happens, about {left} {plural} to go.",
+            "{partner}{} of {} suspects are on. Launch the game and check if the problem happens, about {left} {plural} to go.",
             status.testing_count(),
             names.len(),
         )
     };
     (title, body)
+}
+
+fn changed_text(status: &BisectStatus) -> String {
+    let mut parts = Vec::new();
+    if !status.removed.is_empty() {
+        parts.push(format!("{} left the cluster", status.removed.join(", ")));
+    }
+    if !status.added.is_empty() {
+        parts.push(format!(
+            "{} joined and stays on for every launch",
+            status.added.join(", ")
+        ));
+    }
+    format!(
+        "Mods changed since the search started: {}. Restart the search so the result stays right.",
+        parts.join("; ")
+    )
 }
 
 #[derive(PartialEq)]
@@ -229,9 +325,15 @@ impl Component for BisectQuestion {
         let busy = crate::hooks::mutation_is_running(&mutation);
 
         let crashed = status.pending_exit == BisectExit::Crashed;
+        if status.awaiting_confirmation() {
+            return confirm_question(&status, crashed, busy, mutation);
+        }
         let choosing = *picking.read();
+        let suggestion = status.suggestion.clone().filter(|_| !choosing);
         let title = if choosing {
             "Which mod should stay on?"
+        } else if suggestion.is_some() {
+            "Did a missing mod cause this crash?"
         } else if crashed {
             "The game crashed. Is this the problem you're looking for?"
         } else {
@@ -239,6 +341,16 @@ impl Component for BisectQuestion {
         };
         let body = if choosing {
             "Pick the mods the crash says are missing. These are usually libraries, like a config or API mod. They will stay on whenever the mods being tested are on.".to_string()
+        } else if let Some(suggestion) = &suggestion {
+            let who = if suggestion.needed_by.is_empty() {
+                "a mod that was on".to_string()
+            } else {
+                suggestion.needed_by.join(", ")
+            };
+            format!(
+                "{} was off for this launch, and the crash looks like {who} needs it. If you keep it on, this launch doesn't count and you try again.",
+                suggestion.missing.join(", ")
+            )
         } else {
             format!(
                 "{} of your mods were on for this launch. Your answer decides which half to test next.",
@@ -351,6 +463,32 @@ impl Component for BisectQuestion {
                         ),
                 )
                 .into_element()
+        } else if suggestion.is_some() {
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(8.)
+                .child(
+                    Button::new()
+                        .primary()
+                        .width(Size::fill())
+                        .enabled(!busy)
+                        .on_press(move |_| {
+                            mutation.mutate(BisectAction::AcceptSuggestion { cluster_id })
+                        })
+                        .text("Yes, keep it on and try again"),
+                )
+                .child(
+                    Button::new()
+                        .secondary()
+                        .width(Size::fill())
+                        .enabled(!busy)
+                        .on_press(move |_| {
+                            mutation.mutate(BisectAction::DeclineSuggestion { cluster_id })
+                        })
+                        .text("No, this is the problem I'm looking for"),
+                )
+                .into_element()
         } else {
             let answer = move |broken: bool| {
                 move |_: Event<PressEventData>| {
@@ -396,11 +534,9 @@ impl Component for BisectQuestion {
                 .into_element()
         };
 
+        // Only the answers close it a stray click or Escape would skip the
+        // launch without the user meaning to
         OverlayPopup::new()
-            .on_close(move |_| {
-                reset();
-                mutation.mutate(BisectAction::Skip { cluster_id })
-            })
             .child(
                 rect()
                     .width(Size::window_percent(100.))
@@ -448,23 +584,140 @@ impl Component for BisectQuestion {
     }
 }
 
-#[derive(PartialEq)]
-pub struct StartBisectButton {
-    pub cluster_id: i64,
-    pub enabled_mods: usize,
+fn confirm_question(
+    status: &BisectStatus,
+    crashed: bool,
+    busy: bool,
+    mutation: UseMutation<BisectMutation>,
+) -> Element {
+    let cluster_id = status.cluster_id;
+    let names: Vec<&str> = status.culprits().iter().map(|m| m.name.as_str()).collect();
+    let title = if crashed {
+        "The game crashed. Is this the problem you're looking for?"
+    } else {
+        "Did the problem happen?"
+    };
+    let body = format!(
+        "Only {} and the mods {} were on for this launch.",
+        names.join(", "),
+        if names.len() == 1 {
+            "it needs"
+        } else {
+            "they need"
+        },
+    );
+    let confirm = move |reproduced: bool| {
+        move |_: Event<PressEventData>| {
+            mutation.mutate(BisectAction::Confirm {
+                cluster_id,
+                reproduced,
+            })
+        }
+    };
+
+    let content = rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(8.)
+        .child(
+            Button::new()
+                .danger()
+                .width(Size::fill())
+                .enabled(!busy)
+                .on_press(confirm(true))
+                .text("Yes, it still happened"),
+        )
+        .child(
+            Button::new()
+                .primary()
+                .width(Size::fill())
+                .enabled(!busy)
+                .on_press(confirm(false))
+                .text("No, it didn't happen"),
+        )
+        .child(
+            Button::new()
+                .ghost()
+                .width(Size::fill())
+                .enabled(!busy)
+                .on_press(move |_| mutation.mutate(BisectAction::Skip { cluster_id }))
+                .text("I didn't get to test, ask me next time"),
+        );
+
+    OverlayPopup::new()
+        .child(
+            rect()
+                .width(Size::window_percent(100.))
+                .height(Size::window_percent(100.))
+                .center()
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::px(440.))
+                        .max_width(Size::window_percent(90.))
+                        .spacing(14.)
+                        .padding(Gaps::new_all(20.))
+                        .corner_radius(CornerRadius::new_all(14.))
+                        .background(CARD_BG)
+                        .border(border_all_color(1., colors::component_border()))
+                        .child(
+                            rect()
+                                .horizontal()
+                                .cross_align(Alignment::Center)
+                                .spacing(10.)
+                                .maybe_child(crashed.then(|| {
+                                    Icon::new(IconType::AlertTriangle)
+                                        .size(18.)
+                                        .color(colors::danger())
+                                        .into_element()
+                                }))
+                                .child(
+                                    label()
+                                        .text(title)
+                                        .font_size(16.)
+                                        .font_weight(FontWeight::SEMI_BOLD)
+                                        .color(colors::fg_primary()),
+                                ),
+                        )
+                        .child(
+                            label()
+                                .text(body)
+                                .font_size(12.)
+                                .color(colors::fg_secondary()),
+                        )
+                        .child(content),
+                ),
+        )
+        .into_element()
 }
 
-impl Component for StartBisectButton {
+#[derive(PartialEq)]
+pub struct FindProblemModRow {
+    pub cluster_id: i64,
+}
+
+impl Component for FindProblemModRow {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
-        let enabled_mods = self.enabled_mods;
+        let content = use_cluster_content(cluster_id, ContentType::Mod);
+        let running = use_bisect(cluster_id).is_some();
         let mutation = use_bisect_mutation();
         let game_active = use_game_snapshot().is_active(cluster_id);
         let mut confirm = use_state(|| false);
         let busy = crate::hooks::mutation_is_running(&mutation);
 
-        let can_start = enabled_mods >= 2 && !game_active && !busy;
-        let tooltip = if game_active {
+        // Counted the way the search picks its mods so the numbers agree
+        let enabled_mods = cluster_content_items(&content)
+            .iter()
+            .filter(|info| info.enabled)
+            .map(|info| info.hash.as_str())
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+
+        let can_start = enabled_mods >= 2 && !game_active && !busy && !running;
+        let tooltip = if running {
+            "A search is already running, use the banner above to stop it"
+        } else if game_active {
             "Close the game first"
         } else if enabled_mods < 2 {
             "Needs at least two enabled mods"
@@ -476,10 +729,14 @@ impl Component for StartBisectButton {
         let popup = confirm.read().then(|| {
             dialog(
                 "Find the mod causing a problem?".to_string(),
-                format!(
-                    "OneClient will turn off about half of your {enabled_mods} enabled mods. Launch the game, check whether the problem still happens, and answer one question when you close it. After about {launches} launches it will point to the mod. When you finish or stop, your mods are put back exactly as they are now."
-                ),
-                None,
+                "Your mods will be put back the way they are now when you finish or stop. If the problem only happens sometimes, play long enough to be sure before answering."
+                    .to_string(),
+                Some(steps_list([
+                    "We turn off about half of your mods.".to_string(),
+                    "Launch the game and check if the problem happens.".to_string(),
+                    "Close the game and tell us if it did.".to_string(),
+                    format!("Repeat about {launches} times until we find the mod."),
+                ])),
                 move || confirm.set(false),
                 [
                     Button::new()
@@ -500,18 +757,58 @@ impl Component for StartBisectButton {
             )
         });
 
-        rect()
+        let button = rect()
             .child(
                 Button::new()
+                    .small()
                     .secondary()
-                    .height(Size::px(34.))
-                    .font_size(12.)
                     .enabled(can_start)
                     .tooltip(tooltip)
                     .on_press(move |_| confirm.set(true))
-                    .child(Icon::new(IconType::SearchMd).size(15.))
-                    .text("Find problem mod"),
+                    .text(if running {
+                        "Running..."
+                    } else {
+                        "Start the process"
+                    }),
             )
-            .maybe_child(popup)
+            .maybe_child(popup);
+
+        settings_row(
+            IconType::SearchMd,
+            "Mod Diagnostics",
+            "Turn mods off in halves across a few launches to find the one \
+             causing a crash or bug. Your mods are put back when it ends.",
+            button,
+        )
     }
+}
+
+fn steps_list<const N: usize>(steps: [String; N]) -> Element {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(6.)
+        .children(steps.into_iter().enumerate().map(|(index, step)| {
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .spacing(8.)
+                .child(
+                    label()
+                        .text(format!("{}.", index + 1))
+                        .width(Size::px(14.))
+                        .font_size(12.)
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    label()
+                        .text(step)
+                        .width(Size::flex(1.))
+                        .font_size(12.)
+                        .color(colors::fg_primary()),
+                )
+                .into_element()
+        }))
+        .into_element()
 }

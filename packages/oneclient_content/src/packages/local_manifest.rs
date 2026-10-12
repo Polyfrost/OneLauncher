@@ -426,7 +426,10 @@ fn entry_path(raw: String) -> Option<String> {
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct JarDependencies {
+    /// The jar's own mod ids
     pub provides: Vec<String>,
+    /// Ids of the libraries nested inside it several jars often bundle the same one
+    pub bundled: Vec<String>,
     pub requires: Vec<String>,
 }
 
@@ -453,7 +456,7 @@ pub async fn read_jar_dependencies(jar: &Path) -> JarDependencies {
     let mut out = JarDependencies::default();
     for (name, bytes) in &entries {
         if is_nested_jar(name) {
-            out.provides.extend(nested_provides(bytes).await);
+            out.bundled.extend(nested_provides(bytes).await);
             continue;
         }
         let Ok(text) = std::str::from_utf8(bytes) else {
@@ -467,10 +470,15 @@ pub async fn read_jar_dependencies(jar: &Path) -> JarDependencies {
 
     out.provides.sort();
     out.provides.dedup();
+    out.bundled.sort();
+    out.bundled.dedup();
+    out.bundled
+        .retain(|id| out.provides.binary_search(id).is_err());
     out.requires.sort();
     out.requires.dedup();
-    out.requires
-        .retain(|id| out.provides.binary_search(id).is_err());
+    out.requires.retain(|id| {
+        out.provides.binary_search(id).is_err() && out.bundled.binary_search(id).is_err()
+    });
     out
 }
 
@@ -584,6 +592,7 @@ fn parse_dependencies(manifest: &str, text: &str) -> Option<JarDependencies> {
 
     Some(JarDependencies {
         provides: normalize_ids(provides),
+        bundled: Vec::new(),
         requires: normalize_ids(requires),
     })
 }

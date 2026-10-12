@@ -273,7 +273,6 @@ pub(super) fn toolbar_bar(
     package_type: &'static str,
     mut toolbar_width: State<f32>,
     bulk: &Bulk,
-    extra: Option<Element>,
 ) -> impl IntoElement {
     let chips = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
@@ -343,7 +342,6 @@ pub(super) fn toolbar_bar(
             .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
             .into_element(),
     );
-    controls.extend(extra);
     controls.push(
         Button::new()
             .primary()

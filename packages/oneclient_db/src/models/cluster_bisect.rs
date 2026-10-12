@@ -23,6 +23,27 @@ impl BisectExit {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[repr(i64)]
+pub enum BisectEdgeKind {
+    Known = 0,
+    Guessed = 1,
+}
+
+impl BisectEdgeKind {
+    pub fn as_i64(self) -> i64 {
+        self as i64
+    }
+
+    pub fn from_repr(value: i64) -> Option<Self> {
+        match value {
+            0 => Some(Self::Known),
+            1 => Some(Self::Guessed),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, FromRow)]
 pub struct ClusterBisectSessionRow {
     pub cluster_id: i64,
@@ -30,6 +51,8 @@ pub struct ClusterBisectSessionRow {
     pub pending_exit: i64,
     pub started_at: String,
     pub retry_note: Option<String>,
+    pub confirmed: i64,
+    pub finishing: i64,
 }
 
 impl ClusterBisectSessionRow {
@@ -44,4 +67,7 @@ pub struct ClusterBisectModRow {
     pub hash: String,
     pub cleared_round: Option<i64>,
     pub testing: i64,
+    pub name: Option<String>,
+    pub pinned_round: Option<i64>,
+    pub disable_on_finish: i64,
 }

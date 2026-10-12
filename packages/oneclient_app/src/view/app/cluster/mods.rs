@@ -72,7 +72,7 @@ impl Component for ClusterMods {
                     items,
                     all_categories,
                 )
-                .bisect(bisect.is_some())
+                .bisecting(bisect.is_some())
                 .into_element(),
             )
             .into_element()

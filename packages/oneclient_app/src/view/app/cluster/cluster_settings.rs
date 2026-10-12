@@ -106,6 +106,11 @@ impl Component for ClusterSettings {
         } else {
             Vec::new()
         };
+        let problem_mod_row: Vec<Element> = if mod_loader {
+            vec![super::FindProblemModRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
 
         let modpack_section: Vec<Element> = if cluster.linked_modpack_hash.is_some() {
             vec![
@@ -192,7 +197,8 @@ impl Component for ClusterSettings {
                     .append_children(migrate_row)
                     .append_children(modpack_section)
                     .child(section_header("REPAIR"))
-                    .child(VerifyFilesRow { cluster_id }.into_element()),
+                    .child(VerifyFilesRow { cluster_id }.into_element())
+                    .append_children(problem_mod_row),
             )
             .into_element()
     }

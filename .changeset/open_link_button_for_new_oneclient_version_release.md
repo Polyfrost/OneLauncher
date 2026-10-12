@@ -2,4 +2,4 @@
 default: patch
 ---
 
-# Added open link button for new OneClient version modals
+# Added open link button for new OneClient version toasts

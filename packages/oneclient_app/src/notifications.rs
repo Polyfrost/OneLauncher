@@ -26,6 +26,8 @@ pub struct NotificationAction {
 pub enum NotificationActionKind {
     /// A list so a batch sync stays a single "View changes" action not one button per cluster
     OpenClusterUpdate(Vec<ClusterUpdateSummary>),
+    /// Routed through the link confirm popup rather than opened straight away
+    OpenUrl(String),
 }
 
 /// Carries core updates whole not a display projection the modal's Update button
@@ -596,6 +598,14 @@ impl NotificationState {
                     None,
                     false,
                 );
+                if let Some(url) = message.link
+                    && let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id)
+                {
+                    entry.actions.push(NotificationAction {
+                        label: "Open link".to_string(),
+                        kind: NotificationActionKind::OpenUrl(url),
+                    });
+                }
                 self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
             }
 

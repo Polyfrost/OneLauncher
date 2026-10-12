@@ -11,7 +11,7 @@ use super::cards::{
 };
 use super::data::Picks;
 use super::details::details_body;
-use super::model::{LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard};
+use super::model::{FolderChoice, LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard};
 use super::model::{VERSION_KINDS, kind_bit};
 use super::rail::version_art;
 use crate::components::{
@@ -24,6 +24,7 @@ use crate::utils::bundle_display_name;
 pub fn body(wizard: Wizard, picks: &Picks) -> Element {
     let (key, inner) = match picks.step {
         Step::Type => ("step-type", type_step(wizard, picks)),
+        Step::Folder => ("step-folder", folder_step(wizard, picks)),
         Step::Loader => ("step-loader", loader_step(wizard, picks)),
         Step::Version => ("step-version", version_step(wizard, picks)),
         Step::Bundles => ("step-bundles", bundles_step(wizard, picks)),
@@ -61,7 +62,7 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
             "OneClient",
             Some("Recommended"),
             "The most bleeding edge performance, QoL mods and world hosting in one instance.",
-            "Shares configs, worlds, and packs with your other OneClient instances.",
+            "Shares configs, worlds, and packs with your other OneClient instances, or gets its own folder.",
         ),
         (
             TypeChoice::Scratch,
@@ -142,6 +143,49 @@ fn modpack_step(wizard: Wizard, picks: &Picks) -> Element {
                 on_press: (move |()| chosen.set(origin)).into(),
             })
         }))
+        .into_element()
+}
+
+fn folder_step(wizard: Wizard, picks: &Picks) -> Element {
+    let cards = [
+        (
+            FolderChoice::Shared,
+            IconType::Link03,
+            "Shared",
+            Some("Recommended"),
+            "Uses the same game folder as your other OneClient instances, so worlds, settings and packs carry over.",
+            "Only one shared instance can run at a time.",
+        ),
+        (
+            FolderChoice::Dedicated,
+            IconType::Folder,
+            "Dedicated",
+            None,
+            "Gets its own game folder. Worlds, settings and packs stay separate from everything else.",
+            "Can run alongside your other instances.",
+        ),
+    ];
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .children(
+            cards
+                .into_iter()
+                .map(|(folder, icon, title, badge, blurb, meta)| {
+                    let mut chosen = wizard.folder;
+                    wide_card(WideCard {
+                        icon,
+                        title: title.to_string(),
+                        badge: badge.map(str::to_string),
+                        blurb: blurb.to_string(),
+                        meta: meta.to_string(),
+                        selected: picks.folder == folder,
+                        on_press: (move |()| chosen.set(folder)).into(),
+                    })
+                }),
+        )
         .into_element()
 }
 

@@ -103,7 +103,6 @@ pub async fn detect_at(
 
         let source = Source {
             root: &root,
-            global: &global,
             icons_dir: &icons_dir,
             groups: &groups,
         };
@@ -206,7 +205,6 @@ fn loader_for_uid(uid: &str) -> Option<GameLoader> {
 /// Launcher-wide state every instance read needs
 struct Source<'a> {
     root: &'a Path,
-    global: &'a Ini,
     icons_dir: &'a Path,
     groups: &'a HashMap<String, Vec<String>>,
 }
@@ -264,7 +262,7 @@ async fn read_instance(
     };
 
     let mut settings = read_settings(&cfg);
-    settings.java_major = java_major(&cfg, source.global, source.root).await;
+    settings.java_major = java_major(&cfg, source.root).await;
 
     Ok(Some(ExternalInstance {
         launcher,
@@ -291,20 +289,21 @@ fn find_icon(icons_dir: &Path, key: &str) -> Option<PathBuf> {
         .find(|path| path.is_file())
 }
 
-/// The instance's own Java when it overrides one, otherwise the launcher's
+/// The instance's own Java, only when it overrides one
 ///
-/// Prism records the version it last saw as `JavaVersion`; the install's
-/// `release` file covers configs written before it did
-async fn java_major(cfg: &Ini, global: &Ini, root: &Path) -> Option<u32> {
-    let source = if cfg.flag("OverrideJavaLocation") {
-        cfg
-    } else {
-        global
-    };
-    if let Some(major) = source.get("JavaVersion").and_then(java::major_from_version) {
+/// The launcher-wide Java says nothing about what an instance ran on: with
+/// automatic Java switching Prism picks per version, so a global Java 21
+/// would pin a Java 8 instance to a runtime it cannot start on. Prism records
+/// the version it last saw as `JavaVersion`; the install's `release` file
+/// covers configs written before it did
+async fn java_major(cfg: &Ini, root: &Path) -> Option<u32> {
+    if !cfg.flag("OverrideJavaLocation") {
+        return None;
+    }
+    if let Some(major) = cfg.get("JavaVersion").and_then(java::major_from_version) {
         return Some(major);
     }
-    let path = source.get("JavaPath")?;
+    let path = cfg.get("JavaPath")?;
     java::major_from_install(&resolve_dir(root, path)).await
 }
 
@@ -468,6 +467,19 @@ mod tests {
                 version_id: "def".into(),
             })
         );
+    }
+
+    #[tokio::test]
+    async fn the_launcher_wide_java_is_not_the_instances() {
+        let tmp = polyio::tempdir().await.unwrap();
+        let root = tmp.dir_path();
+        let instance = "[General]\nInstanceType=OneSix\nJavaVersion=21.0.4\n";
+
+        let cfg = Ini::parse(instance);
+        assert_eq!(java_major(&cfg, root).await, None);
+
+        let cfg = Ini::parse(&format!("{instance}OverrideJavaLocation=true\n"));
+        assert_eq!(java_major(&cfg, root).await, Some(21));
     }
 
     #[tokio::test]

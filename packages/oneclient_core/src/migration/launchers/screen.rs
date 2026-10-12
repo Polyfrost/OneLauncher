@@ -5,7 +5,7 @@ use std::sync::Arc;
 use oneclient_content::ContentCtx;
 use oneclient_content::packages::{
     BadMod, BadModList, ContentType, FileIdentity, ProjectDetail, ProviderId,
-    ProviderVersionLookup, ResolvedAlternative, fetch_explanation, refresh_bad_mods,
+    ProviderVersionLookup, ResolvedAlternative, fetch_explanation, fetch_improvements,
     resolve_alternatives,
 };
 use oneclient_db::models::ClusterRow;
@@ -47,7 +47,7 @@ pub async fn screen_instances(
     instances: &[ExternalInstance],
 ) -> LauncherResult<Vec<ScreenedInstance>> {
     let content = state.services.content();
-    let list = refresh_bad_mods(&content).await?;
+    let list = fetch_improvements(&content).await?;
 
     let mut screened = Vec::with_capacity(instances.len());
     for instance in instances {

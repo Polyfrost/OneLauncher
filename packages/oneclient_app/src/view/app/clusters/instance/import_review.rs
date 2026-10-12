@@ -76,7 +76,7 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
         )
         .child(
             label()
-                .text("OneClient's list of problem mods could not be loaded. Try again, or import without checking.")
+                .text("OneClient's list of suggested improvements could not be loaded. Try again, or import without checking.")
                 .width(Size::fill())
                 .font_size(12.)
                 .text_align(TextAlign::Center)
@@ -130,7 +130,7 @@ fn all_clear() -> Element {
         )
         .child(
             label()
-                .text("None of the mods in the selected instances are on OneClient's list of problem mods.")
+                .text("None of the mods in the selected instances have a suggested OneClient improvement.")
                 .width(Size::fill())
                 .font_size(12.)
                 .text_align(TextAlign::Center)
@@ -145,8 +145,8 @@ fn instance_section(
     screened: &ScreenedInstance,
 ) -> Element {
     let count = match screened.flagged.len() {
-        1 => "1 flagged mod".to_string(),
-        n => format!("{n} flagged mods"),
+        1 => "1 mod to improve".to_string(),
+        n => format!("{n} mods to improve"),
     };
 
     rect()
@@ -238,9 +238,9 @@ fn flagged_card(
                 .cross_align(Alignment::Center)
                 .spacing(10.)
                 .child(
-                    Icon::new(IconType::AlertTriangle)
+                    Icon::new(IconType::LineChartUp01)
                         .size(18.)
-                        .color(colors::code_warn()),
+                        .color(colors::fg_secondary()),
                 )
                 .child(
                     rect()

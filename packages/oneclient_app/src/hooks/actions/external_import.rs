@@ -16,6 +16,23 @@ const MAX_LISTED: usize = 3;
 
 static IMPORTING: AtomicBool = AtomicBool::new(false);
 
+/// Holds [`IMPORTING`] for as long as it lives, so a panic mid-import (which
+/// `off_ui` re-raises) or a dropped task cannot leave every later import
+/// refused until the app restarts
+struct ImportingGuard;
+
+impl ImportingGuard {
+    fn acquire() -> Option<Self> {
+        (!IMPORTING.swap(true, Ordering::AcqRel)).then_some(Self)
+    }
+}
+
+impl Drop for ImportingGuard {
+    fn drop(&mut self) {
+        IMPORTING.store(false, Ordering::Release);
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct ExternalImportJob {
     pub instance: ExternalInstance,
@@ -47,18 +64,18 @@ impl Actions {
         if jobs.is_empty() {
             return;
         }
-        if IMPORTING.swap(true, Ordering::AcqRel) {
+        let Some(guard) = ImportingGuard::acquire() else {
             self.notify("An import is already running")
                 .body("Wait for it to finish, then try again.")
                 .error()
                 .send();
             return;
-        }
+        };
 
         let actions = self.clone();
         spawn_forever(async move {
+            let _guard = guard;
             let Ok(state) = launcher::state() else {
-                IMPORTING.store(false, Ordering::Release);
                 return;
             };
             let events = state.services.events.clone();
@@ -126,8 +143,6 @@ impl Actions {
             if let [only] = imported.as_slice() {
                 actions.open_cluster_page(only.cluster_id);
             }
-
-            IMPORTING.store(false, Ordering::Release);
         });
     }
 
@@ -205,7 +220,7 @@ fn notify_summary(actions: &Actions, imported: &[ExternalImportReport], unavaila
     }
     if left_out > 0 {
         body.push_str(&format!(
-            " {left_out} flagged mod{} left out.",
+            " {left_out} mod{} left out.",
             if left_out == 1 { " was" } else { "s were" }
         ));
     }

@@ -55,7 +55,7 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
         ),
         Step::ImportReview => (
             "Review mods",
-            "These mods are known to cause problems. Choose what happens to each one before importing."
+            "OneClient has a better option for these mods. Choose what happens to each one before importing."
                 .to_string(),
         ),
     }
@@ -107,7 +107,7 @@ pub fn footer_note(picks: &Picks) -> String {
         Step::ImportMode => match picks.import_mode {
             ImportMode::AsIs => "Mods, worlds and settings come over unchanged.".to_string(),
             ImportMode::Improve => {
-                "Problem mods can be swapped for a better alternative or left out.".to_string()
+                "Mods with a better OneClient option can be swapped for it or left out.".to_string()
             }
         },
         Step::Import => match picks.import_count {

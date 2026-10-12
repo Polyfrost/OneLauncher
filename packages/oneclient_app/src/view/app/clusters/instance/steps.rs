@@ -183,8 +183,8 @@ fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
             ImportMode::Improve,
             IconType::IconLogo,
             "Improve with OneClient",
-            "Checks the mods against OneClient's list of problem mods and suggests better ones.",
-            "You choose what happens to each flagged mod before importing.",
+            "Checks the mods against OneClient's list of suggested improvements.",
+            "You choose what happens to each one before importing.",
         ),
     ];
 

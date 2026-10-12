@@ -93,11 +93,15 @@ enum JavaPlan {
     Pin(u32),
 }
 
-fn java_plan(source: Option<u32>, required: Option<u32>) -> JavaPlan {
+/// Pinning only exists to keep the JVM arguments starting; without any,
+/// OneClient's own pick is the safer one
+fn java_plan(source: Option<u32>, required: Option<u32>, has_jvm_args: bool) -> JavaPlan {
     match (source, required) {
         // An older Java than the version requires cannot have run it, so
         // whatever was recorded is not worth reproducing
-        (Some(source), Some(required)) if source > required => JavaPlan::Pin(source),
+        (Some(source), Some(required)) if has_jvm_args && source > required => {
+            JavaPlan::Pin(source)
+        }
         _ => JavaPlan::Default,
     }
 }
@@ -130,6 +134,25 @@ pub(super) struct ScannedContent {
     loose: Vec<PathBuf>,
     /// Content that could not be read, relative to the game dir
     unreadable: Vec<String>,
+    /// Every content file the scan could hash, including ones the user chose
+    /// to leave out or that could not be staged: what the source really holds
+    present: HashSet<String>,
+}
+
+impl ScannedContent {
+    /// Whether something the scan could not read might be this file: its
+    /// whole folder could not be listed, or a file of the same name failed
+    fn might_hold(&self, content_type: ContentType, file_name: &str) -> bool {
+        let folder = content_type.folder_name();
+        let file_name = strip_disabled(file_name);
+        self.unreadable.iter().any(|entry| {
+            entry == folder
+                || entry
+                    .strip_prefix(folder)
+                    .and_then(|rest| rest.strip_prefix('/'))
+                    .is_some_and(|name| strip_disabled(name).eq_ignore_ascii_case(file_name))
+        })
+    }
 }
 
 /// Creates a new isolated cluster from a third-party instance
@@ -386,13 +409,13 @@ async fn drop_pack_files_removed_locally(
     scanned: &ScannedContent,
     content: &ContentCtx,
 ) -> LauncherResult<()> {
-    // An instance with no content at all was never installed, and a file
-    // that could not be read might be one of these; neither says "removed"
-    if scanned.files.is_empty() || !scanned.unreadable.is_empty() {
+    // An instance with no content at all was never installed, which does
+    // not say "removed". Files left out on the review step are still present
+    // here; `drop_skipped_pack_files` handles those
+    if scanned.present.is_empty() {
         return Ok(());
     }
 
-    let local: HashSet<&str> = scanned.files.iter().map(|f| f.hash.as_str()).collect();
     let content_types: HashMap<String, ContentType> =
         PackageStore::list_linked_artifacts(cluster_id, content)
             .await?
@@ -403,11 +426,18 @@ async fn drop_pack_files_removed_locally(
     let tracked = bundle_dao::list_bundle_tracked(&content.db, cluster_id).await?;
     for row in tracked {
         if row.bundle_name.as_deref() != Some(MODPACK_BUNDLE_NAME)
-            || local.contains(row.hash.as_str())
-            || !content_types
-                .get(&row.hash)
-                .is_some_and(|ty| CONTENT_FOLDERS.contains(ty))
+            || scanned.present.contains(&polyio::normalize_hash(&row.hash))
         {
+            continue;
+        }
+        let Some(&content_type) = content_types
+            .get(&row.hash)
+            .filter(|ty| CONTENT_FOLDERS.contains(ty))
+        else {
+            continue;
+        };
+        // Only what could not be read stays in doubt, not the whole pack
+        if scanned.might_hold(content_type, &row.cluster_file_name) {
             continue;
         }
 
@@ -521,7 +551,8 @@ async fn settle_java(
     report: &mut ExternalImportReport,
     progress: Option<&GroupedProgressSession>,
 ) -> Option<String> {
-    let required = if settings.java_major.is_some() {
+    let has_jvm_args = settings.jvm_args.is_some();
+    let required = if settings.java_major.is_some() && has_jvm_args {
         crate::clusters::required_java_major(state, cluster_id)
             .await
             .inspect_err(
@@ -533,7 +564,7 @@ async fn settle_java(
         None
     };
 
-    let JavaPlan::Pin(major) = java_plan(settings.java_major, required) else {
+    let JavaPlan::Pin(major) = java_plan(settings.java_major, required, has_jvm_args) else {
         return None;
     };
 
@@ -692,14 +723,18 @@ pub(super) async fn scan_folders(
 
             if metadata.is_file() && is_archive(content_type, &name) {
                 match hash_file(&path, fingerprint).await {
-                    Ok((hash, cf_fingerprint)) => scanned.files.push(LocalContent {
-                        enabled: !name.to_ascii_lowercase().ends_with(DISABLED_SUFFIX),
-                        hash: polyio::normalize_hash(&hash),
-                        cf_fingerprint,
-                        import_path: path.clone(),
-                        path,
-                        content_type,
-                    }),
+                    Ok((hash, cf_fingerprint)) => {
+                        let hash = polyio::normalize_hash(&hash);
+                        scanned.present.insert(hash.clone());
+                        scanned.files.push(LocalContent {
+                            enabled: !name.to_ascii_lowercase().ends_with(DISABLED_SUFFIX),
+                            hash,
+                            cf_fingerprint,
+                            import_path: path.clone(),
+                            path,
+                            content_type,
+                        });
+                    }
                     Err(err) => {
                         tracing::debug!(path = %path.display(), error = %err, "could not hash content file");
                         scanned.unreadable.push(relative);
@@ -1047,6 +1082,19 @@ mod tests {
     }
 
     #[test]
+    fn only_what_could_not_be_read_stays_in_doubt() {
+        let scanned = ScannedContent {
+            unreadable: vec!["mods/Broken.jar.disabled".into(), "shaderpacks".into()],
+            ..ScannedContent::default()
+        };
+
+        assert!(scanned.might_hold(ContentType::Mod, "broken.jar"));
+        assert!(scanned.might_hold(ContentType::Shader, "anything.zip"));
+        assert!(!scanned.might_hold(ContentType::Mod, "deleted.jar"));
+        assert!(!scanned.might_hold(ContentType::ResourcePack, "broken.jar"));
+    }
+
+    #[test]
     fn strip_disabled_only_strips_the_suffix() {
         assert_eq!(strip_disabled("a.jar.disabled"), "a.jar");
         assert_eq!(strip_disabled("a.jar.Disabled"), "a.jar");
@@ -1056,11 +1104,13 @@ mod tests {
 
     #[test]
     fn only_a_newer_recorded_java_is_pinned() {
-        assert_eq!(java_plan(Some(21), Some(17)), JavaPlan::Pin(21));
-        assert_eq!(java_plan(Some(17), Some(17)), JavaPlan::Default);
-        assert_eq!(java_plan(Some(8), Some(17)), JavaPlan::Default);
-        assert_eq!(java_plan(None, Some(17)), JavaPlan::Default);
-        assert_eq!(java_plan(Some(21), None), JavaPlan::Default);
+        assert_eq!(java_plan(Some(21), Some(17), true), JavaPlan::Pin(21));
+        assert_eq!(java_plan(Some(17), Some(17), true), JavaPlan::Default);
+        assert_eq!(java_plan(Some(8), Some(17), true), JavaPlan::Default);
+        assert_eq!(java_plan(None, Some(17), true), JavaPlan::Default);
+        assert_eq!(java_plan(Some(21), None, true), JavaPlan::Default);
+        // Nothing to protect: a Forge 1.16.5 instance stays on Java 8
+        assert_eq!(java_plan(Some(21), Some(8), false), JavaPlan::Default);
     }
 
     #[test]

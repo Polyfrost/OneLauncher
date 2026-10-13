@@ -125,6 +125,7 @@ impl Component for ClusterLogs {
         let confirm = use_state(|| None::<Confirm>);
         let category = use_state(|| Category::Logs);
         let mut selected = use_state(PathBuf::new);
+        let search_id = use_a11y();
 
         use_mclogs_feedback(upload);
 
@@ -200,7 +201,7 @@ impl Component for ClusterLogs {
             .child(
                 rect().width(Size::fill()).height(Size::flex(1.0)).child(
                     LogViewer::new("", viewer_lines)
-                        .header(viewer_header(search, level, confirm, has_log)),
+                        .header(viewer_header(search, level, confirm, has_log, search_id)),
                 ),
             );
 
@@ -296,9 +297,19 @@ pub fn viewer_header(
     level: State<LevelFilter>,
     confirm: State<Option<Confirm>>,
     has_log: bool,
+    search_id: AccessibilityId,
 ) -> impl IntoElement {
+    let on_key_down = move |e: Event<KeyboardEventData>| {
+        let find = matches!(&e.key, Key::Character(c) if c.as_str().eq_ignore_ascii_case("f"))
+            && e.modifiers.contains(Modifiers::ctrl_or_meta());
+        if find && has_log {
+            e.prevent_default();
+            search_id.request_focus();
+        }
+    };
+
     let search_input = {
-        let base = TextInput::new(search).enabled(has_log).leading(
+        let base = TextInput::new(search).a11y_id(search_id).enabled(has_log).leading(
             Icon::new(IconType::SearchMd)
                 .size(15.)
                 .color(colors::fg_secondary())
@@ -318,6 +329,7 @@ pub fn viewer_header(
         .content(Content::Flex)
         .spacing(10.)
         .padding(Gaps::new_symmetric(10., 14.))
+        .on_global_key_down(on_key_down)
         .child(rect().width(Size::flex(1.0)).child(search_input))
         .child(
             SegmentedControl::new(level)

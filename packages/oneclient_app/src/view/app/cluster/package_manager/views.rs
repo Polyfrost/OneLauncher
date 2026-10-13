@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use super::*;
 
 use freya::router::RouterContext;
@@ -72,11 +74,25 @@ pub(super) enum EnabledFilter {
 }
 
 impl EnabledFilter {
+    pub(super) const STORAGE_KEY: &'static str = "show";
+
     const ALL: [EnabledFilter; 3] = [
         EnabledFilter::All,
         EnabledFilter::Enabled,
         EnabledFilter::Disabled,
     ];
+
+    fn key(self) -> &'static str {
+        match self {
+            EnabledFilter::All => "all",
+            EnabledFilter::Enabled => "enabled",
+            EnabledFilter::Disabled => "disabled",
+        }
+    }
+
+    pub(super) fn from_key(key: &str) -> Option<Self> {
+        EnabledFilter::ALL.into_iter().find(|f| f.key() == key)
+    }
 
     fn label(self) -> &'static str {
         match self {
@@ -103,7 +119,20 @@ pub(super) enum HiddenFilter {
 }
 
 impl HiddenFilter {
+    pub(super) const STORAGE_KEY: &'static str = "hidden";
+
     const ALL: [HiddenFilter; 2] = [HiddenFilter::Hide, HiddenFilter::Show];
+
+    fn key(self) -> &'static str {
+        match self {
+            HiddenFilter::Hide => "hide",
+            HiddenFilter::Show => "show",
+        }
+    }
+
+    pub(super) fn from_key(key: &str) -> Option<Self> {
+        HiddenFilter::ALL.into_iter().find(|f| f.key() == key)
+    }
 
     fn label(self) -> &'static str {
         match self {
@@ -265,8 +294,9 @@ pub(super) fn toolbar_bar(
     search: State<String>,
     sort: State<Option<String>>,
     current_sort: SortMode,
-    enabled_filter: State<EnabledFilter>,
-    hidden_filter: State<HiddenFilter>,
+    filters: State<BTreeMap<String, String>>,
+    show: EnabledFilter,
+    hidden: HiddenFilter,
     uses_bundles: bool,
     layout: State<ViewLayout>,
     cluster_id: i64,
@@ -323,14 +353,7 @@ pub(super) fn toolbar_bar(
                     .into_element(),
             )
             .into_element(),
-        filter_button(
-            sort,
-            current_sort,
-            enabled_filter,
-            hidden_filter,
-            uses_bundles,
-        )
-        .into_element(),
+        filter_button(sort, current_sort, filters, show, hidden, uses_bundles).into_element(),
     ];
 
     controls.push(
@@ -537,13 +560,11 @@ pub(crate) fn notice_bar(text: String) -> Element {
 fn filter_button(
     mut sort: State<Option<String>>,
     current_sort: SortMode,
-    mut enabled_filter: State<EnabledFilter>,
-    mut hidden_filter: State<HiddenFilter>,
+    mut filters: State<BTreeMap<String, String>>,
+    show: EnabledFilter,
+    hidden: HiddenFilter,
     uses_bundles: bool,
 ) -> FilterMenu {
-    let show = *enabled_filter.read();
-    let hidden = *hidden_filter.read();
-
     // Hiding hidden packages is the default so it does not count as the filters being touched
     let active = current_sort != SortMode::NameAsc
         || show != EnabledFilter::All
@@ -562,7 +583,9 @@ fn filter_button(
             "Show",
             EnabledFilter::ALL.map(|filter| {
                 FilterOption::new(filter.label(), filter == show, move |()| {
-                    enabled_filter.set(filter);
+                    filters
+                        .write()
+                        .insert(EnabledFilter::STORAGE_KEY.into(), filter.key().into());
                 })
             }),
         );
@@ -574,7 +597,9 @@ fn filter_button(
         "Hidden packages",
         HiddenFilter::ALL.map(|filter| {
             FilterOption::new(filter.label(), filter == hidden, move |()| {
-                hidden_filter.set(filter);
+                filters
+                    .write()
+                    .insert(HiddenFilter::STORAGE_KEY.into(), filter.key().into());
             })
         }),
     )

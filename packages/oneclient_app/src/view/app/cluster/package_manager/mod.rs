@@ -492,8 +492,6 @@ impl Component for PackageManager {
         let active = use_state(|| 0usize);
 
         let search = use_state(String::new);
-        let enabled_filter = use_state(|| EnabledFilter::All);
-        let hidden_filter = use_state(|| HiddenFilter::Hide);
         let advanced_open = use_state(|| false);
         let toolbar_width = use_state(|| 0f32);
         let selection = use_selection::<String>();
@@ -511,8 +509,17 @@ impl Component for PackageManager {
             .and_then(SortMode::from_key)
             .unwrap_or(SortMode::NameAsc);
 
-        let show = *enabled_filter.read();
-        let hidden = *hidden_filter.read();
+        let filters = view.filters;
+        let show = filters
+            .read()
+            .get(EnabledFilter::STORAGE_KEY)
+            .and_then(|key| EnabledFilter::from_key(key))
+            .unwrap_or(EnabledFilter::All);
+        let hidden = filters
+            .read()
+            .get(HiddenFilter::STORAGE_KEY)
+            .and_then(|key| HiddenFilter::from_key(key))
+            .unwrap_or(HiddenFilter::Hide);
         let card_layout = CardLayout::from(*layout.read());
 
         let disabled_essentials: Vec<&'static str> = items
@@ -680,8 +687,9 @@ impl Component for PackageManager {
                 search,
                 sort,
                 sort_mode,
-                enabled_filter,
-                hidden_filter,
+                filters,
+                show,
+                hidden,
                 uses_bundles,
                 layout,
                 cluster_id,
@@ -764,8 +772,14 @@ mod tests {
         assert_eq!(all, ["shared", "only-taken"]);
         let shared = rows.iter().find(|p| p.package_id == "shared").unwrap();
         assert_eq!(shared.categories, ["Taken"]);
-        let only_declined = rows.iter().find(|p| p.package_id == "only-declined").unwrap();
-        assert!(!only_declined.enabled, "a turned down bundle's mods read off");
+        let only_declined = rows
+            .iter()
+            .find(|p| p.package_id == "only-declined")
+            .unwrap();
+        assert!(
+            !only_declined.enabled,
+            "a turned down bundle's mods read off"
+        );
         let only_taken = rows.iter().find(|p| p.package_id == "only-taken").unwrap();
         assert!(only_taken.enabled);
         let declined = Tab::Category("Declined".into());

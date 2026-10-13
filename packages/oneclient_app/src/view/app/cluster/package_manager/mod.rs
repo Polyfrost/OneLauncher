@@ -246,7 +246,7 @@ pub fn bundle_packages(
             pid,
             None,
             provider,
-            0,
+            info.size_bytes.unwrap_or(0),
             Vec::new(),
             info.enabled,
             true,

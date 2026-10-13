@@ -14,8 +14,8 @@ use crate::components::{
 };
 use crate::hooks::{
     ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings, package_meta_batch,
-    use_cluster_mutation, use_disable_warnings, use_essential_guard, use_game_snapshot,
-    use_package_meta_batch, use_selection, use_view_state,
+    use_cluster_mutation, use_disable_warnings, use_dispatch, use_essential_guard,
+    use_game_snapshot, use_package_meta_batch, use_selection, use_view_state,
 };
 
 use super::folder_list::confirm_dialog;
@@ -498,6 +498,7 @@ impl Component for PackageManager {
         let toolbar_width = use_state(|| 0f32);
         let selection = use_selection::<String>();
         let mutation = use_cluster_mutation();
+        let dispatch = use_dispatch();
         let mut guard = use_essential_guard();
         let warnings_query = use_disable_warnings();
         let mut confirm_delete = use_state(|| false);
@@ -686,6 +687,8 @@ impl Component for PackageManager {
                 layout,
                 cluster_id,
                 package_type,
+                content_type,
+                dispatch,
                 toolbar_width,
                 &bulk,
             ))

@@ -15,7 +15,7 @@ use crate::clusters::Cluster;
 use crate::game::GameError;
 use crate::game::session::SessionRecorder;
 use crate::game::tail::spawn_log_tail;
-use crate::settings::GameSettingsProfile;
+use crate::settings::{GameSettingsProfile, GraphicsBackend};
 use crate::state::LauncherState;
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
@@ -296,6 +296,13 @@ async fn start(
 
     if let Err(err) = crate::game::write_allowed_symlinks(&cwd).await {
         tracing::warn!(cluster_id, error = %err, "failed to write allowed_symlinks.txt");
+    }
+
+    if let Some(backend) = profile.graphics_backend
+        && GraphicsBackend::supported_on(&mc_version)
+        && let Err(err) = crate::game::write_graphics_backend(&cwd, backend).await
+    {
+        tracing::warn!(cluster_id, error = %err, "failed to write the graphics backend to options.txt");
     }
 
     let custom_args = profile.launch_args.clone().unwrap_or_default();

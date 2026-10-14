@@ -15,7 +15,7 @@ use oneclient_net::{RequestClient, RequestError};
 pub use models::{
     BlockedPlayer, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary, LastMessage,
     MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, RelationshipKind, ResolvedPlayer,
-    SessionInvite, SpecialChatStatus,
+    SessionInvite,
 };
 pub use packets::ClientboundPacket;
 

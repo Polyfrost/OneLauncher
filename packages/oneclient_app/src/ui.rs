@@ -4,49 +4,6 @@ use freya::prelude::*;
 
 use crate::theme;
 
-pub const WINDOW_CORNER_PX: f32 = 12.;
-
-pub const GLASS_ALPHA: u8 = 220;
-pub const GLASS_BLUR_PX: f32 = 12.;
-
-// macOS rounds the window natively
-pub fn use_window_corner() -> f32 {
-    #[cfg(target_os = "macos")]
-    {
-        0.
-    }
-
-    #[cfg(not(target_os = "macos"))]
-    {
-        let root_size = Platform::get().root_size;
-        let mut maximized = use_state(|| false);
-        let size = *root_size.read();
-        let dep = (size.width as i32, size.height as i32);
-        use_side_effect_with_deps(&dep, move |_| {
-            spawn(async move {
-                let is_max = Platform::get()
-                    .post_callback(|id, ctx| {
-                        ctx.windows.get(&id).map(|w| w.window().is_maximized())
-                    })
-                    .await;
-                if let Ok(Some(is_max)) = is_max
-                    && *maximized.peek() != is_max
-                {
-                    maximized.set(is_max);
-                }
-            });
-        });
-
-        if *maximized.read() { 0. } else { WINDOW_CORNER_PX }
-    }
-}
-
-pub fn glass_panel() -> Rect {
-    rect()
-        .background(theme::colors::page_elevated().with_a(GLASS_ALPHA))
-        .backdrop_blur(GLASS_BLUR_PX)
-}
-
 pub fn border_all(width: f32) -> Border {
     Border::new()
         .fill(theme::colors::component_border())

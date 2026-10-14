@@ -96,9 +96,8 @@ pub fn use_provide_station(
 ) -> RadioStation<AppState, AppChannel> {
     let contexts = GlobalContexts::get();
     let station = use_hook(move || {
-        contexts.get_context_or_insert(|| {
-            RadioStation::<AppState, AppChannel>::create_global(init())
-        })
+        contexts
+            .get_context_or_insert(|| RadioStation::<AppState, AppChannel>::create_global(init()))
     });
 
     use_provide_context(|| station);
@@ -167,6 +166,14 @@ pub fn use_control_center_open() -> bool {
         .control_center_open
 }
 
+pub fn use_social_open() -> bool {
+    use_radio(AppChannel::Social).read().social_open
+}
+
+pub fn use_social_popped_notice() -> bool {
+    use_radio(AppChannel::Social).read().social_popped_notice
+}
+
 pub fn use_game_snapshot() -> GameState {
     use_radio(AppChannel::Game).read().game.clone()
 }
@@ -189,6 +196,40 @@ pub fn use_chat_thread(group_id: i32) -> ChatThread {
 
 pub fn use_chat_unread() -> bool {
     use_radio(AppChannel::Chat).read().chat.has_unread()
+}
+
+pub fn use_player_online(player: uuid::Uuid) -> bool {
+    let presence = use_radio(AppChannel::ChatPresence);
+    let roster = use_radio(AppChannel::ChatRoster);
+    let _ = roster.read();
+    presence.read().chat.is_online(player)
+}
+
+pub fn use_chat_online_set(players: Vec<uuid::Uuid>) -> std::collections::HashSet<uuid::Uuid> {
+    let presence = use_radio(AppChannel::ChatPresence);
+    let roster = use_radio(AppChannel::ChatRoster);
+    let _ = roster.read();
+    let state = presence.read();
+    players
+        .into_iter()
+        .filter(|player| state.chat.is_online(*player))
+        .collect()
+}
+
+pub fn use_chat_invites() -> Vec<crate::chat::ChatInvite> {
+    use_radio(AppChannel::Chat).read().chat.invites().to_vec()
+}
+
+pub fn use_chat_friend_request() -> crate::chat::FriendRequestStatus {
+    use_radio(AppChannel::Chat)
+        .read()
+        .chat
+        .friend_request
+        .clone()
+}
+
+pub fn use_chat_self_status() -> crate::chat::SelfStatus {
+    use_radio(AppChannel::Chat).read().chat.self_status
 }
 
 pub fn use_chat_error() -> Option<String> {

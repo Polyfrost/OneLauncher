@@ -23,10 +23,6 @@ pub fn window_controls() -> impl IntoElement {
     })
 }
 
-pub fn secondary_window_controls(close: impl Fn() + 'static) -> impl IntoElement {
-    controls(close)
-}
-
 fn controls(on_close: impl Fn() + 'static) -> impl IntoElement {
     let minimize = |_| {
         Platform::get().with_window(Platform::window_id(), |win| {

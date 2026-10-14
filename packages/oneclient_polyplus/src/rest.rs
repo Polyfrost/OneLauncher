@@ -7,7 +7,7 @@ use oneclient_net::RequestError;
 use crate::models::{
     BlockedPlayer, CreateGroupRequest, EditMessageRequest, Friend, FriendRequest, GroupMessage,
     GroupSummary, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, ResolveRequest, ResolveResponse,
-    ResolvedPlayer, SendMessageRequest, SpecialChatStatus,
+    ResolvedPlayer, SendMessageRequest,
 };
 use crate::{PlusClient, PlusError, base_url};
 
@@ -246,11 +246,6 @@ impl PlusClient {
             Err(err) if err.is_not_found() => Ok(None),
             Err(err) => Err(err),
         }
-    }
-
-    pub async fn special_chat(&self) -> Result<SpecialChatStatus, PlusError> {
-        self.json(Method::GET, self.url("/special-chat")?, None)
-            .await
     }
 
     fn url(&self, path: &str) -> Result<Url, PlusError> {

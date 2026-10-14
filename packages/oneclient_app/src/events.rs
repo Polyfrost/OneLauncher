@@ -234,6 +234,8 @@ impl EventPump {
                         message_id,
                         sender,
                         content,
+                        invite_id,
+                        invite_status,
                     } => {
                         guard.chat.upsert(
                             group_id,
@@ -243,6 +245,8 @@ impl EventPump {
                                 content: content.clone(),
                                 sent_at: Some(chrono::Utc::now().fixed_offset()),
                                 edited: false,
+                                invite: invite_id
+                                    .map(|id| crate::chat::MessageInvite::new(id, invite_status)),
                             },
                         );
 
@@ -250,15 +254,21 @@ impl EventPump {
                             folded.chat_unknown_group = true;
                         }
 
-                        let viewing = crate::view::chat::is_chat_window_focused()
+                        let viewing = (crate::view::chat::is_chat_window_focused()
+                            || guard.social_open)
                             && guard.chat.active == Some(group_id);
-                        guard.chat.note_activity(group_id, content, !viewing);
+                        guard
+                            .chat
+                            .note_activity(group_id, sender, content, !viewing);
                     }
                     ChatEvent::MessageEdited {
                         group_id,
                         message_id,
                         content,
-                    } => guard.chat.edit(group_id, message_id, content),
+                        invite_status,
+                    } => guard
+                        .chat
+                        .edit(group_id, message_id, content, invite_status),
                     ChatEvent::MessageDeleted {
                         group_id,
                         message_id,

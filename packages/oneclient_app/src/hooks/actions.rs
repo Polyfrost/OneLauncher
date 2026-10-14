@@ -708,6 +708,43 @@ impl Actions {
             .control_center_open = false;
     }
 
+    pub fn toggle_social(&self) {
+        let open = self.station.peek().social_open;
+        let mut guard = self.station.clone().write_channel(AppChannel::Social);
+        guard.social_open = !open;
+        guard.social_popped_notice = false;
+    }
+
+    pub fn close_social(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Social)
+            .social_open = false;
+    }
+
+    pub fn pop_out_social(&self) {
+        {
+            let mut guard = self.station.clone().write_channel(AppChannel::Social);
+            guard.social_open = false;
+            guard.social_popped_notice = true;
+        }
+        crate::view::chat::open_chat_window();
+    }
+
+    pub fn dock_social(&self) {
+        crate::view::chat::close_chat_window();
+        let mut guard = self.station.clone().write_channel(AppChannel::Social);
+        guard.social_open = true;
+        guard.social_popped_notice = false;
+    }
+
+    pub fn dismiss_social_notice(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Social)
+            .social_popped_notice = false;
+    }
+
     pub fn close_notification_center(&self) {
         self.with_engine(|state| state.center_open = false);
     }

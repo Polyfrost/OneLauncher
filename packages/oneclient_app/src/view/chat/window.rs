@@ -3,21 +3,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use freya::prelude::*;
 use freya::winit::dpi::{PhysicalPosition, PhysicalSize};
 
-use crate::components::secondary_window_controls;
-use crate::hooks::use_provide_station;
+use crate::hooks::{use_dispatch, use_provide_station};
 use crate::state::AppState;
 use crate::theme::{self, colors};
 use crate::view::single_window::{Claim, SingleWindow};
 
-use super::page::ChatSurface;
+use super::panel::{PanelMode, SocialPanel};
 
-const WINDOW_TITLE: &str = "OneClient — Messages";
-
-const TITLEBAR_PADDING_PX: f32 = 12.;
-const TITLEBAR_HEIGHT_PX: f32 = 60.;
+const WINDOW_TITLE: &str = "Social — OneClient";
 
 const WINDOW_WIDTH_PX: f64 = 940.;
-const WINDOW_HEIGHT_PX: f64 = 620.;
+const WINDOW_HEIGHT_PX: f64 = 720.;
 const WINDOW_GAP_PX: f64 = 12.;
 
 static CHAT_WINDOW: SingleWindow = SingleWindow::new();
@@ -55,8 +51,12 @@ pub fn open_chat_window() {
     });
 }
 
-pub(super) fn set_chat_focus(focused: bool) {
+fn set_chat_focus(focused: bool) {
     CHAT_FOCUSED.store(focused, Ordering::Relaxed);
+}
+
+pub fn is_chat_window_open() -> bool {
+    CHAT_WINDOW.is_open()
 }
 
 pub fn is_chat_window_focused() -> bool {
@@ -113,47 +113,25 @@ pub fn close_chat_window() {
 }
 
 fn window_config(position: Option<PhysicalPosition<i32>>) -> WindowConfig {
-    let config = WindowConfig::new_app(ChatApp)
+    WindowConfig::new_app(ChatApp)
         .with_title(WINDOW_TITLE)
         .with_app_id(crate::constants::WINDOW_APP_ID)
         .with_icon(LaunchConfig::window_icon(include_bytes!(
             "../../../icons/128x128.png"
         )))
         .with_size(WINDOW_WIDTH_PX, WINDOW_HEIGHT_PX)
-        .with_min_size(560., 400.)
-        .with_transparency(true)
-        .with_background(Color::TRANSPARENT)
-        .with_window_attributes(move |attrs, _| {
-            let attrs = match position {
-                Some(position) => attrs.with_position(position),
-                None => attrs,
-            };
-
-            #[cfg(target_os = "macos")]
-            let attrs = {
-                use freya::winit::platform::macos::WindowAttributesExtMacOS;
-                attrs
-                    .with_title_hidden(true)
-                    .with_titlebar_transparent(true)
-                    .with_titlebar_buttons_hidden(true)
-                    .with_fullsize_content_view(true)
-            };
-
-            attrs
+        .with_min_size(640., 400.)
+        .with_decorations(true)
+        .with_background(colors::page())
+        .with_window_attributes(move |attrs, _| match position {
+            Some(position) => attrs.with_position(position),
+            None => attrs,
         })
         .with_window_handle(|window| CHAT_WINDOW.opened(window.id()))
         .with_on_close(|_, _| {
             CHAT_WINDOW.forget();
             CloseDecision::Close
-        });
-
-    #[cfg(target_os = "macos")]
-    let config = config.with_decorations(true);
-
-    #[cfg(not(target_os = "macos"))]
-    let config = config.with_decorations(false);
-
-    config
+        })
 }
 
 struct ChatApp;
@@ -161,65 +139,38 @@ struct ChatApp;
 impl App for ChatApp {
     fn render(&self) -> impl IntoElement {
         use_provide_station(AppState::default);
+        let dispatch = use_dispatch();
+
+        track_focus(&dispatch);
+
+        use_drop({
+            let dispatch = dispatch.clone();
+            move || dispatch.dismiss_social_notice()
+        });
 
         rect()
-            .vertical()
             .width(Size::fill())
             .height(Size::fill())
             .background(colors::page())
             .color(colors::fg_primary())
             .font_family(theme::DEFAULT_FONT)
-            .corner_radius(CornerRadius::new_all(crate::ui::use_window_corner()))
-            .content(Content::Flex)
             .overflow(Overflow::Clip)
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .height(Size::fill())
-                    .position(Position::new_absolute())
-                    .interactive(false)
-                    .child(crate::layout::gradient_overlay_radial()),
-            )
-            .child(titlebar())
-            .child(
-                rect()
-                    .width(Size::fill())
-                    .height(Size::flex(1.0))
-                    .overflow(Overflow::Clip)
-                    .child(ChatSurface),
-            )
+            .child(SocialPanel {
+                mode: PanelMode::Window,
+                expanded: true,
+            })
     }
 }
 
-fn titlebar() -> impl IntoElement {
-    crate::ui::glass_panel()
-        .width(Size::fill())
-        .height(Size::px(TITLEBAR_HEIGHT_PX))
-        .child(
-            rect()
-                .horizontal()
-                .width(Size::fill())
-                .height(Size::fill())
-                .content(Content::Flex)
-                .cross_align(Alignment::Center)
-                .padding(Gaps::new_all(TITLEBAR_PADDING_PX))
-                .child(
-                    label()
-                        .text("Messages")
-                        .font_size(14.)
-                        .font_weight(FontWeight::SEMI_BOLD)
-                        .color(colors::fg_primary())
-                        .max_lines(1),
-                )
-                .child(rect().width(Size::flex(1.0)).height(Size::fill()))
-                .child(secondary_window_controls(close_chat_window)),
-        )
-        .child(
-            rect()
-                .window_drag()
-                .layer(Layer::OverlayLevel(1))
-                .width(Size::window_percent(100.))
-                .height(Size::px(TITLEBAR_HEIGHT_PX))
-                .position(Position::new_absolute().top(0.).left(0.).right(0.)),
-        )
+fn track_focus(dispatch: &crate::hooks::Actions) {
+    let focused = *Platform::get().is_app_focused.read();
+    let mut was_focused = use_state(|| focused);
+
+    set_chat_focus(focused);
+
+    if focused && !*was_focused.peek() {
+        dispatch.sync_chat();
+    }
+
+    was_focused.set_if_modified(focused);
 }

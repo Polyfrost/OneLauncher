@@ -9,7 +9,7 @@ use oneclient_polyplus::{
     BlockedPlayer, Friend, FriendRequest, MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE, PlusClient, PlusError,
 };
 
-use crate::chat::{ChatRoster, FriendRequests};
+use crate::chat::{ChatRoster, FriendRequestStatus, FriendRequests};
 use crate::hooks::{Actions, PumpSignal};
 use crate::state::{AppChannel, AppState, AsyncStatus};
 
@@ -49,6 +49,14 @@ fn clear_error(station: Station) {
     let mut guard = station.clone().write_channel(AppChannel::Chat);
     guard.chat.status = AsyncStatus::Ready;
     guard.chat.error = None;
+}
+
+fn settle_friend_request(station: Station, status: FriendRequestStatus) {
+    station
+        .clone()
+        .write_channel(AppChannel::Chat)
+        .chat
+        .friend_request = status;
 }
 
 fn select_group(station: Station, group_id: i32) {
@@ -298,9 +306,10 @@ async fn deliver(station: Station, group_id: i32, key: Uuid, content: String) {
 
     match client.send_message(group_id, &content, key).await {
         Ok(message) => {
+            let sender = message.sender;
             let mut guard = station.clone().write_channel(AppChannel::Chat);
             guard.chat.finish_send(group_id, key, message.into());
-            guard.chat.note_activity(group_id, content, false);
+            guard.chat.note_activity(group_id, sender, content, false);
         }
         Err(err) => {
             tracing::error!("could not send a chat message: {err:#}");
@@ -315,16 +324,34 @@ async fn deliver(station: Station, group_id: i32, key: Uuid, content: String) {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum ChatJob {
-    Resync { floored: bool },
-    Roster { floored: bool },
+    Resync {
+        floored: bool,
+    },
+    Roster {
+        floored: bool,
+    },
     Conversations,
     OpenGroup(i32),
     OlderMessages(i32),
-    Deliver { group_id: i32, key: Uuid, content: String },
-    EditMessage { group_id: i32, message_id: i64, content: String },
-    DeleteMessage { group_id: i32, message_id: i64 },
+    Deliver {
+        group_id: i32,
+        key: Uuid,
+        content: String,
+    },
+    EditMessage {
+        group_id: i32,
+        message_id: i64,
+        content: String,
+    },
+    DeleteMessage {
+        group_id: i32,
+        message_id: i64,
+    },
     StartDirectMessage(Uuid),
-    CreateGroup { name: String, members: Vec<Uuid> },
+    CreateGroup {
+        name: String,
+        members: Vec<Uuid>,
+    },
     AddFriend(String),
     AcceptRequest(i32),
     DeclineRequest(i32),
@@ -332,7 +359,9 @@ pub enum ChatJob {
     RemoveFriend(Uuid),
     Block(Uuid),
     Unblock(Uuid),
-    SwitchOwner { signed_in: bool },
+    SwitchOwner {
+        signed_in: bool,
+    },
 }
 
 impl ChatJob {
@@ -405,14 +434,38 @@ impl ChatJob {
                 }
             }
             Self::AddFriend(username) => {
-                let Some(client) = client() else { return };
-                match client.lookup_username(&username).await {
-                    Ok(Some(player)) => {
-                        roster_change(station, client.send_friend_request(player).await.map(drop))
-                            .await;
+                let Some(client) = client() else {
+                    settle_friend_request(
+                        station,
+                        FriendRequestStatus::Failed("Chat is not available right now.".into()),
+                    );
+                    return;
+                };
+
+                let outcome = match client.lookup_username(&username).await {
+                    Ok(Some(player)) => client.send_friend_request(player).await.map(drop),
+                    Ok(None) => {
+                        settle_friend_request(
+                            station,
+                            FriendRequestStatus::Failed(format!("No player named {username}.")),
+                        );
+                        return;
                     }
-                    Ok(None) => fail(station, format!("No player named {username}.")),
-                    Err(err) => report(station, &err),
+                    Err(err) => Err(err),
+                };
+
+                match outcome {
+                    Ok(()) => {
+                        settle_friend_request(station, FriendRequestStatus::Sent(username));
+                        load_roster(station).await;
+                    }
+                    Err(err) => {
+                        tracing::error!("could not send a friend request: {err:#}");
+                        settle_friend_request(
+                            station,
+                            FriendRequestStatus::Failed(err.to_string()),
+                        );
+                    }
                 }
             }
             Self::AcceptRequest(request_id) => {
@@ -557,6 +610,30 @@ impl Actions {
     }
 
     pub fn start_direct_message(&self, player: Uuid) {
+        clear_error(self.station());
+
+        let existing = {
+            let station = self.station();
+            let state = station.peek();
+            let owner = state.chat.owner.unwrap_or_else(Uuid::nil);
+            state
+                .chat
+                .conversations()
+                .iter()
+                .find(|conversation| conversation.counterpart(owner) == Some(player))
+                .map(|conversation| conversation.id)
+        };
+
+        if let Some(group_id) = existing {
+            self.open_conversation(group_id);
+            return;
+        }
+
+        self.station()
+            .clone()
+            .write_channel(AppChannel::Chat)
+            .chat
+            .active = None;
         self.chat_job(ChatJob::StartDirectMessage(player));
     }
 
@@ -575,7 +652,25 @@ impl Actions {
             return;
         }
 
+        settle_friend_request(
+            self.station(),
+            FriendRequestStatus::Sending(username.clone()),
+        );
         self.chat_job(ChatJob::AddFriend(username));
+    }
+
+    pub fn reset_friend_request(&self) {
+        settle_friend_request(self.station(), FriendRequestStatus::Idle);
+    }
+
+    pub fn clear_chat_error(&self) {
+        clear_error(self.station());
+    }
+
+    pub fn retry_chat(&self) {
+        self.clear_chat_error();
+        self.chat_job(ChatJob::Resync { floored: false });
+        self.chat_job(ChatJob::Roster { floored: false });
     }
 
     pub fn accept_friend_request(&self, request_id: i32) {
@@ -602,6 +697,22 @@ impl Actions {
         self.chat_job(ChatJob::Unblock(player));
     }
 
+    pub fn set_self_status(&self, status: crate::chat::SelfStatus) {
+        self.station()
+            .clone()
+            .write_channel(AppChannel::Chat)
+            .chat
+            .self_status = status;
+    }
+
+    pub fn accept_chat_invite(&self, invite_id: i32) {
+        tracing::warn!("accepting session invite {invite_id} is not supported yet");
+    }
+
+    pub fn decline_chat_invite(&self, invite_id: i32) {
+        tracing::warn!("declining session invite {invite_id} is not supported yet");
+    }
+
     pub fn sync_chat_owner(&self, owner: Option<Uuid>) {
         let station = self.station();
         if station.peek().chat.owner == owner {
@@ -620,6 +731,7 @@ impl Actions {
 
         if owner.is_none() {
             crate::view::chat::close_chat_window();
+            self.close_social();
         }
 
         self.chat_job(ChatJob::SwitchOwner {

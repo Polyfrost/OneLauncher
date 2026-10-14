@@ -59,8 +59,6 @@ pub struct GroupSummary {
     pub last_message: Option<LastMessage>,
     #[serde(default)]
     pub unread: bool,
-    #[serde(default)]
-    pub special: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -109,15 +107,6 @@ pub struct ResolvedPlayer {
     pub username: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct SpecialChatStatus {
-    pub is_special_chat_target: bool,
-    #[serde(default)]
-    pub group_id: Option<i32>,
-    #[serde(default)]
-    pub cooldown_until: Option<DateTime<FixedOffset>>,
-}
-
 #[derive(Debug, Clone, Serialize)]
 pub(crate) struct SendMessageRequest<'a> {
     pub content: &'a str,
@@ -152,21 +141,10 @@ mod tests {
     #[test]
     fn unknown_group_kinds_do_not_fail_the_list() {
         let summary: GroupSummary = serde_json::from_str(
-            r#"{"id":1,"kind":"broadcast","members":[],"unread":false,"special":false}"#,
+            r#"{"id":1,"kind":"broadcast","members":[],"unread":false}"#,
         )
         .expect("an unrecognised kind should still deserialize");
 
         assert_eq!(summary.kind, GroupKind::Unknown);
-    }
-
-    #[test]
-    fn group_summaries_tolerate_a_missing_special_flag() {
-        let summary: GroupSummary =
-            serde_json::from_str(r#"{"id":4,"kind":"dm","members":[],"unread":true}"#)
-                .expect("special is newer than the rest of the shape");
-
-        assert_eq!(summary.kind, GroupKind::Dm);
-        assert!(summary.unread);
-        assert!(!summary.special);
     }
 }

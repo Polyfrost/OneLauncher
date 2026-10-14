@@ -141,12 +141,15 @@ pub enum ChatEvent {
         message_id: i64,
         sender: Uuid,
         content: String,
+        invite_id: Option<i32>,
+        invite_status: Option<String>,
     },
 
     MessageEdited {
         group_id: i32,
         message_id: i64,
         content: String,
+        invite_status: Option<String>,
     },
 
     MessageDeleted {

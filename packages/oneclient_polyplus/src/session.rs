@@ -241,22 +241,26 @@ fn dispatch(events: &EventBus, payload: &str) {
             message_id,
             sender,
             content,
-            ..
+            session_invite_id,
+            session_invite_status,
         } => events.chat(ChatEvent::MessageReceived {
             group_id,
             message_id,
             sender,
             content,
+            invite_id: session_invite_id,
+            invite_status: session_invite_status,
         }),
         ClientboundPacket::GroupMessageEdited {
             group_id,
             message_id,
             content,
-            ..
+            session_invite_status,
         } => events.chat(ChatEvent::MessageEdited {
             group_id,
             message_id,
             content,
+            invite_status: session_invite_status,
         }),
         ClientboundPacket::GroupMessageDeleted {
             group_id,
@@ -304,10 +308,8 @@ pub(crate) async fn login(
 ) -> Result<String, PlusError> {
     let server_id = generate_server_id();
 
-    let mut join = reqwest::Request::new(
-        reqwest::Method::POST,
-        reqwest::Url::parse(MOJANG_JOIN_URL)?,
-    );
+    let mut join =
+        reqwest::Request::new(reqwest::Method::POST, reqwest::Url::parse(MOJANG_JOIN_URL)?);
     join.headers_mut().insert(
         reqwest::header::CONTENT_TYPE,
         reqwest::header::HeaderValue::from_static("application/json"),
@@ -454,7 +456,10 @@ mod tests {
             ),
         );
 
-        match receiver.try_recv().expect("an event should have been emitted") {
+        match receiver
+            .try_recv()
+            .expect("an event should have been emitted")
+        {
             oneclient_events::Event::Chat(ChatEvent::MessageReceived {
                 group_id,
                 message_id,
@@ -464,6 +469,34 @@ mod tests {
                 assert_eq!(group_id, 3);
                 assert_eq!(message_id, 9);
                 assert_eq!(content, "hey");
+            }
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn a_live_invite_keeps_its_id_and_status() {
+        let (events, mut receiver) = EventBus::channel();
+        let sender = Uuid::nil();
+
+        dispatch(
+            &events,
+            &format!(
+                r#"{{"type":"GroupMessageReceived","group_id":3,"message_id":9,"sender":"{sender}","content":"","session_invite_id":12,"session_invite_status":"pending"}}"#
+            ),
+        );
+
+        match receiver
+            .try_recv()
+            .expect("an event should have been emitted")
+        {
+            oneclient_events::Event::Chat(ChatEvent::MessageReceived {
+                invite_id,
+                invite_status,
+                ..
+            }) => {
+                assert_eq!(invite_id, Some(12));
+                assert_eq!(invite_status.as_deref(), Some("pending"));
             }
             other => panic!("unexpected event: {other:?}"),
         }

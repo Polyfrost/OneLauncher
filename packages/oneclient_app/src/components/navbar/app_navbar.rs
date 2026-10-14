@@ -270,7 +270,14 @@ impl Component for NavbarRight {
             .map(|account| account.id.to_string())
             .unwrap_or_else(|| uuid::Uuid::nil().to_string());
 
-        let open_messages = |_| crate::view::chat::open_chat_window();
+        let social_dispatch = dispatch.clone();
+        let toggle_social = move |_| {
+            if crate::view::chat::is_chat_window_open() {
+                crate::view::chat::open_chat_window();
+            } else {
+                social_dispatch.toggle_social();
+            }
+        };
 
         let notif_dispatch = dispatch.clone();
         let open_notifications = move |_| {
@@ -293,10 +300,10 @@ impl Component for NavbarRight {
             .spacing(8.)
             .child(
                 super::navbar_button()
-                    .tooltip("Messages")
+                    .tooltip("Friends and chat")
                     .enabled(has_account)
-                    .child(messages_icon(unread_chats))
-                    .on_press(open_messages),
+                    .child(social_icon(unread_chats))
+                    .on_press(toggle_social),
             )
             .child(
                 super::navbar_button()
@@ -351,11 +358,11 @@ fn avatar_with_gear(uuid: String) -> impl IntoElement {
         )
 }
 
-fn messages_icon(unread: bool) -> impl IntoElement {
+fn social_icon(unread: bool) -> impl IntoElement {
     rect()
         .width(Size::px(20.))
         .height(Size::px(20.))
-        .child(Icon::new(IconType::MessageTextSquare01).size(20.))
+        .child(Icon::new(IconType::Users01).size(20.))
         .maybe_child(unread.then(|| {
             rect()
                 .position(Position::new_absolute().top(-2.).right(-2.))

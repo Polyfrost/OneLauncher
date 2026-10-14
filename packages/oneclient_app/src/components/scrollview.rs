@@ -1,39 +1,10 @@
 #![allow(dead_code)]
 use freya::prelude::*;
 
-use crate::components::{Icon, IconType};
 use crate::theme::colors;
 
 const LAZY_OVERSCAN: i64 = 3;
 const SCROLLBAR_GUTTER: f32 = 14.;
-
-pub fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
-    let on = *auto_scroll.read();
-    rect()
-        .horizontal()
-        .cross_align(Alignment::Center)
-        .spacing(6.)
-        .padding(Gaps::new_symmetric(5., 10.))
-        .corner_radius(CornerRadius::new_all(7.))
-        .background(if on {
-            colors::brand().with_a(40)
-        } else {
-            colors::component_bg()
-        })
-        .cursor(CursorIcon::Pointer)
-        .on_press(move |_| auto_scroll.toggle())
-        .child(Icon::new(IconType::ChevronDown).size(13.).color(if on {
-            colors::brand()
-        } else {
-            colors::fg_secondary()
-        }))
-        .child(label().text("Auto-scroll").font_size(11.).color(if on {
-            colors::brand()
-        } else {
-            colors::fg_secondary()
-        }))
-        .into_element()
-}
 
 pub(crate) fn normalize_wheel_delta(delta: f64, scale_factor: f64) -> f32 {
     if delta == 0.0 {

@@ -10,6 +10,17 @@ use oneclient_polyplus::{
 
 use crate::state::AsyncStatus;
 
+#[must_use]
+pub fn chat_allowed(
+    settings: &oneclient_core::settings::LauncherSettings,
+    consent_declined: bool,
+) -> bool {
+    !consent_declined
+        && !settings.declined_tos
+        && settings.accepted_tos_version > 0
+        && settings.accepted_privacy_version > 0
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct FriendRequests {
     pub incoming: Vec<FriendRequest>,
@@ -87,6 +98,14 @@ pub struct MessageInvite {
 
 impl MessageInvite {
     #[must_use]
+    pub fn is_open(&self) -> bool {
+        !matches!(
+            self.status.to_ascii_lowercase().as_str(),
+            "accepted" | "declined" | "expired" | "cancelled" | "canceled"
+        )
+    }
+
+    #[must_use]
     pub fn new(id: i32, status: Option<String>) -> Self {
         Self {
             id,
@@ -137,8 +156,8 @@ pub enum SelfStatus {
 pub struct ChatInvite {
     pub id: i32,
     pub from: Uuid,
-    pub world: String,
-    pub cluster: String,
+    pub group_id: i32,
+    pub message_id: i64,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -191,7 +210,6 @@ pub struct ChatState {
     roster: ChatRoster,
     threads: HashMap<i32, ThreadStatus>,
     complete: HashMap<i32, bool>,
-    invites: Vec<ChatInvite>,
 }
 
 impl ChatState {
@@ -366,8 +384,29 @@ impl ChatState {
     }
 
     #[must_use]
-    pub fn invites(&self) -> &[ChatInvite] {
-        &self.invites
+    pub fn invites(&self) -> Vec<ChatInvite> {
+        let mut invites: Vec<ChatInvite> = self
+            .messages
+            .iter()
+            .flat_map(|(group_id, messages)| {
+                messages.iter().filter_map(move |message| {
+                    let invite = message.invite.as_ref()?;
+                    (invite.is_open() && Some(message.sender) != self.owner).then_some(ChatInvite {
+                        id: invite.id,
+                        from: message.sender,
+                        group_id: *group_id,
+                        message_id: message.id,
+                    })
+                })
+            })
+            .collect();
+        invites.sort_by_key(|invite| std::cmp::Reverse(invite.message_id));
+        invites
+    }
+
+    #[must_use]
+    pub fn has_messages(&self, group_id: i32) -> bool {
+        self.messages.contains_key(&group_id)
     }
 
     pub fn note_activity(&mut self, group_id: i32, sender: Uuid, preview: String, unread: bool) {
@@ -693,6 +732,60 @@ mod tests {
             message.invite.as_ref().map(|i| i.status.as_str()),
             Some("pending")
         );
+    }
+
+    #[test]
+    fn open_invites_from_others_are_listed_newest_first() {
+        let mut chat = ChatState::default();
+        let me = Uuid::from_u128(1);
+        let friend = Uuid::from_u128(2);
+        chat.set_owner(Some(me));
+
+        let invite = |id: i64, sender: Uuid, invite_id: i32, status: &str| ChatMessage {
+            id,
+            sender,
+            content: String::new(),
+            sent_at: None,
+            edited: false,
+            invite: Some(MessageInvite::new(invite_id, Some(status.into()))),
+        };
+
+        chat.upsert(7, invite(10, friend, 1, "pending"));
+        chat.upsert(7, invite(11, friend, 2, "accepted"));
+        chat.upsert(7, invite(12, me, 3, "pending"));
+        chat.upsert(8, invite(20, friend, 4, "pending"));
+        chat.upsert(8, message(21, "no invite"));
+
+        let ids: Vec<i32> = chat.invites().iter().map(|invite| invite.id).collect();
+        assert_eq!(ids, vec![4, 1]);
+        assert_eq!(chat.invites()[0].group_id, 8);
+    }
+
+    fn settings(
+        tos: u32,
+        privacy: u32,
+        declined: bool,
+    ) -> oneclient_core::settings::LauncherSettings {
+        oneclient_core::settings::LauncherSettings {
+            accepted_tos_version: tos,
+            accepted_privacy_version: privacy,
+            declined_tos: declined,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn chat_needs_both_documents_accepted() {
+        assert!(chat_allowed(&settings(1, 1, false), false));
+        assert!(!chat_allowed(&settings(0, 0, false), false));
+        assert!(!chat_allowed(&settings(1, 0, false), false));
+        assert!(!chat_allowed(&settings(0, 1, false), false));
+    }
+
+    #[test]
+    fn declining_turns_chat_off() {
+        assert!(!chat_allowed(&settings(0, 0, true), false));
+        assert!(!chat_allowed(&settings(1, 1, false), true));
     }
 
     #[test]

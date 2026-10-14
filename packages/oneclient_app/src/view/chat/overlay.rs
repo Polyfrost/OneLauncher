@@ -1,7 +1,7 @@
 use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
 
-use crate::hooks::{use_dispatch, use_social_open, use_social_popped_notice};
+use crate::hooks::{use_chat_allowed, use_dispatch, use_social_open, use_social_popped_notice};
 use crate::theme::{self, colors};
 
 use super::common::{CARD_RADIUS_PX, ROW_RADIUS_PX, chip_bg, hairline, inset_border, popup_shadow};
@@ -17,8 +17,9 @@ impl Component for SocialOverlay {
     fn render(&self) -> impl IntoElement {
         let open = use_social_open();
         let notice = use_social_popped_notice();
+        let allowed = use_chat_allowed();
 
-        if !open && !notice {
+        if !allowed || (!open && !notice) {
             return rect().into_element();
         }
 

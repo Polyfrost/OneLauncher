@@ -102,7 +102,7 @@ impl Component for ListPane {
                             ),
                     ),
             )
-            .child(InvitesCard)
+            .child(InvitesCard { view: self.view })
             .child(tab_strip(active_tab, unread, incoming, move |next| {
                 let mut tab = tab;
                 tab.set(next);
@@ -390,7 +390,9 @@ impl Component for ErrorBanner {
 }
 
 #[derive(PartialEq)]
-struct InvitesCard;
+struct InvitesCard {
+    view: State<PanelView>,
+}
 
 impl Component for InvitesCard {
     fn render(&self) -> impl IntoElement {
@@ -451,7 +453,13 @@ impl Component for InvitesCard {
                         el.children(
                             invites
                                 .into_iter()
-                                .map(|invite| InviteRow { invite }.into_element())
+                                .map(|invite| {
+                                    InviteRow {
+                                        invite,
+                                        view: self.view,
+                                    }
+                                    .into_element()
+                                })
                                 .collect::<Vec<_>>(),
                         )
                         .child(
@@ -479,6 +487,7 @@ impl Component for InvitesCard {
 #[derive(PartialEq)]
 struct InviteRow {
     invite: ChatInvite,
+    view: State<PanelView>,
 }
 
 impl Component for InviteRow {
@@ -486,7 +495,10 @@ impl Component for InviteRow {
         let dispatch = use_dispatch();
         let from = use_player_name(self.invite.from);
         let id = self.invite.id;
+        let group_id = self.invite.group_id;
+        let view = self.view;
         let decline = dispatch.clone();
+        let open = dispatch.clone();
 
         rect()
             .horizontal()
@@ -496,6 +508,8 @@ impl Component for InviteRow {
             .content(Content::Flex)
             .cross_align(Alignment::Center)
             .border(edge_border(hairline(), 1., 0., 0.))
+            .cursor(CursorIcon::Pointer)
+            .on_press(move |_| open_chat(&open, view, group_id))
             .child(
                 Avatar::new(self.invite.from.to_string())
                     .size(28.)
@@ -508,7 +522,7 @@ impl Component for InviteRow {
                     .spacing(3.)
                     .child(
                         label()
-                            .text(self.invite.world.clone())
+                            .text("World invite")
                             .font_size(12.)
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary())
@@ -517,21 +531,26 @@ impl Component for InviteRow {
                     )
                     .child(
                         label()
-                            .text(format!("{from} · {}", self.invite.cluster))
+                            .text(format!("From {from}"))
                             .font_size(11.)
                             .color(colors::fg_secondary())
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis),
                     ),
             )
-            .child(accent_button("Launch", move |_| {
+            .child(accent_button("Launch", move |e: Event<PressEventData>| {
+                e.stop_propagation();
                 dispatch.accept_chat_invite(id)
             }))
-            .child(HeaderButton {
-                icon: IconType::XClose,
-                tooltip: "Decline",
-                on_press: EventHandler::new(move |_| decline.decline_chat_invite(id)),
-            })
+            .child(
+                rect()
+                    .on_press(|e: Event<PressEventData>| e.stop_propagation())
+                    .child(HeaderButton {
+                        icon: IconType::XClose,
+                        tooltip: "Decline",
+                        on_press: EventHandler::new(move |_| decline.decline_chat_invite(id)),
+                    }),
+            )
     }
 }
 

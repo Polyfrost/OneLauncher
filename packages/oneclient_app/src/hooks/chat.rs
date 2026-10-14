@@ -152,7 +152,25 @@ pub async fn load_conversations(station: Station) {
             .write_channel(AppChannel::Chat)
             .chat
             .set_conversations(groups),
-        Err(err) => report(station, &err),
+        Err(err) => {
+            report(station, &err);
+            return;
+        }
+    }
+
+    let unread: Vec<i32> = {
+        let state = station.peek();
+        state
+            .chat
+            .conversations()
+            .iter()
+            .filter(|conversation| conversation.unread && !state.chat.has_messages(conversation.id))
+            .map(|conversation| conversation.id)
+            .collect()
+    };
+
+    for group_id in unread {
+        load_messages(station, group_id).await;
     }
 }
 

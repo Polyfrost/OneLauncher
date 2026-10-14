@@ -9,8 +9,8 @@ use crate::{
     components::{Avatar, Icon, IconType},
     hooks::{
         settled_or_loading, try_default_account, use_active_cluster_id, use_browser_type,
-        use_chat_unread, use_clusters, use_current_account, use_dispatch, use_link_confirm,
-        use_notifications_snapshot,
+        use_chat_allowed, use_chat_unread, use_clusters, use_current_account, use_dispatch,
+        use_link_confirm, use_notifications_snapshot,
     },
     theme,
     utils::default_cluster,
@@ -262,6 +262,7 @@ impl Component for NavbarRight {
         let dispatch = use_dispatch();
         let unread = use_notifications_snapshot().unread_count();
         let unread_chats = use_chat_unread();
+        let chat_allowed = use_chat_allowed();
 
         let has_account =
             settled_or_loading(&current_account).is_none_or(|account| account.is_some());
@@ -298,13 +299,13 @@ impl Component for NavbarRight {
             .main_align(Alignment::End)
             .cross_align(Alignment::Center)
             .spacing(8.)
-            .child(
+            .maybe_child(chat_allowed.then(|| {
                 super::navbar_button()
                     .tooltip("Friends and chat")
                     .enabled(has_account)
                     .child(social_icon(unread_chats))
-                    .on_press(toggle_social),
-            )
+                    .on_press(toggle_social)
+            }))
             .child(
                 super::navbar_button()
                     .tooltip("Stats")

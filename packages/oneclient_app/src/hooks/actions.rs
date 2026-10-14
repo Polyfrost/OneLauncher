@@ -370,6 +370,12 @@ impl Actions {
 
     pub fn decline_tos(&self) {
         oneclient_common::consent::decline();
+        crate::view::chat::close_chat_window();
+        {
+            let mut guard = self.station.clone().write_channel(AppChannel::Social);
+            guard.social_open = false;
+            guard.social_popped_notice = false;
+        }
 
         if let Some(updated) = self.mutate_settings(|settings| {
             settings.declined_tos = true;

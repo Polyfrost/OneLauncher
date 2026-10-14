@@ -166,6 +166,14 @@ pub fn use_control_center_open() -> bool {
         .control_center_open
 }
 
+pub fn use_chat_allowed() -> bool {
+    let settings = use_radio(AppChannel::Settings);
+    crate::chat::chat_allowed(
+        &settings.read().settings.settings,
+        oneclient_common::consent::declined(),
+    )
+}
+
 pub fn use_social_open() -> bool {
     use_radio(AppChannel::Social).read().social_open
 }
@@ -217,7 +225,7 @@ pub fn use_chat_online_set(players: Vec<uuid::Uuid>) -> std::collections::HashSe
 }
 
 pub fn use_chat_invites() -> Vec<crate::chat::ChatInvite> {
-    use_radio(AppChannel::Chat).read().chat.invites().to_vec()
+    use_radio(AppChannel::Chat).read().chat.invites()
 }
 
 pub fn use_chat_friend_request() -> crate::chat::FriendRequestStatus {

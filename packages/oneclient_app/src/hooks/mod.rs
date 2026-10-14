@@ -30,6 +30,7 @@ pub use active_cluster::{
 pub use actions::{Actions, NotificationBuilder, PumpSignal, modpack_job_running};
 pub use queries::ALL_VERSIONS;
 pub(crate) use queries::use_folder_watch;
+pub use queries::wardrobe;
 pub use queries::{
     AddOfflineAccountKeys, AvailableBundlesQuery, BROWSE_PAGE_SIZE, BeginMicrosoftLoginMutation,
     CachedImageQuery, CancelMicrosoftLoginKeys, CancelMicrosoftLoginMutation, ClusterAction,

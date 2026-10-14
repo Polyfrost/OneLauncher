@@ -4953,6 +4953,7 @@ dependencies = [
  "regex",
  "rfd",
  "rust-embed",
+ "serde_json",
  "sysinfo",
  "tokio",
  "tracing",

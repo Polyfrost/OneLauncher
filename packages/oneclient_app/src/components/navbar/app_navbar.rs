@@ -9,8 +9,7 @@ use crate::{
     components::{Avatar, Icon, IconType},
     hooks::{
         settled_or_loading, try_default_account, use_active_cluster_id, use_browser_type,
-        use_clusters, use_current_account, use_dispatch, use_link_confirm,
-        use_notifications_snapshot,
+        use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
     },
     theme,
     utils::default_cluster,
@@ -148,9 +147,9 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             nav_label: "Browse",
         })
         .child(NavLink {
-            active: false,
-            target: NavTarget::External("https://store.polyfrost.org"),
-            nav_label: "Cosmetics",
+            active: route == Route::Wardrobe {},
+            target: NavTarget::Route(Route::Wardrobe {}),
+            nav_label: "Wardrobe",
         })
 }
 
@@ -173,7 +172,6 @@ fn browse_target() -> Route {
 #[derive(PartialEq, Clone)]
 enum NavTarget {
     Route(Route),
-    External(&'static str),
 }
 
 #[derive(PartialEq)]
@@ -188,7 +186,6 @@ impl Component for NavLink {
         let mut hovering = use_state(|| false);
         let a11y_id = use_a11y();
         let focused = use_focus(a11y_id);
-        let mut confirm_link = use_link_confirm();
 
         let active = self.active;
         let target = self.target.clone();
@@ -233,7 +230,6 @@ impl Component for NavLink {
                     NavTarget::Route(route) => {
                         let _ = RouterContext::get().push(route.clone());
                     }
-                    NavTarget::External(url) => confirm_link.set(Some((*url).to_string())),
                 }
             })
             .on_pointer_over(move |_| hovering.set(true))

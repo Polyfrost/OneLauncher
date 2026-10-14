@@ -12,6 +12,7 @@ use oneclient_core::LauncherError;
 
 pub const BROWSE_PAGE_SIZE: usize = DEFAULT_PAGE_SIZE;
 pub const VERSIONS_PAGE_SIZE: usize = 20;
+pub const ALL_VERSIONS: usize = usize::MAX;
 
 const VERSIONS_STALE: Duration = Duration::from_secs(5 * 60);
 
@@ -19,6 +20,8 @@ pub fn content_type_for_slug(slug: &str) -> ContentType {
     match slug {
         "shader" => ContentType::Shader,
         "texture" => ContentType::ResourcePack,
+        "datapack" => ContentType::DataPack,
+        "modpack" => ContentType::Modpack,
         _ => ContentType::Mod,
     }
 }
@@ -207,6 +210,7 @@ pub struct PackageVersionsKeys {
     pub game_version: Option<String>,
     pub loader: Option<GameLoader>,
     pub page: usize,
+    pub page_size: usize,
 }
 
 impl QueryCapability for PackageVersionsQuery {
@@ -216,28 +220,24 @@ impl QueryCapability for PackageVersionsQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let provider = state.services.packages.get(keys.provider)?;
-        Ok(provider
-            .list_versions(
-                &keys.project_id,
-                keys.game_version.as_deref(),
-                keys.loader,
-                keys.page * VERSIONS_PAGE_SIZE,
-                VERSIONS_PAGE_SIZE,
-                &state.services.content(),
-            )
-            .await?)
+        let keys = keys.clone();
+        crate::launcher::off_ui(async move {
+            Ok(state
+                .services
+                .packages
+                .get(keys.provider)?
+                .list_versions(
+                    &keys.project_id,
+                    keys.game_version.as_deref(),
+                    keys.loader,
+                    keys.page.saturating_mul(keys.page_size),
+                    keys.page_size,
+                    &state.services.content(),
+                )
+                .await?)
+        })
+        .await
     }
-}
-
-pub fn use_package_versions(
-    provider: ProviderId,
-    project_id: String,
-    game_version: Option<String>,
-    loader: Option<GameLoader>,
-    page: usize,
-) -> UseQuery<PackageVersionsQuery> {
-    use_package_versions_when(true, provider, project_id, game_version, loader, page)
 }
 
 pub fn use_package_versions_when(
@@ -247,6 +247,7 @@ pub fn use_package_versions_when(
     game_version: Option<String>,
     loader: Option<GameLoader>,
     page: usize,
+    page_size: usize,
 ) -> UseQuery<PackageVersionsQuery> {
     let keys = enabled.then_some(PackageVersionsKeys {
         provider,
@@ -254,6 +255,7 @@ pub fn use_package_versions_when(
         game_version,
         loader,
         page,
+        page_size,
     });
 
     use_query(Query::new(keys, PackageVersionsQuery).stale_time(VERSIONS_STALE))

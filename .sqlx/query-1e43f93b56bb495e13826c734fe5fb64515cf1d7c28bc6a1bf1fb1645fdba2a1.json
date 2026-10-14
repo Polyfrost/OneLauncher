@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM release_migration_waitlist WHERE target_cluster_id = ? AND provider = ? AND project_id = ?",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "1e43f93b56bb495e13826c734fe5fb64515cf1d7c28bc6a1bf1fb1645fdba2a1"
+}

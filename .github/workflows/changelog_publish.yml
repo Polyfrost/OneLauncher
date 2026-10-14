@@ -1,0 +1,35 @@
+name: Publish Changelog
+
+on:
+  release:
+    types: [published, edited]
+  workflow_dispatch:
+
+concurrency:
+  group: changelog-publish
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      # The launcher reads releases/latest/download/changelog.json, so the
+      # snapshot of the last 50 release bodies always lives on the latest release.
+      - name: Build changelog.json from release bodies
+        run: |
+          gh api "repos/$GH_REPO/releases?per_page=50" --jq '[.[]
+            | select(.draft | not)
+            | select(.tag_name | startswith("oneclient-"))
+            | {
+                version: (.tag_name | ltrimstr("oneclient-")),
+                body: ((.body // "") | sub("^Automated release for OneClient [^\n]*\\s*"; ""))
+              }]' > changelog.json
+          jq -r '.[].version' changelog.json
+
+      - name: Upload to latest release
+        run: gh release upload "$(gh release view --json tagName -q .tagName)" changelog.json --clobber

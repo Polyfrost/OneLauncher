@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM cluster_bundle_overrides\n        WHERE cluster_id = ? AND package_id = ? AND override_type = 'disabled'\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "af0567c14b689a3f53207179ba9ee2e369b99542369fa5401aa4057d0b326b86"
+}

@@ -1,10 +1,10 @@
+use std::sync::Arc;
+
 use freya::prelude::*;
 use oneclient_common::Patch;
-use oneclient_java::JavaRuntime;
 use oneclient_common::domain::GameLoader;
-use oneclient_core::settings::{
-    GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution,
-};
+use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
+use oneclient_java::JavaRuntime;
 
 use crate::components::{
     Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle,
@@ -12,15 +12,19 @@ use crate::components::{
 };
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
-    try_game_profile, use_cluster_mutation, use_dispatch, use_game_profile, use_java_runtimes,
-    use_loader_versions, use_settings_snapshot,
+    settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
+    use_game_profile, use_game_snapshot, use_java_runtimes, use_loader_versions,
+    use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
-use crate::view::app::settings::{section_header, settings_row};
+use crate::view::app::clusters::{DeleteInstanceModal, EditInstanceModal, InstanceFacts};
+use crate::view::app::settings::{section_header, settings_row, settings_row_disabled};
+use oneclient_core::clusters::{can_migrate_manually, rank_migration_sources};
 
 use super::cluster_not_found;
+use super::modpack_settings::{ModpackRepairRow, ModpackUpdateRow};
 use crate::hooks::use_cluster;
 
 #[derive(PartialEq)]
@@ -64,33 +68,72 @@ impl Component for ClusterSettings {
         let versions = loader_versions(&versions_query);
         let runtimes = java_runtimes(&runtimes_query);
 
+        let instance_row = {
+            InstanceRow {
+                editable: cluster.user_created,
+                facts: InstanceFacts {
+                    cluster_id,
+                    name: cluster.name.clone(),
+                    description: cluster.description.clone(),
+                    tags: cluster.tags.clone(),
+                    cover: cluster.cover_file(),
+                    mc_version: cluster.mc_version.clone(),
+                    mc_loader: cluster.mc_loader,
+                    kind: cluster.kind,
+                    modpack: cluster.linked_modpack_hash.is_some(),
+                },
+            }
+            .into_element()
+        };
+
+        let mod_loader = !cluster.lacks_mod_loader();
+        let loader_section: Vec<Element> = if mod_loader {
+            vec![
+                section_header("LOADER").into_element(),
+                LoaderRow {
+                    cluster_id,
+                    loader,
+                    selected: cluster.mc_loader_version.clone(),
+                    versions,
+                }
+                .into_element(),
+            ]
+        } else {
+            Vec::new()
+        };
+        let migrate_row: Vec<Element> = if mod_loader {
+            vec![MigrateFromRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
+
+        let modpack_section: Vec<Element> = if cluster.linked_modpack_hash.is_some() {
+            vec![
+                section_header("MODPACK").into_element(),
+                ModpackUpdateRow { cluster_id }.into_element(),
+                ModpackRepairRow { cluster_id }.into_element(),
+            ]
+        } else {
+            Vec::new()
+        };
+
         cluster_content()
             .child(
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::fill())
+                    .scrollbar_gutter(true)
                     .spacing(4.)
-                    .child(section_header("LOADER"))
+                    .child(section_header("INSTANCE"))
+                    .child(instance_row)
                     .child(
-                        LoaderRow {
+                        DedicatedDirRow {
                             cluster_id,
-                            loader,
-                            selected: cluster.mc_loader_version.clone(),
-                            versions,
+                            dedicated: cluster.uses_dedicated_dir(),
+                            locked: cluster.is_isolated(),
                         }
                         .into_element(),
                     )
-                    .child(section_header("JAVA"))
-                    .child(
-                        JavaRow {
-                            cluster_id,
-                            value: profile.java_path.clone(),
-                            global: global.java_path.clone(),
-                            runtimes,
-                        }
-                        .into_element(),
-                    )
-                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
                     .child(section_header("GAME"))
                     .child(
                         ToggleRow {
@@ -112,10 +155,31 @@ impl Component for ClusterSettings {
                         MemoryRow {
                             cluster_id,
                             value: profile.mem_max,
-                            global: global.mem_max.unwrap_or(4096),
+                            global: global
+                                .mem_max
+                                .unwrap_or_else(oneclient_common::default_mem_max),
                         }
                         .into_element(),
                     )
+                    .append_children(loader_section)
+                    .child(section_header("SHORTCUT"))
+                    .child(ShortcutRow { cluster_id }.into_element())
+                    .child(section_header("JAVA"))
+                    .child(
+                        JavaRow {
+                            cluster_id,
+                            value: profile.java_path.clone(),
+                            global: global.java_path.clone(),
+                            runtimes,
+                        }
+                        .into_element(),
+                    )
+                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
+                    .child(text_row(cluster_id, TextField::GameArgs, &profile, &global))
+                    .child(section_header("PROCESS"))
+                    .child(text_row(cluster_id, TextField::Pre, &profile, &global))
+                    .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
+                    .child(text_row(cluster_id, TextField::Post, &profile, &global))
                     .child(section_header("CONTENT"))
                     .child(
                         BrowserUpdateModeRow {
@@ -125,18 +189,8 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
-                    .child(section_header("DIRECTORY"))
-                    .child(
-                        DedicatedDirRow {
-                            cluster_id,
-                            dedicated: cluster.uses_dedicated_dir(),
-                        }
-                        .into_element(),
-                    )
-                    .child(section_header("PROCESS"))
-                    .child(text_row(cluster_id, TextField::Pre, &profile, &global))
-                    .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
-                    .child(text_row(cluster_id, TextField::Post, &profile, &global))
+                    .append_children(migrate_row)
+                    .append_children(modpack_section)
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element()),
             )
@@ -180,6 +234,11 @@ fn reset_button(overridden: bool, on_reset: EventHandler<()>) -> impl IntoElemen
         .small()
         .ghost()
         .icon()
+        .tooltip(if overridden {
+            "Reset to the global setting"
+        } else {
+            "Already using the global setting"
+        })
         .corner_radius(CornerRadius::new_all(7.))
         .maybe(overridden, |el| el.on_press(move |_| on_reset.call(())))
         .enabled(overridden)
@@ -253,6 +312,91 @@ impl Component for ToggleRow {
 }
 
 #[derive(PartialEq)]
+struct InstanceRow {
+    editable: bool,
+    facts: InstanceFacts,
+}
+
+impl Component for InstanceRow {
+    fn render(&self) -> impl IntoElement {
+        let mut editing = use_state(|| false);
+        let mut deleting = use_state(|| false);
+        let cluster_id = self.facts.cluster_id;
+        let name = self.facts.name.clone();
+        let facts = self.facts.clone();
+
+        let editable = self.editable;
+        let description = if editable {
+            "Change this instance's name, description, tags and cover image, or remove it from your list."
+        } else {
+            "Remove this version from your list."
+        };
+
+        let buttons = rect()
+            .horizontal()
+            .spacing(8.)
+            .maybe_child(editable.then(|| {
+                Button::new()
+                    .small()
+                    .secondary()
+                    .on_press(move |_| editing.set(true))
+                    .text("Edit")
+                    .into_element()
+            }))
+            .child(
+                Button::new()
+                    .small()
+                    .danger()
+                    .on_press(move |_| deleting.set(true))
+                    .text("Delete"),
+            );
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .child(settings_row(
+                IconType::Pencil01,
+                "Instance Details",
+                description,
+                buttons,
+            ))
+            .maybe_child(editing.read().then(|| {
+                EditInstanceModal::new(facts.clone(), move |()| editing.set(false)).into_element()
+            }))
+            .maybe_child(deleting.read().then(|| {
+                DeleteInstanceModal::new(cluster_id, name.clone(), move |()| deleting.set(false))
+                    .into_element()
+            }))
+    }
+}
+
+#[derive(PartialEq)]
+struct ShortcutRow {
+    cluster_id: i64,
+}
+
+impl Component for ShortcutRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .on_press(move |_| dispatch.create_cluster_shortcut(cluster_id))
+            .text("Create Shortcut");
+
+        settings_row(
+            IconType::Rocket02,
+            "Desktop Shortcut",
+            "Save a shortcut that starts this version straight from your desktop, \
+             without opening the launcher first.",
+            button,
+        )
+    }
+}
+
+#[derive(PartialEq)]
 struct VerifyFilesRow {
     cluster_id: i64,
 }
@@ -273,7 +417,11 @@ impl Component for VerifyFilesRow {
             .secondary()
             .enabled(!running)
             .maybe(!running, |el| el.on_press(on_press))
-            .text(if running { "Verifying..." } else { "Verify Files" });
+            .text(if running {
+                "Verifying..."
+            } else {
+                "Verify Files"
+            });
 
         settings_row(
             IconType::ClipboardCheck,
@@ -289,6 +437,7 @@ impl Component for VerifyFilesRow {
 struct DedicatedDirRow {
     cluster_id: i64,
     dedicated: bool,
+    locked: bool,
 }
 
 impl Component for DedicatedDirRow {
@@ -296,6 +445,16 @@ impl Component for DedicatedDirRow {
         let cluster_id = self.cluster_id;
         let dedicated = self.dedicated;
         let mutation = use_cluster_mutation();
+
+        if self.locked {
+            return settings_row_disabled(
+                IconType::Folder,
+                "Dedicated Directory",
+                "Vanilla and modded instances always run in their own folder, so their worlds, settings and packs stay separate.",
+                toggle_controlled(true, (|()| {}).into()),
+            )
+            .into_element();
+        }
 
         let on_toggle: EventHandler<()> = (move |()| {
             mutation.mutate(ClusterAction::SetDedicatedDir {
@@ -311,6 +470,7 @@ impl Component for DedicatedDirRow {
             "Run this cluster in its own .minecraft instead of the shared one.",
             toggle_controlled(dedicated, on_toggle),
         )
+        .into_element()
     }
 }
 
@@ -327,8 +487,8 @@ impl Component for MemoryRow {
         let overridden = self.value.is_some();
         let dispatch = use_dispatch();
 
-        let global = self.global.to_string();
-        let initial = self.value.unwrap_or(self.global).to_string();
+        let global = self.global;
+        let initial = self.value.map(|v| v.to_string()).unwrap_or_default();
         let mut memory = use_state({
             let v = initial.clone();
             move || v
@@ -357,13 +517,13 @@ impl Component for MemoryRow {
         }
 
         let on_reset: EventHandler<()> = (move |()| {
-            last.set(global.clone());
-            memory.set(global.clone());
+            last.set(String::new());
+            memory.set(String::new());
             dispatch.update_cluster_profile(cluster_id, clear_update(Field::MemMax));
         })
         .into();
 
-        let control = memory_field(memory);
+        let control = memory_field(memory, "Global", global);
 
         settings_row(
             IconType::Database01,
@@ -470,6 +630,7 @@ impl Component for ResolutionRow {
 #[derive(Clone, Copy, PartialEq)]
 enum TextField {
     JvmArgs,
+    GameArgs,
     Pre,
     Wrapper,
     Post,
@@ -483,6 +644,12 @@ impl TextField {
                 "JVM Arguments",
                 "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",
                 "-XX:+UseG1GC",
+            ),
+            Self::GameArgs => (
+                IconType::Play,
+                "Game Arguments",
+                "Extra arguments passed to Minecraft. Separate them with spaces; quote values containing spaces.",
+                "--tracy --tracyNoImages",
             ),
             Self::Pre => (
                 IconType::FilePlus02,
@@ -508,6 +675,7 @@ impl TextField {
     fn value(self, profile: &GameSettingsProfile) -> Option<String> {
         match self {
             Self::JvmArgs => profile.launch_args.clone(),
+            Self::GameArgs => profile.game_args.clone(),
             Self::Pre => profile.hook_pre.clone(),
             Self::Wrapper => profile.hook_wrapper.clone(),
             Self::Post => profile.hook_post.clone(),
@@ -518,6 +686,7 @@ impl TextField {
         let mut u = ProfileUpdate::default();
         match self {
             Self::JvmArgs => u.launch_args = value,
+            Self::GameArgs => u.game_args = value,
             Self::Pre => u.hook_pre = value,
             Self::Wrapper => u.hook_wrapper = value,
             Self::Post => u.hook_post = value,
@@ -589,6 +758,7 @@ impl Component for TextRow {
 
         let control = TextInput::new(text)
             .placeholder(placeholder)
+            .expandable(true)
             .width(Size::px(220.));
 
         settings_row(
@@ -721,11 +891,115 @@ impl Component for BrowserUpdateModeRow {
 }
 
 #[derive(PartialEq)]
+struct MigrateFromRow {
+    cluster_id: i64,
+}
+
+impl Component for MigrateFromRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+        let checking = use_release_migration_checking(cluster_id);
+        let game = use_game_snapshot();
+        let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
+        let mut picked = use_state(|| None::<(i64, i64)>);
+
+        let mut routes: Vec<(String, i64, i64)> = Vec::new();
+        if let Some(this) = clusters.iter().find(|cluster| cluster.id == cluster_id) {
+            routes.extend(
+                rank_migration_sources(this, &clusters)
+                    .into_iter()
+                    .map(|source| (format!("From {}", source.name), cluster_id, source.id)),
+            );
+            routes.extend(
+                clusters
+                    .iter()
+                    .filter(|other| {
+                        other.id != cluster_id
+                            && can_migrate_manually(this.mc_loader, other.mc_loader)
+                    })
+                    .map(|target| (format!("To {}", target.name), target.id, cluster_id)),
+            );
+        }
+        let has_partners = !routes.is_empty();
+        let migratable =
+            use_migratable_routes(routes.iter().map(|route| (route.1, route.2)).collect());
+        routes.retain(|route| migratable.contains(&(route.1, route.2)));
+
+        let selected = picked
+            .read()
+            .and_then(|pair| routes.iter().find(|route| (route.1, route.2) == pair))
+            .or_else(|| routes.first())
+            .cloned();
+        let selected_pair = selected.as_ref().map(|route| (route.1, route.2));
+        let running = selected_pair
+            .is_some_and(|(target, source)| game.is_running(target) || game.is_running(source));
+
+        let mut button = Button::new()
+            .secondary()
+            .enabled(selected_pair.is_some() && !checking && !running)
+            .on_press(move |_| {
+                if let Some((target, source)) = selected_pair {
+                    dispatch.open_manual_migration(target, source);
+                }
+            });
+        button = if checking {
+            button
+                .child(Icon::new(IconType::Loading02).size(14.))
+                .text("Checking…")
+        } else {
+            button
+                .child(Icon::new(IconType::Copy01).size(14.))
+                .text("Migrate...")
+        };
+        if running {
+            button = button.tooltip("Close the game before migrating");
+        }
+
+        let picker: Element = if routes.is_empty() {
+            label()
+                .text(if has_partners {
+                    "Nothing installed from the browser left to copy"
+                } else {
+                    "No other clusters with this loader"
+                })
+                .font_size(12.)
+                .color(colors::fg_secondary())
+                .into_element()
+        } else {
+            let pairs: Vec<(i64, i64)> = routes.iter().map(|route| (route.1, route.2)).collect();
+            let names: Vec<String> = routes.iter().map(|route| route.0.clone()).collect();
+            Dropdown::new(selected.map(|route| route.0).unwrap_or_default(), names)
+                .width(Size::px(220.))
+                .height(Size::px(34.))
+                .on_select(move |index: usize| {
+                    if let Some(pair) = pairs.get(index) {
+                        picked.set(Some(*pair));
+                    }
+                })
+                .into_element()
+        };
+
+        settings_row(
+            IconType::Copy01,
+            "Migrate",
+            "Copy mods, resource packs and shaders you installed from the browser to or from another cluster.",
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .child(picker)
+                .child(button),
+        )
+    }
+}
+
+#[derive(PartialEq)]
 struct LoaderRow {
     cluster_id: i64,
     loader: GameLoader,
     selected: Option<String>,
-    versions: Vec<String>,
+    versions: Arc<[String]>,
 }
 
 impl Component for LoaderRow {
@@ -745,7 +1019,7 @@ impl Component for LoaderRow {
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
-            let options = versions.clone();
+            let options = versions.to_vec();
             Dropdown::new(selected, options.clone())
                 .width(Size::px(220.))
                 .height(Size::px(34.))
@@ -766,5 +1040,6 @@ impl Component for LoaderRow {
             ),
             control,
         )
+        .into_element()
     }
 }

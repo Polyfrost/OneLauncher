@@ -54,10 +54,8 @@ pub async fn hide_bundles_not_in(
     remote_paths: &[String],
 ) -> Result<u64, sqlx::Error> {
     if remote_paths.is_empty() {
-        let result = sqlx::query("UPDATE bundles SET hidden = 1 WHERE hidden = 0")
-            .execute(pool)
-            .await?;
-        return Ok(result.rows_affected());
+        tracing::warn!("refusing to hide bundles for an empty catalog");
+        return Ok(0);
     }
 
     let mut builder = QueryBuilder::new(
@@ -71,6 +69,21 @@ pub async fn hide_bundles_not_in(
 
     let result = builder.build().execute(pool).await?;
     Ok(result.rows_affected())
+}
+
+pub async fn list_delisted_names_for_version_loader(
+    pool: &SqlitePool,
+    mc_version: &str,
+    mc_loader: i64,
+) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar::<_, String>(
+        "SELECT name FROM bundles \
+         WHERE mc_version = ? AND mc_loader = ? AND hidden = 1 AND name IS NOT NULL",
+    )
+    .bind(mc_version)
+    .bind(mc_loader)
+    .fetch_all(pool)
+    .await
 }
 
 pub async fn list_visible_for_version_loader(
@@ -149,4 +162,81 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<BundleRow>, sqlx::Error> 
     )
     .fetch_all(pool)
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn pool() -> SqlitePool {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite");
+        sqlx::migrate!("../oneclient_db/migrations")
+            .run(&pool)
+            .await
+            .expect("migrations run");
+        pool
+    }
+
+    async fn seed(pool: &SqlitePool, remote_path: &str) {
+        upsert_bundle(
+            pool,
+            NewBundle {
+                remote_path,
+                mc_version: "1.21.11",
+                mc_loader: 1,
+                file_name: "bundle.mrpack",
+                name: Some("SkyBlock"),
+                version_id: Some("1"),
+                category: Some("test"),
+                loader_version: Some("0.16.0"),
+                disk_path: remote_path,
+                hidden: false,
+                etag: None,
+                synced_at: None,
+            },
+        )
+        .await
+        .expect("seed bundle");
+    }
+
+    #[tokio::test]
+    async fn an_empty_catalog_hides_nothing() {
+        let pool = pool().await;
+        seed(&pool, "bundles/skyblock.mrpack").await;
+
+        assert_eq!(hide_bundles_not_in(&pool, &[]).await.unwrap(), 0);
+        assert_eq!(
+            list_visible_for_version_loader(&pool, "1.21.11", 1)
+                .await
+                .unwrap()
+                .len(),
+            1,
+            "an empty catalog must not delist a live bundle"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_catalog_that_drops_one_bundle_hides_only_that_one() {
+        let pool = pool().await;
+        seed(&pool, "bundles/skyblock.mrpack").await;
+        seed(&pool, "bundles/qol.mrpack").await;
+
+        hide_bundles_not_in(&pool, &["bundles/qol.mrpack".to_string()])
+            .await
+            .unwrap();
+
+        let visible = list_visible_for_version_loader(&pool, "1.21.11", 1)
+            .await
+            .unwrap();
+        assert_eq!(visible.len(), 1);
+        assert_eq!(visible[0].remote_path, "bundles/qol.mrpack");
+        assert_eq!(
+            list_delisted_names_for_version_loader(&pool, "1.21.11", 1)
+                .await
+                .unwrap(),
+            vec!["SkyBlock".to_string()]
+        );
+    }
 }

@@ -1,7 +1,7 @@
 //! Its own Freya window sharing no radio station or query storage with the main one all it needs is the process-wide channel in [`oneclient_core::logger::console`]
 
 use std::collections::VecDeque;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use freya::prelude::*;
 use oneclient_core::logger;
@@ -13,22 +13,26 @@ use crate::components::{Button, Icon, IconType, LogViewer, Segment, SegmentedCon
 use crate::theme::colors;
 use crate::view::single_window::{Claim, SingleWindow};
 
-const WINDOW_TITLE: &str = "OneClient — Log Console";
+const WINDOW_TITLE: &str = "OneClient - Log Console";
 
 /// Old lines are dropped from the front this window can be left open for a whole session
 const MAX_LINES: usize = 5_000;
 
 static CONSOLE_WINDOW: SingleWindow = SingleWindow::new();
 
+static PREVIOUS_DIRECTIVES: Mutex<Option<String>> = Mutex::new(None);
+
 pub fn open_log_console() {
     let opening = match CONSOLE_WINDOW.claim() {
         Claim::Focus(id) => {
-            Platform::get().focus_window(Some(id));
+            Platform::get().focus_window(id);
             return;
         }
         Claim::Busy => return,
         Claim::Launch(guard) => guard,
     };
+
+    raise_to_debug();
 
     let platform = Platform::get();
     spawn_forever(async move {
@@ -52,8 +56,35 @@ fn window_config() -> WindowConfig {
         .with_window_handle(|window| CONSOLE_WINDOW.opened(window.id()))
         .with_on_close(|_, _| {
             CONSOLE_WINDOW.forget();
+            restore_directives();
             CloseDecision::Close
         })
+}
+fn raise_to_debug() {
+    let previous = logger::active_directives();
+    if previous != logger::default_directives() {
+        return;
+    }
+
+    if logger::set_filter(&logger::debug_directives()).is_ok() {
+        *PREVIOUS_DIRECTIVES.lock().expect("console directives") = Some(previous);
+    }
+}
+
+fn restore_directives() {
+    let Some(previous) = PREVIOUS_DIRECTIVES
+        .lock()
+        .expect("console directives")
+        .take()
+    else {
+        return;
+    };
+
+    if logger::active_directives() != logger::debug_directives() {
+        return;
+    }
+
+    let _ = logger::set_filter(&previous);
 }
 
 struct LogConsoleApp;

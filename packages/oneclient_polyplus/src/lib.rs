@@ -36,6 +36,9 @@ pub enum PlusError {
     #[error("Poly+ rejected the login for {username} (HTTP {status})")]
     LoginRejected { username: String, status: u16 },
 
+    #[error("Poly+ is off because the Terms of Service and Privacy Policy were declined")]
+    ConsentRequired,
+
     #[error(transparent)]
     Request(#[from] RequestError),
 
@@ -98,6 +101,10 @@ impl PlusClient {
     }
 
     pub(crate) async fn authorize(&self) -> Result<String, PlusError> {
+        if plus_blocked() {
+            return Err(PlusError::ConsentRequired);
+        }
+
         if let Some(token) = self.token.read().await.clone() {
             return Ok(token);
         }
@@ -139,7 +146,11 @@ pub fn start(
     let client = CLIENT.get_or_init(|| Arc::new(PlusClient::new(auth, requester, events)));
 
     if !STARTED.swap(true, Ordering::SeqCst) {
-        session::spawn(Arc::clone(client));
+        if plus_blocked() {
+            tracing::info!("[plus] session stays off: terms and privacy policy declined");
+        } else {
+            session::spawn(Arc::clone(client));
+        }
     }
 
     Arc::clone(client)
@@ -160,6 +171,10 @@ pub fn restart_session() {
     if let Some(client) = client() {
         client.request_restart();
     }
+}
+
+pub(crate) fn plus_blocked() -> bool {
+    oneclient_common::consent::blocks_url(base_url())
 }
 
 fn base_url() -> &'static str {

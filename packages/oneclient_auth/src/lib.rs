@@ -11,7 +11,7 @@ mod service;
 mod store;
 
 pub use data::{
-	AccountKind, BrowserLogin, DeviceCodeLogin, MicrosoftLoginSession, MinecraftAccount,
+    AccountKind, BrowserLogin, DeviceCodeLogin, MicrosoftLoginSession, MinecraftAccount,
 };
 pub use diagnostics::{AuthErrorGuidance, AuthErrorSample, diagnose_auth_error, preview_samples};
 pub use error::{AuthError, AuthResult, MinecraftAuthError, MinecraftAuthStep};

@@ -19,7 +19,7 @@ pub(super) fn navbar_button() -> Button {
 pub fn window_controls() -> impl IntoElement {
     controls(|| {
         crate::view::chat::close_chat_window();
-        close_active_window();
+        crate::platform::close();
     })
 }
 
@@ -27,22 +27,15 @@ pub fn secondary_window_controls(close: impl Fn() + 'static) -> impl IntoElement
     controls(close)
 }
 
-fn close_active_window() {
-    let platform = Platform::get();
-    Platform::get().with_window(None, move |window| {
-        platform.close_window(window.id());
-    });
-}
-
 fn controls(on_close: impl Fn() + 'static) -> impl IntoElement {
     let minimize = |_| {
-        Platform::get().with_window(None, |win| {
+        Platform::get().with_window(Platform::window_id(), |win| {
             win.set_minimized(true);
         });
     };
 
     let maximize = |_| {
-        Platform::get().with_window(None, |win| {
+        Platform::get().with_window(Platform::window_id(), |win| {
             win.set_maximized(!win.is_maximized());
         });
     };
@@ -57,16 +50,19 @@ fn controls(on_close: impl Fn() + 'static) -> impl IntoElement {
         .layer(Layer::OverlayLevel(15))
         .child(
             navbar_button()
+                .tooltip("Minimize")
                 .child(Icon::new(IconType::Minus))
                 .on_press(minimize),
         )
         .child(
             navbar_button()
+                .tooltip("Maximize")
                 .child(Icon::new(IconType::Maximize01).size(20.))
                 .on_press(maximize),
         )
         .child(
             navbar_button()
+                .tooltip("Close")
                 .child(Icon::new(IconType::X))
                 .on_press(close),
         )

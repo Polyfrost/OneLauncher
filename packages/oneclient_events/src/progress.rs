@@ -172,14 +172,12 @@ impl GroupedProgressSession {
         if count == 0 {
             return;
         }
-        self.inner
-            .events
-            .emit(GroupedProgressEvent::Expect {
-                session_id: self.inner.session_id,
-                category,
-                count,
-                total,
-            });
+        self.inner.events.emit(GroupedProgressEvent::Expect {
+            session_id: self.inner.session_id,
+            category,
+            count,
+            total,
+        });
     }
 
     pub fn child(
@@ -192,15 +190,13 @@ impl GroupedProgressSession {
         let label = label.into();
         let total = total.max(1);
 
-        self.inner
-            .events
-            .emit(GroupedProgressEvent::AddChild {
-                session_id: self.inner.session_id,
-                child_id,
-                label: label.clone(),
-                total,
-                category,
-            });
+        self.inner.events.emit(GroupedProgressEvent::AddChild {
+            session_id: self.inner.session_id,
+            child_id,
+            label: label.clone(),
+            total,
+            category,
+        });
 
         GroupedProgressChild {
             inner: Arc::new(ChildInner {
@@ -258,13 +254,11 @@ impl GroupedProgressChild {
         {
             return;
         }
-        self.inner
-            .events
-            .emit(GroupedProgressEvent::SetChildPhase {
-                session_id: self.inner.session_id,
-                child_id: self.inner.child_id,
-                phase,
-            });
+        self.inner.events.emit(GroupedProgressEvent::SetChildPhase {
+            session_id: self.inner.session_id,
+            child_id: self.inner.child_id,
+            phase,
+        });
     }
 
     pub fn set_progress(&self, current: u64, total: Option<u64>) {
@@ -283,14 +277,12 @@ impl GroupedProgressChild {
         if total > stored {
             self.inner.total.store(total, Ordering::Relaxed);
         }
-        self.inner
-            .events
-            .emit(GroupedProgressEvent::UpdateChild {
-                session_id: self.inner.session_id,
-                child_id: self.inner.child_id,
-                current,
-                total,
-            });
+        self.inner.events.emit(GroupedProgressEvent::UpdateChild {
+            session_id: self.inner.session_id,
+            child_id: self.inner.child_id,
+            current,
+            total,
+        });
     }
 
     pub fn finish(&self) {
@@ -302,12 +294,10 @@ impl GroupedProgressChild {
             return;
         }
 
-        self.inner
-            .events
-            .emit(GroupedProgressEvent::FinishChild {
-                session_id: self.inner.session_id,
-                child_id: self.inner.child_id,
-            });
+        self.inner.events.emit(GroupedProgressEvent::FinishChild {
+            session_id: self.inner.session_id,
+            child_id: self.inner.child_id,
+        });
     }
 }
 
@@ -359,10 +349,9 @@ mod tests {
         child.set_progress(50, Some(100));
         let events = drain(&mut rx);
         assert!(
-            events.iter().any(|e| matches!(
-                e,
-                GroupedProgressEvent::UpdateChild { current: 50, .. }
-            )),
+            events
+                .iter()
+                .any(|e| matches!(e, GroupedProgressEvent::UpdateChild { current: 50, .. })),
             "progress must still be reported after a clone is dropped: {events:?}"
         );
 
@@ -382,7 +371,13 @@ mod tests {
         let _ = drain(&mut rx);
 
         child.finish();
-        assert_eq!(drain(&mut rx).iter().filter(|e| matches!(e, GroupedProgressEvent::FinishChild { .. })).count(), 1);
+        assert_eq!(
+            drain(&mut rx)
+                .iter()
+                .filter(|e| matches!(e, GroupedProgressEvent::FinishChild { .. }))
+                .count(),
+            1
+        );
 
         drop(child);
         assert!(!has_finish(&drain(&mut rx)), "drop must not finish twice");

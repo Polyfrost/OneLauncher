@@ -185,7 +185,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
             })
             .maybe(!disabled, |el| {
                 el.cursor(CursorIcon::Pointer)
-                    .on_all_press(move |_| *selected.write() = value)
+                    .on_press(move |_| *selected.write() = value)
             })
             .maybe_child(self.icon.map(|icon| {
                 let mut ic = Icon::new(icon);

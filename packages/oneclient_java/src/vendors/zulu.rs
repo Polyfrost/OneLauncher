@@ -14,32 +14,38 @@ pub struct ZuluRuntimeProvider;
 
 #[derive(Debug, Deserialize)]
 struct ZuluPackage {
-	download_url: String,
-	name: String,
-	java_version: Vec<u32>,
-	/// Only present because `include_fields` asks for it
-	#[serde(default)]
-	sha256_hash: Option<String>,
-	#[serde(default)]
-	size: Option<u64>,
+    download_url: String,
+    name: String,
+    java_version: Vec<u32>,
+    /// Only present because `include_fields` asks for it
+    #[serde(default)]
+    sha256_hash: Option<String>,
+    #[serde(default)]
+    size: Option<u64>,
 }
 
 #[async_trait::async_trait]
 impl JavaRuntimeProvider for ZuluRuntimeProvider {
-	fn vendor(&self) -> JavaVendor {
-		JavaVendor::Zulu
-	}
+    fn vendor(&self) -> JavaVendor {
+        JavaVendor::Zulu
+    }
 
-	#[tracing::instrument(level = "debug", skip(self, net))]
-	async fn list_packages(&self, major: Option<u32>, net: &RequestClient) -> JavaResult<Vec<JavaPackage>> {
+    #[tracing::instrument(level = "debug", skip(self, net))]
+    async fn list_packages(
+        &self,
+        major: Option<u32>,
+        net: &RequestClient,
+    ) -> JavaResult<Vec<JavaPackage>> {
         let url = zulu_url(major)?;
-        let packages = net.send_as::<Vec<ZuluPackage>>(Request::new(Method::GET, url)).await?;
+        let packages = net
+            .send_as::<Vec<ZuluPackage>>(Request::new(Method::GET, url))
+            .await?;
         let packages: Vec<JavaPackage> = packages.into_iter().map(map_zulu_package).collect();
 
         tracing::debug!(count = packages.len(), "listed Zulu packages");
 
         Ok(packages)
-	}
+    }
 }
 
 fn map_zulu_package(pkg: ZuluPackage) -> JavaPackage {

@@ -1,10 +1,11 @@
 use std::sync::Mutex;
 
 use freya::query::{
-    Mutation, MutationCapability, MutationStateData, QueriesStorage, Query, QueryCapability, UseMutation, UseQuery, use_mutation, use_query,
+    Mutation, MutationCapability, MutationStateData, QueriesStorage, Query, QueryCapability,
+    UseMutation, UseQuery, use_mutation, use_query,
 };
-use oneclient_core::LauncherError;
 use oneclient_auth::{AccountKind, MicrosoftLoginSession, MinecraftAccount};
+use oneclient_core::LauncherError;
 use uuid::Uuid;
 
 static HANDLED_LOGIN_CODE: Mutex<Option<String>> = Mutex::new(None);
@@ -112,7 +113,7 @@ pub fn try_account(query: &UseQuery<AccountQuery>) -> Option<MinecraftAccount> {
     super::state::settled_or_loading(query).flatten()
 }
 
-async fn invalidate_auth_queries(account_id: Option<Uuid>) {
+pub async fn invalidate_auth_queries(account_id: Option<Uuid>) {
     QueriesStorage::<ListAccountsQuery>::invalidate_matching(ListAccountsKeys).await;
     for fallback in [false, true] {
         QueriesStorage::<DefaultAccountQuery>::invalidate_matching(DefaultAccountKeys { fallback })
@@ -132,7 +133,10 @@ impl MutationCapability for BeginMicrosoftLoginMutation {
     type Keys = ();
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?.auth.begin_microsoft_login().await?)
+        Ok(crate::launcher::state()?
+            .auth
+            .begin_microsoft_login()
+            .await?)
     }
 }
 
@@ -145,7 +149,10 @@ impl MutationCapability for FinishMicrosoftLoginMutation {
     type Keys = MicrosoftLoginSession;
 
     async fn run(&self, flow: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?.auth.finish_microsoft_login(flow.clone()).await?)
+        Ok(crate::launcher::state()?
+            .auth
+            .finish_microsoft_login(flow.clone())
+            .await?)
     }
 
     async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
@@ -170,7 +177,10 @@ impl MutationCapability for CancelMicrosoftLoginMutation {
     type Keys = CancelMicrosoftLoginKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        crate::launcher::state()?.auth.cancel_microsoft_login(&keys.state_token).await;
+        crate::launcher::state()?
+            .auth
+            .cancel_microsoft_login(&keys.state_token)
+            .await;
         Ok(())
     }
 }
@@ -210,7 +220,10 @@ impl MutationCapability for AddOfflineAccountMutation {
     type Keys = AddOfflineAccountKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?.auth.add_offline_account(keys.username.clone()).await?)
+        Ok(crate::launcher::state()?
+            .auth
+            .add_offline_account(keys.username.clone())
+            .await?)
     }
 
     async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
@@ -234,7 +247,10 @@ impl MutationCapability for RemoveAccountMutation {
     type Keys = RemoveAccountKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?.auth.remove_account(keys.id).await?)
+        Ok(crate::launcher::state()?
+            .auth
+            .remove_account(keys.id)
+            .await?)
     }
 
     async fn on_settled(&self, keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
@@ -258,7 +274,10 @@ impl MutationCapability for SetDefaultAccountMutation {
     type Keys = SetDefaultAccountKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?.auth.set_default_account(keys.id).await?)
+        Ok(crate::launcher::state()?
+            .auth
+            .set_default_account(keys.id)
+            .await?)
     }
 
     async fn on_settled(&self, keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
@@ -282,13 +301,16 @@ impl MutationCapability for RefreshAccountMutation {
     type Keys = RefreshAccountKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?.auth.refresh_account(keys.id).await?)
+        Ok(crate::launcher::state()?
+            .auth
+            .refresh_account(keys.id)
+            .await?)
     }
 
-    async fn on_settled(&self, keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
-        if result.is_ok() {
-            invalidate_auth_queries(Some(keys.id)).await;
-        }
+    /// A failure can still change the account a rejected token marks it
+    /// signed out
+    async fn on_settled(&self, keys: &Self::Keys, _result: &Result<Self::Ok, Self::Err>) {
+        invalidate_auth_queries(Some(keys.id)).await;
     }
 }
 
@@ -301,13 +323,14 @@ impl MutationCapability for RefreshAllAccountsMutation {
     type Keys = ();
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?.auth.refresh_all_accounts().await?)
+        Ok(crate::launcher::state()?
+            .auth
+            .refresh_all_accounts()
+            .await?)
     }
 
-    async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
-        if result.is_ok() {
-            invalidate_auth_queries(None).await;
-        }
+    async fn on_settled(&self, _keys: &Self::Keys, _result: &Result<Self::Ok, Self::Err>) {
+        invalidate_auth_queries(None).await;
     }
 }
 
@@ -362,6 +385,18 @@ pub fn mutation_is_pending<M: MutationCapability>(mutation: &UseMutation<M>) -> 
 
 pub fn mutation_is_running<M: MutationCapability>(mutation: &UseMutation<M>) -> bool {
     mutation.read().state().is_loading()
+}
+
+pub fn mutation_ok<M>(mutation: &UseMutation<M>) -> Option<M::Ok>
+where
+    M: MutationCapability,
+    M::Ok: Clone,
+{
+    let reader = mutation.read();
+    match &*reader.state() {
+        MutationStateData::Settled { res: Ok(ok), .. } => Some(ok.clone()),
+        _ => None,
+    }
 }
 
 pub fn mutation_error<M>(mutation: &UseMutation<M>) -> Option<M::Err>

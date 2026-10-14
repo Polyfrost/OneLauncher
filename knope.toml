@@ -1,0 +1,28 @@
+[package]
+versioned_files = ["Cargo.toml"]
+changelog = "CHANGELOG.md"
+
+[changes]
+ignore_conventional_commits = true
+
+[release_notes]
+change_templates = [
+  "- $summary by [$pr_author_login](https://github.com/$pr_author_login)",
+  "- $summary",
+]
+
+[github]
+owner = "Polyfrost"
+repo = "OneLauncher"
+
+[[workflows]]
+name = "prepare-release"
+
+[[workflows.steps]]
+type = "PrepareRelease"
+
+[[workflows]]
+name = "document-change"
+
+[[workflows.steps]]
+type = "CreateChangeFile"

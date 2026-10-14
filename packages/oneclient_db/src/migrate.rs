@@ -69,12 +69,13 @@ mod tests {
     async fn migrates_a_fresh_database() {
         let (_dir, _path, pool) = migrated().await;
 
-        let column: Option<i64> =
-            sqlx::query_scalar("SELECT 1 FROM pragma_table_info('setting_profiles') WHERE name = ?")
-                .bind("browser_update_mode")
-                .fetch_optional(&pool)
-                .await
-                .expect("probe");
+        let column: Option<i64> = sqlx::query_scalar(
+            "SELECT 1 FROM pragma_table_info('setting_profiles') WHERE name = ?",
+        )
+        .bind("browser_update_mode")
+        .fetch_optional(&pool)
+        .await
+        .expect("probe");
 
         assert!(column.is_some());
     }
@@ -99,7 +100,9 @@ mod tests {
         .await
         .expect("record a migration from the future");
 
-        run(&pool, &path).await.expect("a downgrade must still start");
+        run(&pool, &path)
+            .await
+            .expect("a downgrade must still start");
     }
 
     #[tokio::test]

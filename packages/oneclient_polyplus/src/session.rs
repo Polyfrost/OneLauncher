@@ -12,7 +12,7 @@ use oneclient_events::{ChatEvent, EventBus};
 use oneclient_net::{RequestClient, RequestError};
 
 use crate::packets::ClientboundPacket;
-use crate::{PlusClient, PlusError, base_url};
+use crate::{PlusClient, PlusError, base_url, plus_blocked};
 
 const MOJANG_JOIN_URL: &str = "https://sessionserver.mojang.com/session/minecraft/join";
 
@@ -57,6 +57,11 @@ pub(crate) fn spawn(client: Arc<PlusClient>) {
         let mut delay = RECONNECT_DELAY;
 
         loop {
+            if plus_blocked() {
+                tracing::info!("[plus] ending the session: terms and privacy policy declined");
+                return;
+            }
+
             let mut restart = client.restart_signal();
 
             let outcome = session(&client, &socket, &mut restart).await;
@@ -170,7 +175,7 @@ async fn run_session(
         PING_INTERVAL,
         account_id,
         restart,
-        || account_changed(&client.auth, account_id),
+        || async move { plus_blocked() || account_changed(&client.auth, account_id).await },
     )
     .await
 }
@@ -201,7 +206,7 @@ where
         match frame {
             Frame::Ping => {
                 if should_stop().await {
-                    tracing::info!("[plus] default account changed, ending session for {account_id}");
+                    tracing::info!("[plus] ending session for {account_id}");
                     return Ok(Ended::Restart);
                 }
 

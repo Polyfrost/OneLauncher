@@ -5,6 +5,7 @@ use freya::winit::dpi::{PhysicalPosition, PhysicalSize};
 
 use crate::components::secondary_window_controls;
 use crate::hooks::use_provide_station;
+use crate::state::AppState;
 use crate::theme::{self, colors};
 use crate::view::single_window::{Claim, SingleWindow};
 
@@ -26,7 +27,7 @@ static CHAT_FOCUSED: AtomicBool = AtomicBool::new(false);
 pub fn open_chat_window() {
     let opening = match CHAT_WINDOW.claim() {
         Claim::Focus(id) => {
-            Platform::get().focus_window(Some(id));
+            Platform::get().focus_window(id);
             return;
         }
         Claim::Busy => return,
@@ -159,7 +160,7 @@ struct ChatApp;
 
 impl App for ChatApp {
     fn render(&self) -> impl IntoElement {
-        use_provide_station();
+        use_provide_station(AppState::default);
 
         rect()
             .vertical()

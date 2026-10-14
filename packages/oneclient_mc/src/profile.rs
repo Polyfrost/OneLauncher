@@ -3,8 +3,8 @@ use chrono::{DateTime, TimeDelta, Utc};
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
 
-use oneclient_net::RequestClient;
 use crate::error::{McError, McResult};
+use oneclient_net::RequestClient;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct MojangPlayerProfile {
@@ -68,8 +68,7 @@ impl From<MojangFullPlayerProfile> for PlayerProfileView {
         Self {
             uuid: profile.id,
             username: profile.username,
-            is_slim: active_skin
-                .is_some_and(|skin| skin.variant == SkinVariant::Slim),
+            is_slim: active_skin.is_some_and(|skin| skin.variant == SkinVariant::Slim),
             skin_url: active_skin.map(|skin| skin.url.clone()),
             cape_url: active_cape.map(|cape| cape.url.clone()),
             skins: profile.skins,
@@ -120,7 +119,8 @@ fn normalize_texture_url(url: &str) -> String {
 }
 
 fn normalize_uuid(uuid: &str) -> &str {
-    uuid.trim().trim_matches(|c: char| c == '-' || c.is_whitespace())
+    uuid.trim()
+        .trim_matches(|c: char| c == '-' || c.is_whitespace())
 }
 
 fn auth_headers(access_token: &str) -> [(&'static str, String); 1] {
@@ -187,9 +187,7 @@ pub async fn fetch_player_profile(
 
     let decoded = base64::prelude::BASE64_STANDARD
         .decode(texture_property.value.as_bytes())
-        .map_err(|_| {
-            McError::Minecraft("failed to decode profile texture property".into())
-        })?;
+        .map_err(|_| McError::Minecraft("failed to decode profile texture property".into()))?;
 
     let decoded = serde_json::from_slice::<DecodedProperties>(&decoded)
         .map_err(McError::ParseError)?
@@ -204,14 +202,8 @@ pub async fn fetch_player_profile(
         uuid: response.id,
         username: response.name,
         is_slim,
-        skin_url: decoded
-            .skin
-            .as_ref()
-            .map(|s| normalize_texture_url(&s.url)),
-        cape_url: decoded
-            .cape
-            .as_ref()
-            .map(|c| normalize_texture_url(&c.url)),
+        skin_url: decoded.skin.as_ref().map(|s| normalize_texture_url(&s.url)),
+        cape_url: decoded.cape.as_ref().map(|c| normalize_texture_url(&c.url)),
     })
 }
 
@@ -317,7 +309,11 @@ pub async fn fetch_player_profile_view(
 
 fn profile_cache_path(uuid: &str) -> Option<std::path::PathBuf> {
     let key = polyio::sha1_bytes(normalize_uuid(uuid).as_bytes());
-    Some(oneclient_common::paths::profiles_cache_dir().ok()?.join(format!("{key}.json")))
+    Some(
+        oneclient_common::paths::profiles_cache_dir()
+            .ok()?
+            .join(format!("{key}.json")),
+    )
 }
 
 async fn write_cached_profile(uuid: &str, view: &PlayerProfileView) {
@@ -359,7 +355,8 @@ mod tests {
     use super::*;
 
     fn temp_launcher_dir() {
-        let dir = std::env::temp_dir().join(format!("oneclient-profile-test-{}", uuid::Uuid::new_v4()));
+        let dir =
+            std::env::temp_dir().join(format!("oneclient-profile-test-{}", uuid::Uuid::new_v4()));
         oneclient_common::paths::set_launcher_dir(dir);
     }
 
@@ -412,7 +409,9 @@ mod tests {
         let view = sample_view("Legacy");
 
         let path = profile_cache_path(&uuid).unwrap();
-        polyio::create_dir_all(path.parent().unwrap()).await.unwrap();
+        polyio::create_dir_all(path.parent().unwrap())
+            .await
+            .unwrap();
         polyio::write(&path, &serde_json::to_vec(&view).unwrap())
             .await
             .unwrap();
@@ -422,6 +421,9 @@ mod tests {
             .expect("legacy entry should still parse");
 
         assert_eq!(cached.view, view);
-        assert!(!cached.is_fresh(), "legacy entry should be due for revalidation");
+        assert!(
+            !cached.is_fresh(),
+            "legacy entry should be due for revalidation"
+        );
     }
 }

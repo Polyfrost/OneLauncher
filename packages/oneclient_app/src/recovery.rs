@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use freya::prelude::spawn_forever;
 
 use crate::hooks::Actions;
+use crate::launcher::off_ui_blocking;
 
 pub fn database_path() -> Option<PathBuf> {
     oneclient_common::paths::database_file().ok()
@@ -15,11 +16,11 @@ pub fn snapshots() -> Vec<PathBuf> {
 }
 
 pub fn open_data_folder() {
-    let Ok(dir) = oneclient_common::paths::launcher_dir() else {
+    let Ok(dir) = oneclient_common::paths::data_dir() else {
         return;
     };
 
-    crate::platform::open_url(&dir.to_string_lossy());
+    crate::platform::open_path(&dir.to_string_lossy());
 }
 
 pub fn restore_latest(actions: &Actions) {
@@ -29,19 +30,25 @@ pub fn restore_latest(actions: &Actions) {
         return;
     };
 
-    match oneclient_db::backup::restore(&path, &snapshot) {
-        Ok(_) => retry(actions),
-        Err(err) => set_error(actions, format!("Couldn't restore the snapshot: {err}")),
-    }
+    let actions = actions.clone();
+    spawn_forever(async move {
+        match off_ui_blocking(move || oneclient_db::backup::restore(&path, &snapshot)).await {
+            Ok(_) => retry(&actions),
+            Err(err) => set_error(&actions, format!("Couldn't restore the snapshot: {err}")),
+        }
+    });
 }
 
 pub fn reset(actions: &Actions) {
     let Some(path) = database_path() else { return };
 
-    match oneclient_db::backup::reset(&path) {
-        Ok(_) => retry(actions),
-        Err(err) => set_error(actions, format!("Couldn't reset the database: {err}")),
-    }
+    let actions = actions.clone();
+    spawn_forever(async move {
+        match off_ui_blocking(move || oneclient_db::backup::reset(&path)).await {
+            Ok(_) => retry(&actions),
+            Err(err) => set_error(&actions, format!("Couldn't reset the database: {err}")),
+        }
+    });
 }
 
 fn retry(actions: &Actions) {
@@ -49,7 +56,9 @@ fn retry(actions: &Actions) {
     let events = actions.events();
 
     {
-        let mut guard = station.clone().write_channel(crate::state::AppChannel::Launcher);
+        let mut guard = station
+            .clone()
+            .write_channel(crate::state::AppChannel::Launcher);
         guard.launcher.error = None;
         guard.launcher.snapshots = snapshots().len();
     }

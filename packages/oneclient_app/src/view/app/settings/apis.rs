@@ -3,7 +3,7 @@ use freya::prelude::*;
 use super::settings_page;
 use crate::components::{IconType, TextInput};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
-use crate::view::app::settings::{section_header, settings_row};
+use crate::view::app::settings::{resettable, section_header, settings_row};
 
 fn normalize(value: &str) -> Option<String> {
     let trimmed = value.trim();
@@ -49,12 +49,12 @@ impl Component for SettingsApis {
                 first.set(false);
                 return;
             }
-            let mut next = settings.clone();
-            next.modrinth_api_key = normalize(&modrinth);
-            next.curseforge_api_key = normalize(&curseforge);
-            next.custom_api_endpoint = normalize(&endpoint);
-            next.custom_meta_url_base = normalize(&meta_url_base);
-            dispatch.set_settings(next);
+            dispatch.edit_settings(|settings| {
+                settings.modrinth_api_key = normalize(&modrinth);
+                settings.curseforge_api_key = normalize(&curseforge);
+                settings.custom_api_endpoint = normalize(&endpoint);
+                settings.custom_meta_url_base = normalize(&meta_url_base);
+            });
         });
 
         settings_page()
@@ -63,34 +63,50 @@ impl Component for SettingsApis {
                 IconType::Key01,
                 "Modrinth",
                 "Personal access token used for Modrinth requests.",
-                TextInput::new(modrinth_key)
-                    .placeholder("Optional")
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(modrinth_key)
+                        .placeholder("Optional")
+                        .width(Size::px(220.)),
+                    modrinth_key,
+                    String::new(),
+                ),
             ))
             .child(settings_row(
                 IconType::Key01,
                 "CurseForge",
                 "API key used for CurseForge requests.",
-                TextInput::new(curseforge_key)
-                    .placeholder("Default")
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(curseforge_key)
+                        .placeholder("Default")
+                        .width(Size::px(220.)),
+                    curseforge_key,
+                    String::new(),
+                ),
             ))
             .child(section_header("ADVANCED"))
             .child(settings_row(
                 IconType::Globe01,
                 "Custom API Endpoint",
                 "Override the default OneClient backend endpoint.",
-                TextInput::new(custom_api_endpoint)
-                    .placeholder("Default")
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(custom_api_endpoint)
+                        .placeholder("Default")
+                        .width(Size::px(220.)),
+                    custom_api_endpoint,
+                    String::new(),
+                ),
             ))
             .child(settings_row(
                 IconType::Globe01,
                 "Custom Meta URL Base",
                 "Override the default bundles and versions data host.",
-                TextInput::new(custom_meta_url_base)
-                    .placeholder("Default")
-                    .width(Size::px(220.)),
+                resettable(
+                    TextInput::new(custom_meta_url_base)
+                        .placeholder("Default")
+                        .width(Size::px(220.)),
+                    custom_meta_url_base,
+                    String::new(),
+                ),
             ))
             .into_element()
     }

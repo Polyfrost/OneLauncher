@@ -34,8 +34,6 @@ const APP_TARGETS: &[&str] = &[
 /// to `info` and that would otherwise let this lot flood the log
 const NOISY_TARGETS: &[&str] = &[
     "calloop",
-    "freya_core",
-    "freya_winit",
     "h2",
     "hickory_proto",
     "hickory_resolver",
@@ -56,6 +54,27 @@ const NOISY_TARGETS: &[&str] = &[
     "zbus",
 ];
 
+const UI_TARGETS: &[&str] = &[
+    "freya",
+    "freya_components",
+    "freya_core",
+    "freya_radio",
+    "freya_winit",
+    "ragnarok",
+    "torin",
+];
+
+const UI_FLOOD_TARGETS: &[&str] = &[
+    "freya_core::accessibility",
+    "freya_core::runner",
+    "freya_core::tree",
+    "freya_winit::renderer",
+    "freya::metrics",
+    "ragnarok::executor",
+    "ragnarok::nodes_state",
+    "torin::torin",
+];
+
 /// Whether `target` belongs to one of [`APP_TARGETS`] rather than a dependency
 fn is_app_target(target: &str) -> bool {
     APP_TARGETS.iter().any(|app| {
@@ -71,10 +90,7 @@ fn sentry_event_filter(metadata: &tracing::Metadata<'_>) -> sentry_tracing::Even
 }
 
 /// `None` when the target is one of ours, meaning the default filter decides
-fn dependency_filter(
-    level: tracing::Level,
-    target: &str,
-) -> Option<sentry_tracing::EventFilter> {
+fn dependency_filter(level: tracing::Level, target: &str) -> Option<sentry_tracing::EventFilter> {
     if is_app_target(target) {
         return None;
     }
@@ -99,6 +115,12 @@ pub fn debug_directives() -> String {
 fn directives(app_level: &str, base_level: &str) -> String {
     let mut out = String::from(base_level);
     for target in NOISY_TARGETS {
+        out.push_str(&format!(",{target}=warn"));
+    }
+    for target in UI_TARGETS {
+        out.push_str(&format!(",{target}=info"));
+    }
+    for target in UI_FLOOD_TARGETS {
         out.push_str(&format!(",{target}=warn"));
     }
     for target in APP_TARGETS {
@@ -193,7 +215,10 @@ pub fn init_filtered(filter: impl FnOnce() -> String) -> LauncherResult<()> {
         let logs_dir = oneclient_common::paths::logs_dir()?;
         std::fs::create_dir_all(&logs_dir)?;
 
-        let log_path = logs_dir.join(format!("{}.log", chrono::Local::now().to_rfc3339().replace(':', "-")));
+        let log_path = logs_dir.join(format!(
+            "{}.log",
+            chrono::Local::now().to_rfc3339().replace(':', "-")
+        ));
 
         let file = std::fs::OpenOptions::new()
             .create(true)

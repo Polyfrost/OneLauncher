@@ -29,6 +29,7 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
         .env_remove("_JAVA_OPTIONS")
         .env_remove("JAVA_TOOL_OPTIONS")
         .env_remove("JDK_JAVA_OPTIONS");
+    oneclient_common::process::no_window(command.as_std_mut());
 
     let program = command.as_std().get_program().to_string_lossy();
     let args: Vec<String> = command
@@ -39,7 +40,9 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
 
     tracing::debug!("running command: {} {}", program, args.join(" "));
 
-    let output = command.output().await
+    let output = command
+        .output()
+        .await
         .map_err(|e| JavaError::RuntimeCheckError {
             source: e,
             path: absolute_path.clone(),
@@ -64,7 +67,9 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
             "java probe did not report java.version; stderr: {}",
             stderr.trim()
         );
-        return Err(JavaError::InvalidJavaPath { path: absolute_path });
+        return Err(JavaError::InvalidJavaPath {
+            path: absolute_path,
+        });
     };
 
     // Minecraft needs AWT a headless image launches fine and then dies mid-game
@@ -76,7 +81,9 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
             links = probe_flag(&info, "java.awt.link"),
             "java installation has no usable java.awt support"
         );
-        return Err(JavaError::MissingAwtSupport { path: absolute_path });
+        return Err(JavaError::MissingAwtSupport {
+            path: absolute_path,
+        });
     }
 
     Ok(JavaCheckInfo {
@@ -94,9 +101,11 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
 }
 
 fn has_usable_awt(info: &HashMap<String, String>) -> bool {
-    probe_flag(info, "java.awt")
-        && probe_flag(info, "java.awt.natives")
-        && probe_flag(info, "java.awt.link")
+    if !probe_flag(info, "java.awt.link") {
+        tracing::warn!("java.awt.link returned false. ignoring")
+    }
+
+    probe_flag(info, "java.awt") && probe_flag(info, "java.awt.natives")
 }
 
 fn probe_flag(info: &HashMap<String, String>, key: &str) -> bool {
@@ -163,8 +172,12 @@ mod tests {
     }
 
     #[test]
-    fn natives_that_refuse_to_link_are_not_usable() {
-        assert!(!has_usable_awt(&awt("true", "true", "false")));
+    fn a_link_probe_that_fails_does_not_rule_the_image_out() {
+        assert!(has_usable_awt(&awt("true", "true", "false")));
+        assert!(has_usable_awt(&info(&[
+            ("java.awt", "true"),
+            ("java.awt.natives", "true"),
+        ])));
     }
 
     #[test]

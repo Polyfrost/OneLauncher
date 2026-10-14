@@ -13,9 +13,6 @@ use crate::response::{ResponseExt, ResponseOptions};
 
 const MAX_THROTTLE_RETRIES: u32 = 6;
 
-/// Backstop against runaway fan-out not the download throttle
-/// Must stay above the sum of per-phase caller concurrency or it becomes the
-/// bottleneck
 const MAX_INFLIGHT_REQUESTS: usize = 64;
 
 fn retry_after(response: &Response) -> Option<std::time::Duration> {
@@ -134,6 +131,12 @@ impl RequestClient {
         let mut retries = 0;
         let mut throttle_retries = 0u32;
 
+        if oneclient_common::consent::blocks_url(request.request.url().as_str()) {
+            let url = request.request.url().to_string();
+            tracing::debug!(%url, "request withheld: terms and privacy policy declined");
+            return Err(RequestError::ConsentRequired { url });
+        }
+
         apply_curseforge_auth(&mut request.request, &self.config.load().curseforge_api_key)?;
 
         let cloned_backup = request.request.try_clone();
@@ -240,7 +243,10 @@ impl RequestClient {
     }
 
     #[tracing::instrument(level = "debug", skip_all)]
-    pub async fn send_as<T: DeserializeOwned>(&self, request: impl Into<HttpRequest>) -> Result<T, RequestError> {
+    pub async fn send_as<T: DeserializeOwned>(
+        &self,
+        request: impl Into<HttpRequest>,
+    ) -> Result<T, RequestError> {
         let res = self.send(request).await?;
         let status = res.status();
         let url = res.url().to_string();
@@ -341,8 +347,10 @@ mod tests {
     #[test]
     fn does_not_override_explicit_key() {
         let mut req = request("https://api.curseforge.com/v1/mods");
-        req.headers_mut()
-            .insert("x-api-key", reqwest::header::HeaderValue::from_static("mine"));
+        req.headers_mut().insert(
+            "x-api-key",
+            reqwest::header::HeaderValue::from_static("mine"),
+        );
         apply_curseforge_auth(&mut req, oneclient_common::constants::CURSEFORGE_API_KEY).unwrap();
         assert_eq!(req.headers()["x-api-key"], "mine");
     }

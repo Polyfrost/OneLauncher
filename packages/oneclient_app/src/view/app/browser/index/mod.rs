@@ -5,6 +5,7 @@ use freya::animation::{
 };
 use freya::prelude::*;
 use freya::router::RouterContext;
+use oneclient_common::domain::GameLoader;
 use oneclient_common::parse_mc_version;
 use oneclient_common::search::normalize_query;
 use oneclient_content::packages::types::ProjectSummary;
@@ -19,18 +20,21 @@ use crate::components::{
 };
 use crate::hooks::use_cluster;
 use crate::hooks::{
-    BROWSE_PAGE_SIZE, BrowserUiState, bundles_with_status_items, category_list,
-    cluster_content_items, content_type_for_slug, pick_version_metadata, search_items,
-    search_pending, search_total, settled_or_loading, use_browser_compat, use_browser_state_store,
-    use_bundles_with_status, use_cluster_content, use_clusters, use_debounced,
-    use_package_categories, use_package_search, use_versions, use_view_state, versions_metadata,
+    BROWSE_PAGE_SIZE, BrowserUiState, bundle_overrides_map, bundles_with_status_items,
+    category_list, cluster_content_items, content_type_for_slug, pick_version_metadata,
+    search_items, search_pending, search_total, settled_or_loading, use_browser_compat,
+    use_browser_state_store, use_browser_type, use_bundle_overrides, use_bundles_with_status,
+    use_cluster_content, use_clusters, use_debounced, use_package_categories, use_package_search,
+    use_versions, use_view_state, versions_metadata,
 };
 use crate::routes::Route;
 use crate::theme::colors;
+use crate::ui::grid_columns_for_width;
+use crate::view::app::cluster::supports_datapacks;
 
 use super::{
-    InstallSource, Installed, PackageBanner, Thumbnail, installed_badge, installed_badge_overlay,
-    installed_map,
+    EnableButton, EnableVariant, InstallSource, Installed, ModpackVersionPrompt, PackageBanner,
+    Thumbnail, WorldInstallPrompt, installed_map, minecraft_choices, preferred_version,
 };
 use crate::utils::{abbreviate_number, sort_clusters_for_home};
 
@@ -41,26 +45,75 @@ use cards::{empty_state, grid_row, list_row};
 use sidebar::CategorySidebar;
 use skeletons::{SkeletonListRow, skeleton_grid_row};
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
-const GRID_COLUMNS: usize = 3;
 const SCROLLBAR_GUTTER: f32 = 18.;
-const CARD_H: f32 = 240.;
-const BANNER_H: f32 = 100.;
+const CATEGORY_SIDEBAR_W: f32 = 196.;
+const PROVIDER_LABELS_W: f32 = 900.;
+const WIDE_SEARCH_W: f32 = 780.;
+const SEARCH_W: f32 = 260.;
+const SEARCH_COMPACT_W: f32 = 170.;
+const CARD_H: f32 = 226.;
+const BANNER_H: f32 = 74.;
+const CARD_ICON: f32 = 46.;
+/// How far the package icon drops past the banner into the card body
+const CARD_ICON_OVERHANG: f32 = 14.;
+const MAX_CARD_W: f32 = 300.;
 const LIST_ROW_H: f32 = 78.;
-const GRID_SPACING: f32 = 12.;
+const GRID_SPACING: f32 = 16.;
 const LIST_SPACING: f32 = 8.;
 const SEARCH_DEBOUNCE_MS: u64 = 250;
 
-fn type_title(package_type: &str) -> &'static str {
-    match package_type {
-        "shader" => "Shaders",
-        "texture" => "Textures",
-        _ => "Mods",
+const SORTS: [(SearchSort, &str); 4] = [
+    (SearchSort::Relevance, "Relevance"),
+    (SearchSort::Downloads, "Downloads"),
+    (SearchSort::Newest, "Newest"),
+    (SearchSort::Updated, "Updated"),
+];
+
+const LOADERS: [(Option<GameLoader>, &str); 4] = [
+    (None, "Any loader"),
+    (Some(GameLoader::Fabric), "Fabric"),
+    (Some(GameLoader::Forge), "Forge"),
+    (Some(GameLoader::NeoForge), "NeoForge"),
+];
+
+const BROWSE_TYPES: [(&str, &str); 5] = [
+    ("mod", "Mods"),
+    ("texture", "Textures"),
+    ("shader", "Shaders"),
+    ("datapack", "Data packs"),
+    ("modpack", "Modpacks"),
+];
+
+const DATAPACK_SLUG: &str = "datapack";
+const TEXTURE_SLUG: &str = "texture";
+const LOADER_SLUGS: [&str; 2] = ["mod", "shader"];
+
+pub(crate) fn browsable_type(package_type: &str, cluster: &Cluster) -> String {
+    if cluster.lacks_mod_loader() {
+        let unsupported = LOADER_SLUGS.contains(&package_type)
+            || (package_type == DATAPACK_SLUG && !supports_datapacks(&cluster.mc_version));
+        return if unsupported {
+            TEXTURE_SLUG
+        } else {
+            package_type
+        }
+        .to_string();
+    }
+    if package_type == DATAPACK_SLUG && !supports_datapacks(&cluster.mc_version) {
+        BROWSE_TYPES[0].0.to_string()
+    } else {
+        package_type.to_string()
     }
 }
 
-fn encode_package_id(provider: ProviderId, id: &str) -> String {
+fn type_title(package_type: &str) -> &'static str {
+    BROWSE_TYPES
+        .iter()
+        .find(|(slug, _)| *slug == package_type)
+        .map_or("Mods", |(_, title)| *title)
+}
+
+pub(crate) fn encode_package_id(provider: ProviderId, id: &str) -> String {
     format!("{}:{}", provider as u8, id)
 }
 
@@ -74,12 +127,62 @@ pub struct Browser {
 
 impl Component for Browser {
     fn render(&self) -> impl IntoElement {
+        let mut last_type = use_browser_type();
+        use_side_effect_with_deps(&self.package_type, move |package_type| {
+            last_type.set_if_modified(package_type.clone());
+        });
+
+        let redirect = use_cluster(self.cluster_id)
+            .filter(Cluster::lacks_mod_loader)
+            .map(|c| browsable_type(&self.package_type, &c))
+            .filter(|package_type| *package_type != self.package_type)
+            .map(|package_type| Route::Browser {
+                cluster_id: self.cluster_id,
+                package_type,
+                pick_cluster: self.pick_cluster,
+            });
+        use_side_effect_with_deps(&redirect, move |redirect: &Option<Route>| {
+            if let Some(route) = redirect.clone() {
+                let _ = RouterContext::get().replace(route);
+            }
+        });
+
+        BrowserBody {
+            cluster_id: self.cluster_id,
+            package_type: self.package_type.clone(),
+            pick_cluster: self.pick_cluster,
+            key: DiffKey::None,
+        }
+        .key((self.cluster_id, self.package_type.as_str()))
+    }
+}
+
+#[derive(PartialEq)]
+struct BrowserBody {
+    cluster_id: i64,
+    package_type: String,
+    pick_cluster: bool,
+    key: DiffKey,
+}
+
+impl KeyExt for BrowserBody {
+    fn write_key(&mut self) -> &mut DiffKey {
+        &mut self.key
+    }
+}
+
+impl Component for BrowserBody {
+    fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
         let package_type = self.package_type.clone();
         let content_type = content_type_for_slug(&package_type);
 
         let store = use_browser_state_store();
-        let state_key = format!("{cluster_id}:{package_type}");
+        let state_key = if content_type == ContentType::Modpack {
+            package_type.clone()
+        } else {
+            format!("{cluster_id}:{package_type}")
+        };
         let saved = store.peek().get(&state_key).cloned().unwrap_or_default();
 
         let query = use_state(|| saved.query.clone());
@@ -87,6 +190,8 @@ impl Component for Browser {
         let view_mode = use_view_state(&format!("browser.{package_type}")).layout;
         let compatible_only = use_browser_compat();
         let selected_categories = use_state(|| saved.categories.clone());
+        let sort = use_state(|| saved.sort);
+        let loader = use_state(|| saved.loader);
         let page = use_state(|| saved.page);
 
         {
@@ -97,6 +202,8 @@ impl Component for Browser {
                     query: query.read().clone(),
                     provider: *provider.read(),
                     categories: selected_categories.read().clone(),
+                    sort: *sort.read(),
+                    loader: *loader.read(),
                     page: *page.read(),
                 };
                 store.write().insert(key.clone(), snapshot);
@@ -114,22 +221,25 @@ impl Component for Browser {
         let compat = *compatible_only.read();
         let cats = selected_categories.read().clone();
 
-        let (game_versions, loaders) = match (compat, &cluster) {
-            (true, Some(c)) => {
-                let loaders = if content_type == ContentType::Mod {
-                    vec![c.mc_loader]
-                } else {
-                    Vec::new()
-                };
-                (vec![c.mc_version.clone()], loaders)
-            }
-            _ => (Vec::new(), Vec::new()),
+        let targets_cluster = content_type != ContentType::Modpack;
+        let compat_cluster = cluster.as_ref().filter(|_| compat && targets_cluster);
+        let game_versions = compat_cluster
+            .map(|c| vec![c.mc_version.clone()])
+            .unwrap_or_default();
+        let loader_fixed = content_type == ContentType::Mod && compat_cluster.is_some();
+        let loader_filterable =
+            matches!(content_type, ContentType::Mod | ContentType::Modpack) && !loader_fixed;
+        let picked_loader = (*loader.read()).filter(|_| loader_filterable);
+        let loaders = match (loader_fixed, compat_cluster) {
+            (true, Some(c)) => vec![c.mc_loader],
+            _ => picked_loader.into_iter().collect(),
         };
 
         let mut page_state = page;
         // Normalised like the search key so a query differing only by a space does not reset the page
+        let sort_by = *sort.read();
         let signature = format!(
-            "{provider_id:?}|{}|{compat}|{}",
+            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}|{picked_loader:?}",
             normalize_query(&debounced_query.read()).to_lowercase(),
             cats.join(",")
         );
@@ -148,7 +258,7 @@ impl Component for Browser {
             game_versions,
             loaders,
             cats.clone(),
-            SearchSort::Relevance,
+            sort_by,
             *page.read(),
         );
         let categories_query = use_package_categories(provider_id, content_type);
@@ -157,7 +267,13 @@ impl Component for Browser {
         let installed = installed_map(
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
+            &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
         );
+        let installed = if matches!(content_type, ContentType::DataPack | ContentType::Modpack) {
+            Default::default()
+        } else {
+            installed
+        };
 
         let packages = search_items(&search);
         let total = search_total(&search);
@@ -177,6 +293,14 @@ impl Component for Browser {
         };
 
         let mode = *view_mode.read();
+
+        let mut grid_width = use_state(|| 0f32);
+        let controls_width = use_state(|| 0f32);
+        let cols = grid_columns_for_width(
+            (*grid_width.read() - SCROLLBAR_GUTTER).max(0.),
+            MAX_CARD_W,
+            GRID_SPACING,
+        );
 
         let fade_dep = (current_page, packages.is_empty(), pending, mode);
         let fade = use_animation_with_dependencies(&fade_dep, |conf, _| {
@@ -198,10 +322,10 @@ impl Component for Browser {
             match mode {
                 ViewLayout::Grid => {
                     let rows: Vec<Vec<ProjectSummary>> =
-                        packages.chunks(GRID_COLUMNS).map(|c| c.to_vec()).collect();
+                        packages.chunks(cols).map(|c| c.to_vec()).collect();
 
                     sa.lazy(rows.len(), CARD_H, GRID_SPACING, move |i| {
-                        grid_row(rows[i].clone(), cluster_id, &pkg, &installed).into_element()
+                        grid_row(rows[i].clone(), cluster_id, &pkg, &installed, cols).into_element()
                     })
                 }
                 ViewLayout::List => sa.lazy(packages.len(), LIST_ROW_H, LIST_SPACING, move |i| {
@@ -211,9 +335,9 @@ impl Component for Browser {
         } else if pending {
             match mode {
                 ViewLayout::Grid => {
-                    let rows = BROWSE_PAGE_SIZE.div_ceil(GRID_COLUMNS);
-                    sa.lazy(rows, CARD_H, GRID_SPACING, |_| {
-                        skeleton_grid_row().into_element()
+                    let rows = BROWSE_PAGE_SIZE.div_ceil(cols);
+                    sa.lazy(rows, CARD_H, GRID_SPACING, move |_| {
+                        skeleton_grid_row(cols).into_element()
                     })
                 }
                 ViewLayout::List => sa.lazy(BROWSE_PAGE_SIZE, LIST_ROW_H, LIST_SPACING, |_| {
@@ -231,28 +355,45 @@ impl Component for Browser {
             .height(Size::fill())
             .overflow(Overflow::Clip)
             .padding(Gaps::new(0., 40., 40., 40.))
-            .spacing(16.)
-            .child(page_title(
+            .spacing(18.)
+            .child(header(
                 &package_type,
-                cluster.as_ref().map(|c| c.name.clone()),
-                self.pick_cluster.then(|| ClusterPicker {
+                cluster
+                    .as_ref()
+                    .filter(|_| targets_cluster)
+                    .map(|c| c.name.clone()),
+                (self.pick_cluster && targets_cluster).then(|| ClusterPicker {
                     cluster_id,
                     package_type: package_type.clone(),
                 }),
+                provider,
+                query,
+                controls_width,
             ))
-            .child(controls(provider, query, view_mode))
             .child(
                 rect()
                     .horizontal()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
                     .spacing(24.)
-                    .maybe(!all_categories.is_empty(), |el| {
-                        el.child(CategorySidebar {
-                            categories: all_categories,
-                            selected: selected_categories,
-                        })
-                    })
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::px(CATEGORY_SIDEBAR_W))
+                            .height(Size::fill())
+                            .spacing(14.)
+                            .child(TypePicker {
+                                cluster_id,
+                                package_type: package_type.clone(),
+                                pick_cluster: self.pick_cluster,
+                            })
+                            .maybe(!all_categories.is_empty(), |el| {
+                                el.child(CategorySidebar {
+                                    categories: all_categories,
+                                    selected: selected_categories,
+                                })
+                            }),
+                    )
                     .child(
                         rect()
                             .vertical()
@@ -260,12 +401,27 @@ impl Component for Browser {
                             .width(Size::flex(1.0))
                             .height(Size::fill())
                             .spacing(12.)
+                            .child(results_toolbar(
+                                total,
+                                current_page,
+                                pages,
+                                pending,
+                                sort,
+                                loader_filterable.then_some(loader),
+                                view_mode,
+                            ))
                             .child(
                                 rect()
                                     .width(Size::fill())
                                     .height(Size::flex(1.0))
                                     .child(results)
-                                    .opacity(fade_opacity),
+                                    .opacity(fade_opacity)
+                                    .on_sized(move |event: Event<SizedEventData>| {
+                                        let w = event.data().area.width();
+                                        if (w - *grid_width.peek()).abs() > 0.5 {
+                                            *grid_width.write() = w;
+                                        }
+                                    }),
                             )
                             .maybe_child(pages.map(|pages| {
                                 Pagination::new(page, pages)
@@ -275,38 +431,217 @@ impl Component for Browser {
                     ),
             )
     }
+
+    fn render_key(&self) -> DiffKey {
+        self.key.clone().or(self.default_key())
+    }
 }
 
-fn page_title(
+fn header(
     package_type: &str,
     cluster_name: Option<String>,
     picker: Option<ClusterPicker>,
+    provider: State<ProviderId>,
+    query: State<String>,
+    mut header_width: State<f32>,
 ) -> impl IntoElement {
+    let measured = *header_width.read();
+    let show_provider_labels = measured == 0. || measured >= PROVIDER_LABELS_W;
+    let search_width = if measured == 0. || measured >= WIDE_SEARCH_W {
+        SEARCH_W
+    } else {
+        SEARCH_COMPACT_W
+    };
+
     rect()
-        .vertical()
-        .spacing(2.)
+        .horizontal()
+        .width(Size::fill())
+        .cross_align(Alignment::End)
+        .spacing(12.)
+        .content(Content::Flex)
+        .on_sized(move |event: Event<SizedEventData>| {
+            let w = event.data().area.width();
+            if (w - *header_width.peek()).abs() > 0.5 {
+                *header_width.write() = w;
+            }
+        })
+        .child(
+            rect()
+                .vertical()
+                .spacing(10.)
+                .child(
+                    label()
+                        .text(format!("Browse {}", type_title(package_type)))
+                        .font_size(32.)
+                        .font_weight(FontWeight::BOLD)
+                        .color(colors::fg_primary()),
+                )
+                .maybe_child(match picker {
+                    Some(picker) => Some(picker.into_element()),
+                    // Without the picker the cluster is fixed so the same pill is read-only
+                    None => cluster_name.map(|name| target_pill(&name).into_element()),
+                }),
+        )
+        .child(rect().width(Size::flex(1.0)))
+        .child(
+            SegmentedControl::new(provider)
+                .no_tint()
+                .segments(ProviderId::REMOTE_PROVIDERS.iter().map(move |provider| {
+                    let segment = Segment::new(*provider).icon(IconType::from(*provider));
+                    if show_provider_labels {
+                        segment.label(provider.to_string())
+                    } else {
+                        segment
+                    }
+                }))
+                .into_element(),
+        )
+        .child(
+            TextInput::new(query)
+                .width(Size::px(search_width))
+                .placeholder("Search for content")
+                .leading(
+                    Icon::new(IconType::SearchMd)
+                        .size(14.)
+                        .color(colors::fg_secondary())
+                        .into_element(),
+                ),
+        )
+}
+
+/// Reads like the cluster dropdown next to it so a fixed target doesn't look like a missing control
+fn target_pill(name: &str) -> impl IntoElement {
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .height(Size::px(30.))
+        .spacing(6.)
+        .padding(Gaps::new_symmetric(0., 10.))
+        .corner_radius(CornerRadius::new_all(6.))
+        .background(colors::ghost_overlay())
         .child(
             label()
-                .text(format!("Browse {}", type_title(package_type)))
-                .font_size(36.)
-                .font_weight(FontWeight::BOLD)
+                .text("Installing to")
+                .font_size(12.)
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            label()
+                .text(name.to_string())
+                .font_size(12.)
+                .max_lines(1)
                 .color(colors::fg_primary()),
         )
-        .maybe_child(match picker {
-            Some(picker) => Some(picker.into_element()),
-            // Without the picker the cluster is fixed so it's just a subtitle
-            None => cluster_name.map(|name| {
-                label()
-                    .text(format!("for {name}"))
-                    .font_size(14.)
-                    .color(colors::fg_secondary())
-                    .into_element()
-            }),
-        })
+}
+
+fn results_toolbar(
+    total: usize,
+    current_page: usize,
+    pages: Option<usize>,
+    pending: bool,
+    sort: State<SearchSort>,
+    loader: Option<State<Option<GameLoader>>>,
+    view_mode: State<ViewLayout>,
+) -> impl IntoElement {
+    // Blank rather than a stale count while a page is in flight
+    let summary = match (pending, pages) {
+        (false, Some(pages)) => format!(
+            "{} results · page {} of {}",
+            abbreviate_number(total as u64),
+            current_page + 1,
+            pages
+        ),
+        _ => String::new(),
+    };
+
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .cross_align(Alignment::Center)
+        .spacing(8.)
+        .content(Content::Flex)
+        .child(
+            label()
+                .text(summary)
+                .font_size(12.)
+                .color(colors::fg_primary().with_a(140)),
+        )
+        .child(rect().width(Size::flex(1.0)))
+        .maybe_child(loader.map(|loader| LoaderPicker { loader }))
+        .child(SortPicker { sort })
+        .child(
+            SegmentedControl::new(view_mode)
+                .equal_width(30.)
+                .icon_size(15.)
+                .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
+                .segment(Segment::new(ViewLayout::List).icon(IconType::LayoutTop)),
+        )
+}
+
+#[derive(PartialEq)]
+struct SortPicker {
+    sort: State<SearchSort>,
+}
+
+impl Component for SortPicker {
+    fn render(&self) -> impl IntoElement {
+        let mut sort = self.sort;
+        let current = *sort.read();
+
+        let labels: Vec<String> = SORTS.iter().map(|(_, l)| (*l).to_string()).collect();
+        let selected = SORTS
+            .iter()
+            .find(|(s, _)| *s == current)
+            .map_or("Relevance", |(_, l)| *l);
+
+        Dropdown::new(selected, labels)
+            .width(Size::px(132.))
+            .height(Size::px(30.))
+            .leading(
+                Icon::new(IconType::Sliders04)
+                    .size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .on_select(move |idx: usize| {
+                if let Some((picked, _)) = SORTS.get(idx) {
+                    sort.set(*picked);
+                }
+            })
+    }
+}
+
+#[derive(PartialEq)]
+struct LoaderPicker {
+    loader: State<Option<GameLoader>>,
+}
+
+impl Component for LoaderPicker {
+    fn render(&self) -> impl IntoElement {
+        let mut loader = self.loader;
+        let current = *loader.read();
+
+        let labels: Vec<String> = LOADERS.iter().map(|(_, l)| (*l).to_string()).collect();
+        let selected = LOADERS
+            .iter()
+            .find(|(l, _)| *l == current)
+            .map_or("Any loader", |(_, l)| *l);
+
+        Dropdown::new(selected, labels)
+            .width(Size::px(132.))
+            .height(Size::px(30.))
+            .on_select(move |idx: usize| {
+                if let Some((picked, _)) = LOADERS.get(idx) {
+                    loader.set(*picked);
+                }
+            })
+    }
 }
 
 /// Falls back to the bare version while the manifest hasn't arrived or doesn't cover it
 fn version_name(metadata: &[VersionMetadata], cluster: &Cluster) -> String {
+    if cluster.user_created {
+        return format!("{} {}", cluster.mc_version, cluster.mc_loader);
+    }
     parse_mc_version(&cluster.mc_version)
         .and_then(|parsed| {
             pick_version_metadata(
@@ -318,6 +653,51 @@ fn version_name(metadata: &[VersionMetadata], cluster: &Cluster) -> String {
         })
         .map(|m| m.name)
         .unwrap_or_else(|| cluster.mc_version.clone())
+}
+
+#[derive(PartialEq)]
+struct TypePicker {
+    cluster_id: i64,
+    package_type: String,
+    pick_cluster: bool,
+}
+
+impl Component for TypePicker {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let pick_cluster = self.pick_cluster;
+        let current = self.package_type.clone();
+        let cluster = use_cluster(cluster_id);
+        let datapacks = cluster
+            .as_ref()
+            .is_none_or(|c| supports_datapacks(&c.mc_version));
+        let mod_loader = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
+
+        let types: Vec<(&str, &str)> = BROWSE_TYPES
+            .into_iter()
+            .filter(|(slug, _)| datapacks || *slug != DATAPACK_SLUG)
+            .filter(|(slug, _)| mod_loader || !LOADER_SLUGS.contains(slug))
+            .collect();
+        let labels: Vec<String> = types
+            .iter()
+            .map(|(_, title)| (*title).to_string())
+            .collect();
+        let selected = type_title(&self.package_type).to_string();
+
+        Dropdown::new(selected, labels)
+            .width(Size::px(CATEGORY_SIDEBAR_W))
+            .height(Size::px(30.))
+            .on_select(move |idx: usize| {
+                let picked = types.get(idx).filter(|(slug, _)| *slug != current);
+                if let Some((slug, _)) = picked {
+                    let _ = RouterContext::get().push(Route::Browser {
+                        cluster_id,
+                        package_type: (*slug).to_string(),
+                        pick_cluster,
+                    });
+                }
+            })
+    }
 }
 
 /// The choice lives in the route so back and forward keep the cluster being browsed
@@ -353,66 +733,20 @@ impl Component for ClusterPicker {
             .spacing(8.)
             .margin(Gaps::new(4., 0., 0., 0.))
             .child(
-                label()
-                    .text("for")
-                    .font_size(14.)
-                    .color(colors::fg_secondary()),
-            )
-            .child(
                 Dropdown::new(selected, labels)
                     .width(Size::px(240.))
                     .height(Size::px(28.))
                     .on_select(move |idx: usize| {
-                        if let Some(cluster_id) = ids.get(idx).copied() {
+                        if let (Some(cluster_id), Some(cluster)) =
+                            (ids.get(idx).copied(), clusters.get(idx))
+                        {
                             let _ = RouterContext::get().replace(Route::Browser {
                                 cluster_id,
-                                package_type: package_type.clone(),
+                                package_type: browsable_type(&package_type, cluster),
                                 pick_cluster: true,
                             });
                         }
                     }),
             )
     }
-}
-
-fn controls(
-    provider: State<ProviderId>,
-    query: State<String>,
-    view_mode: State<ViewLayout>,
-) -> impl IntoElement {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(12.)
-        .content(Content::Flex)
-        .child(rect().width(Size::flex(1.0)))
-        .child(
-            SegmentedControl::new(view_mode)
-                .equal_width(30.)
-                .icon_size(16.)
-                .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
-                .segment(Segment::new(ViewLayout::List).icon(IconType::LayoutTop)),
-        )
-        .child(
-            SegmentedControl::new(provider)
-                .no_tint()
-                .segments(ProviderId::REMOTE_PROVIDERS.iter().map(|provider| {
-                    Segment::new(*provider)
-                        .icon(IconType::from(*provider))
-                        .label(provider.to_string())
-                }))
-                .into_element(),
-        )
-        .child(
-            TextInput::new(query)
-                .width(Size::px(260.))
-                .placeholder("Search for content")
-                .leading(
-                    Icon::new(IconType::SearchMd)
-                        .size(14.)
-                        .color(colors::fg_secondary())
-                        .into_element(),
-                ),
-        )
 }

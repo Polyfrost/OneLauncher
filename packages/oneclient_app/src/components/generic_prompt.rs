@@ -7,6 +7,7 @@ use oneclient_java::JAVA_CHOICE_DOWNLOAD;
 
 use crate::components::{Button, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
+use crate::microsoft_java::MICROSOFT_JAVA_CHOICE_INSTALL;
 use crate::notifications::PendingPromptView;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -15,7 +16,9 @@ use crate::updater::UPDATE_CHOICE_INSTALL;
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
 fn claimed_elsewhere(prompt: &PendingPromptView) -> bool {
-    prompt.has_choice(JAVA_CHOICE_DOWNLOAD) || prompt.has_choice(UPDATE_CHOICE_INSTALL)
+    prompt.has_choice(JAVA_CHOICE_DOWNLOAD)
+        || prompt.has_choice(UPDATE_CHOICE_INSTALL)
+        || prompt.has_choice(MICROSOFT_JAVA_CHOICE_INSTALL)
 }
 
 #[derive(PartialEq)]
@@ -76,9 +79,7 @@ impl Component for GenericPromptOverlay {
                             .pick_folder()
                             .await
                         {
-                            dispatch.answer_prompt(
-                                Answer::new(id).with_folder(handle.path()),
-                            );
+                            dispatch.answer_prompt(Answer::new(id).with_folder(handle.path()));
                         }
                     });
                 }
@@ -149,15 +150,17 @@ mod tests {
     }
 
     #[test]
-    fn the_two_rich_overlays_keep_their_own_prompts() {
-        assert!(claimed_elsewhere(&prompt(vec![Choice::primary(
+    fn the_rich_overlays_keep_their_own_prompts() {
+        for id in [
             JAVA_CHOICE_DOWNLOAD,
-            "Download",
-        )])));
-        assert!(claimed_elsewhere(&prompt(vec![Choice::primary(
             UPDATE_CHOICE_INSTALL,
-            "Download",
-        )])));
+            MICROSOFT_JAVA_CHOICE_INSTALL,
+        ] {
+            assert!(
+                claimed_elsewhere(&prompt(vec![Choice::primary(id, "Download")])),
+                "{id} has its own overlay"
+            );
+        }
     }
 
     #[test]

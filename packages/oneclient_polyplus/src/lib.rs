@@ -11,6 +11,8 @@ use uuid::Uuid;
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::constants;
 
+pub mod api;
+
 const MOJANG_JOIN_URL: &str = "https://sessionserver.mojang.com/session/minecraft/join";
 
 const PING_INTERVAL: Duration = Duration::from_secs(30);
@@ -37,6 +39,18 @@ pub enum PlusError {
 
     #[error("Poly+ is off because the Terms of Service and Privacy Policy were declined")]
     ConsentRequired,
+
+    #[error("Poly+ needs a Microsoft account")]
+    OfflineAccount,
+
+    #[error("Poly+ request failed (HTTP {status}): {body}")]
+    Api { status: u16, body: String },
+
+    #[error("could not build the Poly+ client: {0}")]
+    Client(String),
+
+    #[error("could not read the Poly+ asset: {0}")]
+    Asset(String),
 
     #[error(transparent)]
     Request(#[from] reqwest::Error),
@@ -106,7 +120,7 @@ pub fn start(auth: Arc<oneclient_auth::AuthService>) {
     });
 }
 
-fn plus_blocked() -> bool {
+pub fn plus_blocked() -> bool {
     oneclient_common::consent::blocks_url(base_url())
 }
 
@@ -126,8 +140,19 @@ fn build_client() -> Result<reqwest::Client, reqwest::Error> {
     builder.no_hickory_dns().build()
 }
 
-fn base_url() -> &'static str {
-    constants::PLUS_BACKEND_URL.trim_end_matches('/')
+pub fn base_url() -> &'static str {
+    static URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    URL.get_or_init(|| {
+        let local = cfg!(debug_assertions)
+            .then(|| std::env::var("ONECLIENT_PLUS_URL").ok())
+            .flatten()
+            .filter(|url| !url.trim().is_empty());
+        local
+            .as_deref()
+            .unwrap_or(constants::PLUS_BACKEND_URL)
+            .trim_end_matches('/')
+            .to_string()
+    })
 }
 
 async fn session(auth: &oneclient_auth::AuthService, client: &reqwest::Client) -> Outcome {
@@ -234,7 +259,10 @@ where
     Ok(())
 }
 
-async fn login(client: &reqwest::Client, account: &MinecraftAccount) -> Result<String, PlusError> {
+pub(crate) async fn login(
+    client: &reqwest::Client,
+    account: &MinecraftAccount,
+) -> Result<String, PlusError> {
     if plus_blocked() {
         return Err(PlusError::ConsentRequired);
     }

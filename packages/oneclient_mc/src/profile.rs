@@ -111,6 +111,9 @@ pub struct MojangCape {
     pub alias: String,
 }
 
+const CAPE_ACTIVE_URL: &str = "https://api.minecraftservices.com/minecraft/profile/capes/active";
+const SKINS_URL: &str = "https://api.minecraftservices.com/minecraft/profile/skins";
+
 fn normalize_texture_url(url: &str) -> String {
     url.replace(
         "http://textures.minecraft.net",
@@ -222,18 +225,188 @@ pub async fn fetch_logged_in_profile(
         .map(|(name, value)| (*name, value.as_str()))
         .collect();
 
-    let mut profile = client
+    let profile = client
         .send_json::<MojangFullPlayerProfile>(Method::GET, url, None, &header_refs)
         .await?;
 
+    Ok(normalize_profile(profile))
+}
+
+fn normalize_profile(mut profile: MojangFullPlayerProfile) -> MojangFullPlayerProfile {
     for skin in &mut profile.skins {
         skin.url = normalize_texture_url(&skin.url);
     }
     for cape in &mut profile.capes {
         cape.url = normalize_texture_url(&cape.url);
     }
+    profile
+}
 
-    Ok(profile)
+async fn send_profile_request(
+    client: &RequestClient,
+    access_token: &str,
+    method: Method,
+    url: &str,
+    body: Option<serde_json::Value>,
+) -> McResult<MojangFullPlayerProfile> {
+    let url: reqwest::Url = url.parse().map_err(McError::Url)?;
+    let mut request = client
+        .http()
+        .request(method, url)
+        .bearer_auth(access_token)
+        .header("Accept", "application/json");
+    if let Some(body) = body {
+        request = request.json(&body);
+    }
+
+    let response = request
+        .send()
+        .await
+        .map_err(|err| McError::Minecraft(err.to_string()))?;
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|err| McError::Minecraft(err.to_string()))?;
+    if !status.is_success() {
+        return Err(McError::Minecraft(format!(
+            "HTTP {}: {}",
+            status.as_u16(),
+            String::from_utf8_lossy(&bytes)
+        )));
+    }
+
+    let profile = serde_json::from_slice::<MojangFullPlayerProfile>(&bytes)?;
+    Ok(normalize_profile(profile))
+}
+
+#[tracing::instrument(level = "debug", skip(client, access_token))]
+pub async fn fetch_logged_in_profile_once(
+    client: &RequestClient,
+    access_token: &str,
+) -> McResult<MojangFullPlayerProfile> {
+    send_profile_request(
+        client,
+        access_token,
+        Method::GET,
+        "https://api.minecraftservices.com/minecraft/profile",
+        None,
+    )
+    .await
+}
+
+#[tracing::instrument(level = "debug", skip(client))]
+pub async fn resolve_username(
+    client: &RequestClient,
+    username: &str,
+) -> McResult<(String, String)> {
+    #[derive(Deserialize)]
+    struct Response {
+        id: String,
+        name: String,
+    }
+
+    let name = username.trim();
+    if name.is_empty()
+        || name.len() > 16
+        || !name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
+    {
+        return Err(McError::Minecraft(format!("invalid username {name}")));
+    }
+
+    let url = format!("https://api.mojang.com/users/profiles/minecraft/{name}")
+        .parse()
+        .map_err(McError::Url)?;
+    let response = client
+        .send_as::<Response>(reqwest::Request::new(Method::GET, url))
+        .await?;
+    Ok((response.id, response.name))
+}
+
+#[tracing::instrument(level = "debug", skip(client, access_token))]
+pub async fn select_cape(
+    client: &RequestClient,
+    access_token: &str,
+    cape_id: &str,
+) -> McResult<MojangFullPlayerProfile> {
+    send_profile_request(
+        client,
+        access_token,
+        Method::PUT,
+        CAPE_ACTIVE_URL,
+        Some(serde_json::json!({ "capeId": cape_id })),
+    )
+    .await
+}
+
+#[tracing::instrument(level = "debug", skip(client, access_token))]
+pub async fn hide_cape(
+    client: &RequestClient,
+    access_token: &str,
+) -> McResult<MojangFullPlayerProfile> {
+    send_profile_request(client, access_token, Method::DELETE, CAPE_ACTIVE_URL, None).await
+}
+
+#[tracing::instrument(level = "debug", skip(client, access_token))]
+pub async fn set_skin_from_url(
+    client: &RequestClient,
+    access_token: &str,
+    skin_url: &str,
+    variant: SkinVariant,
+) -> McResult<MojangFullPlayerProfile> {
+    send_profile_request(
+        client,
+        access_token,
+        Method::POST,
+        SKINS_URL,
+        Some(serde_json::json!({ "variant": variant, "url": skin_url })),
+    )
+    .await
+}
+
+#[tracing::instrument(level = "debug", skip(client, access_token, png))]
+pub async fn upload_skin(
+    client: &RequestClient,
+    access_token: &str,
+    png: Vec<u8>,
+    variant: SkinVariant,
+) -> McResult<MojangFullPlayerProfile> {
+    let variant = match variant {
+        SkinVariant::Classic => "classic",
+        SkinVariant::Slim => "slim",
+    };
+    let part = reqwest::multipart::Part::bytes(png)
+        .file_name("skin.png")
+        .mime_str("image/png")
+        .map_err(|err| McError::Minecraft(err.to_string()))?;
+    let form = reqwest::multipart::Form::new()
+        .text("variant", variant)
+        .part("file", part);
+
+    let response = client
+        .http()
+        .post(SKINS_URL)
+        .bearer_auth(access_token)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|err| McError::Minecraft(err.to_string()))?;
+
+    let status = response.status();
+    let body = response
+        .bytes()
+        .await
+        .map_err(|err| McError::Minecraft(err.to_string()))?;
+    if !status.is_success() {
+        return Err(McError::Minecraft(format!(
+            "Mojang rejected the skin upload (HTTP {}): {}",
+            status.as_u16(),
+            String::from_utf8_lossy(&body)
+        )));
+    }
+
+    let profile = serde_json::from_slice::<MojangFullPlayerProfile>(&body)?;
+    Ok(normalize_profile(profile))
 }
 
 /// Served without revalidating so cold start doesn't wait on a Mojang round
@@ -305,6 +478,12 @@ pub async fn fetch_player_profile_view(
             None => Err(err),
         },
     }
+}
+
+pub async fn store_profile_view(uuid: &str, profile: MojangFullPlayerProfile) -> PlayerProfileView {
+    let view = PlayerProfileView::from(profile);
+    write_cached_profile(uuid, &view).await;
+    view
 }
 
 fn profile_cache_path(uuid: &str) -> Option<std::path::PathBuf> {

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chrono::{DateTime, FixedOffset, Utc};
@@ -210,6 +210,7 @@ pub struct ChatState {
     roster: ChatRoster,
     threads: HashMap<i32, ThreadStatus>,
     complete: HashMap<i32, bool>,
+    dismissed_invites: HashSet<i32>,
 }
 
 impl ChatState {
@@ -391,7 +392,10 @@ impl ChatState {
             .flat_map(|(group_id, messages)| {
                 messages.iter().filter_map(move |message| {
                     let invite = message.invite.as_ref()?;
-                    (invite.is_open() && Some(message.sender) != self.owner).then_some(ChatInvite {
+                    (invite.is_open()
+                        && Some(message.sender) != self.owner
+                        && !self.dismissed_invites.contains(&invite.id))
+                    .then_some(ChatInvite {
                         id: invite.id,
                         from: message.sender,
                         group_id: *group_id,
@@ -402,6 +406,10 @@ impl ChatState {
             .collect();
         invites.sort_by_key(|invite| std::cmp::Reverse(invite.message_id));
         invites
+    }
+
+    pub fn dismiss_invite(&mut self, invite_id: i32) {
+        self.dismissed_invites.insert(invite_id);
     }
 
     #[must_use]
@@ -786,6 +794,23 @@ mod tests {
     fn declining_turns_chat_off() {
         assert!(!chat_allowed(&settings(0, 0, true), false));
         assert!(!chat_allowed(&settings(1, 1, false), true));
+    }
+
+    #[test]
+    fn a_dismissed_invite_leaves_the_list() {
+        let mut chat = ChatState::default();
+        chat.set_owner(Some(Uuid::from_u128(1)));
+
+        let mut invite = message(10, "");
+        invite.sender = Uuid::from_u128(2);
+        invite.invite = Some(MessageInvite::new(4, None));
+        chat.upsert(7, invite);
+        assert_eq!(chat.invites().len(), 1);
+
+        chat.dismiss_invite(4);
+
+        assert!(chat.invites().is_empty());
+        assert!(chat.messages_for(7)[0].invite.is_some());
     }
 
     #[test]

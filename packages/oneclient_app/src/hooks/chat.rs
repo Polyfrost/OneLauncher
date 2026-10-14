@@ -728,7 +728,11 @@ impl Actions {
     }
 
     pub fn decline_chat_invite(&self, invite_id: i32) {
-        tracing::warn!("declining session invite {invite_id} is not supported yet");
+        self.station()
+            .clone()
+            .write_channel(AppChannel::Chat)
+            .chat
+            .dismiss_invite(invite_id);
     }
 
     pub fn sync_chat_owner(&self, owner: Option<Uuid>) {

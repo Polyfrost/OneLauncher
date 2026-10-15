@@ -246,24 +246,27 @@ pub async fn read_zip_file_entries(
     Ok(out)
 }
 
-pub async fn read_zip_bytes_entry(
+pub async fn read_zip_bytes_entry<K: Ord>(
     data: Vec<u8>,
-    pick: impl Fn(&str) -> bool,
+    rank: impl Fn(&str) -> Option<K>,
 ) -> PolyIOResult<Option<(String, Vec<u8>)>> {
     let mut reader = open_zip(futures_lite::io::Cursor::new(data)).await?;
-    let mut candidates: Vec<(String, usize, u64)> = Vec::new();
+    let mut candidates: Vec<(K, String, usize, u64)> = Vec::new();
     for (index, cdr) in reader.cdrs().iter().enumerate() {
         let Some(name) = cdr.insecure_file_name.as_str() else {
             continue;
         };
-        if name.ends_with('/') || !pick(name) {
+        if name.ends_with('/') {
             continue;
         }
-        candidates.push((name.to_string(), index, cdr.uncompressed_size()?));
+        let Some(key) = rank(name) else {
+            continue;
+        };
+        candidates.push((key, name.to_string(), index, cdr.uncompressed_size()?));
     }
-    candidates.sort_by(|a, b| a.0.cmp(&b.0));
+    candidates.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
 
-    for (name, index, declared) in candidates {
+    for (_, name, index, declared) in candidates {
         if declared > MAX_ZIP_ENTRY_BYTES {
             continue;
         }

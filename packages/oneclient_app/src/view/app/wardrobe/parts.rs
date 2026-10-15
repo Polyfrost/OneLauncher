@@ -8,10 +8,11 @@ use freya::elements::image::{AspectRatio, ImageHandle, image};
 use freya::engine::prelude::{SkData, SkImage};
 use oneclient_polyplus::api::SwatchArt;
 
+use crate::AppAssets;
 use crate::hooks::wardrobe::{use_cape_texture, use_swatch};
 use crate::hooks::{loaded_image, settled_or_loading, use_cached_image};
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{border_all_color, clamp_to_window};
 
 pub(super) const CARD_CHROME: f32 = 81.;
 pub(super) const CAPE_ZOOM: f32 = 2.1;
@@ -622,6 +623,9 @@ fn shield(popup: impl IntoElement) -> Element {
         .into_element()
 }
 
+const RENAME_WIDTH: f32 = 240.;
+const RENAME_HEIGHT: f32 = 112.;
+
 #[derive(PartialEq)]
 struct RenamePopup {
     x: f32,
@@ -653,14 +657,16 @@ impl Component for RenamePopup {
         let submit = save.clone();
         let press = save;
 
+        let (x, y) = clamp_to_window(self.x, self.y, RENAME_WIDTH, RENAME_HEIGHT);
+
         OverlayPopup::new()
             .backdrop(false)
-            .position(Position::new_global().top(self.y).left(self.x))
+            .position(Position::new_global().top(y).left(x))
             .on_close(move |_| close.call(()))
             .child(
                 rect()
                     .vertical()
-                    .width(Size::px(240.))
+                    .width(Size::px(RENAME_WIDTH))
                     .padding(Gaps::new_all(10.))
                     .spacing(8.)
                     .corner_radius(CornerRadius::new_all(12.))
@@ -891,6 +897,9 @@ pub(super) fn notice(text: impl Into<String>) -> Element {
         .child(
             label()
                 .text(text.into())
+                .width(Size::fill())
+                .max_lines(2)
+                .text_overflow(TextOverflow::Ellipsis)
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
@@ -914,6 +923,14 @@ pub(super) fn library_intro(text: String, button: Option<Element>) -> Element {
         )
         .maybe_child(button)
         .into_element()
+}
+
+fn default_skin(slim: bool) -> bytes::Bytes {
+    static STEVE: std::sync::LazyLock<bytes::Bytes> =
+        std::sync::LazyLock::new(|| AppAssets::get_bytes("steve.png").unwrap_or_default());
+    static ALEX: std::sync::LazyLock<bytes::Bytes> =
+        std::sync::LazyLock::new(|| AppAssets::get_bytes("alex.png").unwrap_or_default());
+    if slim { ALEX.clone() } else { STEVE.clone() }
 }
 
 #[derive(PartialEq)]
@@ -942,8 +959,11 @@ impl Component for LookThumb {
         let mojang_query = use_cached_image(mojang_url.clone(), 0);
         let plus_query = use_cape_texture(plus_url.clone());
 
-        let skin = self.skin.as_ref().and_then(|(url, slim)| {
-            loaded_image(Some(url.as_str()), &skin_query).map(|(_, bytes)| (bytes, *slim))
+        let skin = self.skin.as_ref().map(|(url, slim)| {
+            let bytes = loaded_image(Some(url.as_str()), &skin_query)
+                .map(|(_, bytes)| bytes)
+                .unwrap_or_else(|| default_skin(*slim));
+            (bytes, *slim)
         });
         let cape = match (&mojang_url, &plus_url) {
             (Some(url), _) => {

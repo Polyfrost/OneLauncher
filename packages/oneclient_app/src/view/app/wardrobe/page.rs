@@ -3,7 +3,7 @@ use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
 use freya::prelude::*;
-use freya::query::MutationStateData;
+use freya::query::{MutationStateData, QueryCapability, UseQuery};
 use oneclient_mc::{MojangCape, MojangFullPlayerProfile};
 use oneclient_polyplus::api::{
     self, BodySlot, BundleInfo, CosmeticGroup, CosmeticType, CosmeticVariant, EmoteInfo,
@@ -22,9 +22,10 @@ use crate::components::{
     Button, Dropdown, Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput, centered_spinner,
 };
 use crate::hooks::wardrobe::{
-    StoreData, UseWardrobeAction, WardrobeAction, active_cape, active_skin,
-    invalidate_wardrobe_queries, use_mojang_look, use_outfits, use_plus_cosmetics,
-    use_skin_library, use_store, use_wardrobe_action,
+    MojangLookQuery, OutfitsQuery, PlusCosmeticsQuery, SkinsQuery, StoreData, StoreQuery,
+    UseWardrobeAction, WardrobeAction, active_cape, active_skin, invalidate_wardrobe_queries,
+    plus_message, use_mojang_look, use_outfits, use_plus_cosmetics, use_skin_library, use_store,
+    use_wardrobe_action,
 };
 use crate::hooks::{
     mutation_is_running, query_error, query_is_loading, settled_or_loading, try_default_account,
@@ -237,10 +238,9 @@ impl WardrobeData {
 
     pub fn selected_variant<'a>(&self, group: &'a CosmeticGroup) -> Option<&'a CosmeticVariant> {
         let wanted = self
-            .variant_picks
-            .get(&group.id)
-            .copied()
-            .or_else(|| self.equipped_slot(group).map(|(_, id)| id));
+            .equipped_slot(group)
+            .map(|(_, id)| id)
+            .or_else(|| self.variant_picks.get(&group.id).copied());
         wanted
             .and_then(|id| group.variants.iter().find(|variant| variant.id == id))
             .or_else(|| group.variants.first())
@@ -315,8 +315,9 @@ impl WardrobeData {
 
     pub fn cover_for_variant(&self, variant: i32) -> Option<String> {
         let item = self.store.as_ref()?.containing_variant(variant)?;
-        item.variant_list()
+        item.variants
             .iter()
+            .flatten()
             .find(|entry| entry.id == variant)
             .and_then(|entry| entry.cover_asset_id)
             .or(item.cover_asset_id)
@@ -539,7 +540,7 @@ pub(super) fn toggle_owned(
 pub(super) struct VariantPick {
     account: Uuid,
     group: CosmeticGroup,
-    equipped: Option<i32>,
+    equipped: Option<(BodySlot, i32)>,
     slim: bool,
 }
 
@@ -548,28 +549,27 @@ impl VariantPick {
         Self {
             account: data.account,
             group: group.clone(),
-            equipped: data.equipped_slot(group).map(|(_, id)| id),
+            equipped: data.equipped_slot(group),
             slim: data.slim,
         }
     }
 
     pub fn action(&self, variant_id: i32) -> Option<WardrobeAction> {
-        let equipped = self.equipped?;
+        let (slot, equipped) = self.equipped?;
         let resolved = self.group.variant_for_skin(variant_id, self.slim);
         if equipped == resolved {
             return None;
         }
-        let variant = self
-            .group
+        self.group
             .variants
             .iter()
-            .find(|variant| variant.id == variant_id)?;
-        equip_slot(&self.group, variant).map(|slot| WardrobeAction::Equip {
-            account: self.account,
-            slot,
-            cosmetic: Some(resolved),
-            name: self.group.name.clone(),
-        })
+            .any(|variant| variant.id == variant_id)
+            .then(|| WardrobeAction::Equip {
+                account: self.account,
+                slot,
+                cosmetic: Some(resolved),
+                name: self.group.name.clone(),
+            })
     }
 }
 
@@ -596,8 +596,17 @@ fn report(mut status: State<Option<String>>, message: String) {
 
 pub(super) fn perform(
     action: UseWardrobeAction,
+    status: State<Option<String>>,
+    keys: WardrobeAction,
+) {
+    perform_then(action, status, keys, || {});
+}
+
+pub(super) fn perform_then(
+    action: UseWardrobeAction,
     mut status: State<Option<String>>,
     keys: WardrobeAction,
+    on_ok: impl FnOnce() + 'static,
 ) {
     if mutation_is_running(&action) {
         status.set(Some("Wait for the current change to finish.".into()));
@@ -612,8 +621,13 @@ pub(super) fn perform(
             MutationStateData::Settled { res, .. } => Some(res.clone()),
             _ => None,
         };
-        if let Some(Ok(message) | Err(message)) = outcome {
-            report(status, message);
+        match outcome {
+            Some(Ok(message)) => {
+                report(status, message);
+                on_ok();
+            }
+            Some(Err(message)) => report(status, message),
+            None => {}
         }
     });
 }
@@ -665,7 +679,7 @@ pub(super) fn add_to_cart(
                 format!("{name} added to cart.")
             }
             Ok(None) => format!("{name} isn't purchasable yet."),
-            Err(err) => err.to_string(),
+            Err(err) => plus_message(err),
         };
         report(status, message);
     });
@@ -733,6 +747,31 @@ impl Shared {
     }
 }
 
+#[derive(Clone, Copy)]
+struct WardrobeQueries {
+    look: UseQuery<MojangLookQuery>,
+    plus: UseQuery<PlusCosmeticsQuery>,
+    outfits: UseQuery<OutfitsQuery>,
+    skins: UseQuery<SkinsQuery>,
+    store: UseQuery<StoreQuery>,
+}
+
+fn settled_error<Q: QueryCapability<Err = String>>(query: &UseQuery<Q>) -> Option<String> {
+    let reader = query.peek();
+    let state = reader.state();
+    state.err().cloned()
+}
+
+impl WardrobeQueries {
+    fn error(&self) -> Option<String> {
+        settled_error(&self.look)
+            .or_else(|| settled_error(&self.plus))
+            .or_else(|| settled_error(&self.outfits))
+            .or_else(|| settled_error(&self.skins))
+            .or_else(|| settled_error(&self.store))
+    }
+}
+
 #[derive(PartialEq)]
 struct WardrobeBody {
     account: Uuid,
@@ -762,6 +801,8 @@ impl Component for WardrobeBody {
         let query = use_state(String::new);
         let mut grid_width = use_state(|| 0f32);
         let anchors = use_state(Anchors::default);
+        let refreshing = use_state(|| false);
+        let mut last_plus = use_state(|| None::<PlayerCosmetics>);
         let scroll = use_scroll_controller(ScrollConfig::default);
         let shared = Shared {
             selection: use_state(|| None::<Selection>),
@@ -775,6 +816,13 @@ impl Component for WardrobeBody {
         };
 
         let look = settled_or_loading(&look_query);
+        let plus = settled_or_loading(&plus_query);
+        if let Some(current) = &plus
+            && last_plus.peek().as_ref() != Some(current)
+        {
+            last_plus.set(Some(current.clone()));
+        }
+        let plus = plus.or_else(|| last_plus.peek().clone());
         let data = WardrobeData {
             account,
             uuid: account.to_string(),
@@ -784,7 +832,8 @@ impl Component for WardrobeBody {
                 .is_some_and(|skin| skin.variant == oneclient_mc::SkinVariant::Slim),
             look,
             look_error: query_error(&look_query),
-            plus: settled_or_loading(&plus_query),
+            owned: owned_set(plus.as_ref()),
+            plus,
             plus_error: query_error(&plus_query),
             outfits: settled_or_loading(&outfits_query),
             outfits_error: query_error(&outfits_query),
@@ -793,7 +842,6 @@ impl Component for WardrobeBody {
             store: settled_or_loading(&store_query),
             store_error: query_error(&store_query),
             busy: mutation_is_running(&action),
-            owned: owned_set(settled_or_loading(&plus_query).as_ref()),
             grid_width: *grid_width.read(),
             sort: *sort.read(),
             query: query.read().clone(),
@@ -832,7 +880,7 @@ impl Component for WardrobeBody {
             data: &data,
             shared,
         };
-        let blocks = if history {
+        let mut blocks = if history {
             Vec::new()
         } else {
             match current_section {
@@ -843,6 +891,17 @@ impl Component for WardrobeBody {
                 Section::Cosmetics => cosmetics_content(&ctx),
             }
         };
+        if !history
+            && data.plus.is_some()
+            && let Some(error) = &data.plus_error
+        {
+            blocks.insert(
+                0,
+                Block::notice(format!(
+                    "Couldn't refresh your Poly+ data, so this may be out of date. {error}"
+                )),
+            );
+        }
         let layout = Rc::new(layout(blocks, card_height(data.grid_width)));
         let labels = layout.anchors.clone();
 
@@ -902,6 +961,14 @@ impl Component for WardrobeBody {
             labels,
             anchors,
             scroll,
+            refreshing,
+            queries: WardrobeQueries {
+                look: look_query,
+                plus: plus_query,
+                outfits: outfits_query,
+                skins: skins_query,
+                store: store_query,
+            },
         };
 
         rect()
@@ -1057,6 +1124,8 @@ struct Header {
     labels: Vec<(String, f32)>,
     anchors: State<Anchors>,
     scroll: ScrollController,
+    refreshing: State<bool>,
+    queries: WardrobeQueries,
 }
 
 impl Header {
@@ -1069,13 +1138,15 @@ impl Header {
             mut show_history,
             mut sort,
             labels,
-            anchors,
+            mut anchors,
             scroll,
+            mut refreshing,
+            queries,
         } = self;
         let mut adding_skin = shared.adding_skin;
         let mut show_cart = shared.show_cart;
-        let history = *show_history.read();
         let store_enabled = data.plus_available();
+        let history = *show_history.read() && store_enabled;
         let sections: Vec<(Section, &str, IconType)> = if store_enabled {
             SECTIONS.to_vec()
         } else {
@@ -1092,6 +1163,9 @@ impl Header {
                     section.set(target);
                     show_history.set(false);
                     adding_skin.set(false);
+                    if anchors.peek().pinned.is_some() {
+                        anchors.write().pinned = None;
+                    }
                 }),
             });
         }
@@ -1151,21 +1225,26 @@ impl Header {
             .cross_align(Alignment::Center)
             .spacing(8.)
             .child(left)
-            .maybe_child((store_enabled && !history).then(|| {
-                Dropdown::new(sort_selected, sort_labels)
-                    .width(Size::px(132.))
-                    .height(Size::px(30.))
-                    .leading(
-                        Icon::new(IconType::Sliders04)
-                            .size(13.)
-                            .color(colors::fg_secondary()),
-                    )
-                    .on_select(move |idx: usize| {
-                        if let Some(picked) = Sort::ALL.get(idx) {
-                            sort.set(*picked);
-                        }
-                    })
-            }))
+            .maybe_child(
+                (store_enabled
+                    && !history
+                    && matches!(current, Section::Emotes | Section::Cosmetics))
+                .then(|| {
+                    Dropdown::new(sort_selected, sort_labels)
+                        .width(Size::px(132.))
+                        .height(Size::px(30.))
+                        .leading(
+                            Icon::new(IconType::Sliders04)
+                                .size(13.)
+                                .color(colors::fg_secondary()),
+                        )
+                        .on_select(move |idx: usize| {
+                            if let Some(picked) = Sort::ALL.get(idx) {
+                                sort.set(*picked);
+                            }
+                        })
+                }),
+            )
             .maybe_child(store_enabled.then(|| {
                 Button::new()
                     .secondary()
@@ -1193,9 +1272,30 @@ impl Header {
                     .secondary()
                     .icon()
                     .tooltip("Refresh")
+                    .enabled(!*refreshing.read())
                     .on_press(move |_| {
+                        if *refreshing.peek() {
+                            return;
+                        }
+                        refreshing.set(true);
                         status.set(Some("Refreshing cosmetic data...".into()));
-                        spawn(invalidate_wardrobe_queries());
+                        spawn(async move {
+                            invalidate_wardrobe_queries().await;
+                            let Some(mut refreshing) = refreshing.try_write() else {
+                                return;
+                            };
+                            *refreshing = false;
+                            drop(refreshing);
+                            report(
+                                status,
+                                match queries.error() {
+                                    Some(error) => {
+                                        format!("Couldn't refresh all cosmetic data. {error}")
+                                    }
+                                    None => "Cosmetic data refreshed.".into(),
+                                },
+                            );
+                        });
                     })
                     .child(Icon::new(IconType::RefreshCw01).size(14.)),
             );
@@ -1216,7 +1316,7 @@ const NOTICE_HEIGHT: f32 = 57.;
 const INTRO_HEIGHT: f32 = 33.;
 const OVERSCAN: f32 = 480.;
 
-#[derive(Clone)]
+#[derive(Clone, Hash)]
 pub(super) enum Card {
     Mojang(String),
     Owned(i32),
@@ -1316,8 +1416,11 @@ fn card_row(ctx: &GridCtx, cards: &[Card]) -> Element {
         .content(Content::Flex)
         .spacing(GRID_GAP);
     for card in cards {
+        let mut hasher = DefaultHasher::new();
+        card.hash(&mut hasher);
         row = row.child(
             rect()
+                .key(hasher.finish())
                 .width(Size::flex(1.0))
                 .height(Size::fill())
                 .maybe_child(card_element(ctx, card)),
@@ -1422,8 +1525,10 @@ impl GridCtx<'_> {
     fn select(&self, picked: Selection) -> EventHandler<()> {
         let mut selection = self.shared.selection;
         let mut show_cart = self.shared.show_cart;
+        let mut adding_skin = self.shared.adding_skin;
         EventHandler::new(move |()| {
             show_cart.set(false);
+            adding_skin.set(false);
             selection.set(Some(picked.clone()));
         })
     }
@@ -1462,12 +1567,19 @@ fn equip_strip(equipped: bool) -> (&'static str, IconType) {
     }
 }
 
-fn store_notice(ctx: &GridCtx, loading: &str, empty: &str) -> Block {
+const STORE_UNREACHABLE: &str = "Couldn't reach the Poly+ store.";
+
+fn store_notice(
+    ctx: &GridCtx,
+    loading: &str,
+    empty: &str,
+    failed: impl Fn(&StoreData) -> bool,
+) -> Block {
     let data = ctx.data;
     Block::notice(match (&data.store, &data.store_error) {
         (None, Some(error)) => error.clone(),
         (None, None) => loading.to_string(),
-        (Some(store), _) if store.failed => "Couldn't reach the PolyPlus store.".to_string(),
+        (Some(store), _) if store.failed || failed(store) => STORE_UNREACHABLE.to_string(),
         _ => empty.to_string(),
     })
 }
@@ -1522,7 +1634,12 @@ fn featured_content(ctx: &GridCtx) -> Vec<Block> {
         out.push(store_notice(
             ctx,
             "Loading the store...",
-            "Nothing featured right now.",
+            if data.query.trim().is_empty() {
+                "Nothing featured right now."
+            } else {
+                "Nothing featured matches your search."
+            },
+            |store| store.featured_failed,
         ));
     }
     out
@@ -1554,7 +1671,9 @@ fn emotes_content(ctx: &GridCtx) -> Vec<Block> {
             .tags
             .category
             .first()
+            .filter(|name| !name.trim().is_empty())
             .map(|name| {
+                let name = name.trim();
                 let mut chars = name.chars();
                 chars
                     .next()
@@ -1573,25 +1692,42 @@ fn emotes_content(ctx: &GridCtx) -> Vec<Block> {
     }
 
     if out.is_empty() {
-        out.push(store_notice(ctx, "Loading emotes...", "No emotes found."));
+        out.push(store_notice(
+            ctx,
+            "Loading emotes...",
+            "No emotes found.",
+            |store| store.missing.contains(&CosmeticType::Emote),
+        ));
     }
     out
+}
+
+fn store_missing(data: &WardrobeData, kind: CosmeticType) -> bool {
+    data.store
+        .as_ref()
+        .is_some_and(|store| store.missing.contains(&kind))
 }
 
 fn cosmetics_content(ctx: &GridCtx) -> Vec<Block> {
     let data = ctx.data;
     let mut out = Vec::new();
+    let searching = !data.query.trim().is_empty();
+    let store_down = data.store.as_ref().is_some_and(|store| store.failed);
 
     for (kind, text) in CATEGORIES {
         if *kind == CosmeticType::Cape {
-            out.push(ctx.anchor(text));
-            out.extend(cape_groups(ctx));
+            let capes = cape_groups(ctx);
+            if !capes.is_empty() {
+                out.push(ctx.anchor(text));
+                out.extend(capes);
+            }
             continue;
         }
 
         let owned = data.groups(*kind);
         let shop = data.shop(*kind);
-        if owned.is_empty() && shop.is_empty() {
+        let missing = !searching && !store_down && store_missing(data, *kind);
+        if owned.is_empty() && shop.is_empty() && !missing {
             continue;
         }
 
@@ -1601,30 +1737,61 @@ fn cosmetics_content(ctx: &GridCtx) -> Vec<Block> {
             .map(|group| Card::Owned(group.id))
             .collect();
         cards.extend(shop.iter().map(|item| Card::Shop(item.id)));
-        out.push(ctx.grid(cards));
+        if !cards.is_empty() {
+            out.push(ctx.grid(cards));
+        }
+        if missing {
+            out.push(Block::notice(STORE_UNREACHABLE));
+        }
     }
 
+    if out.is_empty() {
+        out.push(Block::notice("No cosmetics match your search."));
+    }
+    if store_down {
+        out.insert(0, Block::notice(STORE_UNREACHABLE));
+    }
     out
 }
 
 fn cape_groups(ctx: &GridCtx) -> Vec<Block> {
     let data = ctx.data;
+    let searching = !data.query.trim().is_empty();
+    let mojang_matches = data.look.as_ref().map(|look| {
+        look.capes
+            .iter()
+            .filter(|cape| data.matches(&cape.alias))
+            .collect::<Vec<&MojangCape>>()
+    });
+    let plus_matches = data.plus.as_ref().map(|_| {
+        (
+            data.groups(CosmeticType::Cape),
+            data.shop(CosmeticType::Cape),
+        )
+    });
+    if searching
+        && mojang_matches.as_ref().is_some_and(Vec::is_empty)
+        && plus_matches
+            .as_ref()
+            .is_some_and(|(owned, shop)| owned.is_empty() && shop.is_empty())
+    {
+        return Vec::new();
+    }
+
     let mut out = vec![Block::heading(
         "Minecraft capes",
-        "Everyone sees this cape, including players without PolyPlus.",
+        "Everyone sees this cape, including players without Poly+.",
     )];
 
     match (&data.look, &data.look_error) {
         (None, Some(error)) => out.push(Block::notice(error.clone())),
         (None, None) => out.push(Block::notice("Loading your Minecraft capes...")),
         (Some(look), _) => {
-            let capes: Vec<&MojangCape> = look
-                .capes
-                .iter()
-                .filter(|cape| data.matches(&cape.alias))
-                .collect();
-            if capes.is_empty() {
+            let capes = mojang_matches.unwrap_or_default();
+            if look.capes.is_empty() {
                 out.push(Block::notice("You don't own any Minecraft capes."));
+            } else if capes.is_empty() {
+                out.push(Block::notice("No Minecraft capes match your search."));
             } else {
                 out.push(
                     ctx.grid(
@@ -1639,22 +1806,31 @@ fn cape_groups(ctx: &GridCtx) -> Vec<Block> {
     }
 
     out.push(Block::heading(
-        "PolyPlus capes",
-        "Players with PolyPlus see this cape instead of your Minecraft cape.",
+        "Poly+ capes",
+        "Players with Poly+ see this cape instead of your Minecraft cape.",
     ));
 
-    if data.plus.is_none() {
+    let Some((owned, shop)) = plus_matches else {
         out.push(Block::notice(match &data.plus_error {
             Some(error) => error.clone(),
-            None => "Loading your PolyPlus capes...".into(),
+            None => "Loading your Poly+ capes...".into(),
         }));
         return out;
-    }
+    };
 
-    let owned = data.groups(CosmeticType::Cape);
-    let shop = data.shop(CosmeticType::Cape);
     if owned.is_empty() && shop.is_empty() {
-        out.push(Block::notice("No PolyPlus capes found."));
+        let store_down = data.store.as_ref().is_some_and(|store| store.failed);
+        out.push(Block::notice(
+            if !store_down && store_missing(data, CosmeticType::Cape) {
+                STORE_UNREACHABLE
+            } else if searching {
+                "No Poly+ capes match your search."
+            } else if store_down {
+                "You don't own any Poly+ capes."
+            } else {
+                "No Poly+ capes found."
+            },
+        ));
     } else {
         let mut cards: Vec<Card> = owned
             .into_iter()
@@ -1817,13 +1993,14 @@ fn shop_card(ctx: &GridCtx, item: &StoreItem) -> Element {
     let owned = data.fully_owned(item) || owned_ids.contains(&variant.id);
     let in_cart = data.cart_keys.contains(&cart_key(variant.id));
     let variants = item.ui_variants();
+    let ownership_known = data.plus.is_some();
 
     let (action_label, action_icon, action_enabled) = if owned {
         ("Owned", IconType::Check, false)
     } else if in_cart {
         ("In cart", IconType::Check, false)
     } else {
-        ("Add to cart", IconType::Plus, true)
+        ("Add to cart", IconType::Plus, ownership_known)
     };
 
     let badge = if owned {
@@ -1909,13 +2086,16 @@ fn shop_card(ctx: &GridCtx, item: &StoreItem) -> Element {
                 MenuAction::new(
                     IconType::Plus,
                     "Add to cart",
-                    !in_cart && !owned,
+                    !in_cart && !owned && ownership_known,
                     move |()| add.call(()),
                 )
             },
-            MenuAction::new(IconType::LinkExternal01, "Buy now", !owned, move |()| {
-                buy.call(())
-            }),
+            MenuAction::new(
+                IconType::LinkExternal01,
+                "Buy now",
+                !owned && ownership_known,
+                move |()| buy.call(()),
+            ),
         ],
         rename: None,
         enabled: true,
@@ -2177,6 +2357,8 @@ fn skins_content(ctx: &GridCtx) -> Vec<Block> {
 
     let mut adding_skin = ctx.shared.adding_skin;
     let mut show_cart = ctx.shared.show_cart;
+    let mut status = ctx.shared.status;
+    let busy = ctx.data.busy;
     let mut out = vec![Block::intro(
         format!(
             "{} of {} saved. Every skin you wear is saved here automatically.",
@@ -2188,6 +2370,9 @@ fn skins_content(ctx: &GridCtx) -> Vec<Block> {
                 .secondary()
                 .on_press(move |_| {
                     show_cart.set(false);
+                    if !busy {
+                        status.set(None);
+                    }
                     adding_skin.set(true);
                 })
                 .child(Icon::new(IconType::Plus).size(14.))
@@ -2217,10 +2402,11 @@ fn skins_content(ctx: &GridCtx) -> Vec<Block> {
 
 fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
     let data = ctx.data;
-    let wearing = data.current_skin_hash().as_deref() == Some(skin.hash.as_str());
     let id = skin.id;
     let account = data.account;
     let slim = skin.model == SkinModel::Slim;
+    let wearing =
+        data.current_skin_hash().as_deref() == Some(skin.hash.as_str()) && data.slim == slim;
     let mut selection = ctx.shared.selection;
     let wear = ctx.run(WardrobeAction::WearSkin {
         account,
@@ -2237,6 +2423,7 @@ fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
     let arms = ctx.run(WardrobeAction::SkinArms {
         account,
         id,
+        url: skin.url.clone(),
         name: skin.name.clone(),
         slim: !slim,
     });

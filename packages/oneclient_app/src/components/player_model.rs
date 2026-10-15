@@ -286,7 +286,12 @@ fn decode_cape_shader(cape_bytes: &Bytes) -> Option<(Shader, f32)> {
     let data = unsafe { SkData::new_bytes(cape_bytes) };
     let cape = SkImage::from_encoded(data)?;
     let cape = cape.make_raster_image(None, None).unwrap_or(cape);
-    let scale = (cape.width() as f32 / 64.0).max(1.0 / 64.0);
+    let width = cape.width() as f32;
+    let scale = if width >= 64.0 {
+        width / 64.0
+    } else {
+        (width / 22.0).max(1.0 / 64.0)
+    };
 
     let shader = cape.to_shader(
         (TileMode::Clamp, TileMode::Clamp),

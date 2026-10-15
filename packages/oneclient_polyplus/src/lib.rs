@@ -15,6 +15,8 @@ pub mod api;
 
 const MOJANG_JOIN_URL: &str = "https://sessionserver.mojang.com/session/minecraft/join";
 
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
+
 const PING_INTERVAL: Duration = Duration::from_secs(30);
 
 const RECONNECT_DELAY: Duration = Duration::from_secs(15);
@@ -271,6 +273,7 @@ pub(crate) async fn login(
 
     let join = client
         .post(MOJANG_JOIN_URL)
+        .timeout(REQUEST_TIMEOUT)
         .header("Accept", "application/json")
         .json(&serde_json::json!({
             "accessToken": account.access_token,
@@ -294,6 +297,7 @@ pub(crate) async fn login(
 
     let login = client
         .post(url)
+        .timeout(REQUEST_TIMEOUT)
         .header("Accept", "application/json")
         .send()
         .await?;

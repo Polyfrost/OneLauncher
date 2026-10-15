@@ -6,9 +6,10 @@ use uuid::Uuid;
 
 use super::page::{
     BACK_VIEW_TYPES, Section, Selection, Shared, VariantPick, WardrobeData, add_to_cart, cart_key,
-    cart_name, collection_label, is_new, perform, shop_thumbnail, type_label, variant_label,
+    cart_name, collection_label, is_new, perform, perform_then, shop_thumbnail, type_label,
+    variant_label,
 };
-use super::parts::{BACK_YAW, CoverThumb, FRONT_YAW, LookThumb, money, price_label};
+use super::parts::{BACK_YAW, CapeSource, CoverThumb, FRONT_YAW, LookThumb, money, price_label};
 use crate::components::{Button, Icon, IconType, ScrollArea, Segment, SegmentedControl, TextInput};
 use crate::hooks::wardrobe::{WardrobeAction, use_transactions};
 use crate::hooks::{query_error, query_is_loading, settled_or_loading};
@@ -116,7 +117,11 @@ impl Component for RightColumn {
                 account: data.account,
                 busy: data.busy,
                 shared,
-                on_close: EventHandler::new(move |()| adding_skin.set(false)),
+                on_close: EventHandler::new(move |()| {
+                    if let Some(mut open) = adding_skin.try_write() {
+                        *open = false;
+                    }
+                }),
             }
             .into_element()
         } else if let Some(Selection::Shop(id)) = picked
@@ -420,6 +425,22 @@ impl Component for PreviewPanel {
                 Some(outfit) => data.outfit_look(outfit),
                 None => (None, data.current_cape()),
             },
+            Some(Selection::MojangCape(id)) => (
+                None,
+                data.mojang_cape(id)
+                    .map(|cape| CapeSource::Mojang(cape.url.clone())),
+            ),
+            Some(Selection::Owned(_))
+                if owned.is_some_and(|group| group.kind == api::CosmeticType::Cape) =>
+            {
+                (
+                    None,
+                    owned
+                        .and_then(|group| data.selected_variant(group))
+                        .and_then(|variant| variant.url.clone())
+                        .map(CapeSource::Plus),
+                )
+            }
             _ => (None, data.current_cape()),
         };
 
@@ -520,12 +541,19 @@ impl Component for CartPane {
         let body = if items.is_empty() {
             centered("Your cart is empty.")
         } else {
+            let priced = items
+                .iter()
+                .all(|item| item.final_price.or(item.base_price).is_some());
             let subtotal: f32 = items.iter().map(|item| item.base_price.unwrap_or(0.)).sum();
             let total: f32 = items
                 .iter()
                 .map(|item| item.final_price.or(item.base_price).unwrap_or(0.))
                 .sum();
-            let discount = (subtotal - total).max(0.);
+            let discount = if priced {
+                (subtotal - total).max(0.)
+            } else {
+                0.
+            };
             let products: Vec<String> = items.iter().map(|item| item.product_id.clone()).collect();
             let count = items.len();
             let busy = self.data.busy;
@@ -560,7 +588,11 @@ impl Component for CartPane {
                 )
                 .child(totals_row(
                     "Subtotal",
-                    money(subtotal),
+                    if priced {
+                        money(subtotal)
+                    } else {
+                        "—".into()
+                    },
                     colors::fg_primary(),
                     false,
                 ))
@@ -574,7 +606,9 @@ impl Component for CartPane {
                 }))
                 .child(totals_row(
                     "Total",
-                    if total <= 0. {
+                    if !priced {
+                        "—".into()
+                    } else if total <= 0. {
                         "FREE".into()
                     } else {
                         money(total)
@@ -940,7 +974,7 @@ impl Component for StoreDetailPanel {
                             .child(
                                 Button::new()
                                     .secondary()
-                                    .enabled(!in_cart && !data.busy)
+                                    .enabled(!in_cart && !data.busy && data.plus.is_some())
                                     .on_press(move |_| add.call(()))
                                     .maybe_child(
                                         (!in_cart).then(|| Icon::new(IconType::Plus).size(14.)),
@@ -950,7 +984,7 @@ impl Component for StoreDetailPanel {
                             .child(
                                 Button::new()
                                     .primary()
-                                    .enabled(!data.busy)
+                                    .enabled(!data.busy && data.plus.is_some())
                                     .on_press(move |_| buy.call(()))
                                     .child(Icon::new(IconType::LinkExternal01).size(14.))
                                     .text("Buy now"),
@@ -1196,7 +1230,8 @@ impl Component for AddSkinPanel {
         use_side_effect_with_deps(&picked, move |_| message.set(None));
 
         let submit = EventHandler::new(move |()| {
-            let custom_name = name.read().trim().to_string();
+            let custom_name: String = name.read().trim().chars().take(64).collect();
+            let custom_name = custom_name.trim().to_string();
             let custom_name = (!custom_name.is_empty()).then_some(custom_name);
             let keys = match *source.read() {
                 SkinSource::Username => {
@@ -1234,8 +1269,12 @@ impl Component for AddSkinPanel {
                 }
             };
             message.set(None);
-            done.call(());
-            perform(shared.action, shared.status, keys);
+            let done = done.clone();
+            perform_then(shared.action, shared.status, keys, move || {
+                if message.try_peek().is_some() {
+                    done.call(());
+                }
+            });
         });
 
         let mut body = rect().vertical().width(Size::fill()).spacing(12.);
@@ -1372,6 +1411,7 @@ impl Component for AddSkinPanel {
                     .font_size(12.)
                     .color(colors::fg_secondary()),
             )
+            .maybe_child(status_text(&shared.status.read().clone()))
             .child(
                 Button::new()
                     .primary()

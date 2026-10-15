@@ -11,9 +11,10 @@ use uuid::Uuid;
 
 use oneclient_auth::MinecraftAccount;
 
-use crate::{PlusError, base_url, build_client, login, plus_blocked};
+use crate::{PlusError, REQUEST_TIMEOUT, base_url, build_client, login, plus_blocked};
 
 const TOKEN_LIFETIME: Duration = Duration::from_secs(100 * 60);
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 
 static CLIENT: LazyLock<Result<reqwest::Client, String>> =
     LazyLock::new(|| build_client().map_err(|err| err.to_string()));
@@ -212,6 +213,22 @@ pub struct OutfitList {
 pub struct AppliedOutfit {
     pub outfit: OutfitInfo,
     pub skin: Option<SkinInfo>,
+    #[serde(default)]
+    pub adopted: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct OutfitUpdate {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub favorite: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skin_id: Option<Option<i32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mojang_cape_id: Option<Option<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blank: Option<bool>,
 }
 
 fn client() -> Result<&'static reqwest::Client, PlusError> {
@@ -220,11 +237,11 @@ fn client() -> Result<&'static reqwest::Client, PlusError> {
         .map_err(|err| PlusError::Client(err.clone()))
 }
 
-async fn token_for(account: &MinecraftAccount, fresh: bool) -> Result<String, PlusError> {
+async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -> Result<String, PlusError> {
     let mut tokens = TOKENS.lock().await;
-    if !fresh
-        && let Some((token, issued)) = tokens.get(&account.id)
+    if let Some((token, issued)) = tokens.get(&account.id)
         && issued.elapsed() < TOKEN_LIFETIME
+        && stale != Some(token.as_str())
     {
         return Ok(token.clone());
     }
@@ -248,11 +265,12 @@ async fn send_authorized(
     }
 
     let url = format!("{}{path}", base_url());
-    let mut fresh = false;
+    let mut stale: Option<String> = None;
     loop {
-        let token = token_for(account, fresh).await?;
+        let token = token_for(account, stale.as_deref()).await?;
         let mut request = client()?
             .request(method.clone(), &url)
+            .timeout(REQUEST_TIMEOUT)
             .bearer_auth(&token)
             .header("Accept", "application/json");
         if let Some(body) = body {
@@ -260,8 +278,8 @@ async fn send_authorized(
         }
 
         let response = request.send().await?;
-        if response.status() == StatusCode::UNAUTHORIZED && !fresh {
-            fresh = true;
+        if response.status() == StatusCode::UNAUTHORIZED && stale.is_none() {
+            stale = Some(token);
             continue;
         }
         if !response.status().is_success() {
@@ -320,13 +338,14 @@ pub async fn create_outfit(
 pub async fn update_outfit(
     account: &MinecraftAccount,
     id: i32,
-    changes: &serde_json::Value,
+    changes: &OutfitUpdate,
 ) -> Result<OutfitInfo, PlusError> {
+    let body = serde_json::json!(changes);
     json_authorized(
         account,
         Method::PATCH,
         &format!("/outfits/{id}"),
-        Some(changes),
+        Some(&body),
     )
     .await
 }
@@ -378,7 +397,7 @@ pub async fn delete_skin(account: &MinecraftAccount, id: i32) -> Result<(), Plus
 }
 
 pub async fn download(url: &str) -> Result<Bytes, PlusError> {
-    let response = client()?.get(url).send().await?;
+    let response = client()?.get(url).timeout(DOWNLOAD_TIMEOUT).send().await?;
     if !response.status().is_success() {
         return Err(PlusError::Api {
             status: response.status().as_u16(),
@@ -396,9 +415,11 @@ pub async fn cape_texture(url: &str) -> Result<Bytes, PlusError> {
 
     let entry = polyio::read_zip_bytes_entry(bytes.to_vec(), |name| {
         let file = name.rsplit('/').next().unwrap_or(name);
-        !name.contains("__MACOSX")
+        let texture = !name.contains("__MACOSX")
             && !file.starts_with("._")
-            && file.to_ascii_lowercase().ends_with(".png")
+            && file.to_ascii_lowercase().ends_with(".png");
+        let preferred = name.starts_with("textures/") || name.contains("/textures/");
+        texture.then_some(u8::from(!preferred))
     })
     .await
     .map_err(|err| PlusError::Asset(err.to_string()))?;
@@ -639,6 +660,7 @@ async fn get_public<T: DeserializeOwned>(
     )?;
     let response = client()?
         .get(url)
+        .timeout(REQUEST_TIMEOUT)
         .header("Accept", "application/json")
         .send()
         .await?;
@@ -847,6 +869,41 @@ mod tests {
         let list: OutfitList = serde_json::from_str(json).unwrap();
         assert!(list.outfits[0].blank);
         assert_eq!(list.outfits[0].equipped.get(&BodySlot::Hat), Some(&2));
+    }
+
+    #[test]
+    fn parses_applied_outfit() {
+        let json = r#"{"outfit": {"id": 2, "name": "Outfit #2"}, "skin": null, "adopted": true}"#;
+        let applied: AppliedOutfit = serde_json::from_str(json).unwrap();
+        assert!(applied.adopted);
+        assert!(!applied.outfit.blank);
+
+        let json = r#"{"outfit": {"id": 2, "name": "Outfit #2"}, "skin": null}"#;
+        let applied: AppliedOutfit = serde_json::from_str(json).unwrap();
+        assert!(!applied.adopted);
+    }
+
+    #[test]
+    fn serializes_outfit_update() {
+        let adopt = OutfitUpdate {
+            skin_id: Some(None),
+            mojang_cape_id: Some(Some("cape".into())),
+            blank: Some(false),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::json!(adopt),
+            serde_json::json!({ "skin_id": null, "mojang_cape_id": "cape", "blank": false })
+        );
+
+        let rename = OutfitUpdate {
+            name: Some("Outfit".into()),
+            ..Default::default()
+        };
+        assert_eq!(
+            serde_json::json!(rename),
+            serde_json::json!({ "name": "Outfit" })
+        );
     }
 
     #[test]

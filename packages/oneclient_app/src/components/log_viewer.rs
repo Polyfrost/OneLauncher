@@ -455,7 +455,7 @@ fn scroll_body(args: BodyArgs) -> Element {
         .height(Size::px(content_h))
         .on_pointer_down(on_body_down)
         .on_capture_global_pointer_move(on_global_move)
-        .on_capture_global_pointer_press(on_global_release)
+        .on_capture_global_pointer_up(on_global_release)
         .on_global_key_down(on_key_down)
         .child(log_body(
             &lines[..],

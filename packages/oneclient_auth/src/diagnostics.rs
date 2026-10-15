@@ -4,7 +4,7 @@
 use oneclient_net::{NetworkFailure, classify_network_failure};
 use reqwest::StatusCode;
 
-use super::error::{friendly_xbox_error, MinecraftAuthError, MinecraftAuthStep};
+use super::error::{MinecraftAuthError, MinecraftAuthStep, friendly_xbox_error};
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct AuthErrorGuidance {
@@ -298,7 +298,9 @@ fn xerr(code: u64) -> MinecraftAuthError {
     MinecraftAuthError::XboxError {
         step: MinecraftAuthStep::XstsAuthorize,
         error_code: code,
-        message: friendly_xbox_error(code).unwrap_or("Xbox rejected sign-in.").to_string(),
+        message: friendly_xbox_error(code)
+            .unwrap_or("Xbox rejected sign-in.")
+            .to_string(),
         redirect: None,
     }
 }
@@ -306,7 +308,7 @@ fn xerr(code: u64) -> MinecraftAuthError {
 fn network_guidance(failure: NetworkFailure) -> AuthErrorGuidance {
     match failure {
         NetworkFailure::Certificate => AuthErrorGuidance::new(
-            "OneClient reached the Microsoft sign-in service, but could not verify its security certificate. Something on this machine or network is intercepting the encrypted connection — usually antivirus HTTPS scanning, a school or workplace filter, or a VPN.",
+            "OneClient reached the Microsoft sign-in service, but could not verify its security certificate. Something on this machine or network is intercepting the encrypted connection - usually antivirus HTTPS scanning, a school or workplace filter, or a VPN.",
             &[
                 "Turn off HTTPS/SSL scanning in your antivirus (often called \"encrypted connection scanning\", \"web shield\", or \"SSL interception\")",
                 "Temporarily disable your VPN or proxy and try signing in again",

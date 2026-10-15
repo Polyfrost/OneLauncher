@@ -490,21 +490,6 @@
       ]
     },
     {
-      "name": "medal",
-      "fixtype": 1,
-      "fix": "Medal's drivers interfered.\nRemove the Medal.tv clipping software from your computer.",
-      "causes": [
-        {
-          "method": "contains",
-          "value": "medal-hook64.dl"
-        },
-        {
-          "method": "contains",
-          "value": "atio6axx.dll"
-        }
-      ]
-    },
-    {
       "fixtype": 1,
       "fix": "Couldn't log in to multiplayer serivces.\nIf you use a Microsoft account, enable multiplayer.\n1. Go to <https://account.xbox.com/en-us/Settings>\n2. Navigate to the Xbox One/Windows 10 Online Safety tab. If you are under 18, you may need a parent or guardian to help by getting them to create a family and add you to it.\n3. From there, they should be able to enable multiplayer for your account.",
       "causes": [

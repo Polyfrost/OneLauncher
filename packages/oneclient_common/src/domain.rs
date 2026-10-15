@@ -56,6 +56,22 @@ impl ContentType {
         }
     }
 
+    // installed once for the whole launcher rather than per cluster
+    #[must_use]
+    pub const fn is_global(self) -> bool {
+        matches!(self, Self::ResourcePack | Self::Shader)
+    }
+
+    #[must_use]
+    pub const fn needs_mod_loader(self) -> bool {
+        matches!(self, Self::Mod | Self::Shader)
+    }
+
+    #[must_use]
+    pub const fn reloads_in_game(self) -> bool {
+        matches!(self, Self::ResourcePack | Self::Shader)
+    }
+
     pub fn from_folder_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
             "mods" | "mod" => Some(Self::Mod),
@@ -128,17 +144,7 @@ pub enum HashAlgorithm {
 /// Applies only to browser-installed packages bundles have their own update flow
 /// The check always runs regardless of variant so "out of date" markers stay populated
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    Serialize,
-    Deserialize,
-    Default,
-    EnumIter,
-    StrumDisplay,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumIter, StrumDisplay,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum PackageUpdateMode {
@@ -192,7 +198,7 @@ pub enum GameLoader {
     NeoForge = 2,
     Quilt = 3,
     Fabric = 4,
-    LegacyFabric = 5,
+    Ornithe = 5,
 }
 
 impl GameLoader {
@@ -207,7 +213,7 @@ impl GameLoader {
             Self::NeoForge => interfrost::api::modded::CURRENT_NEOFORGE_FORMAT_VERSION,
             Self::Quilt => interfrost::api::modded::CURRENT_QUILT_FORMAT_VERSION,
             Self::Fabric => interfrost::api::modded::CURRENT_FABRIC_FORMAT_VERSION,
-            Self::LegacyFabric => interfrost::api::modded::CURRENT_LEGACY_FABRIC_FORMAT_VERSION,
+            Self::Ornithe => interfrost::api::modded::CURRENT_ORNITHE_FORMAT_VERSION,
         }
     }
 
@@ -215,12 +221,19 @@ impl GameLoader {
         match self {
             Self::Vanilla => String::from("minecraft"),
             Self::NeoForge => String::from("neo"),
+            Self::Ornithe => String::from("ornithe"),
             _ => self.to_string().to_lowercase().replace(['_', '.', ' '], ""),
         }
     }
 
     pub const fn modded_loaders() -> &'static [Self] {
-        &[Self::Forge, Self::NeoForge, Self::Quilt, Self::Fabric]
+        &[
+            Self::Forge,
+            Self::NeoForge,
+            Self::Quilt,
+            Self::Fabric,
+            Self::Ornithe,
+        ]
     }
 
     pub fn compatible_with(self, other: Self) -> bool {
@@ -230,7 +243,7 @@ impl GameLoader {
             Self::NeoForge => other == Self::NeoForge,
             Self::Quilt => matches!(other, Self::Quilt | Self::Fabric),
             Self::Fabric => other == Self::Fabric,
-            Self::LegacyFabric => other == Self::LegacyFabric,
+            Self::Ornithe => other == Self::Ornithe,
         }
     }
 
@@ -241,7 +254,7 @@ impl GameLoader {
             Self::NeoForge => "neoforge",
             Self::Quilt => "quilt",
             Self::Fabric => "fabric",
-            Self::LegacyFabric => "legacy-fabric",
+            Self::Ornithe => "ornithe",
         }
     }
 }
@@ -257,7 +270,7 @@ impl FromStr for GameLoader {
                 "neoforge" | "neo" => Self::NeoForge,
                 "quilt" | "quiltloader" => Self::Quilt,
                 "fabric" | "fabricloader" => Self::Fabric,
-                "legacyfabric" => Self::LegacyFabric,
+                "ornithe" => Self::Ornithe,
                 _ => return Err(format!("'{s}' is not a valid game loader")),
             },
         )
@@ -272,7 +285,7 @@ impl Display for GameLoader {
             Self::NeoForge => "NeoForge",
             Self::Quilt => "Quilt",
             Self::Fabric => "Fabric",
-            Self::LegacyFabric => "Legacy Fabric",
+            Self::Ornithe => "Fabric",
         })
     }
 }
@@ -295,5 +308,21 @@ impl Resolution {
     #[must_use]
     pub const fn new(width: u32, height: u32) -> Self {
         Self { width, height }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_display_name_is_not_a_metadata_path() {
+        assert_eq!(GameLoader::Ornithe.to_string(), "Fabric");
+        assert_eq!(GameLoader::Ornithe.get_format_name(), "ornithe");
+        assert_eq!(GameLoader::Vanilla.get_format_name(), "minecraft");
+        assert_eq!(GameLoader::NeoForge.get_format_name(), "neo");
+        assert_eq!(GameLoader::Fabric.get_format_name(), "fabric");
+        assert_eq!(GameLoader::Quilt.get_format_name(), "quilt");
+        assert_eq!(GameLoader::Forge.get_format_name(), "forge");
     }
 }

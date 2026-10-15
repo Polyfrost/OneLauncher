@@ -92,6 +92,7 @@ pub async fn detect() -> LauncherResult<Option<MigrationDetection>> {
             mc_version: String::new(),
             target_mc_version: None,
             mc_loader: GameLoader::Vanilla,
+            target_mc_loader: None,
             categories: Vec::new(),
             has_game_dir: true,
         }],
@@ -129,54 +130,6 @@ pub async fn import_game_dir(
 mod tests {
     use super::*;
 
-    fn excluded(name: &str) -> bool {
-        IMPORT_EXCLUDE_TOP
-            .iter()
-            .any(|e| e.eq_ignore_ascii_case(name))
-    }
-
-    #[test]
-    fn excludes_package_and_launcher_managed_dirs() {
-        for name in [
-            "mods",
-            "resourcepacks",
-            "shaderpacks",
-            "datapacks",
-            "versions",
-            "libraries",
-            "assets",
-            "logs",
-        ] {
-            assert!(excluded(name), "{name} should be excluded");
-        }
-    }
-
-    #[test]
-    fn excludes_mojang_credentials() {
-        assert!(excluded("launcher_accounts.json"));
-        assert!(excluded("launcher_msa_credentials.bin"));
-    }
-
-    #[test]
-    fn excludes_third_party_launcher_data() {
-        for name in ["cheatbreaker_accounts.json", "feather-mods", "jre"] {
-            assert!(excluded(name), "{name} should be excluded");
-        }
-    }
-
-    #[test]
-    fn keeps_user_data() {
-        for name in [
-            "saves",
-            "config",
-            "options.txt",
-            "screenshots",
-            "servers.dat",
-        ] {
-            assert!(!excluded(name), "{name} must not be excluded");
-        }
-    }
-
     #[tokio::test]
     async fn import_copies_user_data_and_skips_the_rest() {
         let src = polyio::tempdir().await.expect("src dir");
@@ -188,6 +141,7 @@ mod tests {
             "servers.dat",
             "launcher_accounts.json",
             "launcher_msa_credentials.bin",
+            "cheatbreaker_accounts.json",
         ] {
             polyio::write(src.join(file), b"x".to_vec()).await.unwrap();
         }
@@ -198,6 +152,9 @@ mod tests {
             ("mods", "sodium.jar"),
             ("resourcepacks", "faithful.zip"),
             ("shaderpacks", "bsl.zip"),
+            ("datapacks", "pack.zip"),
+            ("feather-mods", "mod.jar"),
+            ("jre", "bin/java"),
             ("versions", "1.21.1/1.21.1.jar"),
             ("libraries", "com/foo/foo.jar"),
             ("assets", "objects/ab/abcdef"),
@@ -210,7 +167,9 @@ mod tests {
             polyio::write(path, b"x".to_vec()).await.unwrap();
         }
 
-        polyio::copy_dir(src, dst, IMPORT_EXCLUDE_TOP).await.unwrap();
+        polyio::copy_dir(src, dst, IMPORT_EXCLUDE_TOP)
+            .await
+            .unwrap();
 
         for kept in [
             "options.txt",
@@ -225,12 +184,16 @@ mod tests {
             "mods",
             "resourcepacks",
             "shaderpacks",
+            "datapacks",
             "versions",
             "libraries",
             "assets",
             "logs",
             "launcher_accounts.json",
             "launcher_msa_credentials.bin",
+            "cheatbreaker_accounts.json",
+            "feather-mods",
+            "jre",
         ] {
             assert!(
                 !dst.join(skipped).exists(),

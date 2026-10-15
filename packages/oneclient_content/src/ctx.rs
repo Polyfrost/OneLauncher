@@ -9,25 +9,25 @@ use crate::packages::provider::PackageProviderRegistry;
 /// four subsystems
 #[derive(Clone)]
 pub struct ContentCtx {
-	pub db: DbPool,
-	pub net: RequestClient,
-	pub events: EventBus,
-	pub providers: PackageProviderRegistry,
+    pub db: DbPool,
+    pub net: RequestClient,
+    pub events: EventBus,
+    pub providers: PackageProviderRegistry,
 }
 
 impl ContentCtx {
-	#[must_use]
-	pub fn new(
-		db: DbPool,
-		net: RequestClient,
-		events: EventBus,
-		providers: PackageProviderRegistry,
-	) -> Self {
-		Self {
-			db,
-			net,
-			events,
-			providers,
-		}
-	}
+    #[must_use]
+    pub fn new(
+        db: DbPool,
+        net: RequestClient,
+        events: EventBus,
+        providers: PackageProviderRegistry,
+    ) -> Self {
+        Self {
+            db,
+            net,
+            events,
+            providers,
+        }
+    }
 }

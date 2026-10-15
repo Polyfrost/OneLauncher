@@ -114,7 +114,11 @@ impl CrashData {
                     return None;
                 }
 
-                if !fix.causes.iter().all(|cause| matches_cause(cause, document)) {
+                if !fix
+                    .causes
+                    .iter()
+                    .all(|cause| matches_cause(cause, document))
+                {
                     return None;
                 }
 
@@ -486,7 +490,10 @@ java_command: net.minecraft.client.main.Main
 
     #[test]
     fn recommendations_alone_are_not_worth_a_dialog() {
-        let fixes = fixes_of(&data(), "java.lang.NullPointerException at bingobrewers.Mod");
+        let fixes = fixes_of(
+            &data(),
+            "java.lang.NullPointerException at bingobrewers.Mod",
+        );
         assert!(has_solution(&fixes));
 
         let without: Vec<oneclient_events::CrashFix> = fixes
@@ -510,7 +517,8 @@ java_command: net.minecraft.client.main.Main
 
     #[test]
     fn an_ordinary_session_matches_nothing() {
-        let hits = data().matches("[Render thread/INFO]: Setting user: Dev\n[main/INFO]: Stopping!");
+        let hits =
+            data().matches("[Render thread/INFO]: Setting user: Dev\n[main/INFO]: Stopping!");
         assert!(hits.is_empty(), "{hits:?}");
     }
 

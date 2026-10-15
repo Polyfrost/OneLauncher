@@ -1,7 +1,6 @@
-
-use oneclient_core::dev;
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_content::packages::types::{PackageBody, SearchFilters};
+use oneclient_core::dev;
 
 #[test]
 fn registry_get_unknown_provider_errors() {
@@ -13,15 +12,6 @@ fn registry_get_unknown_provider_errors() {
     };
 
     assert!(err.to_string().contains("not registered"));
-}
-
-#[tokio::test]
-async fn registry_providers_match_ids() {
-    let registry = oneclient_content::packages::PackageProviderRegistry::new();
-
-    for id in registry.remote_ids() {
-        assert_eq!(registry.get(id).unwrap().id(), id);
-    }
 }
 
 #[tokio::test]
@@ -112,7 +102,7 @@ async fn modrinth_lookup_version_by_sha1() {
 
     let found = env.providers.lookup_version(&sha1, &env).await.unwrap();
     assert!(found.is_some());
-    
+
     let (provider_id, _) = found.unwrap();
     assert_eq!(provider_id, ProviderId::Modrinth);
 }

@@ -1,13 +1,12 @@
-
 use std::future::Future;
 use std::time::Duration;
 
-use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::prelude::BASE64_URL_SAFE_NO_PAD;
 use chrono::{DateTime, Utc};
 use reqwest::Client;
-use serde::de::Error as DeError;
 use serde::Deserialize;
+use serde::de::Error as DeError;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -16,19 +15,16 @@ use url::Url;
 use uuid::Uuid;
 
 use super::data::{AccountKind, BrowserLogin, DeviceCodeLogin, MinecraftAccount};
-use super::error::{friendly_xbox_error, MinecraftAuthError, MinecraftAuthStep};
+use super::error::{MinecraftAuthError, MinecraftAuthStep, friendly_xbox_error};
 use oneclient_common::constants::{MICROSOFT_CLIENT_ID, MINECRAFT_SCOPES};
 
-const DEVICE_CODE_URL: &str =
-    "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
+const DEVICE_CODE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/devicecode";
 
-const AUTHORIZE_URL: &str =
-    "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
+const AUTHORIZE_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/authorize";
 
 const TOKEN_URL: &str = "https://login.microsoftonline.com/consumers/oauth2/v2.0/token";
 
 const AUTH_STEPS: u64 = 5;
-
 
 #[tracing::instrument(level = "debug", skip_all)]
 pub async fn begin_device_login(client: &Client) -> Result<DeviceCodeLogin, MinecraftAuthError> {
@@ -446,9 +442,7 @@ async fn poll_device_token(
                 "expired_token" => return Err(MinecraftAuthError::DeviceAuthorizationExpired),
                 other => {
                     return Err(MinecraftAuthError::DeviceAuthorizationFailed {
-                        error: err
-                            .error_description
-                            .unwrap_or_else(|| other.to_string()),
+                        error: err.error_description.unwrap_or_else(|| other.to_string()),
                     });
                 }
             }
@@ -488,8 +482,30 @@ async fn refresh_msa_token(
         source,
     })?;
 
-    parse_json_response(res, MinecraftAuthStep::RefreshToken).await
-        .map(MsaToken::from_response)
+    let status = res.status();
+    let text = res
+        .text()
+        .await
+        .map_err(|source| MinecraftAuthError::RequestError {
+            step: MinecraftAuthStep::RefreshToken,
+            source,
+        })?;
+
+    if status.is_client_error()
+        && let Ok(err) = serde_json::from_str::<OAuthErrorResponse>(&text)
+        && is_revoked_refresh_error(&err.error)
+    {
+        tracing::warn!(error = %err.error, description = ?err.error_description, "Microsoft rejected the refresh token");
+        return Err(MinecraftAuthError::RefreshTokenRevoked { error: err.error });
+    }
+
+    parse_json_text(status, text, MinecraftAuthStep::RefreshToken).map(MsaToken::from_response)
+}
+
+/// `invalid_grant` covers expired revoked and password-changed tokens
+/// `interaction_required` is MFA or consent neither can be answered silently
+fn is_revoked_refresh_error(error: &str) -> bool {
+    matches!(error, "invalid_grant" | "interaction_required")
 }
 
 struct MsaToken {
@@ -546,6 +562,7 @@ async fn account_from_msa_token(
         #[allow(clippy::cast_possible_wrap)]
         expires: msa.obtained_at + chrono::TimeDelta::seconds(msa.expires_in as i64),
         kind: AccountKind::Microsoft,
+        signed_out: false,
     })
 }
 
@@ -784,13 +801,24 @@ async fn parse_json_response<T: for<'de> Deserialize<'de>>(
         .await
         .map_err(|source| MinecraftAuthError::RequestError { step, source })?;
 
+    parse_json_text(status, text, step)
+}
+
+fn parse_json_text<T: for<'de> Deserialize<'de>>(
+    status: reqwest::StatusCode,
+    text: String,
+    step: MinecraftAuthStep,
+) -> Result<T, MinecraftAuthError> {
     if !status.is_success() {
         tracing::error!(sentry = false, ?step, %status, body = %text, "MSA endpoint returned a non-success status");
     }
 
     serde_json::from_str(&text).map_err(|source| {
         if !status.is_success() {
-            MinecraftAuthError::ServiceError { step, status_code: status }
+            MinecraftAuthError::ServiceError {
+                step,
+                status_code: status,
+            }
         } else {
             MinecraftAuthError::DeserializeError {
                 step,

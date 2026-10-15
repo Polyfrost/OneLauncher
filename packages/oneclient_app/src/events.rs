@@ -11,7 +11,7 @@ use tokio::sync::mpsc;
 
 use crate::hooks::PumpSignal;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
-use crate::state::{AppChannel, AppState, LoginProgress};
+use crate::state::{AppChannel, AppState, LoginProgress, StorageScanProgress};
 
 /// Quiet period before log lines are written without it every line wakes the log view
 const GAME_LOG_FLUSH: Duration = Duration::from_millis(120);
@@ -30,6 +30,8 @@ impl EventPump {
         // Hovering any toast pauses every toast including ones arriving while hovering
         let mut paused = false;
         let mut game_flush: Option<tokio::time::Instant> = None;
+        let mut launched: HashSet<i64> = HashSet::new();
+        let mut playing: Option<i64> = None;
 
         loop {
             let next_deadline = armed
@@ -96,6 +98,10 @@ impl EventPump {
                     if folded.saw_game_log && game_flush.is_none() {
                         game_flush = Some(tokio::time::Instant::now() + GAME_LOG_FLUSH);
                     }
+                    if folded.saw_stage {
+                        launched.extend(&folded.launched);
+                        playing = crate::platform::follow_game(&self.station, &launched, playing);
+                    }
                 }
 
                 signal = self.signals.recv() => {
@@ -126,8 +132,9 @@ impl EventPump {
         let mut stages: Vec<(i64, LaunchStage)> = Vec::new();
         let mut logs: Vec<(i64, String)> = Vec::new();
         let mut failed: Option<(i64, String)> = None;
-        let mut crashed: Option<oneclient_events::GameCrash> = None;
+        let mut crashed: Vec<oneclient_events::GameCrash> = Vec::new();
         let mut login: Option<Option<LoginProgress>> = None;
+        let mut storage_scan: Option<Option<StorageScanProgress>> = None;
         let mut sync_complete = false;
 
         for event in batch {
@@ -139,6 +146,10 @@ impl EventPump {
                     folded.clusters = true;
                 }
                 Event::Game(GameEvent::Stage { cluster_id, stage }) => {
+                    folded.saw_stage = true;
+                    if stage.is_busy() {
+                        folded.launched.push(cluster_id);
+                    }
                     stages.push((cluster_id, stage));
                 }
                 Event::Game(GameEvent::Log { cluster_id, line }) => {
@@ -148,9 +159,11 @@ impl EventPump {
                 Event::Game(GameEvent::Failed {
                     cluster_id,
                     message,
-                }) => failed = Some((cluster_id, message)),
-                Event::Game(GameEvent::Crashed(crash)) => crashed = Some(*crash),
-                // Lifted out so it never reaches the engine the sign-in modal renders it inline
+                }) => {
+                    folded.saw_stage = true;
+                    failed = Some((cluster_id, message));
+                }
+                Event::Game(GameEvent::Crashed(crash)) => crashed.push(*crash),
                 Event::Progress(ProgressEvent::Update {
                     id,
                     ref label,
@@ -163,25 +176,33 @@ impl EventPump {
                         total,
                     }));
                 }
+                Event::Progress(ProgressEvent::Update {
+                    id,
+                    ref label,
+                    current,
+                    total,
+                }) if id == oneclient_core::storage::STORAGE_SCAN_PROGRESS => {
+                    storage_scan = Some((current < total).then(|| StorageScanProgress {
+                        label: label.clone(),
+                        current,
+                        total,
+                    }));
+                }
                 other => engine_events.push(other),
             }
         }
 
-        if !stages.is_empty() || !logs.is_empty() || failed.is_some() || crashed.is_some() {
+        if !stages.is_empty() || !logs.is_empty() || failed.is_some() || !crashed.is_empty() {
             let mut guard = self.station.write_channel(AppChannel::Game);
             for (cluster_id, stage) in stages {
                 guard.game.stages.insert(cluster_id, stage);
                 if stage == LaunchStage::Checking {
                     guard.game.error = None;
-                    if guard
+                    guard.game.clear_crash(cluster_id);
+                    guard
                         .game
-                        .crash
-                        .as_ref()
-                        .is_some_and(|crash| crash.cluster_id == cluster_id)
-                    {
-                        guard.game.crash = None;
-                    }
-                    guard.game.logs.insert(cluster_id, std::sync::Arc::new(Vec::new()));
+                        .logs
+                        .insert(cluster_id, std::sync::Arc::new(Vec::new()));
                 }
             }
             for (cluster_id, line) in logs {
@@ -192,9 +213,12 @@ impl EventPump {
                 guard.game.stages.insert(cluster_id, LaunchStage::Exited);
                 guard.game.error = Some(message);
             }
-            if let Some(crash) = crashed {
-                guard.game.stages.insert(crash.cluster_id, LaunchStage::Exited);
-                guard.game.crash = Some(std::sync::Arc::new(crash));
+            for crash in crashed {
+                guard
+                    .game
+                    .stages
+                    .insert(crash.cluster_id, LaunchStage::Exited);
+                guard.game.push_crash(crash);
             }
         }
 
@@ -209,6 +233,12 @@ impl EventPump {
             self.station
                 .write_channel(AppChannel::MicrosoftLogin)
                 .microsoft_login = progress;
+        }
+
+        if let Some(progress) = storage_scan {
+            self.station
+                .write_channel(AppChannel::StorageScan)
+                .storage_scan = progress;
         }
 
         if !engine_events.is_empty() {
@@ -242,6 +272,8 @@ impl EventPump {
 struct Folded {
     touched_engine: bool,
     saw_game_log: bool,
+    saw_stage: bool,
+    launched: Vec<i64>,
     clusters: bool,
     java: bool,
 }
@@ -260,7 +292,9 @@ fn reconcile(
         .collect();
 
     for id in &want {
-        armed.entry(*id).or_insert_with(|| ToastTimer::armed(paused));
+        armed
+            .entry(*id)
+            .or_insert_with(|| ToastTimer::armed(paused));
     }
     armed.retain(|id, _| want.contains(id));
 }
@@ -316,13 +350,15 @@ pub async fn start_launcher(
     station: RadioStation<AppState, AppChannel>,
     events: oneclient_events::EventBus,
 ) -> Result<(), anyhow::Error> {
-    let state = crate::launcher::install(oneclient_core::LauncherState::new(events).await?);
+    let state = crate::launcher::install(
+        crate::launcher::off_ui(oneclient_core::LauncherState::new(events)).await?,
+    );
 
     oneclient_net::status::start(state.services.requester.clone());
     oneclient_polyplus::start(std::sync::Arc::clone(&state.auth));
     oneclient_core::run_startup_tasks(&state);
 
-    let data_dir = oneclient_common::paths::launcher_dir()
+    let data_dir = oneclient_common::paths::data_dir()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
 
@@ -339,6 +375,7 @@ pub async fn start_launcher(
             error: None,
             snapshots: 0,
             data_dir,
+            needs_location: false,
         };
     }
     {
@@ -353,14 +390,11 @@ pub async fn start_launcher(
     Ok(())
 }
 
-pub fn report_startup_failure(
-    station: &RadioStation<AppState, AppChannel>,
-    err: &anyhow::Error,
-) {
+pub fn report_startup_failure(station: &RadioStation<AppState, AppChannel>, err: &anyhow::Error) {
     let message = err.to_string();
     tracing::error!("launcher init failed: {err:#}");
 
-    let data_dir = oneclient_common::paths::launcher_dir()
+    let data_dir = oneclient_common::paths::data_dir()
         .map(|p| p.display().to_string())
         .unwrap_or_default();
 
@@ -374,7 +408,9 @@ pub fn report_startup_failure(
 
     let mut guard = station.write_channel(AppChannel::Notifications);
     let AppState {
-        notifications, inbox, ..
+        notifications,
+        inbox,
+        ..
     } = &mut **guard;
     notifications.dispatch(
         inbox,

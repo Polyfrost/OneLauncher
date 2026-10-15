@@ -1,5 +1,4 @@
 use std::panic;
-use std::sync::Arc;
 use std::time::Duration;
 
 use sentry::protocol::{Breadcrumb, Context, Event};
@@ -59,15 +58,13 @@ pub fn init(enabled: bool) -> Option<ClientInitGuard> {
 
     let guard = sentry::init((
         SENTRY_DSN,
-        ClientOptions {
-            release: Some(format!("oneclient@{}", env!("CARGO_PKG_VERSION")).into()),
-            environment: Some(ENVIRONMENT.into()),
-            attach_stacktrace: true,
-            send_default_pii: false,
-            before_send: Some(Arc::new(drop_opted_out_events)),
-            before_breadcrumb: Some(Arc::new(drop_opted_out_breadcrumbs)),
-            ..Default::default()
-        },
+        ClientOptions::new()
+            .release(format!("oneclient@{}", env!("CARGO_PKG_VERSION")))
+            .environment(ENVIRONMENT)
+            .attach_stacktrace(true)
+            .send_default_pii(false)
+            .before_send(drop_opted_out_events)
+            .before_breadcrumb(drop_opted_out_breadcrumbs),
     ));
 
     if !guard.is_enabled() {

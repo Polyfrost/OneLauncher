@@ -18,8 +18,19 @@ pub fn install(state: Arc<LauncherState>) -> Arc<LauncherState> {
 
 /// Errors with [`LauncherError::NotInitialized`] before startup installs the handle
 pub fn state() -> LauncherResult<Arc<LauncherState>> {
-    LAUNCHER
-        .get()
-        .cloned()
-        .ok_or(LauncherError::NotInitialized)
+    LAUNCHER.get().cloned().ok_or(LauncherError::NotInitialized)
+}
+
+pub async fn off_ui<T: Send + 'static>(work: impl Future<Output = T> + Send + 'static) -> T {
+    match tokio::spawn(work).await {
+        Ok(value) => value,
+        Err(err) => std::panic::resume_unwind(err.into_panic()),
+    }
+}
+
+pub async fn off_ui_blocking<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> T {
+    match tokio::task::spawn_blocking(work).await {
+        Ok(value) => value,
+        Err(err) => std::panic::resume_unwind(err.into_panic()),
+    }
 }

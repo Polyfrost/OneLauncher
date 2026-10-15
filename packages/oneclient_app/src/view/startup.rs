@@ -3,12 +3,12 @@ use freya::{prelude::*, router::*};
 
 use crate::AppAssets;
 use crate::Route;
-use crate::hooks::{
-    terms_document, terms_is_loading, use_launcher, use_notifications_snapshot, use_settings_snapshot,
-    use_splash, use_terms,
-};
-use crate::hooks::use_dispatch;
 use crate::components::{Button, progress_track};
+use crate::hooks::use_dispatch;
+use crate::hooks::{
+    terms_document, terms_is_loading, use_launcher, use_notifications_snapshot,
+    use_settings_snapshot, use_splash, use_terms,
+};
 use crate::theme::colors;
 
 /// Startup is a sequence of boolean gates, not measurable work, so the bar steps
@@ -89,6 +89,11 @@ impl Component for Startup {
 
         let logo = use_memo(|| AppAssets::get_bytes("logo.svg").unwrap_or_default());
 
+        if launcher.needs_location {
+            let _ = RouterContext::get().replace(Route::OnboardingWelcome {});
+            return rect().into_element();
+        }
+
         if launcher.ready && !terms_is_loading(&terms) {
             let document = terms_document(&terms);
             let required_terms = document.as_ref().map(|doc| doc.version).unwrap_or(1);
@@ -100,24 +105,21 @@ impl Component for Startup {
             let stale = settings.settings.accepted_tos_version < required_terms
                 || settings.settings.accepted_privacy_version < required_privacy;
 
-            let destination = if settings.settings.declined_tos {
-                Route::Home {}
-            } else if !settings.settings.seen_onboarding {
+            let destination = if !settings.settings.seen_onboarding {
                 Route::OnboardingWelcome {}
+            } else if settings.settings.declined_tos {
+                Route::Home {}
             } else if stale {
                 Route::OnboardingTerms {}
             } else {
                 Route::Home {}
             };
 
-            // Onboarding needs the bundle catalog before it can render its steps so gate it on the fetch
-            let heading_to_onboarding = matches!(
-                destination,
-                Route::OnboardingWelcome { .. } | Route::OnboardingTerms { .. }
-            );
+            let heading_to_onboarding = matches!(destination, Route::OnboardingWelcome { .. });
+            let heading_to_terms = matches!(destination, Route::OnboardingTerms { .. });
             if !heading_to_onboarding || !launcher.fetching {
                 // Raise the splash curtain so the hard route swap is hidden until Home settles onboarding animates itself
-                if !heading_to_onboarding {
+                if !heading_to_onboarding && !heading_to_terms {
                     let mut active = splash.active;
                     let mut home_ready = splash.home_ready;
                     home_ready.set(false);
@@ -225,7 +227,9 @@ impl Component for Startup {
         if is_error {
             content = content
                 .child(rect().height(Size::px(6.)))
-                .child(RecoveryActions { snapshots: launcher.snapshots })
+                .child(RecoveryActions {
+                    snapshots: launcher.snapshots,
+                })
                 .child(
                     label()
                         .text(format!(

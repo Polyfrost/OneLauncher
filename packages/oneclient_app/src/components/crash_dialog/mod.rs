@@ -7,11 +7,11 @@ use oneclient_common::constants::DISCORD_URL;
 use oneclient_events::{CrashFix, CrashRemedy, GameCrash};
 
 use crate::Route;
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea};
 use crate::hooks::{use_dispatch, use_link_confirm};
 use crate::theme;
 use crate::theme::colors;
-use crate::utils::format_duration_hms;
+use crate::utils::format_durations;
 
 mod markup;
 
@@ -21,8 +21,6 @@ const DIALOG_BG: Color = Color::from_rgb(21, 28, 34);
 const CODE_BG: Color = Color::from_rgb(13, 18, 22);
 const DISCORD_BG: Color = Color::from_argb(46, 43, 75, 255);
 const DISCORD_BORDER: Color = Color::from_argb(120, 43, 75, 255);
-
-const CRASH_DIALOG_LEVEL: u8 = 14;
 
 const MAX_LINK_CHIPS: usize = 3;
 
@@ -64,6 +62,7 @@ pub struct CrashDialog {
 impl Component for CrashDialog {
     fn render(&self) -> impl IntoElement {
         let crash = Arc::clone(&self.crash);
+        let cluster_id = crash.cluster_id;
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
 
@@ -71,14 +70,14 @@ impl Component for CrashDialog {
         let outside_close = dispatch.clone();
 
         OverlayPopup::new()
-            .level(CRASH_DIALOG_LEVEL)
-            .on_close(move |_| close.dismiss_game_crash())
+            .overlay_level(OVERLAY_BASE_LEVEL + 2)
+            .on_close(move |_| close.dismiss_game_crash(cluster_id))
             .child(
                 rect()
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
                     .center()
-                    .on_press(move |_| outside_close.dismiss_game_crash())
+                    .on_press(move |_| outside_close.dismiss_game_crash(cluster_id))
                     .child(
                         rect()
                             .vertical()
@@ -132,7 +131,7 @@ fn subtitle(crash: &GameCrash) -> impl IntoElement {
     if crash.played_secs > 0 {
         parts.push(format!(
             "after {}",
-            format_duration_hms(crash.played_secs as i64)
+            format_durations(crash.played_secs as i64)
         ));
     }
 
@@ -551,7 +550,7 @@ fn actions(crash: &GameCrash, dispatch: crate::Actions) -> impl IntoElement {
     row.child(
         Button::new()
             .ghost()
-            .on_press(move |_| close.dismiss_game_crash())
+            .on_press(move |_| close.dismiss_game_crash(cluster_id))
             .text("Close"),
     )
 }
@@ -560,7 +559,7 @@ fn logs_button(cluster_id: i64, dispatch: crate::Actions) -> impl IntoElement {
     Button::new()
         .secondary()
         .on_press(move |_| {
-            dispatch.dismiss_game_crash();
+            dispatch.dismiss_game_crash(cluster_id);
             let _ = RouterContext::get().push(Route::ClusterLogs { cluster_id });
         })
         .child(Icon::new(IconType::Terminal).size(14.))
@@ -585,7 +584,7 @@ fn remedy_button(
                 CrashRemedy::OpenMods => Route::ClusterMods { cluster_id },
             };
 
-            dispatch.dismiss_game_crash();
+            dispatch.dismiss_game_crash(cluster_id);
             let _ = RouterContext::get().push(route);
         })
         .child(

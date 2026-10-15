@@ -60,7 +60,7 @@ impl Component for OnboardingPreferences {
                     .child(settings_row(
                         IconType::Play,
                         "Animations",
-                        "Disable all launcher animations and transitions.",
+                        "Whether all launcher animations and transitions should be enabled.",
                         toggle(animations_on),
                     ))
                     .child(settings_row(
@@ -77,7 +77,7 @@ impl Component for OnboardingPreferences {
             content,
             onboarding_nav(
                 Some(Route::OnboardingBundles {}),
-                Route::OnboardingDownloading {},
+                Route::OnboardingSummary {},
                 true,
             ),
         )

@@ -1,44 +1,31 @@
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::cell::RefCell;
 
 use freya::{
     animation::{AnimNum, Ease, OnCreation, use_animation},
     prelude::*,
 };
 
+use crate::hooks::use_overlay_claim;
+
 const SCRIM_ALPHA: f32 = 90.;
+const SCRIM_MIN_ALPHA: u8 = 1;
 
-const CONTENT_LEVEL: u8 = 12;
-const SCRIM_OFFSET: u8 = 1;
+/// Overlay level of a top level popup. Its scrim sits two levels below it.
+pub const OVERLAY_BASE_LEVEL: u8 = 12;
 
-static NEXT_OVERLAY: AtomicU64 = AtomicU64::new(0);
-static MOUNTED: Mutex<Vec<(u64, u8)>> = Mutex::new(Vec::new());
+/// Freya maps a level to `(level.max(1) as i16) * (i16::MAX / 16)`, which
+/// saturates above 16 so every higher level collides with 16.
+pub const OVERLAY_MAX_LEVEL: u8 = 16;
 
-fn register(level: u8) -> u64 {
-    let id = NEXT_OVERLAY.fetch_add(1, Ordering::Relaxed);
-
-    if let Ok(mut mounted) = MOUNTED.lock() {
-        mounted.push((id, level));
-    }
-
-    id
+thread_local! {
+    static OPEN_LEVELS: RefCell<Vec<u8>> = const { RefCell::new(Vec::new()) };
 }
 
-fn unregister(id: u64) {
-    if let Ok(mut mounted) = MOUNTED.lock() {
-        mounted.retain(|(other, _)| *other != id);
-    }
-}
-
-fn is_topmost(id: u64) -> bool {
-    let Ok(mounted) = MOUNTED.lock() else {
-        return true;
-    };
-
-    mounted
-        .iter()
-        .max_by_key(|(other, level)| (*level, *other))
-        .is_none_or(|(top, _)| *top == id)
+/// True while no open overlay sits above `level`. Freya dispatches
+/// `on_global_key_down` to every listener, so a handler that should only answer
+/// for the topmost overlay has to gate itself on this.
+pub fn overlay_is_topmost(level: u8) -> bool {
+    OPEN_LEVELS.with_borrow(|open| open.iter().all(|&other| other <= level))
 }
 
 #[derive(PartialEq)]
@@ -47,7 +34,7 @@ pub struct OverlayPopup {
     on_close: Option<EventHandler<()>>,
     position: Position,
     backdrop: bool,
-    level: u8,
+    overlay_level: u8,
     key: DiffKey,
 }
 
@@ -64,7 +51,7 @@ impl OverlayPopup {
             on_close: None,
             position: Position::new_global().top(0.).left(0.),
             backdrop: true,
-            level: CONTENT_LEVEL,
+            overlay_level: OVERLAY_BASE_LEVEL,
             key: DiffKey::None,
         }
     }
@@ -74,8 +61,12 @@ impl OverlayPopup {
         self
     }
 
-    pub fn level(mut self, level: u8) -> Self {
-        self.level = level;
+    pub fn overlay_level(mut self, level: u8) -> Self {
+        debug_assert!(
+            (1..=OVERLAY_MAX_LEVEL).contains(&level),
+            "overlay levels above {OVERLAY_MAX_LEVEL} saturate onto {OVERLAY_MAX_LEVEL}"
+        );
+        self.overlay_level = level;
         self
     }
 
@@ -104,13 +95,21 @@ impl KeyExt for OverlayPopup {
 
 impl Component for OverlayPopup {
     fn render(&self) -> impl IntoElement {
+        use_overlay_claim();
+
         let a11y_id = use_a11y();
         let scrim_close = self.on_close.clone();
         let key_close = self.on_close.clone();
+        let level = self.overlay_level;
 
-        let level = self.level;
-        let id = use_hook(move || register(level));
-        use_drop(move || unregister(id));
+        use_hook(move || OPEN_LEVELS.with_borrow_mut(|open| open.push(level)));
+        use_drop(move || {
+            OPEN_LEVELS.with_borrow_mut(|open| {
+                if let Some(pos) = open.iter().rposition(|&other| other == level) {
+                    open.remove(pos);
+                }
+            });
+        });
 
         let fade = use_animation(|conf| {
             conf.on_creation(OnCreation::Run);
@@ -118,7 +117,7 @@ impl Component for OverlayPopup {
         });
 
         let scrim_alpha = if self.backdrop { SCRIM_ALPHA } else { 0. };
-        let alpha = (fade.read().value() * scrim_alpha) as u8;
+        let alpha = ((fade.read().value() * scrim_alpha) as u8).max(SCRIM_MIN_ALPHA);
 
         rect()
             .layer(Layer::Overlay)
@@ -130,9 +129,9 @@ impl Component for OverlayPopup {
                     .position(Position::new_global().top(0.).left(0.))
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
-                    .layer(Layer::OverlayLevel(self.level.saturating_sub(SCRIM_OFFSET)))
+                    .layer(Layer::OverlayLevel(self.overlay_level.saturating_sub(2)))
                     .background(Color::from_argb(alpha, 0, 0, 0))
-                    .on_press(move |_| {
+                    .on_all_press(move |_| {
                         if let Some(on_close) = scrim_close.as_ref() {
                             on_close.call(());
                         }
@@ -145,10 +144,10 @@ impl Component for OverlayPopup {
                     .a11y_focusable(true)
                     .a11y_auto_focus(true)
                     .a11y_role(AccessibilityRole::Dialog)
-                    .layer(Layer::OverlayLevel(self.level))
+                    .layer(Layer::OverlayLevel(self.overlay_level))
                     .on_global_key_down(move |e: Event<KeyboardEventData>| {
                         if e.key == Key::Named(NamedKey::Escape)
-                            && is_topmost(id)
+                            && overlay_is_topmost(level)
                             && let Some(on_close) = key_close.as_ref()
                         {
                             on_close.call(());

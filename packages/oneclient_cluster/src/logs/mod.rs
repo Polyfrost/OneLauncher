@@ -10,7 +10,7 @@ use chrono::{DateTime, Utc};
 pub use error::LogsError;
 pub use manage::{cluster_output_log, delete_log_at, list_cluster_logs, read_log_at};
 pub use mclogs::upload_log_at;
-pub use parse::parse_level;
+pub use parse::{censor, parse_level};
 
 /// No launcher variant on purpose the launcher's own logs live in the log console
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -92,6 +92,7 @@ pub struct MclogsUploadResponse {
     pub id: String,
     pub url: String,
     pub raw: String,
+    pub truncated: bool,
 }
 
 #[cfg(test)]
@@ -110,7 +111,7 @@ mod tests {
         );
         assert_eq!(parse_level("[ERROR] boom"), Some(LogLevel::Error));
         assert_eq!(parse_level("[main/FATAL]"), Some(LogLevel::Fatal));
-        
+
         assert_eq!(parse_level("\tat java.base/java.lang.Thread.run"), None);
         assert_eq!(parse_level("[12:34:56] just a timestamp"), None);
     }

@@ -7,9 +7,8 @@ use oneclient_content::packages::types::GalleryImage;
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{loaded_image, query_is_busy, use_cached_image};
 use crate::theme::colors;
-use crate::ui::{border_all_color, flow_grid, grid_columns_for_width};
+use crate::ui::{ImageFallbackExt, border_all_color, flow_grid, grid_columns_for_width};
 
-/// How wide a tile is allowed to get before the grid takes another column
 const MAX_COL_W: f32 = 400.;
 const GRID_GAP: f32 = 16.;
 const TILE_PREVIEW_H: f32 = 168.;
@@ -98,6 +97,7 @@ impl Component for GalleryTile {
                     .height(Size::fill())
                     .aspect_ratio(AspectRatio::Max)
                     .image_cover(ImageCover::Center)
+                    .fallback(broken_image(32.))
                     .into_element()
             }));
 
@@ -158,13 +158,13 @@ impl Component for GalleryViewer {
             move || start
         });
 
+        let idx = (*index.read()).min(len.saturating_sub(1));
+        let query = use_cached_image(self.images.get(idx).map(|i| i.url.clone()), FULL_EDGE);
+
         if len == 0 {
             return rect().into_element();
         }
-        let idx = (*index.read()).min(len - 1);
         let image = self.images[idx].clone();
-
-        let query = use_cached_image(Some(image.url.clone()), FULL_EDGE);
         let loaded = loaded_image(Some(&image.url), &query);
 
         let close = self.on_close.clone();
@@ -183,6 +183,7 @@ impl Component for GalleryViewer {
                     .width(Size::fill())
                     .height(Size::fill())
                     .aspect_ratio(AspectRatio::Min)
+                    .fallback(broken_image(48.))
                     .into_element()
             }))
             // A full-size fetch separate from the tile's cached copy a failed fetch is not loading
@@ -244,6 +245,19 @@ impl Component for GalleryViewer {
             )
             .into_element()
     }
+}
+
+fn broken_image(size: f32) -> Element {
+    rect()
+        .center()
+        .width(Size::fill())
+        .height(Size::fill())
+        .child(
+            Icon::new(IconType::FileX02)
+                .size(size)
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
 }
 
 fn chevron_btn(
@@ -318,6 +332,7 @@ fn header_row(
             Button::new()
                 .ghost()
                 .icon()
+                .tooltip("Close")
                 .on_press(on_close)
                 .child(Icon::new(IconType::XClose).size(18.)),
         )

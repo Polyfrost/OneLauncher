@@ -17,6 +17,7 @@ pub struct LocalImage {
     max_edge: u32,
     cover: bool,
     skeleton: bool,
+    picked: bool,
 }
 
 impl LocalImage {
@@ -26,7 +27,13 @@ impl LocalImage {
             max_edge,
             cover,
             skeleton: false,
+            picked: false,
         }
+    }
+
+    pub fn picked(mut self, picked: bool) -> Self {
+        self.picked = picked;
+        self
     }
 
     pub fn skeleton(mut self, skeleton: bool) -> Self {
@@ -37,9 +44,9 @@ impl LocalImage {
 
 impl Component for LocalImage {
     fn render(&self) -> impl IntoElement {
-        let query = use_local_image(self.path.clone(), self.max_edge);
-
-        let bytes: Option<Bytes> = settled_or_loading(&query);
+        let query = use_local_image(self.path.clone(), self.max_edge, self.picked);
+        let bytes: Option<Bytes> =
+            settled_or_loading(&query).filter(|bytes: &Bytes| !bytes.is_empty());
 
         let mut cache = use_state(|| None::<(usize, ImageHandle)>);
         let holder = bytes.and_then(|bytes| {
@@ -122,7 +129,7 @@ impl Component for LocalImage {
     }
 }
 
-fn decode(bytes: &Bytes) -> Option<ImageHandle> {
+pub(super) fn decode(bytes: &Bytes) -> Option<ImageHandle> {
     let data = unsafe { SkData::new_bytes(bytes) };
     let img = SkImage::from_encoded(data)?;
     Some(ImageHandle::new(img, bytes.clone()))

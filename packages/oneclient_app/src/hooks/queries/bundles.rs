@@ -1,12 +1,16 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use oneclient_common::domain::GameLoader;
 use oneclient_core::clusters::Cluster;
 use oneclient_core::{
     BundleArchive, BundleUpdateCheckResult, BundleWithUpdateStatus, LauncherError,
     get_bundles_with_update_status, list_cluster_bundle_overrides,
 };
 use oneclient_db::models::ClusterId;
+
+use crate::launcher::off_ui;
 
 #[derive(Clone, Debug)]
 pub struct ClusterBundles {
@@ -27,18 +31,25 @@ impl QueryCapability for OnboardingBundlesQuery {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        let clusters = state.clusters.list().await?;
+        off_ui(async move {
+            let clusters = state.clusters.list().await?;
 
-        let mut out = Vec::with_capacity(clusters.len());
-        for cluster in clusters {
-            let archives = state
-                .bundles
-                .archives_for(&state.services.content(), &cluster.mc_version, cluster.mc_loader)
-                .await
-                .unwrap_or_default();
-            out.push(ClusterBundles { cluster, archives });
-        }
-        Ok(out)
+            let mut out = Vec::with_capacity(clusters.len());
+            for cluster in clusters.into_iter().filter(|cluster| !cluster.user_created) {
+                let archives = state
+                    .bundles
+                    .archives_for(
+                        &state.services.content(),
+                        &cluster.mc_version,
+                        cluster.mc_loader,
+                    )
+                    .await
+                    .unwrap_or_default();
+                out.push(ClusterBundles { cluster, archives });
+            }
+            Ok(out)
+        })
+        .await
     }
 }
 
@@ -70,14 +81,16 @@ impl QueryCapability for BundlesWithStatusQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
         let state = crate::launcher::state()?;
-        Ok(
+        let cluster_id = self.cluster_id;
+        Ok(off_ui(async move {
             get_bundles_with_update_status(
-                self.cluster_id,
+                cluster_id,
                 state.bundles.as_ref(),
                 &state.services.content(),
             )
-            .await?,
-        )
+            .await
+        })
+        .await?)
     }
 }
 
@@ -112,7 +125,8 @@ impl QueryCapability for BundleOverridesQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
         let state = crate::launcher::state()?;
-        let rows = list_cluster_bundle_overrides(self.cluster_id, &state.services.content()).await?;
+        let rows =
+            list_cluster_bundle_overrides(self.cluster_id, &state.services.content()).await?;
         Ok(rows
             .into_iter()
             .map(|(bundle, pkg, ty)| ((bundle, pkg), ty))
@@ -151,11 +165,15 @@ impl QueryCapability for BundleUpdatesQuery {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let _ = keys;
         let state = crate::launcher::state()?;
-        Ok(oneclient_core::check_bundle_updates(
-            self.cluster_id,
-            state.bundles.as_ref(),
-            &state.services.content(),
-        )
+        let cluster_id = self.cluster_id;
+        Ok(off_ui(async move {
+            oneclient_core::check_bundle_updates(
+                cluster_id,
+                state.bundles.as_ref(),
+                &state.services.content(),
+            )
+            .await
+        })
         .await?)
     }
 }
@@ -165,4 +183,46 @@ pub fn use_bundle_updates(cluster_id: ClusterId) -> UseQuery<BundleUpdatesQuery>
         BundleUpdatesKeys { cluster_id },
         BundleUpdatesQuery { cluster_id },
     ))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct AvailableBundlesQuery;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct AvailableBundlesKeys {
+    pub mc_version: String,
+    pub loader: GameLoader,
+}
+
+impl QueryCapability for AvailableBundlesQuery {
+    type Ok = Arc<[BundleArchive]>;
+    type Err = LauncherError;
+    type Keys = AvailableBundlesKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        if keys.mc_version.is_empty() {
+            return Ok(Arc::from([]));
+        }
+        let state = crate::launcher::state()?;
+        Ok(state
+            .bundles
+            .archives_for(&state.services.content(), &keys.mc_version, keys.loader)
+            .await
+            .unwrap_or_default()
+            .into())
+    }
+}
+
+pub fn use_available_bundles(
+    mc_version: String,
+    loader: GameLoader,
+) -> UseQuery<AvailableBundlesQuery> {
+    use_query(Query::new(
+        AvailableBundlesKeys { mc_version, loader },
+        AvailableBundlesQuery,
+    ))
+}
+
+pub fn available_bundles(query: &UseQuery<AvailableBundlesQuery>) -> Option<Arc<[BundleArchive]>> {
+    super::state::settled_or_loading(query)
 }

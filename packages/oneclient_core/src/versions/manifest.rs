@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
@@ -24,9 +25,6 @@ pub struct RemoteCluster {
     pub long_description: Option<String>,
     #[serde(default)]
     pub tags: Vec<String>,
-    /// Default for every entry in this cluster an entry's own key wins
-    #[serde(default)]
-    pub predownload: Option<bool>,
     #[serde(default)]
     pub entries: Vec<RemoteEntry>,
 }
@@ -47,7 +45,13 @@ pub struct RemoteEntry {
     #[serde(default)]
     pub tags: Option<Vec<String>>,
     #[serde(default)]
-    pub predownload: Option<bool>,
+    pub flags: EntryFlags,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EntryFlags {
+    #[serde(default)]
+    pub show_initial_migration: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,6 +59,8 @@ pub struct RemoteMigration {
     pub id: String,
     pub from: MigrationSource,
     pub to: MigrationTarget,
+    #[serde(default)]
+    pub allow_without_bundles: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -66,35 +72,199 @@ pub struct MigrationSource {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MigrationTarget {
     pub mc_version: String,
+    #[serde(default)]
+    pub loader: Option<String>,
 }
 
-/// Returns the input unchanged when no rule matches
-/// Multi-hop chains are
-/// followed the loop is bounded by rule count so cyclic rules can't spin forever
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct MigrationNode {
+    pub mc_version: String,
+    pub loader: GameLoader,
+}
+
+impl RemoteMigration {
+    #[must_use]
+    pub fn endpoints(&self) -> Option<(MigrationNode, MigrationNode)> {
+        let from_loader = GameLoader::from_str(&self.from.loader).ok()?;
+        let to_loader = match &self.to.loader {
+            Some(loader) => GameLoader::from_str(loader).ok()?,
+            None => from_loader,
+        };
+
+        Some((
+            MigrationNode {
+                mc_version: self.from.mc_version.clone(),
+                loader: from_loader,
+            },
+            MigrationNode {
+                mc_version: self.to.mc_version.clone(),
+                loader: to_loader,
+            },
+        ))
+    }
+}
+
+#[must_use]
+pub fn cyclic_migration_ids(rules: &[RemoteMigration]) -> HashSet<String> {
+    let edges: Vec<(MigrationNode, MigrationNode)> = rules
+        .iter()
+        .filter_map(RemoteMigration::endpoints)
+        .filter(|(from, to)| from != to)
+        .collect();
+
+    rules
+        .iter()
+        .filter(|rule| {
+            let Some((from, to)) = rule.endpoints() else {
+                return false;
+            };
+            from != to && reaches(&edges, &to, &from)
+        })
+        .map(|rule| rule.id.clone())
+        .collect()
+}
+
+fn reaches(
+    edges: &[(MigrationNode, MigrationNode)],
+    start: &MigrationNode,
+    goal: &MigrationNode,
+) -> bool {
+    let mut seen: HashSet<&MigrationNode> = HashSet::new();
+    let mut stack = vec![start];
+
+    while let Some(node) = stack.pop() {
+        if node == goal {
+            return true;
+        }
+        if !seen.insert(node) {
+            continue;
+        }
+        stack.extend(
+            edges
+                .iter()
+                .filter(|(from, _)| from == node)
+                .map(|(_, to)| to),
+        );
+    }
+
+    false
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ReleaseTarget {
+    pub mc_version: String,
+    pub loader: GameLoader,
+}
+
+impl ReleaseTarget {
+    #[must_use]
+    pub fn key(&self) -> String {
+        format!("{}:{}", self.mc_version, self.loader.modrinth_name())
+    }
+
+    #[must_use]
+    pub fn from_key(key: &str) -> Option<Self> {
+        let (mc_version, loader) = key.rsplit_once(':')?;
+        if mc_version.is_empty() {
+            return None;
+        }
+        Some(Self {
+            mc_version: mc_version.to_string(),
+            loader: GameLoader::from_str(loader).ok()?,
+        })
+    }
+}
+
+fn release_targets(manifest: &VersionsManifest) -> Vec<ReleaseTarget> {
+    manifest
+        .clusters
+        .iter()
+        .flat_map(|cluster| {
+            cluster.entries.iter().filter_map(move |entry| {
+                Some(ReleaseTarget {
+                    mc_version: format_mc_version(
+                        cluster.major_version,
+                        entry.minor_version,
+                        entry.patch_version,
+                    ),
+                    loader: GameLoader::from_str(entry.loader.as_deref()?).ok()?,
+                })
+            })
+        })
+        .collect()
+}
+
+impl VersionsManifest {
+    #[must_use]
+    pub fn shows_initial_migration(&self, target: &ReleaseTarget) -> bool {
+        self.clusters
+            .iter()
+            .flat_map(|cluster| {
+                cluster
+                    .entries
+                    .iter()
+                    .map(move |entry| (cluster.major_version, entry))
+            })
+            .find(|(major, entry)| {
+                format_mc_version(*major, entry.minor_version, entry.patch_version)
+                    == target.mc_version
+                    && entry
+                        .loader
+                        .as_deref()
+                        .and_then(|loader| GameLoader::from_str(loader).ok())
+                        == Some(target.loader)
+            })
+            .and_then(|(_, entry)| entry.flags.show_initial_migration)
+            .unwrap_or(true)
+    }
+}
+
+#[must_use]
+pub fn added_release_targets(
+    previous: &VersionsManifest,
+    next: &VersionsManifest,
+) -> Vec<ReleaseTarget> {
+    if previous.clusters.is_empty() {
+        return Vec::new();
+    }
+    let known = release_targets(previous);
+    let mut added: Vec<ReleaseTarget> = Vec::new();
+    for target in release_targets(next) {
+        if !known.contains(&target) && !added.contains(&target) {
+            added.push(target);
+        }
+    }
+    added
+}
+
 #[must_use]
 pub fn resolve_migration_chain(
     mc_version: &str,
     loader: GameLoader,
     rules: &[RemoteMigration],
-) -> String {
-    let mut current = mc_version.to_string();
+) -> (String, GameLoader) {
+    let mut current = MigrationNode {
+        mc_version: mc_version.to_string(),
+        loader,
+    };
 
     for _ in 0..=rules.len() {
-        let Some(rule) = rules.iter().find(|rule| {
-            rule.from.mc_version == current
-                && GameLoader::from_str(&rule.from.loader).is_ok_and(|l| l == loader)
-        }) else {
+        let Some((_, to)) = rules
+            .iter()
+            .filter_map(RemoteMigration::endpoints)
+            .find(|(from, _)| *from == current)
+        else {
             break;
         };
 
-        if rule.to.mc_version == current {
+        if to == current {
             break;
         }
 
-        current = rule.to.mc_version.clone();
+        current = to;
     }
 
-    current
+    (current.mc_version, current.loader)
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -107,8 +277,6 @@ pub struct VersionMetadata {
     pub art_url: Option<String>,
     pub long_description: Option<String>,
     pub tags: Vec<String>,
-    /// Fetched up front during onboarding rather than on first launch
-    pub predownload: bool,
 }
 
 impl VersionMetadata {
@@ -151,7 +319,6 @@ impl VersionsManifest {
                 art_url: art_url(&cluster.art, meta_url_base),
                 long_description: cluster.long_description.clone(),
                 tags: cluster.tags.clone(),
-                predownload: cluster.predownload.unwrap_or(false),
             });
 
             for entry in &cluster.entries {
@@ -161,13 +328,13 @@ impl VersionsManifest {
                     patch_version: entry.patch_version,
                     loader: entry.loader.clone(),
                     name: entry.name.clone().unwrap_or_else(|| cluster_name.clone()),
-                    art_url: art_url(&entry.art, meta_url_base).or_else(|| art_url(&cluster.art, meta_url_base)),
+                    art_url: art_url(&entry.art, meta_url_base)
+                        .or_else(|| art_url(&cluster.art, meta_url_base)),
                     long_description: entry
                         .long_description
                         .clone()
                         .or_else(|| cluster.long_description.clone()),
                     tags: entry.tags.clone().unwrap_or_else(|| cluster.tags.clone()),
-                    predownload: entry.predownload.or(cluster.predownload).unwrap_or(false),
                 });
             }
         }
@@ -185,6 +352,108 @@ mod tests {
         let manifest: VersionsManifest =
             serde_json::from_str(r#"{"clusters": []}"#).expect("should parse");
         assert!(manifest.migrations.is_empty());
+    }
+
+    fn versions(entries: &str) -> VersionsManifest {
+        serde_json::from_str(&format!(
+            r#"{{"clusters":[{{"major_version":26,"entries":[{entries}]}}]}}"#
+        ))
+        .expect("should parse")
+    }
+
+    #[test]
+    fn a_version_missing_from_the_previous_manifest_is_added() {
+        let previous = versions(r#"{"minor_version":2,"loader":"fabric"}"#);
+        let next = versions(
+            r#"{"minor_version":2,"loader":"fabric"},{"minor_version":3,"loader":"fabric"}"#,
+        );
+        assert_eq!(
+            added_release_targets(&previous, &next),
+            vec![ReleaseTarget {
+                mc_version: "26.3".into(),
+                loader: GameLoader::Fabric
+            }]
+        );
+    }
+
+    #[test]
+    fn nothing_is_added_without_a_previous_manifest() {
+        let next = versions(r#"{"minor_version":3,"loader":"fabric"}"#);
+        assert!(
+            added_release_targets(&VersionsManifest::default(), &next).is_empty(),
+            "a fresh install has no cached manifest and must not see every version as new"
+        );
+    }
+
+    #[test]
+    fn a_new_loader_for_a_known_version_is_added() {
+        let previous = versions(r#"{"minor_version":3,"loader":"fabric"}"#);
+        let next = versions(
+            r#"{"minor_version":3,"loader":"fabric"},{"minor_version":3,"loader":"neoforge"}"#,
+        );
+        assert_eq!(
+            added_release_targets(&previous, &next),
+            vec![ReleaseTarget {
+                mc_version: "26.3".into(),
+                loader: GameLoader::NeoForge
+            }]
+        );
+    }
+
+    #[test]
+    fn show_initial_migration_reads_the_entry_flag() {
+        let manifest: VersionsManifest = serde_json::from_str(
+            r#"{"clusters":[{"major_version":8,"entries":[
+                {"minor_version":9,"loader":"ornithe","flags":{"show_initial_migration":false}}
+            ]},{"major_version":26,"entries":[
+                {"minor_version":3,"loader":"fabric"},
+                {"minor_version":4,"loader":"fabric","flags":{}}
+            ]}]}"#,
+        )
+        .expect("should parse");
+
+        let target = |mc_version: &str, loader| ReleaseTarget {
+            mc_version: mc_version.into(),
+            loader,
+        };
+        assert!(!manifest.shows_initial_migration(&target("1.8.9", GameLoader::Ornithe)));
+        assert!(
+            manifest.shows_initial_migration(&target("26.3", GameLoader::Fabric)),
+            "no flags means show"
+        );
+        assert!(
+            manifest.shows_initial_migration(&target("26.4", GameLoader::Fabric)),
+            "an empty flags object means show"
+        );
+        assert!(
+            manifest.shows_initial_migration(&target("1.8.9", GameLoader::Fabric)),
+            "the flag belongs to its own loader"
+        );
+    }
+
+    #[test]
+    fn unknown_flags_are_ignored() {
+        let manifest: VersionsManifest = serde_json::from_str(
+            r#"{"clusters":[{"major_version":26,"entries":[
+                {"minor_version":3,"loader":"fabric","flags":{"something_new":true}}
+            ]}]}"#,
+        )
+        .expect("an unknown flag must not break parsing");
+        assert_eq!(
+            manifest.clusters[0].entries[0].flags.show_initial_migration,
+            None
+        );
+    }
+
+    #[test]
+    fn release_target_keys_round_trip() {
+        let target = ReleaseTarget {
+            mc_version: "1.8.9".into(),
+            loader: GameLoader::Fabric,
+        };
+        assert_eq!(target.key(), "1.8.9:fabric");
+        assert_eq!(ReleaseTarget::from_key("1.8.9:fabric"), Some(target));
+        assert_eq!(ReleaseTarget::from_key("garbage"), None);
     }
 
     #[test]
@@ -215,39 +484,6 @@ mod tests {
     }
 
     #[test]
-    fn predownload_inherits_from_cluster_and_entry_overrides() {
-        let manifest: VersionsManifest = serde_json::from_str(
-            r#"{"clusters":[
-                {"major_version":26,"predownload":true,"entries":[
-                    {"minor_version":1},
-                    {"minor_version":2,"predownload":false}
-                ]},
-                {"major_version":21,"entries":[
-                    {"minor_version":1},
-                    {"minor_version":11,"predownload":true}
-                ]}
-            ]}"#,
-        )
-        .expect("should parse");
-
-        let metadata = manifest.metadata("https://example.test");
-        let flag = |major: u32, minor: Option<u32>| {
-            metadata
-                .iter()
-                .find(|m| m.major_version == major && m.minor_version == minor)
-                .expect("row present")
-                .predownload
-        };
-
-        assert!(flag(26, None));
-        assert!(flag(26, Some(1)));
-        assert!(!flag(26, Some(2)));
-        assert!(flag(21, Some(11)));
-        assert!(!flag(21, None));
-        assert!(!flag(21, Some(1)));
-    }
-
-    #[test]
     fn mc_version_skips_the_cluster_row() {
         let manifest: VersionsManifest = serde_json::from_str(
             r#"{"clusters":[{"major_version":26,"entries":[
@@ -270,8 +506,20 @@ mod tests {
             },
             to: MigrationTarget {
                 mc_version: to.to_string(),
+                loader: None,
             },
+            allow_without_bundles: false,
         }
+    }
+
+    fn loader_rule(id: &str, version: &str, from: &str, to: &str) -> RemoteMigration {
+        let mut rule = rule(id, version, from, version);
+        rule.to.loader = Some(to.to_string());
+        rule
+    }
+
+    fn fabric(version: &str) -> (String, GameLoader) {
+        (version.to_string(), GameLoader::Fabric)
     }
 
     #[test]
@@ -279,7 +527,7 @@ mod tests {
         let rules = [rule("a", "26.1", "fabric", "26.1.2")];
         assert_eq!(
             resolve_migration_chain("26.1", GameLoader::Fabric, &rules),
-            "26.1.2"
+            fabric("26.1.2")
         );
     }
 
@@ -291,7 +539,7 @@ mod tests {
         ];
         assert_eq!(
             resolve_migration_chain("26.1", GameLoader::Fabric, &rules),
-            "26.1.3"
+            fabric("26.1.3")
         );
     }
 
@@ -300,7 +548,7 @@ mod tests {
         let rules = [rule("a", "26.1", "forge", "26.1.2")];
         assert_eq!(
             resolve_migration_chain("26.1", GameLoader::Fabric, &rules),
-            "26.1"
+            fabric("26.1")
         );
     }
 
@@ -309,7 +557,7 @@ mod tests {
         let rules = [rule("a", "21.1", "fabric", "21.1.2")];
         assert_eq!(
             resolve_migration_chain("26.1", GameLoader::Fabric, &rules),
-            "26.1"
+            fabric("26.1")
         );
     }
 
@@ -318,7 +566,7 @@ mod tests {
         let self_rule = [rule("a", "26.1", "fabric", "26.1")];
         assert_eq!(
             resolve_migration_chain("26.1", GameLoader::Fabric, &self_rule),
-            "26.1"
+            fabric("26.1")
         );
 
         let cycle = [
@@ -326,7 +574,70 @@ mod tests {
             rule("b", "26.2", "fabric", "26.1"),
         ];
         let out = resolve_migration_chain("26.1", GameLoader::Fabric, &cycle);
-        assert!(out == "26.1" || out == "26.2");
+        assert!(out == fabric("26.1") || out == fabric("26.2"));
+    }
+
+    #[test]
+    fn chain_switches_loader() {
+        let rules = [
+            rule("a", "26.1", "fabric", "26.1.2"),
+            loader_rule("b", "26.1.2", "fabric", "neoforge"),
+        ];
+        assert_eq!(
+            resolve_migration_chain("26.1", GameLoader::Fabric, &rules),
+            ("26.1.2".to_string(), GameLoader::NeoForge)
+        );
+    }
+
+    #[test]
+    fn missing_target_loader_keeps_the_source_loader() {
+        let (from, to) = rule("a", "26.1", "forge", "26.1.2").endpoints().unwrap();
+        assert_eq!(from.loader, GameLoader::Forge);
+        assert_eq!(to.loader, GameLoader::Forge);
+        let (from, to) = loader_rule("a", "1.20.1", "forge", "neoforge")
+            .endpoints()
+            .unwrap();
+        assert_eq!(from.loader, GameLoader::Forge);
+        assert_eq!(to.loader, GameLoader::NeoForge);
+    }
+
+    #[test]
+    fn unknown_target_loader_invalidates_the_rule() {
+        let broken = loader_rule("a", "1.20.1", "forge", "rift");
+        assert!(broken.endpoints().is_none());
+    }
+
+    #[test]
+    fn opposite_loader_rules_are_a_cycle() {
+        let rules = [
+            loader_rule("there", "1.8.9", "fabric", "ornithe"),
+            loader_rule("back", "1.8.9", "ornithe", "fabric"),
+            loader_rule("other", "1.20.1", "forge", "neoforge"),
+        ];
+        let cyclic = cyclic_migration_ids(&rules);
+        assert!(cyclic.contains("there"));
+        assert!(cyclic.contains("back"));
+        assert!(!cyclic.contains("other"));
+    }
+
+    #[test]
+    fn a_three_loader_ring_is_a_cycle() {
+        let rules = [
+            loader_rule("a", "1.20.1", "forge", "neoforge"),
+            loader_rule("b", "1.20.1", "neoforge", "fabric"),
+            loader_rule("c", "1.20.1", "fabric", "forge"),
+        ];
+        assert_eq!(cyclic_migration_ids(&rules).len(), 3);
+    }
+
+    #[test]
+    fn a_chain_is_not_a_cycle() {
+        let rules = [
+            rule("a", "26.1", "fabric", "26.1.2"),
+            loader_rule("b", "26.1.2", "fabric", "quilt"),
+            rule("self", "26.3", "fabric", "26.3"),
+        ];
+        assert!(cyclic_migration_ids(&rules).is_empty());
     }
 
     #[test]
@@ -342,5 +653,25 @@ mod tests {
         assert_eq!(manifest.migrations[0].id, "x");
         assert_eq!(manifest.migrations[0].from.mc_version, "26.1");
         assert_eq!(manifest.migrations[0].to.mc_version, "26.1.2");
+        assert_eq!(manifest.migrations[0].to.loader, None);
+        assert!(!manifest.migrations[0].allow_without_bundles);
+    }
+
+    #[test]
+    fn loader_migrations_parse() {
+        let manifest: VersionsManifest = serde_json::from_str(
+            r#"{"clusters":[],"migrations":[
+                {"id":"x","from":{"mc_version":"1.20.1","loader":"forge"},
+                 "to":{"mc_version":"1.20.1","loader":"neoforge"},
+                 "allow_without_bundles":true}
+            ]}"#,
+        )
+        .expect("should parse");
+
+        assert_eq!(
+            manifest.migrations[0].to.loader.as_deref(),
+            Some("neoforge")
+        );
+        assert!(manifest.migrations[0].allow_without_bundles);
     }
 }

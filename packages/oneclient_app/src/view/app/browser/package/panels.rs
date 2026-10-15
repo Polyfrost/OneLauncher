@@ -1,11 +1,14 @@
 use super::*;
 
-use oneclient_content::packages::ProviderId;
-use oneclient_content::packages::types::{PackageBody, ProjectDetail, ReleaseType, VersionSummary};
+use oneclient_content::packages::markdown::normalize_markdown;
+use oneclient_content::packages::types::{
+    DependencyKind, PackageBody, ProjectDetail, ReleaseType, VersionSummary,
+};
 
-use crate::Actions;
-use crate::components::{Button, Icon, IconType, Segment, SegmentedControl};
-use crate::hooks::VERSIONS_PAGE_SIZE;
+use crate::components::{
+    Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl,
+};
+use crate::hooks::{ClusterAction, VERSIONS_PAGE_SIZE};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
@@ -38,9 +41,32 @@ pub(super) fn tabs(active_tab: State<usize>, has_gallery: bool) -> impl IntoElem
 pub(super) fn about_panel(project: &ProjectDetail) -> impl IntoElement {
     let body = match &project.body {
         PackageBody::Raw(md) => md.clone(),
-        PackageBody::Url(url) => format!("{}\n\n[View online]({url})", project.summary),
+        PackageBody::Url(url) => normalize_markdown(&format!(
+            "{}\n\n[View online]({})",
+            project.summary,
+            escape_link_destination(url)
+        )),
     };
     MarkdownPanel { body }.into_element()
+}
+
+fn escape_link_destination(url: &str) -> String {
+    let mut out = String::with_capacity(url.len());
+
+    for character in url.chars() {
+        match character {
+            '(' => out.push_str("%28"),
+            ')' => out.push_str("%29"),
+            '<' => out.push_str("%3C"),
+            '>' => out.push_str("%3E"),
+            ' ' => out.push_str("%20"),
+            '\\' => out.push_str("%5C"),
+            character if character.is_control() => {}
+            character => out.push(character),
+        }
+    }
+
+    out
 }
 
 #[derive(PartialEq)]
@@ -57,23 +83,21 @@ impl Component for MarkdownPanel {
             .background(PANEL_BG)
             .border(border_all_color(1., colors::component_border()))
             .child(
-                MarkdownViewer::new(self.body.clone())
+                Markdown::new(self.body.clone())
                     .width(Size::fill())
-                    .color(colors::fg_primary())
-                    .color_link(colors::code_info())
-                    .background_code(colors::component_bg())
-                    .color_code(colors::fg_primary())
-                    .background_blockquote(colors::component_bg())
-                    .border_blockquote(colors::brand())
-                    .background_divider(colors::component_border())
-                    .heading_h1(26.)
-                    .heading_h2(22.)
-                    .heading_h3(18.)
-                    .heading_h4(16.)
-                    .heading_h5(14.)
-                    .heading_h6(13.)
-                    .paragraph_size(13.)
-                    .code_font_size(12.),
+                    .style(MarkdownStyle {
+                        color: colors::fg_primary(),
+                        color_link: colors::code_info(),
+                        color_code: colors::fg_primary(),
+                        background_code: colors::component_bg(),
+                        background_blockquote: colors::component_bg(),
+                        border_blockquote: colors::brand(),
+                        background_divider: colors::component_border(),
+                        headings: [26., 22., 18., 16., 14., 13.],
+                        paragraph_size: 13.,
+                        code_font_size: 12.,
+                        ..MarkdownStyle::default()
+                    }),
             )
     }
 }
@@ -83,10 +107,10 @@ pub(super) fn versions_panel(
     versions: Vec<VersionSummary>,
     total_versions: usize,
     versions_page: State<usize>,
-    provider: ProviderId,
+    dependency_names: HashMap<String, String>,
     project_id: String,
-    cluster_id: i64,
-    dispatch: Actions,
+    installer: Installer,
+    on_remove: EventHandler<(String, String)>,
     installed: Option<Installed>,
     installing: bool,
 ) -> impl IntoElement {
@@ -118,15 +142,21 @@ pub(super) fn versions_panel(
                 let duplicated = installed
                     .as_ref()
                     .is_some_and(|installed| installed.is_duplicated());
+                let enable = installed
+                    .as_ref()
+                    .and_then(Installed::disabled_bundled)
+                    .filter(|disabled| disabled.version_id == v.version_id)
+                    .and_then(|disabled| disabled.enable_action(installer.cluster_id));
                 version_row(
                     v,
-                    provider,
+                    &dependency_names,
                     project_id.clone(),
-                    cluster_id,
-                    dispatch.clone(),
+                    installer.clone(),
+                    on_remove.clone(),
                     tag,
                     duplicated,
                     installing,
+                    enable,
                 )
                 .into_element()
             }))
@@ -194,14 +224,15 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
 #[allow(clippy::too_many_arguments)]
 fn version_row(
     v: VersionSummary,
-    provider: ProviderId,
+    dependency_names: &HashMap<String, String>,
     project_id: String,
-    cluster_id: i64,
-    dispatch: Actions,
+    installer: Installer,
+    on_remove: EventHandler<(String, String)>,
     installed: Option<InstalledVersion>,
     // Saying which version is live only tells the user anything when there are several
     duplicated: bool,
     installing: bool,
+    enable: Option<ClusterAction>,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
     let mut chips: Vec<String> = v.loaders.iter().map(|l| l.to_string()).collect();
@@ -215,6 +246,13 @@ fn version_row(
         parts.join("  ·  ")
     };
     let has_chips = !chips.is_empty();
+    let requires: Vec<&str> = v
+        .dependencies
+        .iter()
+        .filter(|d| d.kind == DependencyKind::Required)
+        .filter_map(|d| d.project_id.as_deref())
+        .map(|id| dependency_names.get(id).map_or(id, String::as_str))
+        .collect();
 
     rect()
         .horizontal()
@@ -240,7 +278,16 @@ fn version_row(
                         .max_lines(1)
                         .color(colors::fg_primary()),
                 )
-                .maybe(has_chips, |el| el.child(pill_flow(&chips, 8, 10)))
+                .maybe(has_chips, |el| el.child(pill_flow(&chips, 10)))
+                .maybe(!requires.is_empty(), |el| {
+                    el.child(
+                        label()
+                            .text(format!("Requires {}", requires.join(", ")))
+                            .font_size(11.)
+                            .max_lines(2)
+                            .color(colors::fg_secondary()),
+                    )
+                })
                 .child(
                     label()
                         .text(stats)
@@ -260,28 +307,27 @@ fn version_row(
                 .filter(|_| duplicated)
                 .map(|installed| activity_badge(installed.enabled).into_element()),
         )
-        .child(version_button(
-            installed,
-            v.name,
-            provider,
-            project_id,
-            version_id,
-            cluster_id,
-            dispatch,
-            installing,
-        ))
+        .child(match enable {
+            Some(action) => EnableButton {
+                action,
+                variant: EnableVariant::VersionRow,
+            }
+            .into_element(),
+            None => version_button(
+                installed, v.name, project_id, version_id, installer, on_remove, installing,
+            )
+            .into_element(),
+        })
 }
 
 /// A bundle pin with nothing linked leaves nothing to press no artifact to remove and installing by hand would duplicate it
-#[allow(clippy::too_many_arguments)]
 fn version_button(
     installed: Option<InstalledVersion>,
     version_name: String,
-    provider: ProviderId,
     project_id: String,
     version_id: String,
-    cluster_id: i64,
-    dispatch: Actions,
+    installer: Installer,
+    on_remove: EventHandler<(String, String)>,
     busy: bool,
 ) -> impl IntoElement {
     let Some(installed) = installed else {
@@ -289,34 +335,23 @@ fn version_button(
             .secondary()
             .small()
             .enabled(!busy)
-            .on_press(move |_| {
-                dispatch.install_package(
-                    cluster_id,
-                    provider,
-                    project_id.clone(),
-                    version_id.clone(),
-                );
-            })
+            .on_press(move |_| installer.install(project_id.clone(), version_id.clone()))
             .text("Install");
     };
 
     let Some(hash) = installed.hash else {
-        return Button::new().secondary().small().enabled(false).text("Install");
+        return Button::new()
+            .secondary()
+            .small()
+            .enabled(false)
+            .text("Install");
     };
 
     Button::new()
         .danger()
         .small()
         .enabled(!busy)
-        .on_press(move |_| {
-            dispatch.remove_package_version(
-                cluster_id,
-                provider,
-                project_id.clone(),
-                hash.clone(),
-                version_name.clone(),
-            );
-        })
+        .on_press(move |_| on_remove.call((version_name.clone(), hash.clone())))
         .text("Remove")
 }
 

@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id, cluster_id, bundle_name, package_id, bundle_version_id,\n               seen_status, queued_at\n        FROM cluster_optional_mods\n        WHERE cluster_id = ?\n        ORDER BY queued_at, id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_optional_mods",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "cluster_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_optional_mods",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "bundle_name",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_optional_mods",
+            "name": "bundle_name"
+          }
+        }
+      },
+      {
+        "name": "package_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_optional_mods",
+            "name": "package_id"
+          }
+        }
+      },
+      {
+        "name": "bundle_version_id",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_optional_mods",
+            "name": "bundle_version_id"
+          }
+        }
+      },
+      {
+        "name": "seen_status",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_optional_mods",
+            "name": "seen_status"
+          }
+        }
+      },
+      {
+        "name": "queued_at",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_optional_mods",
+            "name": "queued_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "5b3dd7940a9bd6f0067fac7b5f21e83f8d9eeceda6b1c53c5ce5b735a8fe2a71"
+}

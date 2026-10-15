@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO cluster_optional_mods\n            (cluster_id, bundle_name, package_id, bundle_version_id, seen_status)\n        VALUES (?, ?, ?, ?, ?)\n        ON CONFLICT(cluster_id, package_id) DO UPDATE SET\n            bundle_name = excluded.bundle_name,\n            bundle_version_id = excluded.bundle_version_id\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "3b87531a1231c467072ec4d1f9afd3c93114777031250c7f9e74f6b9eef4ab9f"
+}

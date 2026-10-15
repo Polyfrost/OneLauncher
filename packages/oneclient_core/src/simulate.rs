@@ -1,22 +1,16 @@
-//! Deliberately damaging an installation so repair paths can be exercised
-//! Each mode breaks files differently because the launcher catches different
-//! damage at different layers
-
 use std::path::{Path, PathBuf};
 
+use oneclient_common::paths;
 use oneclient_content::packages::PackageStore;
 use oneclient_content::packages::store::artifact_absolute_path;
-use oneclient_common::paths;
 use oneclient_db::dao::artifact as artifact_dao;
 
-use crate::state::LauncherState;
 use crate::LauncherResult;
+use crate::state::LauncherState;
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SimulationReport {
     pub affected: usize,
-    /// Capped sample not the full list 50 damaged assets must not become a
-    /// 50-line toast
     pub samples: Vec<String>,
 }
 
@@ -51,9 +45,7 @@ impl SimulationReport {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Damage {
-    /// Same length wrong bytes passes a size check fails a hash check
     Corrupt,
-    /// Half length as an interrupted write would leave it
     Truncate,
     Delete,
 }
@@ -289,10 +281,8 @@ mod tests {
     use super::*;
 
     fn scratch(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "oneclient-simulate-{tag}-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("oneclient-simulate-{tag}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -359,6 +349,9 @@ mod tests {
 
         assert_eq!(report.affected, 4);
         assert_eq!(report.samples.len(), 3);
-        assert_eq!(report.summary("Corrupted"), "Corrupted 4 file(s): aaaa and 3 more");
+        assert_eq!(
+            report.summary("Corrupted"),
+            "Corrupted 4 file(s): aaaa and 3 more"
+        );
     }
 }

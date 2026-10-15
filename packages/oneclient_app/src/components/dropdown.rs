@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Icon, IconType, ScrollArea};
+use crate::hooks::use_overlay_claim_when;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -13,8 +14,11 @@ pub struct Dropdown {
     selected: String,
     options: Vec<String>,
     on_select: Option<EventHandler<usize>>,
+    leading: Option<Element>,
     width: Size,
     height: Size,
+    outlined: bool,
+    checked: Option<Vec<bool>>,
     key: DiffKey,
 }
 
@@ -24,8 +28,11 @@ impl Dropdown {
             selected: selected.into(),
             options,
             on_select: None,
+            leading: None,
             width: Size::px(72.),
             height: Size::px(24.),
+            outlined: false,
+            checked: None,
             key: DiffKey::None,
         }
     }
@@ -39,6 +46,21 @@ impl Dropdown {
     #[allow(dead_code)]
     pub fn height(mut self, height: impl Into<Size>) -> Self {
         self.height = height.into();
+        self
+    }
+
+    pub fn outlined(mut self) -> Self {
+        self.outlined = true;
+        self
+    }
+
+    pub fn checked(mut self, checked: Vec<bool>) -> Self {
+        self.checked = Some(checked);
+        self
+    }
+
+    pub fn leading(mut self, leading: impl IntoElement) -> Self {
+        self.leading = Some(leading.into_element());
         self
     }
 
@@ -63,15 +85,21 @@ impl Component for Dropdown {
         let focus = use_focus(a11y_id);
 
         let mut button_area = use_state(|| None::<Area>);
-        let mut list_size = use_state(|| None::<Size2D>);
+        let mut list_area = use_state(|| None::<Area>);
 
         let selected = self.selected.clone();
+        let leading = self.leading.clone();
         let options = self.options.clone();
         let on_select = self.on_select.clone();
+        let outlined = self.outlined;
+        let checked = self.checked.clone();
+        let multi = checked.is_some();
         let is_open = open();
 
-        if !is_open && list_size().is_some() {
-            let _ = list_size.take();
+        use_overlay_claim_when(is_open);
+
+        if !is_open && list_area().is_some() {
+            let _ = list_area.take();
         }
 
         let trigger_bg = if hovering() {
@@ -84,13 +112,13 @@ impl Component for Dropdown {
         let list_h =
             visible as f32 * OPTION_HEIGHT + visible.saturating_sub(1) as f32 * OPTION_SPACING;
 
-        let offset_y = match (button_area(), list_size()) {
+        let offset_y = match (button_area(), list_area()) {
             (Some(button), Some(list)) => {
                 let root_height = Platform::get().root_size.peek().height;
                 let space_below = root_height - button.max_y();
                 let space_above = button.min_y();
-                if list.height > space_below && list.height <= space_above {
-                    -(button.height() + list.height + 8.)
+                if list.height() > space_below && list.height() <= space_above {
+                    -(button.height() + list.height() + 8.)
                 } else {
                     0.
                 }
@@ -102,12 +130,24 @@ impl Component for Dropdown {
             .map(|b| Size::px(b.width()))
             .unwrap_or_else(|| self.width.clone());
 
-        let on_global_pointer_press = move |_: Event<PointerEventData>| {
-            open.set_if_modified(false);
+        let on_global_pointer_up = move |e: Event<PointerEventData>| {
+            let loc = e.global_location();
+            let inside = list_area().is_some_and(|area| {
+                area.translate((0., offset_y).into())
+                    .contains((loc.x as f32, loc.y as f32).into())
+            });
+            if !(multi && inside) {
+                open.set_if_modified(false);
+            }
         };
 
         rect()
             .width(self.width.clone())
+            .on_global_key_down(move |e: Event<KeyboardEventData>| {
+                if e.key == Key::Named(NamedKey::Escape) {
+                    open.set_if_modified(false);
+                }
+            })
             .child(
                 rect()
                     .width(Size::fill())
@@ -115,9 +155,13 @@ impl Component for Dropdown {
                     .horizontal()
                     .center()
                     .spacing(4.)
-                    .padding(Gaps::new_symmetric(0., 8.))
-                    .corner_radius(CornerRadius::new_all(6.))
+                    .padding(Gaps::new_symmetric(0., if outlined { 12. } else { 8. }))
+                    .corner_radius(CornerRadius::new_all(if outlined { 8. } else { 6. }))
                     .background(trigger_bg)
+                    .maybe(outlined, |el| {
+                        el.main_align(Alignment::SpaceBetween)
+                            .border(border_all_color(1., colors::component_border()))
+                    })
                     .a11y_id(a11y_id)
                     .a11y_focusable(true)
                     .a11y_role(AccessibilityRole::Button)
@@ -126,19 +170,20 @@ impl Component for Dropdown {
                     })
                     .on_pointer_enter(move |_| hovering.set(true))
                     .on_pointer_leave(move |_| hovering.set(false))
-                    .on_global_pointer_press(on_global_pointer_press)
+                    .on_global_pointer_up(on_global_pointer_up)
                     .on_sized(move |e: Event<SizedEventData>| {
                         button_area.set_if_modified(Some(e.area));
                     })
-                    .on_all_press(move |e: Event<PressEventData>| {
+                    .on_press(move |e: Event<PressEventData>| {
                         e.prevent_default();
                         e.stop_propagation();
                         open.toggle();
                     })
+                    .maybe_child(leading)
                     .child(
                         label()
                             .text(selected)
-                            .font_size(12.)
+                            .font_size(if outlined { 13. } else { 12. })
                             .color(colors::fg_primary()),
                     )
                     .child(
@@ -156,7 +201,7 @@ impl Component for Dropdown {
                         .offset_y(offset_y)
                         .content(Content::Fit)
                         .on_sized(move |e: Event<SizedEventData>| {
-                            list_size.set_if_modified(Some(e.area.size));
+                            list_area.set_if_modified(Some(e.area));
                         })
                         .child(
                             rect()
@@ -173,11 +218,16 @@ impl Component for Dropdown {
                                         .children(options.into_iter().enumerate().map(
                                             |(idx, option)| {
                                                 let on_select = on_select.clone();
-                                                DropdownOption::new(option, move |_| {
+                                                let checked = checked
+                                                    .as_ref()
+                                                    .map(|c| c.get(idx).copied().unwrap_or(false));
+                                                DropdownOption::new(option, checked, move |_| {
                                                     if let Some(handler) = &on_select {
                                                         handler.call(idx);
                                                     }
-                                                    open.set(false);
+                                                    if !multi {
+                                                        open.set(false);
+                                                    }
                                                 })
                                                 .into_element()
                                             },
@@ -195,16 +245,19 @@ impl Component for Dropdown {
 
 struct DropdownOption {
     text: String,
+    checked: Option<bool>,
     on_press: EventHandler<Event<PressEventData>>,
 }
 
 impl DropdownOption {
     pub fn new(
         text: impl Into<String>,
+        checked: Option<bool>,
         on_press: impl Into<EventHandler<Event<PressEventData>>>,
     ) -> Self {
         Self {
             text: text.into(),
+            checked,
             on_press: on_press.into(),
         }
     }
@@ -212,7 +265,7 @@ impl DropdownOption {
 
 impl PartialEq for DropdownOption {
     fn eq(&self, other: &Self) -> bool {
-        self.text == other.text
+        self.text == other.text && self.checked == other.checked
     }
 }
 
@@ -225,7 +278,8 @@ impl Component for DropdownOption {
 
         rect()
             .width(Size::fill())
-            .padding(Gaps::new_symmetric(6., 8.))
+            .height(Size::px(OPTION_HEIGHT))
+            .padding(Gaps::new_symmetric(0., 8.))
             .corner_radius(CornerRadius::new_all(6.))
             .a11y_id(a11y_id)
             .a11y_focusable(true)
@@ -237,12 +291,28 @@ impl Component for DropdownOption {
             })
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
-            .on_all_press(self.on_press.clone())
+            .on_press(self.on_press.clone())
+            .horizontal()
+            .content(Content::Flex)
+            .cross_align(Alignment::Center)
             .child(
                 label()
                     .text(self.text.clone())
+                    .width(Size::flex(1.))
                     .font_size(12.)
                     .color(colors::fg_primary()),
             )
+            .maybe_child(self.checked.map(|checked| {
+                rect()
+                    .width(Size::px(14.))
+                    .height(Size::px(14.))
+                    .maybe_child(checked.then(|| {
+                        Icon::new(IconType::Check)
+                            .size(14.)
+                            .color(colors::brand())
+                            .into_element()
+                    }))
+                    .into_element()
+            }))
     }
 }

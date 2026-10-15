@@ -401,7 +401,7 @@ void hitCape(float3 ro, float3 rd, inout float best, inout half4 col) {
         uv = float2(rd.x > 0.0 ? 0.5 : 11.5, 1.0 + (1.0 - n.y) * 16.0);
         nrm = float3(rd.x > 0.0 ? -1.0 : 1.0, 0.0, 0.0);
     } else {
-        uv = float2(1.0 + n.x * 10.0, rd.y > 0.0 ? 0.5 : 0.5);
+        uv = float2(rd.y > 0.0 ? 11.0 + n.x * 10.0 : 1.0 + n.x * 10.0, 0.5);
         nrm = float3(0.0, rd.y > 0.0 ? -1.0 : 1.0, 0.0);
     }
 

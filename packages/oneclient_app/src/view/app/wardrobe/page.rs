@@ -272,12 +272,6 @@ impl WardrobeData {
             .all(|variant| owned.contains(&variant.id))
     }
 
-    fn any_owned(&self, item: &StoreItem) -> bool {
-        item.ui_variants()
-            .iter()
-            .any(|variant| self.owned.contains(&variant.id))
-    }
-
     pub fn shop(&self, kind: CosmeticType) -> Vec<StoreItem> {
         let items: Vec<StoreItem> = self
             .store
@@ -285,7 +279,7 @@ impl WardrobeData {
             .map(|store| store.of_type(kind).to_vec())
             .unwrap_or_default()
             .into_iter()
-            .filter(|item| !self.any_owned(item) && self.matches(&item.name))
+            .filter(|item| !self.fully_owned(item) && self.matches(&item.name))
             .collect();
         self.sorted(items)
     }
@@ -523,8 +517,14 @@ pub(super) fn toggle_owned(
     let Some(variant) = data.selected_variant(group) else {
         return Err(format!("{} has no variant to equip.", group.name));
     };
+    let wearing = |id: i32| {
+        group
+            .variants
+            .iter()
+            .any(|equipped| equipped.id == id && equipped.name == variant.name)
+    };
     match data.equipped_slot(group) {
-        Some((slot, id)) if id == variant.id => Ok(WardrobeAction::Equip {
+        Some((slot, id)) if wearing(id) => Ok(WardrobeAction::Equip {
             account: data.account,
             slot,
             cosmetic: None,
@@ -588,6 +588,12 @@ fn favorites_first<T: Clone>(items: &[T], favorite: impl Fn(&T) -> bool) -> Vec<
     sorted
 }
 
+fn report(mut status: State<Option<String>>, message: String) {
+    if let Some(mut status) = status.try_write() {
+        *status = Some(message);
+    }
+}
+
 pub(super) fn perform(
     action: UseWardrobeAction,
     mut status: State<Option<String>>,
@@ -606,10 +612,8 @@ pub(super) fn perform(
             MutationStateData::Settled { res, .. } => Some(res.clone()),
             _ => None,
         };
-        if let Some(outcome) = outcome {
-            status.set(Some(match outcome {
-                Ok(message) | Err(message) => message,
-            }));
+        if let Some(Ok(message) | Err(message)) = outcome {
+            report(status, message);
         }
     });
 }
@@ -641,8 +645,12 @@ pub(super) fn add_to_cart(
     spawn_forever(async move {
         let message = match api::store_product_id(variant_id).await {
             Ok(Some(product_id)) => {
-                if cart.read().iter().all(|entry| entry.key != key) {
-                    cart.write().push(CartEntry {
+                if cart
+                    .try_peek()
+                    .is_some_and(|entries| entries.iter().all(|entry| entry.key != key))
+                    && let Some(mut entries) = cart.try_write()
+                {
+                    entries.push(CartEntry {
                         key,
                         name: name.clone(),
                         description,
@@ -659,7 +667,7 @@ pub(super) fn add_to_cart(
             Ok(None) => format!("{name} isn't purchasable yet."),
             Err(err) => err.to_string(),
         };
-        status.set(Some(message));
+        report(status, message);
     });
 }
 
@@ -869,12 +877,17 @@ impl Component for WardrobeBody {
                     .child(HistoryList { account }),
             )
         } else {
+            let grid_data = data.clone();
             grid.content(move |view: ScrollAreaCtx| {
+                let ctx = GridCtx {
+                    data: &grid_data,
+                    shared,
+                };
                 rect()
                     .width(Size::fill())
                     .padding(Gaps::new(0., 8., 12., 0.))
                     .on_sized(measured)
-                    .child(visible_slots(&layout, &view))
+                    .child(visible_slots(&ctx, &layout, &view))
                     .into_element()
             })
         };
@@ -1203,13 +1216,24 @@ const NOTICE_HEIGHT: f32 = 57.;
 const INTRO_HEIGHT: f32 = 33.;
 const OVERSCAN: f32 = 480.;
 
+#[derive(Clone)]
+pub(super) enum Card {
+    Mojang(String),
+    Owned(i32),
+    Shop(i32),
+    Bundle(i32),
+    Emote(i32),
+    Outfit(i32),
+    Skin(i32),
+}
+
 pub(super) enum Block {
     Fixed {
         element: Element,
         height: f32,
         anchor: Option<String>,
     },
-    Cards(Vec<Element>),
+    Cards(Vec<Card>),
 }
 
 impl Block {
@@ -1241,10 +1265,15 @@ impl Block {
     }
 }
 
+enum SlotContent {
+    Fixed(Element),
+    Row(Vec<Card>),
+}
+
 struct Slot {
     y: f32,
     height: f32,
-    element: Element,
+    content: SlotContent,
 }
 
 struct Layout {
@@ -1262,7 +1291,24 @@ fn card_height(grid_width: f32) -> f32 {
     card_width + CARD_CHROME
 }
 
-fn card_row(cards: &[Element]) -> Element {
+fn card_element(ctx: &GridCtx, card: &Card) -> Option<Element> {
+    let data = ctx.data;
+    match card {
+        Card::Mojang(id) => data.mojang_cape(id).map(|cape| mojang_card(ctx, cape)),
+        Card::Owned(id) => data.group(*id).map(|group| owned_card(ctx, group)),
+        Card::Shop(id) => data.store_item(*id).map(|item| shop_card(ctx, item)),
+        Card::Bundle(id) => data.bundle(*id).map(|bundle| bundle_card(ctx, bundle)),
+        Card::Emote(id) => data
+            .emotes()
+            .iter()
+            .find(|emote| emote.id == *id)
+            .map(|emote| emote_card(ctx, emote)),
+        Card::Outfit(id) => data.outfit(*id).map(|outfit| outfit_card(ctx, outfit)),
+        Card::Skin(id) => data.skin(*id).map(|skin| skin_card(ctx, skin)),
+    }
+}
+
+fn card_row(ctx: &GridCtx, cards: &[Card]) -> Element {
     let mut row = rect()
         .horizontal()
         .width(Size::fill())
@@ -1274,7 +1320,7 @@ fn card_row(cards: &[Element]) -> Element {
             rect()
                 .width(Size::flex(1.0))
                 .height(Size::fill())
-                .child(card.clone()),
+                .maybe_child(card_element(ctx, card)),
         );
     }
     for _ in cards.len()..COLUMNS {
@@ -1297,7 +1343,11 @@ fn layout(blocks: Vec<Block>, card_height: f32) -> Layout {
                 if let Some(text) = anchor {
                     anchors.push((text, y));
                 }
-                slots.push(Slot { y, height, element });
+                slots.push(Slot {
+                    y,
+                    height,
+                    content: SlotContent::Fixed(element),
+                });
                 y += height + GRID_GAP;
             }
             Block::Cards(cards) => {
@@ -1305,7 +1355,7 @@ fn layout(blocks: Vec<Block>, card_height: f32) -> Layout {
                     slots.push(Slot {
                         y,
                         height: card_height,
-                        element: card_row(chunk),
+                        content: SlotContent::Row(chunk.to_vec()),
                     });
                     y += card_height + GRID_GAP;
                 }
@@ -1319,7 +1369,7 @@ fn layout(blocks: Vec<Block>, card_height: f32) -> Layout {
     }
 }
 
-fn visible_slots(layout: &Layout, view: &ScrollAreaCtx) -> Element {
+fn visible_slots(ctx: &GridCtx, layout: &Layout, view: &ScrollAreaCtx) -> Element {
     let top = -view.corrected_y - OVERSCAN;
     let bottom = -view.corrected_y + view.viewport_h + OVERSCAN;
     let slots = &layout.slots;
@@ -1341,7 +1391,10 @@ fn visible_slots(layout: &Layout, view: &ScrollAreaCtx) -> Element {
                     rect()
                         .width(Size::fill())
                         .height(Size::px(slot.height))
-                        .child(slot.element.clone()),
+                        .child(match &slot.content {
+                            SlotContent::Fixed(element) => element.clone(),
+                            SlotContent::Row(cards) => card_row(ctx, cards),
+                        }),
                 ),
         );
     }
@@ -1358,7 +1411,7 @@ struct GridCtx<'a> {
 }
 
 impl GridCtx<'_> {
-    fn grid(&self, cards: Vec<Element>) -> Block {
+    fn grid(&self, cards: Vec<Card>) -> Block {
         Block::Cards(cards)
     }
 
@@ -1444,21 +1497,14 @@ fn featured_content(ctx: &GridCtx) -> Vec<Block> {
                 ctx.grid(
                     popular
                         .into_iter()
-                        .map(|item| shop_card(ctx, item))
+                        .map(|item| Card::Shop(item.id))
                         .collect(),
                 ),
             );
         }
         if !newest.is_empty() {
             out.push(ctx.anchor("New"));
-            out.push(
-                ctx.grid(
-                    newest
-                        .into_iter()
-                        .map(|item| shop_card(ctx, item))
-                        .collect(),
-                ),
-            );
+            out.push(ctx.grid(newest.into_iter().map(|item| Card::Shop(item.id)).collect()));
         }
         if !bundles.is_empty() {
             out.push(ctx.anchor("Bundles"));
@@ -1466,7 +1512,7 @@ fn featured_content(ctx: &GridCtx) -> Vec<Block> {
                 ctx.grid(
                     bundles
                         .into_iter()
-                        .map(|bundle| bundle_card(ctx, bundle))
+                        .map(|bundle| Card::Bundle(bundle.id))
                         .collect(),
                 ),
             );
@@ -1496,7 +1542,7 @@ fn emotes_content(ctx: &GridCtx) -> Vec<Block> {
             ctx.grid(
                 owned
                     .into_iter()
-                    .map(|emote| emote_card(ctx, emote))
+                    .map(|emote| Card::Emote(emote.id))
                     .collect(),
             ),
         );
@@ -1523,7 +1569,7 @@ fn emotes_content(ctx: &GridCtx) -> Vec<Block> {
     }
     for (category, items) in groups {
         out.push(ctx.anchor(&category));
-        out.push(ctx.grid(items.iter().map(|item| shop_card(ctx, item)).collect()));
+        out.push(ctx.grid(items.iter().map(|item| Card::Shop(item.id)).collect()));
     }
 
     if out.is_empty() {
@@ -1550,11 +1596,11 @@ fn cosmetics_content(ctx: &GridCtx) -> Vec<Block> {
         }
 
         out.push(ctx.anchor(text));
-        let mut cards: Vec<Element> = owned
+        let mut cards: Vec<Card> = owned
             .into_iter()
-            .map(|group| owned_card(ctx, group))
+            .map(|group| Card::Owned(group.id))
             .collect();
-        cards.extend(shop.iter().map(|item| shop_card(ctx, item)));
+        cards.extend(shop.iter().map(|item| Card::Shop(item.id)));
         out.push(ctx.grid(cards));
     }
 
@@ -1584,7 +1630,7 @@ fn cape_groups(ctx: &GridCtx) -> Vec<Block> {
                     ctx.grid(
                         capes
                             .into_iter()
-                            .map(|cape| mojang_card(ctx, cape))
+                            .map(|cape| Card::Mojang(cape.id.clone()))
                             .collect(),
                     ),
                 );
@@ -1610,11 +1656,11 @@ fn cape_groups(ctx: &GridCtx) -> Vec<Block> {
     if owned.is_empty() && shop.is_empty() {
         out.push(Block::notice("No PolyPlus capes found."));
     } else {
-        let mut cards: Vec<Element> = owned
+        let mut cards: Vec<Card> = owned
             .into_iter()
-            .map(|group| owned_card(ctx, group))
+            .map(|group| Card::Owned(group.id))
             .collect();
-        cards.extend(shop.iter().map(|item| shop_card(ctx, item)));
+        cards.extend(shop.iter().map(|item| Card::Shop(item.id)));
         out.push(ctx.grid(cards));
     }
 
@@ -2002,116 +2048,122 @@ fn outfits_content(ctx: &GridCtx) -> Vec<Block> {
         return out;
     }
 
-    let cards = outfits
-        .into_iter()
-        .map(|outfit| {
-            let active = list.active_outfit_id == Some(outfit.id);
-            let (skin, cape) = data.outfit_look(&outfit);
-            let id = outfit.id;
-            let account = data.account;
-            let mut selection = ctx.shared.selection;
-            let detail = if active {
-                "Active".to_string()
-            } else {
-                cosmetic_count_label(outfit.equipped.len())
-            };
-            let wear = ctx.run(WardrobeAction::ApplyOutfit {
-                account,
-                id,
-                name: outfit.name.clone(),
-            });
-            let favorite = ctx.run(WardrobeAction::FavoriteOutfit {
-                account,
-                id,
-                name: outfit.name.clone(),
-                favorite: !outfit.favorite,
-            });
-            let delete = ctx.run(WardrobeAction::DeleteOutfit {
-                account,
-                id,
-                name: outfit.name.clone(),
-            });
-            let rename = {
-                let action = ctx.shared.action;
-                let status = ctx.shared.status;
-                let old = outfit.name.clone();
-                EventHandler::new(move |name: String| {
-                    perform(
-                        action,
-                        status,
-                        WardrobeAction::RenameOutfit {
-                            account,
-                            id,
-                            old: old.clone(),
-                            name,
-                        },
-                    )
-                })
-            };
-
-            WardrobeCard {
-                name: outfit.name.clone(),
-                detail: detail_text(detail),
-                action_label: if active { "Wearing" } else { "Wear" },
-                action_icon: if active {
-                    IconType::Check
-                } else {
-                    IconType::Plus
-                },
-                equipped: active,
-                action_enabled: !active,
-                selected: ctx.selected() == Some(Selection::Outfit(id)),
-                badge: outfit.favorite.then(Badge::favorite),
-                thumbnail: LookThumb {
-                    uuid: data.uuid.clone(),
-                    skin,
-                    cape,
-                    yaw: FRONT_YAW,
-                    zoom: 1.0,
-                    interactive: false,
-                }
-                .into_element(),
-                menu: vec![
-                    {
-                        let wear = wear.clone();
-                        MenuAction::new(IconType::Plus, "Wear", !active, move |()| wear.call(()))
-                    },
-                    MenuAction::new(
-                        if outfit.favorite {
-                            IconType::XClose
-                        } else {
-                            IconType::Check
-                        },
-                        if outfit.favorite {
-                            "Remove from favourites"
-                        } else {
-                            "Add to favourites"
-                        },
-                        true,
-                        move |()| favorite.call(()),
-                    ),
-                    MenuAction::danger(IconType::Trash01, "Delete", true, move |()| {
-                        if *selection.peek() == Some(Selection::Outfit(id)) {
-                            selection.set(None);
-                        }
-                        delete.call(());
-                    }),
-                ],
-                rename: Some(Rename {
-                    current: outfit.name.clone(),
-                    on_save: rename,
-                }),
-                enabled: !data.busy,
-                swatches: Vec::new(),
-                on_pick: None,
-                on_select: ctx.select(Selection::Outfit(id)),
-                on_action: wear,
-            }
-            .into_element()
-        })
-        .collect();
-    out.push(ctx.grid(cards));
+    out.push(
+        ctx.grid(
+            outfits
+                .iter()
+                .map(|outfit| Card::Outfit(outfit.id))
+                .collect(),
+        ),
+    );
     out
+}
+
+fn outfit_card(ctx: &GridCtx, outfit: &OutfitInfo) -> Element {
+    let data = ctx.data;
+    let active = data.outfits.as_ref().and_then(|list| list.active_outfit_id) == Some(outfit.id);
+    let (skin, cape) = data.outfit_look(outfit);
+    let id = outfit.id;
+    let account = data.account;
+    let mut selection = ctx.shared.selection;
+    let detail = if active {
+        "Active".to_string()
+    } else {
+        cosmetic_count_label(outfit.equipped.len())
+    };
+    let wear = ctx.run(WardrobeAction::ApplyOutfit {
+        account,
+        id,
+        name: outfit.name.clone(),
+    });
+    let favorite = ctx.run(WardrobeAction::FavoriteOutfit {
+        account,
+        id,
+        name: outfit.name.clone(),
+        favorite: !outfit.favorite,
+    });
+    let delete = ctx.run(WardrobeAction::DeleteOutfit {
+        account,
+        id,
+        name: outfit.name.clone(),
+    });
+    let rename = {
+        let action = ctx.shared.action;
+        let status = ctx.shared.status;
+        let old = outfit.name.clone();
+        EventHandler::new(move |name: String| {
+            perform(
+                action,
+                status,
+                WardrobeAction::RenameOutfit {
+                    account,
+                    id,
+                    old: old.clone(),
+                    name,
+                },
+            )
+        })
+    };
+
+    WardrobeCard {
+        name: outfit.name.clone(),
+        detail: detail_text(detail),
+        action_label: if active { "Wearing" } else { "Wear" },
+        action_icon: if active {
+            IconType::Check
+        } else {
+            IconType::Plus
+        },
+        equipped: active,
+        action_enabled: !active,
+        selected: ctx.selected() == Some(Selection::Outfit(id)),
+        badge: outfit.favorite.then(Badge::favorite),
+        thumbnail: LookThumb {
+            uuid: data.uuid.clone(),
+            skin,
+            cape,
+            yaw: FRONT_YAW,
+            zoom: 1.0,
+            interactive: false,
+        }
+        .into_element(),
+        menu: vec![
+            {
+                let wear = wear.clone();
+                MenuAction::new(IconType::Plus, "Wear", !active, move |()| wear.call(()))
+            },
+            MenuAction::new(
+                if outfit.favorite {
+                    IconType::XClose
+                } else {
+                    IconType::Check
+                },
+                if outfit.favorite {
+                    "Remove from favourites"
+                } else {
+                    "Add to favourites"
+                },
+                true,
+                move |()| favorite.call(()),
+            ),
+            MenuAction::danger(IconType::Trash01, "Delete", true, move |()| {
+                if *selection.peek() == Some(Selection::Outfit(id)) {
+                    selection.set(None);
+                }
+                delete.call(());
+            }),
+        ],
+        rename: Some(Rename {
+            current: outfit.name.clone(),
+            on_save: rename,
+        }),
+        enabled: !data.busy,
+        swatches: Vec::new(),
+        on_pick: None,
+        on_select: ctx.select(Selection::Outfit(id)),
+        on_action: wear,
+    }
+    .into_element()
 }
 
 fn skins_content(ctx: &GridCtx) -> Vec<Block> {
@@ -2159,127 +2211,125 @@ fn skins_content(ctx: &GridCtx) -> Vec<Block> {
         return out;
     }
 
-    let wearing_hash = data.current_skin_hash();
-    let cards = skins
-        .into_iter()
-        .map(|skin| {
-            let wearing = wearing_hash.as_deref() == Some(skin.hash.as_str());
-            let id = skin.id;
-            let account = data.account;
-            let slim = skin.model == SkinModel::Slim;
-            let mut selection = ctx.shared.selection;
-            let wear = ctx.run(WardrobeAction::WearSkin {
-                account,
-                url: skin.url.clone(),
-                slim,
-                name: skin.name.clone(),
-            });
-            let favorite = ctx.run(WardrobeAction::FavoriteSkin {
-                account,
-                id,
-                name: skin.name.clone(),
-                favorite: !skin.favorite,
-            });
-            let arms = ctx.run(WardrobeAction::SkinArms {
-                account,
-                id,
-                name: skin.name.clone(),
-                slim: !slim,
-            });
-            let delete = ctx.run(WardrobeAction::DeleteSkin {
-                account,
-                id,
-                name: skin.name.clone(),
-            });
-            let rename = {
-                let action = ctx.shared.action;
-                let status = ctx.shared.status;
-                let old = skin.name.clone();
-                EventHandler::new(move |name: String| {
-                    perform(
-                        action,
-                        status,
-                        WardrobeAction::RenameSkin {
-                            account,
-                            id,
-                            old: old.clone(),
-                            name,
-                        },
-                    )
-                })
-            };
-
-            WardrobeCard {
-                name: skin.name.clone(),
-                detail: detail_text(if slim { "Slim" } else { "Classic" }),
-                action_label: if wearing { "Wearing" } else { "Wear" },
-                action_icon: if wearing {
-                    IconType::Check
-                } else {
-                    IconType::Plus
-                },
-                equipped: wearing,
-                action_enabled: !wearing,
-                selected: ctx.selected() == Some(Selection::Skin(id)),
-                badge: skin.favorite.then(Badge::favorite),
-                thumbnail: LookThumb {
-                    uuid: data.uuid.clone(),
-                    skin: Some((skin.url.clone(), slim)),
-                    cape: None,
-                    yaw: FRONT_YAW,
-                    zoom: 1.0,
-                    interactive: false,
-                }
-                .into_element(),
-                menu: vec![
-                    {
-                        let wear = wear.clone();
-                        MenuAction::new(IconType::Plus, "Wear", !wearing, move |()| wear.call(()))
-                    },
-                    MenuAction::new(
-                        if skin.favorite {
-                            IconType::XClose
-                        } else {
-                            IconType::Check
-                        },
-                        if skin.favorite {
-                            "Remove from favourites"
-                        } else {
-                            "Add to favourites"
-                        },
-                        true,
-                        move |()| favorite.call(()),
-                    ),
-                    MenuAction::new(
-                        IconType::Users01,
-                        if slim {
-                            "Switch to classic arms"
-                        } else {
-                            "Switch to slim arms"
-                        },
-                        true,
-                        move |()| arms.call(()),
-                    ),
-                    MenuAction::danger(IconType::Trash01, "Delete", true, move |()| {
-                        if *selection.peek() == Some(Selection::Skin(id)) {
-                            selection.set(None);
-                        }
-                        delete.call(());
-                    }),
-                ],
-                rename: Some(Rename {
-                    current: skin.name.clone(),
-                    on_save: rename,
-                }),
-                enabled: !data.busy,
-                swatches: Vec::new(),
-                on_pick: None,
-                on_select: ctx.select(Selection::Skin(id)),
-                on_action: wear,
-            }
-            .into_element()
-        })
-        .collect();
-    out.push(ctx.grid(cards));
+    out.push(ctx.grid(skins.iter().map(|skin| Card::Skin(skin.id)).collect()));
     out
+}
+
+fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
+    let data = ctx.data;
+    let wearing = data.current_skin_hash().as_deref() == Some(skin.hash.as_str());
+    let id = skin.id;
+    let account = data.account;
+    let slim = skin.model == SkinModel::Slim;
+    let mut selection = ctx.shared.selection;
+    let wear = ctx.run(WardrobeAction::WearSkin {
+        account,
+        url: skin.url.clone(),
+        slim,
+        name: skin.name.clone(),
+    });
+    let favorite = ctx.run(WardrobeAction::FavoriteSkin {
+        account,
+        id,
+        name: skin.name.clone(),
+        favorite: !skin.favorite,
+    });
+    let arms = ctx.run(WardrobeAction::SkinArms {
+        account,
+        id,
+        name: skin.name.clone(),
+        slim: !slim,
+    });
+    let delete = ctx.run(WardrobeAction::DeleteSkin {
+        account,
+        id,
+        name: skin.name.clone(),
+    });
+    let rename = {
+        let action = ctx.shared.action;
+        let status = ctx.shared.status;
+        let old = skin.name.clone();
+        EventHandler::new(move |name: String| {
+            perform(
+                action,
+                status,
+                WardrobeAction::RenameSkin {
+                    account,
+                    id,
+                    old: old.clone(),
+                    name,
+                },
+            )
+        })
+    };
+
+    WardrobeCard {
+        name: skin.name.clone(),
+        detail: detail_text(if slim { "Slim" } else { "Classic" }),
+        action_label: if wearing { "Wearing" } else { "Wear" },
+        action_icon: if wearing {
+            IconType::Check
+        } else {
+            IconType::Plus
+        },
+        equipped: wearing,
+        action_enabled: !wearing,
+        selected: ctx.selected() == Some(Selection::Skin(id)),
+        badge: skin.favorite.then(Badge::favorite),
+        thumbnail: LookThumb {
+            uuid: data.uuid.clone(),
+            skin: Some((skin.url.clone(), slim)),
+            cape: None,
+            yaw: FRONT_YAW,
+            zoom: 1.0,
+            interactive: false,
+        }
+        .into_element(),
+        menu: vec![
+            {
+                let wear = wear.clone();
+                MenuAction::new(IconType::Plus, "Wear", !wearing, move |()| wear.call(()))
+            },
+            MenuAction::new(
+                if skin.favorite {
+                    IconType::XClose
+                } else {
+                    IconType::Check
+                },
+                if skin.favorite {
+                    "Remove from favourites"
+                } else {
+                    "Add to favourites"
+                },
+                true,
+                move |()| favorite.call(()),
+            ),
+            MenuAction::new(
+                IconType::Users01,
+                if slim {
+                    "Switch to classic arms"
+                } else {
+                    "Switch to slim arms"
+                },
+                true,
+                move |()| arms.call(()),
+            ),
+            MenuAction::danger(IconType::Trash01, "Delete", true, move |()| {
+                if *selection.peek() == Some(Selection::Skin(id)) {
+                    selection.set(None);
+                }
+                delete.call(());
+            }),
+        ],
+        rename: Some(Rename {
+            current: skin.name.clone(),
+            on_save: rename,
+        }),
+        enabled: !data.busy,
+        swatches: Vec::new(),
+        on_pick: None,
+        on_select: ctx.select(Selection::Skin(id)),
+        on_action: wear,
+    }
+    .into_element()
 }

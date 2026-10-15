@@ -139,11 +139,6 @@ pub struct EmoteInfo {
     pub url: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-struct CatalogResponse {
-    cosmetics: Vec<CosmeticGroup>,
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 pub struct PlayerCosmetics {
     #[serde(default)]
@@ -289,24 +284,6 @@ async fn json_authorized<T: DeserializeOwned>(
         .await?
         .json::<T>()
         .await?)
-}
-
-pub async fn fetch_catalog() -> Result<Vec<CosmeticGroup>, PlusError> {
-    if plus_blocked() {
-        return Err(PlusError::ConsentRequired);
-    }
-    let response = client()?
-        .get(format!("{}/cosmetics", base_url()))
-        .header("Accept", "application/json")
-        .send()
-        .await?;
-    if !response.status().is_success() {
-        return Err(PlusError::Api {
-            status: response.status().as_u16(),
-            body: response.text().await.unwrap_or_default(),
-        });
-    }
-    Ok(response.json::<CatalogResponse>().await?.cosmetics)
 }
 
 pub async fn fetch_player(account: &MinecraftAccount) -> Result<PlayerCosmetics, PlusError> {

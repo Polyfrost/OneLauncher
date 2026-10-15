@@ -269,11 +269,10 @@ async fn send_profile_request(
         .await
         .map_err(|err| McError::Minecraft(err.to_string()))?;
     if !status.is_success() {
-        return Err(McError::Minecraft(format!(
-            "HTTP {}: {}",
-            status.as_u16(),
-            String::from_utf8_lossy(&bytes)
-        )));
+        return Err(McError::MinecraftStatus {
+            status: status.as_u16(),
+            body: String::from_utf8_lossy(&bytes).into_owned(),
+        });
     }
 
     let profile = serde_json::from_slice::<MojangFullPlayerProfile>(&bytes)?;
@@ -398,11 +397,10 @@ pub async fn upload_skin(
         .await
         .map_err(|err| McError::Minecraft(err.to_string()))?;
     if !status.is_success() {
-        return Err(McError::Minecraft(format!(
-            "Mojang rejected the skin upload (HTTP {}): {}",
-            status.as_u16(),
-            String::from_utf8_lossy(&body)
-        )));
+        return Err(McError::MinecraftStatus {
+            status: status.as_u16(),
+            body: String::from_utf8_lossy(&body).into_owned(),
+        });
     }
 
     let profile = serde_json::from_slice::<MojangFullPlayerProfile>(&body)?;

@@ -410,6 +410,19 @@ impl Component for PreviewPanel {
         }
         overlay = overlay.maybe_child(status_text(&status));
 
+        let (skin, cape) = match &picked {
+            Some(Selection::Skin(id)) => (
+                data.skin(*id)
+                    .map(|skin| (skin.url.clone(), skin.model == SkinModel::Slim)),
+                data.current_cape(),
+            ),
+            Some(Selection::Outfit(id)) => match data.outfit(*id) {
+                Some(outfit) => data.outfit_look(outfit),
+                None => (None, data.current_cape()),
+            },
+            _ => (None, data.current_cape()),
+        };
+
         panel_box()
             .width(Size::fill())
             .height(Size::fill())
@@ -420,8 +433,8 @@ impl Component for PreviewPanel {
                     .height(Size::px(330.))
                     .child(LookThumb {
                         uuid: data.uuid.clone(),
-                        skin: None,
-                        cape: data.current_cape(),
+                        skin,
+                        cape,
                         yaw: if show_back { BACK_YAW } else { FRONT_YAW },
                         zoom: 1.0,
                         interactive: true,

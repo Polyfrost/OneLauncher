@@ -21,11 +21,14 @@ pub use bad_mods::{
     fetch_explanation, load_bad_mods, refresh_bad_mods, resolve_alternatives,
 };
 pub use dependencies::{
-    DependencyResolution, ResolvedDependency, resolve_required, resolves_dependencies,
+    DependencyResolution, ModInstallTarget, ResolvedDependency, find_mod_for_cluster,
+    resolve_required, resolves_dependencies,
 };
 pub use error::{PackageError, PackageResult};
 pub use file_identity::{FileIdentity, curseforge_fingerprint};
-pub use local_manifest::{JarManifest, read_jar_icon, read_jar_loader, read_jar_manifest};
+pub use local_manifest::{
+    JarManifest, read_jar_bundled_mod_ids, read_jar_icon, read_jar_loader, read_jar_manifest,
+};
 pub use metadata_cache::{
     CachedPackageMeta, cached_project_detail, fetch_package_meta, get_version_cached,
     read_cached_package_meta,

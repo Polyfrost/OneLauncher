@@ -23,13 +23,15 @@ pub use oneclient_mc::{
 };
 pub mod crashdata;
 pub mod diagnosis;
+pub mod mod_problems;
 
 pub use crashdata::CrashData;
-pub use diagnosis::{CrashDiagnosis, MissingDependency, diagnose, suspected_mods};
+pub use diagnosis::{CrashDiagnosis, diagnose, suspected_mods};
 pub use error::GameError;
 pub use fabric::{mods_folder_argument, uses_cluster_mods_folder};
 pub use heal::clear_zeroed_files;
-pub use launch::{LaunchedGame, is_running, launch_cluster, repair_cluster};
+pub use launch::{LaunchedGame, crash_mod_issues, is_running, launch_cluster, repair_cluster};
+pub use mod_problems::{ModProblem, ModProblemKind, ModRef};
 pub use oneclient_mc::{
     DownloadPlan, GameVersionInfo, GameVersionKind, NativesMode, NativesReport, PlannedLibrary,
     check_natives, confirm_incomplete_install, download_minecraft, download_version_info,

@@ -1,7 +1,12 @@
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-use oneclient_events::CrashRemedy;
+use oneclient_events::{CrashModIssue, CrashRemedy};
+
+use super::mod_problems::{
+    MAX_PROBLEMS, ModProblem, is_mod_load_line, problem_issues, problems_body, problems_in,
+    problems_title, without_rejected_builds,
+};
 
 const DOCUMENT_BUDGET: usize = 96 * 1024;
 const LINE_BUDGET: usize = 8 * 1024;
@@ -9,94 +14,12 @@ const LINE_BUDGET: usize = 8 * 1024;
 const EXCERPT_BEFORE: usize = 2;
 const EXCERPT_AFTER: usize = 24;
 
-const MAX_MISSING: usize = 256;
-const MAX_MISSING_DESCRIBED: usize = 4;
-
-const PLATFORMS: [(&str, &str); 10] = [
-    ("minecraft", "Minecraft"),
-    ("mcp", "Minecraft"),
-    ("java", "Java"),
-    ("fabricloader", "Fabric Loader"),
-    ("fabric loader", "Fabric Loader"),
-    ("forge", "Forge"),
-    ("minecraft forge", "Forge"),
-    ("fml", "Forge"),
-    ("javafml", "Forge"),
-    ("neoforge", "NeoForge"),
-];
-
-const INSTALL_ADVICE: &str = "Install what they ask for, or remove the mods that need it.";
-const PLATFORM_ADVICE: &str =
-    "Use a version of the mod made for this cluster, or remove it from the cluster.";
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct MissingDependency {
-    pub dependency: String,
-    pub required_by: Option<String>,
-    pub version: Option<String>,
-    pub present: Option<String>,
-}
-
-impl MissingDependency {
-    fn platform(&self) -> Option<&'static str> {
-        let id = self.dependency.trim().to_ascii_lowercase();
-
-        PLATFORMS
-            .iter()
-            .find(|(known, _)| *known == id)
-            .map(|(_, name)| *name)
-    }
-
-    fn display_name(&self) -> String {
-        self.platform()
-            .map_or_else(|| self.dependency.clone(), str::to_string)
-    }
-
-    fn needed(&self) -> String {
-        let name = self.display_name();
-
-        match &self.version {
-            Some(version) => format!("{name} {version}"),
-            None => name,
-        }
-    }
-
-    fn describe(&self) -> String {
-        let needed = self.needed();
-
-        if self.platform().is_some() {
-            let present = self
-                .present
-                .as_ref()
-                .map(|present| format!(", but this cluster has {present}"))
-                .unwrap_or_default();
-
-            return match &self.required_by {
-                Some(by) => format!("{by} is made for {needed}{present}"),
-                None => format!("{needed} is required{present}"),
-            };
-        }
-
-        match (&self.required_by, &self.present) {
-            (Some(by), Some(present)) => format!("{by} needs {needed}, but {present} is installed"),
-            (Some(by), None) => format!("{by} needs {needed}"),
-            (None, Some(present)) => format!("{needed} is required, but {present} is installed"),
-            (None, None) => format!("{needed} is missing"),
-        }
-    }
-
-    fn same_as(&self, other: &Self) -> bool {
-        self.dependency.eq_ignore_ascii_case(&other.dependency)
-            && self.required_by == other.required_by
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CrashDiagnosis {
     CorruptArchive { file: Option<String> },
     OutOfMemory,
     UnsupportedJava,
-    ModLoadFailure { missing: Vec<MissingDependency> },
+    ModLoadFailure { problems: Vec<ModProblem> },
     ModLinkage,
     GraphicsDriver,
     NativeCrash { frame: Option<String> },
@@ -109,7 +32,7 @@ impl CrashDiagnosis {
             Self::CorruptArchive { .. } => "A damaged file crashed the game".to_string(),
             Self::OutOfMemory => "Minecraft ran out of memory".to_string(),
             Self::UnsupportedJava => "This Java version cannot run the game".to_string(),
-            Self::ModLoadFailure { missing } => missing_title(missing),
+            Self::ModLoadFailure { problems } => problems_title(problems),
             Self::ModLinkage => "A mod does not fit this version of Minecraft".to_string(),
             Self::GraphicsDriver => "The game could not start graphics".to_string(),
             Self::NativeCrash { frame: Some(frame) } => format!("{frame} crashed the game"),
@@ -136,7 +59,7 @@ impl CrashDiagnosis {
                  the one it launched with. Switching this cluster to the Java version it \
                  expects will fix it."
                 .to_string(),
-            Self::ModLoadFailure { missing } if !missing.is_empty() => missing_body(missing),
+            Self::ModLoadFailure { problems } if !problems.is_empty() => problems_body(problems),
             Self::ModLoadFailure { .. } => "The mod loader refused to start. Usually one of your \
                  mods was built for a different Minecraft version, or it needs another mod that \
                  is not installed."
@@ -185,70 +108,14 @@ impl CrashDiagnosis {
     pub fn leaves_game_broken(&self) -> bool {
         matches!(self, Self::OutOfMemory)
     }
-}
 
-fn missing_title(missing: &[MissingDependency]) -> String {
-    let Some(first) = missing.first() else {
-        return "A mod stopped the game from starting".to_string();
-    };
-
-    let name = first.display_name();
-    let platform = first.platform().is_some();
-
-    if missing.len() > 1 {
-        let shared = missing
-            .iter()
-            .all(|other| other.display_name().eq_ignore_ascii_case(&name));
-
-        return match (shared, platform) {
-            (true, true) => format!(
-                "{} mods are not made for this version of {name}",
-                missing.len()
-            ),
-            (true, false) => format!("{} mods need {name}", missing.len()),
-            (false, _) if missing.iter().all(|other| other.platform().is_some()) => {
-                "Some mods are not made for this cluster".to_string()
-            }
-            (false, _) => "Some mods are missing what they depend on".to_string(),
-        };
+    #[must_use]
+    pub fn mod_issues(&self) -> Vec<CrashModIssue> {
+        match self {
+            Self::ModLoadFailure { problems } => problem_issues(problems),
+            _ => Vec::new(),
+        }
     }
-
-    match (&first.required_by, &first.present, platform) {
-        (Some(by), _, true) => format!("{by} is not made for this version of {name}"),
-        (None, _, true) => format!("This version of {name} is not supported"),
-        (Some(by), Some(_), false) => format!("{by} needs a different version of {name}"),
-        (Some(by), None, false) => format!("{by} needs {name}"),
-        (None, Some(_), false) => format!("The wrong version of {name} is installed"),
-        (None, None, false) => format!("{name} is missing"),
-    }
-}
-
-fn missing_body(missing: &[MissingDependency]) -> String {
-    let mut sentences: Vec<String> = missing
-        .iter()
-        .take(MAX_MISSING_DESCRIBED)
-        .map(|dependency| format!("{}.", dependency.describe()))
-        .collect();
-
-    let hidden = missing.len().saturating_sub(MAX_MISSING_DESCRIBED);
-    if hidden > 0 {
-        sentences.push(format!("And {hidden} more."));
-    }
-
-    if missing
-        .iter()
-        .any(|dependency| dependency.platform().is_none())
-    {
-        sentences.push(INSTALL_ADVICE.to_string());
-    }
-    if missing
-        .iter()
-        .any(|dependency| dependency.platform().is_some())
-    {
-        sentences.push(PLATFORM_ADVICE.to_string());
-    }
-
-    sentences.join(" ")
 }
 
 const CORRUPT_ARCHIVE_MARKERS: [&str; 7] = [
@@ -272,31 +139,6 @@ const UNSUPPORTED_JAVA_MARKERS: [&str; 3] = [
     "has been compiled by a more recent version of the Java Runtime",
     "Unsupported major.minor version",
 ];
-
-const MOD_LOAD_MARKERS: [&str; 11] = [
-    "WrongMinecraftVersionException",
-    "MissingModsException",
-    "Missing or unsupported mandatory dependencies",
-    "ModLoadingException",
-    "net.fabricmc.loader.impl.FormattedException",
-    "Incompatible mod set!",
-    "Incompatible mods found!",
-    "Mod resolution encountered an incompatible mod set",
-    "Could not find required mod: ",
-    "requires mods [",
-    "Forge Mod Loader has found a problem with your minecraft installation",
-];
-
-const FABRIC_MISSING_SUFFIX: &str = ", which is missing!";
-const FABRIC_WRONG_VERSION: &str = ", but only the wrong version is present: ";
-const FABRIC_REQUIRES: &str = " requires ";
-const FABRIC_LEGACY_MARKER: &str = "Could not find required mod: ";
-const FORGE_LEGACY_LISTS: [&str; 2] = ["requires mods [", "requires ["];
-const FORGE_MOD_ID: &str = "Mod ID: '";
-const FORGE_REQUESTED_BY: &str = "Requested by: '";
-const FORGE_EXPECTED_RANGE: &str = "Expected range: '";
-const FORGE_ACTUAL_VERSION: &str = "Actual version: '";
-const FORGE_MISSING_VERSION: &str = "[MISSING]";
 
 const MOD_LINKAGE_MARKERS: [&str; 3] = [
     "java.lang.NoSuchMethodError",
@@ -338,7 +180,7 @@ pub fn diagnose(line: &str) -> Option<CrashDiagnosis> {
 
     if is_mod_load_line(line) {
         return Some(CrashDiagnosis::ModLoadFailure {
-            missing: missing_dependencies(line),
+            problems: problems_in(line),
         });
     }
 
@@ -355,241 +197,6 @@ pub fn diagnose(line: &str) -> Option<CrashDiagnosis> {
     }
 
     None
-}
-
-fn is_mod_load_line(line: &str) -> bool {
-    MOD_LOAD_MARKERS.iter().any(|marker| line.contains(marker))
-        || line.contains(FORGE_MOD_ID)
-        || is_fabric_requirement_line(line)
-}
-
-fn is_fabric_requirement_line(line: &str) -> bool {
-    line.contains(FABRIC_REQUIRES)
-        && (line.contains(FABRIC_MISSING_SUFFIX) || line.contains(FABRIC_WRONG_VERSION))
-}
-
-#[must_use]
-pub fn missing_dependencies(line: &str) -> Vec<MissingDependency> {
-    if !is_mod_load_line(line) {
-        return Vec::new();
-    }
-
-    if let Some(found) = fabric_requirement(line) {
-        return vec![found];
-    }
-
-    if let Some(found) = fabric_legacy_requirement(line) {
-        return vec![found];
-    }
-
-    if let Some(found) = forge_requirement(line) {
-        return vec![found];
-    }
-
-    forge_legacy_requirements(line)
-}
-
-fn fabric_requirement(line: &str) -> Option<MissingDependency> {
-    let (head, rest) = line.split_once(FABRIC_REQUIRES)?;
-    let quoted = match head.split_once("Mod '") {
-        Some((_, quoted)) => quoted,
-        None => head
-            .trim_start_matches(|c: char| c == '-' || c.is_whitespace())
-            .strip_prefix('\'')?,
-    };
-    let required_by = fabric_name(quoted)?;
-
-    let (spec, present) = if let Some(spec) = rest.trim_end().strip_suffix(FABRIC_MISSING_SUFFIX) {
-        (spec, None)
-    } else {
-        let (spec, present) = rest.split_once(FABRIC_WRONG_VERSION)?;
-        let present = present.trim().trim_end_matches('!').trim();
-        (spec, (!present.is_empty()).then(|| present.to_string()))
-    };
-
-    let (version, dependency) = spec.split_once(" of ")?;
-    let dependency = dependency.trim();
-    let dependency = dependency.strip_prefix("mod ").unwrap_or(dependency);
-    let dependency = dependency
-        .strip_prefix('\'')
-        .and_then(fabric_name)
-        .unwrap_or_else(|| dependency.to_string());
-
-    let version = version.trim();
-    let version = (version != "any version").then(|| fabric_version(version));
-
-    named(MissingDependency {
-        dependency,
-        required_by: Some(required_by),
-        version,
-        present,
-    })
-}
-
-fn fabric_version(version: &str) -> String {
-    if let Some(after) = version.strip_prefix("any version after ") {
-        return format!("newer than {after}");
-    }
-
-    if let Some(before) = version.strip_prefix("any version before ") {
-        return format!("older than {before}");
-    }
-
-    version
-        .strip_prefix("any version ")
-        .or_else(|| version.strip_prefix("version "))
-        .unwrap_or(version)
-        .to_string()
-}
-
-fn fabric_legacy_requirement(line: &str) -> Option<MissingDependency> {
-    let (_, rest) = line.split_once(FABRIC_LEGACY_MARKER)?;
-    let (required_by, spec) = rest.split_once(" requires ")?;
-
-    let spec = spec.trim().trim_start_matches('{');
-    let spec = spec.split('}').next().unwrap_or(spec);
-    let (dependency, range) = spec.split_once(" @ ").unwrap_or((spec, ""));
-
-    let range = range
-        .trim()
-        .trim_start_matches('[')
-        .trim_end_matches(']')
-        .trim();
-
-    named(MissingDependency {
-        dependency: dependency.trim().to_string(),
-        required_by: Some(required_by.trim().to_string()),
-        version: (!range.is_empty() && range != "*").then(|| range.to_string()),
-        present: None,
-    })
-}
-
-fn forge_requirement(line: &str) -> Option<MissingDependency> {
-    let dependency = quoted_after(line, FORGE_MOD_ID)?;
-    let present = quoted_after(line, FORGE_ACTUAL_VERSION).filter(|v| v != FORGE_MISSING_VERSION);
-
-    named(MissingDependency {
-        dependency,
-        required_by: quoted_after(line, FORGE_REQUESTED_BY),
-        version: quoted_after(line, FORGE_EXPECTED_RANGE).and_then(|range| maven_range(&range)),
-        present,
-    })
-}
-
-fn forge_legacy_requirements(line: &str) -> Vec<MissingDependency> {
-    let Some((head, list)) = FORGE_LEGACY_LISTS
-        .iter()
-        .find_map(|marker| line.split_once(marker))
-    else {
-        return Vec::new();
-    };
-
-    let Some(owner) = head.rfind("Mod ").or_else(|| head.rfind("mod ")) else {
-        return Vec::new();
-    };
-
-    let owner = head[owner + 4..].trim();
-    let required_by = match owner.split_once('(') {
-        Some((_, name)) if !name.trim_end_matches(')').trim().is_empty() => {
-            name.trim_end_matches(')').trim().to_string()
-        }
-        Some((id, _)) => id.trim().to_string(),
-        None => owner.to_string(),
-    };
-
-    top_level_entries(list)
-        .into_iter()
-        .filter_map(|entry| {
-            let (dependency, range) = entry.split_once('@').unwrap_or((entry, ""));
-
-            named(MissingDependency {
-                dependency: dependency.trim().to_string(),
-                required_by: (!required_by.is_empty()).then(|| required_by.clone()),
-                version: maven_range(range),
-                present: None,
-            })
-        })
-        .take(MAX_MISSING)
-        .collect()
-}
-
-fn named(found: MissingDependency) -> Option<MissingDependency> {
-    (!found.dependency.is_empty()).then_some(found)
-}
-
-fn fabric_name(quoted: &str) -> Option<String> {
-    let (name, _) = quoted
-        .split_once("' (")
-        .or_else(|| quoted.split_once('\''))?;
-    let name = name.trim();
-
-    (!name.is_empty()).then(|| name.to_string())
-}
-
-fn quoted_after(text: &str, marker: &str) -> Option<String> {
-    let (_, rest) = text.split_once(marker)?;
-    let (value, _) = rest.split_once('\'')?;
-    let value = value.trim();
-
-    (!value.is_empty()).then(|| value.to_string())
-}
-
-fn top_level_entries(list: &str) -> Vec<&str> {
-    let mut entries = Vec::new();
-    let mut depth = 0usize;
-    let mut start = 0;
-
-    for (index, ch) in list.char_indices() {
-        match ch {
-            '[' | '(' => depth += 1,
-            ']' | ')' if depth == 0 => {
-                entries.push(&list[start..index]);
-                return entries
-                    .into_iter()
-                    .map(str::trim)
-                    .filter(|entry| !entry.is_empty())
-                    .collect();
-            }
-            ']' | ')' => depth -= 1,
-            ',' if depth == 0 => {
-                entries.push(&list[start..index]);
-                start = index + 1;
-            }
-            _ => {}
-        }
-    }
-
-    Vec::new()
-}
-
-fn maven_range(range: &str) -> Option<String> {
-    let range = range.trim();
-    if range.is_empty() || range == "*" {
-        return None;
-    }
-
-    let inclusive_low = range.starts_with('[');
-    let inclusive_high = range.ends_with(']');
-    let inner = range
-        .trim_start_matches(['[', '('])
-        .trim_end_matches([']', ')']);
-
-    let Some((low, high)) = inner.split_once(',') else {
-        let exact = inner.trim();
-        return (!exact.is_empty()).then(|| exact.to_string());
-    };
-
-    let (low, high) = (low.trim(), high.trim());
-
-    Some(match (low.is_empty(), high.is_empty()) {
-        (true, true) => return None,
-        (false, true) if inclusive_low => format!("{low} or later"),
-        (false, true) => format!("newer than {low}"),
-        (true, false) if inclusive_high => format!("{high} or earlier"),
-        (true, false) => format!("older than {high}"),
-        (false, false) if inclusive_high => format!("{low} to {high}"),
-        (false, false) => format!("{low} to below {high}"),
-    })
 }
 
 #[must_use]
@@ -676,7 +283,7 @@ struct Watched {
     crash_report: bool,
     pending_frame: bool,
     suspects: Vec<String>,
-    missing: Vec<MissingDependency>,
+    problems: Vec<ModProblem>,
     diagnosis: Option<CrashDiagnosis>,
     excerpt: Option<Vec<String>>,
     pending_after: usize,
@@ -735,8 +342,8 @@ impl Watched {
         }
     }
 
-    fn capture_missing(&mut self, line: &str) {
-        let found = missing_dependencies(line);
+    fn capture_problems(&mut self, line: &str) {
+        let found = problems_in(line);
         if found.is_empty() {
             return;
         }
@@ -748,35 +355,35 @@ impl Watched {
         {
             tracing::warn!(
                 earlier = ?self.diagnosis,
-                "a missing dependency outranks the earlier crash cause"
+                "a named mod problem outranks the earlier crash cause"
             );
             self.anchor(
                 CrashDiagnosis::ModLoadFailure {
-                    missing: Vec::new(),
+                    problems: Vec::new(),
                 },
                 line,
             );
         }
 
         for found in found {
-            if self.missing.len() >= MAX_MISSING {
+            if self.problems.len() >= MAX_PROBLEMS {
                 return;
             }
 
-            if self.missing.iter().any(|known| known.same_as(&found)) {
+            if self.problems.iter().any(|known| known.same_as(&found)) {
                 continue;
             }
 
-            tracing::warn!(?found, "the mod loader named a missing dependency");
-            self.missing.push(found);
+            tracing::warn!(?found, "the mod loader named a mod problem");
+            self.problems.push(found);
         }
     }
 
     fn take_diagnosis(&mut self) -> Option<CrashDiagnosis> {
         let mut diagnosis = self.diagnosis.take()?;
 
-        if let CrashDiagnosis::ModLoadFailure { missing } = &mut diagnosis {
-            *missing = std::mem::take(&mut self.missing);
+        if let CrashDiagnosis::ModLoadFailure { problems } = &mut diagnosis {
+            *problems = without_rejected_builds(std::mem::take(&mut self.problems));
         }
 
         Some(diagnosis)
@@ -868,7 +475,7 @@ impl CrashWatch {
         watched.buffer(line);
         watched.extend_excerpt(line);
         watched.capture_suspects(line);
-        watched.capture_missing(line);
+        watched.capture_problems(line);
         watched.resolve_native_frame(line);
         watched.capture_diagnosis(line);
     }
@@ -998,7 +605,7 @@ mod tests {
 
         assert!(
             CrashDiagnosis::ModLoadFailure {
-                missing: Vec::new()
+                problems: Vec::new()
             }
             .is_fatal()
         );
@@ -1017,7 +624,7 @@ mod tests {
         assert!(!CrashDiagnosis::ModLinkage.leaves_game_broken());
         assert!(
             !CrashDiagnosis::ModLoadFailure {
-                missing: Vec::new()
+                problems: Vec::new()
             }
             .leaves_game_broken()
         );
@@ -1027,7 +634,7 @@ mod tests {
     fn a_mod_problem_sends_the_user_to_the_mods_list() {
         assert_eq!(
             CrashDiagnosis::ModLoadFailure {
-                missing: Vec::new()
+                problems: Vec::new()
             }
             .remedy(),
             Some(CrashRemedy::OpenMods)
@@ -1299,313 +906,41 @@ mod tests {
         assert_eq!(excerpt.last().unwrap(), "line 39");
     }
 
-    fn dependency(
-        dependency: &str,
-        required_by: Option<&str>,
-        version: Option<&str>,
-        present: Option<&str>,
-    ) -> MissingDependency {
-        MissingDependency {
-            dependency: dependency.to_string(),
-            required_by: required_by.map(str::to_string),
-            version: version.map(str::to_string),
-            present: present.map(str::to_string),
+    const FABRIC_RECOMMENDS_WARNING: &str = " - 'Minecraft' (minecraft) 26.3 recommends any version \
+         after 15.0.0-alpha.5 of Fabulously Optimized, which is missing!";
+
+    const IRIS_NEEDS_SODIUM: &str =
+        " - 'Iris' (iris) 1.8.0 requires any version of sodium, which is missing!";
+
+    fn problems_of(diagnosis: Option<CrashDiagnosis>) -> Vec<ModProblem> {
+        match diagnosis {
+            Some(CrashDiagnosis::ModLoadFailure { problems }) => problems,
+            other => panic!("expected a mod load failure, got {other:?}"),
         }
     }
 
     #[test]
-    fn fabric_names_a_missing_dependency() {
-        let line = "\t - Mod 'Sodium Extra' (sodium-extra) 0.5.1 requires any version of \
-                    fabric-api, which is missing!";
-
-        assert_eq!(
-            missing_dependencies(line),
-            vec![dependency("fabric-api", Some("Sodium Extra"), None, None)]
-        );
-    }
-
-    #[test]
-    fn fabric_names_a_required_version_and_the_one_present() {
-        let missing = "\t - Mod 'Iris' (iris) 1.6.11 requires version 0.5.4 or later of \
-                       sodium, which is missing!";
-        assert_eq!(
-            missing_dependencies(missing),
-            vec![dependency(
-                "sodium",
-                Some("Iris"),
-                Some("0.5.4 or later"),
-                None
-            )]
-        );
-
-        let wrong = "\t - Mod 'Fabric API' (fabric-api) 0.92.0+1.20.1 requires version 1.20.1 \
-                     of 'Minecraft' (minecraft), but only the wrong version is present: 1.20.4!";
-        assert_eq!(
-            missing_dependencies(wrong),
-            vec![dependency(
-                "Minecraft",
-                Some("Fabric API"),
-                Some("1.20.1"),
-                Some("1.20.4")
-            )]
-        );
-    }
-
-    #[test]
-    fn fabric_keeps_apostrophes_in_mod_names() {
-        let line = "\t - Mod 'Xaero's Minimap' (xaerominimap) 24.0 requires any version of \
-                    mod 'Xaero's Lib' (xaerolib), which is missing!";
-
-        assert_eq!(
-            missing_dependencies(line),
-            vec![dependency(
-                "Xaero's Lib",
-                Some("Xaero's Minimap"),
-                None,
-                None
-            )]
-        );
-    }
-
-    #[test]
-    fn legacy_fabric_names_a_missing_dependency() {
-        let line = "net.fabricmc.loader.discovery.ModResolutionException: Could not find \
-                    required mod: modmenu requires {fabric @ [>=0.29.0]}";
-
-        assert_eq!(
-            missing_dependencies(line),
-            vec![dependency(
-                "fabric",
-                Some("modmenu"),
-                Some(">=0.29.0"),
-                None
-            )]
-        );
-    }
-
-    #[test]
-    fn legacy_forge_lists_every_missing_mod() {
-        let line = "[main/FATAL] [FML]: The mod skyblockaddons (SkyblockAddons) requires mods \
-                    [essential, oneconfig@[1.0,)] to be available";
-
-        assert_eq!(
-            missing_dependencies(line),
-            vec![
-                dependency("essential", Some("SkyblockAddons"), None, None),
-                dependency(
-                    "oneconfig",
-                    Some("SkyblockAddons"),
-                    Some("1.0 or later"),
-                    None
-                ),
-            ]
-        );
-    }
-
-    #[test]
-    fn the_legacy_forge_exception_is_parsed_the_same_way() {
-        let line = "net.minecraftforge.fml.common.MissingModsException: Mod skyblockaddons \
-                    (SkyblockAddons) requires [oneconfig@[1.0,2.0)]";
-
-        assert_eq!(
-            missing_dependencies(line),
-            vec![dependency(
-                "oneconfig",
-                Some("SkyblockAddons"),
-                Some("1.0 to below 2.0"),
-                None
-            )]
-        );
-    }
-
-    #[test]
-    fn modern_forge_names_the_dependency_and_its_requester() {
-        let missing = "\tMod ID: 'architectury', Requested by: 'rei', Expected range: \
-                       '[9.1.12,)', Actual version: '[MISSING]'";
-        assert_eq!(
-            missing_dependencies(missing),
-            vec![dependency(
-                "architectury",
-                Some("rei"),
-                Some("9.1.12 or later"),
-                None
-            )]
-        );
-
-        let wrong = "\tMod ID: 'forge', Requested by: 'jei', Expected range: '[47.1,)', \
-                     Actual version: '47.0.3'";
-        assert_eq!(
-            missing_dependencies(wrong),
-            vec![dependency(
-                "forge",
-                Some("jei"),
-                Some("47.1 or later"),
-                Some("47.0.3")
-            )]
-        );
-    }
-
-    #[test]
-    fn ordinary_lines_name_no_dependency() {
-        for line in [
-            "[main/INFO]: Mod 'Sodium' (sodium) requires a restart",
-            "[main/INFO]: This mod requires [nothing] special",
-            "Loading 42 mods",
-        ] {
-            assert!(missing_dependencies(line).is_empty(), "{line}");
-        }
-    }
-
-    #[test]
-    fn the_watch_gathers_dependencies_listed_after_the_header() {
+    fn the_watch_gathers_problems_listed_after_the_header() {
         let watch = CrashWatch::new();
         watch.observe("[main/ERROR]: Incompatible mods found!");
-        watch.observe(
-            "net.fabricmc.loader.impl.FormattedException: Some of your mods are incompatible",
-        );
         watch.observe("A potential solution has been determined:");
         watch.observe("\t - Install fabric-api, any version.");
-        watch.observe("More details:");
         watch.observe(
-            "\t - Mod 'Indium' (indium) 1.0.27 requires any version of fabric-api, which is missing!",
+            " - 'Indium' (indium) 1.0.27 requires any version of fabric-api, which is missing!",
         );
         watch.observe(
-            "\t - Mod 'Sodium Extra' (sodium-extra) 0.5.1 requires any version of fabric-api, \
+            " - 'Sodium Extra' (sodium-extra) 0.5.1 requires any version of fabric-api, \
              which is missing!",
         );
         watch.observe(
-            "\t - Mod 'Indium' (indium) 1.0.27 requires any version of fabric-api, which is missing!",
+            " - 'Indium' (indium) 1.0.27 requires any version of fabric-api, which is missing!",
         );
 
-        let Some(CrashDiagnosis::ModLoadFailure { missing }) = watch.take() else {
-            panic!("expected a mod load failure");
-        };
-
-        assert_eq!(
-            missing,
-            vec![
-                dependency("fabric-api", Some("Indium"), None, None),
-                dependency("fabric-api", Some("Sodium Extra"), None, None),
-            ]
-        );
-    }
-
-    #[test]
-    fn a_single_missing_dependency_is_named_in_the_title() {
-        let crash = CrashDiagnosis::ModLoadFailure {
-            missing: vec![dependency("fabric-api", Some("Sodium Extra"), None, None)],
-        };
-
-        assert_eq!(crash.title(), "Sodium Extra needs fabric-api");
-        assert!(crash.body().starts_with("Sodium Extra needs fabric-api."));
-    }
-
-    #[test]
-    fn several_mods_needing_one_dependency_share_a_title() {
-        let crash = CrashDiagnosis::ModLoadFailure {
-            missing: vec![
-                dependency("fabric-api", Some("Indium"), None, None),
-                dependency("fabric-api", Some("Sodium Extra"), None, None),
-            ],
-        };
-
-        assert_eq!(crash.title(), "2 mods need fabric-api");
-    }
-
-    #[test]
-    fn a_wrong_version_is_described_with_what_is_installed() {
-        let crash = CrashDiagnosis::ModLoadFailure {
-            missing: vec![dependency(
-                "Sodium",
-                Some("Iris"),
-                Some("0.5.4 or later"),
-                Some("0.5.1"),
-            )],
-        };
-
-        assert_eq!(crash.title(), "Iris needs a different version of Sodium");
-        assert_eq!(
-            crash.body(),
-            format!("Iris needs Sodium 0.5.4 or later, but 0.5.1 is installed. {INSTALL_ADVICE}")
-        );
-    }
-
-    #[test]
-    fn a_mod_made_for_another_minecraft_is_told_apart_from_a_missing_mod() {
-        let crash = CrashDiagnosis::ModLoadFailure {
-            missing: vec![dependency(
-                "Minecraft",
-                Some("Fabric API"),
-                Some("1.20.1"),
-                Some("1.20.4"),
-            )],
-        };
-
-        assert_eq!(
-            crash.title(),
-            "Fabric API is not made for this version of Minecraft"
-        );
-        assert_eq!(
-            crash.body(),
-            format!(
-                "Fabric API is made for Minecraft 1.20.1, but this cluster has 1.20.4. \
-                 {PLATFORM_ADVICE}"
-            )
-        );
-    }
-
-    #[test]
-    fn platform_ids_are_shown_by_name() {
-        let line = "\tMod ID: 'minecraft', Requested by: 'jei', Expected range: '[1.20.1]', \
-                    Actual version: '1.20.4'";
-        let crash = CrashDiagnosis::ModLoadFailure {
-            missing: missing_dependencies(line),
-        };
-
-        assert_eq!(
-            crash.title(),
-            "jei is not made for this version of Minecraft"
-        );
-
-        for (id, name) in [
-            ("java", "Java"),
-            ("fabricloader", "Fabric Loader"),
-            ("forge", "Forge"),
-            ("neoforge", "NeoForge"),
-        ] {
-            assert_eq!(dependency(id, Some("Foo"), None, None).display_name(), name);
-        }
-    }
-
-    #[test]
-    fn mixed_causes_get_both_pieces_of_advice() {
-        let crash = CrashDiagnosis::ModLoadFailure {
-            missing: vec![
-                dependency("fabric-api", Some("Indium"), None, None),
-                dependency("minecraft", Some("Iris"), Some("1.20.1"), Some("1.20.4")),
-            ],
-        };
-
-        let body = crash.body();
-        assert!(body.contains(INSTALL_ADVICE));
-        assert!(body.contains(PLATFORM_ADVICE));
-        assert_eq!(crash.title(), "Some mods are missing what they depend on");
-    }
-
-    #[test]
-    fn several_mods_made_for_another_version_share_a_title() {
-        let crash = CrashDiagnosis::ModLoadFailure {
-            missing: vec![
-                dependency("minecraft", Some("Iris"), Some("1.20.1"), None),
-                dependency("Minecraft", Some("Sodium"), Some("1.20.1"), None),
-            ],
-        };
-
-        assert_eq!(
-            crash.title(),
-            "2 mods are not made for this version of Minecraft"
-        );
-        assert!(!crash.body().contains(INSTALL_ADVICE));
+        let names: Vec<String> = problems_of(watch.take())
+            .into_iter()
+            .filter_map(|problem| problem.required_by.map(|by| by.name))
+            .collect();
+        assert_eq!(names, vec!["Indium", "Sodium Extra"]);
     }
 
     #[test]
@@ -1614,34 +949,56 @@ mod tests {
         watch.observe("[main/ERROR]: Incompatible mods found!");
         for n in 0..30 {
             watch.observe(&format!(
-                "\t - Mod 'Mod {n}' (mod{n}) 1.0 requires any version of fabric-api, \
-                 which is missing!"
+                " - 'Mod {n}' (mod{n}) 1.0 requires any version of fabric-api, which is missing!"
             ));
         }
 
         let crash = watch.take().expect("a mod load failure");
-        assert_eq!(crash.title(), "30 mods need fabric-api");
+        assert_eq!(crash.title(), "30 mods need Fabric API");
         assert!(crash.body().contains("And 26 more."));
     }
 
     #[test]
-    fn a_named_missing_dependency_outranks_an_earlier_cause() {
+    fn current_fabric_errors_reach_the_dialog_through_the_watch() {
+        let watch = CrashWatch::new();
+        watch.observe("[main/ERROR]: Incompatible mods found!");
+        watch.observe(IRIS_NEEDS_SODIUM);
+
+        let crash = watch.take().expect("a mod load failure");
+        assert_eq!(crash.title(), "Iris needs sodium");
+
+        let issues = crash.mod_issues();
+        assert_eq!(issues.len(), 1);
+        assert_eq!(issues[0].target.name, "sodium");
+        assert_eq!(issues[0].sources[0].name, "Iris");
+        assert_eq!(issues[0].sources[0].version.as_deref(), Some("1.8.0"));
+    }
+
+    #[test]
+    fn an_incompatible_pair_reaches_the_dialog_through_the_watch() {
+        let watch = CrashWatch::new();
+        watch.observe("[main/ERROR]: Incompatible mods found!");
+        watch.observe(
+            " - 'Sodium' (sodium) 0.6.0 is incompatible with any version of 'OptiFabric' \
+             (optifabric), but a matching version is present: 1.14.3!",
+        );
+
+        let crash = watch.take().expect("a mod load failure");
+        assert_eq!(crash.title(), "Sodium is incompatible with OptiFabric");
+        assert_eq!(crash.remedy(), Some(CrashRemedy::OpenMods));
+    }
+
+    #[test]
+    fn a_named_problem_outranks_an_earlier_cause() {
         let watch = CrashWatch::new();
         watch.observe("java.util.zip.ZipException: error in opening zip file: optional.jar");
         watch.observe("[main/ERROR]: Incompatible mods found!");
-        watch.observe(
-            "\t - Mod 'Iris' (iris) 1.6.11 requires any version of sodium, which is missing!",
-        );
+        watch.observe(IRIS_NEEDS_SODIUM);
 
         let excerpt = watch.excerpt();
-        let Some(CrashDiagnosis::ModLoadFailure { missing }) = watch.take() else {
-            panic!("the missing dependency should win");
-        };
+        let problems = problems_of(watch.take());
 
-        assert_eq!(
-            missing,
-            vec![dependency("sodium", Some("Iris"), None, None)]
-        );
+        assert_eq!(problems.len(), 1);
         assert!(
             excerpt
                 .iter()
@@ -1664,41 +1021,8 @@ mod tests {
     }
 
     #[test]
-    fn a_long_list_is_cut_short_in_the_body() {
-        let crash = CrashDiagnosis::ModLoadFailure {
-            missing: (0..6)
-                .map(|n| dependency(&format!("dep{n}"), Some("Foo"), None, None))
-                .collect(),
-        };
-
-        let body = crash.body();
-        assert!(body.contains("dep3"));
-        assert!(!body.contains("dep4"));
-        assert!(body.contains("And 2 more."));
-    }
-
-    #[test]
-    fn without_details_the_generic_message_stays() {
-        let crash = CrashDiagnosis::ModLoadFailure {
-            missing: Vec::new(),
-        };
-
-        assert_eq!(crash.title(), "A mod stopped the game from starting");
-        assert!(crash.body().starts_with("The mod loader refused to start."));
-    }
-
-    const FABRIC_RECOMMENDS_WARNING: &str = " - 'Minecraft' (minecraft) 26.3 recommends any version \
-         after 15.0.0-alpha.5 of Fabulously Optimized, which is missing!";
-
-    #[test]
     fn a_fabric_recommendation_warning_is_not_a_crash() {
         assert_eq!(diagnose(FABRIC_RECOMMENDS_WARNING), None);
-        assert!(missing_dependencies(FABRIC_RECOMMENDS_WARNING).is_empty());
-
-        let wrong = " - 'Sodium Extra' (sodium-extra) 0.6.0 recommends version 1.0 of \
-                     'Reese's Sodium Options' (reeses-sodium-options), but only the wrong \
-                     version is present: 0.9!";
-        assert_eq!(diagnose(wrong), None);
     }
 
     #[test]
@@ -1722,39 +1046,18 @@ mod tests {
     }
 
     #[test]
-    fn current_fabric_lines_without_the_mod_prefix_are_parsed() {
-        let missing = " - 'Iris' (iris) 1.8.0 requires any version after 0.6.0 of Sodium, \
-                       which is missing!";
-        assert_eq!(
-            missing_dependencies(missing),
-            vec![dependency(
-                "Sodium",
-                Some("Iris"),
-                Some("newer than 0.6.0"),
-                None
-            )]
-        );
-
-        let wrong = "\t - 'Fabric API' (fabric-api) 0.120.0 requires version 26.3 of \
-                     'Minecraft' (minecraft), but only the wrong version is present: 26.2!";
+    fn without_details_the_generic_message_stays() {
         let crash = CrashDiagnosis::ModLoadFailure {
-            missing: missing_dependencies(wrong),
+            problems: Vec::new(),
         };
-        assert_eq!(
-            crash.title(),
-            "Fabric API is not made for this version of Minecraft"
-        );
+
+        assert_eq!(crash.title(), "A mod stopped the game from starting");
+        assert!(crash.body().starts_with("The mod loader refused to start."));
+        assert!(crash.mod_issues().is_empty());
     }
 
     #[test]
-    fn current_fabric_errors_reach_the_dialog_through_the_watch() {
-        let watch = CrashWatch::new();
-        watch.observe("[main/ERROR]: Incompatible mods found!");
-        watch.observe(" - 'Iris' (iris) 1.8.0 requires any version of sodium, which is missing!");
-
-        assert_eq!(
-            watch.take().map(|crash| crash.title()),
-            Some("Iris needs sodium".to_string())
-        );
+    fn only_mod_load_failures_carry_mod_rows() {
+        assert!(CrashDiagnosis::OutOfMemory.mod_issues().is_empty());
     }
 }

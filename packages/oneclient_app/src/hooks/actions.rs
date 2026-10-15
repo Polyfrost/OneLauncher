@@ -34,7 +34,9 @@ use crate::notifications::{
     BundleChoices, ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef,
     OptionalModsGroup, OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
 };
-use crate::state::{AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, RelocationState};
+use crate::state::{
+    AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, MissingModInstall, RelocationState,
+};
 use crate::{invalidate_java_queries, launcher};
 
 /// Over-disabling is the cheaper mistake a dead button beats a second game
@@ -1059,6 +1061,104 @@ impl Actions {
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
             oneclient_core::game::repair_cluster(&state, cluster_id).await;
+        });
+    }
+
+    pub fn install_missing_mod(
+        &self,
+        cluster_id: ClusterId,
+        mod_id: String,
+        name: String,
+        range: Option<oneclient_events::VersionRange>,
+    ) {
+        {
+            let mut channel = self.station.clone().write_channel(AppChannel::Installs);
+            let installs = &mut channel.installs;
+            if !matches!(
+                installs.missing_mod_install(cluster_id, &mod_id),
+                MissingModInstall::Idle | MissingModInstall::Finished(_)
+            ) {
+                return;
+            }
+            installs.begin_missing_lookup(cluster_id, &mod_id);
+        }
+
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else {
+                actions
+                    .station
+                    .clone()
+                    .write_channel(AppChannel::Installs)
+                    .installs
+                    .end_missing_lookup(cluster_id, &mod_id, None);
+                return;
+            };
+
+            let found = off_ui({
+                let state = state.clone();
+                let name = name.clone();
+                let mod_id = mod_id.clone();
+                let range = range.clone();
+                async move {
+                    let provider = state.services.packages.get(ProviderId::Modrinth)?;
+                    oneclient_content::packages::find_mod_for_cluster(
+                        provider,
+                        &mod_id,
+                        Some(&name),
+                        range.as_ref(),
+                        cluster_id,
+                        &state.services.content(),
+                    )
+                    .await
+                }
+            })
+            .await;
+
+            let project_id = found
+                .as_ref()
+                .ok()
+                .and_then(|target| target.as_ref())
+                .map(|target| target.project_id.clone());
+
+            match found {
+                Ok(Some(target)) => actions.install_package(
+                    cluster_id,
+                    ProviderId::Modrinth,
+                    target.project_id,
+                    target.version_id,
+                    None,
+                ),
+                Ok(None) => state
+                    .services
+                    .events
+                    .notify(format!("Could not find {name}"))
+                    .body(if range.is_some() {
+                        format!(
+                            "No version of {name} on Modrinth matches both this cluster and the version the other mods ask for."
+                        )
+                    } else {
+                        format!(
+                            "No version of {name} for this cluster's Minecraft version and loader is on Modrinth."
+                        )
+                    })
+                    .error()
+                    .send(),
+                Err(err) => state
+                    .services
+                    .events
+                    .notify("Install failed")
+                    .body(err.to_string())
+                    .error()
+                    .send(),
+            }
+
+            actions
+                .station
+                .clone()
+                .write_channel(AppChannel::Installs)
+                .installs
+                .end_missing_lookup(cluster_id, &mod_id, project_id);
         });
     }
 

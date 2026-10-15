@@ -14,14 +14,18 @@ use crate::LauncherResult;
 use crate::clusters::Cluster;
 use crate::game::GameError;
 use crate::game::diagnosis::{CrashDiagnosis, CrashWatch};
+use crate::game::mod_problems::{
+    InstalledJar, attach_bundled, attach_jar, has_unmatched, has_unmatched_missing,
+};
 use crate::game::session::SessionRecorder;
+use crate::game::shared_dir::{cluster_mods, jar_bundled_mod_ids, jar_mod_id};
 use crate::game::tail::spawn_log_tail;
 use crate::settings::GameSettingsProfile;
-use crate::state::LauncherState;
+use crate::state::{LauncherServices, LauncherState};
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
 use oneclient_discord::Presence;
-use oneclient_events::{CrashRemedy, GroupedProgressSession, LaunchStage};
+use oneclient_events::{CrashModIssue, CrashRemedy, GroupedProgressSession, LaunchStage};
 use oneclient_mc::{
     self as arguments, download_minecraft, download_version_info, game_files_missing,
     get_loader_version, resolve_minecraft_version,
@@ -590,6 +594,20 @@ fn killed(_status: &std::process::ExitStatus) -> bool {
     false
 }
 
+fn counts_as_crash(outcome: &Exit, diagnosis: Option<&CrashDiagnosis>, played: Duration) -> bool {
+    let broken = diagnosis.is_some_and(CrashDiagnosis::leaves_game_broken);
+    let died_starting = played < STARTUP_WINDOW;
+
+    match outcome {
+        Exit::Observed { success, .. } => {
+            !success || broken || (died_starting && diagnosis.is_some_and(CrashDiagnosis::is_fatal))
+        }
+        Exit::Failed(_) => true,
+        Exit::Inferred => diagnosis.is_some(),
+        Exit::Killed => broken,
+    }
+}
+
 pub(crate) enum Exit {
     Observed {
         code: Option<i64>,
@@ -670,19 +688,7 @@ pub(crate) async fn finalize_session(
     }
 
     let name = &cluster.name;
-    let died_starting = played < STARTUP_WINDOW;
-    let crashed = match &end.outcome {
-        Exit::Observed { success, .. } => {
-            !success
-                || (died_starting && end.diagnosis.as_ref().is_some_and(CrashDiagnosis::is_fatal))
-        }
-        Exit::Failed(_) => true,
-        Exit::Inferred => end.diagnosis.is_some(),
-        Exit::Killed => end
-            .diagnosis
-            .as_ref()
-            .is_some_and(CrashDiagnosis::leaves_game_broken),
-    };
+    let crashed = counts_as_crash(&end.outcome, end.diagnosis.as_ref(), played);
 
     let display = match &end.outcome {
         Exit::Observed {
@@ -749,6 +755,11 @@ async fn report_crash(
         return;
     }
 
+    let mod_issues = match diagnosis {
+        Some(diagnosis) => crash_mod_issues(&state.services, cluster.id, diagnosis).await,
+        None => Vec::new(),
+    };
+
     state
         .services
         .events
@@ -769,7 +780,74 @@ async fn report_crash(
             fixes,
             excerpt,
             game_dir: Some(cwd.to_string_lossy().to_string()),
+            mod_issues,
         });
+}
+
+pub async fn crash_mod_issues(
+    services: &LauncherServices,
+    cluster_id: i64,
+    diagnosis: &CrashDiagnosis,
+) -> Vec<CrashModIssue> {
+    let mut mod_issues = diagnosis.mod_issues();
+    if mod_issues.is_empty() {
+        return mod_issues;
+    }
+
+    let jars: Vec<InstalledJar> = cluster_mods(services, cluster_id)
+        .await
+        .into_iter()
+        .map(|jar| InstalledJar {
+            hash: jar.hash,
+            enabled: jar.enabled,
+            name: jar.name,
+            id: None,
+            version: jar.version,
+        })
+        .collect();
+
+    for jar in &jars {
+        attach_jar(&mut mod_issues, jar);
+    }
+
+    for jar in &jars {
+        if !has_unmatched(&mod_issues) {
+            return mod_issues;
+        }
+
+        if let Some(found) = jar_mod_id(services, &jar.hash).await {
+            attach_jar(
+                &mut mod_issues,
+                &InstalledJar {
+                    id: Some(found.id),
+                    version: found.version.or_else(|| jar.version.clone()),
+                    ..jar.clone()
+                },
+            );
+        }
+    }
+
+    for jar in jars.iter().filter(|jar| !jar.enabled) {
+        if !has_unmatched_missing(&mod_issues) {
+            break;
+        }
+
+        for found in jar_bundled_mod_ids(services, &jar.hash).await {
+            attach_bundled(
+                &mut mod_issues,
+                jar,
+                &InstalledJar {
+                    hash: jar.hash.clone(),
+                    enabled: jar.enabled,
+                    name: None,
+                    id: Some(found.id),
+                    version: found.version,
+                },
+            );
+        }
+    }
+
+    mod_issues
 }
 
 #[tracing::instrument(skip(state), level = "debug")]
@@ -984,4 +1062,75 @@ fn stderr_detail(bytes: &[u8]) -> Option<String> {
     let mut clipped: String = line.chars().take(MAX).collect();
     clipped.push('…');
     Some(clipped)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn clean() -> Exit {
+        Exit::Observed {
+            code: Some(0),
+            success: true,
+            display: "exit code: 0".to_string(),
+        }
+    }
+
+    const LONG_SESSION: Duration = Duration::from_secs(600);
+
+    #[test]
+    fn a_clean_exit_after_running_out_of_memory_is_a_crash() {
+        assert!(counts_as_crash(
+            &clean(),
+            Some(&CrashDiagnosis::OutOfMemory),
+            LONG_SESSION
+        ));
+    }
+
+    #[test]
+    fn stopping_a_game_that_ran_out_of_memory_is_a_crash() {
+        assert!(counts_as_crash(
+            &Exit::Killed,
+            Some(&CrashDiagnosis::OutOfMemory),
+            LONG_SESSION
+        ));
+        assert!(!counts_as_crash(&Exit::Killed, None, LONG_SESSION));
+    }
+
+    #[test]
+    fn a_clean_exit_with_nothing_wrong_is_not_a_crash() {
+        assert!(!counts_as_crash(&clean(), None, LONG_SESSION));
+        assert!(!counts_as_crash(
+            &clean(),
+            Some(&CrashDiagnosis::ModLinkage),
+            LONG_SESSION
+        ));
+    }
+
+    #[test]
+    fn a_failing_exit_code_is_always_a_crash() {
+        let failed = Exit::Observed {
+            code: Some(1),
+            success: false,
+            display: "exit code: 1".to_string(),
+        };
+        assert!(counts_as_crash(&failed, None, LONG_SESSION));
+    }
+
+    #[test]
+    fn a_load_failure_only_counts_on_a_clean_exit_while_starting() {
+        let load_failure = CrashDiagnosis::ModLoadFailure {
+            problems: Vec::new(),
+        };
+        assert!(counts_as_crash(
+            &clean(),
+            Some(&load_failure),
+            Duration::from_secs(5)
+        ));
+        assert!(!counts_as_crash(
+            &clean(),
+            Some(&load_failure),
+            LONG_SESSION
+        ));
+    }
 }

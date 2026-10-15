@@ -1,6 +1,6 @@
 pub mod logs;
 mod overview;
-mod package_manager;
+pub(crate) mod package_manager;
 
 mod cluster_settings;
 mod datapacks;

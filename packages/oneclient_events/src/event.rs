@@ -133,6 +133,71 @@ pub struct CrashFix {
     pub kind: String,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct VersionRange {
+    pub min: Option<String>,
+    pub min_inclusive: bool,
+    pub max: Option<String>,
+    pub max_inclusive: bool,
+}
+
+impl VersionRange {
+    #[must_use]
+    pub fn at_least(version: &str) -> Self {
+        Self {
+            min: Some(version.to_string()),
+            min_inclusive: true,
+            ..Self::default()
+        }
+    }
+
+    #[must_use]
+    pub fn exactly(version: &str) -> Self {
+        Self {
+            min: Some(version.to_string()),
+            min_inclusive: true,
+            max: Some(version.to_string()),
+            max_inclusive: true,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CrashModAction {
+    Enable {
+        hash: String,
+    },
+    Install {
+        mod_id: String,
+        range: Option<VersionRange>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrashMod {
+    pub name: String,
+    pub id: Option<String>,
+    pub version: Option<String>,
+    pub note: String,
+    pub hash: Option<String>,
+    pub bundled_in: Option<String>,
+    pub action: Option<CrashModAction>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CrashModIssueKind {
+    Missing,
+    WrongVersion,
+    Incompatible,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CrashModIssue {
+    pub kind: CrashModIssueKind,
+    pub target: CrashMod,
+    pub sources: Vec<CrashMod>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameCrash {
     pub cluster_id: i64,
@@ -146,6 +211,7 @@ pub struct GameCrash {
     pub fixes: Vec<CrashFix>,
     pub excerpt: Vec<String>,
     pub game_dir: Option<String>,
+    pub mod_issues: Vec<CrashModIssue>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

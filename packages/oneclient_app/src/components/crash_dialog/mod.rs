@@ -14,8 +14,10 @@ use crate::theme::colors;
 use crate::utils::format_durations;
 
 mod markup;
+mod mods;
 
 use markup::{SegmentStyle, display_line, host_of, links_in, resolve_placeholders, segments};
+use mods::{mods_card, mods_height};
 
 const DIALOG_BG: Color = Color::from_rgb(21, 28, 34);
 const CODE_BG: Color = Color::from_rgb(13, 18, 22);
@@ -146,6 +148,7 @@ fn subtitle(crash: &GameCrash) -> impl IntoElement {
 enum Block<'a> {
     Suspects,
     Cause(&'a str),
+    Mods,
     Fixes,
     Excerpt,
 }
@@ -155,6 +158,7 @@ impl Block<'_> {
         match self {
             Self::Suspects => suspects_height(crash),
             Self::Cause(cause) => CARD_PADDING * 2. + wrapped_lines(cause) * CAUSE_LINE_H,
+            Self::Mods => mods_height(crash),
             Self::Fixes => fixes_height(crash),
             Self::Excerpt => excerpt_height(crash.excerpt.len()),
         }
@@ -164,6 +168,7 @@ impl Block<'_> {
         match self {
             Self::Suspects => suspects_card(crash),
             Self::Cause(cause) => cause_card(cause),
+            Self::Mods => mods_card(crash),
             Self::Fixes => fixes_section(crash, confirm),
             Self::Excerpt => excerpt_box(crash),
         }
@@ -176,8 +181,12 @@ fn blocks(crash: &GameCrash) -> Vec<Block<'_>> {
     if !crash.suspects.is_empty() {
         blocks.push(Block::Suspects);
     }
-    if let Some(cause) = &crash.cause {
-        blocks.push(Block::Cause(cause));
+    if crash.mod_issues.is_empty() {
+        if let Some(cause) = &crash.cause {
+            blocks.push(Block::Cause(cause));
+        }
+    } else {
+        blocks.push(Block::Mods);
     }
     if !crash.fixes.is_empty() {
         blocks.push(Block::Fixes);
@@ -615,6 +624,7 @@ mod tests {
             fixes: Vec::new(),
             excerpt: Vec::new(),
             game_dir: None,
+            mod_issues: Vec::new(),
         }
     }
 
@@ -623,6 +633,37 @@ mod tests {
             text: text.to_string(),
             kind: "Solution".to_string(),
         }
+    }
+
+    #[test]
+    fn the_mod_rows_replace_the_description() {
+        let mut with_mods = crash();
+        with_mods.cause = Some("Iris needs sodium.".to_string());
+        with_mods.mod_issues = vec![oneclient_events::CrashModIssue {
+            kind: oneclient_events::CrashModIssueKind::Missing,
+            target: oneclient_events::CrashMod {
+                name: "sodium".to_string(),
+                id: Some("sodium".to_string()),
+                version: None,
+                note: "Not installed".to_string(),
+                hash: None,
+                bundled_in: None,
+                action: None,
+            },
+            sources: Vec::new(),
+        }];
+
+        let shown = blocks(&with_mods);
+        assert!(shown.iter().any(|block| matches!(block, Block::Mods)));
+        assert!(!shown.iter().any(|block| matches!(block, Block::Cause(_))));
+
+        let mut without_mods = crash();
+        without_mods.cause = Some("The game asked for more memory.".to_string());
+        assert!(
+            blocks(&without_mods)
+                .iter()
+                .any(|block| matches!(block, Block::Cause(_)))
+        );
     }
 
     #[test]

@@ -4,7 +4,9 @@ use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 use oneclient_db::models::OptionalModStatus;
 
 use oneclient_auth::preview_samples;
-use oneclient_core::game::{CrashDiagnosis, MissingDependency, crashdata, suspected_mods};
+use oneclient_core::game::{
+    CrashDiagnosis, ModProblem, ModProblemKind, ModRef, crash_mod_issues, crashdata, suspected_mods,
+};
 use oneclient_core::simulate::Damage;
 use oneclient_net::status::{self, ServiceStatus};
 
@@ -1238,20 +1240,41 @@ impl Component for CorruptionSimulator {
                     .child(crash_dialog_button(
                         "Crash: missing dependency",
                         Some(CrashDiagnosis::ModLoadFailure {
-                            missing: vec![
-                                MissingDependency {
-                                    dependency: "fabric-api".to_string(),
-                                    required_by: Some("Sodium Extra".to_string()),
-                                    version: None,
-                                    present: None,
+                            problems: vec![
+                                ModProblem {
+                                    kind: ModProblemKind::Missing,
+                                    required_by: Some(
+                                        ModRef::with_id("Sodium Extra", "sodium-extra")
+                                            .at(Some("0.6.0")),
+                                    ),
+                                    dependency: ModRef::with_id("Fabric API", "fabric-api"),
+                                    wanted: None,
                                 },
-                                MissingDependency {
-                                    dependency: "Sodium".to_string(),
-                                    required_by: Some("Iris".to_string()),
-                                    version: Some("0.5.4 or later".to_string()),
-                                    present: Some("0.5.1".to_string()),
+                                ModProblem {
+                                    kind: ModProblemKind::WrongVersion,
+                                    required_by: Some(
+                                        ModRef::with_id("Iris", "iris").at(Some("1.8.0")),
+                                    ),
+                                    dependency: ModRef::with_id("Sodium", "sodium")
+                                        .at(Some("0.5.1")),
+                                    wanted: Some("0.6.0 or later".to_string()),
                                 },
                             ],
+                        }),
+                        cluster_id,
+                    ))
+                    .child(crash_dialog_button(
+                        "Crash: incompatible mods",
+                        Some(CrashDiagnosis::ModLoadFailure {
+                            problems: vec![ModProblem {
+                                kind: ModProblemKind::Incompatible,
+                                required_by: Some(
+                                    ModRef::with_id("Sodium", "sodium").at(Some("0.6.0")),
+                                ),
+                                dependency: ModRef::with_id("OptiFabric", "optifabric")
+                                    .at(Some("1.14.3")),
+                                wanted: None,
+                            }],
                         }),
                         cluster_id,
                     ))
@@ -1306,6 +1329,10 @@ fn crash_dialog_button(
                 };
 
                 let fixes = crashdata::fixes_for(&SAMPLE_CRASH_LOG.join("\n"));
+                let mod_issues = match &diagnosis {
+                    Some(diagnosis) => crash_mod_issues(&state.services, target, diagnosis).await,
+                    None => Vec::new(),
+                };
                 let diagnosis = diagnosis.as_ref();
 
                 let name = state
@@ -1338,6 +1365,7 @@ fn crash_dialog_button(
                         game_dir: oneclient_common::paths::shared_minecraft_dir()
                             .ok()
                             .map(|dir| dir.to_string_lossy().to_string()),
+                        mod_issues,
                     });
             });
         })

@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::time::Duration;
 
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
@@ -15,6 +16,7 @@ pub const VERSIONS_PAGE_SIZE: usize = 20;
 pub const ALL_VERSIONS: usize = usize::MAX;
 
 const VERSIONS_STALE: Duration = Duration::from_secs(5 * 60);
+const PROJECT_PAGES_STALE: Duration = Duration::from_secs(30 * 60);
 
 pub fn content_type_for_slug(slug: &str) -> ContentType {
     match slug {
@@ -192,6 +194,60 @@ pub fn use_package_meta_batch(
         },
         PackageMetaBatchQuery,
     ))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ProjectWebUrlsQuery;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct ProjectWebUrlsKeys {
+    pub provider: ProviderId,
+    pub project_ids: Vec<String>,
+}
+
+impl QueryCapability for ProjectWebUrlsQuery {
+    type Ok = HashMap<String, String>;
+    type Err = LauncherError;
+    type Keys = ProjectWebUrlsKeys;
+
+    #[tracing::instrument(name = "project_web_urls", level = "debug", skip(self, keys), fields(provider = ?keys.provider, ids = keys.project_ids.len()))]
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        if keys.project_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let state = crate::launcher::state()?;
+        let provider = state.services.packages.get(keys.provider)?;
+        let projects = provider
+            .get_projects(&keys.project_ids, &state.services.content())
+            .await?;
+        Ok(projects
+            .into_iter()
+            .filter_map(|project| Some((project.id.clone(), project.web_url()?)))
+            .collect())
+    }
+}
+
+/// Project pages straight from the provider a page url rarely changes so it isn't cached on disk
+pub fn use_project_web_urls(
+    provider: ProviderId,
+    mut project_ids: Vec<String>,
+) -> UseQuery<ProjectWebUrlsQuery> {
+    project_ids.sort();
+    project_ids.dedup();
+    use_query(
+        Query::new(
+            ProjectWebUrlsKeys {
+                provider,
+                project_ids,
+            },
+            ProjectWebUrlsQuery,
+        )
+        .stale_time(PROJECT_PAGES_STALE),
+    )
+}
+
+pub fn project_web_urls(query: &UseQuery<ProjectWebUrlsQuery>) -> HashMap<String, String> {
+    super::state::settled_or_loading(query).unwrap_or_default()
 }
 
 pub fn package_meta_batch(

@@ -117,7 +117,7 @@ pub use screenshot_viewer::{ScreenshotViewer, screenshot_context_menu};
 pub(crate) use scrollview::corrected_scroll;
 pub use scrollview::{LazySection, ScrollArea, ScrollAreaCtx};
 pub use segmented_control::{Segment, SegmentedControl};
-pub use spinner::centered_spinner;
+pub use spinner::{Spinner, centered_spinner};
 pub use splash_curtain::SplashCurtain;
 pub use status_bar::StatusBar;
 pub use tab_bar::{TabBar, TabItem};

@@ -257,6 +257,15 @@ impl GameLoader {
             Self::Ornithe => "ornithe",
         }
     }
+
+    /// `Display` presents Ornithe as Fabric; content pages name the loader a
+    /// project actually targets
+    pub fn real_name(self) -> String {
+        match self {
+            Self::Ornithe => String::from("Ornithe"),
+            _ => self.to_string(),
+        }
+    }
 }
 
 impl FromStr for GameLoader {
@@ -318,6 +327,8 @@ mod tests {
     #[test]
     fn a_display_name_is_not_a_metadata_path() {
         assert_eq!(GameLoader::Ornithe.to_string(), "Fabric");
+        assert_eq!(GameLoader::Ornithe.real_name(), "Ornithe");
+        assert_eq!(GameLoader::Fabric.real_name(), "Fabric");
         assert_eq!(GameLoader::Ornithe.get_format_name(), "ornithe");
         assert_eq!(GameLoader::Vanilla.get_format_name(), "minecraft");
         assert_eq!(GameLoader::NeoForge.get_format_name(), "neo");

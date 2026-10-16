@@ -1,0 +1,95 @@
+{
+  "components": [
+    {
+      "cachedName": "LWJGL 2",
+      "cachedVersion": "2.9.4+legacyfabric.15",
+      "cachedVolatile": true,
+      "dependencyOnly": true,
+      "uid": "org.lwjgl",
+      "version": "2.9.4+legacyfabric.15"
+    },
+    {
+      "cachedName": "Minecraft",
+      "cachedRequires": [
+        {
+          "suggests": "2.9.4+legacyfabric.15",
+          "uid": "org.lwjgl"
+        }
+      ],
+      "cachedVersion": "1.8.9",
+      "important": true,
+      "uid": "net.minecraft",
+      "version": "1.8.9"
+    },
+    {
+      "cachedName": "Intermediary Mappings",
+      "cachedRequires": [
+        {
+          "equals": "1.8.9",
+          "uid": "net.minecraft"
+        }
+      ],
+      "cachedVersion": "1.8.9",
+      "dependencyOnly": true,
+      "uid": "net.fabricmc.intermediary",
+      "version": "1.8.9"
+    },
+    {
+      "cachedName": "Fabric Loader",
+      "cachedVersion": "0.19.5",
+      "uid": "net.fabricmc.fabric-loader",
+      "version": "0.19.5",
+      "cachedRequires": [
+        {
+          "uid": "net.fabricmc.intermediary"
+        }
+      ]
+    },
+    {
+      "cachedName": "slf4j-api",
+      "cachedVersion": "2.0.17",
+      "uid": "org.slf4j.slf4j-api"
+    },
+    {
+      "cachedName": "log4j-slf4j2-impl",
+      "cachedVersion": "2.19.0",
+      "uid": "org.apache.logging.log4j.log4j-slf4j2-impl"
+    },
+    {
+      "cachedName": "log4j-api",
+      "cachedVersion": "2.19.0",
+      "uid": "org.apache.logging.log4j.log4j-api"
+    },
+    {
+      "cachedName": "log4j-core",
+      "cachedVersion": "2.19.0",
+      "uid": "org.apache.logging.log4j.log4j-core"
+    },
+    {
+      "cachedName": "fastutil",
+      "cachedVersion": "8.5.9",
+      "uid": "it.unimi.dsi.fastutil"
+    },
+    {
+      "cachedName": "gson",
+      "cachedVersion": "2.10",
+      "uid": "com.google.code.gson.gson"
+    },
+    {
+      "cachedName": "log4j-patch",
+      "cachedVersion": "1.0.0",
+      "uid": "net.ornithemc.log4j-patch"
+    },
+    {
+      "cachedName": "jopt-simple",
+      "cachedVersion": "5.0.4",
+      "uid": "net.sf.jopt-simple.jopt-simple"
+    },
+    {
+      "cachedName": "Flap",
+      "cachedVersion": "0.0.6",
+      "uid": "net.ornithemc.flap"
+    }
+  ],
+  "formatVersion": 1
+}

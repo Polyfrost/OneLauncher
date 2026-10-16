@@ -1,0 +1,1 @@
+{"formatVersion": 1, "libraries": [{"name": "org.apache.logging.log4j:log4j-core:2.19.0","url": "https://libraries.minecraft.net/"}], "name": "log4j-core", "type": "release", "uid": "org.apache.logging.log4j.log4j-core", "version": "2.19.0"}

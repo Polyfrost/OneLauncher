@@ -24,6 +24,7 @@ use crate::view::app::settings::{section_header, settings_row, settings_row_disa
 use oneclient_core::clusters::{can_migrate_manually, rank_migration_sources};
 
 use super::cluster_not_found;
+use super::exporting::ExportingSection;
 use super::modpack_settings::{ModpackRepairRow, ModpackUpdateRow};
 use crate::hooks::use_cluster;
 
@@ -191,6 +192,7 @@ impl Component for ClusterSettings {
                     )
                     .append_children(migrate_row)
                     .append_children(modpack_section)
+                    .child(ExportingSection { cluster_id })
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element()),
             )

@@ -57,6 +57,8 @@ pub enum TaskPhase {
     Verifying,
     Extracting,
     Installing,
+    Exporting,
+    Finalizing,
 }
 
 impl TaskPhase {
@@ -67,6 +69,8 @@ impl TaskPhase {
             Self::Verifying => "Verifying",
             Self::Extracting => "Extracting",
             Self::Installing => "Installing",
+            Self::Exporting => "Exporting",
+            Self::Finalizing => "Finalizing ZIP",
         }
     }
 }
@@ -82,6 +86,7 @@ pub enum TaskCategory {
     Java,
     #[default]
     Packages,
+    Exports,
 }
 
 impl TaskCategory {
@@ -95,12 +100,13 @@ impl TaskCategory {
             Self::Assets => "Assets",
             Self::Java => "Java runtime",
             Self::Packages => "Packages",
+            Self::Exports => "Export files",
         }
     }
 
     #[must_use]
     pub fn is_minecraft(self) -> bool {
-        !matches!(self, Self::Packages)
+        !matches!(self, Self::Packages | Self::Exports)
     }
 }
 

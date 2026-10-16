@@ -995,6 +995,12 @@ impl Actions {
     }
 
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
+        if self.station.peek().installs.exporting.contains(&cluster_id) {
+            self.notify("This instance is being exported")
+                .body("Wait for the ZIP to finish before launching Minecraft.")
+                .send();
+            return;
+        }
         if modpack_job_running(cluster_id) {
             self.notify("The modpack is still being set up")
                 .body("Wait for it to finish installing, then press Play again.")
@@ -1136,6 +1142,35 @@ impl Actions {
             None,
             true,
         );
+    }
+
+    pub fn begin_export(&self, cluster_id: i64) -> bool {
+        let blocked = {
+            let state = self.station.peek();
+            state.installs.cluster_busy(cluster_id) || state.game.is_active(cluster_id)
+        };
+        if blocked {
+            self.notify("This instance is busy")
+                .body("Wait for Minecraft and package operations to finish before exporting.")
+                .send();
+            return false;
+        }
+        self.station
+            .clone()
+            .write_channel(AppChannel::Installs)
+            .installs
+            .exporting
+            .insert(cluster_id)
+    }
+
+    pub fn set_exporting(&self, cluster_id: i64, busy: bool) {
+        let mut station = self.station.clone();
+        let mut state = station.write_channel(AppChannel::Installs);
+        if busy {
+            state.installs.exporting.insert(cluster_id);
+        } else {
+            state.installs.exporting.remove(&cluster_id);
+        }
     }
 
     pub fn dismiss_flagged_install(&self) {

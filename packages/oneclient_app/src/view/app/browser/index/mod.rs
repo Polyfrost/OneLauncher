@@ -113,6 +113,14 @@ fn type_title(package_type: &str) -> &'static str {
         .map_or("Mods", |(_, title)| *title)
 }
 
+fn state_key(cluster_id: i64, package_type: &str) -> String {
+    if content_type_for_slug(package_type) == ContentType::Modpack {
+        package_type.to_string()
+    } else {
+        format!("{cluster_id}:{package_type}")
+    }
+}
+
 pub(crate) fn encode_package_id(provider: ProviderId, id: &str) -> String {
     format!("{}:{}", provider as u8, id)
 }
@@ -178,11 +186,7 @@ impl Component for BrowserBody {
         let content_type = content_type_for_slug(&package_type);
 
         let store = use_browser_state_store();
-        let state_key = if content_type == ContentType::Modpack {
-            package_type.clone()
-        } else {
-            format!("{cluster_id}:{package_type}")
-        };
+        let state_key = state_key(cluster_id, &package_type);
         let saved = store.peek().get(&state_key).cloned().unwrap_or_default();
 
         let query = use_state(|| saved.query.clone());
@@ -726,6 +730,8 @@ impl Component for ClusterPicker {
             .unwrap_or_else(|| "Select a version".to_string());
 
         let package_type = self.package_type.clone();
+        let from_key = state_key(self.cluster_id, &package_type);
+        let mut store = use_browser_state_store();
 
         rect()
             .horizontal()
@@ -740,9 +746,19 @@ impl Component for ClusterPicker {
                         if let (Some(cluster_id), Some(cluster)) =
                             (ids.get(idx).copied(), clusters.get(idx))
                         {
+                            let to_type = browsable_type(&package_type, cluster);
+                            let carried = (to_type == package_type)
+                                .then(|| store.peek().get(&from_key).cloned())
+                                .flatten();
+                            if let Some(saved) = carried {
+                                store.write().insert(
+                                    state_key(cluster_id, &to_type),
+                                    BrowserUiState { page: 0, ..saved },
+                                );
+                            }
                             let _ = RouterContext::get().replace(Route::Browser {
                                 cluster_id,
-                                package_type: browsable_type(&package_type, cluster),
+                                package_type: to_type,
                                 pick_cluster: true,
                             });
                         }

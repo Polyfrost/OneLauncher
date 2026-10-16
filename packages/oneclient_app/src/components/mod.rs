@@ -79,6 +79,7 @@ pub use essential_confirm::EssentialConfirmOverlay;
 pub use file_drop::{FileDropOverlay, accept_drop};
 pub use filter_menu::{FilterMenu, FilterOption};
 pub use flagged_install_popup::FlaggedInstallPopup;
+pub(crate) use flagged_install_popup::explanation_panel;
 pub use generic_prompt::GenericPromptOverlay;
 pub use icons::{Icon, IconTint, IconType};
 pub use instance_row::InstanceRow;

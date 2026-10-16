@@ -384,7 +384,7 @@ fn cover_url(project: &ProjectDetail) -> Option<String> {
         .filter(|url| !url.is_empty())
 }
 
-fn kind_for(loader: GameLoader) -> ClusterKind {
+pub(crate) fn kind_for(loader: GameLoader) -> ClusterKind {
     if loader.is_modded() {
         ClusterKind::Modded
     } else {
@@ -392,7 +392,7 @@ fn kind_for(loader: GameLoader) -> ClusterKind {
     }
 }
 
-fn unique_name(base: &str, taken: &[String]) -> String {
+pub(crate) fn unique_name(base: &str, taken: &[String]) -> String {
     let is_taken = |candidate: &str| {
         taken
             .iter()
@@ -408,7 +408,7 @@ fn unique_name(base: &str, taken: &[String]) -> String {
         .unwrap_or_else(|| base.to_string())
 }
 
-fn instance_name(pack_name: &str) -> String {
+pub(crate) fn instance_name(pack_name: &str) -> String {
     let name = pack_name
         .chars()
         .filter(|c| is_allowed_name_char(*c))

@@ -53,7 +53,7 @@ impl ClusterManager {
 
     pub fn sanitize_name(name: &str) -> String {
         let mut name = name.to_string();
-        name.retain(crate::naming::is_allowed_name_char);
+        name.retain(crate::naming::is_folder_name_char);
         let name = name.trim().trim_end_matches(['.', ' ']);
 
         let stem_len = name.find('.').unwrap_or(name.len());
@@ -145,7 +145,12 @@ impl ClusterManager {
             }
         }
 
-        let folder_stem = Self::sanitize_name(&cap_folder_stem(&options.name));
+        let mut folder_stem = Self::sanitize_name(&cap_folder_stem(&options.name));
+        // A name written entirely in another script has nothing ASCII left
+        // for the folder; the name itself is kept as typed
+        if folder_stem.is_empty() && options.user_created {
+            folder_stem = FALLBACK_FOLDER_STEM.to_string();
+        }
         if folder_stem.is_empty() {
             return Err(ClusterError::EmptyName);
         }
@@ -317,7 +322,9 @@ impl ClusterManager {
                 _ => polyio::remove_file(&path).await,
             };
             match removed {
-                Ok(()) => tracing::info!(entry = %name, "cleared a leftover deleted cluster folder"),
+                Ok(()) => {
+                    tracing::info!(entry = %name, "cleared a leftover deleted cluster folder")
+                }
                 Err(err) => {
                     tracing::warn!(entry = %name, error = %err, "failed to clear a leftover deleted cluster folder")
                 }
@@ -403,12 +410,8 @@ impl ClusterManager {
         let cluster = self.get(cluster_id).await?;
 
         if !cluster.user_created {
-            cluster_dao::dismiss_provision(
-                &self.db,
-                &cluster.mc_version,
-                cluster.mc_loader as i64,
-            )
-            .await?;
+            cluster_dao::dismiss_provision(&self.db, &cluster.mc_version, cluster.mc_loader as i64)
+                .await?;
         }
 
         let trashed = if remove_files && cluster.is_isolated() {
@@ -695,6 +698,8 @@ async fn ensure_profile_exists(pool: &oneclient_db::DbPool, name: &str) -> Clust
     Ok(())
 }
 
+const FALLBACK_FOLDER_STEM: &str = "Instance";
+
 #[tracing::instrument(level = "debug")]
 fn cap_folder_stem(name: &str) -> String {
     name.trim()
@@ -752,6 +757,15 @@ mod tests {
             ClusterManager::sanitize_name(&cap_folder_stem("Short Pack")),
             "Short Pack"
         );
+    }
+
+    #[test]
+    fn folders_stay_ascii_whatever_the_name() {
+        let folder = |name: &str| ClusterManager::sanitize_name(&cap_folder_stem(name));
+        assert_eq!(folder("Świat 2"), "wiat 2");
+        // Nothing ASCII left: create_core falls back to FALLBACK_FOLDER_STEM
+        assert_eq!(folder("世界"), "");
+        assert!(crate::naming::validate_modpack_instance_name("世界").is_ok());
     }
 
     fn png(width: u32, height: u32) -> Vec<u8> {

@@ -58,6 +58,9 @@ pub async fn download_version_file(
         if path.exists() {
             let disk = sha1_file(&path).await?;
             if disk == hash {
+                // The cached copy may have arrived as a local import, which
+                // knows nothing of its provider; this download does
+                record_release(provider, project_id, version, &hash, ctx).await?;
                 return Ok(row);
             }
         }
@@ -74,8 +77,6 @@ pub async fn download_version_file(
     let size = ensure_artifact_file(&hash, &file.url, &dest, child, ctx).await?;
     let stored_path = relative_cache_path(&dest)?;
 
-    let published_at = version.published.to_rfc3339();
-
     let row = artifact_dao::insert_artifact(
         &ctx.db,
         &hash,
@@ -86,12 +87,26 @@ pub async fn download_version_file(
     )
     .await?;
 
+    record_release(provider, project_id, version, &hash, ctx).await?;
+
+    Ok(row)
+}
+
+async fn record_release(
+    provider: ProviderId,
+    project_id: &str,
+    version: &VersionDetail,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let published_at = version.published.to_rfc3339();
+
     artifact_dao::upsert_provider_release(
         &ctx.db,
         provider as i64,
         project_id,
         &version.version_id,
-        &hash,
+        hash,
         &version.name,
         &version.version_number,
         Some(published_at.as_str()),
@@ -100,7 +115,7 @@ pub async fn download_version_file(
     )
     .await?;
 
-    Ok(row)
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip(file, child, ctx), fields(name = %file.name))]

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
 use freya::router::RouterContext;
@@ -44,7 +44,11 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
     let description = wizard.details.description.read().trim().to_string();
     let tags = wizard.details.tags.read().clone();
 
-    let title = if picks.name.trim().is_empty() {
+    // The import creates one instance per pick, named after each source, so
+    // the suggested name of a version nobody chose means nothing here
+    let title = if picks.choice == TypeChoice::Import {
+        "Import instances".to_string()
+    } else if picks.name.trim().is_empty() {
         "New instance".to_string()
     } else {
         picks.name.clone()
@@ -61,6 +65,7 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
                 None => picks.loader_label(),
             },
             TypeChoice::Modpack => "Modpack".to_string(),
+            TypeChoice::Import => "From Prism, MultiMC or the Modrinth App".to_string(),
         }
     } else {
         description
@@ -87,7 +92,7 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
         })
         .collect();
 
-    let art = if picks.choice == TypeChoice::Modpack {
+    let art = if matches!(picks.choice, TypeChoice::Modpack | TypeChoice::Import) {
         version_art(None, None)
     } else {
         version_art(picks.versions.chosen.as_deref(), picks.loader.chosen)
@@ -133,6 +138,10 @@ impl Component for CreateInstanceModal {
             loader_version: use_state(|| None::<String>),
             declined: use_state(|| None::<HashSet<String>>),
             modpack_origin: use_state(|| ModpackOrigin::Browse),
+            import_chosen: use_state(Vec::new),
+            import_extra: use_state(Vec::new),
+            import_mode: use_state(|| ImportMode::AsIs),
+            import_decisions: use_state(HashMap::new),
             details: DetailsState::blank(),
         };
         let dispatch = use_dispatch();
@@ -145,6 +154,15 @@ impl Component for CreateInstanceModal {
         let first = picks.index == 0;
         let last = picks.step == Step::Customize;
         let modpack_step = picks.step == Step::Modpack;
+        let review_step = picks.step == Step::ImportReview;
+        let import_step = picks.step == Step::Import;
+        let improving = picks.import_mode == ImportMode::Improve;
+        let import_count = picks.import_count;
+        let import_jobs = if (import_step && !improving) || review_step {
+            picks.import_jobs(&wizard.import_chosen.read())
+        } else {
+            Vec::new()
+        };
         let origin = picks.modpack_origin;
         let index = picks.index;
         let mut step = wizard.step;
@@ -154,6 +172,7 @@ impl Component for CreateInstanceModal {
         let close_cancel = self.on_close.clone();
         let close_created = self.on_close.clone();
         let close_modpack = self.on_close.clone();
+        let close_import = self.on_close.clone();
 
         shell(Shell {
             rail: wizard_rail(wizard, &picks),
@@ -161,16 +180,26 @@ impl Component for CreateInstanceModal {
             title: title.to_string(),
             subtitle,
             body: steps::body(wizard, &picks),
-            scrolls_itself: picks.step == Step::Version,
+            scrolls_itself: matches!(
+                picks.step,
+                Step::Version | Step::Import | Step::ImportReview
+            ),
             note: footer_note(&picks),
             secondary_label: if first { "Cancel" } else { "Back" }.to_string(),
             primary_label: match (modpack_step, origin) {
-                (true, ModpackOrigin::Browse) => "Browse modpacks",
-                (true, ModpackOrigin::File) => "Choose file",
-                (false, _) if last => "Create instance",
-                (false, _) => "Next",
-            }
-            .to_string(),
+                _ if review_step && picks.import_screening.is_none() => {
+                    "Import without checking".to_string()
+                }
+                _ if (import_step && !improving) || review_step => match import_count {
+                    0 => "Import".to_string(),
+                    1 => "Import instance".to_string(),
+                    n => format!("Import {n} instances"),
+                },
+                (true, ModpackOrigin::Browse) => "Browse modpacks".to_string(),
+                (true, ModpackOrigin::File) => "Choose file".to_string(),
+                (false, _) if last => "Create instance".to_string(),
+                (false, _) => "Next".to_string(),
+            },
             primary_enabled: is_ready(&picks),
             on_close: (move |()| close_x.call(())).into(),
             on_secondary: (move |()| {
@@ -182,7 +211,10 @@ impl Component for CreateInstanceModal {
             })
             .into(),
             on_primary: (move |()| {
-                if modpack_step {
+                if (import_step && !improving) || review_step {
+                    dispatch.import_external_instances(import_jobs.clone());
+                    close_import.call(());
+                } else if modpack_step {
                     start_modpack(
                         origin,
                         browse_cluster,

@@ -298,13 +298,6 @@ async fn start(
         tracing::warn!(cluster_id, error = %err, "failed to write allowed_symlinks.txt");
     }
 
-    if let Some(backend) = profile.graphics_backend
-        && GraphicsBackend::supported_on(&mc_version)
-        && let Err(err) = crate::game::write_graphics_backend(&cwd, backend).await
-    {
-        tracing::warn!(cluster_id, error = %err, "failed to write the graphics backend to options.txt");
-    }
-
     let custom_args = profile.launch_args.clone().unwrap_or_default();
     let loader_version_id = loader_version.as_ref().map(|lv| lv.id.as_str());
 
@@ -378,6 +371,15 @@ async fn start(
         profile.resolution.unwrap_or_default(),
         &java.os_arch,
     )?;
+    if let Some(backend) = profile.graphics_backend
+        && backend != GraphicsBackend::Default
+        && GraphicsBackend::supported_on(&mc_version)
+    {
+        mc_args.extend([
+            "--graphicsBackend".to_string(),
+            backend.as_str().to_string(),
+        ]);
+    }
     arguments::append_profile_game_arguments(
         &mut mc_args,
         profile.force_fullscreen,

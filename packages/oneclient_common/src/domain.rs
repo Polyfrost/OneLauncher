@@ -188,7 +188,9 @@ impl PackageUpdateMode {
     }
 }
 
-/// Written to the game's `options.txt` as `preferredGraphicsBackend` before launch
+/// Passed as `--graphicsBackend` which overrides the in-game setting
+///
+/// `Default` passes nothing so the game's own setting and crash fallback apply
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumIter, StrumDisplay,
 )]
@@ -223,7 +225,7 @@ impl GraphicsBackend {
     }
 
     /// The value stored in the `setting_profiles.graphics_backend` column and
-    /// written to `options.txt`
+    /// passed to `--graphicsBackend`
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {

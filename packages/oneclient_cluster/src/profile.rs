@@ -20,7 +20,7 @@ pub struct GameSettingsProfile {
     pub os_extra: Option<SettingsOsExtra>,
     /// Never applies to bundle content
     pub browser_update_mode: Option<PackageUpdateMode>,
-    /// `None` on the resolved profile leaves `options.txt` untouched
+    /// `None` on the resolved profile leaves the in-game setting in charge
     pub graphics_backend: Option<GraphicsBackend>,
 }
 

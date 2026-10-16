@@ -954,7 +954,7 @@ impl Component for GraphicsBackendRow {
         settings_row(
             IconType::PaintPour,
             "Graphics Backend",
-            "The renderer the game starts with. Takes effect on the next launch.",
+            "Forces the renderer at launch. Default leaves it to the in-game setting.",
             override_cell(control, overridden, on_reset),
         )
     }

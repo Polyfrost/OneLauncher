@@ -7,7 +7,7 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
     match picks.step {
         Step::Type => (
             "Choose a type",
-            "Three ways to start. Packages can be added to any of them later.".to_string(),
+            "Four ways to start. Packages can be added to any of them later.".to_string(),
         ),
         Step::Loader => (
             "Choose a mod loader",
@@ -24,7 +24,7 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
                 TypeChoice::OneClient => {
                     "Only versions OneClient ships a build for are listed.".to_string()
                 }
-                TypeChoice::Scratch | TypeChoice::Modpack => {
+                TypeChoice::Scratch | TypeChoice::Modpack | TypeChoice::Friend => {
                     "Every Minecraft version. Switch the release type to reach snapshots, betas and alphas."
                         .to_string()
                 }
@@ -57,6 +57,10 @@ pub fn footer_note(picks: &Picks) -> String {
             TypeChoice::Scratch => "Keeps its own game folder, worlds and packs.".to_string(),
             TypeChoice::Modpack => {
                 "Keeps its own game folder, worlds and packs, set up the way the pack author made it."
+                    .to_string()
+            }
+            TypeChoice::Friend => {
+                "Comes with the same mods, packs, loader and Java your friend had. Worlds and configs stay with them."
                     .to_string()
             }
         },
@@ -95,6 +99,7 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
             TypeChoice::OneClient => "OneClient".to_string(),
             TypeChoice::Scratch => "From scratch".to_string(),
             TypeChoice::Modpack => "Modpack".to_string(),
+            TypeChoice::Friend => "From a friend".to_string(),
         },
         Step::Loader => picks.loader_label(),
         Step::Version => picks

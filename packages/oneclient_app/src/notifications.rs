@@ -7,6 +7,7 @@ use oneclient_core::BrowserPackageUpdate;
 use oneclient_db::models::{ClusterId, OptionalModStatus};
 use oneclient_events::{
     Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
+    TaskPhase,
 };
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -71,6 +72,7 @@ impl ClusterUpdateItem {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ModpackConfirm {
+    pub notices: Vec<String>,
     pub pack_name: String,
     pub version: String,
     pub instance_name: String,
@@ -368,6 +370,10 @@ impl GroupedTasks {
     }
 
     fn active_body(&self) -> Option<&'static str> {
+        let exporting = TaskPhase::Exporting.label();
+        if !self.children.is_empty() && self.children.values().all(|c| c.phase == exporting) {
+            return Some("Exporting Instance");
+        }
         let mut minecraft = false;
         let mut packages = false;
         for child in self.children.values() {
@@ -1002,6 +1008,12 @@ impl NotificationState {
                 }
                 self.refresh_grouped_entry(inbox, session_id);
             }
+            GroupedProgressEvent::Abort { session_id } => {
+                self.grouped_tasks.remove(&session_id);
+                if let Some(entry_id) = self.grouped_entries.remove(&session_id) {
+                    self.forget_entry(inbox, entry_id);
+                }
+            }
             GroupedProgressEvent::End { session_id } => {
                 self.grouped_tasks.remove(&session_id);
                 if let Some(entry_id) = self.grouped_entries.remove(&session_id) {
@@ -1364,5 +1376,89 @@ mod package_update_tests {
             inbox.iter().all(|e| e.id != id),
             "a toast-only notice must not linger in the inbox"
         );
+    }
+}
+
+#[cfg(test)]
+mod grouped_body_tests {
+    use super::*;
+
+    fn group(phases: &[&'static str]) -> GroupedTasks {
+        let mut group = GroupedTasks::default();
+        for phase in phases {
+            group.children.insert(
+                Uuid::new_v4(),
+                ChildRec {
+                    category: TaskCategory::Packages,
+                    phase,
+                    current: 0,
+                    total: 1,
+                },
+            );
+        }
+        group
+    }
+
+    #[test]
+    fn an_export_reads_as_an_export() {
+        let exporting = TaskPhase::Exporting.label();
+        assert_eq!(
+            group(&[exporting]).active_body(),
+            Some("Exporting Instance")
+        );
+        assert_eq!(
+            group(&[exporting, "Downloading"]).active_body(),
+            Some("Downloading Packages")
+        );
+        assert_eq!(group(&[]).active_body(), None);
+    }
+}
+
+#[cfg(test)]
+mod grouped_abort_tests {
+    use super::*;
+
+    fn run(finish: GroupedProgressEvent) -> Vec<InboxEntry> {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let session_id = match &finish {
+            GroupedProgressEvent::End { session_id } | GroupedProgressEvent::Abort { session_id } => {
+                *session_id
+            }
+            _ => unreachable!(),
+        };
+        state.handle_grouped_progress(
+            &mut inbox,
+            GroupedProgressEvent::Start {
+                session_id,
+                title: "Exporting".into(),
+            },
+        );
+        state.handle_grouped_progress(
+            &mut inbox,
+            GroupedProgressEvent::AddChild {
+                session_id,
+                child_id: Uuid::new_v4(),
+                label: "pack".into(),
+                total: 10,
+                category: TaskCategory::Packages,
+            },
+        );
+        state.handle_grouped_progress(&mut inbox, finish);
+        inbox
+    }
+
+    #[test]
+    fn a_failed_task_does_not_end_on_complete() {
+        let ended = run(GroupedProgressEvent::End {
+            session_id: Uuid::new_v4(),
+        });
+        assert!(ended.iter().any(|entry| entry.body == "Complete"));
+
+        let aborted = run(GroupedProgressEvent::Abort {
+            session_id: Uuid::new_v4(),
+        });
+        assert!(aborted.iter().all(|entry| entry.body != "Complete"));
+        assert!(aborted.is_empty());
     }
 }

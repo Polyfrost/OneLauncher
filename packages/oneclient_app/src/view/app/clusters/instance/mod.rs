@@ -14,6 +14,7 @@ mod rail;
 mod shell;
 mod steps;
 
+pub(super) use cards::{WideCard, wide_card};
 pub use create::CreateInstanceModal;
 pub use edit::{EditInstanceModal, InstanceFacts};
 

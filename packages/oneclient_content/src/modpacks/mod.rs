@@ -2,6 +2,7 @@ mod checker;
 mod curseforge;
 mod install;
 mod mrpack;
+mod share;
 mod update;
 
 use std::collections::{HashMap, HashSet};
@@ -16,6 +17,15 @@ use oneclient_common::domain::{ContentType, GameLoader};
 
 pub use update::{
     ModpackRelease, ModpackUpdateStatus, check_modpack_update, cluster_modpack, identify_modpack,
+    latest_modpack_version,
+};
+
+pub use share::{
+    ClusterShare, PackCarryover, SHARE_ENTRY, SHARE_EXTENSION, SHARE_FORMAT, ShareContent,
+    ShareExportReport, ShareExtras, ShareIcon, ShareScope, SharedBundleChoice, SharedDownload,
+    SharedFile, SharedFileSource, SharedJava, SharedModpack, SharedOverride, collect_share_content,
+    icon_entry, install_shared_content, read_cluster_share, read_share_extras, read_share_icon,
+    trusted_download, write_share_archive,
 };
 
 pub use install::{
@@ -62,6 +72,7 @@ pub struct ModpackSummary {
     pub optional: usize,
     pub manual: usize,
     pub unresolved: usize,
+    pub unverified: usize,
     pub download_bytes: u64,
 }
 
@@ -156,7 +167,7 @@ fn file_name_of(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_lowercase()
 }
 
-fn is_safe_relative_path(path: &str) -> bool {
+pub(crate) fn is_safe_relative_path(path: &str) -> bool {
     if path.is_empty() || path.starts_with('/') || path.starts_with('\\') || path.contains(':') {
         return false;
     }
@@ -174,6 +185,9 @@ fn tracked_folder(folder: &str) -> Option<ContentType> {
 }
 
 fn tracked_content_type(path: &str) -> Option<ContentType> {
+    if path.contains('\\') || !is_safe_relative_path(path) {
+        return None;
+    }
     let (folder, file) = path.split_once('/')?;
     if file.is_empty() || file.contains('/') {
         return None;
@@ -213,5 +227,19 @@ mod tests {
         assert_eq!(tracked_content_type("config/a.json"), None);
         assert_eq!(tracked_content_type("datapacks/a.zip"), None);
         assert_eq!(tracked_content_type("a.jar"), None);
+    }
+
+    #[test]
+    fn content_paths_that_could_leave_their_folder_are_not_tracked() {
+        assert_eq!(tracked_content_type(r"mods/..\..\evil.jar"), None);
+        assert_eq!(tracked_content_type(r"mods/C:\Users\evil.jar"), None);
+        assert_eq!(tracked_content_type(r"mods/sub\evil.jar"), None);
+        assert_eq!(tracked_content_type("mods/.."), None);
+        assert_eq!(tracked_content_type("mods/C:evil.jar"), None);
+        assert_eq!(tracked_content_type("../mods/evil.jar"), None);
+        assert_eq!(
+            tracked_content_type("mods/fine-1.0+mc.jar"),
+            Some(ContentType::Mod)
+        );
     }
 }

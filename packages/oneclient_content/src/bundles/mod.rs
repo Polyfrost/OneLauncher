@@ -17,7 +17,7 @@ pub use install::{
     on_user_enable_artifact, on_user_remove_artifact, pending_bundle_choices,
     remove_artifact_from_cluster, set_artifact_enabled_to, set_bundle_choices,
     set_bundle_package_enabled, set_bundle_package_opt_in, set_bundle_package_override,
-    set_bundle_package_overrides, taken_bundle_names,
+    set_bundle_package_overrides, taken_bundle_names, wanted_bundle_files,
 };
 pub use manager::{Bundle, BundlesManager};
 pub use manifest::BundleManifest as RemoteBundleManifest;

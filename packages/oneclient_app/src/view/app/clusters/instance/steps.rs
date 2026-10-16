@@ -79,6 +79,14 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
             "Install a pack from Modrinth or CurseForge, or a file you downloaded.",
             "Has its own game folder.",
         ),
+        (
+            TypeChoice::Friend,
+            IconType::Users01,
+            "Import",
+            None,
+            "Open an instance someone exported from OneClient and play with their exact setup.",
+            "The .mrpack file from Export Instance.",
+        ),
     ];
 
     rect()

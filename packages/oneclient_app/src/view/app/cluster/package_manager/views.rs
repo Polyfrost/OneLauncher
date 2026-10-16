@@ -301,9 +301,13 @@ pub(super) fn toolbar_bar(
     layout: State<ViewLayout>,
     cluster_id: i64,
     package_type: &'static str,
+    content_type: ContentType,
+    dispatch: Actions,
     mut toolbar_width: State<f32>,
     bulk: &Bulk,
 ) -> impl IntoElement {
+    let local_tab = matches!(tabs.get(active_idx), Some(Tab::Local));
+
     let chips = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
         CategoryChip {
@@ -370,9 +374,26 @@ pub(super) fn toolbar_bar(
             .primary()
             .height(Size::px(34.))
             .font_size(12.)
-            .on_press(move |_| open_browser(cluster_id, package_type))
-            .child(Icon::new(IconType::Plus).size(15.))
-            .text("Add Content")
+            .on_press(move |_| {
+                if local_tab {
+                    import_from_file(cluster_id, content_type, dispatch.clone());
+                } else {
+                    open_browser(cluster_id, package_type);
+                }
+            })
+            .child(
+                Icon::new(if local_tab {
+                    IconType::FilePlus02
+                } else {
+                    IconType::Plus
+                })
+                .size(15.),
+            )
+            .text(if local_tab {
+                "Add from file"
+            } else {
+                "Add Content"
+            })
             .into_element(),
     );
     let controls = if bulk.active() {
@@ -605,6 +626,24 @@ fn filter_button(
     )
 }
 
+fn import_from_file(cluster_id: i64, content_type: ContentType, dispatch: Actions) {
+    spawn(async move {
+        if let Some(handles) = rfd::AsyncFileDialog::new()
+            .set_title("Select files to import")
+            .pick_files()
+            .await
+        {
+            dispatch.import_local_files(
+                cluster_id,
+                handles
+                    .iter()
+                    .map(|handle| (handle.path().to_path_buf(), content_type))
+                    .collect(),
+            );
+        }
+    });
+}
+
 fn add_from_file_button(
     cluster_id: i64,
     content_type: ContentType,
@@ -612,24 +651,7 @@ fn add_from_file_button(
 ) -> impl IntoElement {
     Button::new()
         .primary()
-        .on_press(move |_| {
-            let dispatch = dispatch.clone();
-            spawn(async move {
-                if let Some(handles) = rfd::AsyncFileDialog::new()
-                    .set_title("Select files to import")
-                    .pick_files()
-                    .await
-                {
-                    dispatch.import_local_files(
-                        cluster_id,
-                        handles
-                            .iter()
-                            .map(|handle| (handle.path().to_path_buf(), content_type))
-                            .collect(),
-                    );
-                }
-            });
-        })
+        .on_press(move |_| import_from_file(cluster_id, content_type, dispatch.clone()))
         .child(Icon::new(IconType::FilePlus02).size(14.))
         .text("Add from file")
 }
@@ -899,22 +921,6 @@ impl Component for ContentBox {
             }
         });
 
-        let header = (count > 0)
-            .then(|| match kind {
-                // The toolbar already carries a permanent "Add Content" button
-                ContentKind::Browser => None,
-                ContentKind::Local => Some(
-                    action_header(add_from_file_button(
-                        cluster_id,
-                        content_type,
-                        dispatch.clone(),
-                    ))
-                    .into_element(),
-                ),
-                ContentKind::Other | ContentKind::NoMatches { .. } => None,
-            })
-            .flatten();
-
         let mut bottom_corners = CornerRadius::new_all(0.);
         bottom_corners.fill_bottom(12.);
 
@@ -929,7 +935,6 @@ impl Component for ContentBox {
             .overflow(Overflow::Clip)
             .content(Content::Flex)
             .children(self.notices.iter().map(|text| notice_bar(text.clone())))
-            .maybe_child(header)
             .maybe_child(scroll)
             .maybe_child(empty.map(|empty| {
                 rect()
@@ -940,16 +945,6 @@ impl Component for ContentBox {
             .maybe_child(menu_overlay)
             .maybe_child(delete_dialog)
     }
-}
-
-fn action_header(button: impl IntoElement) -> impl IntoElement {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .content(Content::Flex)
-        .child(rect().width(Size::flex(1.0)))
-        .child(button)
 }
 
 pub(crate) fn empty_shell(icon: IconType) -> Rect {

@@ -37,6 +37,7 @@ fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
         cover_source: wizard.details.cover.read().clone(),
         bundles: (picks.kind == ClusterKind::OneClient && picks.bundles.loaded)
             .then(|| picks.bundles.taken()),
+        dedicated: picks.kind == ClusterKind::OneClient && picks.folder == FolderChoice::Dedicated,
     })
 }
 
@@ -133,6 +134,7 @@ impl Component for CreateInstanceModal {
             loader_version: use_state(|| None::<String>),
             declined: use_state(|| None::<HashSet<String>>),
             modpack_origin: use_state(|| ModpackOrigin::Browse),
+            folder: use_state(|| FolderChoice::Shared),
             details: DetailsState::blank(),
         };
         let dispatch = use_dispatch();

@@ -37,6 +37,12 @@ pub enum ModpackOrigin {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FolderChoice {
+    Shared,
+    Dedicated,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LoaderChoice {
     Fabric,
     Forge,
@@ -113,6 +119,7 @@ impl LoaderChoice {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Step {
     Type,
+    Folder,
     Loader,
     Version,
     Bundles,
@@ -124,6 +131,7 @@ impl Step {
     pub fn label(self) -> &'static str {
         match self {
             Self::Type => "Type",
+            Self::Folder => "Folder",
             Self::Loader => "Loader",
             Self::Version => "Version",
             Self::Bundles => "Bundles",
@@ -133,7 +141,13 @@ impl Step {
     }
 }
 
-const ONECLIENT_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Bundles, Step::Customize];
+const ONECLIENT_STEPS: [Step; 5] = [
+    Step::Type,
+    Step::Folder,
+    Step::Version,
+    Step::Bundles,
+    Step::Customize,
+];
 const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Loader, Step::Customize];
 const MODPACK_STEPS: [Step; 2] = [Step::Type, Step::Modpack];
 
@@ -201,5 +215,6 @@ pub struct Wizard {
     pub loader_version: State<Option<String>>,
     pub declined: State<Option<HashSet<String>>>,
     pub modpack_origin: State<ModpackOrigin>,
+    pub folder: State<FolderChoice>,
     pub details: DetailsState,
 }

@@ -117,6 +117,16 @@ mod tests {
     }
 
     #[test]
+    fn censors_session_id() {
+        assert_eq!(
+            censor(
+                "[12:00:00] [Client thread/INFO]: (Session ID is token:eyJabc.def.ghi:0123abcd)"
+            ),
+            "[12:00:00] [Client thread/INFO]: (Session ID is [censored])"
+        );
+    }
+
+    #[test]
     fn carries_level_forward() {
         let opts = ReadOptions::default();
 

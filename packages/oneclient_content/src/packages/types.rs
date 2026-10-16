@@ -50,6 +50,15 @@ impl SearchSort {
             Self::Updated => "updated",
         }
     }
+
+    pub fn curseforge_sort_field(self) -> u32 {
+        match self {
+            Self::Relevance => 1,
+            Self::Downloads => 6,
+            Self::Newest => 11,
+            Self::Updated => 3,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

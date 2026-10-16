@@ -427,7 +427,7 @@ async fn import_override_content(
     Ok(hashes)
 }
 
-async fn install_loose_file(
+pub(super) async fn install_loose_file(
     file: &LooseFile,
     root: &Path,
     progress: Option<&GroupedProgressSession>,

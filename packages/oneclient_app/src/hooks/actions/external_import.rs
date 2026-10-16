@@ -1,12 +1,15 @@
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use freya::prelude::spawn_forever;
 use oneclient_common::domain::ProviderId;
+use oneclient_content::modpacks::SHARE_EXTENSION;
+use oneclient_core::clusters::ModpackSource;
 use oneclient_core::{
-    ExternalImportReport, ExternalInstance, ImportChoices, alternative_version_id,
-    import_external_instance,
+    ExternalImportReport, ExternalInstance, ImportChoices, InstanceArchive, alternative_version_id,
+    discard_instance_archive, import_external_instance, is_instance_archive, open_instance_archive,
 };
-use oneclient_events::GroupedProgressSession;
+use oneclient_events::{GroupedProgressSession, TaskCategory, TaskPhase};
 
 use super::Actions;
 use crate::launcher::{self, off_ui};
@@ -33,11 +36,17 @@ impl Drop for ImportingGuard {
     }
 }
 
+#[must_use]
+pub(super) fn import_running() -> bool {
+    IMPORTING.load(Ordering::Acquire)
+}
+
 #[derive(Debug, Clone)]
 pub struct ExternalImportJob {
     pub instance: ExternalInstance,
     pub choices: ImportChoices,
     pub alternatives: Vec<AlternativePick>,
+    pub workdir: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -53,8 +62,31 @@ impl ExternalImportJob {
             instance,
             choices: ImportChoices::default(),
             alternatives: Vec::new(),
+            workdir: None,
         }
     }
+
+    fn from_archive(archive: InstanceArchive) -> Self {
+        Self {
+            workdir: Some(archive.workdir),
+            ..Self::as_is(archive.instance)
+        }
+    }
+}
+
+fn discard_workdirs(jobs: &[ExternalImportJob]) {
+    let workdirs: Vec<PathBuf> = jobs.iter().filter_map(|job| job.workdir.clone()).collect();
+    if workdirs.is_empty() {
+        return;
+    }
+    spawn_forever(async move {
+        off_ui(async move {
+            for workdir in workdirs {
+                discard_instance_archive(&workdir).await;
+            }
+        })
+        .await;
+    });
 }
 
 impl Actions {
@@ -64,11 +96,20 @@ impl Actions {
         if jobs.is_empty() {
             return;
         }
+        if !super::modpacks::modpack_job_idle() {
+            self.notify("An install is already running")
+                .body("Wait for it to finish, then try again.")
+                .error()
+                .send();
+            discard_workdirs(&jobs);
+            return;
+        }
         let Some(guard) = ImportingGuard::acquire() else {
             self.notify("An import is already running")
                 .body("Wait for it to finish, then try again.")
                 .error()
                 .send();
+            discard_workdirs(&jobs);
             return;
         };
 
@@ -83,28 +124,39 @@ impl Actions {
             let mut imported: Vec<ExternalImportReport> = Vec::new();
             let mut unavailable: Vec<String> = Vec::new();
             let mut blocked_shown = false;
-            for job in jobs {
+            let total = jobs.len();
+            for (position, job) in jobs.into_iter().enumerate() {
                 let ExternalImportJob {
                     instance,
                     choices,
                     alternatives,
+                    workdir,
                 } = job;
                 let name = instance.name.clone();
                 let outcome = off_ui({
                     let state = state.clone();
                     async move {
-                        let session = GroupedProgressSession::start(
-                            &state.services.events,
-                            format!("Importing {}", instance.name),
-                        );
+                        let title = if total > 1 {
+                            format!("Importing {} ({} of {total})", instance.name, position + 1)
+                        } else {
+                            format!("Importing {}", instance.name)
+                        };
+                        let session = GroupedProgressSession::start(&state.services.events, title);
                         let outcome =
                             import_external_instance(&state, &instance, &choices, Some(&session))
                                 .await;
-                        session.finish();
+                        if outcome.is_ok() {
+                            session.finish();
+                        } else {
+                            session.abort();
+                        }
                         outcome
                     }
                 })
                 .await;
+                if let Some(workdir) = workdir {
+                    off_ui(async move { discard_instance_archive(&workdir).await }).await;
+                }
 
                 events.signal(oneclient_events::Signal::ClustersChanged);
                 crate::hooks::invalidate_cluster_queries().await;
@@ -142,6 +194,86 @@ impl Actions {
             notify_summary(&actions, &imported, &unavailable);
             if let [only] = imported.as_slice() {
                 actions.open_cluster_page(only.cluster_id);
+            }
+        });
+    }
+
+    pub fn import_file(&self, path: PathBuf) {
+        let is_mrpack = path
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .is_some_and(|ext| ext.eq_ignore_ascii_case(SHARE_EXTENSION));
+        if is_mrpack {
+            self.install_modpack(ModpackSource::File(path));
+            return;
+        }
+
+        let actions = self.clone();
+        spawn_forever(async move {
+            let probe = path.clone();
+            let instance = off_ui(async move { is_instance_archive(&probe).await }).await;
+            if instance {
+                actions.import_instance_archive(path);
+            } else {
+                actions.install_modpack(ModpackSource::File(path));
+            }
+        });
+    }
+
+    pub fn import_instance_archive(&self, path: PathBuf) {
+        if import_running() || !super::modpacks::modpack_job_idle() {
+            self.notify("An import is already running")
+                .body("Wait for it to finish, then try again.")
+                .error()
+                .send();
+            return;
+        }
+
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else {
+                return;
+            };
+            let file = path
+                .file_name()
+                .map(|name| name.to_string_lossy().into_owned())
+                .unwrap_or_else(|| "the file".to_string());
+
+            let opened = off_ui({
+                let state = state.clone();
+                let file = file.clone();
+                async move {
+                    let session = GroupedProgressSession::start(
+                        &state.services.events,
+                        format!("Reading {file}"),
+                    );
+                    let child = session.child("Unpacking the instance", 1, TaskCategory::Packages);
+                    child.set_phase(TaskPhase::Importing);
+                    let opened = open_instance_archive(&path).await;
+                    child.finish();
+                    if opened.is_ok() {
+                        session.finish();
+                    } else {
+                        session.abort();
+                    }
+                    opened
+                }
+            })
+            .await;
+
+            match opened {
+                Ok(archive) => {
+                    actions
+                        .import_external_instances(vec![ExternalImportJob::from_archive(archive)]);
+                }
+                Err(err) => {
+                    tracing::warn!(file, error = %err, "could not open an instance export");
+                    actions
+                        .notify(format!("Could not open {file}"))
+                        .body(err.to_string())
+                        .error()
+                        .send();
+                }
             }
         });
     }
@@ -284,7 +416,17 @@ fn listed(names: impl Iterator<Item = String>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::listed;
+    use super::{ImportingGuard, import_running, listed};
+
+    #[test]
+    fn a_running_import_is_visible_to_the_other_jobs() {
+        assert!(!import_running());
+        let guard = ImportingGuard::acquire().expect("nothing is importing yet");
+        assert!(import_running());
+        assert!(ImportingGuard::acquire().is_none());
+        drop(guard);
+        assert!(!import_running());
+    }
 
     #[test]
     fn lists_read_naturally() {

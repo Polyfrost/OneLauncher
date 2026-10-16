@@ -7,6 +7,7 @@ use oneclient_core::BrowserPackageUpdate;
 use oneclient_db::models::{ClusterId, OptionalModStatus};
 use oneclient_events::{
     Answer, Choice, Event, GroupedProgressEvent, Level, Notification, ProgressEvent, TaskCategory,
+    TaskPhase,
 };
 use tokio::sync::oneshot;
 use uuid::Uuid;
@@ -71,6 +72,7 @@ impl ClusterUpdateItem {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ModpackConfirm {
+    pub notices: Vec<String>,
     pub pack_name: String,
     pub version: String,
     pub instance_name: String,
@@ -107,6 +109,7 @@ impl BlockedDownloads {
 pub struct BundleChoices {
     pub cluster_name: String,
     pub bundles: Vec<(String, String)>,
+    pub held: HashSet<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -306,6 +309,7 @@ const CATEGORY_ORDER: [TaskCategory; 7] = [
 
 struct ChildRec {
     category: TaskCategory,
+    label: String,
     phase: &'static str,
     current: u64,
     total: u64,
@@ -366,10 +370,16 @@ impl GroupedTasks {
             .collect()
     }
 
-    fn active_body(&self) -> Option<&'static str> {
+    fn active_body(&self) -> Option<String> {
+        let exporting = TaskPhase::Exporting.label();
+        let importing = TaskPhase::Importing.label();
         let mut minecraft = false;
         let mut packages = false;
-        for child in self.children.values() {
+        for child in self
+            .children
+            .values()
+            .filter(|c| c.phase != exporting && c.phase != importing)
+        {
             if child.category.is_minecraft() {
                 minecraft = true;
             } else {
@@ -377,12 +387,18 @@ impl GroupedTasks {
             }
         }
         if minecraft {
-            Some("Downloading Minecraft")
-        } else if packages {
-            Some("Downloading Packages")
-        } else {
-            None
+            return Some("Downloading Minecraft".to_string());
         }
+        if packages {
+            return Some("Downloading Packages".to_string());
+        }
+        if let Some(stage) = self.children.values().find(|c| c.phase == importing) {
+            return Some(stage.label.clone());
+        }
+        if self.children.values().any(|c| c.phase == exporting) {
+            return Some("Exporting Instance".to_string());
+        }
+        None
     }
 }
 
@@ -706,6 +722,12 @@ impl NotificationState {
         }
     }
 
+    fn mark_unread(&self, inbox: &mut [InboxEntry], entry_id: u64) {
+        if let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) {
+            entry.read = false;
+        }
+    }
+
     pub fn dismiss_notification(&mut self, inbox: &mut Vec<InboxEntry>, entry_id: u64) {
         if inbox
             .iter()
@@ -812,7 +834,6 @@ impl NotificationState {
             entry.body = body.into();
             entry.progress = progress;
             entry.is_loading = is_loading;
-            entry.read = false;
         }
     }
 
@@ -886,6 +907,8 @@ impl NotificationState {
     ) {
         if let Some(entry_id) = self.progress_entries.remove(&id) {
             self.update_inbox_entry(inbox, entry_id, title, body, None, false);
+            // Progress ticks leave a hovered card read but its outcome is news
+            self.mark_unread(inbox, entry_id);
             self.ensure_progress_toast(entry_id);
         } else {
             let entry_id = self.push_inbox(inbox, title, body, Level::Info, None, false);
@@ -935,7 +958,7 @@ impl NotificationState {
             GroupedProgressEvent::AddChild {
                 session_id,
                 child_id,
-                label: _,
+                label,
                 total,
                 category,
             } => {
@@ -944,6 +967,7 @@ impl NotificationState {
                         child_id,
                         ChildRec {
                             category,
+                            label,
                             phase: "Downloading",
                             current: 0,
                             total: total.max(1),
@@ -994,6 +1018,12 @@ impl NotificationState {
                 }
                 self.refresh_grouped_entry(inbox, session_id);
             }
+            GroupedProgressEvent::Abort { session_id } => {
+                self.grouped_tasks.remove(&session_id);
+                if let Some(entry_id) = self.grouped_entries.remove(&session_id) {
+                    self.forget_entry(inbox, entry_id);
+                }
+            }
             GroupedProgressEvent::End { session_id } => {
                 self.grouped_tasks.remove(&session_id);
                 if let Some(entry_id) = self.grouped_entries.remove(&session_id) {
@@ -1007,6 +1037,7 @@ impl NotificationState {
                         entry.body = "Complete".to_string();
                         entry.progress = Some((1, 1));
                         entry.is_loading = false;
+                        entry.read = false;
                         entry.tasks = Vec::new();
                         entry.transfer = None;
                     }
@@ -1090,7 +1121,6 @@ impl NotificationState {
         let tasks = group.task_list();
         let body = group
             .active_body()
-            .map(str::to_string)
             .unwrap_or_else(|| "Preparing...".to_string());
         let title = group.title.clone();
 
@@ -1110,7 +1140,6 @@ impl NotificationState {
         entry.body = body;
         entry.progress = Some((completed, total));
         entry.is_loading = true;
-        entry.read = false;
         entry.tasks = tasks;
         entry.transfer = transfer;
     }
@@ -1292,6 +1321,31 @@ mod package_update_tests {
     }
 
     #[test]
+    fn a_hovered_download_stays_read_until_it_finishes() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = Uuid::new_v4();
+
+        state.handle_progress(&mut inbox, id, "Downloading".into(), 1, 10);
+        let entry_id = inbox[0].id;
+        state.mark_read(&mut inbox, entry_id);
+
+        state.handle_progress(&mut inbox, id, "Downloading".into(), 5, 10);
+        assert_eq!(
+            NotificationState::unread_count(&inbox),
+            0,
+            "progress ticks must not undo the hover"
+        );
+
+        state.handle_progress_complete(&mut inbox, id, "Done".into(), String::new());
+        assert_eq!(
+            NotificationState::unread_count(&inbox),
+            1,
+            "the finished result is new again"
+        );
+    }
+
+    #[test]
     fn a_normal_notice_survives_its_toast_expiring() {
         let mut state = NotificationState::default();
         let mut inbox = Vec::new();
@@ -1331,5 +1385,102 @@ mod package_update_tests {
             inbox.iter().all(|e| e.id != id),
             "a toast-only notice must not linger in the inbox"
         );
+    }
+}
+
+#[cfg(test)]
+mod grouped_body_tests {
+    use super::*;
+
+    fn group(phases: &[&'static str]) -> GroupedTasks {
+        let mut group = GroupedTasks::default();
+        for phase in phases {
+            group.children.insert(
+                Uuid::new_v4(),
+                ChildRec {
+                    category: TaskCategory::Packages,
+                    label: format!("{phase} stage"),
+                    phase,
+                    current: 0,
+                    total: 1,
+                },
+            );
+        }
+        group
+    }
+
+    #[test]
+    fn an_export_reads_as_an_export() {
+        let exporting = TaskPhase::Exporting.label();
+        assert_eq!(
+            group(&[exporting]).active_body().as_deref(),
+            Some("Exporting Instance")
+        );
+        assert_eq!(
+            group(&[exporting, "Downloading"]).active_body().as_deref(),
+            Some("Downloading Packages")
+        );
+        assert_eq!(group(&[]).active_body(), None);
+    }
+
+    #[test]
+    fn an_import_shows_the_stage_it_is_in() {
+        let importing = TaskPhase::Importing.label();
+        assert_eq!(
+            group(&[importing]).active_body().as_deref(),
+            Some("Importing stage")
+        );
+        assert_eq!(
+            group(&[importing, "Downloading"]).active_body().as_deref(),
+            Some("Downloading Packages")
+        );
+    }
+}
+
+#[cfg(test)]
+mod grouped_abort_tests {
+    use super::*;
+
+    fn run(finish: GroupedProgressEvent) -> Vec<InboxEntry> {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let session_id = match &finish {
+            GroupedProgressEvent::End { session_id }
+            | GroupedProgressEvent::Abort { session_id } => *session_id,
+            _ => unreachable!(),
+        };
+        state.handle_grouped_progress(
+            &mut inbox,
+            GroupedProgressEvent::Start {
+                session_id,
+                title: "Exporting".into(),
+            },
+        );
+        state.handle_grouped_progress(
+            &mut inbox,
+            GroupedProgressEvent::AddChild {
+                session_id,
+                child_id: Uuid::new_v4(),
+                label: "pack".into(),
+                total: 10,
+                category: TaskCategory::Packages,
+            },
+        );
+        state.handle_grouped_progress(&mut inbox, finish);
+        inbox
+    }
+
+    #[test]
+    fn a_failed_task_does_not_end_on_complete() {
+        let ended = run(GroupedProgressEvent::End {
+            session_id: Uuid::new_v4(),
+        });
+        assert!(ended.iter().any(|entry| entry.body == "Complete"));
+
+        let aborted = run(GroupedProgressEvent::Abort {
+            session_id: Uuid::new_v4(),
+        });
+        assert!(aborted.iter().all(|entry| entry.body != "Complete"));
+        assert!(aborted.is_empty());
     }
 }

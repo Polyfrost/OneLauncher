@@ -5,6 +5,7 @@
 //! clusters: every imported instance becomes its own isolated cluster with its
 //! content registered in the package store
 
+mod archive;
 mod import;
 mod ini;
 mod java;
@@ -19,6 +20,9 @@ use serde::{Deserialize, Serialize};
 use crate::LauncherResult;
 use oneclient_common::domain::{GameLoader, ProviderId};
 
+pub use archive::{
+    InstanceArchive, discard_instance_archive, is_instance_archive, open_instance_archive,
+};
 pub use import::{ExternalImportReport, ImportChoices, alternative_version_id, import_instance};
 pub use screen::{FlaggedImportMod, ImportAlternative, ScreenedInstance, screen_instances};
 

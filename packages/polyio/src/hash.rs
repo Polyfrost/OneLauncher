@@ -43,11 +43,22 @@ pub async fn sha1_file(path: impl AsRef<Path>) -> PolyIOResult<String> {
 }
 
 pub fn sha1_file_sync(path: &Path) -> PolyIOResult<String> {
+    digest_file_sync::<sha1::Sha1>(path)
+}
+
+pub async fn sha512_file(path: impl AsRef<Path>) -> PolyIOResult<String> {
+    let path = path.as_ref().to_path_buf();
+    tokio::task::spawn_blocking(move || digest_file_sync::<sha2::Sha512>(&path))
+        .await
+        .map_err(std::io::Error::other)?
+}
+
+fn digest_file_sync<D: Digest>(path: &Path) -> PolyIOResult<String> {
     let mut file = std::fs::File::open(path).map_err(|e| IOError::PathIOError {
         source: e,
         path: path.to_string_lossy().to_string(),
     })?;
-    let mut hasher = Sha1Stream::new();
+    let mut hasher = D::new();
 
     let size = file
         .metadata()
@@ -67,7 +78,7 @@ pub fn sha1_file_sync(path: &Path) -> PolyIOResult<String> {
         hasher.update(&buffer[..n]);
     }
 
-    Ok(hasher.finish())
+    Ok(to_hex(&hasher.finalize()))
 }
 
 #[must_use]

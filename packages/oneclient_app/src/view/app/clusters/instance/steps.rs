@@ -13,7 +13,9 @@ use super::data::Picks;
 use super::details::details_body;
 use super::import::ImportStep;
 use super::import_review::review_step;
-use super::model::{ImportMode, LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard};
+use super::model::{
+    ImportMode, ImportSource, LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard,
+};
 use super::model::{VERSION_KINDS, kind_bit};
 use super::rail::version_art;
 use crate::components::{
@@ -30,6 +32,7 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
         Step::Version => ("step-version", version_step(wizard, picks)),
         Step::Bundles => ("step-bundles", bundles_step(wizard, picks)),
         Step::Modpack => ("step-modpack", modpack_step(wizard, picks)),
+        Step::ImportSource => ("step-import-source", import_source_step(wizard, picks)),
         Step::ImportMode => ("step-import-mode", import_mode_step(wizard, picks)),
         Step::ImportReview => ("step-import-review", review_step(wizard, picks)),
         Step::Import => (
@@ -99,10 +102,10 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
         (
             TypeChoice::Import,
             IconType::FolderDownload,
-            "Import from another launcher",
+            "Import",
             None,
-            "Bring over instances from Prism Launcher, MultiMC or the Modrinth App.",
-            "Each keeps its own game folder.",
+            "Open an instance someone exported from OneClient, or bring one over from another launcher.",
+            "Has its own game folder.",
         ),
     ];
 
@@ -165,6 +168,43 @@ fn modpack_step(wizard: Wizard, picks: &Picks) -> Element {
                 meta: meta.to_string(),
                 selected: picks.modpack_origin == origin,
                 on_press: (move |()| chosen.set(origin)).into(),
+            })
+        }))
+        .into_element()
+}
+
+fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
+    let cards = [
+        (
+            ImportSource::File,
+            IconType::File02,
+            "Import from a file",
+            "Open an instance someone exported from OneClient, Prism Launcher or MultiMC.",
+            "A OneClient .mrpack, or a Prism Launcher or MultiMC export .zip.",
+        ),
+        (
+            ImportSource::Launcher,
+            IconType::FolderDownload,
+            "Import from launcher",
+            "Bring over instances from Prism Launcher, MultiMC or the Modrinth App.",
+            "Each keeps its own game folder.",
+        ),
+    ];
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .children(cards.into_iter().map(|(source, icon, title, blurb, meta)| {
+            let mut chosen = wizard.import_source;
+            wide_card(WideCard {
+                icon,
+                title: title.to_string(),
+                badge: None,
+                blurb: blurb.to_string(),
+                meta: meta.to_string(),
+                selected: picks.import_source == source,
+                on_press: (move |()| chosen.set(source)).into(),
             })
         }))
         .into_element()

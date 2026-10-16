@@ -9,7 +9,7 @@ use oneclient_db::models::OverrideType;
 use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
-use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
+use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind, BundleManifest};
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
@@ -28,7 +28,29 @@ pub(crate) fn takes_bundle(
     archive: &BundleArchive,
     accepted: &std::collections::HashSet<String>,
 ) -> bool {
-    archive.manifest.enabled || accepted.contains(&archive.manifest.name)
+    takes_manifest(&archive.manifest, accepted)
+}
+
+fn takes_manifest(manifest: &BundleManifest, accepted: &std::collections::HashSet<String>) -> bool {
+    manifest.enabled || accepted.contains(&manifest.name)
+}
+
+pub fn wanted_bundle_files<'a>(
+    manifests: impl IntoIterator<Item = &'a BundleManifest>,
+    accepted: &std::collections::HashSet<String>,
+    override_for: impl Fn(&str, &str) -> Option<OverrideType>,
+) -> Vec<&'a BundleFile> {
+    manifests
+        .into_iter()
+        .flat_map(|manifest| {
+            let taken = takes_manifest(manifest, accepted);
+            let override_for = &override_for;
+            manifest.files.iter().filter(move |file| {
+                let user_override = override_for(&manifest.name, &file.kind.package_id());
+                wants_file(file, user_override, taken)
+            })
+        })
+        .collect()
 }
 
 fn wants_file(file: &BundleFile, user_override: Option<OverrideType>, taken: bool) -> bool {
@@ -61,6 +83,23 @@ pub async fn taken_bundle_names(
         .filter(|archive| takes_bundle(archive, &accepted))
         .map(|archive| archive.manifest.name.clone())
         .collect())
+}
+
+pub(crate) async fn overrides_outside_declined(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    mut overrides: Vec<oneclient_db::models::ClusterBundleOverrideRow>,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<oneclient_db::models::ClusterBundleOverrideRow>> {
+    let taken = taken_bundle_names(cluster_id, archives, ctx).await?;
+    let declined: std::collections::HashSet<&str> = archives
+        .iter()
+        .map(|archive| archive.manifest.name.as_str())
+        .filter(|name| !taken.contains(*name))
+        .collect();
+
+    overrides.retain(|o| !declined.contains(o.bundle_name.as_str()));
+    Ok(overrides)
 }
 
 #[tracing::instrument(level = "debug", skip(bundles, ctx))]
@@ -98,6 +137,52 @@ pub async fn set_bundle_choices(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     bundle_dao::save_bundle_choices(&ctx.db, cluster_id, choices).await?;
+
+    for row in bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await? {
+        let declined = row.bundle_name.as_ref().is_some_and(|name| {
+            choices
+                .iter()
+                .any(|(choice, accepted)| choice == name && !accepted)
+        });
+        if declined {
+            detach_artifact(cluster_id, &row.hash, ctx).await?;
+        }
+    }
+    Ok(())
+}
+
+const UNASKED_SKYBLOCK: &str = "decline_unasked_skyblock";
+
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id = cluster.id))]
+pub(crate) async fn decline_unasked_skyblock(
+    cluster: &ClusterRow,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let marker = format!("{UNASKED_SKYBLOCK}:{}", cluster.id);
+    if migration_dao::is_applied(&ctx.db, &marker).await? {
+        return Ok(());
+    }
+
+    let unasked = cluster.mc_version == "26.3"
+        && bundle_dao::predates_bundle_choices(&ctx.db, cluster.id).await?;
+    if unasked {
+        let declined: Vec<(String, bool)> = archives
+            .iter()
+            .filter(|archive| {
+                !archive.manifest.enabled
+                    && archive
+                        .manifest
+                        .category
+                        .trim()
+                        .eq_ignore_ascii_case("SkyBlock")
+            })
+            .map(|archive| (archive.manifest.name.clone(), false))
+            .collect();
+        set_bundle_choices(cluster.id, &declined, ctx).await?;
+    }
+
+    migration_dao::mark_applied(&ctx.db, &marker).await?;
     Ok(())
 }
 
@@ -424,7 +509,13 @@ pub async fn heal_bundle_activity(
         }
     }
 
-    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let overrides = overrides_outside_declined(
+        cluster_id,
+        archives,
+        bundle_dao::list_overrides(&ctx.db, cluster_id).await?,
+        ctx,
+    )
+    .await?;
 
     let mut live_packages: std::collections::HashSet<String> = tracked
         .iter()
@@ -971,6 +1062,35 @@ pub async fn remove_artifact_from_cluster(
 ) -> ContentResult<()> {
     let bundle_data = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?;
 
+    detach_artifact(cluster_id, hash, ctx).await?;
+
+    if let Some(tracked) = bundle_data
+        && let (Some(bundle_name), Some(package_id)) =
+            (tracked.bundle_name.clone(), tracked.package_id.clone())
+    {
+        if record_override {
+            bundle_dao::save_override(
+                &ctx.db,
+                cluster_id,
+                &bundle_name,
+                &package_id,
+                OverrideType::Removed,
+            )
+            .await?;
+        } else {
+            let replacement_exists =
+                bundle_dao::has_bundle_mapping_for_package(&ctx.db, cluster_id, &package_id)
+                    .await?;
+            if !replacement_exists {
+                clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
     // Looked up first but never allowed to block removal
     // a package whose artifact row has gone missing must still be removable
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
@@ -1004,29 +1124,6 @@ pub async fn remove_artifact_from_cluster(
     // `evict_if_unused` drops it only once no other cluster still needs it
     if !deferred && let Err(err) = evict_if_unused(hash, ctx).await {
         tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
-    }
-
-    if let Some(tracked) = bundle_data
-        && let (Some(bundle_name), Some(package_id)) =
-            (tracked.bundle_name.clone(), tracked.package_id.clone())
-    {
-        if record_override {
-            bundle_dao::save_override(
-                &ctx.db,
-                cluster_id,
-                &bundle_name,
-                &package_id,
-                OverrideType::Removed,
-            )
-            .await?;
-        } else {
-            let replacement_exists =
-                bundle_dao::has_bundle_mapping_for_package(&ctx.db, cluster_id, &package_id)
-                    .await?;
-            if !replacement_exists {
-                clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
-            }
-        }
     }
 
     Ok(())
@@ -1122,6 +1219,63 @@ mod tests {
                 meta: None,
             },
         }
+    }
+
+    fn manifest(name: &str, enabled: bool, files: Vec<BundleFile>) -> BundleManifest {
+        BundleManifest {
+            name: name.to_string(),
+            version_id: "1".to_string(),
+            category: String::new(),
+            mc_version: "1.21.1".to_string(),
+            loader: GameLoader::Fabric,
+            loader_version: "0.16.5".to_string(),
+            enabled,
+            java_version_override: None,
+            files,
+        }
+    }
+
+    fn named(name: &str, enabled: bool) -> BundleFile {
+        let mut file = file(enabled);
+        file.path = format!("mods/{name}.jar");
+        if let BundleFileKind::External { file: ext, .. } = &mut file.kind {
+            ext.name = format!("{name}.jar");
+            ext.sha1 = name.to_string();
+        }
+        file
+    }
+
+    #[test]
+    fn the_planned_bundle_files_follow_choices_and_overrides() {
+        let manifests = vec![
+            manifest(
+                "Core",
+                true,
+                vec![named("a", true), named("b", true), named("off", false)],
+            ),
+            manifest("Picked", false, vec![named("c", true)]),
+            manifest(
+                "Declined",
+                false,
+                vec![named("d", true), named("opted", false)],
+            ),
+        ];
+        let accepted: std::collections::HashSet<String> = ["Picked".to_string()].into();
+        let disabled_b = named("b", true).kind.package_id();
+        let opted = named("opted", false).kind.package_id();
+
+        let wanted = wanted_bundle_files(&manifests, &accepted, |bundle, package| {
+            if bundle == "Core" && package == disabled_b {
+                Some(OverrideType::Disabled)
+            } else if bundle == "Declined" && package == opted {
+                Some(OverrideType::Enabled)
+            } else {
+                None
+            }
+        });
+
+        let paths: Vec<&str> = wanted.iter().map(|file| file.path.as_str()).collect();
+        assert_eq!(paths, vec!["mods/a.jar", "mods/c.jar", "mods/opted.jar"]);
     }
 
     #[test]

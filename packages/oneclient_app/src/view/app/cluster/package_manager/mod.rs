@@ -189,7 +189,12 @@ pub fn bundle_packages(
                 .map(String::as_str);
             let enabled = match installed_info {
                 Some(info) => info.enabled,
-                None => oneclient_core::effective_enabled(file, ov.and_then(OverrideType::parse)),
+                None => {
+                    let ov = ov.and_then(OverrideType::parse);
+                    ov == Some(OverrideType::Enabled)
+                        || (bundle.opted_in_types.contains(&content_type)
+                            && oneclient_core::effective_enabled(file, ov))
+                }
             };
 
             let advanced = content_type == ContentType::Mod
@@ -759,6 +764,10 @@ mod tests {
         assert_eq!(all, ["shared", "only-taken"]);
         let shared = rows.iter().find(|p| p.package_id == "shared").unwrap();
         assert_eq!(shared.categories, ["Taken"]);
+        let only_declined = rows.iter().find(|p| p.package_id == "only-declined").unwrap();
+        assert!(!only_declined.enabled, "a turned down bundle's mods read off");
+        let only_taken = rows.iter().find(|p| p.package_id == "only-taken").unwrap();
+        assert!(only_taken.enabled);
         let declined = Tab::Category("Declined".into());
         assert!(
             rows.iter()

@@ -34,6 +34,11 @@ fn with_slot<R>(change: impl FnOnce(&mut JobSlot) -> R) -> R {
 }
 
 #[must_use]
+pub(super) fn modpack_job_idle() -> bool {
+    with_slot(|slot| matches!(slot, JobSlot::Idle))
+}
+
+#[must_use]
 pub fn modpack_job_running(cluster_id: ClusterId) -> bool {
     with_slot(|slot| matches!(slot, JobSlot::Running(id) if *id == cluster_id))
 }
@@ -114,23 +119,39 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
             .unwrap_or_else(|| "a file".to_string()),
     };
 
+    let (pack_name, version) = match &prepared.share {
+        Some(shared) if shared.share.modpack.is_some() => (
+            shared.share.name.clone(),
+            format!("{} {}", manifest.name, manifest.version),
+        ),
+        Some(shared) => (shared.share.name.clone(), "Shared instance".to_string()),
+        None if manifest.name.trim().is_empty() => {
+            (prepared.instance_name.clone(), manifest.version.clone())
+        }
+        None => (manifest.name.clone(), manifest.version.clone()),
+    };
+
     ModpackConfirm {
-        pack_name: if manifest.name.trim().is_empty() {
-            prepared.instance_name.clone()
-        } else {
-            manifest.name.clone()
-        },
-        version: manifest.version.clone(),
+        notices: prepared.notices().to_vec(),
+        pack_name,
+        version,
         instance_name: prepared.instance_name.clone(),
         mc_version: manifest.mc_version.clone(),
         loader,
         source,
-        summary: manifest.summary(),
+        summary: prepared.summary(),
     }
 }
 
 impl Actions {
     fn claim_modpack_job(&self) -> bool {
+        if super::external_import::import_running() {
+            self.notify("An import is already running")
+                .body("Wait for it to finish, then try again.")
+                .error()
+                .send();
+            return false;
+        }
         let claimed = with_slot(|slot| match slot {
             JobSlot::Idle => {
                 *slot = JobSlot::Preparing;
@@ -139,7 +160,7 @@ impl Actions {
             _ => false,
         });
         if !claimed {
-            self.notify("A modpack is already being installed")
+            self.notify("Another install is already running")
                 .body("Wait for it to finish, then try again.")
                 .error()
                 .send();
@@ -263,6 +284,13 @@ impl Actions {
     }
 
     fn refuse_while_running(&self, cluster_id: ClusterId) -> bool {
+        if super::share::exporting(cluster_id) {
+            self.notify("Wait for the export to finish")
+                .body("This instance is being exported. Change its modpack once that's done.")
+                .error()
+                .send();
+            return true;
+        }
         let running = launcher::state().is_ok_and(|state| state.games.is_active(cluster_id));
         if running {
             self.notify("Close the game first")

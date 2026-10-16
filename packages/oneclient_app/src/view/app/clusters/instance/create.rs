@@ -21,6 +21,7 @@ use crate::utils::default_cluster;
 
 const MODPACK_BROWSE_TYPE: &str = "modpack";
 const MODPACK_EXTENSIONS: [&str; 2] = ["mrpack", "zip"];
+const IMPORT_EXTENSIONS: [&str; 2] = [oneclient_content::modpacks::SHARE_EXTENSION, "zip"];
 
 fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
     let mc_version = picks.versions.chosen.clone()?;
@@ -65,7 +66,10 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
                 None => picks.loader_label(),
             },
             TypeChoice::Modpack => "Modpack".to_string(),
-            TypeChoice::Import => "From Prism, MultiMC or the Modrinth App".to_string(),
+            TypeChoice::Import => match picks.import_source {
+                ImportSource::File => "From a file".to_string(),
+                ImportSource::Launcher => "From Prism, MultiMC or the Modrinth App".to_string(),
+            },
         }
     } else {
         description
@@ -138,6 +142,7 @@ impl Component for CreateInstanceModal {
             loader_version: use_state(|| None::<String>),
             declined: use_state(|| None::<HashSet<String>>),
             modpack_origin: use_state(|| ModpackOrigin::Browse),
+            import_source: use_state(|| ImportSource::File),
             import_chosen: use_state(Vec::new),
             import_extra: use_state(Vec::new),
             import_mode: use_state(|| ImportMode::AsIs),
@@ -163,6 +168,7 @@ impl Component for CreateInstanceModal {
         } else {
             Vec::new()
         };
+        let friend = picks.step == Step::ImportSource && picks.import_source == ImportSource::File;
         let origin = picks.modpack_origin;
         let index = picks.index;
         let mut step = wizard.step;
@@ -195,6 +201,7 @@ impl Component for CreateInstanceModal {
                     1 => "Import instance".to_string(),
                     n => format!("Import {n} instances"),
                 },
+                (false, _) if friend => "Choose file".to_string(),
                 (true, ModpackOrigin::Browse) => "Browse modpacks".to_string(),
                 (true, ModpackOrigin::File) => "Choose file".to_string(),
                 (false, _) if last => "Create instance".to_string(),
@@ -211,7 +218,9 @@ impl Component for CreateInstanceModal {
             })
             .into(),
             on_primary: (move |()| {
-                if (import_step && !improving) || review_step {
+                if friend {
+                    pick_shared_file(dispatch.clone(), close_modpack.clone());
+                } else if (import_step && !improving) || review_step {
                     dispatch.import_external_instances(import_jobs.clone());
                     close_import.call(());
                 } else if modpack_step {
@@ -234,6 +243,24 @@ impl Component for CreateInstanceModal {
             .into(),
         })
     }
+}
+
+fn pick_shared_file(dispatch: crate::Actions, on_close: EventHandler<()>) {
+    spawn(async move {
+        let Some(handle) = rfd::AsyncFileDialog::new()
+            .set_title("Choose the instance to import")
+            .add_filter(
+                "OneClient, Prism Launcher or MultiMC instance",
+                &IMPORT_EXTENSIONS,
+            )
+            .pick_file()
+            .await
+        else {
+            return;
+        };
+        dispatch.import_file(handle.path().to_path_buf());
+        on_close.call(());
+    });
 }
 
 fn browse_cluster() -> i64 {

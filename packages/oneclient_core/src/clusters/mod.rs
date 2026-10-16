@@ -4,6 +4,7 @@ pub(crate) mod modpack;
 pub(crate) mod prepare;
 mod provision;
 mod release_migration;
+mod share;
 mod unlink_legacy;
 
 pub use java_override::apply_bundle_java_override;
@@ -20,6 +21,7 @@ pub use release_migration::{
     OfferLookup, ReleaseMigrationOffer, can_migrate_manually, copy_configs, manual_migration_offer,
     rank_migration_sources, record_new_versions, release_migration_offer,
 };
+pub use share::{ExportMode, SharedCluster, export_cluster};
 pub use unlink_legacy::{SweepReport, unlink_legacy_cluster_content};
 
 pub use oneclient_cluster::{

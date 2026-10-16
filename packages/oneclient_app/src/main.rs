@@ -61,6 +61,7 @@ impl App for OneClientApp {
                         // it early leaves `syncing_bundles` stuck disabling every launch button
                         Ok(()) => {
                             startup.sync_bundles();
+                            Actions::check_sessions();
                             microsoft_java::spawn_auto_install();
                         }
                         Err(err) => {

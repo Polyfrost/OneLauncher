@@ -14,7 +14,7 @@ use oneclient_content::modpacks::{BlockedFile, MODPACK_BUNDLE_NAME};
 use oneclient_content::packages::store::cache_local_file;
 use oneclient_content::packages::{PackageStore, ProviderId, curseforge_fingerprint, pick_version};
 use oneclient_db::dao::{cluster as cluster_dao, cluster_bundle as bundle_dao};
-use oneclient_events::GroupedProgressSession;
+use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 
 use crate::LauncherResult;
 use crate::clusters::modpack::{
@@ -160,6 +160,35 @@ impl ScannedContent {
 /// Nothing in the source folder is modified, so the other launcher keeps
 /// working. A failure after the cluster exists removes it again rather than
 /// leaving a half-imported instance behind
+struct ImportStatus<'a> {
+    session: Option<&'a GroupedProgressSession>,
+    current: Option<GroupedProgressChild>,
+}
+
+impl<'a> ImportStatus<'a> {
+    fn new(session: Option<&'a GroupedProgressSession>) -> Self {
+        Self {
+            session,
+            current: None,
+        }
+    }
+
+    fn stage(&mut self, label: impl Into<String>) {
+        self.finish();
+        self.current = self.session.map(|session| {
+            let child = session.child(label, 1, TaskCategory::Packages);
+            child.set_phase(TaskPhase::Importing);
+            child
+        });
+    }
+
+    fn finish(&mut self) {
+        if let Some(child) = self.current.take() {
+            child.finish();
+        }
+    }
+}
+
 #[tracing::instrument(skip(state, instance, progress), fields(name = %instance.name, launcher = instance.launcher.id()))]
 pub async fn import_instance(
     state: &Arc<LauncherState>,
@@ -168,6 +197,8 @@ pub async fn import_instance(
     progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<ExternalImportReport> {
     let content = state.services.content();
+    let mut status = ImportStatus::new(progress);
+    status.stage(format!("Reading {}", instance.name));
     let staging = polyio::tempdir().await?;
     let mut scanned = scan_content(&instance.game_dir).await;
     let found = scanned.files.len();
@@ -187,7 +218,10 @@ pub async fn import_instance(
     let name = unique_name(&instance_name(&instance.name), &taken);
 
     let prepared = match &instance.linked_pack {
-        Some(pack) => prepare_linked_pack(state, instance, pack, &name).await,
+        Some(pack) => {
+            status.stage("Fetching the modpack");
+            prepare_linked_pack(state, instance, pack, &name).await
+        }
         None => None,
     };
 
@@ -202,6 +236,7 @@ pub async fn import_instance(
         }
     }
 
+    status.stage("Creating the instance");
     let cluster = match &prepared {
         Some(prepared) => create_modpack_instance(state, prepared).await?,
         None => create_plain(state, instance, &name).await?,
@@ -214,9 +249,10 @@ pub async fn import_instance(
         prepared.as_ref(),
         &scanned,
         choices,
-        progress,
+        &mut status,
     )
     .await;
+    status.finish();
     match result {
         Ok(mut report) => {
             report.cluster_id = cluster.id;
@@ -305,12 +341,14 @@ async fn populate(
     prepared: Option<&PreparedModpack>,
     scanned: &ScannedContent,
     choices: &ImportChoices,
-    progress: Option<&GroupedProgressSession>,
+    status: &mut ImportStatus<'_>,
 ) -> LauncherResult<ExternalImportReport> {
+    let progress = status.session;
     let content = state.services.content();
     let mut report = ExternalImportReport::default();
 
     if let Some(prepared) = prepared {
+        status.stage("Installing the modpack");
         let installed = install_modpack_instance(state, cluster.id, prepared, progress).await?;
         report.linked_pack = true;
         report.blocked = installed.report.blocked;
@@ -326,6 +364,7 @@ async fn populate(
 
     let game_dir = cluster.game_dir()?;
     polyio::create_dir_all(&game_dir).await?;
+    status.stage("Copying worlds and settings");
     if instance.game_dir.is_dir() {
         let source = instance.game_dir.as_path();
         copy_tree(
@@ -348,8 +387,14 @@ async fn populate(
         }
     }
 
+    status.stage(match scanned.files.len() {
+        0 => "Importing mods and packs".to_string(),
+        1 => "Importing 1 mod or pack".to_string(),
+        n => format!("Importing {n} mods and packs"),
+    });
     import_content(cluster, scanned, &mut report, &content).await?;
 
+    status.stage("Setting up Java");
     let mut settings = instance.settings.clone();
     let java_path = settle_java(state, cluster.id, &mut settings, &mut report, progress).await;
     apply_settings(state, cluster.id, &settings, java_path).await;

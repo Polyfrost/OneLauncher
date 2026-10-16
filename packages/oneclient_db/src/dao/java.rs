@@ -82,15 +82,27 @@ pub async fn get_latest_by_major(
 }
 
 pub async fn delete_by_path(pool: &SqlitePool, absolute_path: &str) -> Result<(), DbError> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query!(
+        r#"
+        UPDATE setting_profiles SET java_path = NULL WHERE java_path = ?
+        "#,
+        absolute_path,
+    )
+    .execute(&mut *tx)
+    .await?;
+
     sqlx::query!(
         r#"
         DELETE FROM java_versions WHERE absolute_path = ?
         "#,
         absolute_path,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
+    tx.commit().await?;
     Ok(())
 }
 
@@ -107,4 +119,37 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<JavaVersionRow>, DbError>
     .await?;
 
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn delete_clears_profile_reference() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite");
+        sqlx::migrate!().run(&pool).await.expect("migrations run");
+
+        insert(&pool, "/jdk/bin/java", 21, "21.0.1", "Zulu", "x64", true, 1)
+            .await
+            .expect("insert java");
+        sqlx::query("INSERT INTO setting_profiles (name, java_path) VALUES ('p', '/jdk/bin/java')")
+            .execute(&pool)
+            .await
+            .expect("insert profile");
+
+        delete_by_path(&pool, "/jdk/bin/java")
+            .await
+            .expect("delete despite profile reference");
+
+        let java_path: Option<String> =
+            sqlx::query_scalar("SELECT java_path FROM setting_profiles WHERE name = 'p'")
+                .fetch_one(&pool)
+                .await
+                .expect("profile kept");
+        assert_eq!(java_path, None);
+        assert!(get_by_path(&pool, "/jdk/bin/java").await.unwrap().is_none());
+    }
 }

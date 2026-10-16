@@ -1,8 +1,7 @@
 use sqlx::SqlitePool;
 
 use crate::models::{
-    ArtifactRow, ClusterArtifactRow, ClusterKind, LinkedArtifactRow, ProviderReleaseRow,
-    SeenStatus,
+    ArtifactRow, ClusterArtifactRow, ClusterKind, LinkedArtifactRow, ProviderReleaseRow, SeenStatus,
 };
 
 pub async fn get_artifact_by_hash(

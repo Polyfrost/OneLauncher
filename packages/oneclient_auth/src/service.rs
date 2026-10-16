@@ -222,6 +222,23 @@ impl AuthService {
         Ok(())
     }
 
+    /// Debug aid puts the account straight into the state a rejected refresh
+    /// token leaves behind
+    #[tracing::instrument(skip(self), fields(%id))]
+    pub async fn mark_signed_out(&self, id: Uuid) -> AuthResult<()> {
+        let guard = self.refresh_guard(id);
+        let _serialised = guard.lock().await;
+        self.store.lock().await.mark_signed_out(id).await
+    }
+
+    /// Debug aid see [`CredentialsStore::corrupt_refresh_token`]
+    #[tracing::instrument(skip(self), fields(%id))]
+    pub async fn corrupt_refresh_token(&self, id: Uuid) -> AuthResult<()> {
+        let guard = self.refresh_guard(id);
+        let _serialised = guard.lock().await;
+        self.store.lock().await.corrupt_refresh_token(id).await
+    }
+
     pub async fn has_microsoft_account(&self) -> bool {
         self.store.lock().await.has_microsoft_account()
     }
@@ -250,6 +267,11 @@ impl AuthService {
     #[tracing::instrument(level = "debug", skip(self), fields(%id))]
     async fn renew_token(&self, id: Uuid, force: bool) -> AuthResult<MinecraftAccount> {
         let existing = self.account_snapshot(id).await?;
+        if existing.needs_sign_in() {
+            return Err(AuthError::SessionExpired {
+                username: existing.username,
+            });
+        }
         if !existing.is_microsoft() || (!force && !existing.is_expired()) {
             return Ok(existing);
         }
@@ -259,6 +281,11 @@ impl AuthService {
 
         // Re-read under the guard whoever held it may have just refreshed
         let existing = self.account_snapshot(id).await?;
+        if existing.needs_sign_in() {
+            return Err(AuthError::SessionExpired {
+                username: existing.username,
+            });
+        }
         if !existing.is_microsoft() || (!force && !existing.is_expired()) {
             return Ok(existing);
         }
@@ -272,6 +299,13 @@ impl AuthService {
                     .commit_refreshed_account(refreshed.clone())
                     .await?;
                 Ok(refreshed)
+            }
+            Err(MinecraftAuthError::RefreshTokenRevoked { .. }) => {
+                tracing::warn!(username = %existing.username, "refresh token rejected, marking account signed out");
+                self.store.lock().await.mark_signed_out(id).await?;
+                Err(AuthError::SessionExpired {
+                    username: existing.username,
+                })
             }
             Err(err) => {
                 let err = AuthError::from(err);
@@ -290,21 +324,64 @@ impl AuthService {
         self.renew_token(id, true).await
     }
 
+    /// A signed-out account is skipped rather than failing the whole batch it
+    /// already shows as needing a sign-in
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn refresh_all_accounts(&self) -> AuthResult<Vec<MinecraftAccount>> {
         let ids: Vec<Uuid> = self.store.lock().await.users.keys().copied().collect();
         let mut refreshed = Vec::with_capacity(ids.len());
 
         for id in ids {
-            refreshed.push(self.renew_token(id, true).await?);
+            match self.renew_token(id, true).await {
+                Ok(account) => refreshed.push(account),
+                Err(AuthError::SessionExpired { .. }) => {}
+                Err(err) => return Err(err),
+            }
         }
 
         Ok(refreshed)
     }
 
+    /// A revoked refresh token is only discovered by trying it doing so at
+    /// startup surfaces the sign-out before the user presses play
+    /// Only lapsed tokens are tried a live one needs no renewal yet
+    /// Returns whether any account was newly marked signed out
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn check_expired_sessions(&self) -> bool {
+        let ids: Vec<Uuid> = self
+            .store
+            .lock()
+            .await
+            .users
+            .values()
+            .filter(|a| a.is_microsoft() && !a.needs_sign_in() && a.is_expired())
+            .map(|a| a.id)
+            .collect();
+
+        let mut signed_out = false;
+        for id in ids {
+            match self.renew_token(id, false).await {
+                Ok(_) => {}
+                Err(AuthError::SessionExpired { .. }) => signed_out = true,
+                Err(err) => tracing::warn!(%id, "startup session check failed: {err}"),
+            }
+        }
+        signed_out
+    }
+
     #[tracing::instrument(level = "debug", skip(self), fields(%id))]
     pub async fn account_for_launch(&self, id: Uuid) -> AuthResult<MinecraftAccount> {
-        let account = self.renew_token(id, false).await?;
+        let account = match self.renew_token(id, false).await {
+            Ok(account) => account,
+            // A signed-out account still plays under its saved name and uuid
+            // with an empty token like an offline account singleplayer works
+            // and the UI keeps asking for a sign-in
+            Err(AuthError::SessionExpired { username }) => {
+                tracing::info!(%username, "launching signed-out account without a token");
+                self.account_snapshot(id).await?
+            }
+            Err(err) => return Err(err),
+        };
 
         if account.is_offline() && !self.has_microsoft_account().await {
             return Err(AuthError::OfflineRequiresMicrosoft);
@@ -428,5 +505,68 @@ mod tests {
                 MinecraftAuthError::BrowserLoginNotFound
             ))
         ));
+    }
+
+    fn signed_out_service() -> (AuthService, Uuid) {
+        let mut account = crate::offline::offline_account("MsaUser".to_string());
+        account.kind = crate::data::AccountKind::Microsoft;
+        account.signed_out = true;
+        let id = account.id;
+
+        let mut store = CredentialsStore::default();
+        store.users.insert(id, account);
+        store.default_user = Some(id);
+
+        let (events, _rx) = EventBus::channel();
+        let net = RequestClient::new(NetConfig::default()).expect("net client");
+        (AuthService::with_store(store, net, events), id)
+    }
+
+    #[tokio::test]
+    async fn a_signed_out_account_still_launches_without_touching_the_network() {
+        let (service, id) = signed_out_service();
+
+        let account = service
+            .default_account_for_launch()
+            .await
+            .expect("a signed-out account must still launch")
+            .expect("the only account is the default");
+        assert_eq!(account.id, id);
+        assert!(account.needs_sign_in());
+        assert!(account.access_token.is_empty());
+    }
+
+    #[tokio::test]
+    async fn refresh_all_skips_signed_out_accounts() {
+        let (service, id) = signed_out_service();
+
+        let refreshed = service.refresh_all_accounts().await.unwrap();
+        assert!(refreshed.is_empty());
+        assert!(
+            service.get_account(id).await.is_some(),
+            "the entry must stay listed"
+        );
+    }
+
+    #[tokio::test]
+    async fn the_startup_check_leaves_live_and_signed_out_accounts_alone() {
+        let (service, signed_out_id) = signed_out_service();
+
+        let mut live = crate::offline::offline_account("LiveUser".to_string());
+        live.kind = crate::data::AccountKind::Microsoft;
+        live.expires = chrono::Utc::now() + chrono::TimeDelta::hours(12);
+        let live_id = live.id;
+        service.store.lock().await.users.insert(live_id, live);
+
+        // Neither account qualifies so this must return without a request
+        assert!(!service.check_expired_sessions().await);
+        assert!(!service.get_account(live_id).await.unwrap().needs_sign_in());
+        assert!(
+            service
+                .get_account(signed_out_id)
+                .await
+                .unwrap()
+                .needs_sign_in()
+        );
     }
 }

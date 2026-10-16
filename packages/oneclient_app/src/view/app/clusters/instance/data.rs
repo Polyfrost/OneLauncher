@@ -63,6 +63,7 @@ pub struct Picks {
     pub step: Step,
     pub choice: TypeChoice,
     pub modpack_origin: ModpackOrigin,
+    pub import_source: ImportSource,
     pub import_count: usize,
     pub import_mode: ImportMode,
     pub import_screening: Option<Vec<ScreenedInstance>>,
@@ -362,7 +363,8 @@ fn suggested_name(
 pub fn resolve(w: Wizard) -> Picks {
     let choice = *w.choice.read();
     let import_mode = *w.import_mode.read();
-    let steps = step_order(choice, import_mode);
+    let import_source = *w.import_source.read();
+    let steps = step_order(choice, import_source, import_mode);
     let index = (*w.step.read()).min(steps.len().saturating_sub(1));
     let step = steps[index];
 
@@ -452,6 +454,7 @@ pub fn resolve(w: Wizard) -> Picks {
         step,
         choice,
         modpack_origin: *w.modpack_origin.read(),
+        import_source,
         import_count: w.import_chosen.read().len(),
         import_mode,
         import_screening,

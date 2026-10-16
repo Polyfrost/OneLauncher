@@ -1391,6 +1391,132 @@ async fn taking_a_bundle_at_the_prompt_records_the_choice() {
 }
 
 #[tokio::test]
+async fn turning_a_bundle_down_removes_what_it_installed() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    oneclient_content::bundles::set_bundle_choices(cluster_id, &[(BUNDLE.to_string(), true)], &ctx)
+        .await
+        .unwrap();
+    let tracked = bundle_dao::list_bundle_tracked(&state.services.db, cluster_id)
+        .await
+        .unwrap();
+    assert_eq!(tracked.len(), 1, "taking the bundle keeps its mods");
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    oneclient_content::bundles::set_bundle_choices(
+        cluster_id,
+        &[(BUNDLE.to_string(), false)],
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let tracked = bundle_dao::list_bundle_tracked(&state.services.db, cluster_id)
+        .await
+        .unwrap();
+    assert!(tracked.is_empty());
+    let overrides = bundle_dao::list_overrides(&state.services.db, cluster_id)
+        .await
+        .unwrap();
+    assert_eq!(overrides.len(), 1, "a mod the user switched off stays off");
+}
+
+#[tokio::test]
+async fn skyblock_nobody_asked_for_is_taken_out_of_an_old_26_3_cluster_once() {
+    const SKYBLOCK: &str = "Test [SkyBlock]";
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let db = &state.services.db;
+    let mut m = named_manifest(SKYBLOCK, vec![managed_file(true)]);
+    m.enabled = false;
+    m.category = "SkyBlock".to_string();
+    m.mc_version = "26.3".to_string();
+    seed_bundle_with_pack(&state, m).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+    let track = || {
+        bundle_dao::track_bundle_artifact(db, cluster_id, HASH, SKYBLOCK, VERSION_ID, PROJECT_ID)
+    };
+    let apply = || {
+        oneclient_content::bundles::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &ctx,
+            None,
+        )
+    };
+    track().await.unwrap();
+    bundle_dao::save_bundle_choices(db, cluster_id, &[(SKYBLOCK.to_string(), true)])
+        .await
+        .unwrap();
+
+    sqlx::query("UPDATE clusters SET mc_version = '26.3' WHERE id = ?")
+        .bind(cluster_id)
+        .execute(db)
+        .await
+        .unwrap();
+    apply().await.unwrap();
+    assert_eq!(
+        bundle_dao::list_bundle_tracked(db, cluster_id)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "a cluster made after bundles started asking is left alone"
+    );
+
+    sqlx::query("DELETE FROM applied_migrations")
+        .execute(db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE clusters SET created_at = '2020-01-01T00:00:00+00:00' WHERE id = ?")
+        .bind(cluster_id)
+        .execute(db)
+        .await
+        .unwrap();
+    apply().await.unwrap();
+    assert!(
+        bundle_dao::list_bundle_tracked(db, cluster_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    artifact_dao::insert_artifact(
+        db,
+        HASH,
+        ContentType::Mod as i64,
+        "artifacts/sodium.jar",
+        "sodium.jar",
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(db, cluster_id, HASH, "sodium.jar")
+        .await
+        .unwrap();
+    track().await.unwrap();
+    apply().await.unwrap();
+    assert_eq!(
+        bundle_dao::list_bundle_tracked(db, cluster_id)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "taking SkyBlock again later is not undone"
+    );
+}
+
+#[tokio::test]
 async fn an_opt_in_bundle_switched_off_by_accident_is_repaired_at_install() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     seed_opt_in_bundle(&state, BUNDLE).await;

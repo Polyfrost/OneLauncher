@@ -74,6 +74,7 @@ impl Component for NotificationPanel {
             .width(Size::fill())
             .height(Size::flex(1.0))
             .spacing(8.)
+            .scrollbar_gutter(true)
             .children(rows);
 
         rect()

@@ -1,3 +1,17 @@
+## 2.8.0 (2026-10-09)
+
+### Features
+
+- Added safe multiple minecraft instances launching, only dedicated clusters tho by [rozwader](https://github.com/rozwader)
+
+### Fixes
+
+- Added better informations about errors from mclogs. by [rozwader](https://github.com/rozwader)
+- Added status bar showing up if a player is logged out or he has a stale refresh token by [rozwader](https://github.com/rozwader)
+- Added a filter for choosing modpack loaders by [rozwader](https://github.com/rozwader)
+- SkyBlock content installed without asking is removed from 26.3 clusters once, and turning an optional bundle down removes its mods
+- Fixed shield.io badges not rendering properly in markdown viewers by [rozwader](https://github.com/rozwader)
+
 ## 2.7.0 (2026-10-05)
 
 ### Features

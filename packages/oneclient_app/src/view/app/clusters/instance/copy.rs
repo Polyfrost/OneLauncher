@@ -1,7 +1,7 @@
 use oneclient_cluster::naming::validate_instance_name;
 
 use super::data::Picks;
-use super::model::{ImportMode, ModpackOrigin, Step, TypeChoice, Wizard};
+use super::model::{ImportMode, ImportSource, ModpackOrigin, Step, TypeChoice, Wizard};
 
 pub fn heading(picks: &Picks) -> (&'static str, String) {
     match picks.step {
@@ -44,6 +44,11 @@ pub fn heading(picks: &Picks) -> (&'static str, String) {
             "The pack decides the version, the loader and the mods. The instance is named after it."
                 .to_string(),
         ),
+        Step::ImportSource => (
+            "Import an instance",
+            "From a file someone exported from OneClient, or from another launcher on this computer."
+                .to_string(),
+        ),
         Step::ImportMode => (
             "How to import",
             "Bring instances over untouched, or let OneClient check their mods first.".to_string(),
@@ -74,7 +79,7 @@ pub fn footer_note(picks: &Picks) -> String {
                     .to_string()
             }
             TypeChoice::Import => {
-                "Copies instances from Prism Launcher, MultiMC, PolyMC or the Modrinth App."
+                "Brings in an instance from a OneClient export, or from Prism Launcher, MultiMC, PolyMC or the Modrinth App."
                     .to_string()
             }
         },
@@ -102,6 +107,16 @@ pub fn footer_note(picks: &Picks) -> String {
             }
             ModpackOrigin::File => {
                 "Takes .mrpack files from Modrinth and .zip files from CurseForge.".to_string()
+            }
+        },
+        Step::ImportSource => match picks.import_source {
+            ImportSource::File => {
+                "OneClient exports bring mods, packs, loader and Java. Prism Launcher and MultiMC exports bring the whole instance."
+                    .to_string()
+            }
+            ImportSource::Launcher => {
+                "Copies instances from Prism Launcher, MultiMC, PolyMC or the Modrinth App."
+                    .to_string()
             }
         },
         Step::ImportMode => match picks.import_mode {
@@ -153,6 +168,10 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
             ModpackOrigin::Browse => "Browse".to_string(),
             ModpackOrigin::File => "From a file".to_string(),
         },
+        Step::ImportSource => match picks.import_source {
+            ImportSource::File => "From a file".to_string(),
+            ImportSource::Launcher => "From a launcher".to_string(),
+        },
         Step::ImportMode => match picks.import_mode {
             ImportMode::AsIs => "As it is".to_string(),
             ImportMode::Improve => "Improved".to_string(),
@@ -185,7 +204,7 @@ pub fn is_ready(picks: &Picks) -> bool {
                 && (picks.choice == TypeChoice::Scratch || picks.loader.chosen.is_some())
         }
         Step::Customize => validate_instance_name(&picks.name).is_ok(),
-        Step::ImportMode => true,
+        Step::ImportSource | Step::ImportMode => true,
         Step::Import => picks.import_count > 0,
         Step::ImportReview => {
             picks.import_count > 0

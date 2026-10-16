@@ -10,7 +10,7 @@ use freya::prelude::*;
 use freya::router::use_route;
 use oneclient_content::modpacks::detect_format;
 use oneclient_content::packages::ContentType;
-use oneclient_core::clusters::{Cluster, ModpackSource};
+use oneclient_core::clusters::Cluster;
 use oneclient_db::models::ClusterId;
 
 use crate::Route;
@@ -108,8 +108,11 @@ pub fn accept_drop(
                 let path = path.clone();
                 spawn(async move {
                     let probe = path.clone();
-                    let is_modpack =
-                        off_ui(async move { detect_format(&probe).await.is_ok() }).await;
+                    let is_modpack = off_ui(async move {
+                        detect_format(&probe).await.is_ok()
+                            || oneclient_core::is_instance_archive(&probe).await
+                    })
+                    .await;
                     if is_modpack {
                         modpacks.write().push(path);
                     } else {
@@ -138,7 +141,7 @@ fn use_dropped_modpack_driver(pending: State<Vec<PathBuf>>, modpacks: State<Vec<
         let mut modpacks = modpacks;
         let dropped = std::mem::take(&mut *modpacks.write());
         for path in dropped {
-            dispatch.install_modpack(ModpackSource::File(path));
+            dispatch.import_file(path);
         }
     });
 }

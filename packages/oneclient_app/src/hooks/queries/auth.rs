@@ -113,7 +113,7 @@ pub fn try_account(query: &UseQuery<AccountQuery>) -> Option<MinecraftAccount> {
     super::state::settled_or_loading(query).flatten()
 }
 
-async fn invalidate_auth_queries(account_id: Option<Uuid>) {
+pub async fn invalidate_auth_queries(account_id: Option<Uuid>) {
     QueriesStorage::<ListAccountsQuery>::invalidate_matching(ListAccountsKeys).await;
     for fallback in [false, true] {
         QueriesStorage::<DefaultAccountQuery>::invalidate_matching(DefaultAccountKeys { fallback })
@@ -307,10 +307,10 @@ impl MutationCapability for RefreshAccountMutation {
             .await?)
     }
 
-    async fn on_settled(&self, keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
-        if result.is_ok() {
-            invalidate_auth_queries(Some(keys.id)).await;
-        }
+    /// A failure can still change the account a rejected token marks it
+    /// signed out
+    async fn on_settled(&self, keys: &Self::Keys, _result: &Result<Self::Ok, Self::Err>) {
+        invalidate_auth_queries(Some(keys.id)).await;
     }
 }
 
@@ -329,10 +329,8 @@ impl MutationCapability for RefreshAllAccountsMutation {
             .await?)
     }
 
-    async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
-        if result.is_ok() {
-            invalidate_auth_queries(None).await;
-        }
+    async fn on_settled(&self, _keys: &Self::Keys, _result: &Result<Self::Ok, Self::Err>) {
+        invalidate_auth_queries(None).await;
     }
 }
 

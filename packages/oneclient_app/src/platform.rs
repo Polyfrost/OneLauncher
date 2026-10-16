@@ -131,9 +131,12 @@ fn open_target(target: &str) {
 
 #[cfg(not(target_os = "linux"))]
 fn open_target(target: &str) {
-    if let Err(err) = open::that_detached(target) {
-        tracing::warn!("failed to open {target}: {err}");
-    }
+    let target = target.to_owned();
+    std::thread::spawn(move || {
+        if let Err(err) = open::that_detached(&target) {
+            tracing::warn!("failed to open {target}: {err}");
+        }
+    });
 }
 
 pub fn copy_image_to_clipboard(path: std::path::PathBuf) {

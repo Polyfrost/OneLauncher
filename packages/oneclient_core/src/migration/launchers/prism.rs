@@ -281,6 +281,20 @@ async fn read_instance(
     }))
 }
 
+pub async fn read_exported(dir: &Path) -> LauncherResult<Option<ExternalInstance>> {
+    let folder = dir
+        .file_name()
+        .map(|name| name.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Imported".to_string());
+    let groups = HashMap::new();
+    let source = Source {
+        root: dir,
+        icons_dir: dir,
+        groups: &groups,
+    };
+    read_instance(ExternalLauncher::Prism, dir, &folder, &source).await
+}
+
 /// Built-in icon keys (`grass`, `flame`, ...) have no file and are skipped
 fn find_icon(icons_dir: &Path, key: &str) -> Option<PathBuf> {
     ICON_EXTENSIONS

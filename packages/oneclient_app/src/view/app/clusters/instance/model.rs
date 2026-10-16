@@ -33,6 +33,12 @@ pub enum TypeChoice {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+pub enum ImportSource {
+    File,
+    Launcher,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ImportMode {
     AsIs,
     Improve,
@@ -166,6 +172,7 @@ pub enum Step {
     Bundles,
     Customize,
     Modpack,
+    ImportSource,
     ImportMode,
     Import,
     ImportReview,
@@ -180,6 +187,7 @@ impl Step {
             Self::Bundles => "Bundles",
             Self::Customize => "Details",
             Self::Modpack => "Source",
+            Self::ImportSource => "Source",
             Self::ImportMode => "Method",
             Self::Import => "Instances",
             Self::ImportReview => "Review",
@@ -190,21 +198,29 @@ impl Step {
 const ONECLIENT_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Bundles, Step::Customize];
 const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Loader, Step::Customize];
 const MODPACK_STEPS: [Step; 2] = [Step::Type, Step::Modpack];
-const IMPORT_STEPS: [Step; 3] = [Step::Type, Step::ImportMode, Step::Import];
-const IMPROVE_STEPS: [Step; 4] = [
+const IMPORT_FILE_STEPS: [Step; 2] = [Step::Type, Step::ImportSource];
+const IMPORT_STEPS: [Step; 4] = [
     Step::Type,
+    Step::ImportSource,
+    Step::ImportMode,
+    Step::Import,
+];
+const IMPROVE_STEPS: [Step; 5] = [
+    Step::Type,
+    Step::ImportSource,
     Step::ImportMode,
     Step::Import,
     Step::ImportReview,
 ];
 
-pub fn step_order(choice: TypeChoice, mode: ImportMode) -> &'static [Step] {
-    match (choice, mode) {
-        (TypeChoice::OneClient, _) => &ONECLIENT_STEPS,
-        (TypeChoice::Scratch, _) => &SCRATCH_STEPS,
-        (TypeChoice::Modpack, _) => &MODPACK_STEPS,
-        (TypeChoice::Import, ImportMode::AsIs) => &IMPORT_STEPS,
-        (TypeChoice::Import, ImportMode::Improve) => &IMPROVE_STEPS,
+pub fn step_order(choice: TypeChoice, source: ImportSource, mode: ImportMode) -> &'static [Step] {
+    match (choice, source, mode) {
+        (TypeChoice::OneClient, _, _) => &ONECLIENT_STEPS,
+        (TypeChoice::Scratch, _, _) => &SCRATCH_STEPS,
+        (TypeChoice::Modpack, _, _) => &MODPACK_STEPS,
+        (TypeChoice::Import, ImportSource::File, _) => &IMPORT_FILE_STEPS,
+        (TypeChoice::Import, ImportSource::Launcher, ImportMode::AsIs) => &IMPORT_STEPS,
+        (TypeChoice::Import, ImportSource::Launcher, ImportMode::Improve) => &IMPROVE_STEPS,
     }
 }
 
@@ -264,6 +280,7 @@ pub struct Wizard {
     pub loader_version: State<Option<String>>,
     pub declined: State<Option<HashSet<String>>>,
     pub modpack_origin: State<ModpackOrigin>,
+    pub import_source: State<ImportSource>,
     /// Instances ticked on the import step, in the order they were ticked
     pub import_chosen: State<Vec<ExternalInstance>>,
     /// Installs the user pointed at by hand (portable launchers)

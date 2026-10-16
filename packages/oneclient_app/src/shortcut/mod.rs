@@ -58,6 +58,10 @@ pub fn default_dir() -> Option<PathBuf> {
 }
 
 pub fn launcher_exe() -> Result<PathBuf> {
+    if let Some(exe) = std::env::var_os("ONECLIENT_LAUNCHER_EXE") {
+        return Ok(PathBuf::from(exe));
+    }
+
     #[cfg(all(unix, not(target_os = "macos")))]
     if let Some(appimage) = std::env::var_os("APPIMAGE") {
         let path = PathBuf::from(appimage);

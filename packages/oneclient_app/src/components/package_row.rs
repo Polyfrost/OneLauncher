@@ -63,6 +63,7 @@ pub struct PackageEntry {
     /// False for uninstalled rows of bundles the cluster never took keeps them out of the All tab
     pub opted_in: bool,
     pub advanced: bool,
+    pub deleted: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
     pub shadowed: bool,
@@ -292,6 +293,19 @@ pub(crate) fn set_enabled_action(
     }
 }
 
+pub(crate) fn bundled_delete_action(item: &PackageEntry, cluster_id: i64) -> Option<ClusterAction> {
+    let hash = item.hash.clone()?;
+    Some(if item.deleted {
+        ClusterAction::SetArtifactEnabled {
+            cluster_id,
+            hash,
+            enabled: true,
+        }
+    } else {
+        ClusterAction::DeleteBundledArtifact { cluster_id, hash }
+    })
+}
+
 pub(crate) fn disable_warning_body(
     item: &PackageEntry,
     warnings: Option<oneclient_core::DisableWarnings>,
@@ -313,6 +327,7 @@ pub fn package_context_menu(
     cluster_id: i64,
     package_type: &'static str,
     on_delete: EventHandler<(String, String)>,
+    on_bundled: Option<EventHandler<()>>,
     on_select: EventHandler<()>,
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone()).action(
@@ -346,6 +361,16 @@ pub fn package_context_menu(
             "View in folder",
             EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
         );
+    }
+
+    if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.installed) {
+        menu = if item.deleted {
+            menu.separator()
+                .action(IconType::RefreshCcw02, "Restore", on_bundled)
+        } else {
+            menu.separator()
+                .danger_action(IconType::Trash01, "Delete", on_bundled)
+        };
     }
 
     if item.installed && !item.in_bundle() {

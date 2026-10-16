@@ -132,6 +132,7 @@ impl EventPump {
         let mut stages: Vec<(i64, LaunchStage)> = Vec::new();
         let mut logs: Vec<(i64, String)> = Vec::new();
         let mut failed: Option<(i64, String)> = None;
+        let mut crashed: Vec<oneclient_events::GameCrash> = Vec::new();
         let mut login: Option<Option<LoginProgress>> = None;
         let mut storage_scan: Option<Option<StorageScanProgress>> = None;
         let mut sync_complete = false;
@@ -162,6 +163,7 @@ impl EventPump {
                     folded.saw_stage = true;
                     failed = Some((cluster_id, message));
                 }
+                Event::Game(GameEvent::Crashed(crash)) => crashed.push(*crash),
                 Event::Progress(ProgressEvent::Update {
                     id,
                     ref label,
@@ -190,12 +192,13 @@ impl EventPump {
             }
         }
 
-        if !stages.is_empty() || !logs.is_empty() || failed.is_some() {
+        if !stages.is_empty() || !logs.is_empty() || failed.is_some() || !crashed.is_empty() {
             let mut guard = self.station.write_channel(AppChannel::Game);
             for (cluster_id, stage) in stages {
                 guard.game.stages.insert(cluster_id, stage);
                 if stage == LaunchStage::Checking {
                     guard.game.error = None;
+                    guard.game.clear_crash(cluster_id);
                     guard
                         .game
                         .logs
@@ -209,6 +212,13 @@ impl EventPump {
             if let Some((cluster_id, message)) = failed {
                 guard.game.stages.insert(cluster_id, LaunchStage::Exited);
                 guard.game.error = Some(message);
+            }
+            for crash in crashed {
+                guard
+                    .game
+                    .stages
+                    .insert(crash.cluster_id, LaunchStage::Exited);
+                guard.game.push_crash(crash);
             }
         }
 

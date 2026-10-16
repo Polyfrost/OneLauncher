@@ -21,20 +21,24 @@ pub use oneclient_mc::{
     get_classpath_library, get_library, java_arguments, main_class, minecraft_arguments,
     processor_arguments,
 };
+pub mod crashdata;
 pub mod diagnosis;
+pub mod mod_problems;
 
-pub use diagnosis::{CrashDiagnosis, diagnose};
+pub use crashdata::CrashData;
+pub use diagnosis::{CrashDiagnosis, diagnose, suspected_mods};
 pub use error::GameError;
 pub use fabric::{mods_folder_argument, uses_cluster_mods_folder};
 pub use heal::clear_zeroed_files;
-pub use launch::{LaunchedGame, is_running, launch_cluster, offer_repair};
+pub use launch::{LaunchedGame, crash_mod_issues, is_running, launch_cluster, repair_cluster};
+pub use mod_problems::{ModProblem, ModProblemKind, ModRef};
 pub use oneclient_mc::{
     DownloadPlan, GameVersionInfo, GameVersionKind, NativesMode, NativesReport, PlannedLibrary,
-    check_natives,
-    confirm_incomplete_install, download_minecraft, download_version_info, game_files_missing,
-    get_game_versions, get_loader_version, get_loader_versions, get_loaders_for_version,
-    get_version_ids, get_versions_for_loader, is_version_updated, libraries_missing,
-    natives_missing, plan_downloads, resolve_minecraft_version, validate_rules, verify_game_files,
+    check_natives, confirm_incomplete_install, download_minecraft, download_version_info,
+    game_files_missing, get_game_versions, get_loader_version, get_loader_versions,
+    get_loaders_for_version, get_version_ids, get_versions_for_loader, is_version_updated,
+    libraries_missing, natives_missing, plan_downloads, resolve_minecraft_version, validate_rules,
+    verify_game_files,
 };
 pub use process::{
     GameProcess, GameProcessManager, is_process_alive, kill_process, process_start_time,

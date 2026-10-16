@@ -367,23 +367,26 @@ impl GroupedTasks {
             .collect()
     }
 
-    fn active_body(&self) -> Option<&'static str> {
-        let mut minecraft = false;
-        let mut packages = false;
-        for child in self.children.values() {
-            if child.category.is_minecraft() {
-                minecraft = true;
-            } else {
-                packages = true;
-            }
+    fn active_body(&self) -> Option<String> {
+        if self.children.is_empty() {
+            return None;
         }
-        if minecraft {
-            Some("Downloading Minecraft")
-        } else if packages {
-            Some("Downloading Packages")
-        } else {
-            None
-        }
+
+        let minecraft = self
+            .children
+            .values()
+            .any(|child| child.category.is_minecraft());
+
+        let scope = if minecraft { "Minecraft" } else { "Packages" };
+        let phase = self
+            .children
+            .values()
+            .filter(|child| child.category.is_minecraft() == minecraft)
+            .map(|child| child.phase)
+            .find(|phase| *phase != "Downloading")
+            .unwrap_or("Downloading");
+
+        Some(format!("{phase} {scope}"))
     }
 }
 
@@ -1099,7 +1102,6 @@ impl NotificationState {
         let tasks = group.task_list();
         let body = group
             .active_body()
-            .map(str::to_string)
             .unwrap_or_else(|| "Preparing...".to_string());
         let title = group.title.clone();
 

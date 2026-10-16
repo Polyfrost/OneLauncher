@@ -431,6 +431,11 @@ impl PackageStore {
         Ok(report)
     }
 
+    #[tracing::instrument(level = "debug", skip(artifacts, ctx), fields(files = artifacts.len()))]
+    pub async fn describe_artifacts(artifacts: &[(ArtifactRow, ContentType)], ctx: &ContentCtx) {
+        describe_imports(artifacts, ctx).await;
+    }
+
     #[tracing::instrument(level = "debug", skip(ctx))]
     pub async fn resolve_or_download(
         provider_id: ProviderId,

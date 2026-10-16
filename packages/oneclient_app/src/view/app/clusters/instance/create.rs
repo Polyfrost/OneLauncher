@@ -21,6 +21,7 @@ use crate::utils::default_cluster;
 
 const MODPACK_BROWSE_TYPE: &str = "modpack";
 const MODPACK_EXTENSIONS: [&str; 2] = ["mrpack", "zip"];
+const SHARED_EXTENSIONS: [&str; 1] = [oneclient_content::modpacks::SHARE_EXTENSION];
 
 fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
     let mc_version = picks.versions.chosen.clone()?;
@@ -61,6 +62,7 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
                 None => picks.loader_label(),
             },
             TypeChoice::Modpack => "Modpack".to_string(),
+            TypeChoice::Friend => "From a friend".to_string(),
         }
     } else {
         description
@@ -87,7 +89,7 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
         })
         .collect();
 
-    let art = if picks.choice == TypeChoice::Modpack {
+    let art = if matches!(picks.choice, TypeChoice::Modpack | TypeChoice::Friend) {
         version_art(None, None)
     } else {
         version_art(picks.versions.chosen.as_deref(), picks.loader.chosen)
@@ -145,6 +147,7 @@ impl Component for CreateInstanceModal {
         let first = picks.index == 0;
         let last = picks.step == Step::Customize;
         let modpack_step = picks.step == Step::Modpack;
+        let friend = picks.choice == TypeChoice::Friend;
         let origin = picks.modpack_origin;
         let index = picks.index;
         let mut step = wizard.step;
@@ -167,6 +170,7 @@ impl Component for CreateInstanceModal {
             primary_label: match (modpack_step, origin) {
                 (true, ModpackOrigin::Browse) => "Browse modpacks",
                 (true, ModpackOrigin::File) => "Choose file",
+                (false, _) if friend => "Choose file",
                 (false, _) if last => "Create instance",
                 (false, _) => "Next",
             }
@@ -182,7 +186,9 @@ impl Component for CreateInstanceModal {
             })
             .into(),
             on_primary: (move |()| {
-                if modpack_step {
+                if friend {
+                    pick_shared_file(dispatch.clone(), close_modpack.clone());
+                } else if modpack_step {
                     start_modpack(
                         origin,
                         browse_cluster,
@@ -202,6 +208,21 @@ impl Component for CreateInstanceModal {
             .into(),
         })
     }
+}
+
+fn pick_shared_file(dispatch: crate::Actions, on_close: EventHandler<()>) {
+    spawn(async move {
+        let Some(handle) = rfd::AsyncFileDialog::new()
+            .set_title("Choose the instance your friend sent")
+            .add_filter("OneClient instance", &SHARED_EXTENSIONS)
+            .pick_file()
+            .await
+        else {
+            return;
+        };
+        dispatch.install_modpack(ModpackSource::File(handle.path().to_path_buf()));
+        on_close.call(());
+    });
 }
 
 fn browse_cluster() -> i64 {

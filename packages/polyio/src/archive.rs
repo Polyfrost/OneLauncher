@@ -248,6 +248,8 @@ pub async fn read_zip_file_entries(
 
 pub const MAX_STREAMED_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
 
+pub const MAX_METADATA_ENTRY_BYTES: u64 = 64 * 1024 * 1024;
+
 pub struct ZipEntryCursor {
     reader: FileZipReader,
     indices: std::collections::HashMap<String, usize>,
@@ -342,11 +344,21 @@ where
             file_name: file_name.to_string(),
         })?;
 
-    let mut entry_reader = zip_reader.file(index).await?;
+    let entry_reader = zip_reader.file(index).await?;
 
     let mut data: Vec<u8> = Vec::new();
 
-    futures_lite::AsyncReadExt::read_to_end(&mut entry_reader, &mut data).await?;
+    futures_lite::AsyncReadExt::read_to_end(
+        &mut futures_lite::AsyncReadExt::take(entry_reader, MAX_METADATA_ENTRY_BYTES + 1),
+        &mut data,
+    )
+    .await?;
+
+    if data.len() as u64 > MAX_METADATA_ENTRY_BYTES {
+        return Err(IOError::IOError(std::io::Error::other(format!(
+            "'{file_name}' is over the {MAX_METADATA_ENTRY_BYTES} byte limit"
+        ))));
+    }
 
     Ok(data)
 }
@@ -381,4 +393,47 @@ pub async fn extract_tar_gz(
         Ok(())
     })
     .await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn an_oversized_entry_is_refused_instead_of_read() {
+        let dir = std::env::temp_dir().join(format!("polyio-entry-cap-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("bomb.zip");
+
+        let file = tokio::fs::File::create(&path).await.unwrap();
+        let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
+        let builder = async_zip::ZipEntryBuilder::new(
+            "big.json".to_string().into(),
+            async_zip::Compression::Deflate,
+        );
+        let zeros = vec![0u8; (MAX_METADATA_ENTRY_BYTES + 1) as usize];
+        writer.write_entry_whole(builder, &zeros).await.unwrap();
+        let builder = async_zip::ZipEntryBuilder::new(
+            "small.json".to_string().into(),
+            async_zip::Compression::Deflate,
+        );
+        writer.write_entry_whole(builder, b"{}").await.unwrap();
+        writer.close().await.unwrap();
+
+        let open =
+            || async { tokio::io::BufReader::new(tokio::fs::File::open(&path).await.unwrap()) };
+        assert!(
+            try_read_zip_entry_bytes(open().await, "big.json")
+                .await
+                .is_err()
+        );
+        assert_eq!(
+            try_read_zip_entry_bytes(open().await, "small.json")
+                .await
+                .unwrap(),
+            b"{}"
+        );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

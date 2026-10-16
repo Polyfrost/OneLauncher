@@ -7,6 +7,7 @@ mod modpacks;
 
 pub use modpacks::modpack_job_running;
 mod release_migration;
+mod share;
 
 use std::collections::HashMap;
 use std::path::PathBuf;

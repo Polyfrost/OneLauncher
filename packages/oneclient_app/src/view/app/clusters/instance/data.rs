@@ -261,7 +261,9 @@ fn kind_for(choice: TypeChoice, loader: Option<GameLoader>) -> ClusterKind {
     match (choice, loader) {
         (TypeChoice::OneClient, _) => ClusterKind::OneClient,
         (TypeChoice::Scratch, Some(GameLoader::Vanilla) | None) => ClusterKind::Vanilla,
-        (TypeChoice::Scratch, Some(_)) | (TypeChoice::Modpack, _) => ClusterKind::Modded,
+        (TypeChoice::Scratch, Some(_)) | (TypeChoice::Modpack | TypeChoice::Friend, _) => {
+            ClusterKind::Modded
+        }
     }
 }
 
@@ -332,7 +334,7 @@ pub fn resolve(w: Wizard) -> Picks {
     let available = settled_or_loading(&available_query);
     let loader = match choice {
         TypeChoice::OneClient => version.as_ref().and_then(|id| catalogue.loader_for(id)),
-        TypeChoice::Scratch | TypeChoice::Modpack => {
+        TypeChoice::Scratch | TypeChoice::Modpack | TypeChoice::Friend => {
             w.loader.read().resolve(available.as_deref().unwrap_or(&[]))
         }
     };

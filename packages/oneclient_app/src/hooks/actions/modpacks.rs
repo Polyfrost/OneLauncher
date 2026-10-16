@@ -114,18 +114,27 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
             .unwrap_or_else(|| "a file".to_string()),
     };
 
+    let (pack_name, version) = match &prepared.share {
+        Some(shared) if shared.share.modpack.is_some() => (
+            shared.share.name.clone(),
+            format!("{} {}", manifest.name, manifest.version),
+        ),
+        Some(shared) => (shared.share.name.clone(), "Shared instance".to_string()),
+        None if manifest.name.trim().is_empty() => {
+            (prepared.instance_name.clone(), manifest.version.clone())
+        }
+        None => (manifest.name.clone(), manifest.version.clone()),
+    };
+
     ModpackConfirm {
-        pack_name: if manifest.name.trim().is_empty() {
-            prepared.instance_name.clone()
-        } else {
-            manifest.name.clone()
-        },
-        version: manifest.version.clone(),
+        notices: prepared.notices().to_vec(),
+        pack_name,
+        version,
         instance_name: prepared.instance_name.clone(),
         mc_version: manifest.mc_version.clone(),
         loader,
         source,
-        summary: manifest.summary(),
+        summary: prepared.summary(),
     }
 }
 
@@ -139,7 +148,7 @@ impl Actions {
             _ => false,
         });
         if !claimed {
-            self.notify("A modpack is already being installed")
+            self.notify("Another install is already running")
                 .body("Wait for it to finish, then try again.")
                 .error()
                 .send();

@@ -28,6 +28,7 @@ pub enum TypeChoice {
     OneClient,
     Scratch,
     Modpack,
+    Friend,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -136,12 +137,14 @@ impl Step {
 const ONECLIENT_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Bundles, Step::Customize];
 const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Loader, Step::Customize];
 const MODPACK_STEPS: [Step; 2] = [Step::Type, Step::Modpack];
+const FRIEND_STEPS: [Step; 1] = [Step::Type];
 
 pub fn step_order(choice: TypeChoice) -> &'static [Step] {
     match choice {
         TypeChoice::OneClient => &ONECLIENT_STEPS,
         TypeChoice::Scratch => &SCRATCH_STEPS,
         TypeChoice::Modpack => &MODPACK_STEPS,
+        TypeChoice::Friend => &FRIEND_STEPS,
     }
 }
 

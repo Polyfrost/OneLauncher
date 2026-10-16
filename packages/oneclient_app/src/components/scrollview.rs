@@ -461,11 +461,20 @@ impl ScrollArea {
 
         let reset_key = self.reset_key;
         let mut last_reset = use_state(|| reset_key);
+        let mut reset_fired = false;
         if reset_key.is_some() && *last_reset.peek() != reset_key {
             last_reset.set(reset_key);
             controller.scroll_to_y(0);
             scroll_x.set_if_modified(0.);
+            reset_fired = true;
         }
+
+        let mut was_sticking = use_state(|| stick_bottom);
+        if stick_bottom && !*was_sticking.peek() && !reset_fired {
+            let target = -((*content_h.peek() - *viewport_h.peek()).max(0.));
+            controller.scroll_to_y(target as i32);
+        }
+        was_sticking.set_if_modified(stick_bottom);
 
         let (_, scrolled_y) = controller.into();
         let vp_h = *viewport_h.read();

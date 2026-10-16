@@ -5,14 +5,13 @@
 #![recursion_limit = "256"]
 
 use freya::prelude::*;
-use freya::radio::use_init_radio_station;
 use oneclient_app::ipc::{self, Claim};
-use oneclient_app::state::{AppChannel, AppState, LauncherInit};
+use oneclient_app::state::{AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, EssentialConfirmOverlay, EssentialGuardState, EventPump,
     LinkConfirmState, StartMaximizedState, cli, constants, events, microsoft_java, platform,
     router, theme, use_provide_actions, use_provide_essential_guard, use_provide_link_confirm,
-    use_provide_start_maximized,
+    use_provide_start_maximized, use_provide_station,
 };
 use std::cell::Cell;
 use tokio::runtime::Builder;
@@ -28,7 +27,7 @@ impl App for OneClientApp {
         let needs_location = self.needs_location;
 
         // Radio state is `!Send` so every writer runs on the UI thread `spawn_forever`
-        let station = use_init_radio_station::<AppState, AppChannel>(move || AppState {
+        let station = use_provide_station(move || AppState {
             launcher: LauncherInit {
                 needs_location,
                 ..LauncherInit::default()
@@ -212,10 +211,11 @@ fn main() {
     .with_background(Color::TRANSPARENT)
     // A half-copied data folder is unrecoverable, so the window refuses to
     // close while one is being moved; the move screen says as much
-    .with_on_close(|_, _| {
+    .with_on_close(|mut ctx, _| {
         if oneclient_core::relocate::in_progress() {
             tracing::warn!("close request ignored, the data folder is still being moved");
         } else {
+            oneclient_app::close_chat_window_in(&mut ctx);
             ipc::send(ipc::IpcCommand::Close);
         }
         CloseDecision::KeepOpen

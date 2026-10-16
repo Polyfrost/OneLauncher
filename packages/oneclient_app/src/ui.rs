@@ -80,8 +80,6 @@ pub fn fmt_date(ts: chrono::DateTime<chrono::Utc>) -> String {
     ts.format("%Y-%m-%d %H:%M").to_string()
 }
 
-/// Shortest band is a minute nothing re-renders on a timer so a seconds counter
-/// would freeze at whatever it read when the row was drawn
 pub fn relative_time(created_at: Instant) -> String {
     let secs = created_at.elapsed().as_secs();
     match secs {

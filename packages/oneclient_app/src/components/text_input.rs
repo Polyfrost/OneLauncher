@@ -104,6 +104,17 @@ impl TextInput {
         self.font_size(12.)
     }
 
+    pub fn bare(mut self) -> Self {
+        self.input = self
+            .input
+            .padding(Gaps::new_symmetric(0., 4.))
+            .background(Color::TRANSPARENT)
+            .focus_background(Color::TRANSPARENT)
+            .border_fill(Color::TRANSPARENT)
+            .focus_border_fill(Color::TRANSPARENT);
+        self
+    }
+
     pub fn multiline(mut self, multiline: bool) -> Self {
         self.input = self.input.multiline(multiline);
         self.multiline = multiline;

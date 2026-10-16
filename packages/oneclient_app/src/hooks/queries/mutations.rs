@@ -202,6 +202,9 @@ pub enum ClusterAction {
     DeleteInstance {
         cluster_id: ClusterId,
     },
+    ResetInstance {
+        cluster_id: ClusterId,
+    },
     Batch(Vec<ClusterAction>),
 }
 
@@ -271,17 +274,25 @@ impl MutationCapability for ClusterMutation {
                 cluster_id,
                 dedicated,
             } => {
-                state
-                    .clusters
-                    .set_dedicated_dir(
-                        *cluster_id,
-                        *dedicated,
-                        state.games.is_active(*cluster_id),
-                    )
-                    .await
-                .map_err(|err| oneclient_content::ContentError::InvalidData {
-                    reason: err.to_string(),
-                })
+                // Switching moves the instance's files, which a reset is moving too
+                if oneclient_core::clusters::is_resetting(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the reset to finish before changing the directory."
+                            .to_string(),
+                    })
+                } else {
+                    state
+                        .clusters
+                        .set_dedicated_dir(
+                            *cluster_id,
+                            *dedicated,
+                            state.games.is_active(*cluster_id),
+                        )
+                        .await
+                        .map_err(|err| oneclient_content::ContentError::InvalidData {
+                            reason: err.to_string(),
+                        })
+                }
             }
             ClusterAction::VerifyFiles { cluster_id } => {
                 // Reports its own outcome not the generic failure toast a
@@ -478,6 +489,61 @@ impl MutationCapability for ClusterMutation {
                     outcome
                 }
             }
+            ClusterAction::ResetInstance { cluster_id } => {
+                // Claimed here on the UI thread, where modpack jobs are claimed too, so neither
+                // can slip in while the other is being handed to a background task
+                let claim = oneclient_core::clusters::ResetClaim::take(*cluster_id);
+                if crate::hooks::modpack_job_running(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the modpack to finish installing before resetting this instance."
+                            .to_string(),
+                    })
+                } else if state.games.is_active(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Close the game before resetting this instance.".to_string(),
+                    })
+                } else if let Some(claim) = claim {
+                    let (state, cluster_id) = (state.clone(), *cluster_id);
+                    let outcome = crate::launcher::off_ui(async move {
+                        let name = state
+                            .clusters
+                            .get(cluster_id)
+                            .await
+                            .map(|cluster| cluster.name)
+                            .unwrap_or_default();
+                        let session = oneclient_events::GroupedProgressSession::start(
+                            &state.services.events,
+                            format!("Resetting {name}"),
+                        );
+                        let result = oneclient_core::clusters::reset_cluster(
+                            &state,
+                            claim,
+                            Some(&session),
+                        )
+                        .await;
+                        session.finish();
+                        result
+                    })
+                    .await;
+                    services
+                        .events
+                        .signal(oneclient_events::Signal::ClustersChanged);
+                    invalidate_profile_queries().await;
+                    match outcome {
+                        Ok(report) => {
+                            notify_reset(services, &report);
+                            Ok(())
+                        }
+                        Err(err) => Err(oneclient_content::ContentError::InvalidData {
+                            reason: err.to_string(),
+                        }),
+                    }
+                } else {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "This instance is already being reset.".to_string(),
+                    })
+                }
+            }
             ClusterAction::Batch(_) => unreachable!(),
         };
         tracing::debug!(
@@ -512,6 +578,52 @@ impl MutationCapability for ClusterMutation {
         } else {
             invalidate_cluster_queries().await;
         }
+    }
+}
+
+fn notify_reset(
+    services: &oneclient_core::LauncherServices,
+    report: &oneclient_core::clusters::ResetReport,
+) {
+    if let Some(err) = &report.reinstall_error {
+        let mut body = format!("Its content could not be installed again: {err}.");
+        if let Some(backup) = &report.backup_dir {
+            body.push_str(&format!(
+                " The files it replaced were moved to {}.",
+                backup.display()
+            ));
+        }
+        body.push_str(" Run Reset Instance again to finish. Until then it can't be launched.");
+        services
+            .events
+            .notify("Reset didn't finish")
+            .body(body)
+            .error()
+            .send();
+        return;
+    }
+
+    let mut body = if report.kept_shared_configs {
+        "Its mods and settings are back to how they were. Config files in the shared game folder were kept.".to_string()
+    } else {
+        "Its mods, settings and config files are back to how they were.".to_string()
+    };
+    if let Some(backup) = &report.backup_dir {
+        body.push_str(&format!(
+            " The files it replaced were moved to {}.",
+            backup.display()
+        ));
+    }
+
+    let notify = services.events.notify("Instance reset");
+    if report.not_moved.is_empty() {
+        notify.body(body).send();
+    } else {
+        body.push_str(&format!(
+            " These could not be moved and were left in place: {}.",
+            report.not_moved.join(", ")
+        ));
+        notify.body(body).error().send();
     }
 }
 

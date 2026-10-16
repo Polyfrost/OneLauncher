@@ -11,7 +11,7 @@ use oneclient_events::Level;
 
 use crate::{
     components::{Button, ButtonSize, Icon, IconType, TooltipPlacement, progress_track},
-    hooks::{use_dispatch, use_notifications_snapshot},
+    hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
     motion::use_animations_enabled,
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
@@ -115,6 +115,7 @@ impl Component for ToastCard {
         let id = entry.id;
         let variant = Variant::of(&entry);
         let dispatch = use_dispatch();
+        let confirm_link = use_link_confirm();
 
         let slide = use_animation(|conf| {
             conf.on_creation(OnCreation::Run);
@@ -207,7 +208,7 @@ impl Component for ToastCard {
 
         let card = match variant {
             Variant::Progress => progress_card(&entry),
-            Variant::Action => action_card(&entry, dispatch.clone(), id, ttl_pct),
+            Variant::Action => action_card(&entry, dispatch.clone(), confirm_link, id, ttl_pct),
             Variant::Message => message_card(&entry, dispatch, id, ttl_pct),
         };
 
@@ -356,7 +357,13 @@ fn message_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: 
         .child(ttl_bar(entry, ttl_pct))
 }
 
-fn action_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: f32) -> Rect {
+fn action_card(
+    entry: &InboxEntry,
+    dispatch: crate::Actions,
+    confirm_link: State<Option<String>>,
+    id: u64,
+    ttl_pct: f32,
+) -> Rect {
     let action = entry.actions.first().cloned();
 
     toast_shell(entry)
@@ -377,7 +384,7 @@ fn action_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: f
                         .child(header(entry)),
                 )
                 .child(divider())
-                .child(action_row(action, dispatch, id)),
+                .child(action_row(action, dispatch, confirm_link, id)),
         )
         .child(ttl_bar(entry, ttl_pct))
 }
@@ -385,6 +392,7 @@ fn action_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: f
 fn action_row(
     action: Option<crate::notifications::NotificationAction>,
     dispatch: crate::Actions,
+    confirm_link: State<Option<String>>,
     id: u64,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
@@ -415,7 +423,7 @@ fn action_row(
                 .primary()
                 .width(Size::flex(1.0))
                 .on_press(move |_| match &review_kind {
-                    Some(kind) => run_action(&dispatch, kind),
+                    Some(kind) => run_action(&dispatch, confirm_link, kind),
                     None => dispatch.mark_notification_read(id),
                 })
                 .child(Icon::new(IconType::Eye).size(16.))
@@ -423,11 +431,16 @@ fn action_row(
         )
 }
 
-fn run_action(dispatch: &crate::Actions, kind: &NotificationActionKind) {
+fn run_action(
+    dispatch: &crate::Actions,
+    mut confirm_link: State<Option<String>>,
+    kind: &NotificationActionKind,
+) {
     match kind {
         NotificationActionKind::OpenClusterUpdate(summaries) => {
             dispatch.open_cluster_update(summaries.clone());
         }
+        NotificationActionKind::OpenUrl(url) => confirm_link.set(Some(url.clone())),
     }
 }
 

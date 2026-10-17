@@ -61,6 +61,12 @@ async fn a_prism_export_zip_imports_as_an_instance() {
 
     let opened = open_instance_archive(&archive).await.unwrap();
     assert!(opened.workdir.is_dir());
+    assert!(
+        opened
+            .workdir
+            .starts_with(oneclient_common::paths::import_staging_dir().unwrap()),
+        "unpacked next to the launcher's data, not in the system temp folder"
+    );
     let instance = &opened.instances[0];
     assert_eq!(instance.name, "Skyblock Run");
     assert_eq!(instance.mc_version, "1.21.1");
@@ -236,10 +242,13 @@ async fn ornithe_instances_are_not_mistaken_for_fabric() {
 
 #[tokio::test]
 async fn a_fresh_unpacked_instance_survives_the_startup_sweep() {
-    let dir = std::env::temp_dir().join(format!(
-        "oneclient-instance-sweep-test-{}",
-        std::process::id()
-    ));
+    let _state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let dir = oneclient_common::paths::import_staging_dir()
+        .unwrap()
+        .join(format!(
+            "oneclient-instance-sweep-test-{}",
+            std::process::id()
+        ));
     std::fs::create_dir_all(&dir).unwrap();
     oneclient_core::sweep_instance_archives().await;
     assert!(dir.is_dir(), "an import may still be using it");

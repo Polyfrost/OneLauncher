@@ -148,16 +148,6 @@ fn low_space_warning(path: &Path) -> Option<String> {
     ))
 }
 
-pub(crate) fn disk_mount(path: &Path) -> Option<std::path::PathBuf> {
-    let target = polyio::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-
-    sysinfo::Disks::new_with_refreshed_list()
-        .iter()
-        .filter(|disk| target.starts_with(disk.mount_point()))
-        .max_by_key(|disk| disk.mount_point().as_os_str().len())
-        .map(|disk| disk.mount_point().to_path_buf())
-}
-
 pub(crate) fn available_space(path: &Path) -> Option<u64> {
     let target = polyio::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
 

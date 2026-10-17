@@ -735,7 +735,8 @@ async fn cache_paths_never_leave_their_folder() {
     )
     .unwrap();
     assert_eq!(reserved.parent(), Some(folder.as_path()));
-    assert_eq!(reserved.file_name().unwrap(), "_CON.jar");
+    let expected = if cfg!(windows) { "_CON.jar" } else { "CON.jar" };
+    assert_eq!(reserved.file_name().unwrap(), expected);
 
     for unusable in ["..", ".", "", r"mods\..", "mods/"] {
         assert!(

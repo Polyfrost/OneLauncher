@@ -100,26 +100,15 @@ pub async fn is_instance_archive(path: &Path) -> bool {
     }
 }
 
-fn space_problem(unpacked: u64, temp: &Path) -> Option<String> {
-    use crate::settings::data_dir::{available_space, disk_mount};
-
-    let data = oneclient_common::paths::data_dir().ok()?;
-    let needed = unpacked.saturating_add(SPACE_MARGIN);
-    let same_disk = disk_mount(temp).is_some() && disk_mount(temp) == disk_mount(data);
-    let checks: Vec<(&Path, u64)> = if same_disk {
-        vec![(temp, needed.saturating_add(unpacked))]
-    } else {
-        vec![(temp, needed), (data, needed)]
-    };
-    checks.into_iter().find_map(|(path, need)| {
-        let available = available_space(path)?;
-        (need > available).then(|| {
-            format!(
-                "There isn't enough free space to import this. It needs about {} MB on the drive with {}.",
-                need / (1024 * 1024) + 1,
-                path.display()
-            )
-        })
+fn space_problem(unpacked: u64, staging: &Path) -> Option<String> {
+    let need = unpacked.saturating_mul(2).saturating_add(SPACE_MARGIN);
+    let available = crate::settings::data_dir::available_space(staging)?;
+    (need > available).then(|| {
+        format!(
+            "There isn't enough free space to import this. It needs about {} MB on the drive with {}.",
+            need / (1024 * 1024) + 1,
+            staging.display()
+        )
     })
 }
 
@@ -134,12 +123,13 @@ pub async fn open_instance_archive(path: &Path) -> LauncherResult<InstanceArchiv
 
     let _unpacking = UNPACKING.lock().await;
     let unpacked = polyio::zip_uncompressed_size(path, |name| belongs_to(&prefixes, name)).await?;
-    let temp = std::env::temp_dir();
-    if let Some(reason) = space_problem(unpacked, &temp) {
+    let staging = oneclient_common::paths::import_staging_dir()?;
+    polyio::create_dir_all(&staging).await?;
+    if let Some(reason) = space_problem(unpacked, &staging) {
         return Err(ContentError::InvalidData { reason }.into());
     }
 
-    let workdir = temp.join(format!("{WORKDIR_PREFIX}{}", uuid::Uuid::new_v4()));
+    let workdir = staging.join(format!("{WORKDIR_PREFIX}{}", uuid::Uuid::new_v4()));
     let opened = async {
         let wanted = prefixes.clone();
         polyio::extract_zip_limited(path, &workdir, unpacked, move |name| {
@@ -180,7 +170,10 @@ pub async fn open_instance_archive(path: &Path) -> LauncherResult<InstanceArchiv
 }
 
 pub async fn sweep_instance_archives() {
-    let Ok(mut entries) = polyio::read_dir(std::env::temp_dir()).await else {
+    let Ok(staging) = oneclient_common::paths::import_staging_dir() else {
+        return;
+    };
+    let Ok(mut entries) = polyio::read_dir(staging).await else {
         return;
     };
     while let Ok(Some(entry)) = entries.next_entry().await {

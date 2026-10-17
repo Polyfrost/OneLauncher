@@ -59,6 +59,11 @@ pub fn default_dir() -> Option<PathBuf> {
 
 pub fn launcher_exe() -> Result<PathBuf> {
     #[cfg(all(unix, not(target_os = "macos")))]
+    if let Some(wrapper) = flatpak_wrapper() {
+        return Ok(wrapper);
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
     if let Some(appimage) = std::env::var_os("APPIMAGE") {
         let path = PathBuf::from(appimage);
         if path.is_file() {
@@ -68,6 +73,17 @@ pub fn launcher_exe() -> Result<PathBuf> {
 
     let exe = std::env::current_exe().context("couldn't locate the OneClient executable")?;
     Ok(dunce::canonicalize(&exe).unwrap_or(exe))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn flatpak_wrapper() -> Option<PathBuf> {
+    let id = std::env::var("FLATPAK_ID").ok()?;
+    let info = std::fs::read_to_string("/.flatpak-info").ok()?;
+    let app_path = info
+        .lines()
+        .find_map(|line| line.strip_prefix("app-path="))?;
+    let (installation, _) = app_path.split_once(&format!("/app/{id}/"))?;
+    Some(Path::new(installation).join("exports/bin").join(id))
 }
 
 fn file_stem(name: &str) -> String {

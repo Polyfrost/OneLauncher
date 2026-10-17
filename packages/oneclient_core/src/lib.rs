@@ -42,7 +42,7 @@ pub use migration::launchers::{
     detect_all as detect_external_launchers, detect_folder as detect_external_folder,
     discard_instance_archive, import_instance as import_external_instance, is_instance_archive,
     open_instance_archive, same_folder as same_external_folder,
-    screen_instances as screen_external_instances,
+    screen_instances as screen_external_instances, sweep_instance_archives,
 };
 pub use migration::{
     ImportTarget, MigrationDetection, MigrationSource, SourceInstance, detect as detect_migration,

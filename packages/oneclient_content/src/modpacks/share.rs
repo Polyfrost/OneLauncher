@@ -87,7 +87,12 @@ pub struct SharedDownload {
 impl SharedDownload {
     fn external(&self) -> Option<ExternalFile> {
         let content_type = tracked_content_type(&self.path)?;
-        let name = self.path.rsplit('/').next()?.to_string();
+        let name = self
+            .path
+            .rsplit(['/', '\\'])
+            .next()
+            .filter(|name| !name.is_empty() && *name != "." && *name != "..")?
+            .to_string();
         Some(ExternalFile {
             name,
             url: self.url.clone(),
@@ -740,11 +745,10 @@ fn index_dependencies(share: &ClusterShare) -> BTreeMap<&'static str, String> {
     let mut dependencies = BTreeMap::from([("minecraft", share.mc_version.clone())]);
     let key = match share.mc_loader {
         GameLoader::Vanilla => None,
-        GameLoader::Fabric => Some("fabric-loader"),
+        GameLoader::Fabric | GameLoader::Ornithe => Some("fabric-loader"),
         GameLoader::Quilt => Some("quilt-loader"),
         GameLoader::Forge => Some("forge"),
         GameLoader::NeoForge => Some("neoforge"),
-        GameLoader::Ornithe => Some("ornithe"),
     };
     if let (Some(key), Some(version)) = (key, share.mc_loader_version.as_ref()) {
         dependencies.insert(key, version.clone());
@@ -1226,6 +1230,16 @@ mod tests {
         let mut vanilla = share();
         vanilla.mc_loader = GameLoader::Vanilla;
         assert_eq!(index_dependencies(&vanilla).len(), 1);
+
+        let mut ornithe = share();
+        ornithe.mc_version = "1.8.9".into();
+        ornithe.mc_loader = GameLoader::Ornithe;
+        let deps = index_dependencies(&ornithe);
+        assert_eq!(
+            deps.get("fabric-loader").map(String::as_str),
+            Some("0.16.5")
+        );
+        assert!(!deps.contains_key("ornithe"));
     }
 
     #[test]

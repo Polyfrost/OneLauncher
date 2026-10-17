@@ -689,3 +689,186 @@ async fn compatibility_exports_carry_the_modpacks_own_files_over() {
     );
     assert!(game_dir.join("kubejs/startup_scripts/main.js").is_file());
 }
+
+#[tokio::test]
+async fn cache_paths_never_leave_their_folder() {
+    use oneclient_common::domain::ProviderId;
+    use oneclient_content::packages::store::cache_file_path;
+
+    let _state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let folder = cache_file_path(
+        ContentType::Mod,
+        ProviderId::Local,
+        "external",
+        "abc",
+        "ok.jar",
+    )
+    .unwrap()
+    .parent()
+    .unwrap()
+    .to_path_buf();
+
+    for crafted in [
+        r"..\..\escape.jar",
+        "../../escape.jar",
+        r"C:\Windows\escape.jar",
+        "/etc/escape.jar",
+        r"mods\..\escape.jar",
+    ] {
+        let path = cache_file_path(
+            ContentType::Mod,
+            ProviderId::Local,
+            "external",
+            "abc",
+            crafted,
+        )
+        .unwrap();
+        assert_eq!(path.parent(), Some(folder.as_path()), "{crafted}");
+        assert_eq!(path.file_name().unwrap(), "escape.jar", "{crafted}");
+    }
+    let reserved = cache_file_path(
+        ContentType::Mod,
+        ProviderId::Local,
+        "external",
+        "abc",
+        "CON.jar",
+    )
+    .unwrap();
+    assert_eq!(reserved.parent(), Some(folder.as_path()));
+    assert_eq!(reserved.file_name().unwrap(), "_CON.jar");
+
+    for unusable in ["..", ".", "", r"mods\..", "mods/"] {
+        assert!(
+            cache_file_path(
+                ContentType::Mod,
+                ProviderId::Local,
+                "external",
+                "abc",
+                unusable
+            )
+            .is_err(),
+            "{unusable}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn crafted_download_names_in_a_share_are_refused() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let scratch = polyio::testing::ScratchDir::new("cluster-share-download-names");
+    let archive = scratch.path().join("names.mrpack");
+    let marker = format!("oneclient-download-escape-{}.jar", std::process::id());
+    let index = serde_json::json!({
+        "formatVersion": 1,
+        "game": "minecraft",
+        "versionId": "1",
+        "name": "Names",
+        "files": [],
+        "dependencies": {"minecraft": "1.21.1", "fabric-loader": "0.16.5"}
+    });
+    let backslash = '\\';
+    let downloads: Vec<serde_json::Value> = [
+        format!("mods/..{backslash}..{backslash}{marker}"),
+        format!("mods/C:{backslash}{marker}"),
+        format!("mods/../../{marker}"),
+    ]
+    .into_iter()
+    .map(|path| {
+        serde_json::json!({
+            "path": path,
+            "sha1": "0000000000000000000000000000000000000000",
+            "size": 1,
+            "url": "https://edge.forgecdn.net/files/1/2/x.jar"
+        })
+    })
+    .collect();
+    let share = serde_json::json!({
+        "format": 1,
+        "name": "Names",
+        "kind": "modded",
+        "mc_version": "1.21.1",
+        "mc_loader": "Fabric",
+        "downloads": downloads
+    });
+    write_archive(
+        &archive,
+        vec![
+            (
+                "modrinth.index.json".into(),
+                serde_json::to_vec(&index).unwrap(),
+            ),
+            (
+                "oneclient.cluster.json".into(),
+                serde_json::to_vec(&share).unwrap(),
+            ),
+        ],
+    )
+    .await;
+
+    let prepared = prepare_modpack(&state, &ModpackSource::File(archive))
+        .await
+        .unwrap();
+    let cluster = create_modpack_instance(&state, &prepared).await.unwrap();
+    let installed = install_modpack_instance(&state, cluster.id, &prepared, None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        installed.report.failed.len(),
+        3,
+        "{:?}",
+        installed.report.failed
+    );
+    assert_eq!(installed.report.installed, 0);
+    let data = oneclient_common::paths::data_dir().unwrap().to_path_buf();
+    for dir in [
+        data.clone(),
+        data.parent().unwrap().to_path_buf(),
+        std::env::temp_dir(),
+    ] {
+        assert!(!dir.join(&marker).exists(), "{}", dir.display());
+    }
+}
+
+#[tokio::test]
+async fn ornithe_exports_name_fabric_for_other_launchers() {
+    use oneclient_content::modpacks::ClusterShare;
+
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+    let mut options =
+        CreateClusterOptions::new("Legacy", "1.8.9", GameLoader::Ornithe).kind(ClusterKind::Modded);
+    options.mc_loader_version = Some("0.16.5".into());
+    let source = state.clusters.create(&global, options).await.unwrap();
+
+    let scratch = polyio::testing::ScratchDir::new("cluster-share-ornithe");
+    let dest = scratch.path().join("Legacy.mrpack");
+    export_cluster(&state, source.id, &dest, ExportMode::OneClient, None)
+        .await
+        .unwrap();
+
+    let entries = polyio::read_zip_file_entries(&dest, |name| {
+        name == "modrinth.index.json" || name == "oneclient.cluster.json"
+    })
+    .await
+    .unwrap();
+    let read = |name: &str| {
+        entries
+            .iter()
+            .find(|(entry, _)| entry == name)
+            .unwrap()
+            .1
+            .clone()
+    };
+    let index: serde_json::Value = serde_json::from_slice(&read("modrinth.index.json")).unwrap();
+    assert_eq!(index["dependencies"]["fabric-loader"], "0.16.5");
+    assert!(index["dependencies"].get("ornithe").is_none());
+    let share: ClusterShare = serde_json::from_slice(&read("oneclient.cluster.json")).unwrap();
+    assert_eq!(share.mc_loader, GameLoader::Ornithe);
+
+    let prepared = prepare_modpack(&state, &ModpackSource::File(dest))
+        .await
+        .unwrap();
+    let cluster = create_modpack_instance(&state, &prepared).await.unwrap();
+    assert_eq!(cluster.mc_loader, GameLoader::Ornithe);
+}

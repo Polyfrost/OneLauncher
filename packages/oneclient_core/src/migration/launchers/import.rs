@@ -81,6 +81,7 @@ pub struct ExternalImportReport {
     /// Set when that Java could not be set up and the JVM arguments, written
     /// for it, were left out rather than stop the game from starting
     pub jvm_args_dropped_for: Option<u32>,
+    pub parts_skipped: Vec<String>,
 }
 
 /// What the import does about Java, decided before any settings are written
@@ -109,6 +110,7 @@ fn java_plan(source: Option<u32>, required: Option<u32>, has_jvm_args: bool) -> 
 #[derive(Debug, Clone, Default)]
 pub struct ImportChoices {
     pub skip: HashSet<String>,
+    pub move_files: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -196,6 +198,16 @@ pub async fn import_instance(
     choices: &ImportChoices,
     progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<ExternalImportReport> {
+    if let Some(loader) = &instance.unsupported_loader {
+        return Err(oneclient_content::ContentError::InvalidData {
+            reason: format!(
+                "{} uses {loader}, which OneClient can't run. Nothing was imported.",
+                instance.name
+            ),
+        }
+        .into());
+    }
+
     let content = state.services.content();
     let mut status = ImportStatus::new(progress);
     status.stage(format!("Reading {}", instance.name));
@@ -239,7 +251,10 @@ pub async fn import_instance(
     status.stage("Creating the instance");
     let cluster = match &prepared {
         Some(prepared) => create_modpack_instance(state, prepared).await?,
-        None => create_plain(state, instance, &name).await?,
+        None => {
+            let loader_version = usable_loader_version(state, instance).await;
+            create_plain(state, instance, &name, loader_version).await?
+        }
     };
 
     let result = populate(
@@ -258,6 +273,7 @@ pub async fn import_instance(
             report.cluster_id = cluster.id;
             report.mods_left_out = left_out;
             report.cluster_name = cluster.name.clone();
+            report.parts_skipped = instance.skipped_parts.clone();
             tracing::info!(
                 cluster_id = cluster.id,
                 imported = report.content_imported,
@@ -315,10 +331,42 @@ async fn prepare_linked_pack(
     }
 }
 
+async fn usable_loader_version(
+    state: &Arc<LauncherState>,
+    instance: &ExternalInstance,
+) -> Option<String> {
+    let pinned = instance.loader_version.clone()?;
+    if !instance.loader.is_modded() {
+        return None;
+    }
+    let offered = {
+        let mut metadata = state.metadata.lock().await;
+        crate::game::get_loader_versions(
+            &mut metadata,
+            &state.services.mc(),
+            &instance.mc_version,
+            instance.loader,
+        )
+        .await
+    };
+    match offered {
+        Ok(offered) if !offered.is_empty() && !offered.contains(&pinned) => {
+            tracing::info!(
+                loader = %instance.loader,
+                version = %pinned,
+                "the instance's loader version is not offered, importing it unpinned"
+            );
+            None
+        }
+        _ => Some(pinned),
+    }
+}
+
 async fn create_plain(
     state: &Arc<LauncherState>,
     instance: &ExternalInstance,
     name: &str,
+    loader_version: Option<String>,
 ) -> LauncherResult<Cluster> {
     let global = state.settings.read().global_game_settings.clone();
 
@@ -328,7 +376,7 @@ async fn create_plain(
         .user_created(true)
         .modpack(true)
         .tags(valid_tags(&instance.groups));
-    options.mc_loader_version = instance.loader_version.clone();
+    options.mc_loader_version = loader_version;
     options.description = instance.notes.clone().filter(|n| !n.trim().is_empty());
 
     Ok(state.clusters.create(&global, options).await?)
@@ -367,14 +415,18 @@ async fn populate(
     status.stage("Copying worlds and settings");
     if instance.game_dir.is_dir() {
         let source = instance.game_dir.as_path();
-        copy_tree(
-            source,
-            &game_dir,
-            source,
-            COPY_EXCLUDE_TOP,
-            &mut report.files_skipped,
-        )
-        .await;
+        if choices.move_files {
+            move_tree(source, &game_dir, &mut report.files_skipped).await;
+        } else {
+            copy_tree(
+                source,
+                &game_dir,
+                source,
+                COPY_EXCLUDE_TOP,
+                &mut report.files_skipped,
+            )
+            .await;
+        }
         for relative in &scanned.loose {
             copy_tree(
                 &source.join(relative),
@@ -430,10 +482,10 @@ async fn apply_linked_metadata(
     if !tags.is_empty() {
         update.tags = Some(tags);
     }
-    if let Some(version) = &instance.loader_version
-        && cluster.mc_loader_version.as_ref() != Some(version)
+    if let Some(version) = usable_loader_version(state, instance).await
+        && cluster.mc_loader_version.as_ref() != Some(&version)
     {
-        update.mc_loader_version = Patch::Set(version.clone());
+        update.mc_loader_version = Patch::Set(version);
     }
     if update.tags.is_none() && update.mc_loader_version.is_unchanged() {
         return;
@@ -860,6 +912,24 @@ fn strip_disabled(name: &str) -> &str {
 /// Links are followed, since a linked `saves` or `screenshots` folder holds
 /// the user's real files; a folder already visited is not entered twice, so
 /// a link pointing back up the tree cannot loop
+async fn move_tree(source: &Path, dest: &Path, skipped: &mut Vec<String>) {
+    let Ok(mut entries) = polyio::read_dir(source).await else {
+        copy_tree(source, dest, source, COPY_EXCLUDE_TOP, skipped).await;
+        return;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let name = entry.file_name();
+        if COPY_EXCLUDE_TOP.contains(&name.to_string_lossy().as_ref()) {
+            continue;
+        }
+        let target = dest.join(&name);
+        if !target.exists() && polyio::rename(entry.path(), &target).await.is_ok() {
+            continue;
+        }
+        copy_tree(&entry.path(), &target, source, COPY_EXCLUDE_TOP, skipped).await;
+    }
+}
+
 async fn copy_tree(
     src: &Path,
     dst: &Path,

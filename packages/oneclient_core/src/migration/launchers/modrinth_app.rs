@@ -174,6 +174,8 @@ async fn read_instances(
                 row.try_get("modrinth_project_id")?,
                 row.try_get("modrinth_version_id")?,
             ),
+            unsupported_loader: None,
+            skipped_parts: Vec::new(),
             id: path,
         });
     }
@@ -298,6 +300,8 @@ async fn read_legacy_profiles(
                 row.try_get("linked_project_id")?,
                 row.try_get("linked_version_id")?,
             ),
+            unsupported_loader: None,
+            skipped_parts: Vec::new(),
             id: path,
         });
     }

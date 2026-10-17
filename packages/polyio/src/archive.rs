@@ -63,6 +63,7 @@ pub async fn unzip_bytes_filtered(
         dest_path.as_ref(),
         filter_entries,
         None::<fn(&str) -> String>,
+        None,
     )
     .await
 }
@@ -130,7 +131,45 @@ pub async fn extract_zip_filtered(
         dest_path.as_ref(),
         filter_entries,
         modify_entry_name,
+        None,
     )
+    .await
+}
+
+pub async fn zip_uncompressed_size(
+    zip_path: impl AsRef<std::path::Path>,
+    filter: impl Fn(&str) -> bool,
+) -> PolyIOResult<u64> {
+    let reader = open_zip_file(zip_path.as_ref()).await?;
+    let mut total = 0u64;
+    for cdr in reader.cdrs() {
+        if filter(&entry_name(cdr)) {
+            total = total.saturating_add(cdr.uncompressed_size()?);
+        }
+    }
+    Ok(total)
+}
+
+pub async fn extract_zip_limited(
+    zip_path: impl AsRef<std::path::Path>,
+    dest_path: impl AsRef<std::path::Path>,
+    max_bytes: u64,
+    filter: impl Fn(&str) -> bool + Send + Sync + 'static,
+) -> PolyIOResult<()> {
+    let zip_path = zip_path.as_ref().to_path_buf();
+    let dest_path = dest_path.as_ref().to_path_buf();
+
+    off_caller_thread(move || async move {
+        let reader = open_zip_file(&zip_path).await?;
+        extract_entries(
+            reader,
+            &dest_path,
+            Some(filter),
+            None::<fn(&str) -> String>,
+            Some(max_bytes),
+        )
+        .await
+    })
     .await
 }
 
@@ -139,8 +178,10 @@ async fn extract_entries<R: AsyncBufRead + AsyncSeek + Unpin>(
     dest_path: &Path,
     filter_entries: Option<impl Fn(&str) -> bool>,
     modify_entry_name: Option<impl Fn(&str) -> String>,
+    max_bytes: Option<u64>,
 ) -> PolyIOResult<()> {
     let inner = reader.inner().clone();
+    let mut written = 0u64;
 
     for (index, cdr) in inner.cdrs().iter().enumerate() {
         let old_name = entry_name(cdr);
@@ -168,7 +209,21 @@ async fn extract_entries<R: AsyncBufRead + AsyncSeek + Unpin>(
             let writer = tokio::io::BufWriter::new(file);
             let entry_reader = reader.file(index).await?;
 
-            futures_lite::io::copy(entry_reader, &mut writer.compat_write()).await?;
+            match max_bytes {
+                Some(max) => {
+                    let remaining = max.saturating_sub(written);
+                    let limited = futures_lite::AsyncReadExt::take(entry_reader, remaining + 1);
+                    written += futures_lite::io::copy(limited, &mut writer.compat_write()).await?;
+                    if written > max {
+                        return Err(IOError::IOError(std::io::Error::other(format!(
+                            "the archive unpacks to more than the {max} bytes it declares"
+                        ))));
+                    }
+                }
+                None => {
+                    futures_lite::io::copy(entry_reader, &mut writer.compat_write()).await?;
+                }
+            }
 
             #[cfg(unix)]
             if let Some(mode) = unix_permissions(cdr).filter(|mode| mode & 0o777 != 0) {
@@ -433,6 +488,56 @@ mod tests {
                 .unwrap(),
             b"{}"
         );
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+}
+
+#[cfg(test)]
+mod limit_tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn extraction_stops_at_the_limit() {
+        let dir = std::env::temp_dir().join(format!("polyio-extract-limit-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let zip = dir.join("archive.zip");
+
+        let file = tokio::fs::File::create(&zip).await.unwrap();
+        let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
+        for (name, size) in [("a.bin", 600usize), ("b.bin", 600)] {
+            let builder = async_zip::ZipEntryBuilder::new(
+                name.to_string().into(),
+                async_zip::Compression::Deflate,
+            );
+            writer
+                .write_entry_whole(builder, &vec![7u8; size])
+                .await
+                .unwrap();
+        }
+        writer.close().await.unwrap();
+
+        assert_eq!(zip_uncompressed_size(&zip, |_| true).await.unwrap(), 1200);
+        assert_eq!(
+            zip_uncompressed_size(&zip, |name| name == "a.bin")
+                .await
+                .unwrap(),
+            600
+        );
+        assert!(
+            extract_zip_limited(&zip, dir.join("small"), 1000, |_| true)
+                .await
+                .is_err()
+        );
+        extract_zip_limited(&zip, dir.join("exact"), 1200, |_| true)
+            .await
+            .unwrap();
+        assert_eq!(std::fs::read(dir.join("exact/b.bin")).unwrap().len(), 600);
+        extract_zip_limited(&zip, dir.join("only-a"), 600, |name| name == "a.bin")
+            .await
+            .unwrap();
+        assert!(dir.join("only-a/a.bin").is_file());
+        assert!(!dir.join("only-a/b.bin").exists());
 
         std::fs::remove_dir_all(&dir).ok();
     }

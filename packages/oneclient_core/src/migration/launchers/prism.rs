@@ -181,9 +181,18 @@ struct Component {
     version: Option<String>,
     #[serde(rename = "cachedVersion")]
     cached_version: Option<String>,
+    #[serde(rename = "cachedName")]
+    cached_name: Option<String>,
 }
 
 impl Component {
+    fn display_name(&self) -> String {
+        self.cached_name
+            .clone()
+            .filter(|name| !name.trim().is_empty())
+            .unwrap_or_else(|| self.uid.clone())
+    }
+
     fn version(&self) -> Option<String> {
         self.version
             .clone()
@@ -200,6 +209,71 @@ fn loader_for_uid(uid: &str) -> Option<GameLoader> {
         "net.neoforged" => Some(GameLoader::NeoForge),
         _ => None,
     }
+}
+
+const ORNITHE_GROUP: &str = "net.ornithemc";
+const LEGACY_FABRIC_GROUP: &str = "net.legacyfabric";
+
+fn loader_problem(pack: &PackFile, ornithe: bool) -> Option<String> {
+    if pack
+        .components
+        .iter()
+        .any(|c| c.uid.starts_with(LEGACY_FABRIC_GROUP))
+    {
+        return Some("Legacy Fabric".to_string());
+    }
+    let quilt =
+        pack.components.iter().find_map(|c| loader_for_uid(&c.uid)) == Some(GameLoader::Quilt);
+    (quilt && ornithe).then(|| "Ornithe on Quilt".to_string())
+}
+
+pub(super) fn archived_loader_problem(pack_json: &[u8], patches: &[&[u8]]) -> Option<String> {
+    let pack: PackFile = serde_json::from_slice(pack_json).ok()?;
+    let ornithe = pack
+        .components
+        .iter()
+        .any(|c| c.uid.starts_with(ORNITHE_GROUP))
+        || patches
+            .iter()
+            .any(|patch| String::from_utf8_lossy(patch).contains(ORNITHE_GROUP));
+    loader_problem(&pack, ornithe)
+}
+
+fn known_component(uid: &str) -> bool {
+    matches!(
+        uid,
+        "net.minecraft"
+            | "org.lwjgl"
+            | "org.lwjgl3"
+            | "net.fabricmc.intermediary"
+            | "org.quiltmc.hashed"
+    ) || loader_for_uid(uid).is_some()
+        || uid.starts_with(ORNITHE_GROUP)
+}
+
+async fn uses_ornithe(pack: &PackFile, dir: &Path) -> bool {
+    if pack
+        .components
+        .iter()
+        .any(|c| c.uid.starts_with(ORNITHE_GROUP))
+    {
+        return true;
+    }
+    let Ok(mut entries) = polyio::read_dir(dir.join("patches")).await else {
+        return false;
+    };
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if path.extension().and_then(|ext| ext.to_str()) != Some("json") {
+            continue;
+        }
+        if let Ok(text) = polyio::read_to_string(&path).await
+            && text.contains(ORNITHE_GROUP)
+        {
+            return true;
+        }
+    }
+    false
 }
 
 /// Launcher-wide state every instance read needs
@@ -244,11 +318,22 @@ async fn read_instance(
         return Ok(None);
     };
 
-    let (loader, loader_version) = pack
+    let (mut loader, loader_version) = pack
         .components
         .iter()
         .find_map(|c| loader_for_uid(&c.uid).map(|loader| (loader, c.version())))
         .unwrap_or((GameLoader::Vanilla, None));
+    let ornithe = uses_ornithe(&pack, dir).await;
+    if loader == GameLoader::Fabric && ornithe {
+        loader = GameLoader::Ornithe;
+    }
+    let unsupported_loader = loader_problem(&pack, ornithe);
+    let skipped_parts = pack
+        .components
+        .iter()
+        .filter(|c| !known_component(&c.uid) && !c.uid.starts_with(LEGACY_FABRIC_GROUP))
+        .map(Component::display_name)
+        .collect();
 
     let game_dir = ["minecraft", ".minecraft"]
         .iter()
@@ -278,6 +363,8 @@ async fn read_instance(
         played_secs: cfg.number("totalTimePlayed").unwrap_or(0),
         settings,
         linked_pack: read_linked_pack(&cfg),
+        unsupported_loader,
+        skipped_parts,
     }))
 }
 

@@ -1,5 +1,6 @@
+use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use freya::prelude::spawn_forever;
 use oneclient_content::modpacks::{
@@ -18,6 +19,8 @@ use crate::notifications::{BlockedDownloads, ModpackConfirm};
 use crate::state::AppChannel;
 
 const MAX_LISTED: usize = 3;
+const QUEUED_NOTICE: &str =
+    "This file was waiting in the import queue while another import finished.";
 
 enum JobSlot {
     Idle,
@@ -27,6 +30,12 @@ enum JobSlot {
 }
 
 static JOB: Mutex<JobSlot> = Mutex::new(JobSlot::Idle);
+
+static WAITING: Mutex<VecDeque<ModpackSource>> = Mutex::new(VecDeque::new());
+
+fn waiting() -> MutexGuard<'static, VecDeque<ModpackSource>> {
+    WAITING.lock().unwrap_or_else(PoisonError::into_inner)
+}
 
 fn with_slot<R>(change: impl FnOnce(&mut JobSlot) -> R) -> R {
     let mut slot = JOB.lock().unwrap_or_else(PoisonError::into_inner);
@@ -185,14 +194,45 @@ impl Actions {
 
     fn release_modpack_job(&self) {
         with_slot(|slot| *slot = JobSlot::Idle);
-        let mut station = self.station;
-        let mut app = station.write_channel(AppChannel::Installs);
-        app.installs.modpack_busy = false;
-        app.installs.modpack_project = None;
-        app.installs.modpack_cluster = None;
+        {
+            let mut station = self.station;
+            let mut app = station.write_channel(AppChannel::Installs);
+            app.installs.modpack_busy = false;
+            app.installs.modpack_project = None;
+            app.installs.modpack_cluster = None;
+        }
+        self.resume_imports();
+    }
+
+    pub(super) fn resume_imports(&self) {
+        if super::external_import::import_running() || !modpack_job_idle() {
+            return;
+        }
+        let launcher_jobs = super::external_import::take_waiting();
+        if !launcher_jobs.is_empty() {
+            self.import_external_instances(launcher_jobs);
+            return;
+        }
+        let next = waiting().pop_front();
+        if let Some(next) = next {
+            self.start_modpack(next, true);
+        }
     }
 
     pub fn install_modpack(&self, source: ModpackSource) {
+        if matches!(source, ModpackSource::File(_))
+            && (super::external_import::import_running() || !modpack_job_idle())
+        {
+            waiting().push_back(source);
+            self.notify("Queued for import")
+                .body("It will start as soon as the current import or install finishes.")
+                .send();
+            return;
+        }
+        self.start_modpack(source, false);
+    }
+
+    fn start_modpack(&self, source: ModpackSource, queued: bool) {
         if !self.claim_modpack_job() {
             return;
         }
@@ -236,7 +276,10 @@ impl Actions {
                     actions.run_modpack_job(ModpackJob::Install(Box::new(prepared)));
                 }
                 Ok(prepared) => {
-                    let view = confirm_view(&prepared);
+                    let mut view = confirm_view(&prepared);
+                    if queued {
+                        view.notices.insert(0, QUEUED_NOTICE.to_string());
+                    }
                     with_slot(|slot| *slot = JobSlot::AwaitingConfirm(Box::new(prepared)));
                     actions.with_engine(move |app| app.notifications.open_modpack_confirm(view));
                 }

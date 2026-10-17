@@ -209,6 +209,8 @@ fn choose_folder_button(
         .into_element()
 }
 
+const UNAVAILABLE_OPACITY: f32 = 0.5;
+
 fn launcher_section(
     detection: &ExternalDetection,
     mut chosen: State<Vec<ExternalInstance>>,
@@ -217,12 +219,31 @@ fn launcher_section(
     let all_picked = detection
         .instances
         .iter()
+        .filter(|instance| instance.unsupported_loader.is_none())
         .all(|instance| picked.iter().any(|c| c.game_dir == instance.game_dir));
 
     let cards: Vec<Element> = detection
         .instances
         .iter()
         .map(|instance| {
+            if let Some(loader) = &instance.unsupported_loader {
+                return rect()
+                    .width(Size::fill())
+                    .height(Size::fill())
+                    .opacity(UNAVAILABLE_OPACITY)
+                    .cursor(CursorIcon::NotAllowed)
+                    .child(cell_card(CellCard {
+                        id: instance.game_dir.to_string_lossy().into_owned(),
+                        title: instance.name.clone(),
+                        blurb: version_line(instance),
+                        meta: Some(format!("Can't be imported: uses {loader}")),
+                        corner: None,
+                        selected: false,
+                        checkbox: false,
+                        on_press: (move |()| {}).into(),
+                    }))
+                    .into_element();
+            }
             let selected = picked.iter().any(|c| c.game_dir == instance.game_dir);
             let toggled = instance.clone();
             cell_card(CellCard {
@@ -247,7 +268,12 @@ fn launcher_section(
         })
         .collect();
 
-    let section_instances = detection.instances.clone();
+    let section_instances: Vec<ExternalInstance> = detection
+        .instances
+        .iter()
+        .filter(|instance| instance.unsupported_loader.is_none())
+        .cloned()
+        .collect();
     let toggle_all = label()
         .text(if all_picked { "Clear" } else { "Select all" })
         .font_size(12.)

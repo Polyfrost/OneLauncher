@@ -22,6 +22,7 @@ use oneclient_common::domain::{GameLoader, ProviderId};
 
 pub use archive::{
     InstanceArchive, discard_instance_archive, is_instance_archive, open_instance_archive,
+    sweep_instance_archives,
 };
 pub use import::{ExternalImportReport, ImportChoices, alternative_version_id, import_instance};
 pub use screen::{FlaggedImportMod, ImportAlternative, ScreenedInstance, screen_instances};
@@ -72,6 +73,14 @@ pub struct ExternalSettings {
 }
 
 impl ExternalSettings {
+    pub(super) fn drop_commands(&mut self) {
+        self.hook_pre = None;
+        self.hook_wrapper = None;
+        self.hook_post = None;
+        self.env.clear();
+        self.jvm_args = None;
+    }
+
     /// Nothing to write into a settings profile; `java_major` describes the
     /// source rather than being a setting itself
     pub fn is_empty(&self) -> bool {
@@ -107,6 +116,10 @@ pub struct ExternalInstance {
     pub played_secs: u64,
     pub settings: ExternalSettings,
     pub linked_pack: Option<LinkedPack>,
+    #[serde(default)]
+    pub unsupported_loader: Option<String>,
+    #[serde(default)]
+    pub skipped_parts: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

@@ -41,6 +41,11 @@ pub struct PlayerModel {
     height: Size,
     yaw: f32,
     pitch: f32,
+    skin: Option<(Bytes, bool)>,
+    cape: Option<Bytes>,
+    zoom: f32,
+    focus_y: f32,
+    draggable: bool,
 }
 
 impl PlayerModel {
@@ -51,7 +56,37 @@ impl PlayerModel {
             height: Size::fill(),
             yaw: 0.5,
             pitch: -0.1,
+            skin: None,
+            cape: None,
+            zoom: 1.0,
+            focus_y: 0.0,
+            draggable: true,
         }
+    }
+
+    pub fn skin(mut self, skin: Option<(Bytes, bool)>) -> Self {
+        self.skin = skin;
+        self
+    }
+
+    pub fn zoom(mut self, zoom: f32) -> Self {
+        self.zoom = zoom;
+        self
+    }
+
+    pub fn draggable(mut self, draggable: bool) -> Self {
+        self.draggable = draggable;
+        self
+    }
+
+    pub fn focus_y(mut self, focus_y: f32) -> Self {
+        self.focus_y = focus_y;
+        self
+    }
+
+    pub fn cape(mut self, cape: Option<Bytes>) -> Self {
+        self.cape = cape;
+        self
     }
 
     pub fn width(mut self, width: Size) -> Self {
@@ -64,7 +99,6 @@ impl PlayerModel {
         self
     }
 
-    #[allow(dead_code)]
     pub fn yaw(mut self, yaw: f32) -> Self {
         self.yaw = yaw;
         self
@@ -79,7 +113,8 @@ impl PlayerModel {
 
 impl Component for PlayerModel {
     fn render(&self) -> impl IntoElement {
-        let (skin_bytes, is_slim) = use_player_skin(self.uuid.clone());
+        let (profile_skin, profile_slim) = use_player_skin(self.uuid.clone());
+        let (skin_bytes, is_slim) = self.skin.clone().unwrap_or((profile_skin, profile_slim));
 
         let mut cache = use_state(|| None::<(usize, Shader)>);
         let src_ptr = skin_bytes.as_ptr() as usize;
@@ -95,6 +130,24 @@ impl Component for PlayerModel {
             }
         };
 
+        let mut cape_cache = use_state(|| None::<(usize, Shader, f32)>);
+        let cape_ptr = self
+            .cape
+            .as_ref()
+            .map_or(0, |bytes| bytes.as_ptr() as usize);
+        let cape_copy = cape_cache.peek().clone();
+        let cape_shader = match (&self.cape, cape_copy) {
+            (None, _) => None,
+            (Some(_), Some((ptr, shader, scale))) if ptr == cape_ptr => Some((shader, scale)),
+            (Some(bytes), _) => {
+                let decoded = decode_cape_shader(bytes);
+                if let Some((shader, scale)) = &decoded {
+                    cape_cache.set(Some((cape_ptr, shader.clone(), *scale)));
+                }
+                decoded
+            }
+        };
+
         let mut yaw = use_state({
             let v = self.yaw;
             move || v
@@ -107,19 +160,23 @@ impl Component for PlayerModel {
 
         let mut drag = use_state(|| None::<(f32, f32, f32, f32)>);
 
-        let mut last_uuid = use_state({
-            let u = self.uuid.clone();
-            move || u
+        let mut last_view = use_state({
+            let view = (self.uuid.clone(), self.yaw.to_bits());
+            move || view
         });
 
-        if *last_uuid.peek() != self.uuid {
-            last_uuid.set(self.uuid.clone());
+        let view = (self.uuid.clone(), self.yaw.to_bits());
+        if *last_view.peek() != view {
+            last_view.set(view);
             yaw.set(self.yaw);
             pitch.set(self.pitch);
             drag.set(None);
         }
 
         let effect = player_effect();
+        let draggable = self.draggable;
+        let zoom = self.zoom;
+        let focus_y = self.focus_y;
 
         let render_cb = RenderCallback::new(move |ctx: &mut FillRenderContext| {
             let (Some(effect), Some(skin)) = (&effect, &skin_shader) else {
@@ -135,15 +192,30 @@ impl Component for PlayerModel {
             let (cur_yaw, cur_pitch) = (yaw(), pitch());
 
             let slim = if is_slim { 1.0 } else { 0.0 };
+            let (cape, has_cape, cape_scale) = match &cape_shader {
+                Some((shader, scale)) => (shader.clone(), 1.0, *scale),
+                None => (blank_shader(), 0.0, 1.0),
+            };
 
-            let mut uniforms = Vec::with_capacity(28);
-            for value in [w, h, cur_yaw, cur_pitch, CAM_DIST, CAM_FOCAL, slim] {
+            let mut uniforms = Vec::with_capacity(40);
+            for value in [
+                w,
+                h,
+                cur_yaw,
+                cur_pitch,
+                CAM_DIST,
+                CAM_FOCAL * zoom,
+                slim,
+                has_cape,
+                cape_scale,
+                focus_y,
+            ] {
                 uniforms.extend_from_slice(&value.to_le_bytes());
             }
 
             let Some(shader) = effect.make_shader(
                 Data::new_copy(&uniforms),
-                &[ChildPtr::from(skin.clone())],
+                &[ChildPtr::from(skin.clone()), ChildPtr::from(cape)],
                 None,
             ) else {
                 return;
@@ -156,12 +228,19 @@ impl Component for PlayerModel {
         });
 
         rect()
-            .key(src_ptr as u64)
+            .key((src_ptr ^ cape_ptr.rotate_left(17)) as u64)
             .width(self.width.clone())
             .height(self.height.clone())
-            .cursor(CursorIcon::Grab)
+            .cursor(if draggable {
+                CursorIcon::Grab
+            } else {
+                CursorIcon::Pointer
+            })
             .background(render_cb)
             .on_pointer_down(move |e: Event<PointerEventData>| {
+                if !draggable {
+                    return;
+                }
                 let loc = e.global_location();
                 drag.set(Some((loc.x as f32, loc.y as f32, yaw(), pitch())));
             })
@@ -203,6 +282,29 @@ fn decode_skin_shader(skin_bytes: &Bytes) -> Option<Shader> {
     )
 }
 
+fn decode_cape_shader(cape_bytes: &Bytes) -> Option<(Shader, f32)> {
+    let data = unsafe { SkData::new_bytes(cape_bytes) };
+    let cape = SkImage::from_encoded(data)?;
+    let cape = cape.make_raster_image(None, None).unwrap_or(cape);
+    let width = cape.width() as f32;
+    let scale = if width >= 64.0 {
+        width / 64.0
+    } else {
+        (width / 22.0).max(1.0 / 64.0)
+    };
+
+    let shader = cape.to_shader(
+        (TileMode::Clamp, TileMode::Clamp),
+        SamplingOptions::default(),
+        None,
+    )?;
+    Some((shader, scale))
+}
+
+fn blank_shader() -> Shader {
+    freya::engine::prelude::shaders::color(freya::engine::prelude::Color::TRANSPARENT)
+}
+
 const PLAYER_SKSL: &str = r#"
 uniform float uResX;
 uniform float uResY;
@@ -211,7 +313,11 @@ uniform float uPitch;
 uniform float uDist;
 uniform float uFocal;
 uniform float uSlim;
+uniform float uHasCape;
+uniform float uCapeScale;
+uniform float uFocusY;
 uniform shader uSkin;
+uniform shader uCape;
 
 void hitBox(float3 ro, float3 rd, float3 cmin, float3 cmax, float3 dims, float3 td,
             float2 base, inout float best, inout half4 col) {
@@ -269,15 +375,62 @@ void hitBox(float3 ro, float3 rd, float3 cmin, float3 cmax, float3 dims, float3 
     best = t;
 }
 
+void hitCape(float3 ro, float3 rd, inout float best, inout half4 col) {
+    float3 cmin = float3(-5.0, -8.0, -3.0);
+    float3 cmax = float3(5.0, 8.0, -2.0);
+    float3 dims = cmax - cmin;
+    float3 t1 = (cmin - ro) / rd;
+    float3 t2 = (cmax - ro) / rd;
+    float3 tmin = min(t1, t2);
+    float3 tmax = max(t1, t2);
+    float tN = max(max(tmin.x, tmin.y), tmin.z);
+    float tF = min(min(tmax.x, tmax.y), tmax.z);
+    if (tN > tF || tF < 0.0) { return; }
+    float t = tN;
+    if (t < 0.0 || t >= best) { return; }
+
+    float3 p = ro + rd * t;
+    float3 n = clamp((p - cmin) / dims, 0.0, 1.0);
+
+    float2 uv;
+    float3 nrm;
+    if (tN == tmin.z) {
+        if (rd.z > 0.0) {
+            uv = float2(1.0 + (1.0 - n.x) * 10.0, 1.0 + (1.0 - n.y) * 16.0);
+            nrm = float3(0.0, 0.0, -1.0);
+        } else {
+            uv = float2(12.0 + n.x * 10.0, 1.0 + (1.0 - n.y) * 16.0);
+            nrm = float3(0.0, 0.0, 1.0);
+        }
+    } else if (tN == tmin.x) {
+        uv = float2(rd.x > 0.0 ? 0.5 : 11.5, 1.0 + (1.0 - n.y) * 16.0);
+        nrm = float3(rd.x > 0.0 ? -1.0 : 1.0, 0.0, 0.0);
+    } else {
+        uv = float2(rd.y > 0.0 ? 11.0 + n.x * 10.0 : 1.0 + n.x * 10.0, 0.5);
+        nrm = float3(0.0, rd.y > 0.0 ? -1.0 : 1.0, 0.0);
+    }
+
+    half4 s = uCape.eval(uv * uCapeScale);
+    if (s.a < 0.5) {
+        return;
+    }
+
+    float3 L = normalize(float3(0.4, 0.8, 0.6));
+    float diff = 0.65 + 0.35 * clamp(dot(nrm, L), 0.0, 1.0);
+    col = half4(s.rgb * half(diff), 1.0);
+    best = t;
+}
+
 half4 main(float2 fragCoord) {
     float2 res = float2(uResX, uResY);
-    float2 uv = (fragCoord - 0.5 * res) / res.y;
+    float2 uv = (fragCoord - 0.5 * res) / min(res.y, res.x * 2.0);
     uv.y = -uv.y;                    // screen y is down; world y is up
 
     float cy = cos(uYaw), sy = sin(uYaw);
     float cp = cos(uPitch), sp = sin(uPitch);
-    float3 ro = float3(sy * cp, sp, cy * cp) * uDist;
-    float3 fwd = normalize(-ro);
+    float3 target = float3(0.0, uFocusY, 0.0);
+    float3 ro = target + float3(sy * cp, sp, cy * cp) * uDist;
+    float3 fwd = normalize(target - ro);
     float3 right = normalize(cross(fwd, float3(0.0, 1.0, 0.0)));
     float3 up = cross(right, fwd);
     float3 rd = normalize(fwd * uFocal + right * uv.x + up * uv.y);
@@ -313,6 +466,10 @@ half4 main(float2 fragCoord) {
            float3(4.5, 12.5, 4.5), float3(4.0, 12.0, 4.0), float2(0.0, 32.0), best, col);   // right pant
     hitBox(ro, rd, float3(-0.25, -16.25, -2.25), float3(4.25, -3.75, 2.25),
            float3(4.5, 12.5, 4.5), float3(4.0, 12.0, 4.0), float2(0.0, 48.0), best, col);   // left pant
+
+    if (uHasCape > 0.5) {
+        hitCape(ro, rd, best, col);
+    }
 
     return col;
 }

@@ -24,6 +24,7 @@ tokio.workspace = true
 futures-util.workspace = true
 
 bytes.workspace = true
+image.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true

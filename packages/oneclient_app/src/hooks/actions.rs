@@ -15,12 +15,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use freya::prelude::spawn_forever;
+use freya::query::QueriesStorage;
 use freya::radio::RadioStation;
 use oneclient_cluster::profiles::list_named_profiles;
 use oneclient_cluster::{
     Cluster, ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
 };
-use oneclient_common::domain::{ContentType, ProviderId};
+use oneclient_common::domain::{ContentType, GraphicsBackend, ProviderId};
 use oneclient_content::packages::{LiveSync, LocalImportReport};
 use oneclient_core::relocate::RelocationPlan;
 use oneclient_core::settings::LauncherSettings;
@@ -30,6 +31,7 @@ use oneclient_events::{Answer, Level};
 use tokio::sync::mpsc;
 
 use crate::components::IconType;
+use crate::hooks::GraphicsBackendQuery;
 use crate::launcher::off_ui;
 use crate::notifications::{
     BundleChoices, ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef,
@@ -498,6 +500,22 @@ impl Actions {
             match state.clusters.update_profile(cluster_id, update).await {
                 Ok(_) => super::invalidate_profile_queries().await,
                 Err(err) => tracing::error!("failed to update cluster profile: {err:#}"),
+            }
+        });
+    }
+
+    pub fn set_graphics_backend(&self, game_dir: PathBuf, backend: GraphicsBackend) {
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            match oneclient_core::game::write_graphics_backend(&game_dir, backend).await {
+                Ok(()) => QueriesStorage::<GraphicsBackendQuery>::invalidate_all().await,
+                Err(err) => state
+                    .services
+                    .events
+                    .notify("Couldn't change the graphics backend")
+                    .body(err.to_string())
+                    .error()
+                    .send(),
             }
         });
     }

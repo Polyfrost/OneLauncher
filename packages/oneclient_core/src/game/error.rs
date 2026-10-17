@@ -48,6 +48,9 @@ pub enum GameError {
         "the wrapper command '{program}' could not be started: {reason}. Check the Wrapper Command setting."
     )]
     WrapperSpawn { program: String, reason: String },
+
+    #[error("start the game once on this version before changing this setting")]
+    OptionsOutdated,
 }
 
 impl GameError {

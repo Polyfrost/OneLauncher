@@ -14,8 +14,8 @@ use crate::LauncherResult;
 use crate::clusters::Cluster;
 use crate::game::session::SessionRecorder;
 use crate::game::tail::spawn_log_tail;
-use crate::settings::{GameSettingsProfile, GraphicsBackend};
 use crate::game::{DirBusy, GameError};
+use crate::settings::GameSettingsProfile;
 use crate::state::LauncherState;
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
@@ -386,15 +386,6 @@ async fn start(
         profile.resolution.unwrap_or_default(),
         &java.os_arch,
     )?;
-    if let Some(backend) = profile.graphics_backend
-        && backend != GraphicsBackend::Default
-        && GraphicsBackend::supported_on(&mc_version)
-    {
-        mc_args.extend([
-            "--graphicsBackend".to_string(),
-            backend.as_str().to_string(),
-        ]);
-    }
     arguments::append_profile_game_arguments(
         &mut mc_args,
         profile.force_fullscreen,

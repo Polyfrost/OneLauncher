@@ -16,6 +16,10 @@ fn applications_dir() -> Option<PathBuf> {
 }
 
 pub fn register(exe: &Path) -> Result<()> {
+    if std::env::var_os("FLATPAK_ID").is_some() {
+        return Ok(());
+    }
+
     let dir = applications_dir().context("no user data directory")?;
     let path = dir.join(handler_name());
     let entry = url_handler_entry(exe, SCHEME, ICON);

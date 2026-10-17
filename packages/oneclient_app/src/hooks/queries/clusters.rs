@@ -37,16 +37,16 @@ pub fn use_cluster(cluster_id: i64) -> Option<Cluster> {
 pub struct GraphicsBackendQuery;
 
 impl QueryCapability for GraphicsBackendQuery {
-    type Ok = GraphicsBackend;
+    type Ok = Option<GraphicsBackend>;
     type Err = LauncherError;
     type Keys = PathBuf;
 
     async fn run(&self, game_dir: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        oneclient_core::game::read_graphics_backend(game_dir).await
+        Ok(oneclient_core::game::read_graphics_backend(game_dir).await)
     }
 }
 
-pub fn use_graphics_backend(game_dir: PathBuf) -> GraphicsBackend {
+pub fn use_graphics_backend(game_dir: PathBuf) -> Option<GraphicsBackend> {
     let query = use_query(Query::new(game_dir, GraphicsBackendQuery));
-    super::state::settled_or_loading(&query).unwrap_or_default()
+    super::state::settled_or_loading(&query).flatten()
 }

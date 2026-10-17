@@ -958,26 +958,30 @@ impl Component for GraphicsBackendRow {
 
         let options: Vec<String> = GraphicsBackend::ALL
             .iter()
-            .map(|backend| backend.label().to_string())
+            .map(ToString::to_string)
             .collect();
+        let control = Dropdown::new(
+            current.unwrap_or(GraphicsBackend::Default).to_string(),
+            options,
+        )
+        .width(Size::px(220.))
+        .height(Size::px(34.))
+        .on_select(move |idx: usize| {
+            if let Some(backend) = GraphicsBackend::ALL.get(idx).copied() {
+                dispatch.set_graphics_backend(game_dir.clone(), backend);
+            }
+        });
 
-        let control = Dropdown::new(current.label(), options)
-            .width(Size::px(220.))
-            .height(Size::px(34.))
-            .on_select(move |idx: usize| {
-                if let Some(backend) = GraphicsBackend::ALL.get(idx).copied() {
-                    dispatch.set_graphics_backend(game_dir.clone(), backend);
-                }
-            });
-
-        if running {
-            return settings_row_disabled(
-                IconType::PaintPour,
-                "Graphics Backend",
-                "Close the game to change this, or change it from the game's video settings.",
-                control,
-            )
-            .into_element();
+        let locked = if running {
+            Some("Close the game to change this, or change it from the game's video settings.")
+        } else if current.is_none() {
+            Some("Start the game once to change this.")
+        } else {
+            None
+        };
+        if let Some(reason) = locked {
+            return settings_row_disabled(IconType::PaintPour, "Graphics Backend", reason, control)
+                .into_element();
         }
 
         settings_row(

@@ -129,6 +129,7 @@ fn entry_from_item(
         hidden: false,
         opted_in: true,
         shadowed: false,
+        outranked: false,
         advanced: false,
         deleted: false,
         update_available: false,

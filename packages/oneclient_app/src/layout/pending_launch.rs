@@ -1,6 +1,7 @@
 use freya::prelude::*;
 use freya::router::*;
 use oneclient_cluster::Cluster;
+use oneclient_core::LauncherState;
 
 use crate::Actions;
 use crate::components::IconType;
@@ -65,13 +66,35 @@ async fn launch_shortcut(actions: Actions, router: RouterContext, folder: String
         cluster_id: cluster.id,
     });
 
-    let Some(block) = actions.launch_block(cluster.id) else {
+    let shared = shared_dir_neighbours(&state, &cluster).await;
+    let Some(block) = actions.launch_block(cluster.id, &shared) else {
         actions.launch_cluster(cluster.id);
         return;
     };
 
     let blocker = blocker_name(&cluster, block).await;
     report_already_open(&actions, &cluster, block, blocker.as_deref());
+}
+
+/// The other clusters that launch into the shared game dir empty when this
+/// cluster has a dedicated one
+async fn shared_dir_neighbours(state: &LauncherState, cluster: &Cluster) -> Vec<i64> {
+    if cluster.uses_dedicated_dir() {
+        return Vec::new();
+    }
+
+    match state.clusters.list().await {
+        Ok(clusters) => clusters
+            .into_iter()
+            .filter(|other| other.id != cluster.id && !other.uses_dedicated_dir())
+            .map(|other| other.id)
+            .collect(),
+        Err(err) => {
+            // Core refuses a busy shared dir anyway this only words the notice
+            tracing::warn!(cluster_id = cluster.id, "cluster list failed: {err:#}");
+            Vec::new()
+        }
+    }
 }
 
 async fn blocker_name(cluster: &Cluster, block: LaunchBlock) -> Option<String> {

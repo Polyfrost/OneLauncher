@@ -333,7 +333,7 @@ fn details_card(project: &ProjectDetail) -> impl IntoElement {
         rows.push(pill_detail("Versions", &project.game_versions));
     }
     if !project.loaders.is_empty() {
-        let loaders: Vec<String> = project.loaders.iter().map(|l| l.to_string()).collect();
+        let loaders: Vec<String> = project.loaders.iter().map(|l| l.real_name()).collect();
         rows.push(pill_detail("Loaders", &loaders));
     }
     if let Some(license) = &project.license {

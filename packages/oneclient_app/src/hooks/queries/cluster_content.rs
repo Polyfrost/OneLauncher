@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use oneclient_content::packages::release_migration::has_packages_to_migrate;
 use oneclient_content::packages::{ContentType, PackageStore};
+use oneclient_core::game::DuplicateMods;
 use oneclient_core::{LauncherError, LinkedArtifactInfo};
 use oneclient_db::models::ClusterId;
 
@@ -96,7 +97,7 @@ pub fn use_migratable_routes(
 pub struct ShadowedModsQuery;
 
 impl QueryCapability for ShadowedModsQuery {
-    type Ok = Arc<HashSet<String>>;
+    type Ok = Arc<DuplicateMods>;
     type Err = LauncherError;
     type Keys = ClusterId;
 
@@ -110,7 +111,7 @@ impl QueryCapability for ShadowedModsQuery {
     }
 }
 
-pub fn use_shadowed_mods(cluster_id: ClusterId) -> Arc<HashSet<String>> {
+pub fn use_shadowed_mods(cluster_id: ClusterId) -> Arc<DuplicateMods> {
     let query = use_query(Query::new(cluster_id, ShadowedModsQuery));
     super::state::settled_or_loading(&query).unwrap_or_default()
 }

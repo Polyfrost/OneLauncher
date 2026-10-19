@@ -50,6 +50,15 @@ impl SearchSort {
             Self::Updated => "updated",
         }
     }
+
+    pub fn curseforge_sort_field(self) -> u32 {
+        match self {
+            Self::Relevance => 1,
+            Self::Downloads => 6,
+            Self::Newest => 11,
+            Self::Updated => 3,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,6 +263,7 @@ pub struct LinkedArtifactInfo {
     pub enabled: bool,
     pub content_type: ContentType,
     pub file_name: String,
+    pub size_bytes: Option<u64>,
     pub project_id: Option<String>,
     pub version_id: Option<String>,
     pub display_name: Option<String>,

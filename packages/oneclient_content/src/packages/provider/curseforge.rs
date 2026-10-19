@@ -57,7 +57,14 @@ impl PackageProvider for CurseForgeProvider {
                     .to_string(),
             );
             params.append_pair("index", &filters.offset.unwrap_or(0).to_string());
-            params.append_pair("sortField", "6");
+            params.append_pair(
+                "sortField",
+                &filters
+                    .sort
+                    .unwrap_or_default()
+                    .curseforge_sort_field()
+                    .to_string(),
+            );
             params.append_pair("sortOrder", "desc");
             let query = filters.normalized_query();
             if !query.is_empty() {

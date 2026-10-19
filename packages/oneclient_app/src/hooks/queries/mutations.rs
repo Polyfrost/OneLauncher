@@ -190,6 +190,7 @@ pub enum ClusterAction {
         tags: Vec<String>,
         cover_source: Option<PathBuf>,
         bundles: Option<Vec<String>>,
+        dedicated: bool,
     },
     UpdateInstance {
         cluster_id: ClusterId,
@@ -317,6 +318,7 @@ impl MutationCapability for ClusterMutation {
                 tags,
                 cover_source,
                 bundles,
+                dedicated,
             } => {
                 let global = state.settings.read().global_game_settings.clone();
                 let mut options = oneclient_core::clusters::CreateClusterOptions::new(
@@ -332,6 +334,19 @@ impl MutationCapability for ClusterMutation {
 
                 match state.clusters.create(&global, options).await {
                     Ok(cluster) => {
+                        if *dedicated
+                            && let Err(err) =
+                                state.clusters.set_dedicated_dir(cluster.id, true, false).await
+                        {
+                            tracing::warn!(cluster_id = cluster.id, error = %err, "failed to give the new instance a dedicated directory");
+                            services
+                                .events
+                                .notify("Couldn't give the instance its own folder")
+                                .body(format!("It uses the shared folder for now: {err}"))
+                                .error()
+                                .send();
+                        }
+
                         services
                             .events
                             .signal(oneclient_events::Signal::ClustersChanged);

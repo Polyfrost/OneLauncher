@@ -1543,6 +1543,127 @@ async fn an_opt_in_bundle_switched_off_by_accident_is_repaired_at_install() {
     );
 }
 
+async fn cluster_mod_enabled(state: &LauncherState, cluster_id: i64) -> bool {
+    artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, HASH)
+        .await
+        .unwrap()
+        .unwrap()
+        .enabled
+        != 0
+}
+
+async fn heal(state: &LauncherState, cluster_id: i64) {
+    let ctx = state.services.content();
+    let archives = state
+        .bundles
+        .archives_for(&ctx, MC_VERSION, GameLoader::Fabric)
+        .await
+        .unwrap();
+    oneclient_content::bundles::heal_bundle_activity(cluster_id, &archives, &ctx)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_mod_held_from_a_declined_bundle_stays_off_once_the_user_switches_it_off() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+
+    artifact_dao::update_cluster_artifact(db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(db, cluster_id, BUNDLE, PROJECT_ID, OverrideType::Disabled)
+        .await
+        .unwrap();
+
+    for _ in 0..2 {
+        oneclient_content::bundles::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &state.services.content(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(
+            !cluster_mod_enabled(&state, cluster_id).await,
+            "the launch must not switch the mod back on"
+        );
+    }
+
+    let overrides = bundle_dao::list_overrides(db, cluster_id).await.unwrap();
+    assert_eq!(overrides.len(), 1, "the user's choice is kept");
+}
+
+#[tokio::test]
+async fn a_removal_filed_by_declining_a_bundle_does_not_hold_a_held_mod_off() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+
+    artifact_dao::update_cluster_artifact(db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(db, cluster_id, BUNDLE, PROJECT_ID, OverrideType::Removed)
+        .await
+        .unwrap();
+
+    heal(&state, cluster_id).await;
+
+    assert!(
+        cluster_mod_enabled(&state, cluster_id).await,
+        "declining the bundle is not a choice about a mod the user holds"
+    );
+}
+
+#[tokio::test]
+async fn a_disable_left_on_a_mod_that_came_back_on_is_cleared_once() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+
+    bundle_dao::save_override(db, cluster_id, BUNDLE, PROJECT_ID, OverrideType::Disabled)
+        .await
+        .unwrap();
+
+    heal(&state, cluster_id).await;
+    assert!(
+        cluster_mod_enabled(&state, cluster_id).await,
+        "the mod stays on the way the user last saw it"
+    );
+    assert!(
+        bundle_dao::list_overrides(db, cluster_id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "the leftover choice is cleared so a later update cannot switch it off"
+    );
+
+    artifact_dao::update_cluster_artifact(db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(db, cluster_id, BUNDLE, PROJECT_ID, OverrideType::Disabled)
+        .await
+        .unwrap();
+
+    heal(&state, cluster_id).await;
+    assert!(
+        !cluster_mod_enabled(&state, cluster_id).await,
+        "a choice made after the cleanup is honoured"
+    );
+    assert_eq!(
+        bundle_dao::list_overrides(db, cluster_id)
+            .await
+            .unwrap()
+            .len(),
+        1
+    );
+}
+
 #[tokio::test]
 async fn an_opt_in_bundle_counts_as_taken_only_on_a_recorded_choice() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();

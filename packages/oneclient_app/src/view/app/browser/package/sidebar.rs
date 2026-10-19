@@ -71,7 +71,7 @@ pub(super) fn sidebar(
                         .child(ProviderTag {
                             text: format!("{} on {}", project.content_type, project.provider),
                             provider: project.provider,
-                            url: provider_project_url(&project),
+                            url: project.web_url(),
                             confirm,
                         })
                         .maybe(!project.summary.is_empty(), |el| {
@@ -139,24 +139,6 @@ pub(super) fn sidebar(
             el.child(links_card(&project.links, confirm))
         })
         .into_element()
-}
-
-/// Modrinth doesn't hand a url out so it's rebuilt from the slug CurseForge lists it as "Website"
-fn provider_project_url(project: &ProjectDetail) -> Option<String> {
-    match project.provider {
-        ProviderId::Modrinth => Some(format!(
-            "{}{}/{}",
-            ProviderId::Modrinth.website(),
-            project.content_type.modrinth_type(),
-            project.slug
-        )),
-        ProviderId::CurseForge => project
-            .links
-            .iter()
-            .find(|(label, _)| label == "Website")
-            .map(|(_, url)| url.clone()),
-        ProviderId::Local => None,
-    }
 }
 
 /// Plain text when the provider has no page so a local package doesn't look clickable

@@ -418,10 +418,8 @@ struct CfPaged<T> {
 async fn fetch_body(project_id: &str, detail: &ProjectDetail, ctx: &ContentCtx) -> PackageBody {
     let fallback = || {
         detail
-            .links
-            .iter()
-            .find(|(label, _)| label == "Website")
-            .map(|(_, url)| PackageBody::Url(url.clone()))
+            .web_url()
+            .map(PackageBody::Url)
             .unwrap_or_else(|| PackageBody::Raw(String::new()))
     };
 

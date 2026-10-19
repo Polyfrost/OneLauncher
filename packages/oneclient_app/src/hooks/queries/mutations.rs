@@ -190,8 +190,6 @@ pub enum ClusterAction {
         tags: Vec<String>,
         cover_source: Option<PathBuf>,
         bundles: Option<Vec<String>>,
-        /// Only meaningful for OneClient instances the other kinds are always
-        /// dedicated
         dedicated: bool,
     },
     UpdateInstance {
@@ -336,13 +334,17 @@ impl MutationCapability for ClusterMutation {
 
                 match state.clusters.create(&global, options).await {
                     Ok(cluster) => {
-                        // Ahead of the signal and the bundles so neither sees
-                        // the instance as shared for a moment
                         if *dedicated
                             && let Err(err) =
                                 state.clusters.set_dedicated_dir(cluster.id, true, false).await
                         {
                             tracing::warn!(cluster_id = cluster.id, error = %err, "failed to give the new instance a dedicated directory");
+                            services
+                                .events
+                                .notify("Couldn't give the instance its own folder")
+                                .body(format!("It uses the shared folder for now: {err}"))
+                                .error()
+                                .send();
                         }
 
                         services

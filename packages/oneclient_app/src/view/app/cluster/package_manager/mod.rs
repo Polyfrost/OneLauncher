@@ -504,6 +504,19 @@ impl Component for PackageManager {
         let sort = view.sort;
         let layout = view.layout;
         let query = SearchQuery::new(&search.read());
+
+        let searching = !query.is_empty();
+        use_side_effect_with_deps(&searching, move |&searching| {
+            let mut hidden_filter = hidden_filter;
+            let next = if searching {
+                HiddenFilter::Show
+            } else {
+                HiddenFilter::Hide
+            };
+            if *hidden_filter.peek() != next {
+                hidden_filter.set(next);
+            }
+        });
         let sort_mode = sort
             .read()
             .as_deref()

@@ -232,6 +232,15 @@ impl MutationCapability for ClusterMutation {
         let state = crate::launcher::state().map_err(|e| e.to_string())?;
         let services = &state.services;
         let content = &state.services.content();
+        let notify_deferred = |live: LiveSync, cluster_id: ClusterId| {
+            if live == LiveSync::Deferred && state.games.is_active(cluster_id) {
+                services
+                    .events
+                    .notify("Saved for the next launch")
+                    .body("Minecraft is running, but this could not be added to the open game.")
+                    .send();
+            }
+        };
         let result = match keys {
             ClusterAction::SetArtifactEnabled {
                 cluster_id,
@@ -239,30 +248,23 @@ impl MutationCapability for ClusterMutation {
                 enabled,
             } => oneclient_core::set_artifact_enabled_to(*cluster_id, hash, *enabled, content)
                 .await
-                .map(|live| {
-                    if live == LiveSync::Deferred && state.games.is_active(*cluster_id) {
-                        services
-                            .events
-                            .notify("Saved for the next launch")
-                            .body("Minecraft is running, but this could not be added to the open game.")
-                            .send();
-                    }
-                }),
+                .map(|live| notify_deferred(live, *cluster_id)),
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
                 oneclient_core::delete_artifact(*cluster_id, hash, content).await
             }
             ClusterAction::RemoveBundlePackageFromDisk { cluster_id, hash } => {
-                oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, false, content).await
+                oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, false, content)
+                    .await
             }
             ClusterAction::DeleteBundledArtifact { cluster_id, hash } => {
-                match oneclient_core::set_artifact_enabled_to(*cluster_id, hash, false, content)
-                    .await
-                {
-                    Ok(_) => {
-                        oneclient_core::on_user_remove_artifact(*cluster_id, hash, content).await
-                    }
-                    Err(err) => Err(err),
+                async {
+                    let live =
+                        oneclient_core::set_artifact_enabled_to(*cluster_id, hash, false, content)
+                            .await?;
+                    notify_deferred(live, *cluster_id);
+                    oneclient_core::on_user_remove_artifact(*cluster_id, hash, content).await
                 }
+                .await
             }
             ClusterAction::SetBundlePackageEnabled {
                 cluster_id,
@@ -284,19 +286,13 @@ impl MutationCapability for ClusterMutation {
             ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated,
-            } => {
-                state
-                    .clusters
-                    .set_dedicated_dir(
-                        *cluster_id,
-                        *dedicated,
-                        state.games.is_active(*cluster_id),
-                    )
-                    .await
+            } => state
+                .clusters
+                .set_dedicated_dir(*cluster_id, *dedicated, state.games.is_active(*cluster_id))
+                .await
                 .map_err(|err| oneclient_content::ContentError::InvalidData {
                     reason: err.to_string(),
-                })
-            }
+                }),
             ClusterAction::VerifyFiles { cluster_id } => {
                 // Reports its own outcome not the generic failure toast a
                 // verify that finds nothing wrong is still a useful result
@@ -435,7 +431,11 @@ impl MutationCapability for ClusterMutation {
                     state.clusters.clear_cover(*cluster_id).await.ok();
                     oneclient_common::Patch::Clear
                 } else if let Some(source) = cover_source {
-                    match state.clusters.set_cover_from_file(*cluster_id, source).await {
+                    match state
+                        .clusters
+                        .set_cover_from_file(*cluster_id, source)
+                        .await
+                    {
                         Ok(_) => oneclient_common::Patch::Unchanged,
                         Err(err) => {
                             tracing::warn!(cluster_id, error = %err, "failed to store the instance cover");

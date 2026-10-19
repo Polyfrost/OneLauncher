@@ -1,7 +1,8 @@
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
-    get_bundles_with_update_status, install_cluster_bundles, set_bundle_package_enabled,
+    get_bundles_with_update_status, install_cluster_bundles, on_user_disable_artifact,
+    on_user_remove_artifact, set_bundle_package_enabled,
 };
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
@@ -237,6 +238,39 @@ async fn user_disabled_mod_is_not_treated_as_a_removal() {
         "a user-disabled mod is still shipped by the bundle and must not be removed: {:?}",
         check.removals_available
     );
+}
+
+#[tokio::test]
+async fn deleting_a_bundled_mod_leaves_only_the_removal() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        "Old Bundle",
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    on_user_disable_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+    on_user_remove_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+
+    let overrides: Vec<(String, String)> =
+        bundle_dao::list_overrides(&state.services.db, cluster_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|o| o.package_id == PROJECT_ID)
+            .map(|o| (o.bundle_name, o.override_type))
+            .collect();
+    assert_eq!(overrides, [(BUNDLE.to_string(), "removed".to_string())]);
 }
 
 #[tokio::test]

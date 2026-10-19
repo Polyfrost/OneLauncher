@@ -7,7 +7,7 @@ use oneclient_core::settings::ViewLayout;
 use crate::components::{
     Button, CardLayout, ChevronToggle, ContextMenu, FilterMenu, FilterOption, Icon, IconType,
     LazySection, PackageEntry, PackageRow, ScrollArea, Segment, SegmentedControl, TextInput,
-    bundled_delete_action, package_context_menu, use_shared_delete,
+    bundled_delete_action, package_context_menu, run_guarded, use_shared_delete,
 };
 use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::routes::Route;
@@ -855,22 +855,20 @@ impl Component for ContentBox {
                 let on_bundled = (content_type == ContentType::Mod).then(|| {
                     let item = item.clone();
                     let warnings = disable_warnings(&warnings_query);
-                    let mut guard = guard;
                     let handler: EventHandler<()> = (move |()| {
                         let Some(action) = bundled_delete_action(&item, cluster_id) else {
                             return;
                         };
-                        match disable_warning_body(&item, warnings.clone())
-                            .filter(|_| !item.deleted)
-                        {
-                            Some(body) => guard.set(Some(PendingEssential {
-                                name: item.name.clone(),
-                                body,
-                                kind: EssentialGuardKind::Remove,
-                                action,
-                            })),
-                            None => cluster.mutate(action),
-                        }
+                        let only = [&item];
+                        run_guarded(
+                            action,
+                            if item.deleted { &[] } else { &only[..] },
+                            item.name.clone(),
+                            EssentialGuardKind::Remove,
+                            warnings.clone(),
+                            cluster,
+                            guard,
+                        );
                     })
                     .into();
                     handler

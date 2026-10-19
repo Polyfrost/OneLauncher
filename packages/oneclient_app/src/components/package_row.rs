@@ -5,9 +5,12 @@ use oneclient_core::SeenStatus;
 
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
 use crate::essential::EssentialPackage;
+use freya::query::UseMutation;
+
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings, loaded_image,
-    use_cached_image, use_cluster_mutation, use_disable_warnings, use_essential_guard,
+    ClusterAction, ClusterMutation, EssentialGuardKind, PendingEssential, disable_warnings,
+    loaded_image, use_cached_image, use_cluster_mutation, use_disable_warnings,
+    use_essential_guard,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -163,8 +166,6 @@ impl Component for PackageRow {
         let warnings_query = use_disable_warnings();
         let hovered = use_state(|| false);
 
-        let warning_body = disable_warning_body(&item, disable_warnings(&warnings_query));
-
         let icon_size = match layout {
             CardLayout::List => 44.,
             CardLayout::Grid => 40.,
@@ -174,23 +175,22 @@ impl Component for PackageRow {
 
         let on_toggle: EventHandler<()> = {
             let action = toggle_action(&item, cluster_id, !item.enabled);
-            let enabled_now = item.enabled;
-            let name = item.name.clone();
-            let mut guard = guard;
+            let item = item.clone();
+            let warnings = disable_warnings(&warnings_query);
             (move |()| {
                 let Some(action) = action.clone() else {
                     return;
                 };
-
-                match warning_body.clone().filter(|_| enabled_now) {
-                    Some(body) => guard.set(Some(PendingEssential {
-                        name: name.clone(),
-                        body,
-                        kind: EssentialGuardKind::Disable,
-                        action,
-                    })),
-                    None => cluster.mutate(action),
-                }
+                let only = [&item];
+                run_guarded(
+                    action,
+                    if item.enabled { &only[..] } else { &[] },
+                    item.name.clone(),
+                    EssentialGuardKind::Disable,
+                    warnings.clone(),
+                    cluster,
+                    guard,
+                );
             })
             .into()
         };
@@ -318,6 +318,40 @@ pub(crate) fn disable_warning_body(
     }
 }
 
+pub(crate) fn run_guarded(
+    action: ClusterAction,
+    targets: &[&PackageEntry],
+    name: String,
+    kind: EssentialGuardKind,
+    warnings: Option<oneclient_core::DisableWarnings>,
+    cluster: UseMutation<ClusterMutation>,
+    mut guard: State<Option<PendingEssential>>,
+) {
+    let warned: Vec<(&PackageEntry, String)> = targets
+        .iter()
+        .filter_map(|p| Some((*p, disable_warning_body(p, warnings.clone())?)))
+        .collect();
+    let body = match warned.as_slice() {
+        [] => {
+            cluster.mutate(action);
+            return;
+        }
+        [(p, body)] if p.name == name => body.clone(),
+        _ => warned
+            .iter()
+            .map(|(p, body)| format!("**{}**\n\n{body}", p.name))
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+    };
+    guard.set(Some(PendingEssential {
+        name,
+        body,
+        kind,
+        action,
+    }));
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn package_context_menu(
     x: f32,
     y: f32,

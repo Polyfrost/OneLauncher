@@ -10,12 +10,12 @@ use oneclient_db::models::OverrideType;
 
 use crate::components::{
     CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry, bundled_delete_action,
-    disable_warning_body, toggle_action,
+    run_guarded, toggle_action,
 };
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings, package_meta_batch,
-    use_cluster_mutation, use_disable_warnings, use_essential_guard, use_game_snapshot,
-    use_package_meta_batch, use_selection, use_view_state,
+    ClusterAction, EssentialGuardKind, disable_warnings, package_meta_batch, use_cluster_mutation,
+    use_disable_warnings, use_essential_guard, use_game_snapshot, use_package_meta_batch,
+    use_selection, use_view_state,
 };
 
 use super::folder_list::confirm_dialog;
@@ -144,10 +144,17 @@ pub fn bundle_packages(
         }
     }
 
-    let removed: HashSet<&str> = overrides
-        .iter()
-        .filter(|(_, ty)| OverrideType::parse(ty) == Some(OverrideType::Removed))
-        .map(|((_, pid), _)| pid.as_str())
+    let pids_with = |wanted: OverrideType| -> HashSet<&str> {
+        overrides
+            .iter()
+            .filter(|(_, ty)| OverrideType::parse(ty) == Some(wanted))
+            .map(|((_, pid), _)| pid.as_str())
+            .collect()
+    };
+    let disabled = pids_with(OverrideType::Disabled);
+    let removed: HashSet<&str> = pids_with(OverrideType::Removed)
+        .into_iter()
+        .filter(|pid| !disabled.contains(pid))
         .collect();
 
     let mut ordered: Vec<&BundleWithUpdateStatus> = bundles.iter().collect();
@@ -510,7 +517,7 @@ impl Component for PackageManager {
         let toolbar_width = use_state(|| 0f32);
         let selection = use_selection::<String>();
         let mutation = use_cluster_mutation();
-        let mut guard = use_essential_guard();
+        let guard = use_essential_guard();
         let warnings_query = use_disable_warnings();
         let mut confirm_delete = use_state(|| false);
         let view = use_view_state("cluster.packages");
@@ -618,29 +625,18 @@ impl Component for PackageManager {
                 if actions.is_empty() {
                     return;
                 }
-                let action = ClusterAction::Batch(actions);
-
-                let warned: Vec<String> = targets
-                    .iter()
-                    .filter(|_| !enabled)
-                    .filter_map(|p| {
-                        disable_warning_body(p, warnings.clone())
-                            .map(|body| format!("**{}**\n\n{body}", p.name))
-                    })
-                    .collect();
-                if warned.is_empty() {
-                    mutation.mutate(action);
-                    return;
-                }
-                guard.set(Some(PendingEssential {
-                    name: match targets.as_slice() {
+                run_guarded(
+                    ClusterAction::Batch(actions),
+                    if enabled { &[] } else { &targets[..] },
+                    match targets.as_slice() {
                         [only] => only.name.clone(),
                         _ => format!("{} {noun_plural}", targets.len()),
                     },
-                    body: warned.join("\n\n"),
-                    kind: EssentialGuardKind::Disable,
-                    action,
-                }));
+                    EssentialGuardKind::Disable,
+                    warnings.clone(),
+                    mutation,
+                    guard,
+                );
             })
             .into()
         };
@@ -695,30 +691,19 @@ impl Component for PackageManager {
                             )
                             .collect(),
                     );
-                    let warned: Vec<String> = bundled_deletable
-                        .iter()
-                        .filter_map(|p| {
-                            disable_warning_body(p, warnings.clone())
-                                .map(|body| format!("**{}**
-
-{body}", p.name))
-                        })
-                        .collect();
-                    if warned.is_empty() {
-                        mutation.mutate(action);
-                    } else {
-                        guard.set(Some(PendingEssential {
-                            name: match (deletable.as_slice(), bundled_deletable.as_slice()) {
-                                ([], [only]) => only.name.clone(),
-                                _ => format!("{count} {noun}"),
-                            },
-                            body: warned.join("
-
-"),
-                            kind: EssentialGuardKind::Remove,
-                            action,
-                        }));
-                    }
+                    let targets: Vec<&PackageEntry> = bundled_deletable.iter().collect();
+                    run_guarded(
+                        action,
+                        &targets,
+                        match (deletable.as_slice(), targets.as_slice()) {
+                            ([], [only]) => only.name.clone(),
+                            _ => format!("{count} {noun}"),
+                        },
+                        EssentialGuardKind::Remove,
+                        warnings.clone(),
+                        mutation,
+                        guard,
+                    );
                     selection.exit();
                     confirm_delete.set(false);
                 },
@@ -825,6 +810,63 @@ mod tests {
         assert!(
             rows.iter()
                 .any(|p| p.package_id == "only-declined" && declined.matches(p))
+        );
+    }
+
+    #[test]
+    fn deleted_tab_holds_only_deleted_mods() {
+        let installed_off = |hash: &str| LinkedArtifactInfo {
+            hash: hash.to_string(),
+            cluster_file_name: format!("{hash}.jar"),
+            enabled: false,
+            content_type: ContentType::Mod,
+            file_name: format!("{hash}.jar"),
+            project_id: None,
+            version_id: None,
+            display_name: None,
+            display_version: None,
+            provider: None,
+            published_at: None,
+            seen_status: oneclient_core::SeenStatus::Seen,
+        };
+        let taken = bundle(
+            "Taken",
+            true,
+            vec![
+                file("deleted", true, false),
+                file("turned-off", false, false),
+            ],
+        );
+        let declined = bundle("Declined", false, vec![file("turned-off", true, false)]);
+        let name = |b: &BundleWithUpdateStatus| b.archive.manifest.name.clone();
+        let overrides = HashMap::from([
+            ((name(&taken), "deleted".to_string()), "removed".to_string()),
+            (
+                (name(&taken), "turned-off".to_string()),
+                "disabled".to_string(),
+            ),
+            (
+                (name(&declined), "turned-off".to_string()),
+                "removed".to_string(),
+            ),
+        ]);
+        let rows = bundle_packages(
+            vec![installed_off("deleted"), installed_off("turned-off")],
+            &[taken, declined],
+            &overrides,
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+        let deleted: Vec<&str> = rows
+            .iter()
+            .filter(|p| Tab::Deleted.matches(p))
+            .map(|p| p.package_id.as_str())
+            .collect();
+        assert_eq!(deleted, ["deleted"]);
+        assert!(
+            rows.iter()
+                .any(|p| p.package_id == "turned-off" && Tab::All.matches(p))
         );
     }
 }

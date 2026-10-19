@@ -505,7 +505,7 @@ impl Component for PackageManager {
         let sort = view.sort;
         let layout = view.layout;
         let query = SearchQuery::new(&search.read());
-        // Searching for a package should find it even when a bundle hides it so typing turns hidden packages on and clearing turns them back off
+
         let searching = !query.is_empty();
         use_side_effect_with_deps(&searching, move |&searching| {
             let mut hidden_filter = hidden_filter;

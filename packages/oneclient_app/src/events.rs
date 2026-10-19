@@ -409,6 +409,7 @@ pub fn report_startup_failure(station: &RadioStation<AppState, AppChannel>, err:
                 title: "Launcher failed to start".into(),
                 body: message,
                 level: oneclient_events::Level::Error,
+                link: None,
             },
         )),
     );

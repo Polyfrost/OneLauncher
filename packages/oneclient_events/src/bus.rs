@@ -51,6 +51,7 @@ impl EventBus {
                 title: title.into(),
                 body: String::new(),
                 level: Level::Info,
+                link: None,
             },
         }
     }
@@ -147,6 +148,11 @@ pub struct NotificationBuilder<'a> {
 impl NotificationBuilder<'_> {
     pub fn body(mut self, body: impl Into<String>) -> Self {
         self.message.body = body.into();
+        self
+    }
+
+    pub fn link(mut self, url: impl Into<String>) -> Self {
+        self.message.link = Some(url.into());
         self
     }
 

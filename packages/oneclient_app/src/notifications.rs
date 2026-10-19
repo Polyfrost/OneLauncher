@@ -26,6 +26,8 @@ pub struct NotificationAction {
 pub enum NotificationActionKind {
     /// A list so a batch sync stays a single "View changes" action not one button per cluster
     OpenClusterUpdate(Vec<ClusterUpdateSummary>),
+    /// Routed through the link confirm popup rather than opened straight away
+    OpenUrl(String),
 }
 
 /// Carries core updates whole not a display projection the modal's Update button
@@ -588,15 +590,26 @@ impl NotificationState {
 
         match event {
             Event::Notification(Notification::Message(message)) => {
-                let entry_id = self.push_inbox(
+                let actions = message
+                    .link
+                    .map(|url| NotificationAction {
+                        label: "Open link".to_string(),
+                        kind: NotificationActionKind::OpenUrl(url),
+                    })
+                    .into_iter()
+                    .collect();
+                self.push_custom(
                     inbox,
-                    message.title,
-                    message.body,
-                    message.level,
-                    None,
-                    false,
+                    NotificationSpec {
+                        title: message.title,
+                        body: message.body,
+                        level: message.level,
+                        icon: None,
+                        progress: None,
+                        actions,
+                        toast_only: false,
+                    },
                 );
-                self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
             }
 
             Event::Progress(ProgressEvent::Update { id, .. })
@@ -1131,6 +1144,46 @@ fn progress_body(label: &str, current: u64, total: u64) -> String {
 
     let percent = ((current as f64 / total as f64) * 100.0).round() as u64;
     format!("{label} - {percent}%")
+}
+
+#[cfg(test)]
+mod message_link_tests {
+    use super::*;
+
+    fn message(link: Option<&str>) -> Event {
+        Event::Notification(Notification::Message(oneclient_events::Message {
+            title: "Update available".into(),
+            body: String::new(),
+            level: Level::Info,
+            link: link.map(Into::into),
+        }))
+    }
+
+    #[test]
+    fn a_link_becomes_a_single_open_link_action() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        state.dispatch(&mut inbox, message(Some("https://polyfrost.org")));
+
+        let kinds: Vec<_> = inbox[0].actions.iter().map(|a| a.kind.clone()).collect();
+        assert_eq!(
+            kinds,
+            vec![NotificationActionKind::OpenUrl(
+                "https://polyfrost.org".into()
+            )]
+        );
+    }
+
+    #[test]
+    fn no_link_keeps_the_plain_message_toast() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        state.dispatch(&mut inbox, message(None));
+
+        assert!(inbox[0].actions.is_empty());
+    }
 }
 
 #[cfg(test)]

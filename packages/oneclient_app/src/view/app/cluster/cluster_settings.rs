@@ -134,6 +134,18 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .child(section_header("SHORTCUT"))
+                    .child(ShortcutRow { cluster_id }.into_element())
+                    .child(section_header("CONTENT"))
+                    .child(
+                        BrowserUpdateModeRow {
+                            cluster_id,
+                            value: profile.browser_update_mode,
+                            global: global.browser_update_mode.unwrap_or_default(),
+                        }
+                        .into_element(),
+                    )
+                    .append_children(migrate_row)
                     .child(section_header("GAME"))
                     .child(
                         ToggleRow {
@@ -162,8 +174,6 @@ impl Component for ClusterSettings {
                         .into_element(),
                     )
                     .append_children(loader_section)
-                    .child(section_header("SHORTCUT"))
-                    .child(ShortcutRow { cluster_id }.into_element())
                     .child(section_header("JAVA"))
                     .child(
                         JavaRow {
@@ -180,16 +190,6 @@ impl Component for ClusterSettings {
                     .child(text_row(cluster_id, TextField::Pre, &profile, &global))
                     .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
                     .child(text_row(cluster_id, TextField::Post, &profile, &global))
-                    .child(section_header("CONTENT"))
-                    .child(
-                        BrowserUpdateModeRow {
-                            cluster_id,
-                            value: profile.browser_update_mode,
-                            global: global.browser_update_mode.unwrap_or_default(),
-                        }
-                        .into_element(),
-                    )
-                    .append_children(migrate_row)
                     .append_children(modpack_section)
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element()),

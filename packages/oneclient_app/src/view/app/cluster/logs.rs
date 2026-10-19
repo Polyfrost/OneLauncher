@@ -231,6 +231,7 @@ fn top_bar(
     category: State<Category>,
 ) -> impl IntoElement {
     let has_log = !files.is_empty();
+    let selected_path = selected_info.as_ref().map(|i| i.path.clone());
 
     let picker_label = selected_info
         .as_ref()
@@ -260,6 +261,18 @@ fn top_bar(
                 .into(),
             }
             .into_element(),
+        )
+        .child(
+            Button::new()
+                .secondary()
+                .enabled(selected_path.is_some())
+                .on_press(move |_| {
+                    if let Some(path) = &selected_path {
+                        crate::platform::open_path(&path.to_string_lossy());
+                    }
+                })
+                .child(Icon::new(IconType::LinkExternal01).size(15.))
+                .text("Open log"),
         )
         .child(
             label()

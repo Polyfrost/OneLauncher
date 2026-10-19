@@ -485,7 +485,7 @@ fn transfer_footer(stats: TransferStats) -> Element {
         .into_element()
 }
 
-fn run_action(
+pub(crate) fn run_action(
     dispatch: &crate::Actions,
     mut confirm_link: State<Option<String>>,
     kind: &NotificationActionKind,

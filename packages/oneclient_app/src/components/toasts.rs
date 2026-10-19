@@ -401,6 +401,10 @@ fn action_row(
         .map(|a| a.label.clone())
         .unwrap_or_else(|| "Review".to_string());
     let review_kind = action.map(|a| a.kind);
+    let review_icon = match review_kind {
+        Some(NotificationActionKind::OpenUrl(_)) => IconType::LinkExternal01,
+        _ => IconType::Eye,
+    };
 
     rect()
         .horizontal()
@@ -423,25 +427,12 @@ fn action_row(
                 .primary()
                 .width(Size::flex(1.0))
                 .on_press(move |_| match &review_kind {
-                    Some(kind) => run_action(&dispatch, confirm_link, kind),
+                    Some(kind) => super::notifications::run_action(&dispatch, confirm_link, kind),
                     None => dispatch.mark_notification_read(id),
                 })
-                .child(Icon::new(IconType::Eye).size(16.))
+                .child(Icon::new(review_icon).size(16.))
                 .text(review_label),
         )
-}
-
-fn run_action(
-    dispatch: &crate::Actions,
-    mut confirm_link: State<Option<String>>,
-    kind: &NotificationActionKind,
-) {
-    match kind {
-        NotificationActionKind::OpenClusterUpdate(summaries) => {
-            dispatch.open_cluster_update(summaries.clone());
-        }
-        NotificationActionKind::OpenUrl(url) => confirm_link.set(Some(url.clone())),
-    }
 }
 
 fn progress_card(entry: &InboxEntry) -> Rect {

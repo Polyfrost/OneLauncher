@@ -1012,6 +1012,11 @@ pub async fn on_user_remove_artifact(
     hash: &str,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?
+        && let Some(package_id) = tracked.package_id
+    {
+        clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
+    }
     handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await
 }
 

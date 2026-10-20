@@ -531,15 +531,22 @@ impl Component for PackageManager {
         let query = SearchQuery::new(&search.read());
 
         let searching = !query.is_empty();
+        let filters = view.filters;
         use_side_effect_with_deps(&searching, move |&searching| {
-            let mut hidden_filter = hidden_filter;
+            let mut filters = filters;
             let next = if searching {
                 HiddenFilter::Show
             } else {
                 HiddenFilter::Hide
             };
-            if *hidden_filter.peek() != next {
-                hidden_filter.set(next);
+            let current = filters
+                .peek()
+                .get(HiddenFilter::STORAGE_KEY)
+                .and_then(|key| HiddenFilter::from_key(key));
+            if current != Some(next) {
+                filters
+                    .write()
+                    .insert(HiddenFilter::STORAGE_KEY.into(), next.key().into());
             }
         });
         let sort_mode = sort
@@ -548,7 +555,6 @@ impl Component for PackageManager {
             .and_then(SortMode::from_key)
             .unwrap_or(SortMode::NameAsc);
 
-        let filters = view.filters;
         let show = filters
             .read()
             .get(EnabledFilter::STORAGE_KEY)

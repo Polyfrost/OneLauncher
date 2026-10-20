@@ -123,7 +123,7 @@ impl HiddenFilter {
 
     const ALL: [HiddenFilter; 2] = [HiddenFilter::Hide, HiddenFilter::Show];
 
-    fn key(self) -> &'static str {
+    pub(super) fn key(self) -> &'static str {
         match self {
             HiddenFilter::Hide => "hide",
             HiddenFilter::Show => "show",

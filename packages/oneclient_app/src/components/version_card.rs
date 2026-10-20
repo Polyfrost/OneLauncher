@@ -145,7 +145,7 @@ impl Component for VersionCard {
                             .font_size(11.)
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
-                            .color(colors::fg_secondary()),
+                            .color(colors::on_media().with_a(150)),
                     ),
             )
             .maybe_child((self.count > 1).then(|| {

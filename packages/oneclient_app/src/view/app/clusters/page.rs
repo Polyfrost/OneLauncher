@@ -779,7 +779,7 @@ impl Component for Sidebar {
                                             .text(self.title.clone())
                                             .font_size(24.)
                                             .font_weight(FontWeight::SEMI_BOLD)
-                                            .color(Color::WHITE),
+                                            .color(colors::fg_strong()),
                                     )
                                     .child(
                                         label()
@@ -943,7 +943,7 @@ fn page_header(mut show_create: State<bool>) -> impl IntoElement {
                         .text("Versions")
                         .font_size(32.)
                         .font_weight(FontWeight::SEMI_BOLD)
-                        .color(Color::WHITE),
+                        .color(colors::fg_strong()),
                 )
                 .child(
                     label()

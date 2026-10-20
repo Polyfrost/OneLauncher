@@ -107,7 +107,7 @@ impl Component for GalleryTile {
             .max_width(Size::px(MAX_COL_W))
             .corner_radius(CornerRadius::new_all(10.))
             .overflow(Overflow::Clip)
-            .background(PANEL_BG)
+            .background(colors::page_elevated())
             .border(
                 border_all_color(
                     1.,

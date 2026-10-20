@@ -4,8 +4,6 @@ use crate::components::{Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup};
 use crate::theme::colors;
 use crate::ui::clamp_to_window;
 
-const MENU_BG: Color = Color::from_rgb(25, 32, 38);
-const MENU_BORDER: Color = Color::from_argb(26, 255, 255, 255);
 const MENU_FG: Color = Color::from_rgb(155, 161, 166);
 const MENU_DANGER: Color = Color::from_rgb(242, 84, 90);
 
@@ -26,7 +24,7 @@ fn separator(item_width: Option<f32>) -> Rect {
     let mut sep = rect()
         .height(Size::px(1.))
         .margin(Gaps::new_symmetric(4., 0.))
-        .background(MENU_BORDER);
+        .background(colors::component_border_hover());
     if let Some(w) = item_width {
         sep = sep.width(Size::px(w));
     }
@@ -195,13 +193,17 @@ impl Component for ContextMenu {
             .vertical()
             .padding(Gaps::new_all(6.))
             .corner_radius(CornerRadius::new_all(12.))
-            .background(MENU_BG)
-            .border(Border::new().fill(MENU_BORDER).width(BorderWidth {
-                top: 1.,
-                right: 1.,
-                bottom: 1.,
-                left: 1.,
-            }))
+            .background(colors::card())
+            .border(
+                Border::new()
+                    .fill(colors::component_border_hover())
+                    .width(BorderWidth {
+                        top: 1.,
+                        right: 1.,
+                        bottom: 1.,
+                        left: 1.,
+                    }),
+            )
             .opacity(if placed { 1. } else { 0. })
             .child(list);
 

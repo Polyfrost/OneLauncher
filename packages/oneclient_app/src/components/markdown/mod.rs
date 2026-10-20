@@ -1,6 +1,8 @@
 use std::borrow::Cow;
 
 use freya::prelude::*;
+
+use crate::theme::colors;
 use pulldown_cmark::HeadingLevel;
 
 mod image;
@@ -27,13 +29,13 @@ pub struct MarkdownStyle {
 impl Default for MarkdownStyle {
     fn default() -> Self {
         Self {
-            color: Color::WHITE,
+            color: colors::fg_primary(),
             color_link: Color::from_rgb(90, 160, 255),
-            color_code: Color::WHITE,
-            background_code: Color::from_rgb(32, 32, 32),
-            background_blockquote: Color::from_rgb(32, 32, 32),
-            border_blockquote: Color::from_rgb(80, 80, 80),
-            background_divider: Color::from_rgb(64, 64, 64),
+            color_code: colors::fg_primary(),
+            background_code: colors::component_bg(),
+            background_blockquote: colors::component_bg(),
+            border_blockquote: colors::component_border_pressed(),
+            background_divider: colors::component_border_hover(),
             headings: [32., 28., 24., 20., 18., 16.],
             paragraph_size: 16.,
             code_font_size: 14.,

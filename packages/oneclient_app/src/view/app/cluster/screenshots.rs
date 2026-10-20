@@ -26,9 +26,6 @@ const MAX_COL_W: f32 = 400.;
 const GRID_GAP: f32 = 16.;
 const TILE_PREVIEW_H: f32 = 168.;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
-
 #[derive(PartialEq)]
 pub struct ClusterScreenshots {
     pub cluster_id: i64,
@@ -460,7 +457,7 @@ impl Component for ScreenshotTile {
             .width(Size::flex(1.0))
             .max_width(Size::px(MAX_COL_W))
             .corner_radius(CornerRadius::new_all(10.))
-            .background(CARD_BG)
+            .background(colors::card())
             .overflow(Overflow::Clip)
             .border(border_all_color(1., border_color).alignment(BorderAlignment::Inner))
             .cursor(CursorIcon::Pointer)
@@ -490,7 +487,7 @@ impl Component for ScreenshotTile {
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
-                            .color(CARD_NAME),
+                            .color(colors::fg_primary()),
                     )
                     .child(
                         label()
@@ -543,7 +540,7 @@ impl Component for ScreenshotRow {
             .background(if *hovered.read() {
                 colors::component_bg_hover()
             } else {
-                CARD_BG
+                colors::card()
             })
             .border(border_all_color(
                 if selected { 2. } else { 1. },
@@ -570,7 +567,7 @@ impl Component for ScreenshotRow {
                         .font_size(13.)
                         .max_lines(1)
                         .width(Size::fill())
-                        .color(CARD_NAME),
+                        .color(colors::fg_primary()),
                 ),
             )
             .maybe_child(info.resolution.map(|res| {

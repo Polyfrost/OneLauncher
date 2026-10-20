@@ -1,9 +1,11 @@
+use std::time::Duration;
+
 use freya::prelude::*;
-use oneclient_core::settings::LauncherSettings;
+use oneclient_core::settings::{AppTheme, LauncherSettings};
 
 use super::settings_page;
 use crate::components::{Icon, IconType, toggle};
-use crate::hooks::{use_dispatch, use_settings_snapshot};
+use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::{resettable, settings_row, settings_row_disabled};
@@ -50,8 +52,6 @@ pub struct SettingsAppearance;
 
 impl Component for SettingsAppearance {
     fn render(&self) -> impl IntoElement {
-        let selected_theme = use_state(|| 0usize);
-
         let settings = use_settings_snapshot().settings;
         let defaults = LauncherSettings::default();
         let dispatch = use_dispatch();
@@ -67,6 +67,7 @@ impl Component for SettingsAppearance {
         });
 
         let mut first = use_state(|| true);
+        let persist = dispatch.clone();
         use_side_effect(move || {
             let parallax = *dynamic_bg.read();
             let animations = *animations_on.read();
@@ -74,21 +75,37 @@ impl Component for SettingsAppearance {
                 first.set(false);
                 return;
             }
-            dispatch.edit_settings(|settings| {
+            persist.edit_settings(|settings| {
                 settings.dynamic_background_enabled = parallax;
                 settings.animations_enabled = animations;
             });
         });
 
+        let accent = use_state({
+            let v = settings.accent_color.clone();
+            move || v
+        });
+        let settled_accent = use_debounced(accent.read().clone(), Duration::from_millis(250));
+        let mut accent_ready = use_state(|| false);
+        let persist_accent = dispatch.clone();
+        use_side_effect_with_deps(&settled_accent.read().clone(), move |value| {
+            if !*accent_ready.peek() {
+                accent_ready.set(true);
+                return;
+            }
+            let value = value.clone();
+            persist_accent.edit_settings(|settings| settings.accent_color = value);
+        });
+
         settings_page()
-            .child(theme_section(selected_theme))
+            .child(theme_section(settings.theme, dispatch.clone()))
             .child(
                 rect()
                     .vertical()
                     .width(Size::fill())
                     .spacing(4.)
                     .padding(Gaps::new(8., 0., 0., 0.))
-                    .child(accent_color_row())
+                    .child(accent_color_row(accent, defaults.accent_color.clone()))
                     .child(custom_theme_row())
                     .child(dynamic_background_row(
                         dynamic_bg,
@@ -108,31 +125,28 @@ impl Component for SettingsAppearance {
     }
 }
 
-fn theme_section(selected: State<usize>) -> impl IntoElement {
+fn theme_section(selected: AppTheme, dispatch: Actions) -> impl IntoElement {
     let list = themes();
-    let current = list[(*selected.read()).min(list.len() - 1)];
+    let selected_index = AppTheme::ALL
+        .iter()
+        .position(|theme| *theme == selected)
+        .unwrap_or_default();
+    let current = list[selected_index];
 
     rect()
         .horizontal()
         .spacing(16.)
-        .opacity(0.4)
         .child(big_preview(current))
         .child(
             rect()
                 .vertical()
                 .spacing(16.)
-                .child(
-                    rect()
-                        .horizontal()
-                        .spacing(16.)
-                        .children((0..3).map(|i| theme_card(list[i], i, selected))),
-                )
-                .child(
-                    rect()
-                        .horizontal()
-                        .spacing(16.)
-                        .children((3..5).map(|i| theme_card(list[i], i, selected))),
-                ),
+                .child(rect().horizontal().spacing(16.).children(
+                    (0..3).map(|i| theme_card(list[i], i, selected_index, dispatch.clone())),
+                ))
+                .child(rect().horizontal().spacing(16.).children(
+                    (3..5).map(|i| theme_card(list[i], i, selected_index, dispatch.clone())),
+                )),
         )
         .into_element()
 }
@@ -162,8 +176,13 @@ fn big_preview(theme: ThemePreview) -> impl IntoElement {
         .into_element()
 }
 
-fn theme_card(theme: ThemePreview, index: usize, selected: State<usize>) -> Element {
-    let is_selected = *selected.read() == index;
+fn theme_card(
+    theme: ThemePreview,
+    index: usize,
+    selected_index: usize,
+    dispatch: Actions,
+) -> Element {
+    let is_selected = selected_index == index;
     let border_color = if is_selected {
         colors::brand()
     } else {
@@ -179,6 +198,10 @@ fn theme_card(theme: ThemePreview, index: usize, selected: State<usize>) -> Elem
         .border(border_all_color(1., border_color))
         .padding(8.)
         .spacing(20.)
+        .cursor(CursorIcon::Pointer)
+        .on_press(move |_| {
+            dispatch.edit_settings(|settings| settings.theme = AppTheme::ALL[index]);
+        })
         .child(mock_line(108., line_tint(theme)))
         .child(split_bar(theme.accent, 96.))
         .into_element()
@@ -218,26 +241,49 @@ fn line_tint(theme: ThemePreview) -> Color {
     }
 }
 
-fn accent_color_row() -> impl IntoElement {
-    settings_row_disabled(
+fn accent_color_row(accent: State<Option<String>>, default: Option<String>) -> impl IntoElement {
+    let shown = accent
+        .read()
+        .as_deref()
+        .and_then(colors::parse_hex)
+        .map_or_else(colors::brand, |(r, g, b)| Color::from_rgb(r, g, b));
+
+    settings_row(
         IconType::PaintPour,
         "Accent color",
         "The main color used across the launcher. This doesn't edit your theme.",
-        rect()
-            .horizontal()
-            .cross_align(Alignment::Center)
-            .spacing(12.)
-            .padding(Gaps::new_symmetric(8., 16.))
-            .corner_radius(CornerRadius::new_all(8.))
-            .background(colors::brand())
-            .child(Icon::new(IconType::Colors).size(18.))
-            .child(
-                label()
-                    .text("#2B4BFF")
-                    .font_size(12.)
-                    .color(colors::fg_primary()),
-            )
-            .into_element(),
+        resettable(
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .child(
+                    rect()
+                        .horizontal()
+                        .cross_align(Alignment::Center)
+                        .spacing(12.)
+                        .padding(Gaps::new_symmetric(8., 16.))
+                        .corner_radius(CornerRadius::new_all(8.))
+                        .background(shown)
+                        .child(Icon::new(IconType::Colors).size(18.))
+                        .child(
+                            label()
+                                .text(colors::format_hex(shown))
+                                .font_size(12.)
+                                .color(colors::on_brand()),
+                        ),
+                )
+                .child(
+                    ColorPicker::new(move |picked: Color| {
+                        let mut accent = accent;
+                        accent.set(Some(colors::format_hex(picked)));
+                    })
+                    .value(shown),
+                )
+                .into_element(),
+            accent,
+            default,
+        ),
     )
 }
 

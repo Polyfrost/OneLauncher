@@ -80,7 +80,7 @@ impl Component for MarkdownPanel {
             .width(Size::fill())
             .padding(Gaps::new_all(20.))
             .corner_radius(CornerRadius::new_all(12.))
-            .background(PANEL_BG)
+            .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .child(
                 Markdown::new(self.body.clone())
@@ -262,7 +262,7 @@ fn version_row(
         .content(Content::Flex)
         .padding(Gaps::new_all(12.))
         .corner_radius(CornerRadius::new_all(10.))
-        .background(PANEL_BG)
+        .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(release_badge(v.release_type))
         .child(

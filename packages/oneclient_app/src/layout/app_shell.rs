@@ -109,7 +109,6 @@ pub fn hides_overlay(route: &Route) -> bool {
     matches!(route, Route::Home {})
 }
 
-const DIALOG_BG: Color = Color::from_rgb(21, 28, 34);
 const CODE_BG: Color = Color::from_rgb(13, 18, 22);
 
 #[derive(PartialEq)]
@@ -135,7 +134,7 @@ impl Component for LaunchErrorDialog {
                         rect()
                             .vertical()
                             .width(Size::px(560.))
-                            .background(DIALOG_BG)
+                            .background(colors::page_elevated())
                             .corner_radius(CornerRadius::new_all(16.))
                             .padding(Gaps::new_all(24.))
                             .spacing(16.)
@@ -209,7 +208,7 @@ pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
                 .width(Size::fill())
                 .background(
                     LinearGradient::new()
-                        .stop((Color::BLACK.with_a(scale(100)), 0.))
+                        .stop((colors::shade().with_a(scale(100)), 0.))
                         .stop((colors::page().with_a(scale(255)), 95.0)),
                 ),
         )
@@ -497,6 +496,7 @@ fn decode_background_image(bytes: &Bytes) -> Option<SkImage> {
 
 const VIGNETTE_SPOTLIGHT_SHADER: &str = r#"
 uniform float2 iResolution;
+uniform float3 iTint;
 
 half4 main(float2 fragCoord) {
     float2 uv = fragCoord / iResolution;
@@ -525,7 +525,7 @@ half4 main(float2 fragCoord) {
     float maxDarkness = 0.8;
     float alpha = vignette * maxDarkness;
 
-    return half4(0.0, 0.0, 0.0, alpha);
+    return half4(half3(iTint) * alpha, alpha);
 }
 "#;
 
@@ -534,6 +534,13 @@ fn gradient_overlay_radial() -> impl IntoElement {
         freya::engine::prelude::RuntimeEffect::make_for_shader(VIGNETTE_SPOTLIGHT_SHADER, None)
             .expect("Failed to compile vignette shader")
     });
+
+    let page = colors::page();
+    let tint = [
+        f32::from(page.r()) / 255.,
+        f32::from(page.g()) / 255.,
+        f32::from(page.b()) / 255.,
+    ];
 
     rect()
         .width(Size::fill())
@@ -547,8 +554,8 @@ fn gradient_overlay_radial() -> impl IntoElement {
                 let h = bounds.height();
 
                 #[rustfmt::skip]
-                let uniforms: [f32; 2] = [
-                    w, h,
+                let uniforms: [f32; 5] = [
+                    w, h, tint[0], tint[1], tint[2],
                 ];
 
                 let bytes = unsafe {

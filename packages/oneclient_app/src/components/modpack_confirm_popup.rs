@@ -8,7 +8,6 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_W: f32 = 500.;
 const DIALOG_PAD: f32 = 22.;
 const FACT_LABEL_W: f32 = 110.;
@@ -156,7 +155,7 @@ fn dialog(confirm: &ModpackConfirm, dispatch: crate::Actions) -> impl IntoElemen
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
         .corner_radius(CornerRadius::new_all(16.))
-        .background(CARD_BG)
+        .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
             0.,

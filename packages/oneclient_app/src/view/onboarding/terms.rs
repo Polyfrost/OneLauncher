@@ -16,8 +16,6 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_page, step_heading};
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-
 #[derive(Clone, Copy, PartialEq)]
 enum LegalTab {
     Terms,
@@ -339,7 +337,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
                         .corner_radius(CornerRadius::new_all(14.))
-                        .background(CARD_BG)
+                        .background(colors::card())
                         .border(border_all_color(1., colors::danger()))
                         .child(
                             rect()

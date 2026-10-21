@@ -291,16 +291,19 @@ pub mod tray {
 }
 
 #[cfg(target_os = "windows")]
-pub mod intel_frame {
+pub mod frame {
     use std::sync::atomic::{AtomicBool, Ordering};
 
+    use freya::winit::platform::windows::{CornerPreference, WindowExtWindows};
     use freya::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
     use freya::winit::window::Window;
     use freya_winit::plugins::{FreyaPlugin, PluginEvent, PluginHandle};
     use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+    use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
     use windows::Win32::Graphics::Gdi::{
         GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
     };
+    use windows::Win32::UI::Controls::MARGINS;
     use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
     use windows::Win32::UI::WindowsAndMessaging::{
         DefWindowProcW, GWL_STYLE, GetWindowLongPtrW, HTBOTTOMRIGHT, HTLEFT, IsZoomed, MINMAXINFO,
@@ -311,11 +314,11 @@ pub mod intel_frame {
 
     static RESIZING: AtomicBool = AtomicBool::new(false);
 
-    pub struct IntelFramePlugin;
+    pub struct FramePlugin;
 
-    impl FreyaPlugin for IntelFramePlugin {
+    impl FreyaPlugin for FramePlugin {
         fn plugin_id(&self) -> &'static str {
-            "oneclient-intel-frame"
+            "oneclient-window-frame"
         }
 
         fn on_event(&mut self, event: &mut PluginEvent, _handle: PluginHandle) {
@@ -334,26 +337,44 @@ pub mod intel_frame {
                 _ => return,
             };
 
-            if let Some(gpu) = gpu
+            if window.is_decorated() {
+                return;
+            }
+            let Some(hwnd) = hwnd(window) else {
+                return;
+            };
+
+            match gpu
                 .filter(|gpu| driver == "OpenGL" && gpu.contains("Intel") && !gpu.contains("Arc"))
             {
-                install(window, gpu);
+                Some(gpu) => install(hwnd, gpu),
+                None => decorate(window, hwnd),
             }
         }
     }
 
-    fn install(window: &Window, gpu: &str) {
-        if window.is_decorated() {
-            return;
+    fn hwnd(window: &Window) -> Option<HWND> {
+        match window.window_handle().ok()?.as_raw() {
+            RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as _)),
+            _ => None,
         }
-        let Ok(handle) = window.window_handle() else {
-            return;
-        };
-        let RawWindowHandle::Win32(handle) = handle.as_raw() else {
-            return;
-        };
-        let hwnd = HWND(handle.hwnd.get() as _);
+    }
 
+    fn decorate(window: &Window, hwnd: HWND) {
+        window.set_corner_preference(CornerPreference::Round);
+
+        let margins = MARGINS {
+            cxLeftWidth: 1,
+            cxRightWidth: 1,
+            cyTopHeight: 1,
+            cyBottomHeight: 1,
+        };
+        if let Err(err) = unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins) } {
+            tracing::warn!("failed to extend the window frame for its shadow: {err}");
+        }
+    }
+
+    fn install(hwnd: HWND, gpu: &str) {
         unsafe {
             if !SetWindowSubclass(hwnd, Some(subclass), 1, 0).as_bool() {
                 tracing::warn!("failed to subclass the window for the {gpu} frame fix");

@@ -5,9 +5,12 @@ use oneclient_core::SeenStatus;
 
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
 use crate::essential::EssentialPackage;
+use freya::query::UseMutation;
+
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings, loaded_image,
-    use_cached_image, use_cluster_mutation, use_disable_warnings, use_essential_guard,
+    ClusterAction, ClusterMutation, EssentialGuardKind, PendingEssential, disable_warnings,
+    loaded_image, use_cached_image, use_cluster_mutation, use_disable_warnings,
+    use_essential_guard,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -63,9 +66,12 @@ pub struct PackageEntry {
     /// False for uninstalled rows of bundles the cluster never took keeps them out of the All tab
     pub opted_in: bool,
     pub advanced: bool,
+    pub deleted: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
     pub shadowed: bool,
+    /// The user's own copy, older than the bundle's the loader picks over it
+    pub outranked: bool,
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
     pub essential: Option<&'static EssentialPackage>,
@@ -162,8 +168,6 @@ impl Component for PackageRow {
         let warnings_query = use_disable_warnings();
         let hovered = use_state(|| false);
 
-        let warning_body = disable_warning_body(&item, disable_warnings(&warnings_query));
-
         let icon_size = match layout {
             CardLayout::List => 44.,
             CardLayout::Grid => 40.,
@@ -173,23 +177,22 @@ impl Component for PackageRow {
 
         let on_toggle: EventHandler<()> = {
             let action = toggle_action(&item, cluster_id, !item.enabled);
-            let enabled_now = item.enabled;
-            let name = item.name.clone();
-            let mut guard = guard;
+            let item = item.clone();
+            let warnings = disable_warnings(&warnings_query);
             (move |()| {
                 let Some(action) = action.clone() else {
                     return;
                 };
-
-                match warning_body.clone().filter(|_| enabled_now) {
-                    Some(body) => guard.set(Some(PendingEssential {
-                        name: name.clone(),
-                        body,
-                        kind: EssentialGuardKind::Disable,
-                        action,
-                    })),
-                    None => cluster.mutate(action),
-                }
+                let only = [&item];
+                run_guarded(
+                    action,
+                    if item.enabled { &only[..] } else { &[] },
+                    item.name.clone(),
+                    EssentialGuardKind::Disable,
+                    warnings.clone(),
+                    cluster,
+                    guard,
+                );
             })
             .into()
         };
@@ -290,6 +293,19 @@ pub(crate) fn set_enabled_action(
     }
 }
 
+pub(crate) fn bundled_delete_action(item: &PackageEntry, cluster_id: i64) -> Option<ClusterAction> {
+    let hash = item.hash.clone()?;
+    Some(if item.deleted {
+        ClusterAction::SetArtifactEnabled {
+            cluster_id,
+            hash,
+            enabled: true,
+        }
+    } else {
+        ClusterAction::DeleteBundledArtifact { cluster_id, hash }
+    })
+}
+
 pub(crate) fn disable_warning_body(
     item: &PackageEntry,
     warnings: Option<oneclient_core::DisableWarnings>,
@@ -304,6 +320,40 @@ pub(crate) fn disable_warning_body(
     }
 }
 
+pub(crate) fn run_guarded(
+    action: ClusterAction,
+    targets: &[&PackageEntry],
+    name: String,
+    kind: EssentialGuardKind,
+    warnings: Option<oneclient_core::DisableWarnings>,
+    cluster: UseMutation<ClusterMutation>,
+    mut guard: State<Option<PendingEssential>>,
+) {
+    let warned: Vec<(&PackageEntry, String)> = targets
+        .iter()
+        .filter_map(|p| Some((*p, disable_warning_body(p, warnings.clone())?)))
+        .collect();
+    let body = match warned.as_slice() {
+        [] => {
+            cluster.mutate(action);
+            return;
+        }
+        [(p, body)] if p.name == name => body.clone(),
+        _ => warned
+            .iter()
+            .map(|(p, body)| format!("**{}**\n\n{body}", p.name))
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+    };
+    guard.set(Some(PendingEssential {
+        name,
+        body,
+        kind,
+        action,
+    }));
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn package_context_menu(
     x: f32,
     y: f32,
@@ -311,6 +361,7 @@ pub fn package_context_menu(
     cluster_id: i64,
     package_type: &'static str,
     on_delete: EventHandler<(String, String)>,
+    on_bundled: Option<EventHandler<()>>,
     on_select: EventHandler<()>,
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone()).action(
@@ -344,6 +395,16 @@ pub fn package_context_menu(
             "View in folder",
             EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
         );
+    }
+
+    if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.installed) {
+        menu = if item.deleted {
+            menu.separator()
+                .action(IconType::RefreshCcw02, "Restore", on_bundled)
+        } else {
+            menu.separator()
+                .danger_action(IconType::Trash01, "Delete", on_bundled)
+        };
     }
 
     if item.installed && !item.in_bundle() {
@@ -470,7 +531,8 @@ pub(crate) fn grid_card(
             .into_element()
     });
 
-    let badged = item.is_outdated() || item.shadowed || item.recency_badge().is_some();
+    let badged =
+        item.is_outdated() || item.shadowed || item.outranked || item.recency_badge().is_some();
     let floating = badged.then(|| {
         rect()
             .horizontal()
@@ -485,6 +547,7 @@ pub(crate) fn grid_card(
             .spacing(4.)
             .maybe_child(item.is_outdated().then(outdated_badge))
             .maybe_child(item.shadowed.then(shadowed_badge))
+            .maybe_child(item.outranked.then(outranked_badge))
             .maybe_child(item.recency_badge())
             .into_element()
     });
@@ -771,6 +834,7 @@ fn package_info(
                         })
                         .maybe_child(item.is_outdated().then(outdated_badge))
                         .maybe_child(item.shadowed.then(shadowed_badge))
+                        .maybe_child(item.outranked.then(outranked_badge))
                         .maybe_child(item.recency_badge()),
                 )
                 .maybe(!item.author.is_empty(), |el| {
@@ -874,6 +938,10 @@ fn outdated_badge() -> Element {
 
 fn shadowed_badge() -> Element {
     status_tag("Using your copy", colors::brand())
+}
+
+fn outranked_badge() -> Element {
+    status_tag("Using bundle's newer copy", colors::brand())
 }
 
 fn new_badge() -> Element {

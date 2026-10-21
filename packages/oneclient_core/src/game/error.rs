@@ -43,6 +43,12 @@ pub enum GameError {
     )]
     ResetUnfinished,
 
+    #[error("this instance is syncing from the shared folder; wait for it to finish")]
+    Syncing,
+
+    #[error("{0} is syncing from the shared folder; wait for it to finish before launching")]
+    SharedDirectorySyncing(String),
+
     #[error("failed to spawn the game process: {0}")]
     Spawn(String),
 

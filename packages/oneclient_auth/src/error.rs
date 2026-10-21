@@ -69,6 +69,9 @@ pub enum MinecraftAuthError {
         message: String,
         redirect: Option<String>,
     },
+    /// Retrying cannot fix this only a fresh interactive sign-in can
+    #[error("Microsoft rejected the saved sign-in ({error})")]
+    RefreshTokenRevoked { error: String },
     #[error(
         "The sign-in service returned an error (HTTP {status_code}) during step {step:?}. Please wait a moment and try again."
     )]
@@ -130,6 +133,11 @@ pub enum AuthError {
 
     #[error("invalid offline username: {reason}")]
     InvalidOfflineUsername { reason: String },
+
+    #[error(
+        "Your Microsoft sign-in for {username} has expired. Sign in to it again in Settings > Accounts."
+    )]
+    SessionExpired { username: String },
 
     #[error("account {0} is not registered")]
     AccountNotFound(uuid::Uuid),

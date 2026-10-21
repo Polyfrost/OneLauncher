@@ -415,6 +415,10 @@ pub fn restart_pending(state: &LauncherState, current: &Path) -> Option<String> 
 }
 
 fn busy_reason(state: &LauncherState) -> Option<String> {
+    if state.games.any_syncing() {
+        return Some("Wait for the sync from the shared folder to finish first.".to_string());
+    }
+
     let active = state.games.active_ids().len();
     if active == 0 {
         return None;

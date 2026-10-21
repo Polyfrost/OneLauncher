@@ -105,3 +105,45 @@ async fn default_account_returns_expired_token_without_refreshing() {
     assert_eq!(account.id, msa_id);
     assert!(account.is_expired());
 }
+
+#[tokio::test]
+async fn signed_out_account_stays_listed_and_default() {
+    isolate_launcher_dir();
+
+    let mut store = CredentialsStore::default();
+    let msa = fake_microsoft_account("MsaUser");
+    let msa_id = msa.id;
+    store.users.insert(msa_id, msa);
+    store.default_user = Some(msa_id);
+
+    store.mark_signed_out(msa_id).await.unwrap();
+
+    let reloaded = CredentialsStore::load().await.unwrap();
+    let account = reloaded.get_account(msa_id).expect("entry must survive");
+    assert!(account.needs_sign_in());
+    assert!(
+        account.refresh_token.is_empty(),
+        "the dead token must not be kept"
+    );
+    assert!(account.access_token.is_empty());
+    assert_eq!(reloaded.default_user, Some(msa_id));
+}
+
+#[test]
+fn accounts_saved_before_the_flag_existed_load_as_signed_in() {
+    let account: oneclient_auth::MinecraftAccount = serde_json::from_str(&format!(
+        r#"{{"id":"{}","username":"MsaUser","access_token":"a","refresh_token":"r","expires":"2026-01-01T00:00:00Z","kind":"microsoft"}}"#,
+        Uuid::new_v4()
+    ))
+    .unwrap();
+
+    assert!(!account.needs_sign_in());
+}
+
+#[test]
+fn offline_accounts_never_need_sign_in() {
+    let mut account = offline_account("Steve".into());
+    account.signed_out = true;
+
+    assert!(!account.needs_sign_in());
+}

@@ -67,7 +67,7 @@ fn push_choice(choices: &mut Vec<MinecraftChoice>, mc: &str, pick: &VersionSumma
         return;
     }
     let mut detail = vec![pick.version_number.clone()];
-    detail.extend(pick.loaders.iter().map(|l| l.to_string()));
+    detail.extend(pick.loaders.iter().map(|l| l.real_name()));
     match pick.release_type {
         ReleaseType::Release => {}
         ReleaseType::Beta => detail.push("Beta".to_string()),

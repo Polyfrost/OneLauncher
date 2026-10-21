@@ -6,7 +6,7 @@ use oneclient_events::Level;
 
 use crate::{
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
-    hooks::{use_dispatch, use_notifications_snapshot},
+    hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
     transfer::TransferStats,
@@ -74,6 +74,7 @@ impl Component for NotificationPanel {
             .width(Size::fill())
             .height(Size::flex(1.0))
             .spacing(8.)
+            .scrollbar_gutter(true)
             .children(rows);
 
         rect()
@@ -143,6 +144,7 @@ impl Component for NotifEntryRow {
         let entry = self.entry.clone();
         let id = entry.id;
         let dispatch = use_dispatch();
+        let confirm_link = use_link_confirm();
         let enter_dispatch = dispatch.clone();
         let body_dispatch = dispatch.clone();
         let click_dismissable = entry.click_dismissable();
@@ -181,7 +183,7 @@ impl Component for NotifEntryRow {
                             .color(level_color(&entry.level)),
                     ),
             )
-            .child(row_body(&entry, body_dispatch));
+            .child(row_body(&entry, body_dispatch, confirm_link));
 
         rect()
             .vertical()
@@ -334,7 +336,11 @@ fn phase_badge(phase: &str) -> impl IntoElement {
         .into_element()
 }
 
-fn row_body(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
+fn row_body(
+    entry: &InboxEntry,
+    dispatch: crate::Actions,
+    confirm_link: State<Option<String>>,
+) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::flex(1.0))
@@ -381,10 +387,14 @@ fn row_body(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
-        .child(row_extra(entry, dispatch))
+        .child(row_extra(entry, dispatch, confirm_link))
 }
 
-fn row_extra(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
+fn row_extra(
+    entry: &InboxEntry,
+    dispatch: crate::Actions,
+    confirm_link: State<Option<String>>,
+) -> impl IntoElement {
     if let Some((current, total)) = entry.progress.filter(|_| entry.is_loading) {
         let frac = (current as f32 / total.max(1) as f32).clamp(0.0, 1.0);
         let bar = progress_track(
@@ -437,7 +447,7 @@ fn row_extra(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
                     } else {
                         ButtonVariant::Secondary
                     })
-                    .on_press(move |_| run_action(&action_dispatch, &kind)),
+                    .on_press(move |_| run_action(&action_dispatch, confirm_link, &kind)),
             );
         }
 
@@ -475,11 +485,16 @@ fn transfer_footer(stats: TransferStats) -> Element {
         .into_element()
 }
 
-fn run_action(dispatch: &crate::Actions, kind: &NotificationActionKind) {
+pub(crate) fn run_action(
+    dispatch: &crate::Actions,
+    mut confirm_link: State<Option<String>>,
+    kind: &NotificationActionKind,
+) {
     match kind {
         NotificationActionKind::OpenClusterUpdate(summaries) => {
             dispatch.open_cluster_update(summaries.clone());
         }
+        NotificationActionKind::OpenUrl(url) => confirm_link.set(Some(url.clone())),
     }
 }
 

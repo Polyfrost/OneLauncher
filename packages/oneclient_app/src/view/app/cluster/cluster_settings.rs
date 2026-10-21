@@ -3,7 +3,9 @@ use std::sync::Arc;
 use freya::prelude::*;
 use oneclient_common::Patch;
 use oneclient_common::domain::GameLoader;
-use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
+use oneclient_core::settings::{
+    GameSettingsProfile, GraphicsBackend, PackageUpdateMode, ProfileUpdate, Resolution,
+};
 use oneclient_java::JavaRuntime;
 
 use crate::components::{
@@ -109,8 +111,28 @@ impl Component for ClusterSettings {
         } else {
             Vec::new()
         };
+        let graphics_backend_row: Vec<Element> =
+            if GraphicsBackend::supported_on(&cluster.mc_version) {
+                vec![
+                    GraphicsBackendRow {
+                        cluster_id,
+                        value: profile.graphics_backend,
+                        global: global.graphics_backend.unwrap_or_default(),
+                    }
+                    .into_element(),
+                ]
+            } else {
+                Vec::new()
+            };
+
         let migrate_row: Vec<Element> = if mod_loader {
             vec![MigrateFromRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
+
+        let sync_row: Vec<Element> = if cluster.uses_dedicated_dir() && !cluster.is_isolated() {
+            vec![SyncSharedRow { cluster_id }.into_element()]
         } else {
             Vec::new()
         };
@@ -142,6 +164,21 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .append_children(sync_row)
+                    .child(section_header("SHORTCUT"))
+                    .child(ShortcutRow { cluster_id }.into_element())
+                    .child(section_header("CONTENT"))
+                    .child(profile_row(
+                        generation,
+                        "BrowserUpdateModeRow",
+                        BrowserUpdateModeRow {
+                            cluster_id,
+                            value: profile.browser_update_mode,
+                            global: global.browser_update_mode.unwrap_or_default(),
+                        }
+                        .into_element(),
+                    ))
+                    .append_children(migrate_row)
                     .child(section_header("GAME"))
                     .child(profile_row(
                         generation,
@@ -175,9 +212,8 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     ))
+                    .append_children(graphics_backend_row)
                     .append_children(loader_section)
-                    .child(section_header("SHORTCUT"))
-                    .child(ShortcutRow { cluster_id }.into_element())
                     .child(section_header("JAVA"))
                     .child(profile_row(
                         generation,
@@ -216,18 +252,6 @@ impl Component for ClusterSettings {
                         "Post",
                         text_row(cluster_id, TextField::Post, &profile, &global),
                     ))
-                    .child(section_header("CONTENT"))
-                    .child(profile_row(
-                        generation,
-                        "BrowserUpdateModeRow",
-                        BrowserUpdateModeRow {
-                            cluster_id,
-                            value: profile.browser_update_mode,
-                            global: global.browser_update_mode.unwrap_or_default(),
-                        }
-                        .into_element(),
-                    ))
-                    .append_children(migrate_row)
                     .append_children(modpack_section)
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element())
@@ -251,6 +275,7 @@ enum Field {
     MemMax,
     JavaPath,
     BrowserUpdateMode,
+    GraphicsBackend,
 }
 
 /// `slot` keeps the siblings' keys distinct, `generation` changes them all on a reset
@@ -270,6 +295,7 @@ fn clear_update(field: Field) -> ProfileUpdate {
         Field::MemMax => u.mem_max = Patch::Clear,
         Field::JavaPath => u.java_path = Patch::Clear,
         Field::BrowserUpdateMode => u.browser_update_mode = Patch::Clear,
+        Field::GraphicsBackend => u.graphics_backend = Patch::Clear,
     }
     u
 }
@@ -551,6 +577,36 @@ impl Component for ResetInstanceRow {
                 )
                 .into_element()
             }))
+    }
+}
+
+#[derive(PartialEq)]
+struct SyncSharedRow {
+    cluster_id: i64,
+}
+
+impl Component for SyncSharedRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+        let syncing = use_game_snapshot().is_syncing_shared(cluster_id);
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .enabled(!syncing)
+            .maybe(!syncing, |el| {
+                el.on_press(move |_| dispatch.sync_from_shared_dir(cluster_id))
+            })
+            .text(if syncing { "Syncing..." } else { "Sync" });
+
+        settings_row(
+            IconType::RefreshCcw02,
+            "Sync From Shared Folder",
+            "Copy settings, keybinds, servers, mod configs and missing worlds \
+             from the shared .minecraft into this instance.",
+            button,
+        )
     }
 }
 
@@ -1006,6 +1062,57 @@ impl Component for BrowserUpdateModeRow {
             IconType::RefreshCw01,
             "Browser Package Updates",
             "What to do when content installed from the browser has a newer version. Bundle content is not affected.",
+            override_cell(control, overridden, on_reset),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct GraphicsBackendRow {
+    cluster_id: i64,
+    value: Option<GraphicsBackend>,
+    global: GraphicsBackend,
+}
+
+impl Component for GraphicsBackendRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let overridden = self.value.is_some();
+        let resolved = self.value.unwrap_or(self.global);
+        let dispatch = use_dispatch();
+
+        let options: Vec<String> = GraphicsBackend::ALL
+            .iter()
+            .map(|backend| backend.label().to_string())
+            .collect();
+
+        let control = {
+            let dispatch = dispatch.clone();
+            Dropdown::new(resolved.label(), options)
+                .width(Size::px(220.))
+                .height(Size::px(34.))
+                .on_select(move |idx: usize| {
+                    if let Some(backend) = GraphicsBackend::ALL.get(idx).copied() {
+                        dispatch.update_cluster_profile(
+                            cluster_id,
+                            ProfileUpdate {
+                                graphics_backend: Patch::Set(backend),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                })
+        };
+
+        let on_reset: EventHandler<()> = (move |()| {
+            dispatch.update_cluster_profile(cluster_id, clear_update(Field::GraphicsBackend));
+        })
+        .into();
+
+        settings_row(
+            IconType::PaintPour,
+            "Graphics Backend",
+            "Forces the renderer at launch. Default leaves it to the in-game setting.",
             override_cell(control, overridden, on_reset),
         )
     }

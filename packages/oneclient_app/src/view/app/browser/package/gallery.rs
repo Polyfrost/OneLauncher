@@ -158,13 +158,13 @@ impl Component for GalleryViewer {
             move || start
         });
 
+        let idx = (*index.read()).min(len.saturating_sub(1));
+        let query = use_cached_image(self.images.get(idx).map(|i| i.url.clone()), FULL_EDGE);
+
         if len == 0 {
             return rect().into_element();
         }
-        let idx = (*index.read()).min(len - 1);
         let image = self.images[idx].clone();
-
-        let query = use_cached_image(Some(image.url.clone()), FULL_EDGE);
         let loaded = loaded_image(Some(&image.url), &query);
 
         let close = self.on_close.clone();

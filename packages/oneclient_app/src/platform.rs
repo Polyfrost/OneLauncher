@@ -322,19 +322,14 @@ pub mod frame {
         }
 
         fn on_event(&mut self, event: &mut PluginEvent, _handle: PluginHandle) {
-            let (window, driver, gpu) = match event {
-                PluginEvent::WindowCreated {
-                    window,
-                    graphics_driver,
-                    gpu_name,
-                    ..
-                }
-                | PluginEvent::GraphicsDriverChanged {
-                    window,
-                    graphics_driver,
-                    gpu_name,
-                } => (*window, *graphics_driver, *gpu_name),
-                _ => return,
+            let PluginEvent::WindowCreated {
+                window,
+                graphics_driver,
+                gpu_name,
+                ..
+            } = event
+            else {
+                return;
             };
 
             if window.is_decorated() {
@@ -344,9 +339,9 @@ pub mod frame {
                 return;
             };
 
-            match gpu
-                .filter(|gpu| driver == "OpenGL" && gpu.contains("Intel") && !gpu.contains("Arc"))
-            {
+            match gpu_name.filter(|gpu| {
+                *graphics_driver == "OpenGL" && gpu.contains("Intel") && !gpu.contains("Arc")
+            }) {
                 Some(gpu) => install(hwnd, gpu),
                 None => decorate(window, hwnd),
             }
@@ -375,13 +370,11 @@ pub mod frame {
     }
 
     fn install(hwnd: HWND, gpu: &str) {
-        unsafe {
-            if !SetWindowSubclass(hwnd, Some(subclass), 1, 0).as_bool() {
-                tracing::warn!("failed to subclass the window for the {gpu} frame fix");
-                return;
-            }
-            restyle(hwnd);
+        if !unsafe { SetWindowSubclass(hwnd, Some(subclass), 1, 0) }.as_bool() {
+            tracing::warn!("failed to subclass the window for the {gpu} frame fix");
+            return;
         }
+        restyle(hwnd);
         tracing::info!("dropped the window frame styles for {gpu} on OpenGL");
     }
 
@@ -403,14 +396,14 @@ pub mod frame {
             .then_some(info)
     }
 
-    unsafe fn restyle(hwnd: HWND) {
-        unsafe {
-            let style = GetWindowLongPtrW(hwnd, GWL_STYLE) as u32;
-            SetWindowLongPtrW(hwnd, GWL_STYLE, frame_styles(style) as isize);
+    fn restyle(hwnd: HWND) {
+        let style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32;
+        unsafe { SetWindowLongPtrW(hwnd, GWL_STYLE, frame_styles(style) as isize) };
 
-            let flags = SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE;
-            let zoomed = IsZoomed(hwnd).as_bool();
-            let result = match monitor_info(hwnd).filter(|_| zoomed) {
+        let flags = SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE;
+        let zoomed = unsafe { IsZoomed(hwnd) }.as_bool();
+        let result = unsafe {
+            match monitor_info(hwnd).filter(|_| zoomed) {
                 Some(MONITORINFO { rcWork: work, .. }) => SetWindowPos(
                     hwnd,
                     None,
@@ -421,10 +414,10 @@ pub mod frame {
                     flags,
                 ),
                 None => SetWindowPos(hwnd, None, 0, 0, 0, 0, flags | SWP_NOMOVE | SWP_NOSIZE),
-            };
-            if let Err(err) = result {
-                tracing::warn!("failed to apply the window frame styles: {err}");
             }
+        };
+        if let Err(err) = result {
+            tracing::warn!("failed to apply the window frame styles: {err}");
         }
     }
 

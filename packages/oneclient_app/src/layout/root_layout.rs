@@ -42,6 +42,7 @@ impl Component for RootLayout {
                     .height(Size::fill())
                     .child(Outlet::<Route>::new()),
             )
+            .child(crate::view::chat::SocialOverlay)
             .child(NotificationCenter)
             .child(AccountSwitcher)
             .child(ControlCenter)

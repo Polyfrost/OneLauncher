@@ -611,6 +611,7 @@ impl NotificationState {
                     },
                 );
             }
+            Event::Chat(_) => {}
 
             Event::Progress(ProgressEvent::Update { id, .. })
                 if id == oneclient_auth::MICROSOFT_LOGIN_PROGRESS => {}

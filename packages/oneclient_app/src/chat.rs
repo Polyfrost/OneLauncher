@@ -1,0 +1,852 @@
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
+
+use chrono::{DateTime, FixedOffset, Utc};
+use uuid::Uuid;
+
+use oneclient_polyplus::{
+    BlockedPlayer, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary,
+};
+
+use crate::state::AsyncStatus;
+
+#[must_use]
+pub fn chat_allowed(
+    settings: &oneclient_core::settings::LauncherSettings,
+    consent_declined: bool,
+) -> bool {
+    !consent_declined
+        && !settings.declined_tos
+        && settings.accepted_tos_version > 0
+        && settings.accepted_privacy_version > 0
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct FriendRequests {
+    pub incoming: Vec<FriendRequest>,
+    pub outgoing: Vec<FriendRequest>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChatRoster {
+    pub friends: Vec<Friend>,
+    pub requests: FriendRequests,
+    pub blocked: Vec<BlockedPlayer>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChatConversation {
+    pub id: i32,
+    pub kind: GroupKind,
+    pub name: Option<String>,
+    pub members: Vec<Uuid>,
+    pub unread: bool,
+    pub preview: Option<String>,
+    pub preview_sender: Option<Uuid>,
+    pub last_activity: Option<DateTime<FixedOffset>>,
+}
+
+impl From<GroupSummary> for ChatConversation {
+    fn from(value: GroupSummary) -> Self {
+        let (preview, preview_sender, last_activity) = match value.last_message {
+            Some(last) => (Some(last.content), Some(last.sender), Some(last.sent_at)),
+            None => (None, None, None),
+        };
+
+        Self {
+            id: value.id,
+            kind: value.kind,
+            name: value.name,
+            members: value.members,
+            unread: value.unread,
+            preview,
+            preview_sender,
+            last_activity,
+        }
+    }
+}
+
+impl ChatConversation {
+    #[must_use]
+    pub fn counterpart(&self, own_id: Uuid) -> Option<Uuid> {
+        if self.kind != GroupKind::Dm {
+            return None;
+        }
+
+        self.members
+            .iter()
+            .copied()
+            .find(|member| *member != own_id)
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChatMessage {
+    pub id: i64,
+    pub sender: Uuid,
+    pub content: String,
+    pub sent_at: Option<DateTime<FixedOffset>>,
+    pub edited: bool,
+    pub invite: Option<MessageInvite>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct MessageInvite {
+    pub id: i32,
+    pub status: String,
+}
+
+impl MessageInvite {
+    #[must_use]
+    pub fn is_open(&self) -> bool {
+        !matches!(
+            self.status.to_ascii_lowercase().as_str(),
+            "accepted" | "declined" | "expired" | "cancelled" | "canceled"
+        )
+    }
+
+    #[must_use]
+    pub fn new(id: i32, status: Option<String>) -> Self {
+        Self {
+            id,
+            status: status.unwrap_or_else(|| "pending".to_string()),
+        }
+    }
+}
+
+impl From<GroupMessage> for ChatMessage {
+    fn from(value: GroupMessage) -> Self {
+        Self {
+            id: value.id,
+            sender: value.sender,
+            content: value.content,
+            sent_at: Some(value.sent_at),
+            edited: value.edited_at.is_some(),
+            invite: value
+                .session_invite
+                .map(|invite| MessageInvite::new(invite.id, Some(invite.status))),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PendingMessage {
+    pub key: Uuid,
+    pub content: String,
+    pub failed: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub enum FriendRequestStatus {
+    #[default]
+    Idle,
+    Sending(String),
+    Sent(String),
+    Failed(String),
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SelfStatus {
+    #[default]
+    Online,
+    Invisible,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChatInvite {
+    pub id: i32,
+    pub from: Uuid,
+    pub group_id: i32,
+    pub message_id: i64,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChatInbox {
+    pub conversations: Vec<ChatConversation>,
+    pub loading: bool,
+    pub active: Option<i32>,
+    pub connected: bool,
+    pub error: Option<String>,
+}
+
+impl ChatInbox {
+    #[must_use]
+    pub fn conversation(&self, group_id: i32) -> Option<&ChatConversation> {
+        self.conversations
+            .iter()
+            .find(|conversation| conversation.id == group_id)
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub enum ThreadStatus {
+    #[default]
+    Idle,
+    Loading,
+    Error(String),
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChatThread {
+    pub messages: Arc<Vec<ChatMessage>>,
+    pub pending: Vec<PendingMessage>,
+    pub status: ThreadStatus,
+    pub complete: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct ChatState {
+    pub connected: bool,
+    pub status: AsyncStatus,
+    pub error: Option<String>,
+    pub active: Option<i32>,
+    pub owner: Option<Uuid>,
+    pub self_status: SelfStatus,
+    pub friend_request: FriendRequestStatus,
+    conversations: Vec<ChatConversation>,
+    messages: HashMap<i32, Arc<Vec<ChatMessage>>>,
+    pending: HashMap<i32, Vec<PendingMessage>>,
+    presence: HashMap<Uuid, bool>,
+    roster: ChatRoster,
+    threads: HashMap<i32, ThreadStatus>,
+    complete: HashMap<i32, bool>,
+    dismissed_invites: HashSet<i32>,
+}
+
+impl ChatState {
+    #[must_use]
+    pub fn conversations(&self) -> &[ChatConversation] {
+        &self.conversations
+    }
+
+    #[must_use]
+    pub fn conversation(&self, group_id: i32) -> Option<&ChatConversation> {
+        self.conversations
+            .iter()
+            .find(|conversation| conversation.id == group_id)
+    }
+
+    #[must_use]
+    pub fn messages_for(&self, group_id: i32) -> Arc<Vec<ChatMessage>> {
+        self.messages.get(&group_id).cloned().unwrap_or_default()
+    }
+
+    #[must_use]
+    pub fn pending_for(&self, group_id: i32) -> &[PendingMessage] {
+        self.pending
+            .get(&group_id)
+            .map_or(&[][..], |pending| pending.as_slice())
+    }
+
+    #[must_use]
+    pub fn unread_count(&self) -> usize {
+        self.conversations
+            .iter()
+            .filter(|conversation| conversation.unread)
+            .count()
+    }
+
+    #[must_use]
+    pub fn has_unread(&self) -> bool {
+        self.conversations
+            .iter()
+            .any(|conversation| conversation.unread)
+    }
+
+    #[must_use]
+    pub fn inbox(&self) -> ChatInbox {
+        ChatInbox {
+            conversations: self.conversations.clone(),
+            loading: self.conversations.is_empty()
+                && self.error.is_none()
+                && matches!(self.status, AsyncStatus::Idle | AsyncStatus::Loading),
+            active: self.active,
+            connected: self.connected,
+            error: self.error.clone(),
+        }
+    }
+
+    #[must_use]
+    pub fn roster(&self) -> ChatRoster {
+        self.roster.clone()
+    }
+
+    pub fn set_roster(&mut self, roster: ChatRoster) {
+        self.roster = roster;
+    }
+
+    #[must_use]
+    pub fn thread(&self, group_id: i32) -> ChatThread {
+        ChatThread {
+            messages: self.messages_for(group_id),
+            pending: self.pending_for(group_id).to_vec(),
+            status: self
+                .threads
+                .get(&group_id)
+                .cloned()
+                .unwrap_or(ThreadStatus::Idle),
+            complete: self.complete.get(&group_id).copied().unwrap_or(false),
+        }
+    }
+
+    pub fn begin_thread_load(&mut self, group_id: i32) {
+        self.threads.insert(group_id, ThreadStatus::Loading);
+    }
+
+    pub fn settle_thread_load(&mut self, group_id: i32) {
+        self.threads.insert(group_id, ThreadStatus::Idle);
+    }
+
+    pub fn fail_thread_load(&mut self, group_id: i32, message: String) {
+        self.threads.insert(group_id, ThreadStatus::Error(message));
+    }
+
+    pub fn set_history_complete(&mut self, group_id: i32, complete: bool) {
+        self.complete.insert(group_id, complete);
+    }
+
+    #[must_use]
+    pub fn oldest_message(&self, group_id: i32) -> Option<i64> {
+        self.messages
+            .get(&group_id)
+            .and_then(|messages| messages.first())
+            .map(|message| message.id)
+    }
+
+    #[must_use]
+    pub fn newest_message(&self, group_id: i32) -> Option<i64> {
+        self.messages
+            .get(&group_id)
+            .and_then(|messages| messages.last())
+            .map(|message| message.id)
+    }
+
+    pub fn set_conversations(&mut self, summaries: Vec<GroupSummary>) {
+        self.conversations = summaries.into_iter().map(ChatConversation::from).collect();
+        self.sort();
+        self.status = AsyncStatus::Ready;
+        self.error = None;
+    }
+
+    pub fn set_messages(&mut self, group_id: i32, page: Vec<GroupMessage>) {
+        let mut messages: Vec<ChatMessage> = page.into_iter().map(ChatMessage::from).collect();
+        messages.sort_by_key(|message| message.id);
+        messages.dedup_by_key(|message| message.id);
+        self.messages.insert(group_id, Arc::new(messages));
+    }
+
+    pub fn prepend_messages(&mut self, group_id: i32, page: Vec<GroupMessage>) {
+        let mut merged: Vec<ChatMessage> = page.into_iter().map(ChatMessage::from).collect();
+        merged.extend(self.messages_for(group_id).iter().cloned());
+        merged.sort_by_key(|message| message.id);
+        merged.dedup_by_key(|message| message.id);
+        self.messages.insert(group_id, Arc::new(merged));
+    }
+
+    pub fn upsert(&mut self, group_id: i32, message: ChatMessage) {
+        let bucket = self.messages.entry(group_id).or_default();
+        let messages = Arc::make_mut(bucket);
+
+        match messages.binary_search_by_key(&message.id, |existing| existing.id) {
+            Ok(index) => messages[index] = message,
+            Err(index) => messages.insert(index, message),
+        }
+    }
+
+    pub fn edit(
+        &mut self,
+        group_id: i32,
+        message_id: i64,
+        content: String,
+        invite_status: Option<String>,
+    ) {
+        let Some(bucket) = self.messages.get_mut(&group_id) else {
+            return;
+        };
+
+        if let Some(message) = Arc::make_mut(bucket)
+            .iter_mut()
+            .find(|message| message.id == message_id)
+        {
+            message.content = content;
+            message.edited = true;
+            if let (Some(invite), Some(status)) = (message.invite.as_mut(), invite_status) {
+                invite.status = status;
+            }
+        }
+    }
+
+    pub fn remove(&mut self, group_id: i32, message_id: i64) {
+        let Some(bucket) = self.messages.get_mut(&group_id) else {
+            return;
+        };
+
+        Arc::make_mut(bucket).retain(|message| message.id != message_id);
+    }
+
+    #[must_use]
+    pub fn invites(&self) -> Vec<ChatInvite> {
+        let mut invites: Vec<ChatInvite> = self
+            .messages
+            .iter()
+            .flat_map(|(group_id, messages)| {
+                messages.iter().filter_map(move |message| {
+                    let invite = message.invite.as_ref()?;
+                    (invite.is_open()
+                        && Some(message.sender) != self.owner
+                        && !self.dismissed_invites.contains(&invite.id))
+                    .then_some(ChatInvite {
+                        id: invite.id,
+                        from: message.sender,
+                        group_id: *group_id,
+                        message_id: message.id,
+                    })
+                })
+            })
+            .collect();
+        invites.sort_by_key(|invite| std::cmp::Reverse(invite.message_id));
+        invites
+    }
+
+    pub fn dismiss_invite(&mut self, invite_id: i32) {
+        self.dismissed_invites.insert(invite_id);
+    }
+
+    #[must_use]
+    pub fn has_messages(&self, group_id: i32) -> bool {
+        self.messages.contains_key(&group_id)
+    }
+
+    pub fn note_activity(&mut self, group_id: i32, sender: Uuid, preview: String, unread: bool) {
+        let now = Utc::now().fixed_offset();
+
+        if let Some(conversation) = self
+            .conversations
+            .iter_mut()
+            .find(|conversation| conversation.id == group_id)
+        {
+            conversation.preview = Some(preview);
+            conversation.preview_sender = Some(sender);
+            conversation.last_activity = Some(now);
+            conversation.unread |= unread;
+        }
+
+        self.sort();
+    }
+
+    #[must_use]
+    pub fn is_online(&self, player: Uuid) -> bool {
+        self.presence.get(&player).copied().unwrap_or_else(|| {
+            self.roster
+                .friends
+                .iter()
+                .any(|friend| friend.player == player && friend.online)
+        })
+    }
+
+    pub fn set_presence(&mut self, player: Uuid, online: bool) {
+        self.presence.insert(player, online);
+    }
+
+    pub fn mark_read(&mut self, group_id: i32) {
+        if let Some(conversation) = self
+            .conversations
+            .iter_mut()
+            .find(|conversation| conversation.id == group_id)
+        {
+            conversation.unread = false;
+        }
+    }
+
+    pub fn begin_send(&mut self, group_id: i32, key: Uuid, content: String) {
+        self.pending
+            .entry(group_id)
+            .or_default()
+            .push(PendingMessage {
+                key,
+                content,
+                failed: false,
+            });
+    }
+
+    pub fn finish_send(&mut self, group_id: i32, key: Uuid, message: ChatMessage) {
+        self.discard_pending(group_id, key);
+        self.upsert(group_id, message);
+    }
+
+    pub fn begin_retry(&mut self, group_id: i32, key: Uuid) -> Option<String> {
+        let pending = self
+            .pending
+            .get_mut(&group_id)?
+            .iter_mut()
+            .find(|pending| pending.key == key)?;
+
+        pending.failed = false;
+        Some(pending.content.clone())
+    }
+
+    pub fn fail_send(&mut self, group_id: i32, key: Uuid) {
+        if let Some(bucket) = self.pending.get_mut(&group_id)
+            && let Some(pending) = bucket.iter_mut().find(|pending| pending.key == key)
+        {
+            pending.failed = true;
+        }
+    }
+
+    pub fn discard_pending(&mut self, group_id: i32, key: Uuid) {
+        let Some(bucket) = self.pending.get_mut(&group_id) else {
+            return;
+        };
+
+        bucket.retain(|pending| pending.key != key);
+        if bucket.is_empty() {
+            self.pending.remove(&group_id);
+        }
+    }
+
+    pub fn set_owner(&mut self, owner: Option<Uuid>) -> bool {
+        if self.owner == owner {
+            return false;
+        }
+
+        self.clear();
+        self.owner = owner;
+        true
+    }
+
+    pub fn clear(&mut self) {
+        let connected = self.connected;
+        *self = Self::default();
+        self.connected = connected;
+    }
+
+    fn sort(&mut self) {
+        self.conversations.sort_by(|a, b| {
+            b.last_activity
+                .cmp(&a.last_activity)
+                .then_with(|| b.id.cmp(&a.id))
+        });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn summary(id: i32, unread: bool) -> GroupSummary {
+        GroupSummary {
+            id,
+            kind: GroupKind::Dm,
+            name: None,
+            members: Vec::new(),
+            last_message: None,
+            unread,
+        }
+    }
+
+    fn fetched(id: i64, content: &str, sent_at: &str) -> GroupMessage {
+        GroupMessage {
+            id,
+            sender: Uuid::nil(),
+            content: content.to_string(),
+            sent_at: DateTime::parse_from_rfc3339(sent_at).expect("fixture timestamp"),
+            edited_at: None,
+            session_invite: None,
+        }
+    }
+
+    fn message(id: i64, content: &str) -> ChatMessage {
+        ChatMessage {
+            id,
+            sender: Uuid::nil(),
+            content: content.to_string(),
+            sent_at: None,
+            edited: false,
+            invite: None,
+        }
+    }
+
+    #[test]
+    fn messages_stay_ordered_however_they_arrive() {
+        let mut chat = ChatState::default();
+
+        chat.upsert(1, message(30, "third"));
+        chat.upsert(1, message(10, "first"));
+        chat.upsert(1, message(20, "second"));
+
+        let ids: Vec<i64> = chat.messages_for(1).iter().map(|m| m.id).collect();
+        assert_eq!(ids, vec![10, 20, 30]);
+    }
+
+    #[test]
+    fn a_resent_message_replaces_rather_than_duplicates() {
+        let mut chat = ChatState::default();
+
+        chat.upsert(1, message(10, "original"));
+        chat.upsert(1, message(10, "corrected"));
+
+        let messages = chat.messages_for(1);
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].content, "corrected");
+    }
+
+    #[test]
+    fn a_live_message_moves_its_conversation_to_the_top() {
+        let mut chat = ChatState::default();
+        chat.set_conversations(vec![summary(1, false), summary(2, false)]);
+
+        chat.note_activity(1, Uuid::nil(), "hello".into(), true);
+
+        let order: Vec<i32> = chat.conversations().iter().map(|c| c.id).collect();
+        assert_eq!(order, vec![1, 2]);
+        assert_eq!(chat.unread_count(), 1);
+    }
+
+    #[test]
+    fn opening_a_conversation_clears_its_badge() {
+        let mut chat = ChatState::default();
+        chat.set_conversations(vec![summary(1, true), summary(2, true)]);
+
+        chat.mark_read(1);
+
+        assert_eq!(chat.unread_count(), 1);
+        assert!(!chat.conversation(1).expect("conversation").unread);
+    }
+
+    #[test]
+    fn a_confirmed_send_drops_its_optimistic_row() {
+        let mut chat = ChatState::default();
+        let key = Uuid::from_u128(7);
+
+        chat.begin_send(1, key, "hi".into());
+        assert_eq!(chat.pending_for(1).len(), 1);
+
+        chat.finish_send(1, key, message(5, "hi"));
+
+        assert!(chat.pending_for(1).is_empty());
+        assert_eq!(chat.messages_for(1).len(), 1);
+    }
+
+    #[test]
+    fn a_failed_send_is_kept_so_it_can_be_retried() {
+        let mut chat = ChatState::default();
+        let key = Uuid::from_u128(7);
+
+        chat.begin_send(1, key, "hi".into());
+        chat.fail_send(1, key);
+
+        assert!(chat.pending_for(1)[0].failed);
+    }
+
+    #[test]
+    fn retrying_clears_the_failed_marker_so_discard_is_out_of_reach() {
+        let mut chat = ChatState::default();
+        let key = Uuid::from_u128(7);
+
+        chat.begin_send(1, key, "hi".into());
+        chat.fail_send(1, key);
+
+        assert_eq!(chat.begin_retry(1, key).as_deref(), Some("hi"));
+        assert!(!chat.pending_for(1)[0].failed);
+        assert!(chat.begin_retry(1, Uuid::from_u128(8)).is_none());
+    }
+
+    #[test]
+    fn switching_accounts_drops_the_previous_inbox() {
+        let mut chat = ChatState::default();
+        let first = Uuid::from_u128(1);
+        let second = Uuid::from_u128(2);
+
+        assert!(chat.set_owner(Some(first)));
+        chat.set_conversations(vec![summary(1, true)]);
+        chat.upsert(1, message(10, "hello"));
+        chat.begin_send(1, Uuid::from_u128(9), "draft".into());
+
+        assert!(chat.set_owner(Some(second)));
+
+        assert!(chat.conversations().is_empty());
+        assert!(chat.messages_for(1).is_empty());
+        assert!(chat.pending_for(1).is_empty());
+        assert_eq!(chat.unread_count(), 0);
+        assert_eq!(chat.owner, Some(second));
+    }
+
+    #[test]
+    fn rechecking_the_same_account_is_not_a_switch() {
+        let mut chat = ChatState::default();
+        let account = Uuid::from_u128(1);
+
+        assert!(chat.set_owner(Some(account)));
+        chat.set_conversations(vec![summary(1, false)]);
+
+        assert!(!chat.set_owner(Some(account)));
+        assert_eq!(chat.conversations().len(), 1);
+    }
+
+    #[test]
+    fn a_failed_load_is_reported_on_the_thread_not_the_inbox() {
+        let mut chat = ChatState::default();
+
+        chat.begin_thread_load(1);
+        assert_eq!(chat.thread(1).status, ThreadStatus::Loading);
+
+        chat.fail_thread_load(1, "offline".into());
+        assert_eq!(chat.thread(1).status, ThreadStatus::Error("offline".into()));
+        assert!(chat.error.is_none());
+
+        chat.settle_thread_load(1);
+        assert_eq!(chat.thread(1).status, ThreadStatus::Idle);
+    }
+
+    #[test]
+    fn exhausted_history_latches_per_conversation() {
+        let mut chat = ChatState::default();
+
+        assert!(!chat.thread(1).complete);
+
+        chat.set_history_complete(1, true);
+        assert!(chat.thread(1).complete);
+        assert!(!chat.thread(2).complete);
+    }
+
+    #[test]
+    fn editing_an_invite_message_updates_its_status() {
+        let mut chat = ChatState::default();
+        let mut invite = message(10, "");
+        invite.invite = Some(MessageInvite::new(4, None));
+        chat.upsert(1, invite);
+
+        chat.edit(1, 10, String::new(), Some("accepted".into()));
+
+        let status = chat.messages_for(1)[0]
+            .invite
+            .as_ref()
+            .map(|invite| invite.status.clone());
+        assert_eq!(status.as_deref(), Some("accepted"));
+    }
+
+    #[test]
+    fn an_edit_without_a_status_keeps_the_invite_as_it_was() {
+        let mut chat = ChatState::default();
+        let mut invite = message(10, "");
+        invite.invite = Some(MessageInvite::new(4, Some("pending".into())));
+        chat.upsert(1, invite);
+
+        chat.edit(1, 10, "changed".into(), None);
+
+        let message = &chat.messages_for(1)[0];
+        assert_eq!(message.content, "changed");
+        assert_eq!(
+            message.invite.as_ref().map(|i| i.status.as_str()),
+            Some("pending")
+        );
+    }
+
+    #[test]
+    fn open_invites_from_others_are_listed_newest_first() {
+        let mut chat = ChatState::default();
+        let me = Uuid::from_u128(1);
+        let friend = Uuid::from_u128(2);
+        chat.set_owner(Some(me));
+
+        let invite = |id: i64, sender: Uuid, invite_id: i32, status: &str| ChatMessage {
+            id,
+            sender,
+            content: String::new(),
+            sent_at: None,
+            edited: false,
+            invite: Some(MessageInvite::new(invite_id, Some(status.into()))),
+        };
+
+        chat.upsert(7, invite(10, friend, 1, "pending"));
+        chat.upsert(7, invite(11, friend, 2, "accepted"));
+        chat.upsert(7, invite(12, me, 3, "pending"));
+        chat.upsert(8, invite(20, friend, 4, "pending"));
+        chat.upsert(8, message(21, "no invite"));
+
+        let ids: Vec<i32> = chat.invites().iter().map(|invite| invite.id).collect();
+        assert_eq!(ids, vec![4, 1]);
+        assert_eq!(chat.invites()[0].group_id, 8);
+    }
+
+    fn settings(
+        tos: u32,
+        privacy: u32,
+        declined: bool,
+    ) -> oneclient_core::settings::LauncherSettings {
+        oneclient_core::settings::LauncherSettings {
+            accepted_tos_version: tos,
+            accepted_privacy_version: privacy,
+            declined_tos: declined,
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn chat_needs_both_documents_accepted() {
+        assert!(chat_allowed(&settings(1, 1, false), false));
+        assert!(!chat_allowed(&settings(0, 0, false), false));
+        assert!(!chat_allowed(&settings(1, 0, false), false));
+        assert!(!chat_allowed(&settings(0, 1, false), false));
+    }
+
+    #[test]
+    fn declining_turns_chat_off() {
+        assert!(!chat_allowed(&settings(0, 0, true), false));
+        assert!(!chat_allowed(&settings(1, 1, false), true));
+    }
+
+    #[test]
+    fn a_dismissed_invite_leaves_the_list() {
+        let mut chat = ChatState::default();
+        chat.set_owner(Some(Uuid::from_u128(1)));
+
+        let mut invite = message(10, "");
+        invite.sender = Uuid::from_u128(2);
+        invite.invite = Some(MessageInvite::new(4, None));
+        chat.upsert(7, invite);
+        assert_eq!(chat.invites().len(), 1);
+
+        chat.dismiss_invite(4);
+
+        assert!(chat.invites().is_empty());
+        assert!(chat.messages_for(7)[0].invite.is_some());
+    }
+
+    #[test]
+    fn the_inbox_is_loading_until_its_first_list_arrives() {
+        let mut chat = ChatState::default();
+        assert!(chat.inbox().loading);
+
+        chat.set_conversations(Vec::new());
+        assert!(!chat.inbox().loading);
+    }
+
+    #[test]
+    fn a_failed_first_load_is_not_reported_as_loading() {
+        let chat = ChatState {
+            status: AsyncStatus::Error,
+            error: Some("offline".into()),
+            ..ChatState::default()
+        };
+
+        assert!(!chat.inbox().loading);
+    }
+
+    #[test]
+    fn paging_backwards_merges_without_duplicating() {
+        let mut chat = ChatState::default();
+        chat.upsert(1, message(30, "newest"));
+
+        chat.prepend_messages(
+            1,
+            vec![
+                fetched(10, "older", "2026-01-01T00:00:00Z"),
+                fetched(30, "newest", "2026-01-02T00:00:00Z"),
+            ],
+        );
+
+        let ids: Vec<i64> = chat.messages_for(1).iter().map(|m| m.id).collect();
+        assert_eq!(ids, vec![10, 30]);
+    }
+}

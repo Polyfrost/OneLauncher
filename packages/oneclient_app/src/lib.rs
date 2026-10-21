@@ -4,6 +4,7 @@
 #![recursion_limit = "256"]
 
 mod assets;
+pub mod chat;
 pub mod cli;
 mod components;
 pub mod essential;
@@ -38,3 +39,4 @@ pub use events::EventPump;
 pub use hooks::*;
 pub use routes::{Route, router};
 pub use state::{AppChannel, AppState};
+pub use view::chat::close_chat_window_in;

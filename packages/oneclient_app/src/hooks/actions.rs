@@ -117,11 +117,12 @@ fn clusters_pinned_to_java(
 
 /// The pump alone owns the toast timers so adding or removing a toast has to
 /// tell it to re-arm hover-pause is a timer property not component state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PumpSignal {
     Reconcile,
     PauseToasts,
     ResumeToasts,
+    Chat(super::chat::ChatJob),
 }
 
 #[derive(Clone)]
@@ -158,7 +159,7 @@ impl Actions {
         }
     }
 
-    fn nudge(&self, signal: PumpSignal) {
+    pub(super) fn nudge(&self, signal: PumpSignal) {
         let _ = self.pump.send(signal);
     }
 
@@ -370,6 +371,12 @@ impl Actions {
 
     pub fn decline_tos(&self) {
         oneclient_common::consent::decline();
+        crate::view::chat::close_chat_window();
+        {
+            let mut guard = self.station.clone().write_channel(AppChannel::Social);
+            guard.social_open = false;
+            guard.social_popped_notice = false;
+        }
 
         if let Some(updated) = self.mutate_settings(|settings| {
             settings.declined_tos = true;
@@ -706,6 +713,43 @@ impl Actions {
             .clone()
             .write_channel(AppChannel::ControlCenter)
             .control_center_open = false;
+    }
+
+    pub fn toggle_social(&self) {
+        let open = self.station.peek().social_open;
+        let mut guard = self.station.clone().write_channel(AppChannel::Social);
+        guard.social_open = !open;
+        guard.social_popped_notice = false;
+    }
+
+    pub fn close_social(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Social)
+            .social_open = false;
+    }
+
+    pub fn pop_out_social(&self) {
+        {
+            let mut guard = self.station.clone().write_channel(AppChannel::Social);
+            guard.social_open = false;
+            guard.social_popped_notice = true;
+        }
+        crate::view::chat::open_chat_window();
+    }
+
+    pub fn dock_social(&self) {
+        crate::view::chat::close_chat_window();
+        let mut guard = self.station.clone().write_channel(AppChannel::Social);
+        guard.social_open = true;
+        guard.social_popped_notice = false;
+    }
+
+    pub fn dismiss_social_notice(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Social)
+            .social_popped_notice = false;
     }
 
     pub fn close_notification_center(&self) {

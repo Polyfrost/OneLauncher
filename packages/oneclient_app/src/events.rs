@@ -6,9 +6,12 @@ use std::time::Duration;
 
 use freya::prelude::spawn_forever;
 use freya::radio::RadioStation;
-use oneclient_events::{Event, EventReceiver, GameEvent, LaunchStage, ProgressEvent, Signal};
+use oneclient_events::{
+    ChatEvent, Event, EventReceiver, GameEvent, LaunchStage, ProgressEvent, Signal,
+};
 use tokio::sync::mpsc;
 
+use crate::chat::ChatMessage;
 use crate::hooks::PumpSignal;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
 use crate::state::{AppChannel, AppState, LoginProgress, StorageScanProgress};
@@ -107,6 +110,10 @@ impl EventPump {
                 signal = self.signals.recv() => {
                     let Some(signal) = signal else { break };
                     match signal {
+                        PumpSignal::Chat(job) => {
+                            let station = self.station;
+                            spawn_forever(job.run(station));
+                        }
                         PumpSignal::Reconcile => reconcile(&self.station, &mut armed, paused),
                         PumpSignal::PauseToasts => {
                             paused = true;
@@ -135,9 +142,15 @@ impl EventPump {
         let mut login: Option<Option<LoginProgress>> = None;
         let mut storage_scan: Option<Option<StorageScanProgress>> = None;
         let mut sync_complete = false;
+        let mut chat_events: Vec<ChatEvent> = Vec::new();
+        let mut presence: Vec<(uuid::Uuid, bool)> = Vec::new();
 
         for event in batch {
             match event {
+                Event::Chat(ChatEvent::PresenceChanged { player, online }) => {
+                    presence.push((player, online));
+                }
+                Event::Chat(event) => chat_events.push(event),
                 Event::Signal(Signal::ClustersChanged) => folded.clusters = true,
                 Event::Signal(Signal::JavaChanged) => folded.java = true,
                 Event::Signal(Signal::SyncComplete) => {
@@ -212,6 +225,71 @@ impl EventPump {
             }
         }
 
+        if !chat_events.is_empty() {
+            let mut guard = self.station.write_channel(AppChannel::Chat);
+            for event in chat_events {
+                match event {
+                    ChatEvent::MessageReceived {
+                        group_id,
+                        message_id,
+                        sender,
+                        content,
+                        invite_id,
+                        invite_status,
+                    } => {
+                        guard.chat.upsert(
+                            group_id,
+                            ChatMessage {
+                                id: message_id,
+                                sender,
+                                content: content.clone(),
+                                sent_at: Some(chrono::Utc::now().fixed_offset()),
+                                edited: false,
+                                invite: invite_id
+                                    .map(|id| crate::chat::MessageInvite::new(id, invite_status)),
+                            },
+                        );
+
+                        if guard.chat.conversation(group_id).is_none() {
+                            folded.chat_unknown_group = true;
+                        }
+
+                        let viewing = (crate::view::chat::is_chat_window_focused()
+                            || guard.social_open)
+                            && guard.chat.active == Some(group_id);
+                        guard
+                            .chat
+                            .note_activity(group_id, sender, content, !viewing);
+                    }
+                    ChatEvent::MessageEdited {
+                        group_id,
+                        message_id,
+                        content,
+                        invite_status,
+                    } => guard
+                        .chat
+                        .edit(group_id, message_id, content, invite_status),
+                    ChatEvent::MessageDeleted {
+                        group_id,
+                        message_id,
+                    } => guard.chat.remove(group_id, message_id),
+                    ChatEvent::PresenceChanged { .. } => {}
+                    ChatEvent::RosterChanged => folded.chat_roster = true,
+                    ChatEvent::ConnectionChanged { connected } => {
+                        guard.chat.connected = connected;
+                        folded.chat_reconnected |= connected;
+                    }
+                }
+            }
+        }
+
+        if !presence.is_empty() {
+            let mut guard = self.station.write_channel(AppChannel::ChatPresence);
+            for (player, online) in presence {
+                guard.chat.set_presence(player, online);
+            }
+        }
+
         if sync_complete {
             self.station
                 .write_channel(AppChannel::Launcher)
@@ -253,6 +331,18 @@ impl EventPump {
         if folded.java {
             spawn_forever(async move { crate::hooks::invalidate_java_queries().await });
         }
+        if folded.chat_roster {
+            let station = self.station;
+            spawn_forever(async move { crate::hooks::load_roster(station).await });
+        }
+        if folded.chat_unknown_group {
+            let station = self.station;
+            spawn_forever(async move { crate::hooks::load_conversations(station).await });
+        }
+        if folded.chat_reconnected {
+            let station = self.station;
+            spawn_forever(async move { crate::hooks::resync_chat(station).await });
+        }
 
         folded
     }
@@ -266,6 +356,9 @@ struct Folded {
     launched: Vec<i64>,
     clusters: bool,
     java: bool,
+    chat_roster: bool,
+    chat_unknown_group: bool,
+    chat_reconnected: bool,
 }
 
 fn reconcile(
@@ -345,7 +438,11 @@ pub async fn start_launcher(
     );
 
     oneclient_net::status::start(state.services.requester.clone());
-    oneclient_polyplus::start(std::sync::Arc::clone(&state.auth));
+    oneclient_polyplus::start(
+        std::sync::Arc::clone(&state.auth),
+        state.services.requester.clone(),
+        state.services.events.clone(),
+    );
     oneclient_core::run_startup_tasks(&state);
 
     let data_dir = oneclient_common::paths::data_dir()

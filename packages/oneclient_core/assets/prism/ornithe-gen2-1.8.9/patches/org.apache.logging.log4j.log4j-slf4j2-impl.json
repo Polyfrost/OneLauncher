@@ -1,0 +1,1 @@
+{"formatVersion": 1, "libraries": [{"name": "org.apache.logging.log4j:log4j-slf4j2-impl:2.19.0","url": "https://libraries.minecraft.net/"}], "name": "log4j-slf4j2-impl", "type": "release", "uid": "org.apache.logging.log4j.log4j-slf4j2-impl", "version": "2.19.0"}

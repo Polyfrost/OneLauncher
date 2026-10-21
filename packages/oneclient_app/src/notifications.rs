@@ -297,7 +297,7 @@ pub struct NotificationState {
     bundle_choices_done: Option<oneshot::Sender<Option<HashSet<String>>>>,
 }
 
-const CATEGORY_ORDER: [TaskCategory; 7] = [
+const CATEGORY_ORDER: [TaskCategory; 8] = [
     TaskCategory::Java,
     TaskCategory::Client,
     TaskCategory::Libraries,
@@ -305,9 +305,11 @@ const CATEGORY_ORDER: [TaskCategory; 7] = [
     TaskCategory::Assets,
     TaskCategory::Metadata,
     TaskCategory::Packages,
+    TaskCategory::Exports,
 ];
 
 struct ChildRec {
+    label: String,
     category: TaskCategory,
     phase: &'static str,
     current: u64,
@@ -369,7 +371,35 @@ impl GroupedTasks {
             .collect()
     }
 
-    fn active_body(&self) -> Option<&'static str> {
+    fn active_body(&self) -> Option<String> {
+        if let Some(child) = self
+            .children
+            .values()
+            .find(|child| child.category == TaskCategory::Exports)
+        {
+            let done = self
+                .done_count
+                .get(&TaskCategory::Exports)
+                .copied()
+                .unwrap_or(0);
+            let total = self
+                .reserved_count
+                .get(&TaskCategory::Exports)
+                .copied()
+                .unwrap_or(0);
+            return Some(format!(
+                "{} · {} · {done}/{total} files",
+                child.phase, child.label
+            ));
+        }
+        if let Some(total) = self.reserved_count.get(&TaskCategory::Exports) {
+            let done = self
+                .done_count
+                .get(&TaskCategory::Exports)
+                .copied()
+                .unwrap_or(0);
+            return Some(format!("Preparing next file · {done}/{total} files"));
+        }
         let mut minecraft = false;
         let mut packages = false;
         for child in self.children.values() {
@@ -380,9 +410,9 @@ impl GroupedTasks {
             }
         }
         if minecraft {
-            Some("Downloading Minecraft")
+            Some("Downloading Minecraft".into())
         } else if packages {
-            Some("Downloading Packages")
+            Some("Downloading Packages".into())
         } else {
             None
         }
@@ -965,7 +995,7 @@ impl NotificationState {
             GroupedProgressEvent::AddChild {
                 session_id,
                 child_id,
-                label: _,
+                label,
                 total,
                 category,
             } => {
@@ -973,6 +1003,7 @@ impl NotificationState {
                     group.children.insert(
                         child_id,
                         ChildRec {
+                            label,
                             category,
                             phase: "Downloading",
                             current: 0,
@@ -1121,7 +1152,6 @@ impl NotificationState {
         let tasks = group.task_list();
         let body = group
             .active_body()
-            .map(str::to_string)
             .unwrap_or_else(|| "Preparing...".to_string());
         let title = group.title.clone();
 
@@ -1199,6 +1229,45 @@ mod message_link_tests {
 mod package_update_tests {
     use super::*;
     use oneclient_common::domain::ProviderId;
+
+    #[test]
+    fn exporting_notifications_show_filename_progress_and_finalization() {
+        use oneclient_events::{Event, GroupedProgressSession};
+        let (events, mut receiver) = oneclient_events::EventBus::channel();
+        let session = GroupedProgressSession::start(&events, "Exporting Example");
+        session.expect(TaskCategory::Exports, 2, 1025);
+        let child = session.child(
+            ".minecraft/config/options.json",
+            1024,
+            TaskCategory::Exports,
+        );
+        child.set_phase(oneclient_events::TaskPhase::Exporting);
+        child.set_progress(512, None);
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        while let Ok(Event::Progress(ProgressEvent::Grouped(event))) = receiver.try_recv() {
+            state.handle_grouped_progress(&mut inbox, event);
+        }
+        assert_eq!(inbox.len(), 1);
+        assert!(inbox[0].body.contains(".minecraft/config/options.json"));
+        assert!(inbox[0].body.contains("Exporting"));
+        assert_eq!(inbox[0].progress, Some((512, 1025)));
+        assert_eq!(inbox[0].tasks[0].phase, "Exporting");
+        child.finish();
+        let finalizing = session.child("Writing ZIP directory", 1, TaskCategory::Exports);
+        finalizing.set_phase(oneclient_events::TaskPhase::Finalizing);
+        while let Ok(Event::Progress(ProgressEvent::Grouped(event))) = receiver.try_recv() {
+            state.handle_grouped_progress(&mut inbox, event);
+        }
+        assert!(inbox[0].body.contains("Finalizing ZIP"));
+        finalizing.finish();
+        session.finish();
+        while let Ok(Event::Progress(ProgressEvent::Grouped(event))) = receiver.try_recv() {
+            state.handle_grouped_progress(&mut inbox, event);
+        }
+        assert!(!inbox[0].is_loading);
+        assert_eq!(inbox[0].body, "Complete");
+    }
 
     fn update(hash: &str) -> BrowserPackageUpdate {
         BrowserPackageUpdate {

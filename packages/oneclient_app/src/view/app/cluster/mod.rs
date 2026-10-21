@@ -5,6 +5,7 @@ mod package_manager;
 mod cluster_settings;
 mod datapacks;
 mod folder_list;
+mod imported_modpacks;
 mod modpack_settings;
 mod mods;
 mod process_logs;

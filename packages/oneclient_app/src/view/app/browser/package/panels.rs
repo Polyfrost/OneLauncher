@@ -341,6 +341,11 @@ fn version_button(
     busy: bool,
 ) -> impl IntoElement {
     let Some(installed) = installed else {
+        let text = if installer.add_to_cluster {
+            "Add"
+        } else {
+            "Install"
+        };
         return Button::new()
             .secondary()
             .small()
@@ -352,7 +357,7 @@ fn version_button(
                     version_label.clone(),
                 )
             })
-            .text("Install");
+            .text(text);
     };
 
     let Some(hash) = installed.hash else {

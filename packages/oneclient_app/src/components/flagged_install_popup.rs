@@ -248,6 +248,7 @@ fn alternative_row(
                         cluster_id,
                         package_type: "mod".to_string(),
                         package_id: encode_package_id(provider, &project_id),
+                        add_to_cluster: false,
                     });
                 })
                 .child(Icon::new(IconType::ArrowRight).size(14.))

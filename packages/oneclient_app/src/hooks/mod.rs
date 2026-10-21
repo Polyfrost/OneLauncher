@@ -32,6 +32,7 @@ pub use actions::{
     Actions, AlternativePick, ExternalImportJob, NotificationBuilder, PumpSignal, exporting,
     modpack_job_running,
 };
+pub(crate) use actions::listed;
 pub use queries::ALL_VERSIONS;
 pub(crate) use queries::use_folder_watch;
 pub use queries::{
@@ -45,6 +46,7 @@ pub use queries::{
     UseDiscardLeftovers, UseLogAction, UseRefreshAccount, UseRemoveAccount, UseScreenshotAction,
     UseSetDefaultAccount, UseStorageAction, UseUploadLog, VERSIONS_PAGE_SIZE,
     accounts_have_microsoft, available_bundles, bundle_overrides_map, bundles_with_status_items,
+    imported_modpacks_list, modpack_sources_map, use_imported_modpacks, use_modpack_sources,
     category_list, changelog_entries, changelog_error, changelog_is_loading, cluster_art_url,
     cluster_content_items, content_type_for_slug, disable_warnings, game_versions,
     has_migration_data, invalidate_auth_queries, invalidate_cluster_content_queries,

@@ -157,13 +157,17 @@ pub async fn set_bundle_choices(
 ) -> ContentResult<()> {
     bundle_dao::save_bundle_choices(&ctx.db, cluster_id, choices).await?;
 
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let wants = crate::modpacks::imported_wants(&cluster).await;
     for row in bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await? {
         let declined = row.bundle_name.as_ref().is_some_and(|name| {
             choices
                 .iter()
                 .any(|(choice, accepted)| choice == name && !accepted)
         });
-        if declined {
+        if declined
+            && !crate::modpacks::hand_to_wanting_pack(cluster_id, &row.hash, &wants, ctx).await?
+        {
             detach_artifact(cluster_id, &row.hash, ctx).await?;
         }
     }
@@ -1164,7 +1168,7 @@ pub async fn remove_artifact_from_cluster(
     Ok(())
 }
 
-async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
+pub(crate) async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
     // Looked up first but never allowed to block removal
     // a package whose artifact row has gone missing must still be removable
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;

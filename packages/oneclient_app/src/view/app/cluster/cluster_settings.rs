@@ -31,6 +31,7 @@ use crate::view::app::settings::{
 use oneclient_core::clusters::{can_migrate_manually, rank_migration_sources};
 
 use super::cluster_not_found;
+use super::imported_modpacks::ImportedModpacksSection;
 use super::modpack_settings::{ModpackRepairRow, ModpackUpdateRow};
 use crate::hooks::use_cluster;
 
@@ -147,6 +148,7 @@ impl Component for ClusterSettings {
         } else {
             Vec::new()
         };
+        let imported_section = ImportedModpacksSection { cluster_id }.into_element();
 
         cluster_content()
             .child(
@@ -262,6 +264,7 @@ impl Component for ClusterSettings {
                         text_row(cluster_id, TextField::Post, &profile, &global),
                     ))
                     .append_children(modpack_section)
+                    .child(imported_section)
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element())
                     .child(

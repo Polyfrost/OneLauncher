@@ -6,7 +6,10 @@ pub(crate) use index::{browsable_type, encode_package_id};
 
 mod modpack_prompt;
 mod world_prompt;
-use modpack_prompt::{ModpackVersionPrompt, minecraft_choices};
+use modpack_prompt::{
+    ModpackInstancePrompt, ModpackLoaderPrompt, ModpackVersionPrompt, cluster_version,
+    cluster_versions, instance_choices, loader_options, minecraft_choices,
+};
 use world_prompt::WorldInstallPrompt;
 
 /// Projects shipping both a mod and a data pack tag the mod files with a loader

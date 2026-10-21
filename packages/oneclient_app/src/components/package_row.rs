@@ -26,6 +26,7 @@ pub(crate) const GRID_MIN_W: f32 = 290.;
 const GRID_CARD_PADDING: f32 = 14.;
 const BADGE_STRIP_H: f32 = 20.;
 const BADGE_STRIP_LIFT: f32 = 2.;
+const TAG_LETTER_SPACING: f32 = 0.6;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -75,6 +76,7 @@ pub struct PackageEntry {
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
     pub essential: Option<&'static EssentialPackage>,
+    pub modpack: Option<String>,
 }
 
 impl PackageEntry {
@@ -379,6 +381,7 @@ pub fn package_context_menu(
                 cluster_id,
                 package_type: package_type.clone(),
                 package_id: format!("{}:{}", provider as u8, package_id),
+                add_to_cluster: false,
             });
         });
     }
@@ -531,8 +534,11 @@ pub(crate) fn grid_card(
             .into_element()
     });
 
-    let badged =
-        item.is_outdated() || item.shadowed || item.outranked || item.recency_badge().is_some();
+    let badged = item.is_outdated()
+        || item.shadowed
+        || item.outranked
+        || item.modpack.is_some()
+        || item.recency_badge().is_some();
     let floating = badged.then(|| {
         rect()
             .horizontal()
@@ -545,6 +551,7 @@ pub(crate) fn grid_card(
             .main_align(Alignment::End)
             .cross_align(Alignment::Center)
             .spacing(4.)
+            .maybe_child(item.modpack.as_deref().map(modpack_badge))
             .maybe_child(item.is_outdated().then(outdated_badge))
             .maybe_child(item.shadowed.then(shadowed_badge))
             .maybe_child(item.outranked.then(outranked_badge))
@@ -612,6 +619,7 @@ fn grid_meta(
                     cluster_id,
                     package_type: package_type.to_string(),
                     package_id: format!("{}:{}", provider as u8, package_id),
+                    add_to_cluster: false,
                 });
             }),
             alpha,
@@ -791,6 +799,7 @@ fn package_info(
                     cluster_id,
                     package_type: package_type.clone(),
                     package_id: format!("{}:{}", provider as u8, package_id),
+                    add_to_cluster: false,
                 });
             })
         })
@@ -832,6 +841,7 @@ fn package_info(
                         } else {
                             local_badge()
                         })
+                        .maybe_child(item.modpack.as_deref().map(modpack_badge))
                         .maybe_child(item.is_outdated().then(outdated_badge))
                         .maybe_child(item.shadowed.then(shadowed_badge))
                         .maybe_child(item.outranked.then(outranked_badge))
@@ -952,29 +962,36 @@ fn updated_badge() -> Element {
     status_tag("Updated", colors::success())
 }
 
-fn status_tag(text: &'static str, accent: Color) -> Element {
+fn status_tag(text: impl Into<String>, accent: Color) -> Element {
     rect()
-        .horizontal()
-        .cross_align(Alignment::Center)
-        .spacing(5.)
-        .padding(Gaps::new(2., 6., 2., 6.))
         .corner_radius(CornerRadius::new_all(4.))
         .background(colors::component_bg())
         .child(
             rect()
-                .width(Size::px(6.))
-                .height(Size::px(6.))
-                .corner_radius(CornerRadius::new_all(3.))
-                .background(accent),
-        )
-        .child(
-            label()
-                .text(text)
-                .font_size(11.)
-                .font_weight(FontWeight::MEDIUM)
-                .color(colors::fg_secondary()),
+                .padding(Gaps::new(1., 6., 3., 6. + TAG_LETTER_SPACING))
+                .corner_radius(CornerRadius::new_all(4.))
+                .background(accent.with_a(38))
+                .border(border_all_color(1., accent.with_a(96)))
+                .child(
+                    label()
+                        .text(text.into().to_uppercase())
+                        .font_size(9.)
+                        .font_weight(FontWeight::BOLD)
+                        .letter_spacing(TAG_LETTER_SPACING)
+                        .color(accent),
+                ),
         )
         .into_element()
+}
+
+const MODPACK_TAG_CHARS: usize = 10;
+const MODPACK_TAG_ELLIPSIS: &str = "...";
+
+fn modpack_badge(name: &str) -> Element {
+    status_tag(
+        crate::utils::shorten(name, MODPACK_TAG_CHARS, MODPACK_TAG_ELLIPSIS),
+        colors::code_info(),
+    )
 }
 
 fn local_badge() -> Element {

@@ -140,6 +140,7 @@ pub(super) async fn resolve_base_modpack(
         pack.provider,
         &pack.project_id,
         &pack.version_id,
+        None,
         content,
     )
     .await
@@ -172,6 +173,7 @@ pub(super) async fn resolve_base_modpack(
         pack.provider,
         &pack.project_id,
         &version.version_id,
+        None,
         content,
     )
     .await?;
@@ -432,6 +434,7 @@ pub(super) async fn install_shared_instance(
             &prepared.archive_path,
             &prepared.manifest,
             cluster_id,
+            modpacks::MODPACK_BUNDLE_NAME,
             progress,
             &content,
         )

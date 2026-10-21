@@ -308,7 +308,7 @@ async fn prepare_linked_pack(
         version_id: pack.version_id.clone(),
     };
 
-    match prepare_modpack(state, &source).await {
+    match prepare_modpack(state, &source, None).await {
         Ok(mut prepared)
             if prepared.manifest.mc_version == instance.mc_version
                 && prepared.manifest.loader == instance.loader =>

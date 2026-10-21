@@ -251,6 +251,8 @@ impl Actions {
                                     cluster_id: report.cluster_id,
                                     cluster_name: report.cluster_name.clone(),
                                     files: report.blocked.clone(),
+                                    bundle_name: oneclient_content::modpacks::MODPACK_BUNDLE_NAME
+                                        .into(),
                                     added: Default::default(),
                                     open_when_done: false,
                                 });

@@ -5,10 +5,12 @@ use oneclient_cluster::naming::{is_allowed_name_char, validate_modpack_instance_
 use oneclient_cluster::{Cluster, ClusterKind, ClusterUpdate, CreateClusterOptions};
 use oneclient_common::domain::{GameLoader, ProviderId};
 use oneclient_common::patch::Patch;
-use oneclient_content::ContentError;
+use oneclient_content::{ContentCtx, ContentError};
 use oneclient_content::modpacks::{self, ModpackInstallReport, ModpackManifest, ModpackRelease};
 use oneclient_content::packages::store::artifact_absolute_path;
-use oneclient_content::packages::{PackageStore, ProjectDetail};
+use oneclient_content::packages::{
+    PackageStore, ProjectDetail, fetch_modpack_explanation, load_bad_modpacks,
+};
 use oneclient_db::dao::artifact::get_artifact_by_hash;
 use oneclient_events::GroupedProgressSession;
 
@@ -46,6 +48,7 @@ pub struct PreparedModpack {
     pub archive_path: PathBuf,
     pub manifest: ModpackManifest,
     pub instance_name: String,
+    pub flagged: Option<FlaggedModpack>,
     pub share: Option<SharedCluster>,
 }
 
@@ -66,10 +69,16 @@ impl PreparedModpack {
     }
 }
 
-#[tracing::instrument(skip(state))]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlaggedModpack {
+    pub explanation: Option<String>,
+}
+
+#[tracing::instrument(skip(state, progress))]
 pub async fn prepare_modpack(
     state: &Arc<LauncherState>,
     source: &ModpackSource,
+    progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<PreparedModpack> {
     let content = state.services.content();
 
@@ -79,10 +88,14 @@ pub async fn prepare_modpack(
             provider,
             project_id,
             version_id,
-        } => PackageStore::resolve_or_download(*provider, project_id, version_id, &content).await?,
+        } => {
+            PackageStore::resolve_or_download(*provider, project_id, version_id, progress, &content)
+                .await?
+        }
     };
     let archive_path = artifact_absolute_path(&artifact.path)?;
     let manifest = modpacks::read_modpack(&archive_path, &content).await?;
+    let flagged = screen_modpack(source, &artifact.hash, &content).await;
 
     let taken: Vec<String> = state
         .clusters
@@ -103,6 +116,7 @@ pub async fn prepare_modpack(
             archive_path,
             instance_name: unique_name(&instance_name(&manifest.name), &taken),
             manifest,
+            flagged,
             share: None,
         });
     };
@@ -119,16 +133,27 @@ pub async fn prepare_modpack(
         notices: Vec::new(),
         substituted: false,
     };
-    let (artifact_hash, archive_path, manifest) = match shared.share.modpack.clone() {
+    let (artifact_hash, archive_path, manifest, flagged) = match shared.share.modpack.clone() {
         Some(pack) => {
             let (base, substituted) =
                 resolve_base_modpack(&content, &shared.share, &pack, &mut shared.notices).await?;
             shared.substituted = substituted;
             let base_path = artifact_absolute_path(&base.path)?;
             let base_manifest = modpacks::read_modpack(&base_path, &content).await?;
-            (base.hash, base_path, base_manifest)
+            let flagged = match flagged {
+                Some(flagged) => Some(flagged),
+                None => {
+                    let base_source = ModpackSource::Provider {
+                        provider: pack.provider,
+                        project_id: pack.project_id.clone(),
+                        version_id: pack.version_id.clone(),
+                    };
+                    screen_modpack(&base_source, &base.hash, &content).await
+                }
+            };
+            (base.hash, base_path, base_manifest, flagged)
         }
-        None => (artifact.hash, archive_path, manifest),
+        None => (artifact.hash, archive_path, manifest, flagged),
     };
 
     Ok(PreparedModpack {
@@ -136,9 +161,71 @@ pub async fn prepare_modpack(
         artifact_hash,
         archive_path,
         manifest,
+        flagged,
         instance_name,
         share: Some(shared),
     })
+}
+
+async fn screen_modpack(
+    source: &ModpackSource,
+    hash: &str,
+    content: &ContentCtx,
+) -> Option<FlaggedModpack> {
+    let list = load_bad_modpacks(content).await;
+    if list.bad_mods.is_empty() {
+        return None;
+    }
+
+    let entry = match list.find(hash) {
+        Some(entry) => entry,
+        None => {
+            let (provider, project_id) = pack_project(source, hash, content).await?;
+            match list.find_project(provider, &project_id) {
+                Some(entry) => entry,
+                None if list.has_name_only_entries() => {
+                    let project = content
+                        .providers
+                        .get(provider)
+                        .ok()?
+                        .get_project(&project_id, content)
+                        .await
+                        .inspect_err(|err| {
+                            tracing::debug!(error = %err, "could not fetch the modpack project for screening");
+                        })
+                        .ok()?;
+                    list.find_by_name_and_author(&project)?
+                }
+                None => return None,
+            }
+        }
+    };
+
+    tracing::warn!(hash, "modpack is flagged");
+    Some(FlaggedModpack {
+        explanation: fetch_modpack_explanation(entry, content).await,
+    })
+}
+
+async fn pack_project(
+    source: &ModpackSource,
+    hash: &str,
+    content: &ContentCtx,
+) -> Option<(ProviderId, String)> {
+    match source {
+        ModpackSource::Provider {
+            provider,
+            project_id,
+            ..
+        } => Some((*provider, project_id.clone())),
+        ModpackSource::File(_) => match modpacks::identify_modpack(hash, content).await {
+            Ok(release) => release.map(|release| (release.provider, release.project_id)),
+            Err(err) => {
+                tracing::debug!(error = %err, "could not identify the modpack for screening");
+                None
+            }
+        },
+    }
 }
 
 #[tracing::instrument(skip(state, prepared), fields(pack = %prepared.manifest.name))]
@@ -211,6 +298,7 @@ pub async fn install_modpack_instance(
         &prepared.archive_path,
         &prepared.manifest,
         cluster_id,
+        modpacks::MODPACK_BUNDLE_NAME,
         progress,
         &content,
     )
@@ -261,6 +349,7 @@ pub async fn update_modpack_cluster(
         current.provider,
         &current.project_id,
         version_id,
+        progress,
         &content,
     )
     .await?;
@@ -277,11 +366,27 @@ pub async fn update_modpack_cluster(
         .into());
     }
 
-    let report =
-        modpacks::install_modpack(&archive_path, &manifest, cluster_id, progress, &content).await?;
+    let report = modpacks::install_modpack(
+        &archive_path,
+        &manifest,
+        cluster_id,
+        modpacks::MODPACK_BUNDLE_NAME,
+        progress,
+        &content,
+    )
+    .await?;
 
+    let keeps_newer_loader = match (&manifest.loader_version, &cluster.mc_loader_version) {
+        (Some(version), Some(current)) => {
+            modpacks::is_newer_version(current, version)
+                && super::modpack_import::has_imported_packs(&cluster).await
+        }
+        _ => false,
+    };
     let loader_version = match &manifest.loader_version {
-        Some(version) if cluster.mc_loader_version.as_ref() != Some(version) => {
+        Some(version)
+            if cluster.mc_loader_version.as_ref() != Some(version) && !keeps_newer_loader =>
+        {
             Patch::Set(version.clone())
         }
         _ => Patch::Unchanged,
@@ -312,8 +417,15 @@ pub async fn repair_modpack_cluster(
     let cluster = state.clusters.get(cluster_id).await?;
     let (archive_path, manifest) = linked_modpack_archive(state, &cluster).await?;
 
-    let report =
-        modpacks::install_modpack(&archive_path, &manifest, cluster_id, progress, &content).await?;
+    let report = modpacks::install_modpack(
+        &archive_path,
+        &manifest,
+        cluster_id,
+        modpacks::MODPACK_BUNDLE_NAME,
+        progress,
+        &content,
+    )
+    .await?;
     restore_missing_icon(state, &cluster).await;
 
     Ok(ModpackCluster { cluster, report })
@@ -342,7 +454,7 @@ pub(crate) async fn linked_modpack_archive(
     Ok((archive_path, manifest))
 }
 
-async fn fetch_project(
+pub(super) async fn fetch_project(
     state: &Arc<LauncherState>,
     release: &ModpackRelease,
 ) -> LauncherResult<ProjectDetail> {

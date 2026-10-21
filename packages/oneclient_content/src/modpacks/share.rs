@@ -323,6 +323,8 @@ pub async fn collect_share_content(
     let referenced = |bundle: &str| {
         if bundle == MODPACK_BUNDLE_NAME {
             scope.skip_modpack
+        } else if super::is_imported_bundle(bundle) {
+            false
         } else {
             scope.skip_bundles
         }
@@ -984,6 +986,7 @@ async fn apply_shared_files(
         &root,
         &[OVERRIDES],
         &|rel| tracked_content_type(rel).is_none(),
+        true,
         Some(&ctx.events),
     )
     .await?;

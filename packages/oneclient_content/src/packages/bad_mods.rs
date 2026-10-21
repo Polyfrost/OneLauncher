@@ -19,6 +19,23 @@ pub struct BadModList {
     pub bad_mods: Vec<BadMod>,
 }
 
+/// `improvements.json`: mods worth swapping for a OneClient alternative when
+/// an instance comes over from another launcher. Entries share the bad mods
+/// shape, so they are matched and resolved the same way
+#[derive(Debug, Clone, Default, Deserialize)]
+struct ImprovementList {
+    #[serde(default, deserialize_with = "lenient_list")]
+    improvements: Vec<BadMod>,
+}
+
+impl From<ImprovementList> for BadModList {
+    fn from(list: ImprovementList) -> Self {
+        Self {
+            bad_mods: list.improvements,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub struct BadMod {
@@ -231,6 +248,26 @@ pub async fn load_bad_mods(ctx: &ContentCtx) -> Arc<BadModList> {
         tracing::warn!(%err, "bad mods list unavailable, installs are not screened");
         Arc::default()
     })
+}
+
+/// Always fetched fresh (falling back to the cache when offline): it only
+/// runs while importing from another launcher, never on a hot path
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn fetch_improvements(ctx: &ContentCtx) -> ContentResult<BadModList> {
+    let url = format!(
+        "{}/oneclient/improvements.json",
+        ctx.net.config().meta_url_base
+    );
+    let cache_path = paths::caches_dir()?.join("improvements.json");
+
+    let Some(fetched) = fetch_cached(&ctx.net, &url, &cache_path, EtagPolicy::CommitNow).await?
+    else {
+        return Err(ContentError::InvalidData {
+            reason: "improvements list is unavailable and not cached".to_string(),
+        });
+    };
+
+    Ok(fetched.json::<ImprovementList>()?.into())
 }
 
 const EXPLANATIONS_DIR: &str = "/oneclient/bad_mods_mds/";
@@ -727,6 +764,36 @@ mod tests {
             explanation_file_name("https://evil.example/oneclient/bad_mods_mds/x.md"),
             None
         );
+    }
+
+    #[test]
+    fn improvements_parse_into_the_same_entries() {
+        let raw = br#"{"improvements":[{
+            "project-ids":{"modrinth":"geGZinIB","curseforge":"1570586"},
+            "name":"Combat Hitboxes",
+            "author":"sootysplash",
+            "explanation":"/oneclient/bad_mods_mds/combat-hitboxes.md",
+            "alternatives":[{"project-ids":{"modrinth":"Mptc0jo6"}}]
+        }]}"#;
+        let list: BadModList = serde_json::from_slice::<ImprovementList>(raw)
+            .unwrap()
+            .into();
+
+        assert!(
+            list.find_project(ProviderId::Modrinth, "geGZinIB")
+                .is_some()
+        );
+        assert_eq!(
+            list.bad_mods[0].alternatives[0]
+                .project_ids
+                .get(ProviderId::Modrinth),
+            Some("Mptc0jo6")
+        );
+
+        let empty: BadModList = serde_json::from_slice::<ImprovementList>(br#"{}"#)
+            .unwrap()
+            .into();
+        assert!(empty.bad_mods.is_empty());
     }
 
     #[test]

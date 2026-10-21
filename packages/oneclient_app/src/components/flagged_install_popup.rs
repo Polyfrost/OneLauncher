@@ -256,7 +256,7 @@ fn alternative_row(
         )
 }
 
-pub(super) fn explanation_panel(markdown: String) -> impl IntoElement {
+pub(crate) fn explanation_panel(markdown: String) -> impl IntoElement {
     rect()
         .width(Size::fill())
         .padding(Gaps::new_all(12.))

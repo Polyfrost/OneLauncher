@@ -7,7 +7,7 @@ use thiserror::Error;
 use crate::cluster::Cluster;
 use crate::error::ClusterResult;
 
-const SAVES_DIR: &str = "saves";
+pub(crate) const SAVES_DIR: &str = "saves";
 const DATAPACKS_DIR: &str = "datapacks";
 pub const LEVEL_DAT: &str = "level.dat";
 pub const WORLD_ICON: &str = "icon.png";

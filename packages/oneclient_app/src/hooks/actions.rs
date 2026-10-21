@@ -3,10 +3,15 @@
 //! Always `spawn_forever` never `spawn` Freya's `spawn` cancels the task when
 //! the calling component unmounts this work is app-scoped not component-scoped
 
+mod external_import;
+pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
+pub(crate) use modpacks::listed;
 pub use modpacks::modpack_job_running;
 mod release_migration;
+mod share;
+pub use share::exporting;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -1001,6 +1006,12 @@ impl Actions {
                 .send();
             return;
         }
+        if oneclient_core::clusters::is_resetting(cluster_id) {
+            self.notify("This instance is being reset")
+                .body("Wait for the reset to finish, then press Play again.")
+                .send();
+            return;
+        }
 
         let claimed = self
             .station
@@ -1016,7 +1027,13 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let started = Instant::now();
-            launch(&actions, cluster_id).await;
+            match super::sync_actions::sync_launch_block(cluster_id).await {
+                Some(reason) => actions
+                    .notify("Wait for the sync to finish")
+                    .body(reason)
+                    .send(),
+                None => launch(&actions, cluster_id).await,
+            }
 
             // An instant failure would hand the button back inside the same
             // click burst so hold it for the floor either way
@@ -1503,6 +1520,24 @@ impl Actions {
 
     /// `syncing_bundles` gates every launch button so the readiness check must
     /// happen before the flag is raised not inside the task
+    /// Lets the signed-out bar show at startup instead of on the first launch
+    pub fn check_sessions() {
+        let state = match launcher::state() {
+            Ok(state) => state,
+            Err(err) => {
+                tracing::error!("session check skipped, launcher not ready: {err:#}");
+                return;
+            }
+        };
+
+        spawn_forever(async move {
+            let signed_out = off_ui(async move { state.auth.check_expired_sessions().await }).await;
+            if signed_out {
+                super::invalidate_auth_queries(None).await;
+            }
+        });
+    }
+
     pub fn sync_bundles(&self) {
         let state = match launcher::state() {
             Ok(state) => state,
@@ -1827,7 +1862,23 @@ impl Actions {
         };
 
         let choices_for: Vec<String> = bundles.iter().map(|a| a.manifest.name.clone()).collect();
+        let held = match oneclient_db::dao::cluster_bundle::list_bundle_tracked(
+            &state.services.db,
+            cluster_id,
+        )
+        .await
+        {
+            Ok(tracked) => tracked
+                .into_iter()
+                .filter_map(|row| row.bundle_name)
+                .collect(),
+            Err(err) => {
+                tracing::warn!(cluster_id, error = %err, "could not read what the cluster holds, launching without asking about bundles");
+                return;
+            }
+        };
         let choices = BundleChoices {
+            held,
             cluster_name: crate::install::cluster_display_name(cluster_id, &state.services).await,
             bundles: bundles
                 .iter()
@@ -2061,6 +2112,12 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         );
         return;
     };
+
+    // The renewal may have just marked the account signed out the accounts
+    // page and the status bar must pick that up while the game still starts
+    if account.needs_sign_in() {
+        super::invalidate_auth_queries(None).await;
+    }
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
 

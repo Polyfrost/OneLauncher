@@ -17,10 +17,10 @@ use tokio::sync::Mutex as AsyncMutex;
 use futures_util::StreamExt;
 
 use crate::bundles::install::{
-    BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, disable_was_deliberate,
-    external_ids_by_sha1, find_override, find_user_suppression, heal_bundle_activity,
-    install_package_from_bundle, remove_artifact_from_cluster, set_artifact_enabled_to,
-    takes_bundle,
+    BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, decline_unasked_skyblock,
+    disable_was_deliberate, external_ids_by_sha1, find_override, find_user_suppression,
+    heal_bundle_activity, install_package_from_bundle, overrides_outside_declined,
+    remove_artifact_from_cluster, set_artifact_enabled_to, takes_bundle,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -147,6 +147,10 @@ async fn check_bundle_updates_inner(
     let mut hidden_dependency_keys_by_bundle: HashMap<String, HashSet<String>> = HashMap::new();
     let mut hidden_explicit_keys_by_bundle: HashMap<String, HashSet<String>> = HashMap::new();
     let mut shipped_keys_by_bundle: HashMap<String, HashSet<String>> = HashMap::new();
+    let mut user_disabled_versions: HashMap<
+        (String, String),
+        (String, crate::bundles::types::BundleFile),
+    > = HashMap::new();
 
     for archive in &archives {
         let mut files_map = HashMap::new();
@@ -161,6 +165,12 @@ async fn check_bundle_updates_inner(
                 .get(&(archive.manifest.name.clone(), file.kind.package_id()))
                 .copied();
             if !crate::bundles::effective_enabled(file, user_override) {
+                if user_override == Some(OverrideType::Disabled) {
+                    user_disabled_versions.insert(
+                        (archive.manifest.name.clone(), file.kind.bundle_key()),
+                        (file.kind.bundle_version_id(), file.clone()),
+                    );
+                }
                 continue;
             }
             let key = file.kind.bundle_key();
@@ -271,6 +281,18 @@ async fn check_bundle_updates_inner(
             }
         }
 
+        if matched_target.is_none() {
+            matched_target = user_disabled_versions
+                .get(&(bundle_name.clone(), installed_key.clone()))
+                .map(|(new_version_id, new_file)| {
+                    (
+                        bundle_name.clone(),
+                        new_version_id.clone(),
+                        new_file.clone(),
+                    )
+                });
+        }
+
         if let Some((resolved_bundle_name, new_version_id, new_file)) = matched_target {
             if installed_version_id != &new_version_id {
                 updates_available.push(BundlePackageUpdate {
@@ -285,7 +307,7 @@ async fn check_bundle_updates_inner(
         } else {
             let user_disabled = matches!(
                 overrides_map.get(&(bundle_name.clone(), pkg_id.clone())),
-                Some(OverrideType::Disabled)
+                Some(OverrideType::Disabled | OverrideType::Removed)
             );
             let still_shipped = shipped_keys_by_bundle
                 .get(bundle_name)
@@ -459,16 +481,23 @@ pub async fn apply_bundle_updates_with(
     // Must run first
     // the check below never consults `enabled` so unrecorded disables would
     // read as healthy and be left untouched
-    {
+    let archives = {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
-        if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
-            heal_bundle_activity(cluster_id, &archives, ctx).await?;
+        let archives = bundles.archives_for(ctx, &cluster.mc_version, loader).await;
+        if let Ok(archives) = &archives {
+            heal_bundle_activity(cluster_id, archives, ctx).await?;
+            decline_unasked_skyblock(&cluster, archives, ctx).await?;
         }
-    }
+        archives
+    };
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
     let check = check_bundle_updates_inner(cluster_id, bundles, ctx, &overrides).await?;
+    let suppressing = match &archives {
+        Ok(archives) => overrides_outside_declined(cluster_id, archives, overrides, ctx).await?,
+        Err(_) => overrides,
+    };
 
     tracing::info!(
         cluster_id,
@@ -512,7 +541,7 @@ pub async fn apply_bundle_updates_with(
         s.expect(oneclient_events::TaskCategory::Packages, count, bytes);
     }
 
-    let overrides_ref = &overrides;
+    let overrides_ref = &suppressing;
     let fetched_updates = futures_util::stream::iter(check.updates_available.into_iter().map(
         |update| async move {
             if past(deadline) {

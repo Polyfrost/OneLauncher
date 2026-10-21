@@ -57,7 +57,14 @@ impl PackageProvider for CurseForgeProvider {
                     .to_string(),
             );
             params.append_pair("index", &filters.offset.unwrap_or(0).to_string());
-            params.append_pair("sortField", "6");
+            params.append_pair(
+                "sortField",
+                &filters
+                    .sort
+                    .unwrap_or_default()
+                    .curseforge_sort_field()
+                    .to_string(),
+            );
             params.append_pair("sortOrder", "desc");
             let query = filters.normalized_query();
             if !query.is_empty() {
@@ -411,10 +418,8 @@ struct CfPaged<T> {
 async fn fetch_body(project_id: &str, detail: &ProjectDetail, ctx: &ContentCtx) -> PackageBody {
     let fallback = || {
         detail
-            .links
-            .iter()
-            .find(|(label, _)| label == "Website")
-            .map(|(_, url)| PackageBody::Url(url.clone()))
+            .web_url()
+            .map(PackageBody::Url)
             .unwrap_or_else(|| PackageBody::Raw(String::new()))
     };
 

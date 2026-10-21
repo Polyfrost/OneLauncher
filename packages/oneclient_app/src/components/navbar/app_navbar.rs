@@ -230,6 +230,7 @@ impl Component for NavLink {
             .on_press(move |e: Event<PressEventData>| {
                 e.prevent_default();
                 match &target {
+                    NavTarget::Route(_) if active => {}
                     NavTarget::Route(route) => {
                         let _ = RouterContext::get().push(route.clone());
                     }

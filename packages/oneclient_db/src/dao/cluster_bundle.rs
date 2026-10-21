@@ -341,6 +341,25 @@ pub async fn save_bundle_choices(
     tx.commit().await
 }
 
+pub async fn predates_bundle_choices(
+    pool: &SqlitePool,
+    cluster_id: i64,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM clusters c, _sqlx_migrations m
+            WHERE c.id = ? AND m.version = 20261005120000
+                AND (c.created_at IS NULL OR datetime(c.created_at) < m.installed_on)
+        )
+        "#,
+    )
+    .bind(cluster_id)
+    .fetch_one(pool)
+    .await
+}
+
 pub async fn copy_bundle_choices(
     pool: &SqlitePool,
     source_cluster_id: i64,

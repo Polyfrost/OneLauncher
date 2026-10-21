@@ -50,10 +50,11 @@ impl Component for ClusterMods {
         let sources = modpack_sources_map(&sources);
         for item in &mut items {
             item.modpack = item.hash.as_ref().and_then(|hash| sources.get(hash).cloned());
-            item.shadowed = item
-                .hash
-                .as_ref()
-                .is_some_and(|hash| shadowed.contains(hash));
+            let Some(hash) = &item.hash else {
+                continue;
+            };
+            item.shadowed = shadowed.shadowed.contains(hash);
+            item.outranked = shadowed.outranked.contains(hash);
         }
 
         cluster_content()

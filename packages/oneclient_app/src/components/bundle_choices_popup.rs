@@ -53,10 +53,19 @@ impl Component for BundleChoicesPopup {
                             .width(Size::flex(1.0))
                             .color(colors::fg_primary()),
                     )
-                    .child(toggle_controlled(chosen.read().contains(name), on_toggle)),
+                    .child(toggle_controlled(
+                        choices.held.contains(name) != chosen.read().contains(name),
+                        on_toggle,
+                    )),
             );
         }
 
+        let names: Vec<String> = choices
+            .bundles
+            .iter()
+            .map(|(name, _)| name.clone())
+            .collect();
+        let held = choices.held.clone();
         let later = dispatch.clone();
         let close = dispatch.clone();
 
@@ -92,7 +101,7 @@ impl Component for BundleChoicesPopup {
                             .child(
                                 label()
                                     .text(format!(
-                                        "{} has optional bundles you have not chosen yet. Turn on the ones you want.",
+                                        "{} has optional bundles you have not chosen yet. Turn on the ones you want, turning one off removes its mods.",
                                         choices.cluster_name
                                     ))
                                     .font_size(12.5)
@@ -125,7 +134,15 @@ impl Component for BundleChoicesPopup {
                                         Button::new()
                                             .primary()
                                             .on_press(move |_| {
-                                                let picked = chosen.read().clone();
+                                                let flipped = chosen.read().clone();
+                                                let picked = names
+                                                    .iter()
+                                                    .filter(|name| {
+                                                        held.contains(*name)
+                                                            != flipped.contains(*name)
+                                                    })
+                                                    .cloned()
+                                                    .collect();
                                                 chosen.set(HashSet::new());
                                                 dispatch.close_bundle_choices(Some(picked));
                                             })

@@ -1,7 +1,8 @@
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
-    get_bundles_with_update_status, install_cluster_bundles, set_bundle_package_enabled,
+    get_bundles_with_update_status, install_cluster_bundles, on_user_disable_artifact,
+    on_user_remove_artifact, set_bundle_package_enabled,
 };
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
@@ -237,6 +238,126 @@ async fn user_disabled_mod_is_not_treated_as_a_removal() {
         "a user-disabled mod is still shipped by the bundle and must not be removed: {:?}",
         check.removals_available
     );
+}
+
+#[tokio::test]
+async fn deleted_bundled_mod_is_not_treated_as_a_removal() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![managed_file(true)]))
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Removed,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        check.removals_available.is_empty(),
+        "a deleted mod is still shipped by the bundle and must not be removed: {:?}",
+        check.removals_available
+    );
+    assert!(check.updates_available.is_empty());
+}
+
+#[tokio::test]
+async fn deleting_a_bundled_mod_leaves_only_the_removal() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        "Old Bundle",
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    on_user_disable_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+    on_user_remove_artifact(cluster_id, HASH, &ctx)
+        .await
+        .unwrap();
+
+    let overrides: Vec<(String, String)> =
+        bundle_dao::list_overrides(&state.services.db, cluster_id)
+            .await
+            .unwrap()
+            .into_iter()
+            .filter(|o| o.package_id == PROJECT_ID)
+            .map(|o| (o.bundle_name, o.override_type))
+            .collect();
+    assert_eq!(overrides, [(BUNDLE.to_string(), "removed".to_string())]);
+}
+
+#[tokio::test]
+async fn user_disabled_mod_still_takes_updates() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut newer = managed_file(true);
+    if let BundleFileKind::Managed {
+        version_id, sha1, ..
+    } = &mut newer.kind
+    {
+        *version_id = "v2".to_string();
+        *sha1 = "cccccccccccccccccccccccccccccccccccccccc".to_string();
+    }
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![newer]))
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+
+    artifact_dao::update_cluster_artifact(&state.services.db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    let check = check_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &state.services.content(),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(
+        check
+            .updates_available
+            .iter()
+            .map(|u| u.new_version_id.as_str())
+            .collect::<Vec<_>>(),
+        ["v2"],
+        "a user-disabled mod must still be offered the newer version"
+    );
+    assert!(check.removals_available.is_empty());
+    assert!(check.additions_available.is_empty());
 }
 
 #[tokio::test]
@@ -1341,6 +1462,132 @@ async fn taking_a_bundle_at_the_prompt_records_the_choice() {
 }
 
 #[tokio::test]
+async fn turning_a_bundle_down_removes_what_it_installed() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    oneclient_content::bundles::set_bundle_choices(cluster_id, &[(BUNDLE.to_string(), true)], &ctx)
+        .await
+        .unwrap();
+    let tracked = bundle_dao::list_bundle_tracked(&state.services.db, cluster_id)
+        .await
+        .unwrap();
+    assert_eq!(tracked.len(), 1, "taking the bundle keeps its mods");
+    bundle_dao::save_override(
+        &state.services.db,
+        cluster_id,
+        BUNDLE,
+        PROJECT_ID,
+        OverrideType::Disabled,
+    )
+    .await
+    .unwrap();
+
+    oneclient_content::bundles::set_bundle_choices(
+        cluster_id,
+        &[(BUNDLE.to_string(), false)],
+        &ctx,
+    )
+    .await
+    .unwrap();
+    let tracked = bundle_dao::list_bundle_tracked(&state.services.db, cluster_id)
+        .await
+        .unwrap();
+    assert!(tracked.is_empty());
+    let overrides = bundle_dao::list_overrides(&state.services.db, cluster_id)
+        .await
+        .unwrap();
+    assert_eq!(overrides.len(), 1, "a mod the user switched off stays off");
+}
+
+#[tokio::test]
+async fn skyblock_nobody_asked_for_is_taken_out_of_an_old_26_3_cluster_once() {
+    const SKYBLOCK: &str = "Test [SkyBlock]";
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let db = &state.services.db;
+    let mut m = named_manifest(SKYBLOCK, vec![managed_file(true)]);
+    m.enabled = false;
+    m.category = "SkyBlock".to_string();
+    m.mc_version = "26.3".to_string();
+    seed_bundle_with_pack(&state, m).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+    let track = || {
+        bundle_dao::track_bundle_artifact(db, cluster_id, HASH, SKYBLOCK, VERSION_ID, PROJECT_ID)
+    };
+    let apply = || {
+        oneclient_content::bundles::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &ctx,
+            None,
+        )
+    };
+    track().await.unwrap();
+    bundle_dao::save_bundle_choices(db, cluster_id, &[(SKYBLOCK.to_string(), true)])
+        .await
+        .unwrap();
+
+    sqlx::query("UPDATE clusters SET mc_version = '26.3' WHERE id = ?")
+        .bind(cluster_id)
+        .execute(db)
+        .await
+        .unwrap();
+    apply().await.unwrap();
+    assert_eq!(
+        bundle_dao::list_bundle_tracked(db, cluster_id)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "a cluster made after bundles started asking is left alone"
+    );
+
+    sqlx::query("DELETE FROM applied_migrations")
+        .execute(db)
+        .await
+        .unwrap();
+    sqlx::query("UPDATE clusters SET created_at = '2020-01-01T00:00:00+00:00' WHERE id = ?")
+        .bind(cluster_id)
+        .execute(db)
+        .await
+        .unwrap();
+    apply().await.unwrap();
+    assert!(
+        bundle_dao::list_bundle_tracked(db, cluster_id)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+
+    artifact_dao::insert_artifact(
+        db,
+        HASH,
+        ContentType::Mod as i64,
+        "artifacts/sodium.jar",
+        "sodium.jar",
+        Some(1),
+    )
+    .await
+    .unwrap();
+    artifact_dao::link_cluster_artifact(db, cluster_id, HASH, "sodium.jar")
+        .await
+        .unwrap();
+    track().await.unwrap();
+    apply().await.unwrap();
+    assert_eq!(
+        bundle_dao::list_bundle_tracked(db, cluster_id)
+            .await
+            .unwrap()
+            .len(),
+        1,
+        "taking SkyBlock again later is not undone"
+    );
+}
+
+#[tokio::test]
 async fn an_opt_in_bundle_switched_off_by_accident_is_repaired_at_install() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     seed_opt_in_bundle(&state, BUNDLE).await;
@@ -1364,6 +1611,127 @@ async fn an_opt_in_bundle_switched_off_by_accident_is_repaired_at_install() {
     assert!(
         tracked.iter().all(|row| row.enabled != 0),
         "nothing recorded the disable so the install should undo it"
+    );
+}
+
+async fn cluster_mod_enabled(state: &LauncherState, cluster_id: i64) -> bool {
+    artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, HASH)
+        .await
+        .unwrap()
+        .unwrap()
+        .enabled
+        != 0
+}
+
+async fn heal(state: &LauncherState, cluster_id: i64) {
+    let ctx = state.services.content();
+    let archives = state
+        .bundles
+        .archives_for(&ctx, MC_VERSION, GameLoader::Fabric)
+        .await
+        .unwrap();
+    oneclient_content::bundles::heal_bundle_activity(cluster_id, &archives, &ctx)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn a_mod_held_from_a_declined_bundle_stays_off_once_the_user_switches_it_off() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+
+    artifact_dao::update_cluster_artifact(db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(db, cluster_id, BUNDLE, PROJECT_ID, OverrideType::Disabled)
+        .await
+        .unwrap();
+
+    for _ in 0..2 {
+        oneclient_content::bundles::apply_bundle_updates(
+            cluster_id,
+            state.bundles.as_ref(),
+            &state.services.content(),
+            None,
+        )
+        .await
+        .unwrap();
+        assert!(
+            !cluster_mod_enabled(&state, cluster_id).await,
+            "the launch must not switch the mod back on"
+        );
+    }
+
+    let overrides = bundle_dao::list_overrides(db, cluster_id).await.unwrap();
+    assert_eq!(overrides.len(), 1, "the user's choice is kept");
+}
+
+#[tokio::test]
+async fn a_removal_filed_by_declining_a_bundle_does_not_hold_a_held_mod_off() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+
+    artifact_dao::update_cluster_artifact(db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(db, cluster_id, BUNDLE, PROJECT_ID, OverrideType::Removed)
+        .await
+        .unwrap();
+
+    heal(&state, cluster_id).await;
+
+    assert!(
+        cluster_mod_enabled(&state, cluster_id).await,
+        "declining the bundle is not a choice about a mod the user holds"
+    );
+}
+
+#[tokio::test]
+async fn a_disable_left_on_a_mod_that_came_back_on_is_cleared_once() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+
+    bundle_dao::save_override(db, cluster_id, BUNDLE, PROJECT_ID, OverrideType::Disabled)
+        .await
+        .unwrap();
+
+    heal(&state, cluster_id).await;
+    assert!(
+        cluster_mod_enabled(&state, cluster_id).await,
+        "the mod stays on the way the user last saw it"
+    );
+    assert!(
+        bundle_dao::list_overrides(db, cluster_id)
+            .await
+            .unwrap()
+            .is_empty(),
+        "the leftover choice is cleared so a later update cannot switch it off"
+    );
+
+    artifact_dao::update_cluster_artifact(db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bundle_dao::save_override(db, cluster_id, BUNDLE, PROJECT_ID, OverrideType::Disabled)
+        .await
+        .unwrap();
+
+    heal(&state, cluster_id).await;
+    assert!(
+        !cluster_mod_enabled(&state, cluster_id).await,
+        "a choice made after the cleanup is honoured"
+    );
+    assert_eq!(
+        bundle_dao::list_overrides(db, cluster_id)
+            .await
+            .unwrap()
+            .len(),
+        1
     );
 }
 

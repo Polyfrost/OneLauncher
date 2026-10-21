@@ -248,9 +248,28 @@ pub struct GameState {
     /// Launches started from the UI but not yet answered by core which takes a few
     /// hundred ms every click in that window otherwise spawns its own game
     pending: HashSet<i64>,
+    shared_syncs: HashSet<i64>,
 }
 
 impl GameState {
+    pub fn set_shared_sync(&mut self, cluster_id: i64, syncing: bool) {
+        if syncing {
+            self.shared_syncs.insert(cluster_id);
+        } else {
+            self.shared_syncs.remove(&cluster_id);
+        }
+    }
+
+    #[must_use]
+    pub fn is_syncing_shared(&self, cluster_id: i64) -> bool {
+        self.shared_syncs.contains(&cluster_id)
+    }
+
+    #[must_use]
+    pub fn any_shared_sync(&self) -> bool {
+        !self.shared_syncs.is_empty()
+    }
+
     #[must_use]
     pub fn stage(&self, cluster_id: i64) -> Option<LaunchStage> {
         self.stages.get(&cluster_id).copied()
@@ -275,21 +294,25 @@ impl GameState {
         }
     }
 
+    /// `shared` lists the other clusters that would share the launch's game dir
+    /// empty for a dedicated cluster with parallel clusters allowed only those
+    /// can be in the way
     #[must_use]
-    pub fn launch_block(&self, cluster_id: i64, parallel: bool) -> Option<LaunchBlock> {
+    pub fn launch_block(
+        &self,
+        cluster_id: i64,
+        parallel: bool,
+        shared: &[i64],
+    ) -> Option<LaunchBlock> {
         if let Some(block) = self.block_for(cluster_id) {
             return Some(block);
-        }
-
-        if parallel {
-            return None;
         }
 
         self.stages
             .keys()
             .chain(self.pending.iter())
             .copied()
-            .filter(|id| *id != cluster_id)
+            .filter(|id| *id != cluster_id && (!parallel || shared.contains(id)))
             .find_map(|id| self.block_for(id))
     }
 
@@ -333,7 +356,8 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::app::launch_button_state;
+    use crate::view::app::{launch_button_state, shared_dir_taken};
+    use crate::view::onboarding::test_support::cluster;
 
     #[test]
     fn a_second_click_is_refused_before_core_answers() {
@@ -366,9 +390,32 @@ mod tests {
         let mut game = GameState::default();
         game.stages.insert(1, LaunchStage::Running);
 
-        assert_eq!(game.launch_block(1, false), Some(LaunchBlock::Running(1)));
-        assert_eq!(game.launch_block(2, false), Some(LaunchBlock::Running(1)));
-        assert_eq!(game.launch_block(2, true), None);
+        assert_eq!(
+            game.launch_block(1, false, &[]),
+            Some(LaunchBlock::Running(1))
+        );
+        assert_eq!(
+            game.launch_block(2, false, &[]),
+            Some(LaunchBlock::Running(1))
+        );
+        assert_eq!(game.launch_block(2, true, &[]), None);
+    }
+
+    #[test]
+    fn parallel_clusters_still_hold_one_shared_game() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Running);
+
+        // 2 shares the game dir with 1 and 3 has its own
+        assert_eq!(
+            game.launch_block(2, true, &[1]),
+            Some(LaunchBlock::Running(1))
+        );
+        assert_eq!(game.launch_block(3, true, &[]), None);
+        assert_eq!(
+            game.launch_block(1, true, &[]),
+            Some(LaunchBlock::Running(1))
+        );
     }
 
     #[test]
@@ -376,8 +423,14 @@ mod tests {
         let mut game = GameState::default();
         game.stages.insert(1, LaunchStage::Downloading);
 
-        assert_eq!(game.launch_block(1, false), Some(LaunchBlock::Starting(1)));
-        assert_eq!(game.launch_block(2, false), Some(LaunchBlock::Starting(1)));
+        assert_eq!(
+            game.launch_block(1, false, &[]),
+            Some(LaunchBlock::Starting(1))
+        );
+        assert_eq!(
+            game.launch_block(2, false, &[]),
+            Some(LaunchBlock::Starting(1))
+        );
     }
 
     #[test]
@@ -385,8 +438,14 @@ mod tests {
         let mut game = GameState::default();
         game.begin_launch(1);
 
-        assert_eq!(game.launch_block(1, false), Some(LaunchBlock::Starting(1)));
-        assert_eq!(game.launch_block(2, false), Some(LaunchBlock::Starting(1)));
+        assert_eq!(
+            game.launch_block(1, false, &[]),
+            Some(LaunchBlock::Starting(1))
+        );
+        assert_eq!(
+            game.launch_block(2, false, &[]),
+            Some(LaunchBlock::Starting(1))
+        );
     }
 
     #[test]
@@ -394,23 +453,84 @@ mod tests {
         let mut game = GameState::default();
         game.stages.insert(1, LaunchStage::Exited);
 
-        assert_eq!(game.launch_block(2, false), None);
-        assert_eq!(game.launch_block(1, false), None);
+        assert_eq!(game.launch_block(2, false, &[]), None);
+        assert_eq!(game.launch_block(1, false, &[]), None);
     }
 
     #[test]
     fn the_button_disables_on_the_claim_alone() {
         let mut game = GameState::default();
-        assert_eq!(launch_button_state(&game, 1, false), ("Launch", true));
+        assert_eq!(
+            launch_button_state(&game, 1, false, false),
+            ("Launch", true)
+        );
 
         game.begin_launch(1);
-        assert_eq!(launch_button_state(&game, 1, false), ("Launching", false));
+        assert_eq!(
+            launch_button_state(&game, 1, false, false),
+            ("Launching", false)
+        );
 
         // Held past a failure which parks the stage at `Exited`
         game.stages.insert(1, LaunchStage::Exited);
-        assert_eq!(launch_button_state(&game, 1, false), ("Launching", false));
+        assert_eq!(
+            launch_button_state(&game, 1, false, false),
+            ("Launching", false)
+        );
 
         game.finish_launch(1);
-        assert_eq!(launch_button_state(&game, 1, false), ("Launch", true));
+        assert_eq!(
+            launch_button_state(&game, 1, false, false),
+            ("Launch", true)
+        );
+    }
+
+    #[test]
+    fn a_queued_launch_says_it_is_waiting() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Waiting);
+
+        assert_eq!(
+            launch_button_state(&game, 1, false, false),
+            ("Waiting", false)
+        );
+        assert!(game.is_busy(1));
+    }
+
+    #[test]
+    fn a_taken_shared_dir_blocks_only_an_idle_cluster() {
+        let mut game = GameState::default();
+        assert_eq!(
+            launch_button_state(&game, 1, false, true),
+            ("Folder in use", false)
+        );
+
+        game.stages.insert(1, LaunchStage::Running);
+        assert_eq!(
+            launch_button_state(&game, 1, false, true),
+            ("Running", false)
+        );
+    }
+
+    #[test]
+    fn a_shared_sync_takes_the_shared_dir_but_not_a_dedicated_one() {
+        let mut game = GameState::default();
+        let shared = cluster(1);
+        let dedicated = Cluster {
+            kind: oneclient_db::models::ClusterKind::Vanilla,
+            ..cluster(2)
+        };
+        let clusters = [shared, dedicated];
+
+        game.set_shared_sync(3, true);
+        assert!(shared_dir_taken(&game, &clusters, 1));
+        assert!(!shared_dir_taken(&game, &clusters, 2));
+        assert_eq!(
+            launch_button_state(&game, 3, false, false),
+            ("Syncing", false)
+        );
+
+        game.set_shared_sync(3, false);
+        assert!(!shared_dir_taken(&game, &clusters, 1));
     }
 }

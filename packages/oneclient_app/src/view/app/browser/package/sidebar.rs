@@ -1,7 +1,7 @@
 use super::*;
 
 use oneclient_content::packages::ProviderId;
-use oneclient_content::packages::types::{ProjectDetail, ProjectMember};
+use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSummary};
 
 use crate::components::{Button, Icon, IconType};
 use crate::theme::colors;
@@ -19,7 +19,7 @@ fn short_name(name: &str) -> String {
 
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
-    latest_version: Option<String>,
+    latest_version: Option<VersionSummary>,
     installer: Installer,
     confirm: State<Option<String>>,
     installed: Option<Installed>,
@@ -36,7 +36,7 @@ pub(super) fn sidebar(
     let project_id = project.id.clone();
     // Nothing to do when this version is already there or while an install is running
     let have_latest = match (&installed, &latest_version) {
-        (Some(installed), Some(latest)) => installed.is_version(latest),
+        (Some(installed), Some(latest)) => installed.is_version(&latest.version_id),
         _ => false,
     };
     let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
@@ -82,7 +82,7 @@ pub(super) fn sidebar(
                         .child(ProviderTag {
                             text: format!("{} on {}", project.content_type, project.provider),
                             provider: project.provider,
-                            url: provider_project_url(&project),
+                            url: project.web_url(),
                             confirm,
                         })
                         .maybe(!project.summary.is_empty(), |el| {
@@ -129,8 +129,12 @@ pub(super) fn sidebar(
                 .on_press({
                     let installer = installer.clone();
                     move |_| {
-                        if let Some(version_id) = latest_version.clone() {
-                            installer.install_latest(project_id.clone(), version_id);
+                        if let Some(latest) = latest_version.clone() {
+                            installer.install_latest(
+                                project_id.clone(),
+                                latest.version_id,
+                                latest.version_number,
+                            );
                         }
                     }
                 })
@@ -172,24 +176,6 @@ pub(super) fn sidebar(
             el.child(links_card(&project.links, confirm))
         })
         .into_element()
-}
-
-/// Modrinth doesn't hand a url out so it's rebuilt from the slug CurseForge lists it as "Website"
-fn provider_project_url(project: &ProjectDetail) -> Option<String> {
-    match project.provider {
-        ProviderId::Modrinth => Some(format!(
-            "{}{}/{}",
-            ProviderId::Modrinth.website(),
-            project.content_type.modrinth_type(),
-            project.slug
-        )),
-        ProviderId::CurseForge => project
-            .links
-            .iter()
-            .find(|(label, _)| label == "Website")
-            .map(|(_, url)| url.clone()),
-        ProviderId::Local => None,
-    }
 }
 
 /// Plain text when the provider has no page so a local package doesn't look clickable
@@ -366,7 +352,7 @@ fn details_card(project: &ProjectDetail) -> impl IntoElement {
         rows.push(pill_detail("Versions", &project.game_versions));
     }
     if !project.loaders.is_empty() {
-        let loaders: Vec<String> = project.loaders.iter().map(|l| l.to_string()).collect();
+        let loaders: Vec<String> = project.loaders.iter().map(|l| l.real_name()).collect();
         rows.push(pill_detail("Loaders", &loaders));
     }
     if let Some(license) = &project.license {

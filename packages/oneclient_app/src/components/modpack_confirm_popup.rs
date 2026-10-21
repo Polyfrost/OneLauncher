@@ -151,6 +151,15 @@ fn notes(summary: &ModpackSummary) -> Vec<(String, Color)> {
             colors::code_warn(),
         ));
     }
+    if summary.unverified > 0 {
+        notes.push((
+            format!(
+                "{} packed inside this file instead of coming from Modrinth or CurseForge, so nobody has checked them. Only import files from people you trust.",
+                count_label(summary.unverified, "file comes", "files come")
+            ),
+            colors::danger(),
+        ));
+    }
     if summary.unresolved > 0 {
         notes.push((
             format!(
@@ -369,14 +378,21 @@ fn dialog(
                                         .border(border_all_color(1., colors::component_border()))
                                         .children(facts),
                                 )
-                                .children(notes(summary).into_iter().map(|(text, color)| {
-                                    label()
-                                        .text(text)
-                                        .font_size(12.)
-                                        .max_lines(3)
-                                        .color(color)
-                                        .into_element()
-                                }))
+                                .children(
+                                    confirm
+                                        .notices
+                                        .iter()
+                                        .map(|notice| (notice.clone(), colors::code_warn()))
+                                        .chain(notes(summary))
+                                        .map(|(text, color)| {
+                                            label()
+                                                .text(text)
+                                                .font_size(12.)
+                                                .max_lines(3)
+                                                .color(color)
+                                                .into_element()
+                                        }),
+                                )
                                 .children(import_notes)
                                 .maybe_child(existing_section)
                                 .maybe_child(flagged_section),

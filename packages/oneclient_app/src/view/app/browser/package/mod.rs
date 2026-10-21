@@ -5,7 +5,9 @@ use oneclient_content::packages::types::DependencyKind;
 use oneclient_content::packages::{ContentType, GameLoader, ProviderId};
 use oneclient_core::clusters::ModpackSource;
 
-use crate::components::{ScrollArea, use_shared_delete};
+use crate::components::{
+    BundledInstallWarning, PendingBundledInstall, ScrollArea, use_shared_delete,
+};
 use crate::hooks::{settled_or_loading, use_cluster, use_clusters};
 use crate::hooks::{
     ALL_VERSIONS, VERSIONS_PAGE_SIZE, bundle_overrides_map, bundles_with_status_items,
@@ -43,6 +45,9 @@ struct Installer {
     provider: ProviderId,
     world_prompt: Option<State<Option<String>>>,
     modpack: bool,
+    installed: Option<Installed>,
+    project_name: String,
+    bundled_warning: State<Option<PendingBundledInstall>>,
     modpack_prompt: Option<State<bool>>,
     loader_prompt: Option<State<bool>>,
     import_prompt: Option<State<bool>>,
@@ -51,18 +56,36 @@ struct Installer {
 }
 
 impl Installer {
-    fn install_latest(&self, project_id: String, version_id: String) {
+    fn install_latest(&self, project_id: String, version_id: String, version_label: String) {
         if let Some(mut prompt) = self.loader_prompt {
             prompt.set(true);
             return;
         }
         match self.modpack_prompt {
             Some(mut prompt) => prompt.set(true),
-            None => self.install(project_id, version_id),
+            None => self.install(project_id, version_id, version_label),
         }
     }
 
-    fn install(&self, project_id: String, version_id: String) {
+    fn install(&self, project_id: String, version_id: String, version_label: String) {
+        if let Some(installed) = self
+            .installed
+            .as_ref()
+            .filter(|installed| installed.conflicts_with_bundle(&version_id))
+        {
+            let mut warning = self.bundled_warning;
+            warning.set(Some(PendingBundledInstall {
+                cluster_id: self.cluster_id,
+                provider: self.provider,
+                project_id,
+                version_id,
+                project_name: self.project_name.clone(),
+                version_label,
+                bundled_version: installed.bundled_version_label(),
+            }));
+            return;
+        }
+
         if self.add_to_cluster {
             self.dispatch.import_modpack(
                 self.cluster_id,
@@ -179,6 +202,7 @@ impl Component for BrowserPackage {
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
         let world_prompt = use_state(|| None::<String>);
+        let bundled_warning = use_state(|| None::<PendingBundledInstall>);
         let modpack_prompt = use_state(|| false);
         let loader_prompt = use_state(|| false);
         let chosen_loader = use_state(|| None::<GameLoader>);
@@ -186,22 +210,8 @@ impl Component for BrowserPackage {
         let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
         let is_datapack = content_type == ContentType::DataPack;
         let add_to_cluster = self.add_to_cluster && content_type == ContentType::Modpack;
-        let mut installer = Installer {
-            dispatch: dispatch.clone(),
-            cluster_id,
-            provider,
-            world_prompt: is_datapack.then_some(world_prompt),
-            modpack: content_type == ContentType::Modpack,
-            modpack_prompt: None,
-            loader_prompt: None,
-            import_prompt: (content_type == ContentType::Modpack && !add_to_cluster)
-                .then_some(import_prompt),
-            add_to_cluster,
-            cluster_name: None,
-        };
 
         let cluster = use_cluster(cluster_id);
-        installer.cluster_name = cluster.as_ref().map(|c| c.name.clone());
         let compat = *compatible_only.read();
         let narrows = content_type != ContentType::Modpack;
         let (game_version, loader) = match (compat && narrows, &cluster) {
@@ -263,6 +273,23 @@ impl Component for BrowserPackage {
 
         let project = project_detail(&project_query);
 
+        let mut installer = Installer {
+            dispatch: dispatch.clone(),
+            cluster_id,
+            provider,
+            world_prompt: is_datapack.then_some(world_prompt),
+            modpack: content_type == ContentType::Modpack,
+            installed: installed.clone(),
+            project_name: project.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+            bundled_warning,
+            modpack_prompt: None,
+            loader_prompt: None,
+            import_prompt: (content_type == ContentType::Modpack && !add_to_cluster)
+                .then_some(import_prompt),
+            add_to_cluster,
+            cluster_name: cluster.as_ref().map(|c| c.name.clone()),
+        };
+
         let remove_id = project.as_ref().map(|p| p.id.clone());
         let remove_dispatch = dispatch.clone();
         let (on_remove, remove_dialog) = use_shared_delete(cluster_id, move |(name, hash)| {
@@ -310,7 +337,7 @@ impl Component for BrowserPackage {
         } else {
             preferred_version(latest_source, content_type)
         }
-        .map(|v| v.version_id.clone());
+        .cloned();
         let loaders = if is_modpack && !add_to_cluster {
             loader_options(&all_versions)
         } else {
@@ -405,6 +432,9 @@ impl Component for BrowserPackage {
                 chosen: chosen_loader,
                 version_open: modpack_prompt,
             }))
+            .child(BundledInstallWarning {
+                pending: bundled_warning,
+            })
             .maybe_child(modpack_prompt.read().then(|| ModpackVersionPrompt {
                 provider,
                 project_id: project_id.clone(),

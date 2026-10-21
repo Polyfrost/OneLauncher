@@ -3,6 +3,7 @@ pub mod bad_modpacks;
 pub mod bad_mods;
 pub mod dependencies;
 pub mod error;
+pub mod fabric_version;
 pub mod local_manifest;
 pub mod metadata_cache;
 pub mod provider;
@@ -22,10 +23,10 @@ pub use bad_modpacks::{
 };
 pub use bad_mods::{
     BadMod, BadModAlternative, BadModList, ProjectIds, ResolvedAlternative, fetch_bad_mods,
-    fetch_explanation, load_bad_mods, refresh_bad_mods, resolve_alternatives,
+    fetch_explanation, fetch_improvements, load_bad_mods, refresh_bad_mods, resolve_alternatives,
 };
 pub use dependencies::{
-    DependencyResolution, ResolvedDependency, resolve_required, resolves_dependencies,
+    DependencyResolution, ResolvedDependency, pick_version, resolve_required, resolves_dependencies,
 };
 pub use error::{PackageError, PackageResult};
 pub use file_identity::{FileIdentity, curseforge_fingerprint};

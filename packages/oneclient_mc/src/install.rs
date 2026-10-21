@@ -26,6 +26,12 @@ const ASSET_DOWNLOAD_CONCURRENCY: usize = 32;
 /// Libraries are larger and fewer less fan-out is needed to saturate the link
 const LIBRARY_DOWNLOAD_CONCURRENCY: usize = 16;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativesMode {
+    Extract,
+    LeaveInPlace,
+}
+
 #[derive(Debug, Clone)]
 pub struct PlannedLibrary {
     pub library: Library,
@@ -167,6 +173,7 @@ pub async fn plan_downloads(
     java_arch: &str,
     minecraft_updated: bool,
     force: bool,
+    natives_mode: NativesMode,
 ) -> McResult<DownloadPlan> {
     let legacy = uses_legacy_assets(&version.assets);
     let asset_dir = if legacy {
@@ -227,7 +234,12 @@ pub async fn plan_downloads(
                         &lib_dir.join(&artifact_path),
                         library_artifact_size(&lib),
                     ));
-            let natives = force || !natives_extracted(&natives_dir, &lib, &java_arch);
+            let natives = match natives_mode {
+                NativesMode::Extract => {
+                    force || !natives_extracted(&natives_dir, &lib, &java_arch)
+                }
+                NativesMode::LeaveInPlace => false,
+            };
 
             if !artifact && !natives {
                 continue;
@@ -269,6 +281,7 @@ pub struct VerifyReport {
     /// Mismatched the manifest and were removed
     pub corrupt: usize,
     pub missing: usize,
+    pub natives_unextracted: usize,
 }
 
 impl VerifyReport {
@@ -293,6 +306,7 @@ fn arch_segment(java_arch: &str) -> &'static str {
 pub struct NativesReport {
     pub repairable: Vec<String>,
     pub unsupported: Vec<String>,
+    pub unextracted: Vec<String>,
 }
 
 impl NativesReport {
@@ -377,9 +391,10 @@ pub async fn check_natives(
     // One scan for the whole sweep the directory is the same for every library
     let unpacked = any_native_unpacked(&natives_dir).await;
 
-    let mut families: Vec<(String, Vec<JarVerdict>)> = Vec::new();
+    let mut families: Vec<(String, Vec<(JarVerdict, bool)>)> = Vec::new();
     for lib in host_natives {
-        let verdict = if native_download(lib, java_arch).is_some() {
+        let extracted = native_download(lib, java_arch).is_some();
+        let verdict = if extracted {
             if unpacked && natives_extracted(&natives_dir, lib, java_arch) {
                 JarVerdict::Usable
             } else {
@@ -394,17 +409,23 @@ pub async fn check_natives(
 
         let family = natives_family(lib);
         match families.iter_mut().find(|(name, _)| name == &family) {
-            Some((_, verdicts)) => verdicts.push(verdict),
-            None => families.push((family, vec![verdict])),
+            Some((_, verdicts)) => verdicts.push((verdict, extracted)),
+            None => families.push((family, vec![(verdict, extracted)])),
         }
     }
 
     let mut report = NativesReport::default();
     for (family, verdicts) in families {
-        if verdicts.iter().any(|v| matches!(v, JarVerdict::Usable)) {
+        if verdicts.iter().any(|(v, _)| matches!(v, JarVerdict::Usable)) {
             continue;
         }
-        if verdicts.iter().any(|v| matches!(v, JarVerdict::Unreadable)) {
+        if verdicts.iter().any(|(v, _)| matches!(v, JarVerdict::Unreadable)) {
+            if verdicts
+                .iter()
+                .any(|(v, extracted)| *extracted && matches!(v, JarVerdict::Unreadable))
+            {
+                report.unextracted.push(family.clone());
+            }
             report.repairable.push(family);
         } else {
             report.unsupported.push(family);
@@ -554,6 +575,7 @@ pub async fn verify_game_files(
         Err(err) => return Err(err),
     };
     report.missing += natives.repairable.len();
+    report.natives_unextracted = natives.unextracted.len();
     report.checked += natives.repairable.len() + natives.unsupported.len();
 
     tracing::info!(
@@ -577,16 +599,26 @@ pub async fn download_minecraft(
     java_arch: &str,
     minecraft_updated: bool,
     force: bool,
+    natives_mode: NativesMode,
 ) -> McResult<()> {
     let started = std::time::Instant::now();
     let asset_index = download_assets_index(ctx, progress, version, force).await?;
-    let plan = plan_downloads(version, asset_index, java_arch, minecraft_updated, force).await?;
+    let plan = plan_downloads(
+        version,
+        asset_index,
+        java_arch,
+        minecraft_updated,
+        force,
+        natives_mode,
+    )
+    .await?;
 
     tracing::info!(
         version = %version.id,
         assets = plan.assets.len(),
         libraries = plan.libraries.len(),
         bytes = plan.total_bytes(),
+        ?natives_mode,
         "planned minecraft download"
     );
 

@@ -18,6 +18,10 @@ pub struct MinecraftAccount {
     pub expires: DateTime<Utc>,
     #[serde(default = "default_account_kind")]
     pub kind: AccountKind,
+    /// Microsoft rejected the refresh token the entry stays listed but cannot
+    /// launch until the user signs in to it again
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub signed_out: bool,
 }
 
 fn default_account_kind() -> AccountKind {
@@ -31,6 +35,10 @@ impl MinecraftAccount {
 
     pub fn is_offline(&self) -> bool {
         self.kind == AccountKind::Offline
+    }
+
+    pub fn needs_sign_in(&self) -> bool {
+        self.is_microsoft() && self.signed_out
     }
 
     pub fn is_expired(&self) -> bool {

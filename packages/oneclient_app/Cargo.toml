@@ -76,9 +76,13 @@ libloading = "=0.8.9"
 gtk-sys = "=0.18.2"
 
 [target.'cfg(windows)'.dependencies]
+freya-winit.workspace = true
 windows = { version = "=0.62.2", features = [
   "Win32_Foundation",
+  "Win32_Graphics_Gdi",
   "Win32_System_Registry",
+  "Win32_UI_Shell",
+  "Win32_UI_WindowsAndMessaging",
 ] }
 
 [target.'cfg(windows)'.build-dependencies]

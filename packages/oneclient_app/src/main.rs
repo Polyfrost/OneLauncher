@@ -253,6 +253,11 @@ fn main() {
         .with_plugin(freya::metrics::MetricsPlugin::default())
         .with_default_font(theme::DEFAULT_FONT);
 
+    #[cfg(target_os = "windows")]
+    {
+        launch_config = launch_config.with_plugin(platform::intel_frame::IntelFramePlugin);
+    }
+
     if show_tray_icon && platform::tray::available() {
         launch_config = launch_config.with_tray(platform::tray::build, platform::tray::handle);
     }

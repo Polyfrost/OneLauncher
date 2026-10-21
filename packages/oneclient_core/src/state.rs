@@ -127,6 +127,7 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
     let background = Arc::clone(state);
     tokio::spawn(async move {
         sweep_java_scratch_files().await;
+        crate::migration::launchers::sweep_instance_archives().await;
         background.clusters.sweep_trash().await;
 
         let recovery = match crate::recovery::reconstruct_from_disk(&background).await {

@@ -22,7 +22,8 @@ use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
 use crate::view::app::clusters::{
-    DeleteInstanceModal, EditInstanceModal, InstanceFacts, ResetInstanceModal,
+    DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts,
+    ResetInstanceModal,
 };
 use crate::view::app::settings::{
     section_header, settings_row, settings_row_danger, settings_row_disabled,
@@ -214,6 +215,14 @@ impl Component for ClusterSettings {
                     ))
                     .append_children(graphics_backend_row)
                     .append_children(loader_section)
+                    .child(section_header("SHARING"))
+                    .child(
+                        ExportRow {
+                            cluster_id,
+                            name: cluster.name.clone(),
+                        }
+                        .into_element(),
+                    )
                     .child(section_header("JAVA"))
                     .child(profile_row(
                         generation,
@@ -473,6 +482,42 @@ impl Component for ShortcutRow {
              without opening the launcher first.",
             button,
         )
+    }
+}
+
+#[derive(PartialEq)]
+struct ExportRow {
+    cluster_id: i64,
+    name: String,
+}
+
+impl Component for ExportRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let mut choosing = use_state(|| false);
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .on_press(move |_| choosing.set(true))
+            .text("Export");
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .child(settings_row(
+                IconType::Users01,
+                "Export Instance",
+                "Save this instance as a .mrpack file friends can import: its mods, resource packs, \
+                 shaders, loader, Java version and cover. Worlds and configs stay here.",
+                button,
+            ))
+            .maybe_child(choosing.read().then(|| {
+                ExportInstanceModal::new(cluster_id, self.name.clone(), move |()| {
+                    choosing.set(false)
+                })
+                .into_element()
+            }))
     }
 }
 

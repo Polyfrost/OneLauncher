@@ -28,7 +28,10 @@ pub use active_cluster::{
     use_provide_start_maximized, use_splash, use_start_maximized,
 };
 
-pub use actions::{Actions, NotificationBuilder, PumpSignal, modpack_job_running};
+pub use actions::{
+    Actions, AlternativePick, ExternalImportJob, NotificationBuilder, PumpSignal, exporting,
+    modpack_job_running,
+};
 pub use queries::ALL_VERSIONS;
 pub(crate) use queries::use_folder_watch;
 pub use queries::{
@@ -80,6 +83,8 @@ pub use queries::{
     spawn_world_task, try_cluster_worlds, try_world_datapacks, try_world_size, use_cluster_worlds,
     use_saves_folder_watch, use_world_datapacks, use_world_size,
 };
+pub use queries::{external_launchers, use_external_launchers};
+pub use queries::{import_screening, retry_import_screening, use_import_screening};
 
 use crate::notifications::NotificationSnapshot;
 use crate::state::{

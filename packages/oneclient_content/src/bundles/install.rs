@@ -9,7 +9,7 @@ use oneclient_db::models::OverrideType;
 use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
-use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
+use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind, BundleManifest};
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
@@ -28,7 +28,29 @@ pub(crate) fn takes_bundle(
     archive: &BundleArchive,
     accepted: &std::collections::HashSet<String>,
 ) -> bool {
-    archive.manifest.enabled || accepted.contains(&archive.manifest.name)
+    takes_manifest(&archive.manifest, accepted)
+}
+
+fn takes_manifest(manifest: &BundleManifest, accepted: &std::collections::HashSet<String>) -> bool {
+    manifest.enabled || accepted.contains(&manifest.name)
+}
+
+pub fn wanted_bundle_files<'a>(
+    manifests: impl IntoIterator<Item = &'a BundleManifest>,
+    accepted: &std::collections::HashSet<String>,
+    override_for: impl Fn(&str, &str) -> Option<OverrideType>,
+) -> Vec<&'a BundleFile> {
+    manifests
+        .into_iter()
+        .flat_map(|manifest| {
+            let taken = takes_manifest(manifest, accepted);
+            let override_for = &override_for;
+            manifest.files.iter().filter(move |file| {
+                let user_override = override_for(&manifest.name, &file.kind.package_id());
+                wants_file(file, user_override, taken)
+            })
+        })
+        .collect()
 }
 
 fn wants_file(file: &BundleFile, user_override: Option<OverrideType>, taken: bool) -> bool {
@@ -1271,6 +1293,63 @@ mod tests {
                 meta: None,
             },
         }
+    }
+
+    fn manifest(name: &str, enabled: bool, files: Vec<BundleFile>) -> BundleManifest {
+        BundleManifest {
+            name: name.to_string(),
+            version_id: "1".to_string(),
+            category: String::new(),
+            mc_version: "1.21.1".to_string(),
+            loader: GameLoader::Fabric,
+            loader_version: "0.16.5".to_string(),
+            enabled,
+            java_version_override: None,
+            files,
+        }
+    }
+
+    fn named(name: &str, enabled: bool) -> BundleFile {
+        let mut file = file(enabled);
+        file.path = format!("mods/{name}.jar");
+        if let BundleFileKind::External { file: ext, .. } = &mut file.kind {
+            ext.name = format!("{name}.jar");
+            ext.sha1 = name.to_string();
+        }
+        file
+    }
+
+    #[test]
+    fn the_planned_bundle_files_follow_choices_and_overrides() {
+        let manifests = vec![
+            manifest(
+                "Core",
+                true,
+                vec![named("a", true), named("b", true), named("off", false)],
+            ),
+            manifest("Picked", false, vec![named("c", true)]),
+            manifest(
+                "Declined",
+                false,
+                vec![named("d", true), named("opted", false)],
+            ),
+        ];
+        let accepted: std::collections::HashSet<String> = ["Picked".to_string()].into();
+        let disabled_b = named("b", true).kind.package_id();
+        let opted = named("opted", false).kind.package_id();
+
+        let wanted = wanted_bundle_files(&manifests, &accepted, |bundle, package| {
+            if bundle == "Core" && package == disabled_b {
+                Some(OverrideType::Disabled)
+            } else if bundle == "Declined" && package == opted {
+                Some(OverrideType::Enabled)
+            } else {
+                None
+            }
+        });
+
+        let paths: Vec<&str> = wanted.iter().map(|file| file.path.as_str()).collect();
+        assert_eq!(paths, vec!["mods/a.jar", "mods/c.jar", "mods/opted.jar"]);
     }
 
     #[test]

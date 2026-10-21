@@ -545,6 +545,11 @@ impl MutationCapability for ClusterMutation {
                         reason: "Wait for the modpack to finish installing before resetting this instance."
                             .to_string(),
                     })
+                } else if crate::hooks::exporting(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the export to finish before resetting this instance."
+                            .to_string(),
+                    })
                 } else if state.games.is_active(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
                         reason: "Close the game before resetting this instance.".to_string(),

@@ -1,9 +1,10 @@
 mod java_override;
 mod migrate;
-mod modpack;
+pub(crate) mod modpack;
 pub(crate) mod prepare;
 mod provision;
 mod release_migration;
+mod share;
 mod reset;
 mod unlink_legacy;
 
@@ -21,6 +22,7 @@ pub use release_migration::{
     OfferLookup, ReleaseMigrationOffer, can_migrate_manually, copy_configs, manual_migration_offer,
     rank_migration_sources, record_new_versions, release_migration_offer,
 };
+pub use share::{ExportMode, SharedCluster, export_cluster};
 pub use reset::{ResetClaim, ResetReport, is_resetting, reset_cluster, reset_unfinished};
 pub use unlink_legacy::{SweepReport, unlink_legacy_cluster_content};
 

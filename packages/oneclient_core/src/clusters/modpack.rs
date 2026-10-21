@@ -12,6 +12,10 @@ use oneclient_content::packages::{PackageStore, ProjectDetail};
 use oneclient_db::dao::artifact::get_artifact_by_hash;
 use oneclient_events::GroupedProgressSession;
 
+use super::share::{
+    SharedCluster, install_shared_instance, planned_bundle_content, resolve_base_modpack,
+    shared_options,
+};
 use crate::LauncherResult;
 use crate::images::DEFAULT_IMAGE_EDGE;
 use crate::state::LauncherState;
@@ -42,6 +46,24 @@ pub struct PreparedModpack {
     pub archive_path: PathBuf,
     pub manifest: ModpackManifest,
     pub instance_name: String,
+    pub share: Option<SharedCluster>,
+}
+
+impl PreparedModpack {
+    #[must_use]
+    pub fn summary(&self) -> modpacks::ModpackSummary {
+        match &self.share {
+            Some(shared) => shared.summary(&self.manifest),
+            None => self.manifest.summary(),
+        }
+    }
+
+    #[must_use]
+    pub fn notices(&self) -> &[String] {
+        self.share
+            .as_ref()
+            .map_or(&[], |shared| shared.notices.as_slice())
+    }
 }
 
 #[tracing::instrument(skip(state))]
@@ -70,12 +92,52 @@ pub async fn prepare_modpack(
         .map(|cluster| cluster.name)
         .collect();
 
+    let share = match source {
+        ModpackSource::File(_) => modpacks::read_cluster_share(&archive_path).await?,
+        ModpackSource::Provider { .. } => None,
+    };
+    let Some(share) = share else {
+        return Ok(PreparedModpack {
+            source: source.clone(),
+            artifact_hash: artifact.hash,
+            archive_path,
+            instance_name: unique_name(&instance_name(&manifest.name), &taken),
+            manifest,
+            share: None,
+        });
+    };
+
+    let instance_name = unique_name(&instance_name(&share.name), &taken);
+    let extras = modpacks::read_share_extras(&archive_path, &share).await?;
+    let bundled = planned_bundle_content(state, &share).await;
+    let mut shared = SharedCluster {
+        archive_path: archive_path.clone(),
+        manifest: manifest.clone(),
+        share,
+        extras,
+        bundled,
+        notices: Vec::new(),
+        substituted: false,
+    };
+    let (artifact_hash, archive_path, manifest) = match shared.share.modpack.clone() {
+        Some(pack) => {
+            let (base, substituted) =
+                resolve_base_modpack(&content, &shared.share, &pack, &mut shared.notices).await?;
+            shared.substituted = substituted;
+            let base_path = artifact_absolute_path(&base.path)?;
+            let base_manifest = modpacks::read_modpack(&base_path, &content).await?;
+            (base.hash, base_path, base_manifest)
+        }
+        None => (artifact.hash, archive_path, manifest),
+    };
+
     Ok(PreparedModpack {
         source: source.clone(),
-        artifact_hash: artifact.hash,
+        artifact_hash,
         archive_path,
-        instance_name: unique_name(&instance_name(&manifest.name), &taken),
         manifest,
+        instance_name,
+        share: Some(shared),
     })
 }
 
@@ -86,18 +148,31 @@ pub async fn create_modpack_instance(
 ) -> LauncherResult<Cluster> {
     let manifest = &prepared.manifest;
     let global = state.settings.read().global_game_settings.clone();
-    let mut options = CreateClusterOptions::new(
-        prepared.instance_name.clone(),
-        manifest.mc_version.clone(),
-        manifest.loader,
-    )
-    .kind(kind_for(manifest.loader))
-    .user_created(true)
-    .modpack(true);
-    options.mc_loader_version = manifest.loader_version.clone();
-    options.description = manifest.summary.clone();
+    let options = match &prepared.share {
+        Some(shared) => shared_options(prepared, shared),
+        None => {
+            let mut options = CreateClusterOptions::new(
+                prepared.instance_name.clone(),
+                manifest.mc_version.clone(),
+                manifest.loader,
+            )
+            .kind(kind_for(manifest.loader))
+            .user_created(true)
+            .modpack(true);
+            options.mc_loader_version = manifest.loader_version.clone();
+            options.description = manifest.summary.clone();
+            options
+        }
+    };
 
     let cluster = state.clusters.create(&global, options).await?;
+    if prepared
+        .share
+        .as_ref()
+        .is_some_and(|shared| shared.share.modpack.is_none())
+    {
+        return Ok(cluster);
+    }
     let linked = state
         .clusters
         .update(
@@ -127,6 +202,10 @@ pub async fn install_modpack_instance(
     prepared: &PreparedModpack,
     progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<ModpackCluster> {
+    if let Some(shared) = &prepared.share {
+        return install_shared_instance(state, cluster_id, prepared, shared, progress).await;
+    }
+
     let content = state.services.content();
     let report = modpacks::install_modpack(
         &prepared.archive_path,
@@ -137,7 +216,19 @@ pub async fn install_modpack_instance(
     )
     .await?;
 
-    match modpacks::identify_modpack(&prepared.artifact_hash, &content).await {
+    link_project_details(state, cluster_id, &prepared.artifact_hash).await;
+
+    let cluster = state.clusters.get(cluster_id).await?;
+    Ok(ModpackCluster { cluster, report })
+}
+
+pub(super) async fn link_project_details(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    artifact_hash: &str,
+) {
+    let content = state.services.content();
+    match modpacks::identify_modpack(artifact_hash, &content).await {
         Ok(Some(release)) => {
             if let Err(err) = apply_project_details(state, cluster_id, &release).await {
                 tracing::debug!(cluster_id, error = %err, "could not read the modpack's project page");
@@ -148,9 +239,6 @@ pub async fn install_modpack_instance(
             tracing::debug!(error = %err, "could not identify the modpack on any provider");
         }
     }
-
-    let cluster = state.clusters.get(cluster_id).await?;
-    Ok(ModpackCluster { cluster, report })
 }
 
 #[tracing::instrument(skip(state, progress))]
@@ -392,7 +480,7 @@ fn cover_url(project: &ProjectDetail) -> Option<String> {
         .filter(|url| !url.is_empty())
 }
 
-fn kind_for(loader: GameLoader) -> ClusterKind {
+pub(crate) fn kind_for(loader: GameLoader) -> ClusterKind {
     if loader.is_modded() {
         ClusterKind::Modded
     } else {
@@ -400,7 +488,7 @@ fn kind_for(loader: GameLoader) -> ClusterKind {
     }
 }
 
-fn unique_name(base: &str, taken: &[String]) -> String {
+pub(crate) fn unique_name(base: &str, taken: &[String]) -> String {
     let is_taken = |candidate: &str| {
         taken
             .iter()
@@ -416,7 +504,7 @@ fn unique_name(base: &str, taken: &[String]) -> String {
         .unwrap_or_else(|| base.to_string())
 }
 
-fn instance_name(pack_name: &str) -> String {
+pub(crate) fn instance_name(pack_name: &str) -> String {
     let name = pack_name
         .chars()
         .filter(|c| is_allowed_name_char(*c))

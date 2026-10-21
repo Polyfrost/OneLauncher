@@ -114,19 +114,19 @@ impl OverrideLayers {
             let Some(layer) = layer_of(name) else {
                 continue;
             };
-            let rel = &name[prefixes[layer].len()..];
+            let rel = name[prefixes[layer].len()..].replace('\\', "/");
             if rel.is_empty() || rel.ends_with('/') {
                 continue;
             }
-            if !crate::modpacks::is_safe_relative_path(rel) {
+            if !crate::modpacks::is_safe_relative_path(&rel) {
                 tracing::warn!(entry = %name, "skipping an override with an unsafe path");
                 continue;
             }
             let replaces = winners
-                .get(rel)
+                .get(&rel)
                 .is_none_or(|(current, _)| layer >= *current);
             if replaces {
-                winners.insert(rel.to_string(), (layer, name.clone()));
+                winners.insert(rel, (layer, name.clone()));
             }
         }
 
@@ -449,6 +449,32 @@ mod tests {
         sync_bundle_overrides_at(zip, "test-bundle", root, None)
             .await
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn override_paths_are_normalised_and_unsafe_ones_skipped() {
+        let root = polyio::testing::ScratchDir::new("unsafe-overrides");
+        let zip = root.join("pack.mrpack");
+        write_bundle(
+            &zip,
+            &[
+                ("overrides/config\\a.json", b"a"),
+                ("overrides/mods/..\\evil.jar", b"evil"),
+                ("overrides/mods/..\\..\\escape.jar", b"evil"),
+                ("overrides/C:\\Windows\\evil.dll", b"evil"),
+                ("overrides/config/../x.json", b"evil"),
+                ("overrides/config/fine.json", b"fine"),
+            ],
+        )
+        .await;
+
+        let layers = OverrideLayers::open(&zip, &["overrides/"]).await.unwrap();
+        let rels: Vec<&str> = layers
+            .entries()
+            .iter()
+            .map(|(rel, _)| rel.as_str())
+            .collect();
+        assert_eq!(rels, vec!["config/a.json", "config/fine.json"]);
     }
 
     #[tokio::test]

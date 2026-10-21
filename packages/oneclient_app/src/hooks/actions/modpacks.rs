@@ -1,5 +1,6 @@
+use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::{Mutex, PoisonError};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use freya::prelude::spawn_forever;
 use oneclient_content::modpacks::{
@@ -18,6 +19,8 @@ use crate::notifications::{BlockedDownloads, ModpackConfirm};
 use crate::state::AppChannel;
 
 const MAX_LISTED: usize = 3;
+const QUEUED_NOTICE: &str =
+    "This file was waiting in the import queue while another import finished.";
 
 enum JobSlot {
     Idle,
@@ -28,9 +31,20 @@ enum JobSlot {
 
 static JOB: Mutex<JobSlot> = Mutex::new(JobSlot::Idle);
 
+static WAITING: Mutex<VecDeque<ModpackSource>> = Mutex::new(VecDeque::new());
+
+fn waiting() -> MutexGuard<'static, VecDeque<ModpackSource>> {
+    WAITING.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 fn with_slot<R>(change: impl FnOnce(&mut JobSlot) -> R) -> R {
     let mut slot = JOB.lock().unwrap_or_else(PoisonError::into_inner);
     change(&mut slot)
+}
+
+#[must_use]
+pub(super) fn modpack_job_idle() -> bool {
+    with_slot(|slot| matches!(slot, JobSlot::Idle))
 }
 
 #[must_use]
@@ -114,23 +128,39 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
             .unwrap_or_else(|| "a file".to_string()),
     };
 
+    let (pack_name, version) = match &prepared.share {
+        Some(shared) if shared.share.modpack.is_some() => (
+            shared.share.name.clone(),
+            format!("{} {}", manifest.name, manifest.version),
+        ),
+        Some(shared) => (shared.share.name.clone(), "Shared instance".to_string()),
+        None if manifest.name.trim().is_empty() => {
+            (prepared.instance_name.clone(), manifest.version.clone())
+        }
+        None => (manifest.name.clone(), manifest.version.clone()),
+    };
+
     ModpackConfirm {
-        pack_name: if manifest.name.trim().is_empty() {
-            prepared.instance_name.clone()
-        } else {
-            manifest.name.clone()
-        },
-        version: manifest.version.clone(),
+        notices: prepared.notices().to_vec(),
+        pack_name,
+        version,
         instance_name: prepared.instance_name.clone(),
         mc_version: manifest.mc_version.clone(),
         loader,
         source,
-        summary: manifest.summary(),
+        summary: prepared.summary(),
     }
 }
 
 impl Actions {
     fn claim_modpack_job(&self) -> bool {
+        if super::external_import::import_running() {
+            self.notify("An import is already running")
+                .body("Wait for it to finish, then try again.")
+                .error()
+                .send();
+            return false;
+        }
         let claimed = with_slot(|slot| match slot {
             JobSlot::Idle => {
                 *slot = JobSlot::Preparing;
@@ -139,7 +169,7 @@ impl Actions {
             _ => false,
         });
         if !claimed {
-            self.notify("A modpack is already being installed")
+            self.notify("Another install is already running")
                 .body("Wait for it to finish, then try again.")
                 .error()
                 .send();
@@ -164,14 +194,45 @@ impl Actions {
 
     fn release_modpack_job(&self) {
         with_slot(|slot| *slot = JobSlot::Idle);
-        let mut station = self.station;
-        let mut app = station.write_channel(AppChannel::Installs);
-        app.installs.modpack_busy = false;
-        app.installs.modpack_project = None;
-        app.installs.modpack_cluster = None;
+        {
+            let mut station = self.station;
+            let mut app = station.write_channel(AppChannel::Installs);
+            app.installs.modpack_busy = false;
+            app.installs.modpack_project = None;
+            app.installs.modpack_cluster = None;
+        }
+        self.resume_imports();
+    }
+
+    pub(super) fn resume_imports(&self) {
+        if super::external_import::import_running() || !modpack_job_idle() {
+            return;
+        }
+        let launcher_jobs = super::external_import::take_waiting();
+        if !launcher_jobs.is_empty() {
+            self.import_external_instances(launcher_jobs);
+            return;
+        }
+        let next = waiting().pop_front();
+        if let Some(next) = next {
+            self.start_modpack(next, true);
+        }
     }
 
     pub fn install_modpack(&self, source: ModpackSource) {
+        if matches!(source, ModpackSource::File(_))
+            && (super::external_import::import_running() || !modpack_job_idle())
+        {
+            waiting().push_back(source);
+            self.notify("Queued for import")
+                .body("It will start as soon as the current import or install finishes.")
+                .send();
+            return;
+        }
+        self.start_modpack(source, false);
+    }
+
+    fn start_modpack(&self, source: ModpackSource, queued: bool) {
         if !self.claim_modpack_job() {
             return;
         }
@@ -215,7 +276,10 @@ impl Actions {
                     actions.run_modpack_job(ModpackJob::Install(Box::new(prepared)));
                 }
                 Ok(prepared) => {
-                    let view = confirm_view(&prepared);
+                    let mut view = confirm_view(&prepared);
+                    if queued {
+                        view.notices.insert(0, QUEUED_NOTICE.to_string());
+                    }
                     with_slot(|slot| *slot = JobSlot::AwaitingConfirm(Box::new(prepared)));
                     actions.with_engine(move |app| app.notifications.open_modpack_confirm(view));
                 }
@@ -263,6 +327,13 @@ impl Actions {
     }
 
     fn refuse_while_running(&self, cluster_id: ClusterId) -> bool {
+        if super::share::exporting(cluster_id) {
+            self.notify("Wait for the export to finish")
+                .body("This instance is being exported. Change its modpack once that's done.")
+                .error()
+                .send();
+            return true;
+        }
         if oneclient_core::clusters::is_resetting(cluster_id) {
             self.notify("This instance is being reset")
                 .body("Wait for the reset to finish, then try again.")

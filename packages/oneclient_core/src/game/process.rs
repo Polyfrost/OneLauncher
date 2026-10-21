@@ -248,7 +248,10 @@ mod tests {
         games.set_natives(1, natives.to_path_buf());
         assert_eq!(games.natives_in_use_by(natives, None), Some(1));
         assert_eq!(games.natives_in_use_by(natives, Some(1)), None);
-        assert_eq!(games.natives_in_use_by(Path::new("natives/1.21"), None), None);
+        assert_eq!(
+            games.natives_in_use_by(Path::new("natives/1.21"), None),
+            None
+        );
 
         games.remove(1);
         assert_eq!(games.natives_in_use_by(natives, None), None);

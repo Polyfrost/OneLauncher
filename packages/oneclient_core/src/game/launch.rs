@@ -12,10 +12,10 @@ use tokio::process::Command;
 use crate::ClusterStage;
 use crate::LauncherResult;
 use crate::clusters::Cluster;
-use crate::game::GameError;
 use crate::game::session::SessionRecorder;
 use crate::game::tail::spawn_log_tail;
-use crate::settings::GameSettingsProfile;
+use crate::settings::{GameSettingsProfile, GraphicsBackend};
+use crate::game::{DirBusy, GameError};
 use crate::state::LauncherState;
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
@@ -101,13 +101,28 @@ async fn start(
 
     // Non-dedicated clusters share one directory so a second game there would
     // materialize over the running one's
-    if let Err(other) = state.games.claim_dir(cluster_id, &game_dir, !dedicated) {
-        if dedicated {
+    match state.games.claim_dir(cluster_id, &game_dir, !dedicated) {
+        Ok(()) => {}
+        Err(DirBusy::Syncing(syncing)) if syncing == cluster_id => {
+            return Err(GameError::Syncing.into());
+        }
+        Err(DirBusy::Syncing(syncing)) => {
+            tracing::warn!(
+                cluster_id,
+                syncing,
+                "shared game dir is being synced from; refusing launch"
+            );
+            let name = running_cluster_name(state, syncing).await;
+            return Err(GameError::SharedDirectorySyncing(name).into());
+        }
+        Err(DirBusy::Game(other)) if dedicated => {
             return Err(GameError::DirectoryInUse(other).into());
         }
-        tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
-        let name = running_cluster_name(state, other).await;
-        return Err(GameError::SharedDirectoryBusy(name).into());
+        Err(DirBusy::Game(other)) => {
+            tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
+            let name = running_cluster_name(state, other).await;
+            return Err(GameError::SharedDirectoryBusy(name).into());
+        }
     }
 
     match state.clusters.mark_played(cluster_id).await {
@@ -371,6 +386,15 @@ async fn start(
         profile.resolution.unwrap_or_default(),
         &java.os_arch,
     )?;
+    if let Some(backend) = profile.graphics_backend
+        && backend != GraphicsBackend::Default
+        && GraphicsBackend::supported_on(&mc_version)
+    {
+        mc_args.extend([
+            "--graphicsBackend".to_string(),
+            backend.as_str().to_string(),
+        ]);
+    }
     arguments::append_profile_game_arguments(
         &mut mc_args,
         profile.force_fullscreen,

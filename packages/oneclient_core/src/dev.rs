@@ -75,7 +75,9 @@ fn spawn_notification_handler(mut rx: oneclient_events::EventReceiver) {
                         pb.set_position(current);
                     }
                 }
-                Event::Progress(ProgressEvent::Complete { id, title, body }) => {
+                Event::Progress(ProgressEvent::Complete {
+                    id, title, body, ..
+                }) => {
                     if let Some(pb) = progress_bars.remove(&id) {
                         pb.finish_with_message(format!("{title}: {body}"));
                     } else {

@@ -84,4 +84,7 @@ pub enum ClusterError {
 
     #[error("cluster {0} always uses its own game directory")]
     DedicatedRequired(i64),
+
+    #[error("{0} no longer uses its own folder, so there is nothing to sync into.")]
+    NotDedicated(String),
 }

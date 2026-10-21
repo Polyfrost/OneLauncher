@@ -96,6 +96,7 @@ pub enum ProgressEvent {
         id: Uuid,
         title: String,
         body: String,
+        level: Level,
     },
 
     Grouped(GroupedProgressEvent),

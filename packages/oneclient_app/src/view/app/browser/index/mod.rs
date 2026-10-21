@@ -190,7 +190,7 @@ impl Component for BrowserBody {
         let saved = store.peek().get(&state_key).cloned().unwrap_or_default();
 
         let query = use_state(|| saved.query.clone());
-        let provider = use_state(|| saved.provider);
+        let mut provider = use_state(|| saved.provider);
         let view_mode = use_view_state(&format!("browser.{package_type}")).layout;
         let compatible_only = use_browser_compat();
         let selected_categories = use_state(|| saved.categories.clone());
@@ -221,7 +221,6 @@ impl Component for BrowserBody {
         );
 
         let cluster = use_cluster(cluster_id);
-        let provider_id = *provider.read();
         let compat = *compatible_only.read();
         let cats = selected_categories.read().clone();
 
@@ -238,6 +237,11 @@ impl Component for BrowserBody {
             (true, Some(c)) => vec![c.mc_loader],
             _ => picked_loader.into_iter().collect(),
         };
+        let curseforge_blocked = loader_fixed && loaders.contains(&GameLoader::Ornithe);
+        if curseforge_blocked && *provider.peek() == ProviderId::CurseForge {
+            provider.set(ProviderId::Modrinth);
+        }
+        let provider_id = *provider.read();
 
         let mut page_state = page;
         // Normalised like the search key so a query differing only by a space does not reset the page
@@ -371,6 +375,7 @@ impl Component for BrowserBody {
                     package_type: package_type.clone(),
                 }),
                 provider,
+                curseforge_blocked,
                 query,
                 controls_width,
             ))
@@ -446,6 +451,7 @@ fn header(
     cluster_name: Option<String>,
     picker: Option<ClusterPicker>,
     provider: State<ProviderId>,
+    curseforge_blocked: bool,
     query: State<String>,
     mut header_width: State<f32>,
 ) -> impl IntoElement {
@@ -491,7 +497,12 @@ fn header(
             SegmentedControl::new(provider)
                 .no_tint()
                 .segments(ProviderId::REMOTE_PROVIDERS.iter().map(move |provider| {
-                    let segment = Segment::new(*provider).icon(IconType::from(*provider));
+                    let mut segment = Segment::new(*provider).icon(IconType::from(*provider));
+                    if curseforge_blocked && *provider == ProviderId::CurseForge {
+                        segment = segment
+                            .disabled(true)
+                            .tooltip("CurseForge doesn't have any compatible mods");
+                    }
                     if show_provider_labels {
                         segment.label(provider.to_string())
                     } else {

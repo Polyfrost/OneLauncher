@@ -61,7 +61,18 @@ impl Component for ConfirmDialog {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let choices: Choices = use_state(HashMap::new);
-        let existing = use_state(ExistingPack::default);
+        let updates_in_place = self
+            .confirm
+            .import
+            .as_ref()
+            .is_some_and(|import| import.previous_version.is_some());
+        let existing = use_state(|| {
+            if updates_in_place {
+                ExistingPack::Replace
+            } else {
+                ExistingPack::KeepBoth
+            }
+        });
         let header_h = use_state(|| 0f32);
         let footer_h = use_state(|| 0f32);
         let content_h = use_state(|| 0f32);
@@ -211,7 +222,11 @@ fn intro(confirm: &ModpackConfirm) -> (String, String) {
                     "This replaces version {version} of the pack in {}. Mods you skipped or removed stay that way.",
                     import.cluster_name
                 ),
-                _ => format!(
+                Some(_) => format!(
+                    "This replaces the copy of the pack already in {}. Mods you skipped or removed stay that way.",
+                    import.cluster_name
+                ),
+                None => format!(
                     "Its mods are added next to the ones already in {}. Mods the instance already has are not added twice, and config files you edited are kept.",
                     import.cluster_name
                 ),

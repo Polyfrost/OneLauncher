@@ -182,3 +182,78 @@ async fn fetch_projects(
         .flatten()
         .collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::bundles::{BundleFile, BundleFileType};
+    use crate::modpacks::{BlockedFile, ModpackContents};
+    use oneclient_common::domain::GameLoader;
+
+    fn managed(path: &str, project_id: &str, sha1: &str) -> BundleFile {
+        BundleFile {
+            enabled: true,
+            hidden: false,
+            path: path.to_string(),
+            size: 0,
+            file_type: BundleFileType::Normal,
+            kind: BundleFileKind::Managed {
+                provider: ProviderId::Modrinth,
+                project_id: project_id.to_string(),
+                version_id: "v1".to_string(),
+                sha1: sha1.to_string(),
+            },
+        }
+    }
+
+    fn blocked(project_id: &str, content_type: ContentType) -> BlockedFile {
+        BlockedFile {
+            project_id: project_id.to_string(),
+            version_id: "1".to_string(),
+            project_name: format!("Blocked {project_id}"),
+            file_name: "blocked.jar".to_string(),
+            path: "mods/blocked.jar".to_string(),
+            sha1: format!("sha-{project_id}"),
+            size: 0,
+            content_type,
+            page_url: None,
+        }
+    }
+
+    #[test]
+    fn every_kind_of_mod_is_screened_once() {
+        let manifest = ModpackManifest {
+            name: "Pack".to_string(),
+            version: "1.0".to_string(),
+            summary: None,
+            mc_version: "1.21.1".to_string(),
+            loader: GameLoader::Fabric,
+            loader_version: None,
+            contents: ModpackContents {
+                files: vec![
+                    managed("mods/sodium.jar", "sodium", "aaa"),
+                    managed("mods/sodium-copy.jar", "sodium", "bbb"),
+                    managed("resourcepacks/pack.zip", "faithful", "ccc"),
+                ],
+                blocked: vec![
+                    blocked("123", ContentType::Mod),
+                    blocked("456", ContentType::ResourcePack),
+                ],
+                ..ModpackContents::default()
+            },
+            override_prefixes: Vec::new(),
+        };
+        let bundled = vec![("local.jar".to_string(), "ddd".to_string())];
+
+        let found = candidates(&manifest, &bundled);
+        let ids: Vec<&str> = found.iter().map(|c| c.package_id.as_str()).collect();
+        assert_eq!(ids, ["sodium", "123", "ddd"]);
+
+        assert_eq!(
+            found[1].project,
+            Some((ProviderId::CurseForge, "123".to_string()))
+        );
+        assert_eq!(found[2].project, None);
+        assert_eq!(found[2].sha1, "ddd");
+    }
+}

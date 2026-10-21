@@ -472,6 +472,8 @@ impl Component for InstallButton {
                 .into_element();
         }
 
+        let incompatible = add_to_cluster && latest.is_none() && !versions.is_empty();
+
         rect()
             // The card behind is one big press target stop here so the package page doesn't open on top of the install
             .on_press(|e: Event<PressEventData>| e.stop_propagation())
@@ -536,6 +538,7 @@ impl Component for InstallButton {
                             .text(match (installing, add_to_cluster) {
                                 (true, true) => "Adding",
                                 (true, false) => "Installing",
+                                (false, true) if incompatible => "Incompatible",
                                 (false, true) => "Add",
                                 (false, false) => "Install",
                             })

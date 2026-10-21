@@ -1032,6 +1032,10 @@ impl Actions {
                     .notify("Wait for the sync to finish")
                     .body(reason)
                     .send(),
+                None if modpacks::modpack_job_in_shared_dir(cluster_id).await => actions
+                    .notify("A modpack is still being set up")
+                    .body("It is changing an instance that shares this game folder. Press Play again once it finishes.")
+                    .send(),
                 None => launch(&actions, cluster_id).await,
             }
 

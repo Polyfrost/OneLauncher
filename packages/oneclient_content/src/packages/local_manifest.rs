@@ -231,7 +231,7 @@ pub fn parse_quilt(text: &str) -> Option<JarManifest> {
         metadata: Option<QuiltMetadata>,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Default)]
     struct QuiltMetadata {
         name: Option<String>,
         description: Option<String>,
@@ -243,7 +243,7 @@ pub fn parse_quilt(text: &str) -> Option<JarManifest> {
     let parsed: QuiltMod = serde_json::from_str(text).ok()?;
     let mod_id = clean(parsed.quilt_loader.id);
     let version = real_version(parsed.quilt_loader.version);
-    let metadata = parsed.quilt_loader.metadata?;
+    let metadata = parsed.quilt_loader.metadata.unwrap_or_default();
 
     Some(JarManifest {
         name: clean(metadata.name),
@@ -584,6 +584,18 @@ mod tests {
             parsed.icon_entry.as_deref(),
             Some("assets/example/icon.png")
         );
+    }
+
+    #[test]
+    fn quilt_keeps_the_mod_id_without_metadata() {
+        let parsed = parse_quilt(
+            r#"{"schema_version": 1, "quilt_loader": {"id": "example", "version": "1.2.0"}}"#,
+        )
+        .expect("metadata is optional in quilt");
+
+        assert_eq!(parsed.mod_id.as_deref(), Some("example"));
+        assert_eq!(parsed.version.as_deref(), Some("1.2.0"));
+        assert!(parsed.is_empty());
     }
 
     #[test]

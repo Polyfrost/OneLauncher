@@ -303,6 +303,18 @@ pub fn plural(n: i64) -> &'static str {
     if n == 1 { "" } else { "s" }
 }
 
+pub fn shorten(text: &str, max_chars: usize, ellipsis: &str) -> String {
+    let text = text.trim();
+    if text.chars().count() <= max_chars {
+        return text.to_string();
+    }
+    let kept: String = text
+        .chars()
+        .take(max_chars.saturating_sub(ellipsis.chars().count()))
+        .collect();
+    format!("{}{ellipsis}", kept.trim_end())
+}
+
 pub fn capitalize(s: &str) -> String {
     let mut chars = s.chars();
     match chars.next() {

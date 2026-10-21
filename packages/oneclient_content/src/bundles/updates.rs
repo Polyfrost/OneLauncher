@@ -509,12 +509,21 @@ pub async fn apply_bundle_updates_with(
 
     let mut result = ApplyBundleUpdatesResult::default();
 
+    let wants = match PackageStore::get_cluster(cluster_id, ctx).await {
+        Ok(cluster) => crate::modpacks::imported_wants(&cluster).await,
+        Err(_) => Vec::new(),
+    };
     for removal in check.removals_available {
         if past(deadline) {
             result.stopped_early = true;
             break;
         }
 
+        if let Ok(true) =
+            crate::modpacks::hand_to_wanting_pack(cluster_id, &removal.hash, &wants, ctx).await
+        {
+            continue;
+        }
         match remove_artifact_from_cluster(cluster_id, &removal.hash, false, ctx).await {
             Ok(()) => result.removals_applied.push(removal),
             Err(err) => result
@@ -905,6 +914,7 @@ pub async fn get_bundles_with_update_status(
         &archives,
         &bundle_packages,
         &overrides_map,
+        &accepted_bundles(cluster_id, ctx).await?,
     ));
 
     let (installed_managed_keys, installed_external_hashes) =
@@ -1068,6 +1078,7 @@ impl<'a> TypeOptOuts<'a> {
         let stray_overrides = overrides
             .iter()
             .filter(|o| !shipped.contains(&(o.bundle_name.as_str(), o.package_id.clone())))
+            .filter(|o| !crate::modpacks::is_imported_bundle(&o.bundle_name))
             .cloned()
             .collect();
 
@@ -1170,38 +1181,6 @@ impl<'a> TypeOptOuts<'a> {
 /// emptying a bundle is how a user opts out and an absent override is not
 /// consent for a file that did not exist back then
 #[tracing::instrument(level = "debug", skip_all)]
-fn bundles_awaiting_first_install(
-    archives: &[BundleArchive],
-    bundle_packages: &[BundleTrackedArtifactRow],
-    overrides_map: &HashMap<(String, String), OverrideType>,
-) -> HashSet<String> {
-    let names: HashSet<&str> = archives
-        .iter()
-        .map(|archive| archive.manifest.name.as_str())
-        .collect();
-    let installed_any = bundle_packages.iter().any(|row| {
-        row.bundle_name
-            .as_deref()
-            .is_some_and(|name| names.contains(name))
-    });
-    if installed_any {
-        return HashSet::new();
-    }
-
-    archives
-        .iter()
-        .filter(|archive| {
-            archive.manifest.files.iter().any(|file| {
-                let choice = overrides_map
-                    .get(&(archive.manifest.name.clone(), file.kind.package_id()))
-                    .copied();
-                crate::bundles::effective_enabled(file, choice)
-            })
-        })
-        .map(|archive| archive.manifest.name.clone())
-        .collect()
-}
-
 async fn addition_eligible_bundles(
     ctx: &ContentCtx,
     cluster_id: i64,
@@ -1228,6 +1207,40 @@ async fn addition_eligible_bundles(
     });
 
     Ok(eligible)
+}
+
+fn bundles_awaiting_first_install(
+    archives: &[BundleArchive],
+    bundle_packages: &[BundleTrackedArtifactRow],
+    overrides_map: &HashMap<(String, String), OverrideType>,
+    accepted: &HashSet<String>,
+) -> HashSet<String> {
+    let names: HashSet<&str> = archives
+        .iter()
+        .map(|archive| archive.manifest.name.as_str())
+        .collect();
+    let installed_any = bundle_packages.iter().any(|row| {
+        row.bundle_name
+            .as_deref()
+            .is_some_and(|name| names.contains(name))
+    });
+    if installed_any {
+        return HashSet::new();
+    }
+
+    archives
+        .iter()
+        .filter(|archive| takes_bundle(archive, accepted))
+        .filter(|archive| {
+            archive.manifest.files.iter().any(|file| {
+                let choice = overrides_map
+                    .get(&(archive.manifest.name.clone(), file.kind.package_id()))
+                    .copied();
+                crate::bundles::effective_enabled(file, choice)
+            })
+        })
+        .map(|archive| archive.manifest.name.clone())
+        .collect()
 }
 
 fn live_bundle_names(

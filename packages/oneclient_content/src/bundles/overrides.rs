@@ -48,7 +48,7 @@ impl OverrideLock {
             polyio::create_dir_all(parent).await.ok();
         }
         let bytes = serde_json::to_vec_pretty(self).map_err(std::io::Error::other)?;
-        polyio::write(&path, bytes).await?;
+        polyio::write_atomic(&path, bytes).await?;
         Ok(())
     }
 }
@@ -286,6 +286,8 @@ pub(crate) async fn sync_layered_overrides_tracked(
         {
             if *disk != new_sha1 {
                 report.conflicts.push(rel.to_string());
+            } else if claimed_elsewhere(&lock, rel) {
+                next.insert(rel.to_string(), new_sha1);
             }
             continue;
         }
@@ -341,10 +343,13 @@ pub(crate) async fn sync_layered_overrides_tracked(
             if merged_parts.contains(rel) {
                 continue;
             }
-            if adopt_existing && drop_merge_base(root, rel).await {
+            if adopt_existing && drop_merge_base(root, rel, base_sha1).await {
                 report.deleted.push(rel.clone());
                 continue;
             }
+        }
+        if claimed_elsewhere(&lock, rel) {
+            continue;
         }
         let dest = root.join(polyio::sanitize_path(rel));
 
@@ -392,6 +397,16 @@ pub(crate) async fn lock_entries(root: &Path, key: &str) -> HashMap<String, Stri
         .unwrap_or_default()
 }
 
+pub(crate) async fn claimed_by_others(root: &Path, key: &str) -> HashSet<String> {
+    OverrideLock::load(root)
+        .await
+        .bundles
+        .into_iter()
+        .filter(|(other, _)| other != key)
+        .flat_map(|(_, entries)| entries.into_keys())
+        .collect()
+}
+
 pub(crate) async fn sync_file_lock(
     root: &Path,
     key: &str,
@@ -409,6 +424,9 @@ pub(crate) async fn sync_file_lock(
         }
         if listed.contains(&rel) {
             next.insert(rel, base_sha1);
+            continue;
+        }
+        if claimed_elsewhere(&lock, &rel) {
             continue;
         }
 
@@ -606,16 +624,16 @@ async fn remember_merge_target(dir: &Path, rel: &str) {
 async fn write_merge_base(root: &Path, rel: &str, bytes: &[u8]) -> bool {
     let dir = merged_dir(root, rel);
     remember_merge_target(&dir, rel).await;
-    if let Err(err) = polyio::write(dir.join(MERGED_BASE), bytes).await {
+    if let Err(err) = polyio::write_atomic(dir.join(MERGED_BASE), bytes).await {
         tracing::warn!(path = rel, error = %err, "could not keep the merge base");
         return write_override(&root.join(polyio::sanitize_path(rel)), bytes, rel).await;
     }
     apply_merged(root, rel).await
 }
 
-async fn drop_merge_base(root: &Path, rel: &str) -> bool {
+async fn drop_merge_base(root: &Path, rel: &str, base_sha1: &str) -> bool {
     let base = merged_dir(root, rel).join(MERGED_BASE);
-    if !polyio::try_exists(&base).await.unwrap_or(false) {
+    if current_sha1(&base).await.as_deref() != Some(base_sha1) {
         return false;
     }
     polyio::remove_file(&base).await.ok();
@@ -696,7 +714,7 @@ async fn convert_claims_to_parts(
         if let Some(bytes) = &disk
             && disk_sha1.as_deref() == Some(claimed.as_str())
         {
-            polyio::write(merge_part_path(root, rel, &key), bytes).await.ok();
+            polyio::write_atomic(merge_part_path(root, rel, &key), bytes).await.ok();
         }
     }
 }
@@ -708,12 +726,12 @@ async fn add_merge_part(root: &Path, rel: &str, bundle_name: &str, bytes: &[u8])
     if !polyio::try_exists(&base).await.unwrap_or(false) && merge_parts(&dir).await.is_empty() {
         remember_merge_target(&dir, rel).await;
         if let Ok(existing) = polyio::read(&dest).await {
-            polyio::write(&base, existing).await.ok();
+            polyio::write_atomic(&base, existing).await.ok();
         }
     }
 
     remember_merge_target(&dir, rel).await;
-    if let Err(err) = polyio::write(merge_part_path(root, rel, bundle_name), bytes).await {
+    if let Err(err) = polyio::write_atomic(merge_part_path(root, rel, bundle_name), bytes).await {
         tracing::warn!(path = rel, bundle = bundle_name, error = %err, "could not keep a merged override");
         return;
     }
@@ -982,6 +1000,61 @@ mod tests {
         sync_bundle_overrides_at(zip, "test-bundle", root, None)
             .await
             .unwrap()
+    }
+
+    #[tokio::test]
+    async fn a_shared_file_stays_until_its_last_owner_leaves() {
+        let root = polyio::testing::ScratchDir::new("shared-claims");
+        let rel = "config/sodium-options.json";
+        let dest = root.join(rel);
+        polyio::write_atomic(&dest, b"shared").await.unwrap();
+        let sha1 = sha1_bytes(b"shared");
+
+        let mut lock = OverrideLock::default();
+        for key in ["modpack:file:a", "modpack:file:b"] {
+            lock.bundles
+                .entry(key.to_string())
+                .or_default()
+                .insert(rel.to_string(), sha1.clone());
+        }
+        lock.save(root.as_ref()).await.unwrap();
+
+        let listed = HashSet::new();
+        let deleted = sync_file_lock(root.as_ref(), "modpack:file:a", HashMap::new(), &listed).await;
+        assert!(deleted.is_empty());
+        assert!(polyio::try_exists(&dest).await.unwrap());
+
+        let deleted = sync_file_lock(root.as_ref(), "modpack:file:b", HashMap::new(), &listed).await;
+        assert_eq!(deleted, vec![rel.to_string()]);
+        assert!(!polyio::try_exists(&dest).await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn a_pack_update_keeps_a_config_another_pack_also_ships() {
+        let root = polyio::testing::ScratchDir::new("shared-overrides");
+        let with = root.join("with.mrpack");
+        let without = root.join("without.mrpack");
+        write_bundle(&with, &[("overrides/config/x.json", b"same")]).await;
+        write_bundle(&without, &[("overrides/config/other.json", b"other")]).await;
+        let pack = |zip: PathBuf, key: &'static str| {
+            let root = root.path().to_path_buf();
+            async move {
+                sync_layered_overrides(&zip, key, &root, &["overrides/"], &|_| true, false, None)
+                    .await
+                    .unwrap()
+            }
+        };
+        let shared = root.join("config/x.json");
+
+        pack(with.clone(), "modpack:file:a").await;
+        pack(with.clone(), "modpack:file:b").await;
+        let report = pack(without.clone(), "modpack:file:a").await;
+        assert!(report.deleted.is_empty());
+        assert_eq!(read(&shared).await.unwrap(), b"same");
+
+        let report = pack(without, "modpack:file:b").await;
+        assert_eq!(report.deleted, vec!["config/x.json".to_string()]);
+        assert!(read(&shared).await.is_none());
     }
 
     #[tokio::test]

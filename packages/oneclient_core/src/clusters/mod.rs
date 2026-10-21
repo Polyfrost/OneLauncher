@@ -17,8 +17,9 @@ pub use modpack::{
 };
 pub use modpack_import::{
     ExistingPack, FlaggedPackMod, ImportedModpack, LoaderPlan, PreparedImport,
-    import_modpack_into_cluster, modpack_file_sources,
-    list_imported_modpacks, prepare_modpack_import, remove_imported_modpack,
+    has_imported_modpacks, import_modpack_into_cluster, list_imported_modpacks,
+    modpack_file_sources, prepare_modpack_import, release_imported_modpacks,
+    remove_imported_modpack,
 };
 pub use prepare::{
     estimate_cluster_download, prepare_cluster, prepare_cluster_locked, required_java_major,

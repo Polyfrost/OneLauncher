@@ -8,7 +8,7 @@ use oneclient_content::packages::types::{ReleaseType, VersionSummary};
 use oneclient_core::clusters::{Cluster, ModpackSource};
 
 use crate::components::{Button, Icon, IconType, ScrollArea};
-use crate::hooks::use_dispatch;
+use crate::hooks::{listed, use_dispatch};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::cluster::dialog;
@@ -115,18 +115,10 @@ pub(crate) fn loader_options(versions: &[VersionSummary]) -> Vec<LoaderOption> {
 }
 
 fn loader_detail(option: &LoaderOption) -> String {
-    const SHOWN: usize = 3;
-    let versions: Vec<&str> = option.choices.iter().map(|c| c.mc.as_str()).collect();
-    let listed = versions
-        .iter()
-        .take(SHOWN)
-        .copied()
-        .collect::<Vec<_>>()
-        .join(", ");
-    match versions.len().saturating_sub(SHOWN) {
-        0 => format!("Minecraft {listed}"),
-        more => format!("Minecraft {listed} and {more} more"),
-    }
+    format!(
+        "Minecraft {}",
+        listed(option.choices.iter().map(|choice| choice.mc.clone()))
+    )
 }
 
 #[derive(PartialEq)]
@@ -278,19 +270,22 @@ impl Component for ModpackInstancePrompt {
         let project_id = self.project_id.clone();
         let mut open = self.open;
         let dispatch = use_dispatch();
-        let mut selected = use_state(|| 0usize);
-        let current = (*selected.read()).min(self.choices.len().saturating_sub(1));
+        let mut selected = use_state(|| None::<i64>);
+        let current = (*selected.read())
+            .and_then(|id| self.choices.iter().position(|choice| choice.cluster_id == id))
+            .unwrap_or(0);
 
         let rows: Vec<Element> = self
             .choices
             .iter()
             .enumerate()
             .map(|(i, choice)| {
+                let cluster_id = choice.cluster_id;
                 radio_row(
                     choice.name.clone(),
                     choice.detail.clone(),
                     i == current,
-                    move || selected.set(i),
+                    move || selected.set(Some(cluster_id)),
                 )
                 .into_element()
             })
@@ -585,5 +580,63 @@ mod tests {
             .map(|c| c.version_id)
             .collect();
         assert_eq!(ids, ["fabric-new", "forge-rel"]);
+    }
+
+    fn cluster(loader: GameLoader) -> Cluster {
+        Cluster {
+            id: 1,
+            name: "Cluster".to_string(),
+            folder_name: "cluster-1".to_string(),
+            setting_profile_name: None,
+            mc_version: "1.21.1".to_string(),
+            mc_loader: loader,
+            mc_loader_version: None,
+            stage: oneclient_cluster::ClusterStage::default(),
+            created_at: None,
+            last_played: None,
+            overall_played: std::time::Duration::ZERO,
+            linked_modpack_hash: None,
+            kind: oneclient_cluster::ClusterKind::Modded,
+            user_created: true,
+            description: None,
+            tags: Vec::new(),
+            cover_path: None,
+        }
+    }
+
+    #[test]
+    fn the_pack_version_added_to_a_cluster_matches_its_loader() {
+        let with = |id, mc: &[&str], loaders: Vec<GameLoader>, release_type| VersionSummary {
+            loaders,
+            ..version(id, mc, release_type)
+        };
+        let versions = [
+            with("fabric-beta", &["1.21.1"], vec![GameLoader::Fabric], ReleaseType::Beta),
+            with("forge", &["1.21.1"], vec![GameLoader::Forge], ReleaseType::Release),
+            with("fabric-other-mc", &["1.20.1"], vec![GameLoader::Fabric], ReleaseType::Release),
+            with("fabric", &["1.21.1"], vec![GameLoader::Fabric], ReleaseType::Release),
+            with("vanilla", &["1.21.1"], Vec::new(), ReleaseType::Release),
+        ];
+
+        let fabric = cluster(GameLoader::Fabric);
+        assert_eq!(
+            cluster_version(&versions, &fabric).map(|v| v.version_id.as_str()),
+            Some("fabric")
+        );
+        let fitting = cluster_versions(&versions, &fabric);
+        let ids: Vec<&str> = fitting.iter().map(|v| v.version_id.as_str()).collect();
+        assert_eq!(ids, ["fabric-beta", "fabric"]);
+
+        let vanilla = cluster(GameLoader::Vanilla);
+        assert_eq!(
+            cluster_version(&versions, &vanilla).map(|v| v.version_id.as_str()),
+            Some("vanilla")
+        );
+
+        let beta_only = [with("beta", &["1.21.1"], vec![GameLoader::Fabric], ReleaseType::Beta)];
+        assert_eq!(
+            cluster_version(&beta_only, &fabric).map(|v| v.version_id.as_str()),
+            Some("beta")
+        );
     }
 }

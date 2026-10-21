@@ -175,6 +175,11 @@ impl InstallState {
     }
 
     #[must_use]
+    pub fn cluster_installing(&self, cluster_id: i64) -> bool {
+        self.pending.iter().any(|(id, _, _)| *id == cluster_id)
+    }
+
+    #[must_use]
     pub fn is_installing(&self, cluster_id: i64, provider: ProviderId, project_id: &str) -> bool {
         self.pending
             .contains(&(cluster_id, provider, project_id.to_string()))

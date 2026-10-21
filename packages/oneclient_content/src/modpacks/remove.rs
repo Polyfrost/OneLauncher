@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet};
 
 use oneclient_db::dao::cluster_bundle as bundle_dao;
+use oneclient_db::models::ClusterRow;
 
 use super::{WantedFile, lock_key, loose_lock_key, shared_lock_key};
-use crate::bundles::install::remove_artifact_from_cluster;
+use crate::bundles::install::detach_artifact;
 use crate::bundles::overrides::{
     move_lock_entries, move_merge_parts, prune_merge_parts, sync_file_lock,
 };
@@ -31,7 +32,7 @@ pub async fn remove_modpack_files(
 
     let mut failed = Vec::new();
     for hash in tracked {
-        if let Err(err) = remove_artifact_from_cluster(cluster_id, &hash, false, ctx).await {
+        if let Err(err) = detach_artifact(cluster_id, &hash, ctx).await {
             tracing::warn!(hash, error = %err, "could not remove a modpack file");
             failed.push(hash);
         }
@@ -94,7 +95,13 @@ pub async fn retrack_file(
 }
 
 #[tracing::instrument(skip(hashes, ctx))]
-pub async fn restore_disabled(cluster_id: i64, hashes: &[String], ctx: &ContentCtx) {
+pub async fn restore_disabled(
+    cluster_id: i64,
+    hashes: &[String],
+    ctx: &ContentCtx,
+) -> (Vec<String>, Vec<String>) {
+    let mut restored = Vec::new();
+    let mut stuck = Vec::new();
     for hash in hashes {
         let linked = oneclient_db::dao::artifact::get_cluster_artifact(&ctx.db, cluster_id, hash)
             .await
@@ -103,10 +110,15 @@ pub async fn restore_disabled(cluster_id: i64, hashes: &[String], ctx: &ContentC
         if linked.is_none_or(|link| link.enabled != 0) {
             continue;
         }
-        if let Err(err) = PackageStore::set_artifact_enabled_to(cluster_id, hash, true, ctx).await {
-            tracing::warn!(hash, error = %err, "could not switch a mod back on");
+        match PackageStore::set_artifact_enabled_to(cluster_id, hash, true, ctx).await {
+            Ok(_) => restored.push(hash.clone()),
+            Err(err) => {
+                tracing::warn!(hash, error = %err, "could not switch a mod back on");
+                stuck.push(hash.clone());
+            }
         }
     }
+    (restored, stuck)
 }
 
 #[tracing::instrument(skip(package_ids, ctx))]
@@ -133,7 +145,67 @@ pub async fn remove_tracked_packages(
         .collect();
 
     for hash in tracked {
-        remove_artifact_from_cluster(cluster_id, &hash, false, ctx).await?;
+        detach_artifact(cluster_id, &hash, ctx).await?;
     }
     Ok(())
+}
+
+const IMPORTED_LIST: &str = ".oneclient/modpacks.json";
+
+#[derive(serde::Deserialize)]
+struct ImportedWants {
+    bundle_name: String,
+    #[serde(default)]
+    wanted: Vec<WantedFile>,
+}
+
+pub(crate) async fn imported_wants(cluster: &ClusterRow) -> Vec<(String, WantedFile)> {
+    let Ok(dir) = paths::cluster_dir(&cluster.folder_name) else {
+        return Vec::new();
+    };
+    let Ok(bytes) = polyio::read(dir.join(IMPORTED_LIST)).await else {
+        return Vec::new();
+    };
+    serde_json::from_slice::<Vec<ImportedWants>>(&bytes)
+        .unwrap_or_default()
+        .into_iter()
+        .flat_map(|pack| {
+            pack.wanted
+                .into_iter()
+                .map(move |wanted| (pack.bundle_name.clone(), wanted))
+        })
+        .collect()
+}
+
+pub(crate) async fn hand_to_wanting_pack(
+    cluster_id: i64,
+    hash: &str,
+    wants: &[(String, WantedFile)],
+    ctx: &ContentCtx,
+) -> ContentResult<bool> {
+    let Some(row) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await? else {
+        return Ok(false);
+    };
+    let Some((owner, wanted)) = wants.iter().find(|(owner, wanted)| {
+        row.bundle_name.as_deref() != Some(owner.as_str())
+            && (wanted.sha1 == hash || row.package_id.as_deref() == Some(wanted.package_id.as_str()))
+    }) else {
+        return Ok(false);
+    };
+    let version_id = if wanted.sha1 == hash {
+        wanted.version_id.clone()
+    } else {
+        row.bundle_version_id.clone().unwrap_or_default()
+    };
+    bundle_dao::track_bundle_artifact(
+        &ctx.db,
+        cluster_id,
+        hash,
+        owner,
+        &version_id,
+        &wanted.package_id,
+    )
+    .await?;
+    tracing::info!(hash, to = %owner, "handed a dropped file to a pack that still uses it");
+    Ok(true)
 }

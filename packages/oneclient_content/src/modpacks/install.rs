@@ -19,7 +19,7 @@ use crate::bundles::install::{
     remove_artifact_from_cluster,
 };
 use crate::bundles::overrides::{
-    OverrideLayers, lock_entries, sync_file_lock, sync_layered_overrides_tracked,
+    OverrideLayers, claimed_by_others, lock_entries, sync_file_lock, sync_layered_overrides_tracked,
 };
 use crate::bundles::{BundleFile, BundleFileKind};
 use crate::ctx::ContentCtx;
@@ -41,6 +41,7 @@ pub struct ModpackInstallReport {
     pub disabled_duplicates: Vec<String>,
     pub disabled_hashes: Vec<String>,
     pub wanted_present: Vec<WantedFile>,
+    pub notices: Vec<String>,
 }
 
 impl ModpackInstallReport {
@@ -64,6 +65,7 @@ impl ModpackInstallReport {
             }
         }
         self.wanted_present = later.wanted_present;
+        self.notices.extend(later.notices);
     }
 }
 
@@ -180,18 +182,35 @@ pub async fn install_modpack(
     let imported = super::is_imported_bundle(bundle_name);
     let lock_key = super::lock_key(&cluster, bundle_name);
     let loose_key = loose_lock_key(&lock_key);
-    let owned = if imported {
-        lock_entries(&root, &loose_key).await
+    let (owned, claimed) = if imported {
+        (
+            lock_entries(&root, &loose_key).await,
+            claimed_by_others(&root, &loose_key).await,
+        )
     } else {
-        HashMap::new()
+        (HashMap::new(), HashSet::new())
     };
+    let mut written = HashMap::new();
     let mut to_write = Vec::new();
     for file in &contents.loose {
+        if let Some(claimed) = owned.get(&file.path) {
+            let dest = root.join(polyio::sanitize_path(&file.path));
+            let edited = polyio::try_exists(&dest).await.unwrap_or(false)
+                && !oneclient_net::matches_on_disk(&dest, claimed).await
+                && !oneclient_net::matches_on_disk(&dest, &file.sha1).await;
+            if edited {
+                report.kept.push(file.path.clone());
+                written.insert(file.path.clone(), claimed.clone());
+                continue;
+            }
+        }
         if imported && !owned.contains_key(&file.path) {
             let dest = root.join(polyio::sanitize_path(&file.path));
             if polyio::try_exists(&dest).await.unwrap_or(false) {
                 if !oneclient_net::matches_on_disk(&dest, &file.sha1).await {
                     report.kept.push(file.path.clone());
+                } else if claimed.contains(&file.path) {
+                    written.insert(file.path.clone(), file.sha1.clone());
                 }
                 continue;
             }
@@ -207,7 +226,6 @@ pub async fn install_modpack(
     .buffer_unordered(LOOSE_CONCURRENCY)
     .collect::<Vec<_>>()
     .await;
-    let mut written = HashMap::new();
     for (file, result) in loose {
         match result {
             Ok(()) => {
@@ -249,7 +267,8 @@ pub async fn install_modpack(
     let bundled =
         import_override_content(archive_path, &prefixes, &install, &overrides, &mut report).await?;
 
-    remove_dropped_files(contents, &tracked, bundled, cluster_id, ctx).await;
+    let wants = super::remove::imported_wants(&cluster).await;
+    remove_dropped_files(contents, &tracked, bundled, &wants, cluster_id, ctx).await;
 
     for file in &contents.blocked {
         let suppressed = matches!(
@@ -408,6 +427,7 @@ async fn remove_dropped_files(
     contents: &ModpackContents,
     tracked: &HashMap<String, (String, String)>,
     bundled: Vec<String>,
+    wants: &[(String, WantedFile)],
     cluster_id: i64,
     ctx: &ContentCtx,
 ) {
@@ -431,6 +451,13 @@ async fn remove_dropped_files(
     for (package_id, (hash, _)) in tracked {
         if listed.contains(package_id) {
             continue;
+        }
+        match super::remove::hand_to_wanting_pack(cluster_id, hash, wants, ctx).await {
+            Ok(true) => continue,
+            Ok(false) => {}
+            Err(err) => {
+                tracing::warn!(package_id, error = %err, "could not hand a dropped file to another pack");
+            }
         }
         if let Err(err) = remove_artifact_from_cluster(cluster_id, hash, false, ctx).await {
             tracing::warn!(package_id, error = %err, "could not remove a file the modpack dropped");

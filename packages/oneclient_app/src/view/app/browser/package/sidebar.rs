@@ -4,18 +4,11 @@ use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSummary};
 
 use crate::components::{Button, Icon, IconType};
+use crate::utils::shorten;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
 const BUTTON_NAME_CHARS: usize = 22;
-
-fn short_name(name: &str) -> String {
-    if name.chars().count() <= BUTTON_NAME_CHARS {
-        return name.to_string();
-    }
-    let kept: String = name.chars().take(BUTTON_NAME_CHARS - 1).collect();
-    format!("{}\u{2026}", kept.trim_end())
-}
 
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
@@ -145,7 +138,7 @@ pub(super) fn sidebar(
                     "Installing...".to_string()
                 } else if installer.add_to_cluster {
                     match &installer.cluster_name {
-                        Some(name) => format!("Add to {}", short_name(name)),
+                        Some(name) => format!("Add to {}", shorten(name, BUTTON_NAME_CHARS, "\u{2026}")),
                         None => "Add to this instance".to_string(),
                     }
                 } else if installer.modpack {

@@ -133,16 +133,27 @@ pub async fn prepare_modpack(
         notices: Vec::new(),
         substituted: false,
     };
-    let (artifact_hash, archive_path, manifest) = match shared.share.modpack.clone() {
+    let (artifact_hash, archive_path, manifest, flagged) = match shared.share.modpack.clone() {
         Some(pack) => {
             let (base, substituted) =
                 resolve_base_modpack(&content, &shared.share, &pack, &mut shared.notices).await?;
             shared.substituted = substituted;
             let base_path = artifact_absolute_path(&base.path)?;
             let base_manifest = modpacks::read_modpack(&base_path, &content).await?;
-            (base.hash, base_path, base_manifest)
+            let flagged = match flagged {
+                Some(flagged) => Some(flagged),
+                None => {
+                    let base_source = ModpackSource::Provider {
+                        provider: pack.provider,
+                        project_id: pack.project_id.clone(),
+                        version_id: pack.version_id.clone(),
+                    };
+                    screen_modpack(&base_source, &base.hash, &content).await
+                }
+            };
+            (base.hash, base_path, base_manifest, flagged)
         }
-        None => (artifact.hash, archive_path, manifest),
+        None => (artifact.hash, archive_path, manifest, flagged),
     };
 
     Ok(PreparedModpack {
@@ -162,7 +173,7 @@ async fn screen_modpack(
     content: &ContentCtx,
 ) -> Option<FlaggedModpack> {
     let list = load_bad_modpacks(content).await;
-    if list.bad_modpacks.is_empty() {
+    if list.bad_mods.is_empty() {
         return None;
     }
 

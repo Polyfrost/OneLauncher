@@ -7,7 +7,6 @@ use serde::{Deserialize, Serialize};
 use oneclient_cluster::{Cluster, ClusterUpdate};
 use oneclient_common::domain::ProviderId;
 use oneclient_common::patch::Patch;
-use oneclient_common::paths;
 use oneclient_content::modpacks::{self, ModpackInstallReport, ModpackRelease, WantedFile};
 use oneclient_content::packages::store::artifact_absolute_path;
 use oneclient_content::packages::{
@@ -42,6 +41,8 @@ pub struct ImportedModpack {
     pub disabled_hashes: Vec<String>,
     #[serde(default)]
     pub wanted: Vec<WantedFile>,
+    #[serde(default)]
+    pub skipped: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -62,7 +63,7 @@ pub enum ExistingPack {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LoaderPlan {
     Keep,
-    Raise { from: Option<String>, to: String },
+    Raise { from: String, to: String },
     Behind { current: String, needed: String },
 }
 
@@ -185,7 +186,7 @@ pub async fn prepare_modpack_import(
     let taken: HashSet<&str> = packs.iter().map(|pack| pack.bundle_name.as_str()).collect();
     let separate_bundle_name = modpacks::separate_bundle_name(&bundle_name, &taken);
     let loader = loader_plan(&cluster, manifest.loader_version.as_deref());
-    let shared_game_dir = uses_shared_game_dir(&cluster);
+    let shared_game_dir = !cluster.uses_dedicated_dir();
     let flagged = screen(&prepared, cluster_id, &content).await;
 
     Ok(PreparedImport {
@@ -236,10 +237,23 @@ pub async fn import_modpack_into_cluster(
             .map(|pack| pack.disabled_hashes.clone())
             .unwrap_or_default(),
         wanted: previous.map(|pack| pack.wanted.clone()).unwrap_or_default(),
+        skipped: skipped.iter().cloned().collect(),
     };
     save_imported(&cluster, &entry).await?;
 
-    apply_flagged_choices(import, bundle_name, skipped, &content).await?;
+    apply_flagged_choices(import, previous, bundle_name, skipped, &content).await?;
+
+    let (restored, stuck) = match previous {
+        Some(previous) => {
+            let others: Vec<ImportedModpack> = read_imported_strict(&cluster)
+                .await?
+                .into_iter()
+                .filter(|pack| pack.bundle_name != previous.bundle_name)
+                .collect();
+            modpacks::restore_disabled(cluster_id, &restorable(previous, &others), &content).await
+        }
+        None => (Vec::new(), Vec::new()),
+    };
 
     let install = || {
         modpacks::install_modpack(
@@ -251,24 +265,47 @@ pub async fn import_modpack_into_cluster(
             &content,
         )
     };
-    let mut report = install().await?;
-    record_install(&mut entry, &report);
+    let mut report = match install().await {
+        Ok(report) => report,
+        Err(err) => {
+            for hash in &restored {
+                if let Err(err) =
+                    PackageStore::set_artifact_enabled_to(cluster_id, hash, false, &content).await
+                {
+                    tracing::warn!(hash, error = %err, "could not turn a restored duplicate back off");
+                }
+            }
+            if previous.is_none() {
+                match remove_pack(state, &cluster, bundle_name, &content).await {
+                    Ok(failed) if failed.is_empty() => {}
+                    Ok(failed) => {
+                        tracing::warn!(failed = failed.len(), "could not undo every file of a failed import");
+                    }
+                    Err(undo) => {
+                        tracing::warn!(error = %undo, "could not undo a failed import");
+                    }
+                }
+            }
+            return Err(err.into());
+        }
+    };
+    record_install(&mut entry, &report, &stuck);
     save_imported(&cluster, &entry).await?;
 
     if let Some(old) = replaced {
         let failed = remove_pack(state, &cluster, &old.bundle_name, &content).await?;
         if !failed.is_empty() {
-            return Err(invalid(format!(
-                "{} was added, but {} of the files from {} could not be removed. Close anything using them, then remove {} under Added Modpacks.",
-                entry.name,
+            tracing::warn!(old = %old.bundle_name, failed = failed.len(), "could not fully remove the replaced pack");
+            report.notices.push(format!(
+                "{} of the files from {} could not be removed. Close anything using them, then remove {} under Added Modpacks.",
                 failed.len(),
                 old.name,
                 old.name
-            )));
+            ));
         }
         let again = install().await?;
-        record_install(&mut entry, &again);
         report.absorb(again);
+        record_install(&mut entry, &report, &stuck);
     }
 
     if let LoaderPlan::Raise { to, .. } = &import.loader {
@@ -276,7 +313,7 @@ pub async fn import_modpack_into_cluster(
         let raises = current
             .mc_loader_version
             .as_deref()
-            .is_none_or(|current| modpacks::is_newer_version(to, current));
+            .is_some_and(|current| modpacks::is_newer_version(to, current));
         if raises {
             state
                 .clusters
@@ -310,13 +347,26 @@ pub async fn import_modpack_into_cluster(
     Ok(ModpackCluster { cluster, report })
 }
 
-fn record_install(entry: &mut ImportedModpack, report: &ModpackInstallReport) {
-    for hash in &report.disabled_hashes {
+fn record_install(entry: &mut ImportedModpack, report: &ModpackInstallReport, stuck: &[String]) {
+    entry.disabled_hashes = report.disabled_hashes.clone();
+    for hash in stuck {
         if !entry.disabled_hashes.contains(hash) {
             entry.disabled_hashes.push(hash.clone());
         }
     }
     entry.wanted = report.wanted_present.clone();
+}
+
+fn restorable(pack: &ImportedModpack, others: &[ImportedModpack]) -> Vec<String> {
+    let still_off: HashSet<&String> = others
+        .iter()
+        .flat_map(|other| &other.disabled_hashes)
+        .collect();
+    pack.disabled_hashes
+        .iter()
+        .filter(|hash| !still_off.contains(hash))
+        .cloned()
+        .collect()
 }
 
 #[tracing::instrument(skip(state))]
@@ -399,7 +449,7 @@ async fn remove_pack(
         .iter()
         .find(|pack| pack.bundle_name == bundle_name)
         .cloned();
-    hand_over_files(cluster, bundle_name, packs, content).await?;
+    let receivers = hand_over_files(cluster, bundle_name, packs, content).await?;
 
     let hand_to = shared_elsewhere(state, cluster, bundle_name).await?;
     let failed = modpacks::remove_modpack_files(cluster.id, bundle_name, hand_to, content).await?;
@@ -410,17 +460,17 @@ async fn remove_pack(
     let mut packs = read_imported_strict(cluster).await?;
     packs.retain(|pack| pack.bundle_name != bundle_name);
     if let Some(removing) = removing {
-        let still_off: HashSet<&String> = packs
-            .iter()
-            .flat_map(|pack| &pack.disabled_hashes)
-            .collect();
-        let restore: Vec<String> = removing
-            .disabled_hashes
-            .iter()
-            .filter(|hash| !still_off.contains(hash))
-            .cloned()
-            .collect();
-        modpacks::restore_disabled(cluster.id, &restore, content).await;
+        modpacks::restore_disabled(cluster.id, &restorable(&removing, &packs), content).await;
+    }
+    for receiver in receivers {
+        let disabled = modpacks::recheck_duplicates(cluster.id, &receiver, content).await;
+        if let Some(pack) = packs.iter_mut().find(|pack| pack.bundle_name == receiver) {
+            for hash in disabled {
+                if !pack.disabled_hashes.contains(&hash) {
+                    pack.disabled_hashes.push(hash);
+                }
+            }
+        }
     }
     write_imported(cluster, &packs).await?;
     Ok(failed)
@@ -431,8 +481,12 @@ async fn hand_over_files(
     bundle_name: &str,
     mut packs: Vec<ImportedModpack>,
     content: &ContentCtx,
-) -> LauncherResult<()> {
+) -> LauncherResult<HashSet<String>> {
     let rows = bundle_dao::list_bundle_tracked(&content.db, cluster.id).await?;
+    let owned: HashSet<(String, String)> = rows
+        .iter()
+        .filter_map(|row| Some((row.bundle_name.clone()?, row.package_id.clone()?)))
+        .collect();
     let primary_tracked: HashSet<String> = rows
         .iter()
         .filter(|row| row.bundle_name.as_deref() == Some(modpacks::MODPACK_BUNDLE_NAME))
@@ -443,7 +497,7 @@ async fn hand_over_files(
         .filter(|row| row.bundle_name.as_deref() == Some(bundle_name))
         .collect();
     if leaving.is_empty() {
-        return Ok(());
+        return Ok(HashSet::new());
     }
 
     let primary: Vec<WantedFile> = primary_wanted(cluster, content)
@@ -452,6 +506,7 @@ async fn hand_over_files(
         .filter(|wanted| !primary_tracked.contains(&wanted.package_id))
         .collect();
     let mut changed = false;
+    let mut receivers = HashSet::new();
 
     for row in leaving {
         let matches = |wanted: &WantedFile| {
@@ -462,7 +517,10 @@ async fn hand_over_files(
             .iter_mut()
             .filter(|pack| pack.bundle_name != bundle_name)
         {
-            if let Some(index) = pack.wanted.iter().position(|wanted| matches(wanted)) {
+            let owner = pack.bundle_name.clone();
+            if let Some(index) = pack.wanted.iter().position(|wanted| {
+                matches(wanted) && !owned.contains(&(owner.clone(), wanted.package_id.clone()))
+            }) {
                 target = Some((pack.bundle_name.clone(), pack.wanted.remove(index)));
                 changed = true;
                 break;
@@ -474,16 +532,20 @@ async fn hand_over_files(
                 .find(|wanted| matches(wanted))
                 .map(|wanted| (modpacks::MODPACK_BUNDLE_NAME.to_string(), wanted.clone()));
         }
-        if let Some((owner, wanted)) = target {
+        if let Some((owner, mut wanted)) = target {
+            if wanted.sha1 != row.hash {
+                wanted.version_id = row.bundle_version_id.clone().unwrap_or_default();
+            }
             modpacks::retrack_file(cluster.id, &row.hash, &owner, &wanted, content).await?;
             tracing::info!(hash = %row.hash, from = bundle_name, to = %owner, "handed a shared file to another pack");
+            receivers.insert(owner);
         }
     }
 
     if changed {
         write_imported(cluster, &packs).await?;
     }
-    Ok(())
+    Ok(receivers)
 }
 
 async fn primary_wanted(cluster: &Cluster, content: &ContentCtx) -> Vec<WantedFile> {
@@ -509,11 +571,11 @@ async fn refuse_while_shared_game_runs(
     state: &Arc<LauncherState>,
     cluster: &Cluster,
 ) -> LauncherResult<()> {
-    if !uses_shared_game_dir(cluster) {
+    if cluster.uses_dedicated_dir() {
         return Ok(());
     }
     for other in state.clusters.list().await? {
-        if other.id != cluster.id && uses_shared_game_dir(&other) && state.games.is_active(other.id)
+        if other.id != cluster.id && !other.uses_dedicated_dir() && state.games.is_active(other.id)
         {
             return Err(invalid(format!(
                 "Close Minecraft in {} first. It uses the same game folder as {}.",
@@ -526,11 +588,23 @@ async fn refuse_while_shared_game_runs(
 
 async fn apply_flagged_choices(
     import: &PreparedImport,
+    previous: Option<&ImportedModpack>,
     bundle_name: &str,
     skipped: &HashSet<String>,
     content: &ContentCtx,
 ) -> LauncherResult<()> {
-    if import.flagged.is_empty() {
+    let stale: Vec<&String> = previous
+        .map(|pack| pack.skipped.as_slice())
+        .unwrap_or_default()
+        .iter()
+        .filter(|package_id| {
+            !import
+                .flagged
+                .iter()
+                .any(|flagged| &flagged.package_id == *package_id)
+        })
+        .collect();
+    if import.flagged.is_empty() && stale.is_empty() {
         return Ok(());
     }
 
@@ -558,6 +632,11 @@ async fn apply_flagged_choices(
             bundle_dao::remove_override(db, import.cluster_id, bundle_name, package_id).await?;
         }
     }
+    for package_id in stale {
+        if removed.contains(package_id) {
+            bundle_dao::remove_override(db, import.cluster_id, bundle_name, package_id).await?;
+        }
+    }
 
     modpacks::remove_tracked_packages(import.cluster_id, bundle_name, skipped, content).await?;
     Ok(())
@@ -568,10 +647,7 @@ fn loader_plan(cluster: &Cluster, needed: Option<&str>) -> LoaderPlan {
         return LoaderPlan::Keep;
     };
     match cluster.mc_loader_version.as_deref() {
-        None => LoaderPlan::Raise {
-            from: None,
-            to: needed.to_string(),
-        },
+        None => LoaderPlan::Keep,
         Some(current) if modpacks::is_newer_version(needed, current) => {
             if cluster.uses_bundles() {
                 LoaderPlan::Behind {
@@ -580,7 +656,7 @@ fn loader_plan(cluster: &Cluster, needed: Option<&str>) -> LoaderPlan {
                 }
             } else {
                 LoaderPlan::Raise {
-                    from: Some(current.to_string()),
+                    from: current.to_string(),
                     to: needed.to_string(),
                 }
             }
@@ -589,20 +665,16 @@ fn loader_plan(cluster: &Cluster, needed: Option<&str>) -> LoaderPlan {
     }
 }
 
-fn uses_shared_game_dir(cluster: &Cluster) -> bool {
-    !cluster.is_isolated() && !paths::cluster_uses_dedicated_dir(&cluster.folder_name)
-}
-
 async fn shared_elsewhere(
     state: &Arc<LauncherState>,
     cluster: &Cluster,
     bundle_name: &str,
 ) -> LauncherResult<Option<i64>> {
-    if !uses_shared_game_dir(cluster) {
+    if cluster.uses_dedicated_dir() {
         return Ok(None);
     }
     for other in state.clusters.list().await? {
-        if other.id == cluster.id || !uses_shared_game_dir(&other) {
+        if other.id == cluster.id || other.uses_dedicated_dir() {
             continue;
         }
         if read_imported(&other)
@@ -618,6 +690,39 @@ async fn shared_elsewhere(
 
 pub(super) async fn has_imported_packs(cluster: &Cluster) -> bool {
     !read_imported(cluster).await.is_empty()
+}
+
+#[tracing::instrument(skip(state))]
+pub async fn has_imported_modpacks(state: &Arc<LauncherState>, cluster_id: i64) -> bool {
+    match state.clusters.get(cluster_id).await {
+        Ok(cluster) => has_imported_packs(&cluster).await,
+        Err(_) => false,
+    }
+}
+
+#[tracing::instrument(skip(state, cluster), fields(cluster_id = cluster.id))]
+pub(super) async fn drop_imported_modpacks(state: &Arc<LauncherState>, cluster: &Cluster) {
+    let content = state.services.content();
+    for pack in read_imported(cluster).await {
+        match remove_pack(state, cluster, &pack.bundle_name, &content).await {
+            Ok(failed) if !failed.is_empty() => {
+                tracing::warn!(bundle = %pack.bundle_name, failed = failed.len(), "some files of an added modpack could not be removed");
+            }
+            Ok(_) => {}
+            Err(err) => {
+                tracing::warn!(bundle = %pack.bundle_name, error = %err, "could not remove an added modpack");
+            }
+        }
+    }
+}
+
+#[tracing::instrument(skip(state))]
+pub async fn release_imported_modpacks(state: &Arc<LauncherState>, cluster_id: i64) {
+    if let Ok(cluster) = state.clusters.get(cluster_id).await
+        && !cluster.uses_dedicated_dir()
+    {
+        drop_imported_modpacks(state, &cluster).await;
+    }
 }
 
 fn same_text(a: &str, b: &str) -> bool {
@@ -710,12 +815,12 @@ fn invalid(reason: String) -> crate::LauncherError {
     ContentError::InvalidData { reason }.into()
 }
 
-fn imported_file(cluster: &Cluster) -> Option<PathBuf> {
-    Some(cluster.dir().ok()?.join(IMPORTED_MODPACKS_FILE))
+fn imported_file(cluster: &Cluster) -> LauncherResult<PathBuf> {
+    Ok(cluster.dir()?.join(IMPORTED_MODPACKS_FILE))
 }
 
 async fn read_imported(cluster: &Cluster) -> Vec<ImportedModpack> {
-    let Some(path) = imported_file(cluster) else {
+    let Ok(path) = imported_file(cluster) else {
         return Vec::new();
     };
     let Ok(bytes) = tokio::fs::read(&path).await else {
@@ -728,7 +833,7 @@ async fn read_imported(cluster: &Cluster) -> Vec<ImportedModpack> {
 }
 
 async fn read_imported_strict(cluster: &Cluster) -> LauncherResult<Vec<ImportedModpack>> {
-    let path = cluster.dir()?.join(IMPORTED_MODPACKS_FILE);
+    let path = imported_file(cluster)?;
     let bytes = match tokio::fs::read(&path).await {
         Ok(bytes) => bytes,
         Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
@@ -759,7 +864,7 @@ async fn save_imported(cluster: &Cluster, entry: &ImportedModpack) -> LauncherRe
 }
 
 async fn write_imported(cluster: &Cluster, packs: &[ImportedModpack]) -> LauncherResult<()> {
-    let path = cluster.dir()?.join(IMPORTED_MODPACKS_FILE);
+    let path = imported_file(cluster)?;
     if packs.is_empty() {
         if polyio::try_exists(&path).await.unwrap_or(false) {
             polyio::remove_file(&path).await?;
@@ -783,5 +888,156 @@ mod tests {
         assert_eq!(packs.len(), 1);
         assert_eq!(packs[0].provider, None);
         assert_eq!(packs[0].icon_url, None);
+    }
+
+    fn cluster(kind: oneclient_cluster::ClusterKind, loader_version: Option<&str>) -> Cluster {
+        Cluster {
+            id: 1,
+            name: "Cluster".to_string(),
+            folder_name: "cluster-1".to_string(),
+            setting_profile_name: None,
+            mc_version: "1.21.1".to_string(),
+            mc_loader: oneclient_common::domain::GameLoader::Fabric,
+            mc_loader_version: loader_version.map(str::to_string),
+            stage: oneclient_cluster::ClusterStage::default(),
+            created_at: None,
+            last_played: None,
+            overall_played: std::time::Duration::ZERO,
+            linked_modpack_hash: None,
+            kind,
+            user_created: true,
+            description: None,
+            tags: Vec::new(),
+            cover_path: None,
+        }
+    }
+
+    fn pack(bundle_name: &str, name: &str) -> ImportedModpack {
+        ImportedModpack {
+            bundle_name: bundle_name.to_string(),
+            name: name.to_string(),
+            version: "1.0".to_string(),
+            provider: None,
+            project_id: None,
+            icon_url: None,
+            disabled_hashes: Vec::new(),
+            wanted: Vec::new(),
+            skipped: Vec::new(),
+        }
+    }
+
+    fn import(
+        bundle_name: &str,
+        previous: Option<ImportedModpack>,
+        same_name: Option<ImportedModpack>,
+    ) -> PreparedImport {
+        PreparedImport {
+            prepared: PreparedModpack {
+                source: ModpackSource::File(PathBuf::from("pack.mrpack")),
+                artifact_hash: "hash".to_string(),
+                archive_path: PathBuf::from("pack.mrpack"),
+                manifest: modpacks::ModpackManifest {
+                    name: "Pack".to_string(),
+                    version: "2.0".to_string(),
+                    summary: None,
+                    mc_version: "1.21.1".to_string(),
+                    loader: oneclient_common::domain::GameLoader::Fabric,
+                    loader_version: None,
+                    contents: modpacks::ModpackContents::default(),
+                    override_prefixes: Vec::new(),
+                },
+                instance_name: "Pack".to_string(),
+                flagged: None,
+                share: None,
+            },
+            cluster_id: 1,
+            cluster_name: "Cluster".to_string(),
+            bundle_name: bundle_name.to_string(),
+            release: None,
+            project: None,
+            previous,
+            same_name,
+            separate_bundle_name: format!("{bundle_name}-2"),
+            loader: LoaderPlan::Keep,
+            shared_game_dir: false,
+            flagged: Vec::new(),
+        }
+    }
+
+    #[test]
+    fn the_loader_is_only_raised_on_a_pinned_older_loader() {
+        use oneclient_cluster::ClusterKind;
+
+        let unpinned = cluster(ClusterKind::Modded, None);
+        assert_eq!(loader_plan(&unpinned, Some("0.14.21")), LoaderPlan::Keep);
+
+        let older = cluster(ClusterKind::Modded, Some("0.14.0"));
+        assert_eq!(
+            loader_plan(&older, Some("0.15.0")),
+            LoaderPlan::Raise {
+                from: "0.14.0".to_string(),
+                to: "0.15.0".to_string()
+            }
+        );
+        assert_eq!(loader_plan(&older, Some("0.13.0")), LoaderPlan::Keep);
+        assert_eq!(loader_plan(&older, Some("  ")), LoaderPlan::Keep);
+        assert_eq!(loader_plan(&older, None), LoaderPlan::Keep);
+
+        let managed = cluster(ClusterKind::OneClient, Some("0.14.0"));
+        assert_eq!(
+            loader_plan(&managed, Some("0.15.0")),
+            LoaderPlan::Behind {
+                current: "0.14.0".to_string(),
+                needed: "0.15.0".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn a_same_name_pack_is_replaced_or_kept_alongside() {
+        let bundle = "modpack:modrinth:abc";
+        let other = pack("modpack:file:pack", "Pack");
+        let fresh = import(bundle, None, Some(other.clone()));
+
+        assert_eq!(fresh.existing(), Some(&other));
+        assert_eq!(fresh.replaced_pack(ExistingPack::Replace), Some(&other));
+        assert_eq!(fresh.replaced_pack(ExistingPack::KeepBoth), None);
+        assert_eq!(fresh.target_bundle_name(ExistingPack::Replace), bundle);
+        assert_eq!(fresh.target_bundle_name(ExistingPack::KeepBoth), bundle);
+    }
+
+    #[test]
+    fn a_provider_pack_already_added_is_updated_in_place() {
+        let bundle = "modpack:modrinth:abc";
+        let update = import(bundle, Some(pack(bundle, "Pack")), None);
+
+        assert_eq!(update.existing(), None);
+        assert_eq!(update.replaced_pack(ExistingPack::Replace), None);
+        assert_eq!(update.target_bundle_name(ExistingPack::KeepBoth), bundle);
+    }
+
+    #[test]
+    fn a_file_pack_already_added_can_be_kept_as_a_second_copy() {
+        let bundle = "modpack:file:pack";
+        let previous = pack(bundle, "Pack");
+        let again = import(bundle, Some(previous.clone()), None);
+
+        assert_eq!(again.existing(), Some(&previous));
+        assert_eq!(again.replaced_pack(ExistingPack::Replace), None);
+        assert_eq!(again.target_bundle_name(ExistingPack::Replace), bundle);
+        assert_eq!(
+            again.target_bundle_name(ExistingPack::KeepBoth),
+            "modpack:file:pack-2"
+        );
+    }
+
+    #[test]
+    fn only_copies_no_other_pack_turned_off_are_restored() {
+        let mut leaving = pack("modpack:file:a", "A");
+        leaving.disabled_hashes = vec!["one".to_string(), "two".to_string()];
+        let mut staying = pack("modpack:file:b", "B");
+        staying.disabled_hashes = vec!["two".to_string()];
+
+        assert_eq!(restorable(&leaving, &[staying]), vec!["one".to_string()]);
     }
 }

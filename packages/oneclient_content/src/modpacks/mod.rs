@@ -35,6 +35,8 @@ pub use install::{
     ModpackInstallReport, find_blocked_downloads, import_blocked_files, install_modpack,
     store_modpack_archive,
 };
+pub use duplicates::recheck_duplicates;
+pub(crate) use remove::{hand_to_wanting_pack, imported_wants};
 pub use remove::{
     remove_modpack_files, remove_tracked_packages, restore_disabled, retrack_file,
 };

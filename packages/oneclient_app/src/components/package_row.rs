@@ -987,20 +987,11 @@ fn status_tag(text: impl Into<String>, accent: Color) -> Element {
 const MODPACK_TAG_CHARS: usize = 10;
 const MODPACK_TAG_ELLIPSIS: &str = "...";
 
-fn modpack_tag(name: &str) -> String {
-    let name = name.trim();
-    if name.chars().count() <= MODPACK_TAG_CHARS {
-        return name.to_string();
-    }
-    let kept: String = name
-        .chars()
-        .take(MODPACK_TAG_CHARS - MODPACK_TAG_ELLIPSIS.len())
-        .collect();
-    format!("{}{MODPACK_TAG_ELLIPSIS}", kept.trim_end())
-}
-
 fn modpack_badge(name: &str) -> Element {
-    status_tag(modpack_tag(name), colors::code_info())
+    status_tag(
+        crate::utils::shorten(name, MODPACK_TAG_CHARS, MODPACK_TAG_ELLIPSIS),
+        colors::code_info(),
+    )
 }
 
 fn local_badge() -> Element {

@@ -54,13 +54,37 @@ pub(super) fn modpack_job_idle() -> bool {
     with_slot(|slot| matches!(slot, JobSlot::Idle))
 }
 
+fn busy_cluster() -> Option<ClusterId> {
+    with_slot(|slot| match slot {
+        JobSlot::Running(id) | JobSlot::Preparing(Some(id)) => Some(*id),
+        JobSlot::AwaitingImport(import) => Some(import.cluster_id),
+        _ => None,
+    })
+}
+
 #[must_use]
 pub fn modpack_job_running(cluster_id: ClusterId) -> bool {
-    with_slot(|slot| match slot {
-        JobSlot::Running(id) | JobSlot::Preparing(Some(id)) => *id == cluster_id,
-        JobSlot::AwaitingImport(import) => import.cluster_id == cluster_id,
-        _ => false,
-    })
+    busy_cluster() == Some(cluster_id)
+}
+
+pub(super) async fn modpack_job_in_shared_dir(cluster_id: ClusterId) -> bool {
+    let Some(busy) = busy_cluster().filter(|id| *id != cluster_id) else {
+        return false;
+    };
+    let Ok(state) = launcher::state() else {
+        return false;
+    };
+    let shares = |id| {
+        let state = state.clone();
+        async move {
+            state
+                .clusters
+                .get(id)
+                .await
+                .is_ok_and(|cluster| !cluster.uses_dedicated_dir())
+        }
+    };
+    shares(cluster_id).await && shares(busy).await
 }
 
 fn take_prepared() -> Option<PreparedModpack> {
@@ -219,10 +243,7 @@ fn import_notes(import: &PreparedImport) -> Vec<(String, bool)> {
     let loader = import.prepared.manifest.loader;
     let mut notes = Vec::new();
     match &import.loader {
-        LoaderPlan::Raise {
-            from: Some(from),
-            to,
-        } => notes.push((
+        LoaderPlan::Raise { from, to } => notes.push((
             format!("{loader} will be updated from {from} to {to}, the version this pack needs."),
             false,
         )),
@@ -233,7 +254,7 @@ fn import_notes(import: &PreparedImport) -> Vec<(String, bool)> {
             ),
             true,
         )),
-        LoaderPlan::Raise { from: None, .. } | LoaderPlan::Keep => {}
+        LoaderPlan::Keep => {}
     }
     if import.shared_game_dir {
         notes.push((
@@ -423,13 +444,15 @@ impl Actions {
 
     pub fn confirm_modpack(&self) {
         self.with_engine(|app| app.notifications.close_modpack_confirm());
-        match take_prepared() {
-            Some(prepared) => self.run_modpack_job(ModpackJob::Install(Box::new(prepared))),
-            None => self.release_modpack_job(),
+        if let Some(prepared) = take_prepared() {
+            self.run_modpack_job(ModpackJob::Install(Box::new(prepared)));
         }
     }
 
     pub fn import_modpack(&self, cluster_id: ClusterId, source: ModpackSource) {
+        if busy_cluster() == Some(cluster_id) {
+            return;
+        }
         if self.refuse_while_running(cluster_id) || !self.claim_modpack_job(Some(cluster_id)) {
             return;
         }
@@ -501,17 +524,14 @@ impl Actions {
         }
 
         self.with_engine(|app| app.notifications.close_modpack_confirm());
-        match take_prepared_import() {
-            Some(import) => {
-                let (skipped, alternatives) = split_choices(&import, &choices);
-                self.run_modpack_job(ModpackJob::Import {
-                    import: Box::new(import),
-                    existing,
-                    skipped,
-                    alternatives,
-                });
-            }
-            None => self.release_modpack_job(),
+        if let Some(import) = take_prepared_import() {
+            let (skipped, alternatives) = split_choices(&import, &choices);
+            self.run_modpack_job(ModpackJob::Import {
+                import: Box::new(import),
+                existing,
+                skipped,
+                alternatives,
+            });
         }
     }
 
@@ -544,7 +564,7 @@ impl Actions {
                 Ok(failed) if failed.is_empty() => {
                     actions
                         .notify("Modpack removed")
-                        .body(format!("{name} and its files were removed."))
+                        .body(format!("{name} was removed from the instance."))
                         .send();
                 }
                 Ok(failed) => {
@@ -572,7 +592,12 @@ impl Actions {
 
     pub fn cancel_modpack(&self) {
         self.with_engine(|app| app.notifications.close_modpack_confirm());
-        self.release_modpack_job();
+        let waiting = with_slot(|slot| {
+            matches!(slot, JobSlot::AwaitingConfirm(_) | JobSlot::AwaitingImport(_))
+        });
+        if waiting {
+            self.release_modpack_job();
+        }
     }
 
     pub fn update_modpack(&self, cluster_id: ClusterId, version_id: String) {
@@ -607,7 +632,15 @@ impl Actions {
                 .send();
             return true;
         }
-        let running = launcher::state().is_ok_and(|state| state.games.is_active(cluster_id));
+        if self.station.peek().installs.cluster_installing(cluster_id) {
+            self.notify("Wait for the installs to finish")
+                .body("Mods are still being added to this instance. Try again once they're done.")
+                .error()
+                .send();
+            return true;
+        }
+        let running = self.station.peek().game.is_launch_pending(cluster_id)
+            || launcher::state().is_ok_and(|state| state.games.is_active(cluster_id));
         if running {
             self.notify("Close the game first")
                 .body("The modpack's files cannot be changed while Minecraft is running.")
@@ -726,6 +759,10 @@ impl Actions {
                 }
                 Err(err) => {
                     tracing::warn!(error = %err, "{}", texts.failed);
+                    if !matches!(job, ModpackJob::Install(_)) {
+                        events.signal(oneclient_events::Signal::ClustersChanged);
+                        crate::hooks::invalidate_cluster_queries().await;
+                    }
                     let body = match &job {
                         ModpackJob::Install(_) => {
                             let removed = off_ui({
@@ -745,7 +782,12 @@ impl Actions {
                                 ),
                             }
                         }
-                        ModpackJob::Import { alternatives, .. } => {
+                        ModpackJob::Import {
+                            import,
+                            existing,
+                            alternatives,
+                            ..
+                        } => {
                             let picked: Vec<String> = alternatives
                                 .iter()
                                 .filter(|alternative| alternative.version_id.is_some())
@@ -759,9 +801,15 @@ impl Actions {
                                     listed(picked.into_iter())
                                 )
                             };
-                            format!(
-                                "{err} Files added before the error were kept. Add the modpack again to finish, or remove it under Added Modpacks in the instance's settings.{replacements}"
-                            )
+                            let updating = import.previous.is_some()
+                                && import.target_bundle_name(*existing) == import.bundle_name;
+                            if updating {
+                                format!(
+                                    "{err} Anything already updated was kept. Add the modpack again to finish, or remove it under Added Modpacks in the instance's settings.{replacements}"
+                                )
+                            } else {
+                                format!("{err} Nothing was added to the instance.{replacements}")
+                            }
                         }
                         _ => format!(
                             "{err} Use Reinstall Missing Files in the instance's settings to try again."
@@ -773,7 +821,6 @@ impl Actions {
                 }
             }
 
-            actions.release_modpack_job();
             if let ModpackJob::Import { alternatives, .. } = job {
                 for alternative in alternatives {
                     let Some(version_id) = alternative.version_id else {
@@ -789,6 +836,7 @@ impl Actions {
                     );
                 }
             }
+            actions.release_modpack_job();
         });
     }
 
@@ -900,14 +948,30 @@ fn notify_outcome(
         String::new()
     } else {
         format!(
-            " Turned off older copies of {} because a newer version is installed.",
+            " Turned off extra copies of {} so only one version loads.",
             listed(report.disabled_duplicates.iter().cloned())
         )
     };
-    if report.failed.is_empty() {
+    let notices: String = report
+        .notices
+        .iter()
+        .map(|notice| format!(" {notice}"))
+        .collect();
+    if report.failed.is_empty() && report.notices.is_empty() {
         actions
             .notify(texts.done)
             .body(format!("{}{kept}{duplicates}", job.done_body(cluster_name)))
+            .send();
+        return;
+    }
+    if report.failed.is_empty() {
+        actions
+            .notify(texts.problems)
+            .body(format!(
+                "{}{kept}{duplicates}{notices}",
+                job.done_body(cluster_name)
+            ))
+            .error()
             .send();
         return;
     }
@@ -915,7 +979,7 @@ fn notify_outcome(
     actions
         .notify(texts.problems)
         .body(format!(
-            "{cluster_name} could not get {}.",
+            "{cluster_name} could not get {}.{notices}",
             listed(report.failed.iter().cloned())
         ))
         .error()
@@ -939,6 +1003,7 @@ pub(crate) fn listed(names: impl Iterator<Item = String>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use oneclient_core::clusters::FlaggedPackMod;
 
     #[test]
     fn long_lists_are_cut_short() {
@@ -946,5 +1011,97 @@ mod tests {
         assert_eq!(listed(names(2)), "m1, m2");
         assert_eq!(listed(names(3)), "m1, m2, m3");
         assert_eq!(listed(names(5)), "m1, m2, m3 and 2 more");
+    }
+    fn alternative(project_id: &str, version_id: Option<&str>) -> ResolvedAlternative {
+        ResolvedAlternative {
+            provider: oneclient_content::packages::ProviderId::Modrinth,
+            project_id: project_id.to_string(),
+            name: project_id.to_string(),
+            version_id: version_id.map(str::to_string),
+            version_number: None,
+            icon_url: None,
+        }
+    }
+
+    fn flagged(package_id: &str, alternatives: Vec<ResolvedAlternative>) -> FlaggedPackMod {
+        FlaggedPackMod {
+            package_id: package_id.to_string(),
+            name: package_id.to_string(),
+            explanation: None,
+            alternatives,
+        }
+    }
+
+    fn import(flagged: Vec<FlaggedPackMod>) -> PreparedImport {
+        PreparedImport {
+            prepared: PreparedModpack {
+                source: ModpackSource::File(PathBuf::from("pack.mrpack")),
+                artifact_hash: "hash".to_string(),
+                archive_path: PathBuf::from("pack.mrpack"),
+                manifest: oneclient_content::modpacks::ModpackManifest {
+                    name: "Pack".to_string(),
+                    version: "1.0".to_string(),
+                    summary: None,
+                    mc_version: "1.21.1".to_string(),
+                    loader: oneclient_common::domain::GameLoader::Fabric,
+                    loader_version: None,
+                    contents: oneclient_content::modpacks::ModpackContents::default(),
+                    override_prefixes: Vec::new(),
+                },
+                instance_name: "Pack".to_string(),
+                flagged: None,
+                share: None,
+            },
+            cluster_id: 1,
+            cluster_name: "Cluster".to_string(),
+            bundle_name: "modpack:file:pack".to_string(),
+            release: None,
+            project: None,
+            previous: None,
+            same_name: None,
+            separate_bundle_name: "modpack:file:pack-2".to_string(),
+            loader: LoaderPlan::Keep,
+            shared_game_dir: false,
+            flagged,
+        }
+    }
+
+    #[test]
+    fn flagged_choices_become_skips_and_replacements() {
+        let swap = alternative("swap", Some("v1"));
+        let import = import(vec![
+            flagged("kept", Vec::new()),
+            flagged("skipped", Vec::new()),
+            flagged("defaulted", Vec::new()),
+            flagged("replaced", vec![alternative("unresolved", None), swap.clone()]),
+            flagged("replaced-again", vec![swap.clone()]),
+            flagged("replaced-missing", vec![swap.clone()]),
+            flagged("replaced-unresolved", vec![alternative("unresolved", None)]),
+        ]);
+        let choices = HashMap::from([
+            ("kept".to_string(), FlaggedChoice::Keep),
+            ("skipped".to_string(), FlaggedChoice::Skip),
+            ("replaced".to_string(), FlaggedChoice::Replace(1)),
+            ("replaced-again".to_string(), FlaggedChoice::Replace(0)),
+            ("replaced-missing".to_string(), FlaggedChoice::Replace(7)),
+            ("replaced-unresolved".to_string(), FlaggedChoice::Replace(0)),
+        ]);
+
+        let (skipped, alternatives) = split_choices(&import, &choices);
+
+        let mut skipped: Vec<String> = skipped.into_iter().collect();
+        skipped.sort();
+        assert_eq!(
+            skipped,
+            [
+                "defaulted",
+                "replaced",
+                "replaced-again",
+                "replaced-missing",
+                "replaced-unresolved",
+                "skipped"
+            ]
+        );
+        assert_eq!(alternatives, vec![swap]);
     }
 }

@@ -2,102 +2,42 @@ use std::sync::{Arc, PoisonError, RwLock};
 
 use serde::Deserialize;
 
-use super::bad_mods::{
-    ProjectIds, fetch_flag_list, fetch_md_file, lenient_list, md_file_name, non_blank, same_text,
-};
-use super::{ProjectDetail, ProviderId};
+use super::bad_mods::{BadMod, BadModList, fetch_flag_list, fetch_md_file, lenient_list, md_file_name};
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 
 const EXPLANATIONS_DIR: &str = "/oneclient/bad_modpacks_mds/";
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct BadModpackList {
+struct BadModpackFile {
     #[serde(rename = "bad-modpacks", default, deserialize_with = "lenient_list")]
-    pub bad_modpacks: Vec<BadModpack>,
+    bad_modpacks: Vec<BadMod>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub struct BadModpack {
-    #[serde(default, deserialize_with = "non_blank")]
-    pub hash: Option<String>,
-    #[serde(default)]
-    pub project_ids: ProjectIds,
-    #[serde(default, deserialize_with = "non_blank")]
-    pub name: Option<String>,
-    #[serde(default, deserialize_with = "non_blank")]
-    pub author: Option<String>,
-    #[serde(default, deserialize_with = "non_blank")]
-    pub explanation: Option<String>,
-}
-
-impl BadModpack {
-    fn is_name_only(&self) -> bool {
-        self.hash.is_none()
-            && self.project_ids.is_empty()
-            && self.name.is_some()
-            && self.author.is_some()
-    }
-}
-
-impl BadModpackList {
-    pub fn find(&self, sha1: &str) -> Option<&BadModpack> {
-        let sha1 = polyio::normalize_hash(sha1);
-        self.bad_modpacks.iter().find(|entry| {
-            entry
-                .hash
-                .as_deref()
-                .is_some_and(|hash| polyio::normalize_hash(hash) == sha1)
-        })
-    }
-
-    pub fn find_project(&self, provider: ProviderId, project_id: &str) -> Option<&BadModpack> {
-        self.bad_modpacks
-            .iter()
-            .find(|entry| entry.project_ids.get(provider) == Some(project_id))
-    }
-
-    pub fn find_by_name_and_author(&self, project: &ProjectDetail) -> Option<&BadModpack> {
-        let authors: Vec<&str> = std::iter::once(project.author.as_str())
-            .chain(project.members.iter().map(|member| member.name.as_str()))
-            .collect();
-        self.find_name_and_author(&project.name, &authors)
-    }
-
-    pub fn has_name_only_entries(&self) -> bool {
-        self.bad_modpacks.iter().any(BadModpack::is_name_only)
-    }
-
-    fn find_name_and_author(&self, name: &str, authors: &[&str]) -> Option<&BadModpack> {
-        self.bad_modpacks.iter().find(|entry| {
-            let (true, Some(entry_name), Some(entry_author)) = (
-                entry.is_name_only(),
-                entry.name.as_deref(),
-                entry.author.as_deref(),
-            ) else {
-                return false;
-            };
-            same_text(entry_name, name)
-                && authors.iter().any(|author| same_text(entry_author, author))
-        })
+impl From<BadModpackFile> for BadModList {
+    fn from(file: BadModpackFile) -> Self {
+        Self {
+            bad_mods: file.bad_modpacks,
+        }
     }
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn fetch_bad_modpacks(ctx: &ContentCtx) -> ContentResult<BadModpackList> {
-    fetch_flag_list("bad-modpacks.json", ctx).await
+pub async fn fetch_bad_modpacks(ctx: &ContentCtx) -> ContentResult<BadModList> {
+    Ok(fetch_flag_list::<BadModpackFile>("bad-modpacks.json", ctx)
+        .await?
+        .into())
 }
 
-static BAD_MODPACKS: RwLock<Option<Arc<BadModpackList>>> = RwLock::new(None);
+static BAD_MODPACKS: RwLock<Option<Arc<BadModList>>> = RwLock::new(None);
 
-pub async fn refresh_bad_modpacks(ctx: &ContentCtx) -> ContentResult<Arc<BadModpackList>> {
+pub async fn refresh_bad_modpacks(ctx: &ContentCtx) -> ContentResult<Arc<BadModList>> {
     let list = Arc::new(fetch_bad_modpacks(ctx).await?);
     *BAD_MODPACKS.write().unwrap_or_else(PoisonError::into_inner) = Some(Arc::clone(&list));
     Ok(list)
 }
 
-pub async fn load_bad_modpacks(ctx: &ContentCtx) -> Arc<BadModpackList> {
+pub async fn load_bad_modpacks(ctx: &ContentCtx) -> Arc<BadModList> {
     let loaded = BAD_MODPACKS
         .read()
         .unwrap_or_else(PoisonError::into_inner)
@@ -113,7 +53,7 @@ pub async fn load_bad_modpacks(ctx: &ContentCtx) -> Arc<BadModpackList> {
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
-pub async fn fetch_modpack_explanation(entry: &BadModpack, ctx: &ContentCtx) -> Option<String> {
+pub async fn fetch_modpack_explanation(entry: &BadMod, ctx: &ContentCtx) -> Option<String> {
     let path = entry.explanation.as_deref()?;
     let Some(file_name) = md_file_name(EXPLANATIONS_DIR, path) else {
         tracing::warn!(
@@ -128,6 +68,11 @@ pub async fn fetch_modpack_explanation(entry: &BadModpack, ctx: &ContentCtx) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::packages::ProviderId;
+
+    fn parse(raw: &[u8]) -> BadModList {
+        serde_json::from_slice::<BadModpackFile>(raw).unwrap().into()
+    }
 
     const FULL: &[u8] = br#"{
         "bad-modpacks": [
@@ -143,8 +88,8 @@ mod tests {
 
     #[test]
     fn parses_full_entry() {
-        let list: BadModpackList = serde_json::from_slice(FULL).unwrap();
-        let entry = &list.bad_modpacks[0];
+        let list = parse(FULL);
+        let entry = &list.bad_mods[0];
 
         assert_eq!(
             entry.hash.as_deref(),
@@ -162,7 +107,7 @@ mod tests {
 
     #[test]
     fn hash_and_project_id_match() {
-        let list: BadModpackList = serde_json::from_slice(FULL).unwrap();
+        let list = parse(FULL);
 
         assert!(
             list.find("28B67391892582747BD17A7525318A954E54C80A")
@@ -178,13 +123,11 @@ mod tests {
 
     #[test]
     fn name_and_author_only_for_entries_without_ids() {
-        let list: BadModpackList = serde_json::from_slice(FULL).unwrap();
+        let list = parse(FULL);
         assert!(!list.has_name_only_entries());
         assert!(list.find_name_and_author("Joe", &["Doue"]).is_none());
 
-        let list: BadModpackList =
-            serde_json::from_slice(br#"{"bad-modpacks":[{"name":"Joe","author":"Doue"}]}"#)
-                .unwrap();
+        let list = parse(br#"{"bad-modpacks":[{"name":"Joe","author":"Doue"}]}"#);
         assert!(list.has_name_only_entries());
         assert!(list.find_name_and_author(" joe ", &["x", "DOUE"]).is_some());
         assert!(list.find_name_and_author("Joe", &["x"]).is_none());
@@ -193,9 +136,9 @@ mod tests {
     #[test]
     fn malformed_entries_are_skipped() {
         let raw = br#"{"bad-modpacks":[{"hash":5},"nope",{"hash":"ccc"}]}"#;
-        let list: BadModpackList = serde_json::from_slice(raw).unwrap();
+        let list = parse(raw);
 
-        assert_eq!(list.bad_modpacks.len(), 1);
+        assert_eq!(list.bad_mods.len(), 1);
         assert!(list.find("ccc").is_some());
     }
 

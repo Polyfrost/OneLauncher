@@ -1380,6 +1380,7 @@ mod package_update_tests {
             state.open_blocked_downloads(BlockedDownloads {
                 cluster_id,
                 cluster_name: "Pack".into(),
+                bundle_name: oneclient_content::modpacks::MODPACK_BUNDLE_NAME.into(),
                 files: vec![blocked_file(sha1)],
                 added: HashSet::new(),
                 open_when_done: false,

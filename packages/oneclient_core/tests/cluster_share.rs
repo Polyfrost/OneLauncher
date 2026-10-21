@@ -71,7 +71,7 @@ async fn an_exported_instance_imports_with_its_content_and_details() {
     assert!(report.missing.is_empty());
     assert!(dest.is_file());
 
-    let prepared = prepare_modpack(&state, &ModpackSource::File(dest.clone()))
+    let prepared = prepare_modpack(&state, &ModpackSource::File(dest.clone()), None)
         .await
         .unwrap();
     let shared = prepared
@@ -141,6 +141,7 @@ async fn a_cached_modrinth_mod_is_exported_as_a_link() {
         oneclient_common::domain::ProviderId::Modrinth,
         "5ZwdcRci",
         "xOA9hbpf",
+        None,
         &ctx,
     )
     .await
@@ -335,7 +336,7 @@ async fn a_crafted_share_cannot_write_outside_its_folder_or_reach_unknown_hosts(
     )
     .await;
 
-    let prepared = prepare_modpack(&state, &ModpackSource::File(archive))
+    let prepared = prepare_modpack(&state, &ModpackSource::File(archive), None)
         .await
         .unwrap();
     assert_eq!(prepared.summary().unverified, 1);
@@ -497,7 +498,7 @@ async fn a_shared_oneclient_instance_counts_its_bundle_mods() {
     )
     .await;
 
-    let prepared = prepare_modpack(&state, &ModpackSource::File(archive))
+    let prepared = prepare_modpack(&state, &ModpackSource::File(archive), None)
         .await
         .unwrap();
     let summary = prepared.summary();
@@ -569,7 +570,7 @@ async fn an_instance_without_a_pinned_loader_exports_a_concrete_one() {
         .await
         .unwrap();
 
-    let prepared = prepare_modpack(&state, &ModpackSource::File(dest))
+    let prepared = prepare_modpack(&state, &ModpackSource::File(dest), None)
         .await
         .unwrap();
     assert_eq!(prepared.manifest.loader, GameLoader::Fabric);
@@ -700,7 +701,7 @@ async fn compatibility_exports_carry_the_modpacks_own_files_over() {
     )
     .await;
 
-    let prepared = prepare_modpack(&state, &ModpackSource::File(pack))
+    let prepared = prepare_modpack(&state, &ModpackSource::File(pack), None)
         .await
         .unwrap();
     assert!(prepared.share.is_none());
@@ -722,7 +723,7 @@ async fn compatibility_exports_carry_the_modpacks_own_files_over() {
     assert!(entries.contains(&"overrides/config/pack.json".to_string()));
     assert!(entries.contains(&"overrides/kubejs/startup_scripts/main.js".to_string()));
 
-    let reimport = prepare_modpack(&state, &ModpackSource::File(dest))
+    let reimport = prepare_modpack(&state, &ModpackSource::File(dest), None)
         .await
         .unwrap();
     assert_eq!(reimport.summary().other_files, 2);
@@ -866,7 +867,7 @@ async fn crafted_download_names_in_a_share_are_refused() {
     )
     .await;
 
-    let prepared = prepare_modpack(&state, &ModpackSource::File(archive))
+    let prepared = prepare_modpack(&state, &ModpackSource::File(archive), None)
         .await
         .unwrap();
     let cluster = create_modpack_instance(&state, &prepared).await.unwrap();
@@ -927,7 +928,7 @@ async fn ornithe_exports_name_fabric_for_other_launchers() {
     let share: ClusterShare = serde_json::from_slice(&read("oneclient.cluster.json")).unwrap();
     assert_eq!(share.mc_loader, GameLoader::Ornithe);
 
-    let prepared = prepare_modpack(&state, &ModpackSource::File(dest))
+    let prepared = prepare_modpack(&state, &ModpackSource::File(dest), None)
         .await
         .unwrap();
     let cluster = create_modpack_instance(&state, &prepared).await.unwrap();

@@ -18,8 +18,7 @@ pub mod markdown;
 // Re-exported so `oneclient_core::packages::ContentType` keeps working
 pub use activity::reconcile_duplicate_activity;
 pub use bad_modpacks::{
-    BadModpack, BadModpackList, fetch_bad_modpacks, fetch_modpack_explanation, load_bad_modpacks,
-    refresh_bad_modpacks,
+    fetch_bad_modpacks, fetch_modpack_explanation, load_bad_modpacks, refresh_bad_modpacks,
 };
 pub use bad_mods::{
     BadMod, BadModAlternative, BadModList, ProjectIds, ResolvedAlternative, fetch_bad_mods,

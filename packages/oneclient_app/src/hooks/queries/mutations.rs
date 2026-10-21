@@ -7,7 +7,8 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 
 use super::bundles::{
-    BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery, ModpackSourcesQuery,
+    BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery, ImportedModpacksQuery,
+    ModpackSourcesQuery,
 };
 use super::cluster_content::{ClusterContentQuery, MigratableRoutesQuery, ShadowedModsQuery};
 use super::clusters::ListClustersQuery;
@@ -72,6 +73,11 @@ pub async fn invalidate_cluster_queries() {
     timed(
         "modpack_sources",
         QueriesStorage::<ModpackSourcesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "imported_modpacks",
+        QueriesStorage::<ImportedModpacksQuery>::invalidate_all(),
     )
     .await;
     tracing::debug!(
@@ -311,6 +317,11 @@ impl MutationCapability for ClusterMutation {
                         reason: "Wait for the reset to finish before changing the directory."
                             .to_string(),
                     })
+                } else if oneclient_core::clusters::has_imported_modpacks(&state, *cluster_id).await {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Remove the modpacks added to this instance under Added Modpacks before changing its folder."
+                            .to_string(),
+                    })
                 } else {
                     state
                         .clusters
@@ -528,6 +539,11 @@ impl MutationCapability for ClusterMutation {
                             .to_string(),
                     })
                 } else {
+                    let (released, id) = (state.clone(), *cluster_id);
+                    crate::launcher::off_ui(async move {
+                        oneclient_core::clusters::release_imported_modpacks(&released, id).await;
+                    })
+                    .await;
                     let outcome = state
                         .clusters
                         .delete(*cluster_id, true)
@@ -549,7 +565,7 @@ impl MutationCapability for ClusterMutation {
                 let claim = oneclient_core::clusters::ResetClaim::take(*cluster_id);
                 if crate::hooks::modpack_job_running(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Wait for the modpack to finish installing before resetting this instance."
+                        reason: "Wait for the modpack to finish, or close its dialog, before resetting this instance."
                             .to_string(),
                     })
                 } else if crate::hooks::exporting(*cluster_id) {
@@ -593,6 +609,7 @@ impl MutationCapability for ClusterMutation {
                         .events
                         .signal(oneclient_events::Signal::ClustersChanged);
                     invalidate_profile_queries().await;
+                    invalidate_cluster_queries().await;
                     match outcome {
                         Ok(report) => {
                             notify_reset(services, &report);

@@ -113,8 +113,8 @@ fn type_title(package_type: &str) -> &'static str {
         .map_or("Mods", |(_, title)| *title)
 }
 
-fn state_key(cluster_id: i64, package_type: &str) -> String {
-    if content_type_for_slug(package_type) == ContentType::Modpack {
+fn state_key(cluster_id: i64, package_type: &str, pick_cluster: bool) -> String {
+    if pick_cluster && content_type_for_slug(package_type) == ContentType::Modpack {
         package_type.to_string()
     } else {
         format!("{cluster_id}:{package_type}")
@@ -161,7 +161,11 @@ impl Component for Browser {
             pick_cluster: self.pick_cluster,
             key: DiffKey::None,
         }
-        .key((self.cluster_id, self.package_type.as_str()))
+        .key((
+            self.cluster_id,
+            self.package_type.as_str(),
+            self.pick_cluster,
+        ))
     }
 }
 
@@ -187,11 +191,7 @@ impl Component for BrowserBody {
         let cluster_modpacks = content_type == ContentType::Modpack && !self.pick_cluster;
 
         let store = use_browser_state_store();
-        let state_key = if cluster_modpacks {
-            format!("{cluster_id}:{package_type}")
-        } else {
-            state_key(cluster_id, &package_type)
-        };
+        let state_key = state_key(cluster_id, &package_type, self.pick_cluster);
         let saved = store.peek().get(&state_key).cloned().unwrap_or_default();
 
         let query = use_state(|| saved.query.clone());
@@ -772,7 +772,7 @@ impl Component for ClusterPicker {
             .unwrap_or_else(|| "Select a version".to_string());
 
         let package_type = self.package_type.clone();
-        let from_key = state_key(self.cluster_id, &package_type);
+        let from_key = state_key(self.cluster_id, &package_type, true);
         let mut store = use_browser_state_store();
 
         rect()
@@ -794,7 +794,7 @@ impl Component for ClusterPicker {
                                 .flatten();
                             if let Some(saved) = carried {
                                 store.write().insert(
-                                    state_key(cluster_id, &to_type),
+                                    state_key(cluster_id, &to_type, true),
                                     BrowserUiState { page: 0, ..saved },
                                 );
                             }

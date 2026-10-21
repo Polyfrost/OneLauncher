@@ -185,7 +185,7 @@ impl BadModList {
             .find(|entry| entry.project_ids.get(provider) == Some(project_id))
     }
 
-    fn find_name_and_author(&self, name: &str, authors: &[&str]) -> Option<&BadMod> {
+    pub(super) fn find_name_and_author(&self, name: &str, authors: &[&str]) -> Option<&BadMod> {
         self.bad_mods.iter().find(|entry| {
             if entry.hash.is_some() || !entry.project_ids.is_empty() {
                 return false;
@@ -201,7 +201,7 @@ impl BadModList {
     }
 }
 
-pub(super) fn same_text(a: &str, b: &str) -> bool {
+fn same_text(a: &str, b: &str) -> bool {
     a.trim().to_lowercase() == b.trim().to_lowercase()
 }
 

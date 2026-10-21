@@ -730,6 +730,7 @@ fn split_loaders(
             None => versions.push(version),
         }
     }
+    loaders.sort_by_key(|loader| *loader as u8);
     (versions, loaders)
 }
 
@@ -885,6 +886,19 @@ mod tests {
 
         assert_eq!(version.game_versions, ["1.20.1", "Client"]);
         assert_eq!(version.loaders, [GameLoader::Forge, GameLoader::NeoForge]);
+    }
+
+    #[test]
+    fn loaders_come_out_in_the_same_order_whatever_the_response_order() {
+        let (_, forward) = split_loaders(
+            vec!["1.20.1".into(), "Forge".into(), "NeoForge".into()],
+            &[],
+        );
+        let (_, backward) = split_loaders(
+            vec!["NeoForge".into(), "1.20.1".into(), "Forge".into()],
+            &[],
+        );
+        assert_eq!(forward, backward);
     }
 
     #[test]

@@ -42,8 +42,10 @@ fn newer(a: &Copy, b: &Copy) -> Option<Ordering> {
 }
 
 fn keeper(copies: &[Copy]) -> Option<usize> {
-    let mut best = 0;
-    for index in 1..copies.len() {
+    let locked = copies.iter().any(|copy| !copy.switchable);
+    let mut candidates = (0..copies.len()).filter(|&index| !locked || !copies[index].switchable);
+    let mut best = candidates.next()?;
+    for index in candidates {
         match newer(&copies[index], &copies[best])? {
             Ordering::Greater => best = index,
             Ordering::Equal if copies[best].from_pack && !copies[index].from_pack => best = index,
@@ -54,6 +56,20 @@ fn keeper(copies: &[Copy]) -> Option<usize> {
 }
 
 #[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn recheck_duplicates(cluster_id: i64, bundle_name: &str, ctx: &ContentCtx) -> Vec<String> {
+    match disable_older_duplicates(cluster_id, bundle_name, ctx).await {
+        Ok(disabled) => disabled
+            .into_iter()
+            .filter(|copy| !copy.from_pack)
+            .map(|copy| copy.hash)
+            .collect(),
+        Err(err) => {
+            tracing::warn!(cluster_id, bundle_name, error = %err, "could not check for duplicate mods");
+            Vec::new()
+        }
+    }
+}
+
 pub(super) async fn disable_older_duplicates(
     cluster_id: i64,
     bundle_name: &str,
@@ -122,7 +138,12 @@ pub(super) async fn disable_older_duplicates(
                 tracing::info!(mod_id, file = %copy.name, kept = %copies[keep].name, "older duplicate belongs to a bundle or another pack, leaving it on");
                 continue;
             }
-            PackageStore::set_artifact_enabled_to(cluster_id, &copy.hash, false, ctx).await?;
+            if let Err(err) =
+                PackageStore::set_artifact_enabled_to(cluster_id, &copy.hash, false, ctx).await
+            {
+                tracing::warn!(mod_id, file = %copy.name, error = %err, "could not turn off an older duplicate mod");
+                continue;
+            }
             tracing::info!(mod_id, file = %copy.name, kept = %copies[keep].name, "turned off an older duplicate mod");
             disabled.push(DisabledCopy {
                 hash: copy.hash.clone(),
@@ -174,6 +195,14 @@ mod tests {
             copy(Some("2.0"), Some(10), false),
         ];
         assert_eq!(keeper(&copies), Some(0));
+    }
+
+    #[test]
+    fn a_copy_that_cannot_be_switched_off_is_the_one_kept() {
+        let mut bundled = copy(Some("0.5"), None, false);
+        bundled.switchable = false;
+        let copies = [copy(Some("0.6"), None, true), bundled];
+        assert_eq!(keeper(&copies), Some(1));
     }
 
     #[test]

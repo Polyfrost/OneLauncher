@@ -323,6 +323,8 @@ pub async fn collect_share_content(
     let referenced = |bundle: &str| {
         if bundle == MODPACK_BUNDLE_NAME {
             scope.skip_modpack
+        } else if super::is_imported_bundle(bundle) {
+            false
         } else {
             scope.skip_bundles
         }

@@ -281,14 +281,19 @@ impl Component for Clusters {
             .iter()
             .map(|&line| {
                 let list = &groups[&line];
+                let item = GridSelection::Line(line);
+                let is_selected = current == Some(item);
+                let picked = cluster
+                    .as_ref()
+                    .filter(|c| is_selected && list.iter().any(|listed| listed.id == c.id));
                 let line_menu = match list.as_slice() {
                     [only] => Some(ClusterMenuTarget::for_cluster(only, true)),
-                    _ => default_line_cluster(list, active_cluster.as_ref())
+                    _ => picked
+                        .map(|c| c.id)
+                        .or_else(|| default_line_cluster(list, active_cluster.as_ref()))
                         .and_then(|id| list.iter().find(|c| c.id == id))
                         .map(|c| ClusterMenuTarget::for_cluster(c, false)),
                 };
-                let item = GridSelection::Line(line);
-                let is_selected = current == Some(item);
                 let caption = match (is_selected, &cluster, list.as_slice()) {
                     (true, Some(c), _) | (_, _, [c]) => cluster_caption(c),
                     _ => format!("{} instances", list.len()),

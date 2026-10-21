@@ -115,7 +115,11 @@ impl OverrideLayers {
                 continue;
             };
             let rel = &name[prefixes[layer].len()..];
-            if rel.is_empty() {
+            if rel.is_empty() || rel.ends_with('/') {
+                continue;
+            }
+            if !crate::modpacks::is_safe_relative_path(rel) {
+                tracing::warn!(entry = %name, "skipping an override with an unsafe path");
                 continue;
             }
             let replaces = winners
@@ -477,6 +481,29 @@ mod tests {
         assert_eq!(read(&root.join("options.txt")).await.unwrap(), b"client");
         assert_eq!(read(&root.join("config/a.toml")).await.unwrap(), b"alpha");
         assert!(read(&root.join("server.properties")).await.is_none());
+    }
+
+    #[tokio::test]
+    async fn unsafe_override_paths_are_dropped() {
+        let root = polyio::testing::ScratchDir::new("unsafe-paths");
+        let zip = root.join("pack.mrpack");
+        write_bundle(
+            &zip,
+            &[
+                ("overrides/mods/ok.jar", b"ok"),
+                ("overrides/mods/..\\..\\evil.jar", b"x"),
+                ("overrides/mods/C:\\evil.jar", b"x"),
+                ("overrides/\\Windows\\evil.dll", b"x"),
+                ("overrides/C:/evil.dll", b"x"),
+                ("overrides/../evil.jar", b"x"),
+                ("overrides/config/", b""),
+            ],
+        )
+        .await;
+
+        let layers = OverrideLayers::open(&zip, &["overrides/"]).await.unwrap();
+        let rels: Vec<&str> = layers.entries().iter().map(|(rel, _)| rel.as_str()).collect();
+        assert_eq!(rels, vec!["mods/ok.jar"]);
     }
 
     #[tokio::test]

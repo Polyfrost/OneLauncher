@@ -248,9 +248,28 @@ pub struct GameState {
     /// Launches started from the UI but not yet answered by core which takes a few
     /// hundred ms every click in that window otherwise spawns its own game
     pending: HashSet<i64>,
+    shared_syncs: HashSet<i64>,
 }
 
 impl GameState {
+    pub fn set_shared_sync(&mut self, cluster_id: i64, syncing: bool) {
+        if syncing {
+            self.shared_syncs.insert(cluster_id);
+        } else {
+            self.shared_syncs.remove(&cluster_id);
+        }
+    }
+
+    #[must_use]
+    pub fn is_syncing_shared(&self, cluster_id: i64) -> bool {
+        self.shared_syncs.contains(&cluster_id)
+    }
+
+    #[must_use]
+    pub fn any_shared_sync(&self) -> bool {
+        !self.shared_syncs.is_empty()
+    }
+
     #[must_use]
     pub fn stage(&self, cluster_id: i64) -> Option<LaunchStage> {
         self.stages.get(&cluster_id).copied()
@@ -337,7 +356,8 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::app::launch_button_state;
+    use crate::view::app::{launch_button_state, shared_dir_taken};
+    use crate::view::onboarding::test_support::cluster;
 
     #[test]
     fn a_second_click_is_refused_before_core_answers() {
@@ -490,5 +510,27 @@ mod tests {
             launch_button_state(&game, 1, false, true),
             ("Running", false)
         );
+    }
+
+    #[test]
+    fn a_shared_sync_takes_the_shared_dir_but_not_a_dedicated_one() {
+        let mut game = GameState::default();
+        let shared = cluster(1);
+        let dedicated = Cluster {
+            kind: oneclient_db::models::ClusterKind::Vanilla,
+            ..cluster(2)
+        };
+        let clusters = [shared, dedicated];
+
+        game.set_shared_sync(3, true);
+        assert!(shared_dir_taken(&game, &clusters, 1));
+        assert!(!shared_dir_taken(&game, &clusters, 2));
+        assert_eq!(
+            launch_button_state(&game, 3, false, false),
+            ("Syncing", false)
+        );
+
+        game.set_shared_sync(3, false);
+        assert!(!shared_dir_taken(&game, &clusters, 1));
     }
 }

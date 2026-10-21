@@ -624,8 +624,13 @@ impl NotificationState {
             }) => {
                 self.handle_progress(inbox, id, label, current, total);
             }
-            Event::Progress(ProgressEvent::Complete { id, title, body }) => {
-                self.handle_progress_complete(inbox, id, title, body);
+            Event::Progress(ProgressEvent::Complete {
+                id,
+                title,
+                body,
+                level,
+            }) => {
+                self.handle_progress_complete(inbox, id, title, body, level);
             }
             Event::Progress(ProgressEvent::Grouped(event)) => {
                 self.handle_grouped_progress(inbox, event);
@@ -902,14 +907,18 @@ impl NotificationState {
         id: Uuid,
         title: String,
         body: String,
+        level: Level,
     ) {
         if let Some(entry_id) = self.progress_entries.remove(&id) {
             self.update_inbox_entry(inbox, entry_id, title, body, None, false);
+            if let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) {
+                entry.level = level;
+            }
             // Progress ticks leave a hovered card read but its outcome is news
             self.mark_unread(inbox, entry_id);
             self.ensure_progress_toast(entry_id);
         } else {
-            let entry_id = self.push_inbox(inbox, title, body, Level::Info, None, false);
+            let entry_id = self.push_inbox(inbox, title, body, level, None, false);
             self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
         }
     }
@@ -1369,12 +1378,31 @@ mod package_update_tests {
             "progress ticks must not undo the hover"
         );
 
-        state.handle_progress_complete(&mut inbox, id, "Done".into(), String::new());
+        state.handle_progress_complete(&mut inbox, id, "Done".into(), String::new(), Level::Info);
         assert_eq!(
             NotificationState::unread_count(&inbox),
             1,
             "the finished result is new again"
         );
+    }
+
+    #[test]
+    fn a_failed_task_finishes_as_an_error() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = Uuid::new_v4();
+
+        state.handle_progress(&mut inbox, id, "Syncing".into(), 1, 4);
+        state.handle_progress_complete(
+            &mut inbox,
+            id,
+            "Failed".into(),
+            String::new(),
+            Level::Error,
+        );
+
+        assert_eq!(inbox.len(), 1, "the progress card turns into the result");
+        assert_eq!(inbox[0].level, Level::Error);
     }
 
     #[test]

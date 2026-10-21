@@ -107,6 +107,12 @@ impl Component for ClusterSettings {
             Vec::new()
         };
 
+        let sync_row: Vec<Element> = if cluster.uses_dedicated_dir() && !cluster.is_isolated() {
+            vec![SyncSharedRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
+
         let modpack_section: Vec<Element> = if cluster.linked_modpack_hash.is_some() {
             vec![
                 section_header("MODPACK").into_element(),
@@ -134,6 +140,7 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .append_children(sync_row)
                     .child(section_header("SHORTCUT"))
                     .child(ShortcutRow { cluster_id }.into_element())
                     .child(section_header("CONTENT"))
@@ -428,6 +435,36 @@ impl Component for VerifyFilesRow {
             "Verify Files",
             "Check every installed file against its official checksum and \
              re-download anything corrupt or missing. Takes a few minutes.",
+            button,
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct SyncSharedRow {
+    cluster_id: i64,
+}
+
+impl Component for SyncSharedRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+        let syncing = use_game_snapshot().is_syncing_shared(cluster_id);
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .enabled(!syncing)
+            .maybe(!syncing, |el| {
+                el.on_press(move |_| dispatch.sync_from_shared_dir(cluster_id))
+            })
+            .text(if syncing { "Syncing..." } else { "Sync" });
+
+        settings_row(
+            IconType::RefreshCcw02,
+            "Sync From Shared Folder",
+            "Copy settings, keybinds, servers, mod configs and missing worlds \
+             from the shared .minecraft into this instance.",
             button,
         )
     }

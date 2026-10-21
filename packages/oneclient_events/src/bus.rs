@@ -71,6 +71,16 @@ impl EventBus {
             id,
             title: title.into(),
             body: body.into(),
+            level: Level::Info,
+        });
+    }
+
+    pub fn fail_progress(&self, id: Uuid, title: impl Into<String>, body: impl Into<String>) {
+        self.emit(ProgressEvent::Complete {
+            id,
+            title: title.into(),
+            body: body.into(),
+            level: Level::Error,
         });
     }
 

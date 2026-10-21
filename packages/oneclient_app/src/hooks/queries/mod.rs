@@ -117,7 +117,8 @@ pub use versions::{
     use_java_majors, use_loader_versions, use_version_loaders, use_versions, versions_metadata,
 };
 pub use worlds::{
-    add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,
-    spawn_world_task, try_cluster_worlds, try_world_datapacks, try_world_size, use_cluster_worlds,
-    use_saves_folder_watch, use_world_datapacks, use_world_size,
+    add_world_datapacks, delete_world, delete_world_datapack, invalidate_cluster_worlds,
+    invalidate_world_contents, spawn_world_task, try_cluster_worlds, try_world_datapacks,
+    try_world_size, use_cluster_worlds, use_saves_folder_watch, use_world_datapacks,
+    use_world_size,
 };

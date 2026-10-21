@@ -5,6 +5,7 @@ mod overlay_claims;
 mod queries;
 mod selection;
 mod shortcut_actions;
+mod sync_actions;
 mod view_state;
 
 pub use debounce::use_debounced;

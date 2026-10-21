@@ -501,7 +501,7 @@ fn notify_outcome(
         .send();
 }
 
-fn listed(names: impl Iterator<Item = String>) -> String {
+pub(crate) fn listed(names: impl Iterator<Item = String>) -> String {
     let names: Vec<String> = names.collect();
     let shown = names
         .iter()

@@ -37,7 +37,8 @@ pub use oneclient_mc::{
     verify_game_files,
 };
 pub use process::{
-    GameProcess, GameProcessManager, is_process_alive, kill_process, process_start_time,
+    DirBusy, GameProcess, GameProcessManager, SyncBlock, SyncGuard, is_process_alive, kill_process,
+    process_start_time,
 };
 pub use reattach::recover_sessions;
 pub use shared_dir::{

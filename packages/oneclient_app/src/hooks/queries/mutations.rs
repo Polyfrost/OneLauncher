@@ -284,6 +284,13 @@ impl MutationCapability for ClusterMutation {
                 )
                 .await
             }
+            ClusterAction::SetDedicatedDir { cluster_id, .. }
+                if state.games.is_syncing(*cluster_id) =>
+            {
+                Err(oneclient_content::ContentError::InvalidData {
+                    reason: "Wait for the sync to finish before changing the folder.".to_string(),
+                })
+            }
             ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated,
@@ -490,6 +497,11 @@ impl MutationCapability for ClusterMutation {
                 } else if state.games.is_active(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
                         reason: "Close the game before deleting this instance.".to_string(),
+                    })
+                } else if state.games.is_syncing(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the sync to finish before deleting this instance."
+                            .to_string(),
                     })
                 } else {
                     let outcome = state

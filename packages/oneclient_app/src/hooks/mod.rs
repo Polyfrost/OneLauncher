@@ -5,6 +5,7 @@ mod overlay_claims;
 mod queries;
 mod selection;
 mod shortcut_actions;
+mod sync_actions;
 mod view_state;
 
 pub use debounce::use_debounced;
@@ -49,8 +50,8 @@ pub use queries::{
     invalidate_storage_queries, java_majors, java_runtimes, latest_changelog_version, loaded_image,
     loader_versions, login_code_already_handled, migration_detection, mutation_error,
     mutation_is_pending, mutation_is_running, mutation_ok, onboarding_bundles_items,
-    package_meta_batch, package_updates, pick_version_metadata, project_detail, provider_versions,
-    query_error, query_is_busy, query_is_loading, refresh_version_art_gallery,
+    package_meta_batch, package_updates, pick_version_metadata, project_detail, project_web_urls,
+    provider_versions, query_error, query_is_busy, query_is_loading, refresh_version_art_gallery,
     reset_login_code_dedup, resolve_art_url, search_items, search_pending, search_total,
     settled_or_loading, stale_hashes, terms_document, terms_error, terms_is_loading, try_account,
     try_accounts, try_cluster_analytics, try_cluster_logs, try_cluster_screenshots,
@@ -67,11 +68,12 @@ pub use queries::{
     use_migratable_routes, use_migration, use_mods_folder_sync, use_named_profiles,
     use_onboarding_bundles, use_package_categories, use_package_meta_batch, use_package_project,
     use_package_search, use_package_updates, use_package_versions_when, use_player_profile,
-    use_player_skin, use_provider_versions, use_refresh_account, use_refresh_all_accounts,
-    use_remove_account, use_screenshot_action, use_screenshot_folder_watch,
-    use_set_default_account, use_shadowed_mods, use_storage_action, use_storage_report, use_terms,
-    use_upload_log, use_version_art, use_version_art_gallery, use_version_loaders,
-    use_version_metadata, use_versions, version_list, versions_metadata, versions_total,
+    use_player_skin, use_project_web_urls, use_provider_versions, use_refresh_account,
+    use_refresh_all_accounts, use_remove_account, use_screenshot_action,
+    use_screenshot_folder_watch, use_set_default_account, use_shadowed_mods, use_storage_action,
+    use_storage_report, use_terms, use_upload_log, use_version_art, use_version_art_gallery,
+    use_version_loaders, use_version_metadata, use_versions, version_list, versions_metadata,
+    versions_total,
 };
 pub use queries::{
     add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,

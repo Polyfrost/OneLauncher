@@ -305,6 +305,7 @@ impl Component for PresetChip {
             .child(
                 label()
                     .text(preset)
+                    .max_lines(1)
                     .font_size(12.)
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_secondary()),
@@ -347,6 +348,7 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
                 .child(
                     label()
                         .text(tag.clone())
+                        .max_lines(1)
                         .font_size(12.)
                         .font_weight(FontWeight::MEDIUM)
                         .color(Color::WHITE),

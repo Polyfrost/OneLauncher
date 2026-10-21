@@ -2501,6 +2501,7 @@ mod tests {
             enabled,
             content_type: ContentType::Mod,
             file_name: file_name.into(),
+            size_bytes: None,
             project_id: None,
             version_id: None,
             display_name: None,

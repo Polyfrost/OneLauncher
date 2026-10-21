@@ -113,6 +113,14 @@ fn type_title(package_type: &str) -> &'static str {
         .map_or("Mods", |(_, title)| *title)
 }
 
+fn state_key(cluster_id: i64, package_type: &str) -> String {
+    if content_type_for_slug(package_type) == ContentType::Modpack {
+        package_type.to_string()
+    } else {
+        format!("{cluster_id}:{package_type}")
+    }
+}
+
 pub(crate) fn encode_package_id(provider: ProviderId, id: &str) -> String {
     format!("{}:{}", provider as u8, id)
 }
@@ -178,15 +186,11 @@ impl Component for BrowserBody {
         let content_type = content_type_for_slug(&package_type);
 
         let store = use_browser_state_store();
-        let state_key = if content_type == ContentType::Modpack {
-            package_type.clone()
-        } else {
-            format!("{cluster_id}:{package_type}")
-        };
+        let state_key = state_key(cluster_id, &package_type);
         let saved = store.peek().get(&state_key).cloned().unwrap_or_default();
 
         let query = use_state(|| saved.query.clone());
-        let provider = use_state(|| saved.provider);
+        let mut provider = use_state(|| saved.provider);
         let view_mode = use_view_state(&format!("browser.{package_type}")).layout;
         let compatible_only = use_browser_compat();
         let selected_categories = use_state(|| saved.categories.clone());
@@ -217,7 +221,6 @@ impl Component for BrowserBody {
         );
 
         let cluster = use_cluster(cluster_id);
-        let provider_id = *provider.read();
         let compat = *compatible_only.read();
         let cats = selected_categories.read().clone();
 
@@ -234,6 +237,11 @@ impl Component for BrowserBody {
             (true, Some(c)) => vec![c.mc_loader],
             _ => picked_loader.into_iter().collect(),
         };
+        let curseforge_blocked = loader_fixed && loaders.contains(&GameLoader::Ornithe);
+        if curseforge_blocked && *provider.peek() == ProviderId::CurseForge {
+            provider.set(ProviderId::Modrinth);
+        }
+        let provider_id = *provider.read();
 
         let mut page_state = page;
         // Normalised like the search key so a query differing only by a space does not reset the page
@@ -367,6 +375,7 @@ impl Component for BrowserBody {
                     package_type: package_type.clone(),
                 }),
                 provider,
+                curseforge_blocked,
                 query,
                 controls_width,
             ))
@@ -442,6 +451,7 @@ fn header(
     cluster_name: Option<String>,
     picker: Option<ClusterPicker>,
     provider: State<ProviderId>,
+    curseforge_blocked: bool,
     query: State<String>,
     mut header_width: State<f32>,
 ) -> impl IntoElement {
@@ -487,7 +497,12 @@ fn header(
             SegmentedControl::new(provider)
                 .no_tint()
                 .segments(ProviderId::REMOTE_PROVIDERS.iter().map(move |provider| {
-                    let segment = Segment::new(*provider).icon(IconType::from(*provider));
+                    let mut segment = Segment::new(*provider).icon(IconType::from(*provider));
+                    if curseforge_blocked && *provider == ProviderId::CurseForge {
+                        segment = segment
+                            .disabled(true)
+                            .tooltip("CurseForge doesn't have any compatible mods");
+                    }
                     if show_provider_labels {
                         segment.label(provider.to_string())
                     } else {
@@ -726,6 +741,8 @@ impl Component for ClusterPicker {
             .unwrap_or_else(|| "Select a version".to_string());
 
         let package_type = self.package_type.clone();
+        let from_key = state_key(self.cluster_id, &package_type);
+        let mut store = use_browser_state_store();
 
         rect()
             .horizontal()
@@ -740,9 +757,19 @@ impl Component for ClusterPicker {
                         if let (Some(cluster_id), Some(cluster)) =
                             (ids.get(idx).copied(), clusters.get(idx))
                         {
+                            let to_type = browsable_type(&package_type, cluster);
+                            let carried = (to_type == package_type)
+                                .then(|| store.peek().get(&from_key).cloned())
+                                .flatten();
+                            if let Some(saved) = carried {
+                                store.write().insert(
+                                    state_key(cluster_id, &to_type),
+                                    BrowserUiState { page: 0, ..saved },
+                                );
+                            }
                             let _ = RouterContext::get().replace(Route::Browser {
                                 cluster_id,
-                                package_type: browsable_type(&package_type, cluster),
+                                package_type: to_type,
                                 pick_cluster: true,
                             });
                         }

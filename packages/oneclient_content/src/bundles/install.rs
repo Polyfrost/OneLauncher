@@ -75,9 +75,28 @@ pub(crate) async fn overrides_outside_declined(
         .map(|archive| archive.manifest.name.as_str())
         .filter(|name| !taken.contains(*name))
         .collect();
+    let tracked: std::collections::HashSet<(String, String)> =
+        bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
+            .await?
+            .into_iter()
+            .filter_map(|row| Some((row.bundle_name?, row.package_id?)))
+            .collect();
 
-    overrides.retain(|o| !declined.contains(o.bundle_name.as_str()));
+    overrides.retain(|o| survives_decline(o, &declined, &tracked));
     Ok(overrides)
+}
+
+fn survives_decline(
+    o: &oneclient_db::models::ClusterBundleOverrideRow,
+    declined: &std::collections::HashSet<&str>,
+    tracked: &std::collections::HashSet<(String, String)>,
+) -> bool {
+    if !declined.contains(o.bundle_name.as_str()) {
+        return true;
+    }
+
+    OverrideType::parse(&o.override_type) == Some(OverrideType::Disabled)
+        && tracked.contains(&(o.bundle_name.clone(), o.package_id.clone()))
 }
 
 #[tracing::instrument(level = "debug", skip(bundles, ctx))]
@@ -394,6 +413,55 @@ async fn clear_reconciler_disables(
     Ok(())
 }
 
+const STALE_DISABLE_REPAIR: &str = "clear-disables-left-on-live-bundle-content";
+
+async fn clear_stale_disables(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<()> {
+    let id = format!("{STALE_DISABLE_REPAIR}:{cluster_id}");
+    if migration_dao::is_applied(&ctx.db, &id).await? {
+        return Ok(());
+    }
+
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let stale = stale_disables(&tracked, &overrides);
+
+    for (bundle_name, package_id) in &stale {
+        bundle_dao::remove_override(&ctx.db, cluster_id, bundle_name, package_id).await?;
+    }
+
+    if !stale.is_empty() {
+        tracing::info!(
+            cluster_id,
+            cleared = stale.len(),
+            "cleared disabled overrides left on bundle content that is switched on"
+        );
+    }
+
+    migration_dao::mark_applied(&ctx.db, &id).await?;
+    Ok(())
+}
+
+fn stale_disables(
+    tracked: &[oneclient_db::models::BundleTrackedArtifactRow],
+    overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+) -> Vec<(String, String)> {
+    overrides
+        .iter()
+        .filter(|o| OverrideType::parse(&o.override_type) == Some(OverrideType::Disabled))
+        .filter(|o| {
+            let mut copies = tracked
+                .iter()
+                .filter(|row| {
+                    row.bundle_name.as_deref() == Some(o.bundle_name.as_str())
+                        && row.package_id.as_deref() == Some(o.package_id.as_str())
+                })
+                .peekable();
+            copies.peek().is_some() && copies.all(|row| row.enabled != 0)
+        })
+        .map(|o| (o.bundle_name.clone(), o.package_id.clone()))
+        .collect()
+}
+
 pub(crate) fn external_ids_by_sha1(
     archives: &[BundleArchive],
 ) -> std::collections::HashMap<String, String> {
@@ -470,6 +538,7 @@ pub async fn heal_bundle_activity(
 ) -> ContentResult<()> {
     clear_reconciler_disables(cluster_id, archives, ctx).await?;
     adopt_external_ids(cluster_id, archives, ctx).await?;
+    clear_stale_disables(cluster_id, ctx).await?;
 
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     if tracked.iter().all(|row| row.enabled != 0) {
@@ -943,6 +1012,11 @@ pub async fn on_user_remove_artifact(
     hash: &str,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?
+        && let Some(package_id) = tracked.package_id
+    {
+        clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
+    }
     handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await
 }
 
@@ -1326,5 +1400,131 @@ mod tests {
         );
         assert_eq!(find_override(&rows, "Bundle B", "pkg-1"), None);
         assert_eq!(find_override(&rows, "Bundle A", "pkg-3"), None);
+    }
+
+    fn tracked(
+        bundle: &str,
+        pid: &str,
+        hash: &str,
+        enabled: bool,
+    ) -> oneclient_db::models::BundleTrackedArtifactRow {
+        oneclient_db::models::BundleTrackedArtifactRow {
+            cluster_id: 1,
+            hash: hash.to_string(),
+            cluster_file_name: format!("{pid}.jar"),
+            enabled: i64::from(enabled),
+            bundle_name: Some(bundle.to_string()),
+            bundle_version_id: Some("v1".to_string()),
+            package_id: Some(pid.to_string()),
+            installed_at: None,
+        }
+    }
+
+    #[test]
+    fn a_disable_on_a_mod_still_held_from_a_declined_bundle_survives() {
+        let declined = std::collections::HashSet::from(["SkyBlock"]);
+        let held =
+            std::collections::HashSet::from([("SkyBlock".to_string(), "skyhanni".to_string())]);
+
+        assert!(survives_decline(
+            &row("SkyBlock", "skyhanni", OverrideType::Disabled),
+            &declined,
+            &held
+        ));
+    }
+
+    #[test]
+    fn a_removal_filed_by_declining_a_bundle_is_still_dropped() {
+        let declined = std::collections::HashSet::from(["SkyBlock"]);
+        let held =
+            std::collections::HashSet::from([("SkyBlock".to_string(), "skyblocker".to_string())]);
+
+        assert!(
+            !survives_decline(
+                &row("SkyBlock", "skyblocker", OverrideType::Removed),
+                &declined,
+                &held
+            ),
+            "a hand-installed mod the declined bundle also lists must keep updating"
+        );
+    }
+
+    #[test]
+    fn a_disable_on_a_declined_bundle_mod_that_is_not_installed_is_dropped() {
+        let declined = std::collections::HashSet::from(["SkyBlock"]);
+
+        assert!(!survives_decline(
+            &row("SkyBlock", "skyhanni", OverrideType::Disabled),
+            &declined,
+            &std::collections::HashSet::new()
+        ));
+    }
+
+    #[test]
+    fn overrides_of_a_taken_bundle_are_untouched() {
+        let declined = std::collections::HashSet::from(["SkyBlock"]);
+        let none = std::collections::HashSet::new();
+
+        assert!(survives_decline(
+            &row("HUD", "modmenu", OverrideType::Disabled),
+            &declined,
+            &none
+        ));
+        assert!(survives_decline(
+            &row("HUD", "modmenu", OverrideType::Removed),
+            &declined,
+            &none
+        ));
+    }
+
+    #[test]
+    fn a_disable_left_on_a_mod_that_is_switched_on_is_stale() {
+        let stale = stale_disables(
+            &[tracked("SkyBlock", "skyhanni", "a", true)],
+            &[row("SkyBlock", "skyhanni", OverrideType::Disabled)],
+        );
+
+        assert_eq!(stale, [("SkyBlock".to_string(), "skyhanni".to_string())]);
+    }
+
+    #[test]
+    fn a_disable_on_a_mod_that_is_switched_off_is_kept() {
+        assert!(
+            stale_disables(
+                &[tracked("SkyBlock", "skyhanni", "a", false)],
+                &[row("SkyBlock", "skyhanni", OverrideType::Disabled)],
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_disable_is_kept_while_any_copy_of_the_package_is_switched_off() {
+        assert!(
+            stale_disables(
+                &[
+                    tracked("SkyBlock", "skyhanni", "a", true),
+                    tracked("SkyBlock", "skyhanni", "b", false),
+                ],
+                &[row("SkyBlock", "skyhanni", OverrideType::Disabled)],
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn only_disables_on_held_content_under_the_same_bundle_are_stale() {
+        assert!(
+            stale_disables(
+                &[tracked("HUD", "skyhanni", "a", true)],
+                &[
+                    row("SkyBlock", "skyhanni", OverrideType::Disabled),
+                    row("HUD", "skyhanni", OverrideType::Removed),
+                    row("HUD", "skyhanni", OverrideType::Enabled),
+                    row("HUD", "unheld", OverrideType::Disabled),
+                ],
+            )
+            .is_empty()
+        );
     }
 }

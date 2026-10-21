@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT\n\t\t\tca.hash AS \"hash!: String\",\n\t\t\tca.cluster_file_name AS \"cluster_file_name!: String\",\n\t\t\tca.enabled AS \"enabled!: i64\",\n\t\t\tca.seen_status AS \"seen_status!: i64\",\n\t\t\ta.content_type AS \"content_type!: i64\",\n\t\t\ta.file_name AS \"file_name!: String\",\n\t\t\tpr.provider AS \"provider?: i64\",\n\t\t\tpr.project_id AS \"project_id?: String\",\n\t\t\tpr.version_id AS \"version_id?: String\",\n\t\t\tpr.display_name AS \"display_name?: String\",\n\t\t\tpr.display_version AS \"display_version?: String\",\n\t\t\tpr.published_at AS \"published_at?: String\"\n\t\tFROM cluster_artifacts ca\n\t\tJOIN artifacts a ON a.hash = ca.hash\n\t\tLEFT JOIN provider_releases pr ON pr.rowid = (\n\t\t\tSELECT rowid\n\t\t\tFROM provider_releases\n\t\t\tWHERE hash = ca.hash\n\t\t\tORDER BY published_at DESC, provider, project_id, version_id\n\t\t\tLIMIT 1\n\t\t)\n\t\tWHERE ca.cluster_id = ?\n\t\t",
+  "query": "\n\t\tSELECT\n\t\t\tca.hash AS \"hash!: String\",\n\t\t\tca.cluster_file_name AS \"cluster_file_name!: String\",\n\t\t\tca.enabled AS \"enabled!: i64\",\n\t\t\tca.seen_status AS \"seen_status!: i64\",\n\t\t\ta.content_type AS \"content_type!: i64\",\n\t\t\ta.file_name AS \"file_name!: String\",\n\t\t\ta.size_bytes AS \"size_bytes?: i64\",\n\t\t\tpr.provider AS \"provider?: i64\",\n\t\t\tpr.project_id AS \"project_id?: String\",\n\t\t\tpr.version_id AS \"version_id?: String\",\n\t\t\tpr.display_name AS \"display_name?: String\",\n\t\t\tpr.display_version AS \"display_version?: String\",\n\t\t\tpr.published_at AS \"published_at?: String\"\n\t\tFROM cluster_artifacts ca\n\t\tJOIN artifacts a ON a.hash = ca.hash\n\t\tLEFT JOIN provider_releases pr ON pr.rowid = (\n\t\t\tSELECT rowid\n\t\t\tFROM provider_releases\n\t\t\tWHERE hash = ca.hash\n\t\t\tORDER BY published_at DESC, provider, project_id, version_id\n\t\t\tLIMIT 1\n\t\t)\n\t\tWHERE ca.cluster_id = ?\n\t\t",
   "describe": {
     "columns": [
       {
@@ -70,8 +70,19 @@
         }
       },
       {
-        "name": "provider?: i64",
+        "name": "size_bytes?: i64",
         "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "artifacts",
+            "name": "size_bytes"
+          }
+        }
+      },
+      {
+        "name": "provider?: i64",
+        "ordinal": 7,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -82,7 +93,7 @@
       },
       {
         "name": "project_id?: String",
-        "ordinal": 7,
+        "ordinal": 8,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -93,7 +104,7 @@
       },
       {
         "name": "version_id?: String",
-        "ordinal": 8,
+        "ordinal": 9,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -104,7 +115,7 @@
       },
       {
         "name": "display_name?: String",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -115,7 +126,7 @@
       },
       {
         "name": "display_version?: String",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -126,7 +137,7 @@
       },
       {
         "name": "published_at?: String",
-        "ordinal": 11,
+        "ordinal": 12,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -151,8 +162,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "d1fc4c93f507d459e590cda5b5830a1e26e3047139db08a9f6b90c84185402a6"
+  "hash": "e2d15ed416fe6dd30389a881aa219cb3c9ce6f9268e117ad3eaeddb4af779c5a"
 }

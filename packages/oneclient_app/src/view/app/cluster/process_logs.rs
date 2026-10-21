@@ -30,6 +30,7 @@ impl Component for ProcessLogs {
         let search = use_state(String::new);
         let level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);
+        let search_id = use_a11y();
 
         use_mclogs_feedback(upload);
 
@@ -47,7 +48,7 @@ impl Component for ProcessLogs {
 
             LogViewer::new("Game output", visible)
                 .streaming(true)
-                .header(viewer_header(search, level, confirm, has_log))
+                .header(viewer_header(search, level, confirm, has_log, search_id))
                 .into_element()
         } else {
             not_running()

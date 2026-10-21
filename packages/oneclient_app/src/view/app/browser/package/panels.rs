@@ -235,7 +235,7 @@ fn version_row(
     enable: Option<ClusterAction>,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
-    let mut chips: Vec<String> = v.loaders.iter().map(|l| l.to_string()).collect();
+    let mut chips: Vec<String> = v.loaders.iter().map(|l| l.real_name()).collect();
     chips.extend(v.game_versions.iter().cloned());
     let stats = {
         let mut parts = vec![format!("{} downloads", abbreviate_number(v.downloads))];

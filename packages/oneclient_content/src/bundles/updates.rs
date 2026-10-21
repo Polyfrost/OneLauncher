@@ -307,7 +307,7 @@ async fn check_bundle_updates_inner(
         } else {
             let user_disabled = matches!(
                 overrides_map.get(&(bundle_name.clone(), pkg_id.clone())),
-                Some(OverrideType::Disabled)
+                Some(OverrideType::Disabled | OverrideType::Removed)
             );
             let still_shipped = shipped_keys_by_bundle
                 .get(bundle_name)

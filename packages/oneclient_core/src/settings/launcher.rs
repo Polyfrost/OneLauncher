@@ -45,6 +45,8 @@ pub struct ViewState {
     pub layout: ViewLayout,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sort: Option<String>,
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub filters: BTreeMap<String, String>,
 }
 
 pub const CURRENT_SETTINGS_VERSION: u32 = 2;

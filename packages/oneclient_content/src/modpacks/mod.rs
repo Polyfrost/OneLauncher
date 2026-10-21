@@ -156,12 +156,12 @@ fn file_name_of(path: &str) -> String {
     path.rsplit('/').next().unwrap_or(path).to_lowercase()
 }
 
-fn is_safe_relative_path(path: &str) -> bool {
+pub(crate) fn is_safe_relative_path(path: &str) -> bool {
     if path.is_empty() || path.starts_with('/') || path.starts_with('\\') || path.contains(':') {
         return false;
     }
     path.split(['/', '\\'])
-        .all(|segment| !segment.is_empty() && segment != "." && segment != "..")
+        .all(|segment| !segment.is_empty() && !segment.ends_with(['.', ' ']))
 }
 
 fn tracked_folder(folder: &str) -> Option<ContentType> {
@@ -196,6 +196,12 @@ mod tests {
         assert!(!is_safe_relative_path("C:/Windows/evil.dll"));
         assert!(!is_safe_relative_path("mods//evil.jar"));
         assert!(!is_safe_relative_path(""));
+        assert!(!is_safe_relative_path("./mods/a.jar"));
+        assert!(!is_safe_relative_path(".. /evil.jar"));
+        assert!(!is_safe_relative_path(".../evil.jar"));
+        assert!(!is_safe_relative_path("mods/evil.jar."));
+        assert!(!is_safe_relative_path("mods/evil.jar "));
+        assert!(is_safe_relative_path(".minecraft/options.txt"));
     }
 
     #[test]

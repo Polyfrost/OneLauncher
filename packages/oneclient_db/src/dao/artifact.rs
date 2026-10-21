@@ -369,6 +369,7 @@ pub async fn list_cluster_artifacts_detailed(
 			ca.seen_status AS "seen_status!: i64",
 			a.content_type AS "content_type!: i64",
 			a.file_name AS "file_name!: String",
+			a.size_bytes AS "size_bytes?: i64",
 			pr.provider AS "provider?: i64",
 			pr.project_id AS "project_id?: String",
 			pr.version_id AS "version_id?: String",

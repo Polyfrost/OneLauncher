@@ -1,13 +1,19 @@
 use oneclient_cluster::naming::validate_instance_name;
 
 use super::data::Picks;
-use super::model::{ImportMode, ImportSource, ModpackOrigin, Step, TypeChoice, Wizard};
+use super::model::{
+    FolderChoice, ImportMode, ImportSource, ModpackOrigin, Step, TypeChoice, Wizard,
+};
 
 pub fn heading(picks: &Picks) -> (&'static str, String) {
     match picks.step {
         Step::Type => (
             "Choose a type",
             "Four ways to start. Packages can be added to any of them later.".to_string(),
+        ),
+        Step::Folder => (
+            "Choose a game folder",
+            "Where this instance keeps its worlds, settings and packs.".to_string(),
         ),
         Step::Loader => (
             "Choose a mod loader",
@@ -70,7 +76,7 @@ pub fn footer_note(picks: &Picks) -> String {
     match picks.step {
         Step::Type => match picks.choice {
             TypeChoice::OneClient => {
-                "Shares its game folder, worlds and packs with your other OneClient instances."
+                "Shares its game folder with your other OneClient instances unless you give it its own."
                     .to_string()
             }
             TypeChoice::Scratch => "Keeps its own game folder, worlds and packs.".to_string(),
@@ -80,6 +86,15 @@ pub fn footer_note(picks: &Picks) -> String {
             }
             TypeChoice::Import => {
                 "Brings in an instance from a OneClient export, or from Prism Launcher, MultiMC, PolyMC or the Modrinth App."
+                    .to_string()
+            }
+        },
+        Step::Folder => match picks.folder {
+            FolderChoice::Shared => {
+                "Only one instance using the shared folder can run at a time.".to_string()
+            }
+            FolderChoice::Dedicated => {
+                "Can run alongside your other instances. Switch this later in the instance settings."
                     .to_string()
             }
         },
@@ -150,6 +165,10 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
             TypeChoice::Modpack => "Modpack".to_string(),
             TypeChoice::Import => "Import".to_string(),
         },
+        Step::Folder => match picks.folder {
+            FolderChoice::Shared => "Shared".to_string(),
+            FolderChoice::Dedicated => "Dedicated".to_string(),
+        },
         Step::Loader => picks.loader_label(),
         Step::Version => picks
             .versions
@@ -197,7 +216,7 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
 
 pub fn is_ready(picks: &Picks) -> bool {
     match picks.step {
-        Step::Type | Step::Bundles | Step::Modpack => true,
+        Step::Type | Step::Folder | Step::Bundles | Step::Modpack => true,
         Step::Loader => picks.loader.chosen.is_some(),
         Step::Version => {
             picks.versions.chosen.is_some()

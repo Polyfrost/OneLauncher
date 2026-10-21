@@ -510,6 +510,29 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unsafe_override_paths_are_dropped() {
+        let root = polyio::testing::ScratchDir::new("unsafe-paths");
+        let zip = root.join("pack.mrpack");
+        write_bundle(
+            &zip,
+            &[
+                ("overrides/mods/ok.jar", b"ok"),
+                ("overrides/mods/..\\..\\evil.jar", b"x"),
+                ("overrides/mods/C:\\evil.jar", b"x"),
+                ("overrides/\\Windows\\evil.dll", b"x"),
+                ("overrides/C:/evil.dll", b"x"),
+                ("overrides/../evil.jar", b"x"),
+                ("overrides/config/", b""),
+            ],
+        )
+        .await;
+
+        let layers = OverrideLayers::open(&zip, &["overrides/"]).await.unwrap();
+        let rels: Vec<&str> = layers.entries().iter().map(|(rel, _)| rel.as_str()).collect();
+        assert_eq!(rels, vec!["mods/ok.jar"]);
+    }
+
+    #[tokio::test]
     async fn entries_the_filter_rejects_are_left_alone() {
         let root = polyio::testing::ScratchDir::new("keep-filter");
         let zip = root.join("pack.mrpack");

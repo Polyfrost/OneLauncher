@@ -4,6 +4,7 @@ mod asset_image;
 mod avatar;
 mod blocked_downloads_popup;
 mod bundle_choices_popup;
+mod bundled_install_warning;
 mod button;
 mod charts;
 mod checkbox;
@@ -65,6 +66,7 @@ pub use asset_image::AssetImage;
 pub use avatar::Avatar;
 pub use blocked_downloads_popup::BlockedDownloadsPopup;
 pub use bundle_choices_popup::BundleChoicesPopup;
+pub use bundled_install_warning::{BundledInstallWarning, PendingBundledInstall};
 pub use button::{Button, ButtonSize, ButtonVariant, copy_button, link_button, open_folder_button};
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
 pub use checkbox::checkbox_labeled;
@@ -101,9 +103,9 @@ pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
-    CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, disable_warning_body,
+    CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action,
     grid_card, icon_box, kebab_button, meta_size, meta_text, on_secondary, package_icon, pill,
-    remote_icon, set_enabled_action, toggle_action,
+    remote_icon, run_guarded, set_enabled_action, toggle_action,
 };
 pub use package_row::{
     CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,
@@ -118,7 +120,7 @@ pub use screenshot_viewer::{ScreenshotViewer, screenshot_context_menu};
 pub(crate) use scrollview::corrected_scroll;
 pub use scrollview::{LazySection, ScrollArea, ScrollAreaCtx};
 pub use segmented_control::{Segment, SegmentedControl};
-pub use spinner::centered_spinner;
+pub use spinner::{Spinner, centered_spinner};
 pub use splash_curtain::SplashCurtain;
 pub use status_bar::StatusBar;
 pub use tab_bar::{TabBar, TabItem};

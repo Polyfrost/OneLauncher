@@ -27,6 +27,8 @@ pub struct NotificationAction {
 pub enum NotificationActionKind {
     /// A list so a batch sync stays a single "View changes" action not one button per cluster
     OpenClusterUpdate(Vec<ClusterUpdateSummary>),
+    /// Routed through the link confirm popup rather than opened straight away
+    OpenUrl(String),
 }
 
 /// Carries core updates whole not a display projection the modal's Update button
@@ -614,15 +616,26 @@ impl NotificationState {
 
         match event {
             Event::Notification(Notification::Message(message)) => {
-                let entry_id = self.push_inbox(
+                let actions = message
+                    .link
+                    .map(|url| NotificationAction {
+                        label: "Open link".to_string(),
+                        kind: NotificationActionKind::OpenUrl(url),
+                    })
+                    .into_iter()
+                    .collect();
+                self.push_custom(
                     inbox,
-                    message.title,
-                    message.body,
-                    message.level,
-                    None,
-                    false,
+                    NotificationSpec {
+                        title: message.title,
+                        body: message.body,
+                        level: message.level,
+                        icon: None,
+                        progress: None,
+                        actions,
+                        toast_only: false,
+                    },
                 );
-                self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
             }
 
             Event::Progress(ProgressEvent::Update { id, .. })
@@ -637,8 +650,13 @@ impl NotificationState {
             }) => {
                 self.handle_progress(inbox, id, label, current, total);
             }
-            Event::Progress(ProgressEvent::Complete { id, title, body }) => {
-                self.handle_progress_complete(inbox, id, title, body);
+            Event::Progress(ProgressEvent::Complete {
+                id,
+                title,
+                body,
+                level,
+            }) => {
+                self.handle_progress_complete(inbox, id, title, body, level);
             }
             Event::Progress(ProgressEvent::Grouped(event)) => {
                 self.handle_grouped_progress(inbox, event);
@@ -915,14 +933,18 @@ impl NotificationState {
         id: Uuid,
         title: String,
         body: String,
+        level: Level,
     ) {
         if let Some(entry_id) = self.progress_entries.remove(&id) {
             self.update_inbox_entry(inbox, entry_id, title, body, None, false);
+            if let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) {
+                entry.level = level;
+            }
             // Progress ticks leave a hovered card read but its outcome is news
             self.mark_unread(inbox, entry_id);
             self.ensure_progress_toast(entry_id);
         } else {
-            let entry_id = self.push_inbox(inbox, title, body, Level::Info, None, false);
+            let entry_id = self.push_inbox(inbox, title, body, level, None, false);
             self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
         }
     }
@@ -1166,6 +1188,46 @@ fn progress_body(label: &str, current: u64, total: u64) -> String {
 }
 
 #[cfg(test)]
+mod message_link_tests {
+    use super::*;
+
+    fn message(link: Option<&str>) -> Event {
+        Event::Notification(Notification::Message(oneclient_events::Message {
+            title: "Update available".into(),
+            body: String::new(),
+            level: Level::Info,
+            link: link.map(Into::into),
+        }))
+    }
+
+    #[test]
+    fn a_link_becomes_a_single_open_link_action() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        state.dispatch(&mut inbox, message(Some("https://polyfrost.org")));
+
+        let kinds: Vec<_> = inbox[0].actions.iter().map(|a| a.kind.clone()).collect();
+        assert_eq!(
+            kinds,
+            vec![NotificationActionKind::OpenUrl(
+                "https://polyfrost.org".into()
+            )]
+        );
+    }
+
+    #[test]
+    fn no_link_keeps_the_plain_message_toast() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        state.dispatch(&mut inbox, message(None));
+
+        assert!(inbox[0].actions.is_empty());
+    }
+}
+
+#[cfg(test)]
 mod package_update_tests {
     use super::*;
     use oneclient_common::domain::ProviderId;
@@ -1366,12 +1428,31 @@ mod package_update_tests {
             "progress ticks must not undo the hover"
         );
 
-        state.handle_progress_complete(&mut inbox, id, "Done".into(), String::new());
+        state.handle_progress_complete(&mut inbox, id, "Done".into(), String::new(), Level::Info);
         assert_eq!(
             NotificationState::unread_count(&inbox),
             1,
             "the finished result is new again"
         );
+    }
+
+    #[test]
+    fn a_failed_task_finishes_as_an_error() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = Uuid::new_v4();
+
+        state.handle_progress(&mut inbox, id, "Syncing".into(), 1, 4);
+        state.handle_progress_complete(
+            &mut inbox,
+            id,
+            "Failed".into(),
+            String::new(),
+            Level::Error,
+        );
+
+        assert_eq!(inbox.len(), 1, "the progress card turns into the result");
+        assert_eq!(inbox[0].level, Level::Error);
     }
 
     #[test]

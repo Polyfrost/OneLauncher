@@ -278,6 +278,7 @@ impl PackageStore {
                 content_type: ContentType::from_repr(row.content_type as u8)
                     .unwrap_or(ContentType::Mod),
                 file_name: row.file_name,
+                size_bytes: row.size_bytes.map(|s| s as u64),
                 project_id: row.project_id,
                 version_id: row.version_id,
                 display_name: row.display_name,

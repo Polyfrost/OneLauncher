@@ -91,6 +91,12 @@ pub enum ModpackOrigin {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
+pub enum FolderChoice {
+    Shared,
+    Dedicated,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum LoaderChoice {
     Fabric,
     Forge,
@@ -167,6 +173,7 @@ impl LoaderChoice {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Step {
     Type,
+    Folder,
     Loader,
     Version,
     Bundles,
@@ -182,6 +189,7 @@ impl Step {
     pub fn label(self) -> &'static str {
         match self {
             Self::Type => "Type",
+            Self::Folder => "Folder",
             Self::Loader => "Loader",
             Self::Version => "Version",
             Self::Bundles => "Bundles",
@@ -195,7 +203,13 @@ impl Step {
     }
 }
 
-const ONECLIENT_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Bundles, Step::Customize];
+const ONECLIENT_STEPS: [Step; 5] = [
+    Step::Type,
+    Step::Folder,
+    Step::Version,
+    Step::Bundles,
+    Step::Customize,
+];
 const SCRATCH_STEPS: [Step; 4] = [Step::Type, Step::Version, Step::Loader, Step::Customize];
 const MODPACK_STEPS: [Step; 2] = [Step::Type, Step::Modpack];
 const IMPORT_FILE_STEPS: [Step; 2] = [Step::Type, Step::ImportSource];
@@ -287,5 +301,6 @@ pub struct Wizard {
     pub import_extra: State<Vec<ExternalDetection>>,
     pub import_mode: State<ImportMode>,
     pub import_decisions: State<HashMap<DecisionKey, ModDecision>>,
+    pub folder: State<FolderChoice>,
     pub details: DetailsState,
 }

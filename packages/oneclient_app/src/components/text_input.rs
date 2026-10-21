@@ -125,6 +125,11 @@ impl TextInput {
         self
     }
 
+    pub fn a11y_id(mut self, a11y_id: impl Into<AccessibilityId>) -> Self {
+        self.input = self.input.a11y_id(a11y_id);
+        self
+    }
+
     pub fn leading(mut self, leading: impl Into<Element>) -> Self {
         self.input = self.input.leading(leading);
         self

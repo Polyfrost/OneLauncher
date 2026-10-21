@@ -5,7 +5,9 @@ use oneclient_content::packages::types::DependencyKind;
 use oneclient_content::packages::{ContentType, ProviderId};
 use oneclient_core::clusters::ModpackSource;
 
-use crate::components::{ScrollArea, use_shared_delete};
+use crate::components::{
+    BundledInstallWarning, PendingBundledInstall, ScrollArea, use_shared_delete,
+};
 use crate::hooks::use_cluster;
 use crate::hooks::{
     ALL_VERSIONS, VERSIONS_PAGE_SIZE, bundle_overrides_map, bundles_with_status_items,
@@ -42,18 +44,39 @@ struct Installer {
     provider: ProviderId,
     world_prompt: Option<State<Option<String>>>,
     modpack: bool,
+    installed: Option<Installed>,
+    project_name: String,
+    bundled_warning: State<Option<PendingBundledInstall>>,
     modpack_prompt: Option<State<bool>>,
 }
 
 impl Installer {
-    fn install_latest(&self, project_id: String, version_id: String) {
+    fn install_latest(&self, project_id: String, version_id: String, version_label: String) {
         match self.modpack_prompt {
             Some(mut prompt) => prompt.set(true),
-            None => self.install(project_id, version_id),
+            None => self.install(project_id, version_id, version_label),
         }
     }
 
-    fn install(&self, project_id: String, version_id: String) {
+    fn install(&self, project_id: String, version_id: String, version_label: String) {
+        if let Some(installed) = self
+            .installed
+            .as_ref()
+            .filter(|installed| installed.conflicts_with_bundle(&version_id))
+        {
+            let mut warning = self.bundled_warning;
+            warning.set(Some(PendingBundledInstall {
+                cluster_id: self.cluster_id,
+                provider: self.provider,
+                project_id,
+                version_id,
+                project_name: self.project_name.clone(),
+                version_label,
+                bundled_version: installed.bundled_version_label(),
+            }));
+            return;
+        }
+
         if self.modpack {
             self.dispatch.install_modpack(ModpackSource::Provider {
                 provider: self.provider,
@@ -158,16 +181,9 @@ impl Component for BrowserPackage {
         let dispatch = use_dispatch();
         let confirm = use_link_confirm();
         let world_prompt = use_state(|| None::<String>);
+        let bundled_warning = use_state(|| None::<PendingBundledInstall>);
         let modpack_prompt = use_state(|| false);
         let is_datapack = content_type == ContentType::DataPack;
-        let mut installer = Installer {
-            dispatch: dispatch.clone(),
-            cluster_id,
-            provider,
-            world_prompt: is_datapack.then_some(world_prompt),
-            modpack: content_type == ContentType::Modpack,
-            modpack_prompt: None,
-        };
 
         let cluster = use_cluster(cluster_id);
         let compat = *compatible_only.read();
@@ -227,6 +243,18 @@ impl Component for BrowserPackage {
 
         let project = project_detail(&project_query);
 
+        let mut installer = Installer {
+            dispatch: dispatch.clone(),
+            cluster_id,
+            provider,
+            world_prompt: is_datapack.then_some(world_prompt),
+            modpack: content_type == ContentType::Modpack,
+            installed: installed.clone(),
+            project_name: project.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
+            bundled_warning,
+            modpack_prompt: None,
+        };
+
         let remove_id = project.as_ref().map(|p| p.id.clone());
         let remove_dispatch = dispatch.clone();
         let (on_remove, remove_dialog) = use_shared_delete(cluster_id, move |(name, hash)| {
@@ -267,8 +295,7 @@ impl Component for BrowserPackage {
                 .map(|(id, meta)| (id, meta.name))
                 .collect();
         let latest_source = if is_modpack { &all_versions } else { &versions };
-        let latest_version =
-            preferred_version(latest_source, content_type).map(|v| v.version_id.clone());
+        let latest_version = preferred_version(latest_source, content_type).cloned();
         let choices = minecraft_choices(&all_versions);
         installer.modpack_prompt = (choices.len() > 1).then_some(modpack_prompt);
 
@@ -343,6 +370,9 @@ impl Component for BrowserPackage {
                 project_id: project_id.clone(),
                 pending: world_prompt,
             }))
+            .child(BundledInstallWarning {
+                pending: bundled_warning,
+            })
             .maybe_child(modpack_prompt.read().then(|| ModpackVersionPrompt {
                 provider,
                 project_id: project_id.clone(),

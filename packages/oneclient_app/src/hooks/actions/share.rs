@@ -41,7 +41,7 @@ impl Drop for ExportSlot {
 }
 
 #[must_use]
-pub(super) fn exporting(cluster_id: ClusterId) -> bool {
+pub fn exporting(cluster_id: ClusterId) -> bool {
     EXPORTING.load(Ordering::Acquire) == cluster_id
 }
 
@@ -50,6 +50,13 @@ impl Actions {
         if super::modpacks::modpack_job_running(cluster_id) {
             self.notify("Wait for the install to finish")
                 .body("This instance is still being installed or updated. Export it once that's done.")
+                .error()
+                .send();
+            return;
+        }
+        if oneclient_core::clusters::is_resetting(cluster_id) {
+            self.notify("This instance is being reset")
+                .body("Wait for the reset to finish, then try again.")
                 .error()
                 .send();
             return;

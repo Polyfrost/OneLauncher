@@ -3,7 +3,9 @@ use std::sync::Arc;
 use freya::prelude::*;
 use oneclient_common::Patch;
 use oneclient_common::domain::GameLoader;
-use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
+use oneclient_core::settings::{
+    GameSettingsProfile, GraphicsBackend, PackageUpdateMode, ProfileUpdate, Resolution,
+};
 use oneclient_java::JavaRuntime;
 
 use crate::components::{
@@ -21,8 +23,11 @@ use crate::theme::colors;
 use crate::ui::centered_note;
 use crate::view::app::clusters::{
     DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts,
+    ResetInstanceModal,
 };
-use crate::view::app::settings::{section_header, settings_row, settings_row_disabled};
+use crate::view::app::settings::{
+    section_header, settings_row, settings_row_danger, settings_row_disabled,
+};
 use oneclient_core::clusters::{can_migrate_manually, rank_migration_sources};
 
 use super::cluster_not_found;
@@ -54,6 +59,10 @@ impl Component for ClusterSettings {
             .unwrap_or(GameLoader::Fabric);
         let versions_query = use_loader_versions(mc_version, loader);
         let runtimes_query = use_java_runtimes();
+        // The profile rows copy their value into local state when they mount, so a
+        // reset bumps this to remount them with the profile it put back
+        let mut resets = use_state(|| 0u32);
+        let generation = *resets.read();
 
         let Some(cluster) = cluster else {
             return cluster_not_found();
@@ -103,8 +112,28 @@ impl Component for ClusterSettings {
         } else {
             Vec::new()
         };
+        let graphics_backend_row: Vec<Element> =
+            if GraphicsBackend::supported_on(&cluster.mc_version) {
+                vec![
+                    GraphicsBackendRow {
+                        cluster_id,
+                        value: profile.graphics_backend,
+                        global: global.graphics_backend.unwrap_or_default(),
+                    }
+                    .into_element(),
+                ]
+            } else {
+                Vec::new()
+            };
+
         let migrate_row: Vec<Element> = if mod_loader {
             vec![MigrateFromRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
+
+        let sync_row: Vec<Element> = if cluster.uses_dedicated_dir() && !cluster.is_isolated() {
+            vec![SyncSharedRow { cluster_id }.into_element()]
         } else {
             Vec::new()
         };
@@ -136,24 +165,45 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
+                    .append_children(sync_row)
+                    .child(section_header("SHORTCUT"))
+                    .child(ShortcutRow { cluster_id }.into_element())
+                    .child(section_header("CONTENT"))
+                    .child(profile_row(
+                        generation,
+                        "BrowserUpdateModeRow",
+                        BrowserUpdateModeRow {
+                            cluster_id,
+                            value: profile.browser_update_mode,
+                            global: global.browser_update_mode.unwrap_or_default(),
+                        }
+                        .into_element(),
+                    ))
+                    .append_children(migrate_row)
                     .child(section_header("GAME"))
-                    .child(
+                    .child(profile_row(
+                        generation,
+                        "ToggleRow",
                         ToggleRow {
                             cluster_id,
                             value: profile.force_fullscreen,
                             global: global.force_fullscreen.unwrap_or(false),
                         }
                         .into_element(),
-                    )
-                    .child(
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "ResolutionRow",
                         ResolutionRow {
                             cluster_id,
                             value: profile.resolution,
                             global: global.resolution.unwrap_or_default(),
                         }
                         .into_element(),
-                    )
-                    .child(
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "MemoryRow",
                         MemoryRow {
                             cluster_id,
                             value: profile.mem_max,
@@ -162,10 +212,9 @@ impl Component for ClusterSettings {
                                 .unwrap_or_else(oneclient_common::default_mem_max),
                         }
                         .into_element(),
-                    )
+                    ))
+                    .append_children(graphics_backend_row)
                     .append_children(loader_section)
-                    .child(section_header("SHORTCUT"))
-                    .child(ShortcutRow { cluster_id }.into_element())
                     .child(section_header("SHARING"))
                     .child(
                         ExportRow {
@@ -175,7 +224,9 @@ impl Component for ClusterSettings {
                         .into_element(),
                     )
                     .child(section_header("JAVA"))
-                    .child(
+                    .child(profile_row(
+                        generation,
+                        "JavaRow",
                         JavaRow {
                             cluster_id,
                             value: profile.java_path.clone(),
@@ -183,26 +234,44 @@ impl Component for ClusterSettings {
                             runtimes,
                         }
                         .into_element(),
-                    )
-                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
-                    .child(text_row(cluster_id, TextField::GameArgs, &profile, &global))
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "JvmArgs",
+                        text_row(cluster_id, TextField::JvmArgs, &profile, &global),
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "GameArgs",
+                        text_row(cluster_id, TextField::GameArgs, &profile, &global),
+                    ))
                     .child(section_header("PROCESS"))
-                    .child(text_row(cluster_id, TextField::Pre, &profile, &global))
-                    .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
-                    .child(text_row(cluster_id, TextField::Post, &profile, &global))
-                    .child(section_header("CONTENT"))
-                    .child(
-                        BrowserUpdateModeRow {
-                            cluster_id,
-                            value: profile.browser_update_mode,
-                            global: global.browser_update_mode.unwrap_or_default(),
-                        }
-                        .into_element(),
-                    )
-                    .append_children(migrate_row)
+                    .child(profile_row(
+                        generation,
+                        "Pre",
+                        text_row(cluster_id, TextField::Pre, &profile, &global),
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "Wrapper",
+                        text_row(cluster_id, TextField::Wrapper, &profile, &global),
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "Post",
+                        text_row(cluster_id, TextField::Post, &profile, &global),
+                    ))
                     .append_children(modpack_section)
                     .child(section_header("REPAIR"))
-                    .child(VerifyFilesRow { cluster_id }.into_element()),
+                    .child(VerifyFilesRow { cluster_id }.into_element())
+                    .child(
+                        ResetInstanceRow {
+                            cluster_id,
+                            name: cluster.name.clone(),
+                            on_reset: (move |()| *resets.write() += 1).into(),
+                        }
+                        .into_element(),
+                    ),
             )
             .into_element()
     }
@@ -215,6 +284,15 @@ enum Field {
     MemMax,
     JavaPath,
     BrowserUpdateMode,
+    GraphicsBackend,
+}
+
+fn profile_row(generation: u32, slot: &'static str, row: impl IntoElement) -> Element {
+    rect()
+        .key((generation, slot))
+        .width(Size::fill())
+        .child(row)
+        .into_element()
 }
 
 fn clear_update(field: Field) -> ProfileUpdate {
@@ -225,6 +303,7 @@ fn clear_update(field: Field) -> ProfileUpdate {
         Field::MemMax => u.mem_max = Patch::Clear,
         Field::JavaPath => u.java_path = Patch::Clear,
         Field::BrowserUpdateMode => u.browser_update_mode = Patch::Clear,
+        Field::GraphicsBackend => u.graphics_backend = Patch::Clear,
     }
     u
 }
@@ -474,6 +553,102 @@ impl Component for VerifyFilesRow {
             "Verify Files",
             "Check every installed file against its official checksum and \
              re-download anything corrupt or missing. Takes a few minutes.",
+            button,
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct ResetInstanceRow {
+    cluster_id: i64,
+    name: String,
+    on_reset: EventHandler<()>,
+}
+
+impl Component for ResetInstanceRow {
+    fn render(&self) -> impl IntoElement {
+        let mut confirming = use_state(|| false);
+        let cluster_id = self.cluster_id;
+        let name = self.name.clone();
+        let mutation = use_cluster_mutation();
+        let running = mutation_is_running(&mutation);
+        let on_reset = self.on_reset.clone();
+        // The confirm modal unmounts as soon as Reset is pressed, so the wait for the reset
+        // runs in this row's scope to still report back once it has finished
+        let scope = current_scope_id();
+
+        let button = Button::new()
+            .small()
+            .danger()
+            .enabled(!running)
+            .maybe(!running, |el| el.on_press(move |_| confirming.set(true)))
+            .text("Reset");
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .child(settings_row_danger(
+                IconType::RefreshCw01,
+                "Reset Instance",
+                "Put this instance back the way it was when it was set up: its mods, settings and config files. Worlds are kept.",
+                button,
+            ))
+            .maybe_child(confirming.read().then(|| {
+                let on_reset = on_reset.clone();
+                ResetInstanceModal::new(
+                    cluster_id,
+                    name.clone(),
+                    move |()| confirming.set(false),
+                    move |()| {
+                        let on_reset = on_reset.clone();
+                        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+                        // Detached like `mutate` so leaving the page can't cut the reset short
+                        spawn_forever(async move {
+                            mutation
+                                .mutate_async(ClusterAction::ResetInstance { cluster_id })
+                                .await;
+                            let _ = done_tx.send(());
+                        });
+                        spawn_in_scope(
+                            async move {
+                                if done_rx.await.is_ok() {
+                                    on_reset.call(());
+                                }
+                            },
+                            scope,
+                        );
+                    },
+                )
+                .into_element()
+            }))
+    }
+}
+
+#[derive(PartialEq)]
+struct SyncSharedRow {
+    cluster_id: i64,
+}
+
+impl Component for SyncSharedRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+        let syncing = use_game_snapshot().is_syncing_shared(cluster_id);
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .enabled(!syncing)
+            .maybe(!syncing, |el| {
+                el.on_press(move |_| dispatch.sync_from_shared_dir(cluster_id))
+            })
+            .text(if syncing { "Syncing..." } else { "Sync" });
+
+        settings_row(
+            IconType::RefreshCcw02,
+            "Sync From Shared Folder",
+            "Copy settings, keybinds, servers, mod configs and missing worlds \
+             from the shared .minecraft into this instance.",
             button,
         )
     }
@@ -931,6 +1106,57 @@ impl Component for BrowserUpdateModeRow {
             IconType::RefreshCw01,
             "Browser Package Updates",
             "What to do when content installed from the browser has a newer version. Bundle content is not affected.",
+            override_cell(control, overridden, on_reset),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct GraphicsBackendRow {
+    cluster_id: i64,
+    value: Option<GraphicsBackend>,
+    global: GraphicsBackend,
+}
+
+impl Component for GraphicsBackendRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let overridden = self.value.is_some();
+        let resolved = self.value.unwrap_or(self.global);
+        let dispatch = use_dispatch();
+
+        let options: Vec<String> = GraphicsBackend::ALL
+            .iter()
+            .map(|backend| backend.label().to_string())
+            .collect();
+
+        let control = {
+            let dispatch = dispatch.clone();
+            Dropdown::new(resolved.label(), options)
+                .width(Size::px(220.))
+                .height(Size::px(34.))
+                .on_select(move |idx: usize| {
+                    if let Some(backend) = GraphicsBackend::ALL.get(idx).copied() {
+                        dispatch.update_cluster_profile(
+                            cluster_id,
+                            ProfileUpdate {
+                                graphics_backend: Patch::Set(backend),
+                                ..Default::default()
+                            },
+                        );
+                    }
+                })
+        };
+
+        let on_reset: EventHandler<()> = (move |()| {
+            dispatch.update_cluster_profile(cluster_id, clear_update(Field::GraphicsBackend));
+        })
+        .into();
+
+        settings_row(
+            IconType::PaintPour,
+            "Graphics Backend",
+            "Forces the renderer at launch. Default leaves it to the in-game setting.",
             override_cell(control, overridden, on_reset),
         )
     }

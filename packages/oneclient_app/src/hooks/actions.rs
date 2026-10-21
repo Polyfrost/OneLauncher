@@ -7,9 +7,11 @@ mod external_import;
 pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
+pub(crate) use modpacks::listed;
 pub use modpacks::modpack_job_running;
 mod release_migration;
 mod share;
+pub use share::exporting;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -1004,6 +1006,12 @@ impl Actions {
                 .send();
             return;
         }
+        if oneclient_core::clusters::is_resetting(cluster_id) {
+            self.notify("This instance is being reset")
+                .body("Wait for the reset to finish, then press Play again.")
+                .send();
+            return;
+        }
 
         let claimed = self
             .station
@@ -1019,7 +1027,13 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let started = Instant::now();
-            launch(&actions, cluster_id).await;
+            match super::sync_actions::sync_launch_block(cluster_id).await {
+                Some(reason) => actions
+                    .notify("Wait for the sync to finish")
+                    .body(reason)
+                    .send(),
+                None => launch(&actions, cluster_id).await,
+            }
 
             // An instant failure would hand the button back inside the same
             // click burst so hold it for the floor either way

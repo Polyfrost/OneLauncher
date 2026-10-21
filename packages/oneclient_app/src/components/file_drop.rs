@@ -687,6 +687,7 @@ fn file_row(
                 .text(file_name(path))
                 .font_size(12.5)
                 .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
                 .width(Size::flex(1.0))
                 .color(colors::fg_primary()),
         )

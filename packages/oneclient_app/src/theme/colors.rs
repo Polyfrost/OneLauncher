@@ -268,6 +268,30 @@ pub fn on_media() -> Color {
     Color::from_rgb(213, 219, 255)
 }
 
+pub fn on_art() -> Color {
+    if palette().tint == (0, 0, 0) {
+        on_media()
+    } else {
+        fg_primary()
+    }
+}
+
+pub fn on_art_secondary() -> Color {
+    if palette().tint == (0, 0, 0) {
+        on_media().with_a(190)
+    } else {
+        fg_secondary()
+    }
+}
+
+pub fn art_backdrop() -> Color {
+    if palette().tint == (0, 0, 0) {
+        Color::BLACK
+    } else {
+        page()
+    }
+}
+
 pub fn shade() -> Color {
     let palette = palette();
     if palette.tint == (0, 0, 0) {
@@ -277,12 +301,66 @@ pub fn shade() -> Color {
     }
 }
 
+const ON_LIGHT_BG: Rgb = (22, 30, 54);
+const ON_DARK_BG: Rgb = (213, 219, 255);
+const ON_DARK_BG_DISABLED: Rgb = (205, 209, 235);
+
+const MIN_LIGHT_TEXT_CONTRAST: f32 = 3.;
+
+fn luminance((r, g, b): Rgb) -> f32 {
+    let linear = |channel: u8| {
+        let value = f32::from(channel) / 255.;
+        if value <= 0.03928 {
+            value / 12.92
+        } else {
+            ((value + 0.055) / 1.055).powf(2.4)
+        }
+    };
+    0.2126 * linear(r) + 0.7152 * linear(g) + 0.0722 * linear(b)
+}
+
+fn contrast(a: Rgb, b: Rgb) -> f32 {
+    let (la, lb) = (luminance(a), luminance(b));
+    (la.max(lb) + 0.05) / (la.min(lb) + 0.05)
+}
+
+fn needs_dark_text(background: Rgb) -> bool {
+    contrast(ON_DARK_BG, background) < MIN_LIGHT_TEXT_CONTRAST
+}
+
+pub fn on_color(background: Color) -> Color {
+    let rgb = (background.r(), background.g(), background.b());
+    color(if needs_dark_text(rgb) {
+        ON_LIGHT_BG
+    } else {
+        ON_DARK_BG
+    })
+}
+
 pub fn on_brand() -> Color {
-    Color::from_rgb(213, 219, 255)
+    let brand = brand_rgb();
+    color(if needs_dark_text(brand) {
+        ON_LIGHT_BG
+    } else {
+        ON_DARK_BG
+    })
+}
+
+pub fn on_brand_strong() -> Color {
+    if needs_dark_text(brand_rgb()) {
+        color(ON_LIGHT_BG)
+    } else {
+        Color::WHITE
+    }
 }
 
 pub fn on_brand_disabled() -> Color {
-    Color::from_rgb(205, 209, 235)
+    let brand = brand_rgb();
+    if needs_dark_text(brand) {
+        color(mix(ON_LIGHT_BG, brand, 0.35))
+    } else {
+        color(ON_DARK_BG_DISABLED)
+    }
 }
 
 pub fn brand() -> Color {

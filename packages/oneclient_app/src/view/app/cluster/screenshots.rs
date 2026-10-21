@@ -357,7 +357,7 @@ fn confirm_panel(
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
                         .corner_radius(CornerRadius::new_all(14.))
-                        .background(Color::from_rgb(26, 34, 41))
+                        .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             label()

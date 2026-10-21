@@ -114,7 +114,7 @@ impl Component for Check {
                                 .color(if disabled {
                                     colors::fg_secondary()
                                 } else {
-                                    Color::WHITE
+                                    colors::on_brand_strong()
                                 }),
                         )
                     })),

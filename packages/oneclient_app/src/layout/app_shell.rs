@@ -443,6 +443,7 @@ impl Component for ParallaxArt {
             .height(Size::fill())
             .overflow(Overflow::Clip)
             .position(Position::new_absolute())
+            .background(colors::art_backdrop())
             .interactive(false)
             .on_sized(move |e: Event<SizedEventData>| {
                 let (sw, sh) = (e.area.width(), e.area.height());
@@ -496,7 +497,6 @@ fn decode_background_image(bytes: &Bytes) -> Option<SkImage> {
 
 const VIGNETTE_SPOTLIGHT_SHADER: &str = r#"
 uniform float2 iResolution;
-uniform float3 iTint;
 
 half4 main(float2 fragCoord) {
     float2 uv = fragCoord / iResolution;
@@ -525,7 +525,7 @@ half4 main(float2 fragCoord) {
     float maxDarkness = 0.8;
     float alpha = vignette * maxDarkness;
 
-    return half4(half3(iTint) * alpha, alpha);
+    return half4(0.0, 0.0, 0.0, alpha);
 }
 "#;
 
@@ -534,13 +534,6 @@ fn gradient_overlay_radial() -> impl IntoElement {
         freya::engine::prelude::RuntimeEffect::make_for_shader(VIGNETTE_SPOTLIGHT_SHADER, None)
             .expect("Failed to compile vignette shader")
     });
-
-    let page = colors::page();
-    let tint = [
-        f32::from(page.r()) / 255.,
-        f32::from(page.g()) / 255.,
-        f32::from(page.b()) / 255.,
-    ];
 
     rect()
         .width(Size::fill())
@@ -554,9 +547,7 @@ fn gradient_overlay_radial() -> impl IntoElement {
                 let h = bounds.height();
 
                 #[rustfmt::skip]
-                let uniforms: [f32; 5] = [
-                    w, h, tint[0], tint[1], tint[2],
-                ];
+                let uniforms: [f32; 2] = [w, h];
 
                 let bytes = unsafe {
                     std::slice::from_raw_parts(

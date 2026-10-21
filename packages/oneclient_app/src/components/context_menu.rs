@@ -4,9 +4,6 @@ use crate::components::{Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup};
 use crate::theme::colors;
 use crate::ui::clamp_to_window;
 
-const MENU_FG: Color = Color::from_rgb(155, 161, 166);
-const MENU_DANGER: Color = Color::from_rgb(242, 84, 90);
-
 /// Panel padding and border on both axes, which the measured list sits inside of
 const PANEL_INSET: f32 = 14.;
 
@@ -232,7 +229,11 @@ impl Component for ContextMenuRow {
         let on_select = self.on_select.clone();
         let on_close = self.on_close.clone();
 
-        let base = if self.danger { MENU_DANGER } else { MENU_FG };
+        let base = if self.danger {
+            colors::danger()
+        } else {
+            colors::fg_secondary()
+        };
         let color = if *hovered.read() {
             colors::fg_primary()
         } else {

@@ -38,6 +38,7 @@ impl Component for Navbar {
         let eased = intro.get().value();
         let slide = (1.0 - eased) * -theme::NAVBAR_HEIGHT_PX;
 
+        let over_art = matches!(use_route::<Route>(), Route::Home {});
         let measured = *navbar_width.read();
         let show_logo = measured <= 0. || measured > LOGO_HIDE_NAVBAR_W;
 
@@ -62,9 +63,9 @@ impl Component for Navbar {
                             navbar_width.set(next);
                         }
                     })
-                    .child(navbar_left(show_logo))
+                    .child(navbar_left(show_logo, over_art))
                     .child(navbar_center(!show_logo))
-                    .child(NavbarRight),
+                    .child(NavbarRight { over_art }),
             )
             .child(
                 rect()
@@ -76,7 +77,7 @@ impl Component for Navbar {
     }
 }
 
-fn navbar_left(show_logo: bool) -> impl IntoElement {
+fn navbar_left(show_logo: bool, over_art: bool) -> impl IntoElement {
     rect()
         .horizontal()
         .width(if show_logo {
@@ -92,13 +93,34 @@ fn navbar_left(show_logo: bool) -> impl IntoElement {
         .child(
             Icon::new(IconType::IconLogo)
                 .size(COMPACT_LOGO_PX)
+                .color(primary_color(over_art))
                 .into_element(),
         )
-        .maybe(show_logo, |rect| rect.child(NavbarLogo.into_element()))
+        .maybe(show_logo, |rect| {
+            rect.child(NavbarLogo { over_art }.into_element())
+        })
+}
+
+fn primary_color(over_art: bool) -> Color {
+    if over_art {
+        theme::colors::on_art()
+    } else {
+        theme::colors::fg_primary()
+    }
+}
+
+fn secondary_color(over_art: bool) -> Color {
+    if over_art {
+        theme::colors::on_art_secondary()
+    } else {
+        theme::colors::fg_secondary()
+    }
 }
 
 #[derive(PartialEq)]
-struct NavbarLogo;
+struct NavbarLogo {
+    over_art: bool,
+}
 
 impl Component for NavbarLogo {
     fn render(&self) -> impl IntoElement {
@@ -108,12 +130,13 @@ impl Component for NavbarLogo {
             .show_loader(false)
             .height(Size::px(44.))
             .width(Size::px(214.))
-            .color(theme::colors::fg_primary())
+            .color(primary_color(self.over_art))
     }
 }
 
 fn navbar_center(is_small: bool) -> impl IntoElement {
     let route = use_route::<Route>();
+    let over_art = matches!(route, Route::Home {});
     let browse_target = browse_target();
 
     rect()
@@ -130,11 +153,13 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             active: route == Route::Home {},
             target: NavTarget::Route(Route::Home {}),
             nav_label: "Home",
+            over_art,
         })
         .child(NavLink {
             active: route == Route::Clusters {},
             target: NavTarget::Route(Route::Clusters {}),
             nav_label: "Versions",
+            over_art,
         })
         .child(NavLink {
             active: matches!(
@@ -146,11 +171,13 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             ),
             target: NavTarget::Route(browse_target),
             nav_label: "Browse",
+            over_art,
         })
         .child(NavLink {
             active: false,
             target: NavTarget::External("https://store.polyfrost.org"),
             nav_label: "Cosmetics",
+            over_art,
         })
 }
 
@@ -181,6 +208,7 @@ struct NavLink {
     active: bool,
     target: NavTarget,
     nav_label: &'static str,
+    over_art: bool,
 }
 
 impl Component for NavLink {
@@ -193,11 +221,12 @@ impl Component for NavLink {
         let active = self.active;
         let target = self.target.clone();
         let nav_label = self.nav_label;
+        let over_art = self.over_art;
 
         let color = if active || hovering() || focused().is_focused() {
-            theme::colors::fg_primary()
+            primary_color(over_art)
         } else {
-            theme::colors::fg_secondary()
+            secondary_color(over_art)
         };
 
         let background = if active {
@@ -255,10 +284,13 @@ impl Component for NavLink {
 }
 
 #[derive(PartialEq)]
-struct NavbarRight;
+struct NavbarRight {
+    over_art: bool,
+}
 
 impl Component for NavbarRight {
     fn render(&self) -> impl IntoElement {
+        let foreground = self.over_art.then(theme::colors::on_art);
         let current_account = use_current_account();
         let dispatch = use_dispatch();
         let unread = use_notifications_snapshot().unread_count();
@@ -287,26 +319,26 @@ impl Component for NavbarRight {
             .cross_align(Alignment::Center)
             .spacing(8.)
             .child(
-                super::navbar_button()
+                super::navbar_button(foreground)
                     .tooltip("Stats")
                     .child(Icon::new(IconType::LineChartUp01).size(20.))
                     .on_press(open_stats),
             )
             .child(
-                super::navbar_button()
+                super::navbar_button(foreground)
                     .tooltip("Notifications")
                     .child(notification_bell(unread))
                     .on_press(open_notifications),
             )
             .child(
-                super::navbar_button()
+                super::navbar_button(foreground)
                     .overflow(Overflow::None)
                     .tooltip("Control Center")
                     .padding(0.0)
                     .on_press(open_control_center)
                     .child(avatar_with_gear(account_uuid)),
             )
-            .child(super::window_controls())
+            .child(super::window_controls_with(foreground))
     }
 }
 

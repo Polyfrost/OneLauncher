@@ -114,7 +114,7 @@ impl Component for Switch {
                 label()
                     .text(text)
                     .font_size(12.)
-                    .color(Color::from_rgb(167, 176, 190)),
+                    .color(colors::fg_secondary()),
             )
             .child(
                 rect()
@@ -137,6 +137,8 @@ impl Component for Switch {
                             .corner_radius(CornerRadius::new_all(8.))
                             .background(if disabled {
                                 colors::fg_secondary()
+                            } else if on {
+                                colors::on_brand_strong()
                             } else {
                                 Color::WHITE
                             })

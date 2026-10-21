@@ -4,7 +4,7 @@ use freya::prelude::*;
 use oneclient_core::settings::{AppTheme, LauncherSettings};
 
 use super::settings_page;
-use crate::components::{Icon, IconType, toggle};
+use crate::components::{ColorPicker, Icon, IconType, toggle};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -253,34 +253,11 @@ fn accent_color_row(accent: State<Option<String>>, default: Option<String>) -> i
         "Accent color",
         "The main color used across the launcher. This doesn't edit your theme.",
         resettable(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(8.)
-                .child(
-                    rect()
-                        .horizontal()
-                        .cross_align(Alignment::Center)
-                        .spacing(12.)
-                        .padding(Gaps::new_symmetric(8., 16.))
-                        .corner_radius(CornerRadius::new_all(8.))
-                        .background(shown)
-                        .child(Icon::new(IconType::Colors).size(18.))
-                        .child(
-                            label()
-                                .text(colors::format_hex(shown))
-                                .font_size(12.)
-                                .color(colors::on_brand()),
-                        ),
-                )
-                .child(
-                    ColorPicker::new(move |picked: Color| {
-                        let mut accent = accent;
-                        accent.set(Some(colors::format_hex(picked)));
-                    })
-                    .value(shown),
-                )
-                .into_element(),
+            ColorPicker::new(shown, move |picked: Color| {
+                let mut accent = accent;
+                accent.set(Some(colors::format_hex(picked)));
+            })
+            .into_element(),
             accent,
             default,
         ),

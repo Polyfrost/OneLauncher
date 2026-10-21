@@ -278,7 +278,7 @@ fn chevron_btn(
             .child(
                 Icon::new(icon)
                     .size(26.)
-                    .color(colors::fg_secondary().with_a(90)),
+                    .color(colors::on_media().with_a(90)),
             )
             .into_element();
     }
@@ -286,7 +286,7 @@ fn chevron_btn(
     base.background(Color::from_argb(140, 0, 0, 0))
         .cursor(CursorIcon::Pointer)
         .on_press(on_press)
-        .child(Icon::new(icon).size(26.).color(colors::fg_primary()))
+        .child(Icon::new(icon).size(26.).color(colors::on_media()))
         .into_element()
 }
 

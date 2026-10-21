@@ -278,7 +278,6 @@ enum Field {
     GraphicsBackend,
 }
 
-/// `slot` keeps the siblings' keys distinct, `generation` changes them all on a reset
 fn profile_row(generation: u32, slot: &'static str, row: impl IntoElement) -> Element {
     rect()
         .key((generation, slot))

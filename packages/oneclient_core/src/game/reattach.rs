@@ -160,9 +160,15 @@ async fn readopt(
         .try_lock()
         .ok()
         .and_then(|metadata| crate::game::natives::cached_version_name(&metadata, &cluster));
-    match version_name.as_deref().and_then(crate::game::natives::natives_dir) {
+    match version_name
+        .as_deref()
+        .and_then(crate::game::natives::natives_dir)
+    {
         Some(dir) => state.games.set_natives(cluster_id, dir),
-        None => tracing::debug!(cluster_id, "could not resolve the re-adopted game's natives"),
+        None => tracing::debug!(
+            cluster_id,
+            "could not resolve the re-adopted game's natives"
+        ),
     }
     state
         .services

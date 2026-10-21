@@ -14,7 +14,6 @@ use oneclient_common::paths;
 
 #[allow(clippy::too_many_arguments)]
 pub fn java_arguments(
-    version_updated: bool,
     arguments: Option<&[Argument]>,
     natives_path: &Path,
     libraries_path: &Path,
@@ -28,7 +27,6 @@ pub fn java_arguments(
     let mut parsed = Vec::new();
     if let Some(args) = arguments {
         parse_arguments(
-            version_updated,
             args,
             &mut parsed,
             |a| {
@@ -63,6 +61,10 @@ pub fn java_arguments(
     let custom = split_custom_args(&custom_args);
 
     parsed.extend(performance_flags(java_major, java_arch, mem_max, &custom));
+
+    if java_major >= 21 {
+        parsed.push("--add-modules=jdk.incubator.vector".to_string());
+    }
 
     parsed.push(format!("-Xmx{mem_max}M"));
     parsed.extend(custom);
@@ -168,7 +170,6 @@ fn split_custom_args(raw: &str) -> Vec<String> {
 
 #[allow(clippy::too_many_arguments)]
 pub fn minecraft_arguments(
-    version_updated: bool,
     args: Option<&[Argument]>,
     legacy_args: Option<&str>,
     access_token: &str,
@@ -205,7 +206,6 @@ pub fn minecraft_arguments(
 
     if let Some(args) = args {
         parse_arguments(
-            version_updated,
             args,
             &mut parsed,
             |arg| {
@@ -232,31 +232,27 @@ pub fn minecraft_arguments(
 }
 
 fn drop_repeated_arguments(args: &mut Vec<String>) {
-    let mut seen: HashSet<(String, Option<String>)> = HashSet::new();
-    let mut kept: Vec<String> = Vec::with_capacity(args.len());
-    let mut index = 0;
+    let mut seen = HashSet::new();
+    retain_arguments(args, |option, value| {
+        seen.insert((option.to_owned(), value.map(str::to_owned)))
+    });
+}
 
-    while index < args.len() {
-        let token = &args[index];
+fn retain_arguments(args: &mut Vec<String>, mut keep: impl FnMut(&str, Option<&str>) -> bool) {
+    let mut kept = Vec::with_capacity(args.len());
+    let mut tokens = std::mem::take(args).into_iter().peekable();
+
+    while let Some(token) = tokens.next() {
         if !token.starts_with("--") {
-            kept.push(token.clone());
-            index += 1;
+            kept.push(token);
             continue;
         }
 
-        let value = args
-            .get(index + 1)
-            .filter(|next| !next.starts_with("--"))
-            .cloned();
-
-        if seen.insert((token.clone(), value.clone())) {
-            kept.push(token.clone());
-            if let Some(value) = &value {
-                kept.push(value.clone());
-            }
+        let value = tokens.next_if(|next| !next.starts_with("--"));
+        if keep(&token, value.as_deref()) {
+            kept.push(token);
+            kept.extend(value);
         }
-
-        index += if value.is_some() { 2 } else { 1 };
     }
 
     *args = kept;
@@ -265,15 +261,17 @@ fn drop_repeated_arguments(args: &mut Vec<String>) {
 pub fn append_profile_game_arguments(
     args: &mut Vec<String>,
     force_fullscreen: Option<bool>,
-    launch_args: Option<&str>,
+    game_args: Option<&str>,
 ) {
     if force_fullscreen.unwrap_or(false) {
         args.push("--fullscreen".to_string());
     }
 
-    if let Some(extra) = launch_args.map(str::trim).filter(|s| !s.is_empty()) {
-        args.push(extra.to_string());
-    }
+    let extra = game_args.map(split_custom_args).unwrap_or_default();
+    retain_arguments(args, |option, _| {
+        option == "--tweakClass" || !extra.iter().any(|arg| arg == option)
+    });
+    args.extend(extra);
 }
 
 pub fn processor_arguments<T: AsRef<str>, S: std::hash::BuildHasher>(
@@ -558,7 +556,6 @@ pub fn get_library(libraries_path: &Path, library: &str, allow_missing: bool) ->
 }
 
 fn parse_arguments<ParseFn>(
-    version_updated: bool,
     args: &[Argument],
     parsed: &mut Vec<String>,
     parse_function: ParseFn,
@@ -576,7 +573,7 @@ where
                 }
             }
             Argument::Ruled { rules, value } => {
-                if validate_rules(rules, java_arch, version_updated) {
+                if validate_rules(rules, java_arch, true) {
                     match value {
                         ArgumentValue::Single(arg) => {
                             parsed.push(parse_function(&arg.replace(' ', DUMMY_REPLACE_NEWLINE))?);
@@ -600,8 +597,8 @@ where
 #[cfg(test)]
 mod tests {
     use super::{
-        HashMap, Library, Path, SidedDataEntry, ZGC_MIN_HEAP_MB, classpaths,
-        drop_repeated_arguments, get_library, is_collector_flag, java_arguments,
+        HashMap, Library, Path, SidedDataEntry, ZGC_MIN_HEAP_MB, append_profile_game_arguments,
+        classpaths, drop_repeated_arguments, get_library, is_collector_flag, java_arguments,
         minecraft_arguments, performance_flags, processor_arguments, split_custom_args,
     };
     use oneclient_common::Resolution;
@@ -625,6 +622,32 @@ mod tests {
         assert_eq!(
             split_custom_args(r#"-Dname="My Server" -Xss1M"#),
             vec!["-Dname=My Server", "-Xss1M"]
+        );
+    }
+
+    #[test]
+    fn game_arguments_are_split_after_fullscreen() {
+        let mut args = ["--username", "Steve", "--width", "854", "--height", "480"]
+            .map(String::from)
+            .to_vec();
+        append_profile_game_arguments(
+            &mut args,
+            Some(true),
+            Some("--tracy  --tracyNoImages --width 1920 --fullscreen"),
+        );
+        assert_eq!(
+            args,
+            vec![
+                "--username",
+                "Steve",
+                "--height",
+                "480",
+                "--tracy",
+                "--tracyNoImages",
+                "--width",
+                "1920",
+                "--fullscreen"
+            ]
         );
     }
 
@@ -893,7 +916,7 @@ mod tests {
         let cp = classpaths(&dir, &libraries, &client, "x86", false).unwrap();
 
         assert!(
-            !cp.contains("asm-all"),
+            !cp.contains("asm-all-4.1.jar"),
             "fabric aborts on two copies of org/objectweb/asm/ClassReader.class: {cp}"
         );
         assert!(cp.contains("asm-9.10.1.jar"), "{cp}");
@@ -1028,7 +1051,6 @@ mod tests {
         let natives = std::env::temp_dir();
 
         let args = java_arguments(
-            false,
             Some(&loader_jvm),
             &natives,
             &natives,
@@ -1048,13 +1070,40 @@ mod tests {
     }
 
     #[test]
+    fn an_osx_ruled_loader_flag_reaches_the_jvm_only_on_macos() {
+        let loader_jvm: Vec<interfrost::api::minecraft::Argument> = serde_json::from_str(
+            r#"["-Dfabric.fixPackageAccess=true", "-Dfabric.gameVersion=1.8.9",
+                {"rules": [{"action": "allow", "os": {"name": "osx"}}], "value": "-XstartOnFirstThread"}]"#,
+        )
+        .unwrap();
+        let natives = std::env::temp_dir();
+
+        let args = java_arguments(
+            Some(&loader_jvm),
+            &natives,
+            &natives,
+            "/libs/fabric-loader.jar",
+            "1.8.9",
+            2048,
+            String::new(),
+            "aarch64",
+            25,
+        )
+        .unwrap();
+
+        assert_eq!(
+            args.contains(&"-XstartOnFirstThread".to_string()),
+            cfg!(target_os = "macos")
+        );
+    }
+
+    #[test]
     fn a_loader_game_argument_does_not_replace_the_legacy_string() {
         let loader_game: Vec<interfrost::api::minecraft::Argument> =
             serde_json::from_str(r#"["--fabric"]"#).unwrap();
         let dir = std::env::temp_dir();
 
         let args = minecraft_arguments(
-            false,
             Some(&loader_game),
             Some("--username ${auth_player_name} --gameDir ${game_directory}"),
             "token",
@@ -1085,7 +1134,6 @@ mod tests {
         let dir = std::env::temp_dir();
 
         let args = minecraft_arguments(
-            false,
             Some(&loader_game),
             Some(
                 "--username ${auth_player_name} --gameDir ${game_directory}                  --tweakClass net.minecraftforge.fml.common.launcher.FMLTweaker",

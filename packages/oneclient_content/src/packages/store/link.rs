@@ -93,6 +93,32 @@ pub async fn remove_entry(path: &Path) -> ContentResult<()> {
     Ok(())
 }
 
+pub async fn drop_unmanaged_mod(
+    cluster: &ClusterRow,
+    content_type: ContentType,
+    file_name: &str,
+    hash: &str,
+    db: &DbPool,
+) {
+    if content_type != ContentType::Mod || session_owns(cluster, db).await {
+        return;
+    }
+    let Ok(dir) = paths::cluster_dir(&cluster.folder_name) else {
+        return;
+    };
+    if manifest::mods_live_in_cluster(&dir).await {
+        return;
+    }
+
+    let path = dir.join(content_type.folder_name()).join(file_name);
+    let linked = polyio::sha1_file(&path)
+        .await
+        .is_ok_and(|disk| polyio::normalize_hash(&disk) == hash);
+    if linked && let Err(err) = remove_entry(&path).await {
+        tracing::debug!(file = file_name, error = %err, "could not drop the unlinked mod from the cluster folder");
+    }
+}
+
 async fn materialized_root(
     cluster: &ClusterRow,
     content_type: ContentType,

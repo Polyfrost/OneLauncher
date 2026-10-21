@@ -2,10 +2,11 @@ use freya::prelude::*;
 use freya::router::*;
 
 use crate::components::{
-    AccountSwitcher, BlockedDownloadsPopup, ClusterUpdatePopup, ControlCenter, FlaggedInstallPopup,
-    GenericPromptOverlay, JavaPromptOverlay, MicrosoftJavaPromptOverlay, ModpackConfirmPopup,
-    NotificationCenter, OptionalModsPopup, PackageUpdatePopup, ReleaseMigrationPopup,
-    SplashCurtain, StatusBar, Toasts, TooltipHost, UpdatePromptOverlay, use_provide_tooltips,
+    AccountSwitcher, BlockedDownloadsPopup, BundleChoicesPopup, ClusterUpdatePopup, ControlCenter,
+    FlaggedInstallPopup, GenericPromptOverlay, JavaPromptOverlay, MicrosoftJavaPromptOverlay,
+    ModpackConfirmPopup, NotificationCenter, OptionalModsPopup, PackageUpdatePopup,
+    ReleaseMigrationPopup, SplashCurtain, StatusBar, Toasts, TooltipHost, UpdatePromptOverlay,
+    use_provide_tooltips,
 };
 #[cfg(not(target_os = "macos"))]
 use crate::hooks::use_start_maximized;
@@ -52,6 +53,7 @@ impl Component for RootLayout {
             .child(GenericPromptOverlay)
             .child(ClusterUpdatePopup)
             .child(OptionalModsPopup)
+            .child(BundleChoicesPopup)
             .child(BlockedDownloadsPopup)
             .child(ModpackConfirmPopup)
             .child(PackageUpdatePopup)

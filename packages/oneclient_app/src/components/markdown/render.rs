@@ -3,6 +3,7 @@ use freya::prelude::*;
 use super::MarkdownStyle;
 use super::image::MarkdownImage;
 use super::parse::{Block, Inline, List, TextSpan};
+use crate::components::CodeBlock;
 use crate::hooks::LinkConfirmState;
 
 pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element {
@@ -19,19 +20,12 @@ pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element
         Block::Paragraph { content } => render_content(content, style.paragraph_size, style)
             .key(key)
             .into(),
-        Block::Code { code } => rect()
-            .key(key)
-            .width(Size::fill())
+        Block::Code { code } => CodeBlock::new(code.clone())
+            .color(style.color_code)
             .background(style.background_code)
-            .corner_radius(CornerRadius::new_all(6.))
-            .padding(Gaps::new_all(12.))
-            .child(
-                label()
-                    .text(code.clone())
-                    .font_family(style.code_font_family.clone())
-                    .font_size(style.code_font_size)
-                    .color(style.color_code),
-            )
+            .font_family(style.code_font_family.clone())
+            .font_size(style.code_font_size)
+            .key(key)
             .into(),
         Block::List(list) => render_list(list, style).key(key).into(),
         Block::Image { url, alt } => rect()

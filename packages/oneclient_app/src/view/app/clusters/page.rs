@@ -23,10 +23,10 @@ use crate::ui::{
 };
 use crate::utils::{
     GridSelection, ReleaseLine, default_line, default_loader, default_version_key, format_duration,
-    line_title, resolve_cluster, split_clusters,
+    line_title, resolve_cluster, sort_clusters_for_home, split_clusters,
 };
 use crate::view::app::clusters::CreateInstanceModal;
-use crate::view::app::{launch_button_state, launch_syncing};
+use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken};
 
 const PAGE_PADDING: Gaps = Gaps::new(12., 28., 28., 28.);
 const COLUMN_GAP_PX: f32 = 24.;
@@ -228,10 +228,19 @@ impl Component for Clusters {
         };
         let sort_by = *sort.read();
 
-        let shown_lines: Vec<ReleaseLine> = lines
-            .iter()
-            .copied()
-            .filter(|l| active_filter.shows(Filter::OneClient) && groups[l].iter().any(matches))
+        let line_heads = sort_clusters_for_home(
+            lines
+                .iter()
+                .filter_map(|l| sort_clusters_for_home(groups[l].clone()).into_iter().next())
+                .collect(),
+        );
+        let shown_lines: Vec<ReleaseLine> =
+            shown(&line_heads.iter().collect::<Vec<_>>(), sort_by, |c| {
+                active_filter.shows(Filter::OneClient)
+                    && ReleaseLine::for_cluster(c).is_some_and(|l| groups[&l].iter().any(matches))
+            })
+            .into_iter()
+            .filter_map(ReleaseLine::for_cluster)
             .collect();
         let shown_custom = shown(&custom, sort_by, |c| {
             active_filter.shows(Filter::Custom) && matches(c)
@@ -723,6 +732,7 @@ impl Component for Sidebar {
 
         let cluster_id = self.cluster_id;
         let syncing = launch_syncing(&launcher, self.uses_bundles);
+        let shared_dir_taken = use_shared_dir_taken(cluster_id);
         let art_height = art_height_for(*sidebar_height.read());
         let top_padding = if art_height.is_some() { 4. } else { 22. };
 
@@ -797,7 +807,7 @@ impl Component for Sidebar {
                             .child(play_button(
                                 cluster_id,
                                 dispatch,
-                                launch_button_state(&game, cluster_id, syncing),
+                                launch_button_state(&game, cluster_id, syncing, shared_dir_taken),
                             ))
                             .child(
                                 Button::new()

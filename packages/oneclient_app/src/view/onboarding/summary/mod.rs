@@ -23,6 +23,7 @@ struct ClusterPlan {
     cluster_id: i64,
     /// `(bundle_name, package_id, override)` for every file whose fate differs from the manifest default
     overrides: Vec<(String, String, OverrideType)>,
+    choices: Vec<(String, bool)>,
 }
 
 #[derive(PartialEq)]
@@ -173,9 +174,19 @@ fn build_plans(
             for archive in &cb.archives {
                 overrides.extend(archive_overrides(cb.cluster.id, archive, selected, &kept));
             }
+            let choices = cb
+                .archives
+                .iter()
+                .filter(|archive| !archive.manifest.enabled)
+                .map(|archive| {
+                    let taken = bundle_taken(cb.cluster.id, archive, selected);
+                    (archive.manifest.name.clone(), taken)
+                })
+                .collect();
             ClusterPlan {
                 cluster_id: cb.cluster.id,
                 overrides,
+                choices,
             }
         })
         .collect()
@@ -284,7 +295,7 @@ fn finish_setup(
     mut failure: State<Option<String>>,
 ) {
     spawn(async move {
-        for plan in plans.iter().filter(|p| !p.overrides.is_empty()) {
+        for plan in &plans {
             if let Err(err) = apply_overrides(plan).await {
                 // Expected failures (a busy or unwritable database) are not crashes warn! is a breadcrumb error! reports to Sentry
                 if err.is_sentry_excluded() {
@@ -375,6 +386,12 @@ async fn apply_overrides(plan: &ClusterPlan) -> oneclient_core::LauncherResult<(
     oneclient_core::set_bundle_package_overrides(
         plan.cluster_id,
         &plan.overrides,
+        &state.services.content(),
+    )
+    .await?;
+    oneclient_content::bundles::set_bundle_choices(
+        plan.cluster_id,
+        &plan.choices,
         &state.services.content(),
     )
     .await?;

@@ -124,6 +124,10 @@ pub fn cluster_trash_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join(".trash"))
 }
 
+pub fn cluster_reset_backups_dir() -> PathsResult<PathBuf> {
+    Ok(data_dir()?.join(".reset-backups"))
+}
+
 pub fn shared_minecraft_dir() -> PathsResult<PathBuf> {
     Ok(data_dir()?.join(".minecraft"))
 }

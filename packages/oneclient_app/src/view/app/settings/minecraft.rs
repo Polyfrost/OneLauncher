@@ -1,8 +1,8 @@
 use freya::prelude::*;
 use oneclient_common::Patch;
-#[cfg(any(target_os = "linux", windows))]
-use oneclient_core::settings::SettingsOsExtra;
-use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
+use oneclient_core::settings::{
+    GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution, SettingsOsExtra,
+};
 
 use super::settings_page;
 use crate::components::{
@@ -48,6 +48,10 @@ impl Component for SettingsMinecraft {
             let v = profile.launch_args.clone().unwrap_or_default();
             move || v
         });
+        let game_args = use_state({
+            let v = profile.game_args.clone().unwrap_or_default();
+            move || v
+        });
         let pre_launch_command = use_state({
             let v = profile.hook_pre.clone().unwrap_or_default();
             move || v
@@ -65,11 +69,11 @@ impl Component for SettingsMinecraft {
             move || v
         });
 
-        #[cfg(any(target_os = "linux", windows))]
-        let discrete_gpu = use_state({
-            let v = profile.use_discrete_gpu();
+        let gpu = use_state({
+            let v = profile.gpu().map(str::to_owned);
             move || v
         });
+        let gpus = use_state(oneclient_core::game::gpu::detect);
 
         let mut first = use_state(|| true);
         use_side_effect(move || {
@@ -79,26 +83,22 @@ impl Component for SettingsMinecraft {
                 &height.read(),
                 &memory.read(),
                 &jvm_args.read(),
+                &game_args.read(),
                 &pre_launch_command.read(),
                 &wrapper_command.read(),
                 &post_exit_command.read(),
                 *update_mode.read(),
             );
-            #[cfg(any(target_os = "linux", windows))]
-            let gpu = *discrete_gpu.read();
+            let selected_gpu = gpu.read().clone();
             if *first.peek() {
                 first.set(false);
                 return;
             }
 
-            #[cfg(any(target_os = "linux", windows))]
-            let update = with_discrete_gpu(update, gpu);
+            let update = with_gpu(update, selected_gpu);
 
             dispatch.update_global_profile(update);
         });
-
-        #[cfg(any(target_os = "linux", windows))]
-        let discrete_gpu_default = SettingsOsExtra::default().use_discrete_gpu.unwrap_or(true);
 
         let page = settings_page()
             .child(section_header("GAME"))
@@ -159,6 +159,19 @@ impl Component for SettingsMinecraft {
                     defaults.launch_args.clone().unwrap_or_default(),
                 ),
             ))
+            .child(settings_row(
+                IconType::Play,
+                "Game Arguments",
+                "Extra arguments passed to Minecraft. Separate them with spaces; quote values containing spaces.",
+                resettable(
+                    TextInput::new(game_args)
+                        .placeholder("--tracy --tracyNoImages")
+                        .expandable(true)
+                        .width(Size::px(220.)),
+                    game_args,
+                    defaults.game_args.clone().unwrap_or_default(),
+                ),
+            ))
             .child(section_header("CONTENT"))
             .child(settings_row(
                 IconType::RefreshCw01,
@@ -211,32 +224,54 @@ impl Component for SettingsMinecraft {
                 ),
             ));
 
-        #[cfg(any(target_os = "linux", windows))]
-        let page = page
-            .child(section_header("GRAPHICS"))
-            .child(settings_row(
+        let page = if gpus.read().is_empty() {
+            page
+        } else {
+            page.child(section_header("GRAPHICS")).child(settings_row(
                 IconType::Rocket02,
-                "Use Discrete GPU",
-                "Render the game on the dedicated graphics card. Does nothing on a machine with only one GPU, and draws noticeably more power on a laptop.",
-                resettable(toggle(discrete_gpu), discrete_gpu, discrete_gpu_default),
-            ));
+                "GPU",
+                "The graphics card the game renders on. System default leaves the choice to your drivers.",
+                resettable(gpu_field(gpu, &gpus.read()), gpu, None),
+            ))
+        };
 
         page.into_element()
     }
 }
 
-#[cfg(any(target_os = "linux", windows))]
-fn with_discrete_gpu(mut update: ProfileUpdate, on: bool) -> ProfileUpdate {
+fn with_gpu(mut update: ProfileUpdate, gpu: Option<String>) -> ProfileUpdate {
     let base = crate::launcher::state()
         .ok()
         .and_then(|state| state.settings.read().global_game_settings.os_extra.clone())
         .unwrap_or_default();
 
-    update.os_extra = Patch::Set(SettingsOsExtra {
-        use_discrete_gpu: Some(on),
-        ..base
-    });
+    update.os_extra = Patch::Set(SettingsOsExtra { gpu, ..base });
     update
+}
+
+fn gpu_field(
+    mut selected: State<Option<String>>,
+    gpus: &[oneclient_core::game::gpu::Gpu],
+) -> impl IntoElement {
+    const SYSTEM_DEFAULT: &str = "System default";
+
+    let current = selected
+        .read()
+        .as_deref()
+        .and_then(|id| gpus.iter().find(|gpu| gpu.id == id))
+        .map_or(SYSTEM_DEFAULT.to_string(), |gpu| gpu.name.clone());
+
+    let options = std::iter::once(SYSTEM_DEFAULT.to_string())
+        .chain(gpus.iter().map(|gpu| gpu.name.clone()))
+        .collect();
+    let ids: Vec<String> = gpus.iter().map(|gpu| gpu.id.clone()).collect();
+
+    Dropdown::new(current, options)
+        .width(Size::px(220.))
+        .height(Size::px(34.))
+        .on_select(move |idx: usize| {
+            selected.set(idx.checked_sub(1).and_then(|i| ids.get(i).cloned()));
+        })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -246,6 +281,7 @@ fn build_update(
     height: &str,
     memory: &str,
     jvm_args: &str,
+    game_args: &str,
     pre: &str,
     wrapper: &str,
     post: &str,
@@ -269,6 +305,7 @@ fn build_update(
         resolution,
         mem_max,
         launch_args: command_patch(jvm_args),
+        game_args: command_patch(game_args),
         hook_pre: command_patch(pre),
         hook_wrapper: command_patch(wrapper),
         hook_post: command_patch(post),

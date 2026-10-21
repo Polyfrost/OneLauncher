@@ -26,6 +26,8 @@ pub struct NotificationAction {
 pub enum NotificationActionKind {
     /// A list so a batch sync stays a single "View changes" action not one button per cluster
     OpenClusterUpdate(Vec<ClusterUpdateSummary>),
+    /// Routed through the link confirm popup rather than opened straight away
+    OpenUrl(String),
 }
 
 /// Carries core updates whole not a display projection the modal's Update button
@@ -101,6 +103,13 @@ impl BlockedDownloads {
             .cloned()
             .collect()
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BundleChoices {
+    pub cluster_name: String,
+    pub bundles: Vec<(String, String)>,
+    pub held: HashSet<String>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -251,6 +260,7 @@ pub struct NotificationSnapshot {
     pub pending_prompt: Option<PendingPromptView>,
     pub cluster_update: Option<Vec<ClusterUpdateSummary>>,
     pub optional_mods: Option<Vec<OptionalModsGroup>>,
+    pub bundle_choices: Option<BundleChoices>,
     pub package_updates: Option<Vec<PackageUpdateGroup>>,
     pub blocked_downloads: Option<BlockedDownloads>,
     pub open_cluster: Option<ClusterId>,
@@ -274,6 +284,7 @@ pub struct NotificationState {
     pending_timers: Vec<ToastDismissTimer>,
     cluster_update: Option<Vec<ClusterUpdateSummary>>,
     optional_mods: Option<Vec<OptionalModsGroup>>,
+    bundle_choices: Option<BundleChoices>,
     package_updates: Option<Vec<PackageUpdateGroup>>,
     blocked_downloads: Option<BlockedDownloads>,
     open_cluster: Option<ClusterId>,
@@ -283,6 +294,7 @@ pub struct NotificationState {
     /// because every way the modal can end goes through this state
     package_updates_done: Option<oneshot::Sender<Vec<BrowserPackageUpdate>>>,
     optional_mods_done: Option<oneshot::Sender<OptionalModsOutcome>>,
+    bundle_choices_done: Option<oneshot::Sender<Option<HashSet<String>>>>,
 }
 
 const CATEGORY_ORDER: [TaskCategory; 7] = [
@@ -390,6 +402,7 @@ impl NotificationState {
             pending_prompt,
             cluster_update: self.cluster_update.clone(),
             optional_mods: self.optional_mods.clone(),
+            bundle_choices: self.bundle_choices.clone(),
             package_updates: self.package_updates.clone(),
             blocked_downloads: self.blocked_downloads.clone(),
             open_cluster: self.open_cluster,
@@ -467,6 +480,23 @@ impl NotificationState {
             .filter(|blocked| blocked.cluster_id == cluster_id)
         {
             blocked.added.extend(sha1s.iter().cloned());
+        }
+    }
+
+    pub fn open_bundle_choices(
+        &mut self,
+        choices: BundleChoices,
+        done: oneshot::Sender<Option<HashSet<String>>>,
+    ) {
+        self.finish_bundle_choices(None);
+        self.bundle_choices = Some(choices);
+        self.bundle_choices_done = Some(done);
+    }
+
+    pub fn finish_bundle_choices(&mut self, chosen: Option<HashSet<String>>) {
+        self.bundle_choices = None;
+        if let Some(done) = self.bundle_choices_done.take() {
+            let _ = done.send(chosen);
         }
     }
 
@@ -560,15 +590,26 @@ impl NotificationState {
 
         match event {
             Event::Notification(Notification::Message(message)) => {
-                let entry_id = self.push_inbox(
+                let actions = message
+                    .link
+                    .map(|url| NotificationAction {
+                        label: "Open link".to_string(),
+                        kind: NotificationActionKind::OpenUrl(url),
+                    })
+                    .into_iter()
+                    .collect();
+                self.push_custom(
                     inbox,
-                    message.title,
-                    message.body,
-                    message.level,
-                    None,
-                    false,
+                    NotificationSpec {
+                        title: message.title,
+                        body: message.body,
+                        level: message.level,
+                        icon: None,
+                        progress: None,
+                        actions,
+                        toast_only: false,
+                    },
                 );
-                self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
             }
 
             Event::Progress(ProgressEvent::Update { id, .. })
@@ -583,8 +624,13 @@ impl NotificationState {
             }) => {
                 self.handle_progress(inbox, id, label, current, total);
             }
-            Event::Progress(ProgressEvent::Complete { id, title, body }) => {
-                self.handle_progress_complete(inbox, id, title, body);
+            Event::Progress(ProgressEvent::Complete {
+                id,
+                title,
+                body,
+                level,
+            }) => {
+                self.handle_progress_complete(inbox, id, title, body, level);
             }
             Event::Progress(ProgressEvent::Grouped(event)) => {
                 self.handle_grouped_progress(inbox, event);
@@ -676,6 +722,12 @@ impl NotificationState {
     pub fn mark_read(&mut self, inbox: &mut [InboxEntry], entry_id: u64) {
         if let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) {
             entry.read = true;
+        }
+    }
+
+    fn mark_unread(&self, inbox: &mut [InboxEntry], entry_id: u64) {
+        if let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) {
+            entry.read = false;
         }
     }
 
@@ -785,7 +837,6 @@ impl NotificationState {
             entry.body = body.into();
             entry.progress = progress;
             entry.is_loading = is_loading;
-            entry.read = false;
         }
     }
 
@@ -856,12 +907,18 @@ impl NotificationState {
         id: Uuid,
         title: String,
         body: String,
+        level: Level,
     ) {
         if let Some(entry_id) = self.progress_entries.remove(&id) {
             self.update_inbox_entry(inbox, entry_id, title, body, None, false);
+            if let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) {
+                entry.level = level;
+            }
+            // Progress ticks leave a hovered card read but its outcome is news
+            self.mark_unread(inbox, entry_id);
             self.ensure_progress_toast(entry_id);
         } else {
-            let entry_id = self.push_inbox(inbox, title, body, Level::Info, None, false);
+            let entry_id = self.push_inbox(inbox, title, body, level, None, false);
             self.push_ephemeral_toast(entry_id, MESSAGE_TOAST_TTL);
         }
     }
@@ -980,6 +1037,7 @@ impl NotificationState {
                         entry.body = "Complete".to_string();
                         entry.progress = Some((1, 1));
                         entry.is_loading = false;
+                        entry.read = false;
                         entry.tasks = Vec::new();
                         entry.transfer = None;
                     }
@@ -1083,7 +1141,6 @@ impl NotificationState {
         entry.body = body;
         entry.progress = Some((completed, total));
         entry.is_loading = true;
-        entry.read = false;
         entry.tasks = tasks;
         entry.transfer = transfer;
     }
@@ -1096,6 +1153,46 @@ fn progress_body(label: &str, current: u64, total: u64) -> String {
 
     let percent = ((current as f64 / total as f64) * 100.0).round() as u64;
     format!("{label} - {percent}%")
+}
+
+#[cfg(test)]
+mod message_link_tests {
+    use super::*;
+
+    fn message(link: Option<&str>) -> Event {
+        Event::Notification(Notification::Message(oneclient_events::Message {
+            title: "Update available".into(),
+            body: String::new(),
+            level: Level::Info,
+            link: link.map(Into::into),
+        }))
+    }
+
+    #[test]
+    fn a_link_becomes_a_single_open_link_action() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        state.dispatch(&mut inbox, message(Some("https://polyfrost.org")));
+
+        let kinds: Vec<_> = inbox[0].actions.iter().map(|a| a.kind.clone()).collect();
+        assert_eq!(
+            kinds,
+            vec![NotificationActionKind::OpenUrl(
+                "https://polyfrost.org".into()
+            )]
+        );
+    }
+
+    #[test]
+    fn no_link_keeps_the_plain_message_toast() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+
+        state.dispatch(&mut inbox, message(None));
+
+        assert!(inbox[0].actions.is_empty());
+    }
 }
 
 #[cfg(test)]
@@ -1265,6 +1362,50 @@ mod package_update_tests {
     }
 
     #[test]
+    fn a_hovered_download_stays_read_until_it_finishes() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = Uuid::new_v4();
+
+        state.handle_progress(&mut inbox, id, "Downloading".into(), 1, 10);
+        let entry_id = inbox[0].id;
+        state.mark_read(&mut inbox, entry_id);
+
+        state.handle_progress(&mut inbox, id, "Downloading".into(), 5, 10);
+        assert_eq!(
+            NotificationState::unread_count(&inbox),
+            0,
+            "progress ticks must not undo the hover"
+        );
+
+        state.handle_progress_complete(&mut inbox, id, "Done".into(), String::new(), Level::Info);
+        assert_eq!(
+            NotificationState::unread_count(&inbox),
+            1,
+            "the finished result is new again"
+        );
+    }
+
+    #[test]
+    fn a_failed_task_finishes_as_an_error() {
+        let mut state = NotificationState::default();
+        let mut inbox = Vec::new();
+        let id = Uuid::new_v4();
+
+        state.handle_progress(&mut inbox, id, "Syncing".into(), 1, 4);
+        state.handle_progress_complete(
+            &mut inbox,
+            id,
+            "Failed".into(),
+            String::new(),
+            Level::Error,
+        );
+
+        assert_eq!(inbox.len(), 1, "the progress card turns into the result");
+        assert_eq!(inbox[0].level, Level::Error);
+    }
+
+    #[test]
     fn a_normal_notice_survives_its_toast_expiring() {
         let mut state = NotificationState::default();
         let mut inbox = Vec::new();
@@ -1272,7 +1413,10 @@ mod package_update_tests {
         let id = state.push_custom(&mut inbox, spec("kept"));
         state.expire_toast(&mut inbox, id);
 
-        assert!(inbox.iter().any(|e| e.id == id), "the inbox entry must stay");
+        assert!(
+            inbox.iter().any(|e| e.id == id),
+            "the inbox entry must stay"
+        );
     }
 
     #[test]

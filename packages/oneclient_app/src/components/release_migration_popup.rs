@@ -167,6 +167,7 @@ impl Component for ReleaseMigrationPopup {
 
         let other_popup = snapshot.cluster_update.is_some()
             || snapshot.optional_mods.is_some()
+            || snapshot.bundle_choices.is_some()
             || snapshot.package_updates.is_some()
             || snapshot.pending_prompt.is_some();
         if blocked_by_route(&route) || other_popup {

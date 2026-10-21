@@ -258,6 +258,8 @@ impl LayoutExt for Button {
 
 impl ContainerExt for Button {}
 
+impl DecorationExt for Button {}
+
 impl StyleExt for Button {
     fn get_style(&mut self) -> &mut StyleState {
         &mut self.style
@@ -477,4 +479,30 @@ pub fn open_folder_button(folder: std::path::PathBuf) -> Button {
             crate::platform::open_path(&folder.to_string_lossy());
         })
         .child(Icon::new(IconType::Folder).size(16.))
+}
+
+pub fn copy_button(text: String, copied_body: &'static str, dispatch: crate::Actions) -> Button {
+    Button::new()
+        .secondary()
+        .on_press(move |_| {
+            if let Err(err) = freya::text_edit::Clipboard::set(text.clone()) {
+                tracing::warn!("clipboard copy failed: {err:?}");
+                dispatch
+                    .notify("Copy failed")
+                    .body("Could not copy to the clipboard.")
+                    .error()
+                    .toast_only()
+                    .send();
+            } else {
+                dispatch
+                    .notify("Copied to clipboard")
+                    .body(copied_body)
+                    .info()
+                    .icon(IconType::ClipboardCheck)
+                    .toast_only()
+                    .send();
+            }
+        })
+        .child(Icon::new(IconType::Copy01).size(14.))
+        .text("Copy")
 }

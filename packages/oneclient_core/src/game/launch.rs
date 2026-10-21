@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -5,16 +6,16 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use interfrost::api::minecraft::ArgumentType;
-use tokio::io::AsyncReadExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
 use crate::ClusterStage;
 use crate::LauncherResult;
 use crate::clusters::Cluster;
-use crate::game::GameError;
 use crate::game::session::SessionRecorder;
 use crate::game::tail::spawn_log_tail;
-use crate::settings::GameSettingsProfile;
+use crate::settings::{GameSettingsProfile, GraphicsBackend};
+use crate::game::{DirBusy, GameError};
 use crate::state::LauncherState;
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
@@ -44,8 +45,9 @@ pub async fn launch_cluster(
 ) -> LauncherResult<LaunchedGame> {
     tracing::info!(cluster_id, search_for_java, "launching cluster");
 
-    let parallel = state.settings.read().allow_parallel_running_clusters;
-    if !parallel && state.games.is_active(cluster_id) {
+    // Parallel clusters or not a cluster runs only once a second game would
+    // share its directory and its slot in the process manager
+    if state.games.is_active(cluster_id) {
         tracing::warn!(
             cluster_id,
             "cluster already launching or running; refusing launch"
@@ -53,13 +55,9 @@ pub async fn launch_cluster(
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
 
-    // A parallel attempt shares its entry with the session already under way, so
-    // clearing it here would drop that game's kill sender and pid
-    let adopted = state.games.is_active(cluster_id);
-
     let result = start(state, cluster_id, account, search_for_java).await;
 
-    if result.is_err() && !adopted {
+    if result.is_err() {
         state.games.remove(cluster_id);
         state
             .services
@@ -82,7 +80,33 @@ async fn start(
         events.game_stage(cluster_id, s);
     };
 
+    // The stage goes first so a click while this waits is refused as already
+    // active rather than queued behind it
     stage(LaunchStage::Checking);
+    let launch_slot = match state.games.try_launch_slot() {
+        Some(slot) => slot,
+        None => {
+            tracing::debug!(cluster_id, "another launch is preparing; waiting for it");
+            stage(LaunchStage::Waiting);
+            let slot = state.games.launch_slot().await;
+            stage(LaunchStage::Checking);
+            slot
+        }
+    };
+
+    // Checked only once this launch counts as active, a reset claims itself before checking
+    // for that, so the two can't both go ahead
+    if crate::clusters::is_resetting(cluster_id) {
+        return Err(GameError::Resetting.into());
+    }
+    match crate::clusters::reset_unfinished(state, cluster_id).await {
+        Ok(true) => return Err(GameError::ResetUnfinished.into()),
+        Ok(false) => {}
+        // Only a guard against launching a half-reset cluster, not worth failing every launch over
+        Err(err) => {
+            tracing::warn!(cluster_id, error = %err, "could not check for an unfinished reset; launching anyway");
+        }
+    }
 
     let existing = state.clusters.get(cluster_id).await?;
 
@@ -91,19 +115,29 @@ async fn start(
 
     // Non-dedicated clusters share one directory so a second game there would
     // materialize over the running one's
-    // `dir_in_use_by` waves a cluster past
-    // its own session which parallel launches make reachable
-    if !dedicated && let Some(other) = state.games.dir_in_use(&game_dir) {
-        tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
-        let name = running_cluster_name(state, other).await;
-        return Err(GameError::SharedDirectoryBusy(name).into());
+    match state.games.claim_dir(cluster_id, &game_dir, !dedicated) {
+        Ok(()) => {}
+        Err(DirBusy::Syncing(syncing)) if syncing == cluster_id => {
+            return Err(GameError::Syncing.into());
+        }
+        Err(DirBusy::Syncing(syncing)) => {
+            tracing::warn!(
+                cluster_id,
+                syncing,
+                "shared game dir is being synced from; refusing launch"
+            );
+            let name = running_cluster_name(state, syncing).await;
+            return Err(GameError::SharedDirectorySyncing(name).into());
+        }
+        Err(DirBusy::Game(other)) if dedicated => {
+            return Err(GameError::DirectoryInUse(other).into());
+        }
+        Err(DirBusy::Game(other)) => {
+            tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
+            let name = running_cluster_name(state, other).await;
+            return Err(GameError::SharedDirectoryBusy(name).into());
+        }
     }
-
-    if let Some(other) = state.games.dir_in_use_by(&game_dir, cluster_id) {
-        return Err(GameError::DirectoryInUse(other).into());
-    }
-
-    state.games.set_dir(cluster_id, game_dir.clone());
 
     match state.clusters.mark_played(cluster_id).await {
         Ok(()) => events.signal(oneclient_events::Signal::ClustersChanged),
@@ -220,6 +254,10 @@ async fn start(
         "resolved launch metadata"
     );
 
+    if let Some(dir) = crate::game::natives::natives_dir(&version_name) {
+        state.games.set_natives(cluster_id, dir);
+    }
+
     let java = if let Some(runtime) = state
         .java
         .runtime_for_profile(profile.java_path.as_deref())
@@ -247,6 +285,8 @@ async fn start(
                 .set_stage(cluster_id, ClusterStage::Repairing)
                 .await;
             stage(LaunchStage::Downloading);
+            let natives_mode =
+                crate::game::natives::natives_mode(state, &version_name, Some(cluster_id));
             if let Err(err) = download_minecraft(
                 &state.services.mc(),
                 &progress,
@@ -254,6 +294,7 @@ async fn start(
                 &java.os_arch,
                 updated,
                 false,
+                natives_mode,
             )
             .await
             {
@@ -321,7 +362,6 @@ async fn start(
     )?;
 
     let mut jvm_args = arguments::java_arguments(
-        updated,
         arg_map.get(&ArgumentType::Jvm).map(Vec::as_slice),
         &natives,
         &libraries,
@@ -347,7 +387,6 @@ async fn start(
     }
 
     let mut mc_args = arguments::minecraft_arguments(
-        updated,
         arg_map.get(&ArgumentType::Game).map(Vec::as_slice),
         version_info.minecraft_arguments.as_deref(),
         &account.access_token,
@@ -361,7 +400,22 @@ async fn start(
         profile.resolution.unwrap_or_default(),
         &java.os_arch,
     )?;
-    arguments::append_profile_game_arguments(&mut mc_args, profile.force_fullscreen, None);
+    if let Some(backend) = profile.graphics_backend
+        && backend != GraphicsBackend::Default
+        && GraphicsBackend::supported_on(&mc_version)
+    {
+        mc_args.extend([
+            "--graphicsBackend".to_string(),
+            backend.as_str().to_string(),
+        ]);
+    }
+    arguments::append_profile_game_arguments(
+        &mut mc_args,
+        profile.force_fullscreen,
+        profile.game_args.as_deref(),
+    );
+
+    drop(launch_slot);
 
     if let Some(reason) = run_hook(profile.hook_pre.as_deref(), &cwd).await {
         events
@@ -383,8 +437,8 @@ async fn start(
 
     let (mut command, wrapper) = base_command(&profile, &java.absolute_path);
 
-    if profile.use_discrete_gpu() {
-        crate::game::gpu::prefer_discrete(&mut command, &java.absolute_path).await;
+    if let Some(gpu) = profile.gpu() {
+        crate::game::gpu::select(&mut command, &java.absolute_path, gpu).await;
     }
 
     apply_env(&mut command, &profile);
@@ -394,6 +448,14 @@ async fn start(
         .arg(&version_info.main_class)
         .args(mc_args)
         .current_dir(&cwd);
+
+    let header = format!(
+        "OneClient {} · {} · {version_name} · Java {}\n\n{}\n\n",
+        env!("CARGO_PKG_VERSION"),
+        cluster.name,
+        java.major,
+        command_line(command.as_std(), &version_info.main_class),
+    );
 
     let log_path = oneclient_cluster::logs::cluster_output_log(&cluster)?;
     if let Some(parent) = log_path.parent() {
@@ -405,10 +467,15 @@ async fn start(
     // The cloned handle shares the file offset
     // so stdout and stderr interleave instead of overwriting
     let handles = match tokio::fs::File::create(&log_path).await {
-        Ok(out) => match out.try_clone().await {
-            Ok(err) => Ok((out.into_std().await, err.into_std().await)),
-            Err(err) => Err(err),
-        },
+        Ok(mut out) => {
+            if let Err(err) = out.write_all(header.as_bytes()).await {
+                tracing::warn!(cluster_id, error = %err, "failed to write the launch header");
+            }
+            match out.try_clone().await {
+                Ok(err) => Ok((out.into_std().await, err.into_std().await)),
+                Err(err) => Err(err),
+            }
+        }
         Err(err) => Err(err),
     };
 
@@ -750,6 +817,66 @@ fn base_command(profile: &GameSettingsProfile, java_path: &str) -> (Command, Opt
     command.args(split);
     command.arg(java_path);
     (command, Some(program.to_string()))
+}
+
+fn command_line(command: &std::process::Command, main_class: &str) -> String {
+    #[cfg(not(windows))]
+    const CONTINUATION: &str = " \\\n  ";
+    #[cfg(windows)]
+    const CONTINUATION: &str = " `\n  ";
+
+    let mut out = String::new();
+    if let Some(dir) = command.get_current_dir() {
+        let _ = writeln!(out, "cd {}", shell_quote(&dir.to_string_lossy()));
+    }
+
+    for (key, value) in command.get_envs() {
+        let (key, Some(value)) = (key.to_string_lossy(), value) else {
+            continue;
+        };
+        let value = shell_quote(&value.to_string_lossy());
+        #[cfg(not(windows))]
+        let _ = write!(out, "{key}={value} ");
+        #[cfg(windows)]
+        let _ = writeln!(out, "$env:{key} = {value}");
+    }
+
+    #[cfg(windows)]
+    {
+        out += "& ";
+    }
+    out += &shell_quote(&command.get_program().to_string_lossy());
+
+    for arg in command.get_args() {
+        let arg = arg.to_string_lossy();
+        let arg = oneclient_cluster::logs::censor(&arg);
+        out += if arg.starts_with('-') || arg == main_class {
+            CONTINUATION
+        } else {
+            " "
+        };
+        out += &shell_quote(&arg);
+    }
+
+    out
+}
+
+#[cfg(not(windows))]
+fn shell_quote(arg: &str) -> String {
+    let plain = !arg.is_empty()
+        && arg
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-./=:,+@%".contains(&b));
+    if plain {
+        arg.to_string()
+    } else {
+        format!("'{}'", arg.replace('\'', r"'\''"))
+    }
+}
+
+#[cfg(windows)]
+fn shell_quote(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "''"))
 }
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {

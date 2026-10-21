@@ -12,6 +12,7 @@ pub struct GameSettingsProfile {
     pub force_fullscreen: Option<bool>,
     pub mem_max: Option<u32>,
     pub launch_args: Option<String>,
+    pub game_args: Option<String>,
     pub launch_env: Option<String>,
     pub hook_pre: Option<String>,
     pub hook_wrapper: Option<String>,
@@ -19,20 +20,22 @@ pub struct GameSettingsProfile {
     pub os_extra: Option<SettingsOsExtra>,
     /// Never applies to bundle content
     pub browser_update_mode: Option<PackageUpdateMode>,
+    /// `None` on the resolved profile leaves the in-game setting in charge
+    pub graphics_backend: Option<GraphicsBackend>,
 }
 
 // `Resolution` lives in oneclient_common the launch-argument builder needs it
 // and cannot depend on the launcher settings
 pub use oneclient_common::Resolution;
-pub use oneclient_common::domain::PackageUpdateMode;
+pub use oneclient_common::domain::{GraphicsBackend, PackageUpdateMode};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct SettingsOsExtra {
     #[cfg(target_os = "linux")]
     pub enable_gamemode: Option<bool>,
-    #[cfg(any(target_os = "linux", windows))]
-    pub use_discrete_gpu: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpu: Option<String>,
     #[serde(flatten)]
     pub unknown: serde_json::Map<String, serde_json::Value>,
 }
@@ -42,8 +45,7 @@ impl Default for SettingsOsExtra {
         Self {
             #[cfg(target_os = "linux")]
             enable_gamemode: Some(true),
-            #[cfg(any(target_os = "linux", windows))]
-            use_discrete_gpu: Some(true),
+            gpu: None,
             unknown: serde_json::Map::new(),
         }
     }
@@ -58,24 +60,19 @@ impl GameSettingsProfile {
             force_fullscreen: Some(false),
             mem_max: Some(oneclient_common::default_mem_max()),
             launch_args: None,
+            game_args: None,
             launch_env: None,
             hook_pre: None,
             hook_wrapper: None,
             hook_post: None,
             os_extra: Some(SettingsOsExtra::default()),
             browser_update_mode: Some(PackageUpdateMode::default()),
+            graphics_backend: None,
         }
     }
 
-    pub fn use_discrete_gpu(&self) -> bool {
-        cfg_select! {
-            any(target_os = "linux", target_os = "windows") => self
-                .os_extra
-                .as_ref()
-                .and_then(|extra| extra.use_discrete_gpu)
-                .unwrap_or(true),
-            _ => false
-        }
+    pub fn gpu(&self) -> Option<&str> {
+        self.os_extra.as_ref()?.gpu.as_deref()
     }
 
     pub fn is_global(&self) -> bool {
@@ -98,6 +95,9 @@ impl GameSettingsProfile {
         if self.launch_args.is_none() {
             self.launch_args = global.launch_args.clone();
         }
+        if self.game_args.is_none() {
+            self.game_args = global.game_args.clone();
+        }
         if self.launch_env.is_none() {
             self.launch_env = global.launch_env.clone();
         }
@@ -116,6 +116,9 @@ impl GameSettingsProfile {
         if self.browser_update_mode.is_none() {
             self.browser_update_mode = global.browser_update_mode;
         }
+        if self.graphics_backend.is_none() {
+            self.graphics_backend = global.graphics_backend;
+        }
     }
 
     pub fn from_row(row: SettingProfileRow) -> crate::ClusterResult<Self> {
@@ -129,6 +132,7 @@ impl GameSettingsProfile {
             force_fullscreen: row.force_fullscreen.map(|v| v != 0),
             mem_max: row.mem_max.map(|v| v as u32),
             launch_args: row.launch_args,
+            game_args: row.game_args,
             launch_env: row.launch_env,
             hook_pre: row.hook_pre,
             hook_wrapper: row.hook_wrapper,
@@ -143,6 +147,10 @@ impl GameSettingsProfile {
                 .browser_update_mode
                 .as_deref()
                 .and_then(PackageUpdateMode::parse),
+            graphics_backend: row
+                .graphics_backend
+                .as_deref()
+                .and_then(GraphicsBackend::parse),
         })
     }
 
@@ -157,6 +165,7 @@ impl GameSettingsProfile {
             force_fullscreen: self.force_fullscreen.map(i64::from),
             mem_max: self.mem_max.map(i64::from),
             launch_args: self.launch_args.clone(),
+            game_args: self.game_args.clone(),
             launch_env: self.launch_env.clone(),
             hook_pre: self.hook_pre.clone(),
             hook_wrapper: self.hook_wrapper.clone(),
@@ -169,6 +178,9 @@ impl GameSettingsProfile {
             browser_update_mode: self
                 .browser_update_mode
                 .map(|mode| mode.as_str().to_string()),
+            graphics_backend: self
+                .graphics_backend
+                .map(|backend| backend.as_str().to_string()),
         })
     }
 }

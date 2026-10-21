@@ -9,7 +9,8 @@ use crate::{
     components::{Avatar, Icon, IconType},
     hooks::{
         settled_or_loading, try_default_account, use_active_cluster_id, use_browser_type,
-        use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
+        use_clusters, use_current_account, use_dispatch, use_link_confirm,
+        use_notifications_snapshot,
     },
     theme,
     utils::default_cluster,
@@ -84,14 +85,16 @@ fn navbar_left(show_logo: bool) -> impl IntoElement {
             Size::auto()
         })
         .cross_align(Alignment::Center)
-		.spacing(NAV_LINK_SPACING_PX / 2.)
+        .spacing(NAV_LINK_SPACING_PX / 2.)
         .maybe(!show_logo, |el| {
             el.padding(Gaps::new(0., NAV_LINK_SPACING_PX, 0., 0.))
         })
-		.child(Icon::new(IconType::IconLogo)
+        .child(
+            Icon::new(IconType::IconLogo)
                 .size(COMPACT_LOGO_PX)
-                .into_element())
-		.maybe(show_logo, |rect| rect.child(NavbarLogo.into_element()))
+                .into_element(),
+        )
+        .maybe(show_logo, |rect| rect.child(NavbarLogo.into_element()))
 }
 
 #[derive(PartialEq)]
@@ -133,7 +136,7 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
             target: NavTarget::Route(Route::Clusters {}),
             nav_label: "Versions",
         })
-		.child(NavLink {
+        .child(NavLink {
             active: matches!(
                 route,
                 Route::Browser {
@@ -185,6 +188,7 @@ impl Component for NavLink {
         let mut hovering = use_state(|| false);
         let a11y_id = use_a11y();
         let focused = use_focus(a11y_id);
+        let mut confirm_link = use_link_confirm();
 
         let active = self.active;
         let target = self.target.clone();
@@ -201,7 +205,7 @@ impl Component for NavLink {
         } else if hovering() || focused().is_focused() {
             theme::colors::ghost_overlay_hover()
         } else {
-			Color::TRANSPARENT
+            Color::TRANSPARENT
         };
 
         rect()
@@ -226,10 +230,11 @@ impl Component for NavLink {
             .on_press(move |e: Event<PressEventData>| {
                 e.prevent_default();
                 match &target {
+                    NavTarget::Route(_) if active => {}
                     NavTarget::Route(route) => {
                         let _ = RouterContext::get().push(route.clone());
                     }
-                    NavTarget::External(url) => crate::platform::open_url(url),
+                    NavTarget::External(url) => confirm_link.set(Some((*url).to_string())),
                 }
             })
             .on_pointer_over(move |_| hovering.set(true))

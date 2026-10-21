@@ -14,8 +14,8 @@ pub async fn list_all(pool: &SqlitePool) -> DbResult<Vec<SettingProfileRow>> {
     let rows = sqlx::query_as!(
         SettingProfileRow,
         r#"
-		SELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,
-		       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode
+		SELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,
+		       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, graphics_backend
 		FROM setting_profiles
 		ORDER BY name ASC
 		"#,
@@ -30,8 +30,8 @@ pub async fn get_by_name(pool: &SqlitePool, name: &str) -> DbResult<Option<Setti
     let row = sqlx::query_as!(
         SettingProfileRow,
         r#"
-		SELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,
-		       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode
+		SELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,
+		       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, graphics_backend
 		FROM setting_profiles
 		WHERE name = ?
 		"#,
@@ -58,24 +58,26 @@ pub async fn upsert(
         SettingProfileRow,
         r#"
 		INSERT INTO setting_profiles (
-			name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,
-			hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode
+			name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,
+			hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, graphics_backend
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(name) DO UPDATE SET
 			java_path = excluded.java_path,
 			resolution = excluded.resolution,
 			force_fullscreen = excluded.force_fullscreen,
 			mem_max = excluded.mem_max,
 			launch_args = excluded.launch_args,
+			game_args = excluded.game_args,
 			launch_env = excluded.launch_env,
 			hook_pre = excluded.hook_pre,
 			hook_wrapper = excluded.hook_wrapper,
 			hook_post = excluded.hook_post,
 			os_extra = excluded.os_extra,
-			browser_update_mode = excluded.browser_update_mode
-		RETURNING name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,
-                  hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode
+			browser_update_mode = excluded.browser_update_mode,
+			graphics_backend = excluded.graphics_backend
+		RETURNING name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,
+                  hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, graphics_backend
 		"#,
         &row.name,
         &row.java_path,
@@ -83,12 +85,14 @@ pub async fn upsert(
         row.force_fullscreen,
         row.mem_max,
         &row.launch_args,
+        &row.game_args,
         &row.launch_env,
         &row.hook_pre,
         &row.hook_wrapper,
         &row.hook_post,
         &row.os_extra,
         &row.browser_update_mode,
+        &row.graphics_backend,
     )
     .fetch_one(pool)
     .await

@@ -263,6 +263,13 @@ impl Actions {
     }
 
     fn refuse_while_running(&self, cluster_id: ClusterId) -> bool {
+        if oneclient_core::clusters::is_resetting(cluster_id) {
+            self.notify("This instance is being reset")
+                .body("Wait for the reset to finish, then try again.")
+                .error()
+                .send();
+            return true;
+        }
         let running = launcher::state().is_ok_and(|state| state.games.is_active(cluster_id));
         if running {
             self.notify("Close the game first")
@@ -501,7 +508,7 @@ fn notify_outcome(
         .send();
 }
 
-fn listed(names: impl Iterator<Item = String>) -> String {
+pub(crate) fn listed(names: impl Iterator<Item = String>) -> String {
     let names: Vec<String> = names.collect();
     let shown = names
         .iter()

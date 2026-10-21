@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, launch_env,\n\t\t       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode\n\t\tFROM setting_profiles\n\t\tORDER BY name ASC\n\t\t",
+  "query": "\n\t\tINSERT INTO setting_profiles (\n\t\t\tname, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,\n\t\t\thook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, graphics_backend\n\t\t)\n\t\tVALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n\t\tON CONFLICT(name) DO UPDATE SET\n\t\t\tjava_path = excluded.java_path,\n\t\t\tresolution = excluded.resolution,\n\t\t\tforce_fullscreen = excluded.force_fullscreen,\n\t\t\tmem_max = excluded.mem_max,\n\t\t\tlaunch_args = excluded.launch_args,\n\t\t\tgame_args = excluded.game_args,\n\t\t\tlaunch_env = excluded.launch_env,\n\t\t\thook_pre = excluded.hook_pre,\n\t\t\thook_wrapper = excluded.hook_wrapper,\n\t\t\thook_post = excluded.hook_post,\n\t\t\tos_extra = excluded.os_extra,\n\t\t\tbrowser_update_mode = excluded.browser_update_mode,\n\t\t\tgraphics_backend = excluded.graphics_backend\n\t\tRETURNING name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,\n                  hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, graphics_backend\n\t\t",
   "describe": {
     "columns": [
       {
@@ -70,8 +70,19 @@
         }
       },
       {
-        "name": "launch_env",
+        "name": "game_args",
         "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "game_args"
+          }
+        }
+      },
+      {
+        "name": "launch_env",
+        "ordinal": 7,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -82,7 +93,7 @@
       },
       {
         "name": "hook_pre",
-        "ordinal": 7,
+        "ordinal": 8,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -93,7 +104,7 @@
       },
       {
         "name": "hook_wrapper",
-        "ordinal": 8,
+        "ordinal": 9,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -104,7 +115,7 @@
       },
       {
         "name": "hook_post",
-        "ordinal": 9,
+        "ordinal": 10,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -115,7 +126,7 @@
       },
       {
         "name": "os_extra",
-        "ordinal": 10,
+        "ordinal": 11,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -126,7 +137,7 @@
       },
       {
         "name": "browser_update_mode",
-        "ordinal": 11,
+        "ordinal": 12,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -134,13 +145,26 @@
             "name": "browser_update_mode"
           }
         }
+      },
+      {
+        "name": "graphics_backend",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "setting_profiles",
+            "name": "graphics_backend"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 0
+      "Right": 14
     },
     "nullable": [
       false,
+      false,
+      true,
       true,
       true,
       true,
@@ -154,5 +178,5 @@
       true
     ]
   },
-  "hash": "f68b9ade92feb989828ca81582c5960bf2968c4b75705e1a0e6800e97c3f4628"
+  "hash": "8158738971ac16ec42117bacbed38cb8ead500457f9979f2598b6eaef611c410"
 }

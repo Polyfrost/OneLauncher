@@ -125,23 +125,21 @@ impl Component for WarningBody {
                             .corner_radius(CornerRadius::new_all(8.))
                             .background(colors::component_bg())
                             .border(border_all_color(1., colors::component_border()))
-                            .child(
-                                Markdown::new(self.body.clone())
-                                    .width(Size::fill())
-                                    .style(MarkdownStyle {
-                                        color: Color::WHITE,
-                                        color_link: colors::code_info(),
-                                        color_code: Color::WHITE,
-                                        background_code: CARD_BG,
-                                        background_blockquote: CARD_BG,
-                                        border_blockquote: colors::component_border(),
-                                        background_divider: colors::component_border(),
-                                        headings: [16., 14., 13., 12., 12., 12.],
-                                        paragraph_size: 12.,
-                                        code_font_size: 11.,
-                                        ..MarkdownStyle::default()
-                                    }),
-                            ),
+                            .child(Markdown::new(self.body.clone()).width(Size::fill()).style(
+                                MarkdownStyle {
+                                    color: Color::WHITE,
+                                    color_link: colors::code_info(),
+                                    color_code: Color::WHITE,
+                                    background_code: CARD_BG,
+                                    background_blockquote: CARD_BG,
+                                    border_blockquote: colors::component_border(),
+                                    background_divider: colors::component_border(),
+                                    headings: [16., 14., 13., 12., 12., 12.],
+                                    paragraph_size: 12.,
+                                    code_font_size: 11.,
+                                    ..MarkdownStyle::default()
+                                },
+                            )),
                     ),
             )
     }

@@ -9,7 +9,7 @@ pub const GLOBAL_MANIFEST_NAME: &str = ".oneclient-global.json";
 
 const MANIFEST_VERSION: u32 = 1;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManifestEntry {
     pub path: String,
     pub hash: String,

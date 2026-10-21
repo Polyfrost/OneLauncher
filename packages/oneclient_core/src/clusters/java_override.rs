@@ -9,7 +9,7 @@ use oneclient_events::GroupedProgressSession;
 use crate::LauncherResult;
 use crate::state::LauncherState;
 
-const BUNDLE_JAVA_OVERRIDE: &str = "bundle-java-override";
+pub(crate) const BUNDLE_JAVA_OVERRIDE: &str = "bundle-java-override";
 
 #[tracing::instrument(skip(state, progress))]
 pub async fn apply_bundle_java_override(
@@ -40,12 +40,21 @@ pub async fn apply_bundle_java_override(
         return Ok(());
     }
 
-    let mut overrides = archives.iter().filter_map(|archive| {
-        archive
-            .manifest
-            .java_version_override
-            .map(|major| (archive.manifest.name.as_str(), major))
-    });
+    let taken = oneclient_content::bundles::taken_bundle_names(
+        cluster_id,
+        &archives,
+        &state.services.content(),
+    )
+    .await?;
+    let mut overrides = archives
+        .iter()
+        .filter(|archive| taken.contains(&archive.manifest.name))
+        .filter_map(|archive| {
+            archive
+                .manifest
+                .java_version_override
+                .map(|major| (archive.manifest.name.as_str(), major))
+        });
 
     let Some((bundle, major)) = overrides.next() else {
         return Ok(());

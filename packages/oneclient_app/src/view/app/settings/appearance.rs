@@ -263,7 +263,7 @@ fn animations_row(animations_on: State<bool>, default: bool) -> impl IntoElement
     settings_row(
         IconType::Play,
         "Animations",
-        "Disable all launcher animations and transitions.",
+        "Whether all launcher animations and transitions should be enabled.",
         resettable(toggle(animations_on), animations_on, default),
     )
 }

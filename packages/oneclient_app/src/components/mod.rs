@@ -3,11 +3,13 @@ mod active_cluster_panel;
 mod asset_image;
 mod avatar;
 mod blocked_downloads_popup;
+mod bundle_choices_popup;
 mod bundled_install_warning;
 mod button;
 mod charts;
 mod checkbox;
 mod cluster_update_popup;
+mod code_block;
 mod context_menu;
 mod control_center;
 mod date_range_picker;
@@ -63,11 +65,13 @@ pub use active_cluster_panel::ActiveClusterPanel;
 pub use asset_image::AssetImage;
 pub use avatar::Avatar;
 pub use blocked_downloads_popup::BlockedDownloadsPopup;
+pub use bundle_choices_popup::BundleChoicesPopup;
 pub use bundled_install_warning::{BundledInstallWarning, PendingBundledInstall};
-pub use button::{Button, ButtonSize, ButtonVariant, link_button, open_folder_button};
+pub use button::{Button, ButtonSize, ButtonVariant, copy_button, link_button, open_folder_button};
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
 pub use checkbox::checkbox_labeled;
 pub use cluster_update_popup::ClusterUpdatePopup;
+pub use code_block::CodeBlock;
 pub use context_menu::ContextMenu;
 pub use control_center::ControlCenter;
 pub use date_range_picker::{DateRange, DateRangePicker};
@@ -89,7 +93,7 @@ pub use markdown::{Markdown, MarkdownStyle};
 pub use memory_field::memory_field;
 pub use microsoft_java_prompt::MicrosoftJavaPromptOverlay;
 pub(crate) use microsoft_login::login_dialog;
-pub use microsoft_login::use_microsoft_login;
+pub use microsoft_login::{MicrosoftLogin, use_microsoft_login};
 pub use modpack_confirm_popup::ModpackConfirmPopup;
 pub(crate) use navbar::window_controls;
 pub use navbar::{AppNavbar, OnboardingNavbar};
@@ -98,9 +102,9 @@ pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
-    CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, disable_warning_body,
+    CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action,
     grid_card, icon_box, kebab_button, meta_size, meta_text, on_secondary, package_icon, pill,
-    remote_icon, toggle_action,
+    remote_icon, run_guarded, set_enabled_action, toggle_action,
 };
 pub use package_row::{
     CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,
@@ -115,14 +119,14 @@ pub use screenshot_viewer::{ScreenshotViewer, screenshot_context_menu};
 pub(crate) use scrollview::corrected_scroll;
 pub use scrollview::{LazySection, ScrollArea, ScrollAreaCtx};
 pub use segmented_control::{Segment, SegmentedControl};
-pub use spinner::centered_spinner;
+pub use spinner::{Spinner, centered_spinner};
 pub use splash_curtain::SplashCurtain;
 pub use status_bar::StatusBar;
 pub use tab_bar::{TabBar, TabItem};
 pub use text_input::{TextInput, validate_memory, validate_number};
 pub use toasts::Toasts;
 pub use toggle::{toggle, toggle_controlled};
-pub use tooltip::{TooltipHost, TooltipPlacement, use_provide_tooltips};
+pub use tooltip::{TooltipHost, TooltipPlacement, use_provide_tooltips, use_tooltip_anchor};
 pub use update_prompt::UpdatePromptOverlay;
 pub use version_art_gallery::{GALLERY_COVER_EDGE, VersionArtGallery};
 pub use version_card::VersionCard;

@@ -1,7 +1,9 @@
 use freya::prelude::*;
 
-use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup};
-use crate::hooks::use_link_confirm;
+use crate::components::{
+    Button, CodeBlock, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, copy_button,
+};
+use crate::hooks::{use_dispatch, use_link_confirm};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -13,11 +15,23 @@ pub struct ConfirmLinkOverlay;
 impl Component for ConfirmLinkOverlay {
     fn render(&self) -> impl IntoElement {
         let mut pending = use_link_confirm();
+        let dispatch = use_dispatch();
         let Some(url) = pending.read().clone() else {
             return rect().into_element();
         };
 
         let open_url = url.clone();
+        let (title, body) = if is_first_party(&url) {
+            (
+                "Leave the launcher?",
+                "This will open the page in your web browser.",
+            )
+        } else {
+            (
+                "Open external link?",
+                "This link was provided by a third party. Only open it if you trust the source.",
+            )
+        };
 
         OverlayPopup::new()
             .overlay_level(OVERLAY_BASE_LEVEL + 3)
@@ -49,7 +63,7 @@ impl Component for ConfirmLinkOverlay {
                                     )
                                     .child(
                                         label()
-                                            .text("Open external link?")
+                                            .text(title)
                                             .font_size(16.)
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
@@ -57,25 +71,14 @@ impl Component for ConfirmLinkOverlay {
                             )
                             .child(
                                 label()
-                                    .text("This link was provided by a third party. Only open it if you trust the source.")
+                                    .text(body)
                                     .font_size(12.)
                                     .color(colors::fg_secondary()),
                             )
                             .child(
-                                rect()
-                                    .width(Size::fill())
-                                    .padding(Gaps::new_all(10.))
-                                    .corner_radius(CornerRadius::new_all(8.))
-                                    .background(colors::component_bg())
-                                    .border(border_all_color(1., colors::component_border()))
-                                    .child(
-                                        label()
-                                            .text(url.clone())
-                                            .font_size(12.)
-                                            .max_lines(4)
-                                            .width(Size::fill())
-                                            .color(colors::code_info()),
-                                    ),
+                                CodeBlock::new(url.clone())
+                                    .color(colors::code_info())
+                                    .max_lines(4),
                             )
                             .child(
                                 rect()
@@ -83,6 +86,11 @@ impl Component for ConfirmLinkOverlay {
                                     .width(Size::fill())
                                     .main_align(Alignment::End)
                                     .spacing(8.)
+                                    .child(copy_button(
+                                        url.clone(),
+                                        "Link copied to your clipboard.",
+                                        dispatch,
+                                    ))
                                     .child(
                                         Button::new()
                                             .secondary()
@@ -104,4 +112,14 @@ impl Component for ConfirmLinkOverlay {
             )
             .into_element()
     }
+}
+
+fn is_first_party(url: &str) -> bool {
+    let host = url
+        .split_once("://")
+        .map_or(url, |(_, rest)| rest)
+        .split(['/', '?', '#', ':'])
+        .next()
+        .unwrap_or_default();
+    host == "polyfrost.org" || host.ends_with(".polyfrost.org")
 }

@@ -129,7 +129,7 @@ async fn emit(
     crash_watch: &CrashWatch,
 ) {
     // Blank lines are kept so the console reads the way the log does
-    let text = line.trim_end_matches(['\n', '\r']).to_string();
+    let text = oneclient_cluster::logs::censor(line.trim_end_matches(['\n', '\r'])).into_owned();
     if let Some(recorder) = recorder {
         recorder.observe(&text).await;
     }

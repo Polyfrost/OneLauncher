@@ -62,6 +62,8 @@ freya-skia-safe.workspace = true
 freya.workspace = true
 freya-core.workspace = true
 pulldown-cmark.workspace = true
+# inlines svg logos embedded in markdown badges as data urls
+base64.workspace = true
 
 [dev-dependencies]
 freya-testing.workspace = true
@@ -71,6 +73,7 @@ mimalloc = "=0.1.52"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 libloading = "=0.8.9"
+gtk-sys = "=0.18.2"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "=0.62.2", features = [
@@ -157,6 +160,7 @@ desktop-template = "distribution/linux/org.polyfrost.oneclient.template"
 [package.metadata.packager.appimage]
 # desktop entry generated from the deb template above via the linux config
 libs = ["libayatana-appindicator3.so.1"]
+excluded-libraries = ["libwayland-*"]
 
 [package.metadata.generate-rpm]
 auto-req = "builtin"

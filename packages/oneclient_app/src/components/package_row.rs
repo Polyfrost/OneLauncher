@@ -5,8 +5,10 @@ use oneclient_core::SeenStatus;
 
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
 use crate::essential::EssentialPackage;
+use freya::query::UseMutation;
+
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings,
+    ClusterAction, ClusterMutation, EssentialGuardKind, PendingEssential, disable_warnings,
     loaded_image, use_cached_image, use_cluster_mutation, use_disable_warnings,
     use_essential_guard,
 };
@@ -46,6 +48,7 @@ pub struct PackageEntry {
     pub bundle_name: Option<String>,
     pub provider: ProviderId,
     pub github_hosted: bool,
+    pub github_url: Option<String>,
     pub name: String,
     pub file_name: String,
     pub author: String,
@@ -60,9 +63,15 @@ pub struct PackageEntry {
     pub manifest_default: bool,
     /// Private bundle dependency only set for bundle rows
     pub hidden: bool,
+    /// False for uninstalled rows of bundles the cluster never took keeps them out of the All tab
+    pub opted_in: bool,
     pub advanced: bool,
+    pub deleted: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
+    pub shadowed: bool,
+    /// The user's own copy, older than the bundle's the loader picks over it
+    pub outranked: bool,
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
     pub essential: Option<&'static EssentialPackage>,
@@ -159,8 +168,6 @@ impl Component for PackageRow {
         let warnings_query = use_disable_warnings();
         let hovered = use_state(|| false);
 
-        let warning_body = disable_warning_body(&item, disable_warnings(&warnings_query));
-
         let icon_size = match layout {
             CardLayout::List => 44.,
             CardLayout::Grid => 40.,
@@ -170,23 +177,22 @@ impl Component for PackageRow {
 
         let on_toggle: EventHandler<()> = {
             let action = toggle_action(&item, cluster_id, !item.enabled);
-            let enabled_now = item.enabled;
-            let name = item.name.clone();
-            let mut guard = guard;
+            let item = item.clone();
+            let warnings = disable_warnings(&warnings_query);
             (move |()| {
                 let Some(action) = action.clone() else {
                     return;
                 };
-
-                match warning_body.clone().filter(|_| enabled_now) {
-                    Some(body) => guard.set(Some(PendingEssential {
-                        name: name.clone(),
-                        body,
-                        kind: EssentialGuardKind::Disable,
-                        action,
-                    })),
-                    None => cluster.mutate(action),
-                }
+                let only = [&item];
+                run_guarded(
+                    action,
+                    if item.enabled { &only[..] } else { &[] },
+                    item.name.clone(),
+                    EssentialGuardKind::Disable,
+                    warnings.clone(),
+                    cluster,
+                    guard,
+                );
             })
             .into()
         };
@@ -195,7 +201,14 @@ impl Component for PackageRow {
 
         let (card, radius) = match layout {
             CardLayout::List => (
-                list_card(&item, package_type, cluster_id, icon, on_toggle, on_context.clone()),
+                list_card(
+                    &item,
+                    package_type,
+                    cluster_id,
+                    icon,
+                    on_toggle,
+                    on_context.clone(),
+                ),
                 8.,
             ),
             CardLayout::Grid => (
@@ -245,23 +258,52 @@ pub(crate) fn toggle_action(
     cluster_id: i64,
     enabled: bool,
 ) -> Option<ClusterAction> {
-    if let Some(hash) = &item.hash {
+    set_enabled_action(
+        cluster_id,
+        item.hash.as_deref(),
+        item.bundle_name.as_deref(),
+        &item.package_id,
+        item.manifest_default,
+        enabled,
+    )
+}
+
+pub(crate) fn set_enabled_action(
+    cluster_id: i64,
+    hash: Option<&str>,
+    bundle_name: Option<&str>,
+    package_id: &str,
+    manifest_default: bool,
+    enabled: bool,
+) -> Option<ClusterAction> {
+    if let Some(hash) = hash {
         Some(ClusterAction::SetArtifactEnabled {
             cluster_id,
-            hash: hash.clone(),
+            hash: hash.to_string(),
             enabled,
         })
     } else {
-        item.bundle_name
-            .clone()
-            .map(|bundle_name| ClusterAction::SetBundlePackageEnabled {
-                cluster_id,
-                bundle_name,
-                package_id: item.package_id.clone(),
-                enabled,
-                manifest_default: item.manifest_default,
-            })
+        bundle_name.map(|bundle_name| ClusterAction::SetBundlePackageEnabled {
+            cluster_id,
+            bundle_name: bundle_name.to_string(),
+            package_id: package_id.to_string(),
+            enabled,
+            manifest_default,
+        })
     }
+}
+
+pub(crate) fn bundled_delete_action(item: &PackageEntry, cluster_id: i64) -> Option<ClusterAction> {
+    let hash = item.hash.clone()?;
+    Some(if item.deleted {
+        ClusterAction::SetArtifactEnabled {
+            cluster_id,
+            hash,
+            enabled: true,
+        }
+    } else {
+        ClusterAction::DeleteBundledArtifact { cluster_id, hash }
+    })
 }
 
 pub(crate) fn disable_warning_body(
@@ -272,10 +314,46 @@ pub(crate) fn disable_warning_body(
 
     match warnings {
         Some(warnings) if bundled => warnings.body_for(&item.package_id).map(str::to_string),
-        _ => item.essential.map(|package| package.disable_body.to_string()),
+        _ => item
+            .essential
+            .map(|package| package.disable_body.to_string()),
     }
 }
 
+pub(crate) fn run_guarded(
+    action: ClusterAction,
+    targets: &[&PackageEntry],
+    name: String,
+    kind: EssentialGuardKind,
+    warnings: Option<oneclient_core::DisableWarnings>,
+    cluster: UseMutation<ClusterMutation>,
+    mut guard: State<Option<PendingEssential>>,
+) {
+    let warned: Vec<(&PackageEntry, String)> = targets
+        .iter()
+        .filter_map(|p| Some((*p, disable_warning_body(p, warnings.clone())?)))
+        .collect();
+    let body = match warned.as_slice() {
+        [] => {
+            cluster.mutate(action);
+            return;
+        }
+        [(p, body)] if p.name == name => body.clone(),
+        _ => warned
+            .iter()
+            .map(|(p, body)| format!("**{}**\n\n{body}", p.name))
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+    };
+    guard.set(Some(PendingEssential {
+        name,
+        body,
+        kind,
+        action,
+    }));
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn package_context_menu(
     x: f32,
     y: f32,
@@ -283,6 +361,7 @@ pub fn package_context_menu(
     cluster_id: i64,
     package_type: &'static str,
     on_delete: EventHandler<(String, String)>,
+    on_bundled: Option<EventHandler<()>>,
     on_select: EventHandler<()>,
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone()).action(
@@ -304,12 +383,28 @@ pub fn package_context_menu(
         });
     }
 
+    if let Some(url) = item.github_url.clone() {
+        menu = menu.action(IconType::LinkExternal01, "View in browser", move |()| {
+            crate::platform::open_url(&url);
+        });
+    }
+
     if let Some(hash) = item.hash.clone() {
         menu = menu.action(
             IconType::Folder,
             "View in folder",
             EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
         );
+    }
+
+    if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.installed) {
+        menu = if item.deleted {
+            menu.separator()
+                .action(IconType::RefreshCcw02, "Restore", on_bundled)
+        } else {
+            menu.separator()
+                .danger_action(IconType::Trash01, "Delete", on_bundled)
+        };
     }
 
     if item.installed && !item.in_bundle() {
@@ -380,16 +475,12 @@ pub(crate) fn grid_card(
     let hovering = *hovered.read();
 
     let bg = match (enabled, hovering) {
-		(_, true) => colors::component_bg_hover(),
+        (_, true) => colors::component_bg_hover(),
         (true, false) => colors::component_bg(),
-		(false, false) => colors::component_bg_disabled(),
+        (false, false) => colors::component_bg_disabled(),
     };
 
-	let alpha = if enabled {
-		255u8
-	} else {
-		115u8
-	};
+    let alpha = if enabled { 255u8 } else { 115u8 };
 
     let border = if !hovering {
         colors::component_border()
@@ -403,11 +494,7 @@ pub(crate) fn grid_card(
         // .cross_align(Alignment::Center)
         .spacing(11.)
         .content(Content::Flex)
-        .child(
-			rect()
-				.opacity(alpha as f32 / 255.)
-				.child(icon)
-		)
+        .child(rect().opacity(alpha as f32 / 255.).child(icon))
         .child(
             rect()
                 .vertical()
@@ -444,7 +531,9 @@ pub(crate) fn grid_card(
             .into_element()
     });
 
-    let floating = (item.is_outdated() || item.recency_badge().is_some()).then(|| {
+    let badged =
+        item.is_outdated() || item.shadowed || item.outranked || item.recency_badge().is_some();
+    let floating = badged.then(|| {
         rect()
             .horizontal()
             .width(Size::fill())
@@ -457,6 +546,8 @@ pub(crate) fn grid_card(
             .cross_align(Alignment::Center)
             .spacing(4.)
             .maybe_child(item.is_outdated().then(outdated_badge))
+            .maybe_child(item.shadowed.then(shadowed_badge))
+            .maybe_child(item.outranked.then(outranked_badge))
             .maybe_child(item.recency_badge())
             .into_element()
     });
@@ -502,14 +593,27 @@ fn grid_meta(
 ) -> Element {
     let muted = CARD_NAME.with_a(scale_a(alpha, 0.5));
 
-    let source = if item.github_hosted {
+    let source = if let Some(url) = item.github_url.clone() {
+        SourceLink {
+            text: "GitHub".to_string(),
+            on_press: EventHandler::new(move |()| crate::platform::open_url(&url)),
+            alpha,
+        }
+        .into_element()
+    } else if item.github_hosted {
         meta_text("GitHub".to_string(), muted)
     } else if item.is_remote() && navigable {
+        let provider = item.provider;
+        let package_id = item.package_id.clone();
         SourceLink {
-            provider: item.provider,
-            package_id: item.package_id.clone(),
-            package_type,
-            cluster_id,
+            text: provider.to_string(),
+            on_press: EventHandler::new(move |()| {
+                let _ = RouterContext::get().push(Route::BrowserPackage {
+                    cluster_id,
+                    package_type: package_type.to_string(),
+                    package_id: format!("{}:{}", provider as u8, package_id),
+                });
+            }),
             alpha,
         }
         .into_element()
@@ -547,10 +651,8 @@ fn grid_meta(
 
 #[derive(PartialEq)]
 struct SourceLink {
-    provider: ProviderId,
-    package_id: String,
-    package_type: &'static str,
-    cluster_id: i64,
+    text: String,
+    on_press: EventHandler<()>,
     alpha: u8,
 }
 
@@ -567,10 +669,7 @@ impl Component for SourceLink {
             CARD_NAME.with_a(scale_a(self.alpha, 0.68))
         };
 
-        let provider = self.provider;
-        let package_id = self.package_id.clone();
-        let package_type = self.package_type.to_string();
-        let cluster_id = self.cluster_id;
+        let on_press = self.on_press.clone();
 
         rect()
             .cursor(CursorIcon::Pointer)
@@ -583,13 +682,9 @@ impl Component for SourceLink {
             .on_press(move |e: Event<PressEventData>| {
                 e.stop_propagation();
                 pressed.set(false);
-                let _ = RouterContext::get().push(Route::BrowserPackage {
-                    cluster_id,
-                    package_type: package_type.clone(),
-                    package_id: format!("{}:{}", provider as u8, package_id),
-                });
+                on_press.call(());
             })
-            .child(meta_text(provider.to_string(), color))
+            .child(meta_text(self.text.clone(), color))
     }
 }
 
@@ -721,7 +816,16 @@ fn package_info(
                                 .max_width(Size::percent(60.))
                                 .color(CARD_NAME),
                         )
-                        .child(if item.github_hosted {
+                        .child(if let Some(url) = item.github_url.clone() {
+                            rect()
+                                .cursor(CursorIcon::Pointer)
+                                .on_press(move |e: Event<PressEventData>| {
+                                    e.stop_propagation();
+                                    crate::platform::open_url(&url);
+                                })
+                                .child(github_badge())
+                                .into_element()
+                        } else if item.github_hosted {
                             github_badge()
                         } else if remote {
                             provider_badge(item.provider)
@@ -729,6 +833,8 @@ fn package_info(
                             local_badge()
                         })
                         .maybe_child(item.is_outdated().then(outdated_badge))
+                        .maybe_child(item.shadowed.then(shadowed_badge))
+                        .maybe_child(item.outranked.then(outranked_badge))
                         .maybe_child(item.recency_badge()),
                 )
                 .maybe(!item.author.is_empty(), |el| {
@@ -828,6 +934,14 @@ pub fn github_badge() -> Element {
 
 fn outdated_badge() -> Element {
     status_tag("Update available", colors::brand())
+}
+
+fn shadowed_badge() -> Element {
+    status_tag("Using your copy", colors::brand())
+}
+
+fn outranked_badge() -> Element {
+    status_tag("Using bundle's newer copy", colors::brand())
 }
 
 fn new_badge() -> Element {

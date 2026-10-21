@@ -10,8 +10,8 @@ pub use gc::{
     remove_unreferenced_files,
 };
 pub use link::{
-    LiveSync, link_or_copy, remove_entry, sweep_staging_files, try_link_materialized,
-    try_unlink_materialized,
+    LiveSync, drop_unmanaged_mod, link_or_copy, remove_entry, sweep_staging_files,
+    try_link_materialized, try_unlink_materialized,
 };
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 
@@ -183,6 +183,11 @@ impl PackageStore {
 
         artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
+        if let (Some(content_type), Some(link)) = (content_type, &link) {
+            let name = &link.cluster_file_name;
+            drop_unmanaged_mod(&cluster, content_type, name, hash, &ctx.db).await;
+        }
+
         if let (Some(content_type), Some(link)) = (content_type, link)
             && link::try_unlink_materialized(
                 &cluster,
@@ -273,6 +278,7 @@ impl PackageStore {
                 content_type: ContentType::from_repr(row.content_type as u8)
                     .unwrap_or(ContentType::Mod),
                 file_name: row.file_name,
+                size_bytes: row.size_bytes.map(|s| s as u64),
                 project_id: row.project_id,
                 version_id: row.version_id,
                 display_name: row.display_name,
@@ -366,13 +372,8 @@ impl PackageStore {
         let live = if enabled {
             link::try_link_materialized(&cluster, &artifact, &file_name).await
         } else {
-            link::try_unlink_materialized(
-                &cluster,
-                content_type,
-                &link.cluster_file_name,
-                &ctx.db,
-            )
-            .await;
+            link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db)
+                .await;
             if link.cluster_file_name != file_name {
                 link::try_unlink_materialized(&cluster, content_type, &file_name, &ctx.db).await;
             }

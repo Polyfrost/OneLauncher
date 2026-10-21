@@ -42,7 +42,6 @@ impl Component for TilesRow {
         };
 
         let hero = hero_tile(
-            IconType::ClockRewind,
             "Total playtime",
             format_duration(stats.total_secs),
             format!(
@@ -53,32 +52,15 @@ impl Component for TilesRow {
         );
 
         let mut rest = vec![
-            stat_tile(IconType::Play, "Sessions", stats.session_count.to_string()),
+            stat_tile("Sessions", stats.session_count.to_string()),
+            stat_tile("Avg / session", format_duration(avg_session)),
             stat_tile(
-                IconType::Sliders04,
-                "Avg / session",
-                format_duration(avg_session),
-            ),
-            stat_tile(
-                IconType::Maximize01,
                 "Longest session",
                 format_duration(stats.longest_session_secs),
             ),
-            stat_tile(
-                IconType::Rocket02,
-                "Day streak",
-                streak_value(stats.current_streak),
-            ),
-            stat_tile(
-                IconType::CheckCircle,
-                "Best streak",
-                streak_value(stats.longest_streak),
-            ),
-            stat_tile(
-                IconType::Calendar,
-                "Days played",
-                stats.active_days.to_string(),
-            ),
+            stat_tile("Day streak", streak_value(stats.current_streak)),
+            stat_tile("Best streak", streak_value(stats.longest_streak)),
+            stat_tile("Days played", stats.active_days.to_string()),
         ];
 
         let mut root = rect().vertical().width(Size::fill()).spacing(TILE_GAP);
@@ -135,18 +117,7 @@ fn streak_value(days: usize) -> String {
     format!("{days}d")
 }
 
-fn icon_chip(icon: IconType, size: f32, tint: Color) -> Element {
-    rect()
-        .width(Size::px(size))
-        .height(Size::px(size))
-        .corner_radius(CornerRadius::new_all(size * 0.5))
-        .background(tint.with_a(38))
-        .center()
-        .child(Icon::new(icon).size(size * 0.52).color(tint))
-        .into_element()
-}
-
-fn hero_tile(icon: IconType, caption: &str, value: String, note: String) -> Element {
+fn hero_tile(caption: &str, value: String, note: String) -> Element {
     card()
         .width(Size::fill())
         .height(Size::fill())
@@ -154,18 +125,11 @@ fn hero_tile(icon: IconType, caption: &str, value: String, note: String) -> Elem
         .background(colors::brand().with_a(18))
         .border(border_all_color(1., colors::brand().with_a(90)))
         .child(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(8.)
-                .child(icon_chip(icon, 24., colors::brand()))
-                .child(
-                    label()
-                        .text(caption.to_string())
-                        .font_size(12.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_secondary()),
-                ),
+            label()
+                .text(caption.to_string())
+                .font_size(12.)
+                .font_weight(FontWeight::MEDIUM)
+                .color(colors::fg_secondary()),
         )
         .child(
             rect()
@@ -193,25 +157,18 @@ fn hero_tile(icon: IconType, caption: &str, value: String, note: String) -> Elem
         .into_element()
 }
 
-fn stat_tile(icon: IconType, caption: &str, value: String) -> Element {
+fn stat_tile(caption: &str, value: String) -> Element {
     card()
         .width(Size::fill())
         .height(Size::fill())
         .main_align(Alignment::SpaceBetween)
         .child(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(8.)
-                .child(icon_chip(icon, 24., colors::fg_secondary()))
-                .child(
-                    label()
-                        .text(caption.to_string())
-                        .font_size(12.)
-                        .max_lines(1)
-                        .width(Size::fill())
-                        .color(colors::fg_secondary()),
-                ),
+            label()
+                .text(caption.to_string())
+                .font_size(12.)
+                .max_lines(1)
+                .width(Size::fill())
+                .color(colors::fg_secondary()),
         )
         .child(
             label()

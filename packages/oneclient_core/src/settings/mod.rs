@@ -4,7 +4,7 @@ pub mod data_dir;
 
 pub use launcher::{LaunchBehaviour, LauncherSettings, ViewLayout, ViewState};
 pub use oneclient_cluster::{
-    GameSettingsProfile, PackageUpdateMode, ProfileUpdate, SettingsOsExtra,
+    GameSettingsProfile, GraphicsBackend, PackageUpdateMode, ProfileUpdate, SettingsOsExtra,
 };
 pub use oneclient_common::Resolution;
 

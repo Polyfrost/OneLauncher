@@ -87,7 +87,7 @@ impl Component for AddRow {
                     .notify("Java runtimes refreshed")
                     .body("The installed runtime list is up to date")
                     .info()
-					.toast_only()
+                    .toast_only()
                     .send();
             });
         };

@@ -109,7 +109,7 @@ pub(super) fn lines_from(content: &str, opts: &ReadOptions) -> Vec<LogLine> {
         lines.push(LogLine {
             number: idx + 1,
             level,
-            text: raw.to_string(),
+            text: super::censor(raw).into_owned(),
         });
     }
 

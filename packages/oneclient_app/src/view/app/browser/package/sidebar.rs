@@ -30,6 +30,10 @@ pub(super) fn sidebar(
         _ => false,
     };
     let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
+    let enable = installed
+        .as_ref()
+        .and_then(Installed::disabled_bundled)
+        .and_then(|version| version.enable_action(installer.cluster_id));
 
     rect()
         .vertical()
@@ -67,7 +71,7 @@ pub(super) fn sidebar(
                         .child(ProviderTag {
                             text: format!("{} on {}", project.content_type, project.provider),
                             provider: project.provider,
-                            url: provider_project_url(&project),
+                            url: project.web_url(),
                             confirm,
                         })
                         .maybe(!project.summary.is_empty(), |el| {
@@ -101,14 +105,19 @@ pub(super) fn sidebar(
                         ),
                 ),
         )
-        .child(
-            Button::new()
+        .child(match enable {
+            Some(action) => EnableButton {
+                action,
+                variant: EnableVariant::Sidebar,
+            }
+            .into_element(),
+            None => Button::new()
                 .primary()
                 .width(Size::fill())
                 .enabled(can_install)
                 .on_press(move |_| {
                     if let Some(latest) = latest_version.clone() {
-                        installer.install(
+                        installer.install_latest(
                             project_id.clone(),
                             latest.version_id,
                             latest.version_number,
@@ -122,8 +131,9 @@ pub(super) fn sidebar(
                     "Latest installed"
                 } else {
                     "Install latest"
-                }),
-        )
+                })
+                .into_element(),
+        })
         .maybe(
             !project.members.is_empty() || !project.author.is_empty(),
             |el| el.child(authors_card(&project, confirm)),
@@ -133,24 +143,6 @@ pub(super) fn sidebar(
             el.child(links_card(&project.links, confirm))
         })
         .into_element()
-}
-
-/// Modrinth doesn't hand a url out so it's rebuilt from the slug CurseForge lists it as "Website"
-fn provider_project_url(project: &ProjectDetail) -> Option<String> {
-    match project.provider {
-        ProviderId::Modrinth => Some(format!(
-            "{}{}/{}",
-            ProviderId::Modrinth.website(),
-            project.content_type.modrinth_type(),
-            project.slug
-        )),
-        ProviderId::CurseForge => project
-            .links
-            .iter()
-            .find(|(label, _)| label == "Website")
-            .map(|(_, url)| url.clone()),
-        ProviderId::Local => None,
-    }
 }
 
 /// Plain text when the provider has no page so a local package doesn't look clickable
@@ -327,7 +319,7 @@ fn details_card(project: &ProjectDetail) -> impl IntoElement {
         rows.push(pill_detail("Versions", &project.game_versions));
     }
     if !project.loaders.is_empty() {
-        let loaders: Vec<String> = project.loaders.iter().map(|l| l.to_string()).collect();
+        let loaders: Vec<String> = project.loaders.iter().map(|l| l.real_name()).collect();
         rows.push(pill_detail("Loaders", &loaders));
     }
     if let Some(license) = &project.license {

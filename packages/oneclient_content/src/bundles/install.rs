@@ -13,13 +13,184 @@ use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
-use crate::packages::store::{LiveSync, PackageStore, evict_if_unused, try_unlink_materialized};
+use crate::packages::store::{
+    LiveSync, PackageStore, drop_unmanaged_mod, evict_if_unused, try_unlink_materialized,
+};
 use crate::packages::types::ExternalFile;
 use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 
 fn is_base62(s: &str) -> bool {
     !s.is_empty() && s.chars().all(|c| c.is_ascii_alphanumeric())
+}
+
+pub(crate) fn takes_bundle(
+    archive: &BundleArchive,
+    accepted: &std::collections::HashSet<String>,
+) -> bool {
+    archive.manifest.enabled || accepted.contains(&archive.manifest.name)
+}
+
+fn wants_file(file: &BundleFile, user_override: Option<OverrideType>, taken: bool) -> bool {
+    if taken {
+        effective_enabled(file, user_override)
+    } else {
+        user_override == Some(OverrideType::Enabled)
+    }
+}
+
+pub(crate) async fn accepted_bundles(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<std::collections::HashSet<String>> {
+    Ok(bundle_dao::list_bundle_choices(&ctx.db, cluster_id)
+        .await?
+        .into_iter()
+        .filter_map(|(name, accepted)| accepted.then_some(name))
+        .collect())
+}
+
+pub async fn taken_bundle_names(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<std::collections::HashSet<String>> {
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
+    Ok(archives
+        .iter()
+        .filter(|archive| takes_bundle(archive, &accepted))
+        .map(|archive| archive.manifest.name.clone())
+        .collect())
+}
+
+pub(crate) async fn overrides_outside_declined(
+    cluster_id: i64,
+    archives: &[BundleArchive],
+    mut overrides: Vec<oneclient_db::models::ClusterBundleOverrideRow>,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<oneclient_db::models::ClusterBundleOverrideRow>> {
+    let taken = taken_bundle_names(cluster_id, archives, ctx).await?;
+    let declined: std::collections::HashSet<&str> = archives
+        .iter()
+        .map(|archive| archive.manifest.name.as_str())
+        .filter(|name| !taken.contains(*name))
+        .collect();
+    let tracked: std::collections::HashSet<(String, String)> =
+        bundle_dao::list_bundle_tracked(&ctx.db, cluster_id)
+            .await?
+            .into_iter()
+            .filter_map(|row| Some((row.bundle_name?, row.package_id?)))
+            .collect();
+
+    overrides.retain(|o| survives_decline(o, &declined, &tracked));
+    Ok(overrides)
+}
+
+fn survives_decline(
+    o: &oneclient_db::models::ClusterBundleOverrideRow,
+    declined: &std::collections::HashSet<&str>,
+    tracked: &std::collections::HashSet<(String, String)>,
+) -> bool {
+    if !declined.contains(o.bundle_name.as_str()) {
+        return true;
+    }
+
+    OverrideType::parse(&o.override_type) == Some(OverrideType::Disabled)
+        && tracked.contains(&(o.bundle_name.clone(), o.package_id.clone()))
+}
+
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
+pub async fn pending_bundle_choices(
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<BundleArchive>> {
+    let Some(cluster) = bundle_cluster(cluster_id, ctx).await? else {
+        return Ok(Vec::new());
+    };
+    let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
+    let decided: std::collections::HashSet<String> =
+        bundle_dao::list_bundle_choices(&ctx.db, cluster_id)
+            .await?
+            .into_iter()
+            .map(|(name, _)| name)
+            .collect();
+    Ok(bundles
+        .archives_for(ctx, &cluster.mc_version, loader)
+        .await?
+        .into_iter()
+        .filter(|archive| {
+            !archive.manifest.enabled
+                && !archive.bundle.hidden
+                && !decided.contains(&archive.manifest.name)
+        })
+        .collect())
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn set_bundle_choices(
+    cluster_id: i64,
+    choices: &[(String, bool)],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    bundle_dao::save_bundle_choices(&ctx.db, cluster_id, choices).await?;
+
+    for row in bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await? {
+        let declined = row.bundle_name.as_ref().is_some_and(|name| {
+            choices
+                .iter()
+                .any(|(choice, accepted)| choice == name && !accepted)
+        });
+        if declined {
+            detach_artifact(cluster_id, &row.hash, ctx).await?;
+        }
+    }
+    Ok(())
+}
+
+const UNASKED_SKYBLOCK: &str = "decline_unasked_skyblock";
+
+#[tracing::instrument(level = "debug", skip_all, fields(cluster_id = cluster.id))]
+pub(crate) async fn decline_unasked_skyblock(
+    cluster: &ClusterRow,
+    archives: &[BundleArchive],
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let marker = format!("{UNASKED_SKYBLOCK}:{}", cluster.id);
+    if migration_dao::is_applied(&ctx.db, &marker).await? {
+        return Ok(());
+    }
+
+    let unasked = cluster.mc_version == "26.3"
+        && bundle_dao::predates_bundle_choices(&ctx.db, cluster.id).await?;
+    if unasked {
+        let declined: Vec<(String, bool)> = archives
+            .iter()
+            .filter(|archive| {
+                !archive.manifest.enabled
+                    && archive
+                        .manifest
+                        .category
+                        .trim()
+                        .eq_ignore_ascii_case("SkyBlock")
+            })
+            .map(|archive| (archive.manifest.name.clone(), false))
+            .collect();
+        set_bundle_choices(cluster.id, &declined, ctx).await?;
+    }
+
+    migration_dao::mark_applied(&ctx.db, &marker).await?;
+    Ok(())
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn inherit_bundle_choices(
+    source_cluster_id: i64,
+    target_cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    bundle_dao::copy_bundle_choices(&ctx.db, source_cluster_id, target_cluster_id).await?;
+    Ok(())
 }
 
 pub fn effective_enabled(file: &BundleFile, user_override: Option<OverrideType>) -> bool {
@@ -190,7 +361,7 @@ pub async fn install_bundle(
         .find(|a| a.manifest.name == bundle_name)
         .ok_or(BundleError::NotFound(bundle_name.to_string()))?;
 
-    install_enabled_bundle_files(&archive, cluster_id, skip_compatibility, None, ctx).await
+    install_enabled_bundle_files(&archive, cluster_id, true, skip_compatibility, None, ctx).await
 }
 
 /// `suppression` comes from [`find_user_suppression`] so a choice filed under a
@@ -240,6 +411,55 @@ async fn clear_reconciler_disables(
 
     migration_dao::mark_applied(&ctx.db, &id).await?;
     Ok(())
+}
+
+const STALE_DISABLE_REPAIR: &str = "clear-disables-left-on-live-bundle-content";
+
+async fn clear_stale_disables(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<()> {
+    let id = format!("{STALE_DISABLE_REPAIR}:{cluster_id}");
+    if migration_dao::is_applied(&ctx.db, &id).await? {
+        return Ok(());
+    }
+
+    let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
+    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let stale = stale_disables(&tracked, &overrides);
+
+    for (bundle_name, package_id) in &stale {
+        bundle_dao::remove_override(&ctx.db, cluster_id, bundle_name, package_id).await?;
+    }
+
+    if !stale.is_empty() {
+        tracing::info!(
+            cluster_id,
+            cleared = stale.len(),
+            "cleared disabled overrides left on bundle content that is switched on"
+        );
+    }
+
+    migration_dao::mark_applied(&ctx.db, &id).await?;
+    Ok(())
+}
+
+fn stale_disables(
+    tracked: &[oneclient_db::models::BundleTrackedArtifactRow],
+    overrides: &[oneclient_db::models::ClusterBundleOverrideRow],
+) -> Vec<(String, String)> {
+    overrides
+        .iter()
+        .filter(|o| OverrideType::parse(&o.override_type) == Some(OverrideType::Disabled))
+        .filter(|o| {
+            let mut copies = tracked
+                .iter()
+                .filter(|row| {
+                    row.bundle_name.as_deref() == Some(o.bundle_name.as_str())
+                        && row.package_id.as_deref() == Some(o.package_id.as_str())
+                })
+                .peekable();
+            copies.peek().is_some() && copies.all(|row| row.enabled != 0)
+        })
+        .map(|o| (o.bundle_name.clone(), o.package_id.clone()))
+        .collect()
 }
 
 pub(crate) fn external_ids_by_sha1(
@@ -318,6 +538,7 @@ pub async fn heal_bundle_activity(
 ) -> ContentResult<()> {
     clear_reconciler_disables(cluster_id, archives, ctx).await?;
     adopt_external_ids(cluster_id, archives, ctx).await?;
+    clear_stale_disables(cluster_id, ctx).await?;
 
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
     if tracked.iter().all(|row| row.enabled != 0) {
@@ -335,7 +556,13 @@ pub async fn heal_bundle_activity(
         }
     }
 
-    let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let overrides = overrides_outside_declined(
+        cluster_id,
+        archives,
+        bundle_dao::list_overrides(&ctx.db, cluster_id).await?,
+        ctx,
+    )
+    .await?;
 
     let mut live_packages: std::collections::HashSet<String> = tracked
         .iter()
@@ -393,11 +620,14 @@ pub async fn heal_bundle_activity(
 pub async fn install_enabled_bundle_files(
     archive: &BundleArchive,
     cluster_id: i64,
+    taken: bool,
     skip_compatibility: bool,
     progress: Option<&GroupedProgressSession>,
     ctx: &ContentCtx,
 ) -> ContentResult<Vec<String>> {
-    extract_bundle_overrides_for_cluster(archive, cluster_id, ctx).await?;
+    if taken {
+        extract_bundle_overrides_for_cluster(archive, cluster_id, ctx).await?;
+    }
     heal_bundle_activity(cluster_id, std::slice::from_ref(archive), ctx).await?;
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
@@ -415,8 +645,11 @@ pub async fn install_enabled_bundle_files(
         .iter()
         .filter(|file| {
             let package_id = file.kind.package_id();
-            effective_enabled(file, find_override(&overrides, &bundle_name, &package_id))
-                && !present.contains(file)
+            wants_file(
+                file,
+                find_override(&overrides, &bundle_name, &package_id),
+                taken,
+            ) && !present.contains(file)
         })
         .cloned()
         .collect();
@@ -562,15 +795,20 @@ pub async fn enabled_bundle_bytes(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
     let present = PresentContent::load(cluster_id, ctx).await?;
 
     let mut total = 0u64;
     for archive in &archives {
         let bundle_name = &archive.manifest.name;
+        let taken = takes_bundle(archive, &accepted);
         for file in &archive.manifest.files {
             let package_id = file.kind.package_id();
-            if !effective_enabled(file, find_override(&overrides, bundle_name, &package_id))
-                || present.contains(file)
+            if !wants_file(
+                file,
+                find_override(&overrides, bundle_name, &package_id),
+                taken,
+            ) || present.contains(file)
             {
                 continue;
             }
@@ -613,8 +851,6 @@ pub async fn set_bundle_package_override(
 
 /// For bundle files the cluster has not installed
 /// installed ones go through [`set_artifact_enabled_to`]
-/// Matching the manifest default clears the override
-/// switching *on* also drops objections filed under other bundles
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn set_bundle_package_enabled(
     cluster_id: i64,
@@ -625,18 +861,12 @@ pub async fn set_bundle_package_enabled(
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
     let override_type = match (enabled, manifest_default) {
-        (true, true) | (false, false) => None,
-        (true, false) => Some(OverrideType::Enabled),
+        (true, _) => Some(OverrideType::Enabled),
+        (false, false) => None,
         (false, true) => Some(OverrideType::Disabled),
     };
 
-    set_bundle_package_override(cluster_id, bundle_name, package_id, override_type, ctx).await?;
-
-    if enabled {
-        clear_suppressing_overrides(cluster_id, package_id, ctx).await?;
-    }
-
-    Ok(())
+    set_bundle_package_override(cluster_id, bundle_name, package_id, override_type, ctx).await
 }
 
 #[tracing::instrument(level = "debug", skip(overrides, ctx), fields(count = overrides.len()))]
@@ -701,15 +931,21 @@ pub async fn enabled_bundle_projects(
         .archives_for(ctx, &cluster.mc_version, loader)
         .await?;
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
 
     let mut projects = std::collections::HashSet::new();
     for archive in &archives {
         let bundle_name = &archive.manifest.name;
+        let taken = takes_bundle(archive, &accepted);
         for file in &archive.manifest.files {
             let BundleFileKind::Managed { project_id, .. } = &file.kind else {
                 continue;
             };
-            if effective_enabled(file, find_override(&overrides, bundle_name, project_id)) {
+            if wants_file(
+                file,
+                find_override(&overrides, bundle_name, project_id),
+                taken,
+            ) {
                 projects.insert(project_id.clone());
             }
         }
@@ -754,9 +990,11 @@ pub async fn install_cluster_bundles(
         bundles = archives.len(),
         "installing enabled bundle content"
     );
+    let accepted = accepted_bundles(cluster_id, ctx).await?;
     for archive in &archives {
+        let taken = takes_bundle(archive, &accepted);
         let installed =
-            install_enabled_bundle_files(archive, cluster_id, true, progress, ctx).await?;
+            install_enabled_bundle_files(archive, cluster_id, taken, true, progress, ctx).await?;
         tracing::info!(
             cluster_id,
             bundle = %archive.manifest.name,
@@ -774,6 +1012,11 @@ pub async fn on_user_remove_artifact(
     hash: &str,
     ctx: &ContentCtx,
 ) -> ContentResult<()> {
+    if let Some(tracked) = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?
+        && let Some(package_id) = tracked.package_id
+    {
+        clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
+    }
     handle_user_artifact_action(cluster_id, hash, ctx, OverrideType::Removed).await
 }
 
@@ -871,36 +1114,7 @@ pub async fn remove_artifact_from_cluster(
 ) -> ContentResult<()> {
     let bundle_data = bundle_dao::get_bundle_tracked(&ctx.db, cluster_id, hash).await?;
 
-    // Looked up first but never allowed to block removal
-    // a package whose artifact row has gone missing must still be removable
-    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
-    let target = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
-        .await?
-        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
-
-    let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
-
-    // Database first unconditionally
-    // on Windows a jar held open by a running game blocks deleting every hard
-    // link which used to fail the whole removal
-    // The folder is rebuilt from the database at the next launch
-    artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
-
-    // Best-effort folder cleanup failure here is not an error
-    let deferred = match (target, link) {
-        (Some(content_type), Some(link)) => {
-            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db)
-                .await
-                == LiveSync::Deferred
-        }
-        _ => false,
-    };
-
-    // The package actually lives in the cache
-    // `evict_if_unused` drops it only once no other cluster still needs it
-    if !deferred && let Err(err) = evict_if_unused(hash, ctx).await {
-        tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
-    }
+    detach_artifact(cluster_id, hash, ctx).await?;
 
     if let Some(tracked) = bundle_data
         && let (Some(bundle_name), Some(package_id)) =
@@ -923,6 +1137,45 @@ pub async fn remove_artifact_from_cluster(
                 clear_suppressing_overrides(cluster_id, &package_id, ctx).await?;
             }
         }
+    }
+
+    Ok(())
+}
+
+async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
+    // Looked up first but never allowed to block removal
+    // a package whose artifact row has gone missing must still be removable
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let target = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+        .await?
+        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
+
+    let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+
+    // Database first unconditionally
+    // on Windows a jar held open by a running game blocks deleting every hard
+    // link which used to fail the whole removal
+    // The folder is rebuilt from the database at the next launch
+    artifact_dao::unlink_cluster_artifact(&ctx.db, cluster_id, hash).await?;
+
+    if let (Some(content_type), Some(link)) = (target, &link) {
+        let name = &link.cluster_file_name;
+        drop_unmanaged_mod(&cluster, content_type, name, hash, &ctx.db).await;
+    }
+
+    // Best-effort folder cleanup failure here is not an error
+    let deferred = match (target, link) {
+        (Some(content_type), Some(link)) => {
+            try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db).await
+                == LiveSync::Deferred
+        }
+        _ => false,
+    };
+
+    // The package actually lives in the cache
+    // `evict_if_unused` drops it only once no other cluster still needs it
+    if !deferred && let Err(err) = evict_if_unused(hash, ctx).await {
+        tracing::warn!(hash, error = %err, "failed to evict unused artifact from the cache");
     }
 
     Ok(())
@@ -1147,5 +1400,131 @@ mod tests {
         );
         assert_eq!(find_override(&rows, "Bundle B", "pkg-1"), None);
         assert_eq!(find_override(&rows, "Bundle A", "pkg-3"), None);
+    }
+
+    fn tracked(
+        bundle: &str,
+        pid: &str,
+        hash: &str,
+        enabled: bool,
+    ) -> oneclient_db::models::BundleTrackedArtifactRow {
+        oneclient_db::models::BundleTrackedArtifactRow {
+            cluster_id: 1,
+            hash: hash.to_string(),
+            cluster_file_name: format!("{pid}.jar"),
+            enabled: i64::from(enabled),
+            bundle_name: Some(bundle.to_string()),
+            bundle_version_id: Some("v1".to_string()),
+            package_id: Some(pid.to_string()),
+            installed_at: None,
+        }
+    }
+
+    #[test]
+    fn a_disable_on_a_mod_still_held_from_a_declined_bundle_survives() {
+        let declined = std::collections::HashSet::from(["SkyBlock"]);
+        let held =
+            std::collections::HashSet::from([("SkyBlock".to_string(), "skyhanni".to_string())]);
+
+        assert!(survives_decline(
+            &row("SkyBlock", "skyhanni", OverrideType::Disabled),
+            &declined,
+            &held
+        ));
+    }
+
+    #[test]
+    fn a_removal_filed_by_declining_a_bundle_is_still_dropped() {
+        let declined = std::collections::HashSet::from(["SkyBlock"]);
+        let held =
+            std::collections::HashSet::from([("SkyBlock".to_string(), "skyblocker".to_string())]);
+
+        assert!(
+            !survives_decline(
+                &row("SkyBlock", "skyblocker", OverrideType::Removed),
+                &declined,
+                &held
+            ),
+            "a hand-installed mod the declined bundle also lists must keep updating"
+        );
+    }
+
+    #[test]
+    fn a_disable_on_a_declined_bundle_mod_that_is_not_installed_is_dropped() {
+        let declined = std::collections::HashSet::from(["SkyBlock"]);
+
+        assert!(!survives_decline(
+            &row("SkyBlock", "skyhanni", OverrideType::Disabled),
+            &declined,
+            &std::collections::HashSet::new()
+        ));
+    }
+
+    #[test]
+    fn overrides_of_a_taken_bundle_are_untouched() {
+        let declined = std::collections::HashSet::from(["SkyBlock"]);
+        let none = std::collections::HashSet::new();
+
+        assert!(survives_decline(
+            &row("HUD", "modmenu", OverrideType::Disabled),
+            &declined,
+            &none
+        ));
+        assert!(survives_decline(
+            &row("HUD", "modmenu", OverrideType::Removed),
+            &declined,
+            &none
+        ));
+    }
+
+    #[test]
+    fn a_disable_left_on_a_mod_that_is_switched_on_is_stale() {
+        let stale = stale_disables(
+            &[tracked("SkyBlock", "skyhanni", "a", true)],
+            &[row("SkyBlock", "skyhanni", OverrideType::Disabled)],
+        );
+
+        assert_eq!(stale, [("SkyBlock".to_string(), "skyhanni".to_string())]);
+    }
+
+    #[test]
+    fn a_disable_on_a_mod_that_is_switched_off_is_kept() {
+        assert!(
+            stale_disables(
+                &[tracked("SkyBlock", "skyhanni", "a", false)],
+                &[row("SkyBlock", "skyhanni", OverrideType::Disabled)],
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_disable_is_kept_while_any_copy_of_the_package_is_switched_off() {
+        assert!(
+            stale_disables(
+                &[
+                    tracked("SkyBlock", "skyhanni", "a", true),
+                    tracked("SkyBlock", "skyhanni", "b", false),
+                ],
+                &[row("SkyBlock", "skyhanni", OverrideType::Disabled)],
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn only_disables_on_held_content_under_the_same_bundle_are_stale() {
+        assert!(
+            stale_disables(
+                &[tracked("HUD", "skyhanni", "a", true)],
+                &[
+                    row("SkyBlock", "skyhanni", OverrideType::Disabled),
+                    row("HUD", "skyhanni", OverrideType::Removed),
+                    row("HUD", "skyhanni", OverrideType::Enabled),
+                    row("HUD", "unheld", OverrideType::Disabled),
+                ],
+            )
+            .is_empty()
+        );
     }
 }

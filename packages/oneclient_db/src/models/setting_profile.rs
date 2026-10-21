@@ -8,6 +8,7 @@ pub struct SettingProfileRow {
     pub force_fullscreen: Option<i64>,
     pub mem_max: Option<i64>,
     pub launch_args: Option<String>,
+    pub game_args: Option<String>,
     pub launch_env: Option<String>,
     pub hook_pre: Option<String>,
     pub hook_wrapper: Option<String>,
@@ -15,4 +16,6 @@ pub struct SettingProfileRow {
     pub os_extra: Option<String>,
     /// `PackageUpdateMode::as_str` NULL inherits the global setting
     pub browser_update_mode: Option<String>,
+    /// `GraphicsBackend::as_str` NULL inherits the global setting
+    pub graphics_backend: Option<String>,
 }

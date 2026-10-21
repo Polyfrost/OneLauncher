@@ -12,11 +12,12 @@ pub use error::BundleError;
 pub use install::{
     clusters_sharing_artifact, delete_artifact, effective_enabled, enabled_bundle_bytes,
     enabled_bundle_projects, extract_bundle_overrides_for_cluster, heal_bundle_activity,
-    install_bundle, install_cluster_bundles, install_enabled_bundle_files,
+    inherit_bundle_choices, install_bundle, install_cluster_bundles, install_enabled_bundle_files,
     install_package_from_bundle, list_cluster_bundle_overrides, on_user_disable_artifact,
-    on_user_enable_artifact, on_user_remove_artifact, remove_artifact_from_cluster,
-    set_artifact_enabled_to, set_bundle_package_enabled, set_bundle_package_opt_in,
-    set_bundle_package_override, set_bundle_package_overrides,
+    on_user_enable_artifact, on_user_remove_artifact, pending_bundle_choices,
+    remove_artifact_from_cluster, set_artifact_enabled_to, set_bundle_choices,
+    set_bundle_package_enabled, set_bundle_package_opt_in, set_bundle_package_override,
+    set_bundle_package_overrides, taken_bundle_names,
 };
 pub use manager::{Bundle, BundlesManager};
 pub use manifest::BundleManifest as RemoteBundleManifest;

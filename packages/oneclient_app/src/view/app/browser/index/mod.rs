@@ -5,6 +5,7 @@ use freya::animation::{
 };
 use freya::prelude::*;
 use freya::router::RouterContext;
+use oneclient_common::domain::GameLoader;
 use oneclient_common::parse_mc_version;
 use oneclient_common::search::normalize_query;
 use oneclient_content::packages::types::ProjectSummary;
@@ -19,11 +20,12 @@ use crate::components::{
 };
 use crate::hooks::use_cluster;
 use crate::hooks::{
-    BROWSE_PAGE_SIZE, BrowserUiState, bundles_with_status_items, category_list,
-    cluster_content_items, content_type_for_slug, pick_version_metadata, search_items,
-    search_pending, search_total, settled_or_loading, use_browser_compat, use_browser_state_store,
-    use_browser_type, use_bundles_with_status, use_cluster_content, use_clusters, use_debounced,
-    use_package_categories, use_package_search, use_versions, use_view_state, versions_metadata,
+    BROWSE_PAGE_SIZE, BrowserUiState, bundle_overrides_map, bundles_with_status_items,
+    category_list, cluster_content_items, content_type_for_slug, pick_version_metadata,
+    search_items, search_pending, search_total, settled_or_loading, use_browser_compat,
+    use_browser_state_store, use_browser_type, use_bundle_overrides, use_bundles_with_status,
+    use_cluster_content, use_clusters, use_debounced, use_package_categories, use_package_search,
+    use_versions, use_view_state, versions_metadata,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -31,8 +33,8 @@ use crate::ui::grid_columns_for_width;
 use crate::view::app::cluster::supports_datapacks;
 
 use super::{
-    InstallSource, Installed, PackageBanner, Thumbnail, WorldInstallPrompt, installed_map,
-    preferred_version,
+    EnableButton, EnableVariant, InstallSource, Installed, ModpackVersionPrompt, PackageBanner,
+    Thumbnail, WorldInstallPrompt, installed_map, minecraft_choices, preferred_version,
 };
 use crate::utils::{abbreviate_number, sort_clusters_for_home};
 
@@ -67,6 +69,13 @@ const SORTS: [(SearchSort, &str); 4] = [
     (SearchSort::Updated, "Updated"),
 ];
 
+const LOADERS: [(Option<GameLoader>, &str); 4] = [
+    (None, "Any loader"),
+    (Some(GameLoader::Fabric), "Fabric"),
+    (Some(GameLoader::Forge), "Forge"),
+    (Some(GameLoader::NeoForge), "NeoForge"),
+];
+
 const BROWSE_TYPES: [(&str, &str); 5] = [
     ("mod", "Mods"),
     ("texture", "Textures"),
@@ -83,7 +92,12 @@ pub(crate) fn browsable_type(package_type: &str, cluster: &Cluster) -> String {
     if cluster.lacks_mod_loader() {
         let unsupported = LOADER_SLUGS.contains(&package_type)
             || (package_type == DATAPACK_SLUG && !supports_datapacks(&cluster.mc_version));
-        return if unsupported { TEXTURE_SLUG } else { package_type }.to_string();
+        return if unsupported {
+            TEXTURE_SLUG
+        } else {
+            package_type
+        }
+        .to_string();
     }
     if package_type == DATAPACK_SLUG && !supports_datapacks(&cluster.mc_version) {
         BROWSE_TYPES[0].0.to_string()
@@ -97,6 +111,14 @@ fn type_title(package_type: &str) -> &'static str {
         .iter()
         .find(|(slug, _)| *slug == package_type)
         .map_or("Mods", |(_, title)| *title)
+}
+
+fn state_key(cluster_id: i64, package_type: &str) -> String {
+    if content_type_for_slug(package_type) == ContentType::Modpack {
+        package_type.to_string()
+    } else {
+        format!("{cluster_id}:{package_type}")
+    }
 }
 
 pub(crate) fn encode_package_id(provider: ProviderId, id: &str) -> String {
@@ -164,19 +186,16 @@ impl Component for BrowserBody {
         let content_type = content_type_for_slug(&package_type);
 
         let store = use_browser_state_store();
-        let state_key = if content_type == ContentType::Modpack {
-            package_type.clone()
-        } else {
-            format!("{cluster_id}:{package_type}")
-        };
+        let state_key = state_key(cluster_id, &package_type);
         let saved = store.peek().get(&state_key).cloned().unwrap_or_default();
 
         let query = use_state(|| saved.query.clone());
-        let provider = use_state(|| saved.provider);
+        let mut provider = use_state(|| saved.provider);
         let view_mode = use_view_state(&format!("browser.{package_type}")).layout;
         let compatible_only = use_browser_compat();
         let selected_categories = use_state(|| saved.categories.clone());
         let sort = use_state(|| saved.sort);
+        let loader = use_state(|| saved.loader);
         let page = use_state(|| saved.page);
 
         {
@@ -188,6 +207,7 @@ impl Component for BrowserBody {
                     provider: *provider.read(),
                     categories: selected_categories.read().clone(),
                     sort: *sort.read(),
+                    loader: *loader.read(),
                     page: *page.read(),
                 };
                 store.write().insert(key.clone(), snapshot);
@@ -201,28 +221,33 @@ impl Component for BrowserBody {
         );
 
         let cluster = use_cluster(cluster_id);
-        let provider_id = *provider.read();
         let compat = *compatible_only.read();
         let cats = selected_categories.read().clone();
 
         let targets_cluster = content_type != ContentType::Modpack;
-        let (game_versions, loaders) = match (compat && targets_cluster, &cluster) {
-            (true, Some(c)) => {
-                let loaders = if content_type == ContentType::Mod {
-                    vec![c.mc_loader]
-                } else {
-                    Vec::new()
-                };
-                (vec![c.mc_version.clone()], loaders)
-            }
-            _ => (Vec::new(), Vec::new()),
+        let compat_cluster = cluster.as_ref().filter(|_| compat && targets_cluster);
+        let game_versions = compat_cluster
+            .map(|c| vec![c.mc_version.clone()])
+            .unwrap_or_default();
+        let loader_fixed = content_type == ContentType::Mod && compat_cluster.is_some();
+        let loader_filterable =
+            matches!(content_type, ContentType::Mod | ContentType::Modpack) && !loader_fixed;
+        let picked_loader = (*loader.read()).filter(|_| loader_filterable);
+        let loaders = match (loader_fixed, compat_cluster) {
+            (true, Some(c)) => vec![c.mc_loader],
+            _ => picked_loader.into_iter().collect(),
         };
+        let curseforge_blocked = loader_fixed && loaders.contains(&GameLoader::Ornithe);
+        if curseforge_blocked && *provider.peek() == ProviderId::CurseForge {
+            provider.set(ProviderId::Modrinth);
+        }
+        let provider_id = *provider.read();
 
         let mut page_state = page;
         // Normalised like the search key so a query differing only by a space does not reset the page
         let sort_by = *sort.read();
         let signature = format!(
-            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}",
+            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}|{picked_loader:?}",
             normalize_query(&debounced_query.read()).to_lowercase(),
             cats.join(",")
         );
@@ -250,6 +275,7 @@ impl Component for BrowserBody {
         let installed = installed_map(
             cluster_content_items(&use_cluster_content(cluster_id, content_type)),
             &bundles_with_status_items(&use_bundles_with_status(cluster_id)),
+            &bundle_overrides_map(&use_bundle_overrides(cluster_id)),
         );
         let installed = if matches!(content_type, ContentType::DataPack | ContentType::Modpack) {
             Default::default()
@@ -349,6 +375,7 @@ impl Component for BrowserBody {
                     package_type: package_type.clone(),
                 }),
                 provider,
+                curseforge_blocked,
                 query,
                 controls_width,
             ))
@@ -389,6 +416,7 @@ impl Component for BrowserBody {
                                 pages,
                                 pending,
                                 sort,
+                                loader_filterable.then_some(loader),
                                 view_mode,
                             ))
                             .child(
@@ -423,6 +451,7 @@ fn header(
     cluster_name: Option<String>,
     picker: Option<ClusterPicker>,
     provider: State<ProviderId>,
+    curseforge_blocked: bool,
     query: State<String>,
     mut header_width: State<f32>,
 ) -> impl IntoElement {
@@ -468,7 +497,12 @@ fn header(
             SegmentedControl::new(provider)
                 .no_tint()
                 .segments(ProviderId::REMOTE_PROVIDERS.iter().map(move |provider| {
-                    let segment = Segment::new(*provider).icon(IconType::from(*provider));
+                    let mut segment = Segment::new(*provider).icon(IconType::from(*provider));
+                    if curseforge_blocked && *provider == ProviderId::CurseForge {
+                        segment = segment
+                            .disabled(true)
+                            .tooltip("CurseForge doesn't have any compatible mods");
+                    }
                     if show_provider_labels {
                         segment.label(provider.to_string())
                     } else {
@@ -521,6 +555,7 @@ fn results_toolbar(
     pages: Option<usize>,
     pending: bool,
     sort: State<SearchSort>,
+    loader: Option<State<Option<GameLoader>>>,
     view_mode: State<ViewLayout>,
 ) -> impl IntoElement {
     // Blank rather than a stale count while a page is in flight
@@ -547,6 +582,7 @@ fn results_toolbar(
                 .color(colors::fg_primary().with_a(140)),
         )
         .child(rect().width(Size::flex(1.0)))
+        .maybe_child(loader.map(|loader| LoaderPicker { loader }))
         .child(SortPicker { sort })
         .child(
             SegmentedControl::new(view_mode)
@@ -584,6 +620,33 @@ impl Component for SortPicker {
             .on_select(move |idx: usize| {
                 if let Some((picked, _)) = SORTS.get(idx) {
                     sort.set(*picked);
+                }
+            })
+    }
+}
+
+#[derive(PartialEq)]
+struct LoaderPicker {
+    loader: State<Option<GameLoader>>,
+}
+
+impl Component for LoaderPicker {
+    fn render(&self) -> impl IntoElement {
+        let mut loader = self.loader;
+        let current = *loader.read();
+
+        let labels: Vec<String> = LOADERS.iter().map(|(_, l)| (*l).to_string()).collect();
+        let selected = LOADERS
+            .iter()
+            .find(|(l, _)| *l == current)
+            .map_or("Any loader", |(_, l)| *l);
+
+        Dropdown::new(selected, labels)
+            .width(Size::px(132.))
+            .height(Size::px(30.))
+            .on_select(move |idx: usize| {
+                if let Some((picked, _)) = LOADERS.get(idx) {
+                    loader.set(*picked);
                 }
             })
     }
@@ -678,6 +741,8 @@ impl Component for ClusterPicker {
             .unwrap_or_else(|| "Select a version".to_string());
 
         let package_type = self.package_type.clone();
+        let from_key = state_key(self.cluster_id, &package_type);
+        let mut store = use_browser_state_store();
 
         rect()
             .horizontal()
@@ -692,9 +757,19 @@ impl Component for ClusterPicker {
                         if let (Some(cluster_id), Some(cluster)) =
                             (ids.get(idx).copied(), clusters.get(idx))
                         {
+                            let to_type = browsable_type(&package_type, cluster);
+                            let carried = (to_type == package_type)
+                                .then(|| store.peek().get(&from_key).cloned())
+                                .flatten();
+                            if let Some(saved) = carried {
+                                store.write().insert(
+                                    state_key(cluster_id, &to_type),
+                                    BrowserUiState { page: 0, ..saved },
+                                );
+                            }
                             let _ = RouterContext::get().replace(Route::Browser {
                                 cluster_id,
-                                package_type: browsable_type(&package_type, cluster),
+                                package_type: to_type,
                                 pick_cluster: true,
                             });
                         }

@@ -110,17 +110,8 @@ fn registered_value<'a>(query: &'a str, name: &str) -> Option<&'a str> {
     })
 }
 
-/// Windows writes `GpuPreference=0;` ("let Windows decide") for any app added
-/// through Settings, so only 1 or 2 is a choice worth leaving alone
 #[cfg(windows)]
-fn has_explicit_preference(data: &str) -> bool {
-    data.split(';')
-        .find_map(|part| part.trim().strip_prefix("GpuPreference="))
-        .is_some_and(|preference| matches!(preference.trim(), "1" | "2"))
-}
-
-#[cfg(windows)]
-pub async fn prefer_dedicated_gpu(java_path: &std::path::Path) {
+pub async fn set_gpu_preference(java_path: &std::path::Path, preference: u8) {
     let Some(dir) = java_path.parent() else {
         return;
     };
@@ -150,21 +141,22 @@ pub async fn prefer_dedicated_gpu(java_path: &std::path::Path) {
         }
     };
 
+    let data = format!("GpuPreference={preference};");
     for path in targets {
-        if registered_value(&query, &path.to_string_lossy()).is_some_and(has_explicit_preference) {
+        if registered_value(&query, &path.to_string_lossy()) == Some(data.as_str()) {
             continue;
         }
 
         let added = reg_command()
             .args(["add", GPU_PREFERENCES_KEY, "/v"])
             .arg(&path)
-            .args(["/t", "REG_SZ", "/d", "GpuPreference=2;", "/f"])
+            .args(["/t", "REG_SZ", "/d", data.as_str(), "/f"])
             .output()
             .await;
 
         match added {
             Ok(out) if out.status.success() => {
-                tracing::info!(path = %path.display(), "registered JVM for high-performance GPU");
+                tracing::info!(path = %path.display(), preference, "registered JVM GPU preference");
             }
             Ok(out) => tracing::warn!(
                 path = %path.display(),
@@ -205,7 +197,7 @@ pub async fn forget_dedicated_gpu(java_path: &std::path::Path) {
 }
 
 #[cfg(not(windows))]
-pub async fn prefer_dedicated_gpu(_java_path: &std::path::Path) {}
+pub async fn set_gpu_preference(_java_path: &std::path::Path, _preference: u8) {}
 
 #[cfg(not(windows))]
 pub async fn forget_dedicated_gpu(_java_path: &std::path::Path) {}

@@ -222,6 +222,19 @@ pub async fn repair_modpack_cluster(
 ) -> LauncherResult<ModpackCluster> {
     let content = state.services.content();
     let cluster = state.clusters.get(cluster_id).await?;
+    let (archive_path, manifest) = linked_modpack_archive(state, &cluster).await?;
+
+    let report =
+        modpacks::install_modpack(&archive_path, &manifest, cluster_id, progress, &content).await?;
+    restore_missing_icon(state, &cluster).await;
+
+    Ok(ModpackCluster { cluster, report })
+}
+
+pub(crate) async fn linked_modpack_archive(
+    state: &Arc<LauncherState>,
+    cluster: &Cluster,
+) -> LauncherResult<(PathBuf, ModpackManifest)> {
     let hash = cluster
         .linked_modpack_hash
         .clone()
@@ -237,13 +250,8 @@ pub async fn repair_modpack_cluster(
                     .to_string(),
         })?;
     let archive_path = artifact_absolute_path(&artifact.path)?;
-    let manifest = modpacks::read_modpack(&archive_path, &content).await?;
-
-    let report =
-        modpacks::install_modpack(&archive_path, &manifest, cluster_id, progress, &content).await?;
-    restore_missing_icon(state, &cluster).await;
-
-    Ok(ModpackCluster { cluster, report })
+    let manifest = modpacks::read_modpack(&archive_path, &state.services.content()).await?;
+    Ok((archive_path, manifest))
 }
 
 async fn fetch_project(

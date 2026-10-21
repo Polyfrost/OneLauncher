@@ -235,6 +235,7 @@ fn version_row(
     enable: Option<ClusterAction>,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
+    let version_label = v.version_number.clone();
     let mut chips: Vec<String> = v.loaders.iter().map(|l| l.real_name()).collect();
     chips.extend(v.game_versions.iter().cloned());
     let stats = {
@@ -314,29 +315,49 @@ fn version_row(
             }
             .into_element(),
             None => version_button(
-                installed, v.name, project_id, version_id, installer, on_remove, installing,
+                installed,
+                v.name,
+                project_id,
+                version_id,
+                version_label,
+                installer,
+                on_remove,
+                installing,
             )
             .into_element(),
         })
 }
 
 /// A bundle pin with nothing linked leaves nothing to press no artifact to remove and installing by hand would duplicate it
+#[allow(clippy::too_many_arguments)]
 fn version_button(
     installed: Option<InstalledVersion>,
     version_name: String,
     project_id: String,
     version_id: String,
+    version_label: String,
     installer: Installer,
     on_remove: EventHandler<(String, String)>,
     busy: bool,
 ) -> impl IntoElement {
     let Some(installed) = installed else {
+        let text = if installer.add_to_cluster {
+            "Add"
+        } else {
+            "Install"
+        };
         return Button::new()
             .secondary()
             .small()
             .enabled(!busy)
-            .on_press(move |_| installer.install(project_id.clone(), version_id.clone()))
-            .text("Install");
+            .on_press(move |_| {
+                installer.install(
+                    project_id.clone(),
+                    version_id.clone(),
+                    version_label.clone(),
+                )
+            })
+            .text(text);
     };
 
     let Some(hash) = installed.hash else {

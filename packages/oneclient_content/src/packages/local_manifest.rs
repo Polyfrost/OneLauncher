@@ -21,6 +21,8 @@ pub struct JarManifest {
     pub description: Option<String>,
     pub authors: Vec<String>,
     pub icon_entry: Option<String>,
+    pub mod_id: Option<String>,
+    pub version: Option<String>,
 }
 
 impl JarManifest {
@@ -49,6 +51,12 @@ impl JarManifest {
         }
         if self.icon_entry.is_none() {
             self.icon_entry = other.icon_entry;
+        }
+        if self.mod_id.is_none() {
+            self.mod_id = other.mod_id;
+        }
+        if self.version.is_none() {
+            self.version = other.version;
         }
     }
 }
@@ -188,6 +196,8 @@ pub async fn read_jar_icon(jar: &Path, entry: &str) -> Option<Vec<u8>> {
 pub fn parse_fabric(text: &str) -> Option<JarManifest> {
     #[derive(Deserialize)]
     struct FabricMod {
+        id: Option<String>,
+        version: Option<String>,
         name: Option<String>,
         description: Option<String>,
         #[serde(default)]
@@ -202,6 +212,8 @@ pub fn parse_fabric(text: &str) -> Option<JarManifest> {
         description: clean_description(parsed.description),
         authors: people(parsed.authors),
         icon_entry: parsed.icon.and_then(Icon::path).and_then(entry_path),
+        mod_id: clean(parsed.id),
+        version: real_version(parsed.version),
     })
 }
 
@@ -214,10 +226,12 @@ pub fn parse_quilt(text: &str) -> Option<JarManifest> {
 
     #[derive(Deserialize)]
     struct QuiltLoader {
+        id: Option<String>,
+        version: Option<String>,
         metadata: Option<QuiltMetadata>,
     }
 
-    #[derive(Deserialize)]
+    #[derive(Deserialize, Default)]
     struct QuiltMetadata {
         name: Option<String>,
         description: Option<String>,
@@ -227,7 +241,9 @@ pub fn parse_quilt(text: &str) -> Option<JarManifest> {
     }
 
     let parsed: QuiltMod = serde_json::from_str(text).ok()?;
-    let metadata = parsed.quilt_loader.metadata?;
+    let mod_id = clean(parsed.quilt_loader.id);
+    let version = real_version(parsed.quilt_loader.version);
+    let metadata = parsed.quilt_loader.metadata.unwrap_or_default();
 
     Some(JarManifest {
         name: clean(metadata.name),
@@ -238,6 +254,8 @@ pub fn parse_quilt(text: &str) -> Option<JarManifest> {
             .filter_map(|name| clean(Some(name)))
             .collect(),
         icon_entry: metadata.icon.and_then(Icon::path).and_then(entry_path),
+        mod_id,
+        version,
     })
 }
 
@@ -254,6 +272,9 @@ pub fn parse_forge(text: &str) -> Option<JarManifest> {
 
     #[derive(Deserialize)]
     struct ForgeMod {
+        #[serde(rename = "modId")]
+        mod_id: Option<String>,
+        version: Option<String>,
         #[serde(rename = "displayName")]
         display_name: Option<String>,
         description: Option<String>,
@@ -275,6 +296,8 @@ pub fn parse_forge(text: &str) -> Option<JarManifest> {
             .map(StringOrList::into_people)
             .unwrap_or_default(),
         icon_entry: first.logo_file.or(parsed.logo_file).and_then(entry_path),
+        mod_id: clean(first.mod_id),
+        version: real_version(first.version),
     })
 }
 
@@ -292,6 +315,8 @@ pub fn parse_legacy_forge(text: &str) -> Option<JarManifest> {
 
     #[derive(Deserialize)]
     struct LegacyMod {
+        modid: Option<String>,
+        version: Option<String>,
         name: Option<String>,
         description: Option<String>,
         #[serde(rename = "authorList", default)]
@@ -321,6 +346,8 @@ pub fn parse_legacy_forge(text: &str) -> Option<JarManifest> {
             authors
         },
         icon_entry: first.logo_file.and_then(entry_path),
+        mod_id: clean(first.modid),
+        version: real_version(first.version),
     })
 }
 
@@ -373,6 +400,10 @@ impl StringOrList {
                 .collect(),
         }
     }
+}
+
+fn real_version(value: Option<String>) -> Option<String> {
+    clean(value).filter(|version| !version.contains("${"))
 }
 
 fn clean(value: Option<String>) -> Option<String> {
@@ -556,6 +587,18 @@ mod tests {
     }
 
     #[test]
+    fn quilt_keeps_the_mod_id_without_metadata() {
+        let parsed = parse_quilt(
+            r#"{"schema_version": 1, "quilt_loader": {"id": "example", "version": "1.2.0"}}"#,
+        )
+        .expect("metadata is optional in quilt");
+
+        assert_eq!(parsed.mod_id.as_deref(), Some("example"));
+        assert_eq!(parsed.version.as_deref(), Some("1.2.0"));
+        assert!(parsed.is_empty());
+    }
+
+    #[test]
     fn forge_reads_the_first_mod_entry() {
         let parsed = parse_forge(
             r#"
@@ -632,6 +675,21 @@ credits="Thanks to everyone"
     }
 
     #[test]
+    fn reads_mod_id_and_version_but_not_placeholders() {
+        let fabric =
+            parse_fabric(r#"{"id":"sodium-extra","version":"0.9.4+mc26.2"}"#).expect("fabric");
+        assert_eq!(fabric.mod_id.as_deref(), Some("sodium-extra"));
+        assert_eq!(fabric.version.as_deref(), Some("0.9.4+mc26.2"));
+
+        let forge = parse_forge(
+            "[[mods]]\nmodId = \"jei\"\nversion = \"${file.jarVersion}\"\n",
+        )
+        .expect("forge");
+        assert_eq!(forge.mod_id.as_deref(), Some("jei"));
+        assert_eq!(forge.version, None);
+    }
+
+    #[test]
     fn a_second_manifest_only_fills_gaps() {
         let mut fabric = JarManifest {
             name: Some("Fabric Name".into()),
@@ -642,6 +700,7 @@ credits="Thanks to everyone"
             description: Some("From forge".into()),
             authors: vec!["Someone".into()],
             icon_entry: Some("logo.png".into()),
+            ..JarManifest::default()
         });
 
         assert_eq!(fabric.name.as_deref(), Some("Fabric Name"));

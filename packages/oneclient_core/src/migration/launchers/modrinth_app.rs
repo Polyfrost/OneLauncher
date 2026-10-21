@@ -14,6 +14,7 @@ use sqlx::{Row, SqlitePool};
 
 use crate::LauncherResult;
 use oneclient_common::domain::{GameLoader, ProviderId};
+use oneclient_content::ContentError;
 
 use super::{ExternalDetection, ExternalInstance, ExternalLauncher, ExternalSettings, LinkedPack};
 
@@ -70,14 +71,24 @@ pub async fn detect_at(root: &Path) -> LauncherResult<Option<ExternalDetection>>
         launcher: ExternalLauncher::ModrinthApp,
         root: root.to_path_buf(),
         instances,
+        problem: None,
     }))
 }
 
 async fn read_db(root: &Path, pool: &SqlitePool) -> LauncherResult<Vec<ExternalInstance>> {
-    let data_dir = custom_dir(pool)
-        .await
-        .filter(|dir| dir.is_dir())
-        .unwrap_or_else(|| root.to_path_buf());
+    let data_dir = match custom_dir(pool).await {
+        Some(dir) if dir.is_dir() => dir,
+        Some(dir) => {
+            return Err(ContentError::InvalidData {
+                reason: format!(
+                    "The Modrinth App keeps its instances in {}, which can't be found. Is that drive connected?",
+                    dir.display()
+                ),
+            }
+            .into());
+        }
+        None => root.to_path_buf(),
+    };
     let profiles_dir = data_dir.join(PROFILES_DIR);
 
     let mut instances = if has_table(pool, "instances").await {
@@ -122,7 +133,7 @@ async fn read_instances(
                 i.submitted_time_played, i.recent_time_played, \
                 cs.game_version, cs.loader, cs.loader_version, \
                 l.modrinth_project_id, l.modrinth_version_id, \
-                json(o.overrides) AS overrides \
+                CASE WHEN json_valid(o.overrides, 9) THEN json(o.overrides) END AS overrides \
          FROM instances i \
          LEFT JOIN instance_content_sets cs ON cs.id = i.applied_content_set_id \
          LEFT JOIN instance_links l ON l.instance_id = i.id \
@@ -131,7 +142,8 @@ async fn read_instances(
     .fetch_all(pool)
     .await?;
 
-    let mut instances = Vec::with_capacity(rows.len());
+    let mut instances: Vec<ExternalInstance> = Vec::with_capacity(rows.len());
+    let mut seen: HashMap<String, usize> = HashMap::new();
     for row in rows {
         let id: String = row.try_get("id")?;
         let path: String = row.try_get("path")?;
@@ -156,7 +168,7 @@ async fn read_instances(
         settings.java_major =
             java_major(overrides.as_ref().and_then(|v| v["java_path"].as_str())).await;
 
-        instances.push(ExternalInstance {
+        let instance = ExternalInstance {
             launcher: ExternalLauncher::ModrinthApp,
             game_dir: profiles_dir.join(&path),
             name: row.try_get("name")?,
@@ -177,7 +189,18 @@ async fn read_instances(
             unsupported_loader: None,
             skipped_parts: Vec::new(),
             id: path,
-        });
+        };
+        match seen.get(&id) {
+            Some(&index) => {
+                if instances[index].linked_pack.is_none() && instance.linked_pack.is_some() {
+                    instances[index] = instance;
+                }
+            }
+            None => {
+                seen.insert(id, instances.len());
+                instances.push(instance);
+            }
+        }
     }
     Ok(instances)
 }
@@ -489,6 +512,43 @@ mod tests {
         assert_eq!(
             instance.linked_pack.as_ref().map(|p| p.version_id.as_str()),
             Some("v1")
+        );
+    }
+
+    #[tokio::test]
+    async fn extra_link_rows_and_broken_overrides_keep_one_instance_each() {
+        let tmp = polyio::tempdir().await.unwrap();
+        let root = tmp.dir_path();
+        let pool = make_db(
+            root,
+            "CREATE TABLE settings (id INTEGER, custom_dir TEXT NULL);
+             CREATE TABLE instances (id TEXT, path TEXT, applied_content_set_id TEXT, name TEXT,
+                icon_path TEXT NULL, submitted_time_played INTEGER, recent_time_played INTEGER);
+             CREATE TABLE instance_content_sets (id TEXT, instance_id TEXT, game_version TEXT,
+                loader TEXT, loader_version TEXT NULL);
+             CREATE TABLE instance_links (instance_id TEXT, link_kind TEXT,
+                modrinth_project_id TEXT NULL, modrinth_version_id TEXT NULL);
+             CREATE TABLE instance_launch_overrides (instance_id TEXT, overrides JSONB);
+             INSERT INTO instances VALUES ('i1', 'pack', 'cs1', 'Pack', NULL, 0, 0);
+             INSERT INTO instances VALUES ('i2', 'broken', 'cs2', 'Broken', NULL, 0, 0);
+             INSERT INTO instance_content_sets VALUES ('cs1', 'i1', '1.20.4', 'vanilla', NULL);
+             INSERT INTO instance_content_sets VALUES ('cs2', 'i2', '1.20.4', 'vanilla', NULL);
+             INSERT INTO instance_links VALUES ('i1', 'server', NULL, NULL);
+             INSERT INTO instance_links VALUES ('i1', 'modpack', 'p1', 'v1');
+             INSERT INTO instance_launch_overrides VALUES ('i2', 'not json');",
+        )
+        .await;
+        pool.close().await;
+
+        let detection = detect_at(root).await.unwrap().unwrap();
+        let ids: Vec<&str> = detection.instances.iter().map(|i| i.id.as_str()).collect();
+        assert_eq!(ids, vec!["broken", "pack"]);
+        assert_eq!(
+            detection.instances[1]
+                .linked_pack
+                .as_ref()
+                .map(|p| p.project_id.as_str()),
+            Some("p1")
         );
     }
 

@@ -17,7 +17,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
-use crate::LauncherResult;
+use crate::{LauncherError, LauncherResult};
 use oneclient_common::domain::{GameLoader, ProviderId};
 
 pub use archive::{
@@ -127,6 +127,19 @@ pub struct ExternalDetection {
     pub launcher: ExternalLauncher,
     pub root: PathBuf,
     pub instances: Vec<ExternalInstance>,
+    #[serde(default)]
+    pub problem: Option<String>,
+}
+
+impl ExternalDetection {
+    fn unreadable(launcher: ExternalLauncher, root: PathBuf, err: &LauncherError) -> Self {
+        Self {
+            launcher,
+            root,
+            instances: Vec::new(),
+            problem: Some(err.to_string()),
+        }
+    }
 }
 
 /// Every install found on this machine, each launcher at most once per root
@@ -146,6 +159,7 @@ pub async fn detect_all() -> Vec<ExternalDetection> {
             Ok(_) => {}
             Err(err) => {
                 tracing::warn!(root = %root.display(), error = %err, "could not read {} install", launcher.display_name());
+                found.push(ExternalDetection::unreadable(launcher, root, &err));
             }
         }
     }
@@ -156,6 +170,11 @@ pub async fn detect_all() -> Vec<ExternalDetection> {
             Ok(_) => {}
             Err(err) => {
                 tracing::warn!(root = %root.display(), error = %err, "could not read Modrinth App install");
+                found.push(ExternalDetection::unreadable(
+                    ExternalLauncher::ModrinthApp,
+                    root,
+                    &err,
+                ));
             }
         }
     }

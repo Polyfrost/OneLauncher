@@ -125,6 +125,11 @@ pub async fn download_external(
     child: Option<&GroupedProgressChild>,
     ctx: &ContentCtx,
 ) -> ContentResult<ArtifactRow> {
+    if !polyio::Checksum::sha1(&file.sha1).is_well_formed() {
+        return Err(crate::error::ContentError::InvalidData {
+            reason: format!("'{}' has an invalid SHA-1 hash", file.name),
+        });
+    }
     let hash = normalize_hash(&file.sha1);
     if !force && let Some(row) = artifact_dao::get_artifact_by_hash(&ctx.db, &hash).await? {
         let path = artifact_absolute_path(&row.path)?;

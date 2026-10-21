@@ -551,6 +551,20 @@ fn encode_segment(segment: &str) -> String {
     })
 }
 
+async fn index_hashes(
+    sha1: &str,
+    local: Option<&Path>,
+) -> Option<(BTreeMap<&'static str, String>, u64)> {
+    let local = local?;
+    let sha1 = polyio::normalize_hash(sha1);
+    let (actual, sha512) = polyio::sha1_and_sha512_file(local).await.ok()?;
+    if polyio::normalize_hash(&actual) != sha1 {
+        return None;
+    }
+    let size = polyio::stat(local).await.ok()?.len();
+    Some((BTreeMap::from([("sha1", sha1), ("sha512", sha512)]), size))
+}
+
 fn version_download(version: &VersionDetail, hash: &str) -> Option<(String, u64)> {
     version
         .files
@@ -638,17 +652,18 @@ pub async fn write_share_archive(
     if let Some(carry) = &content.carryover {
         for loose in &carry.loose {
             let local = carry.game_dir.join(polyio::sanitize_path(&loose.path));
-            if index_download(&loose.url) {
-                let mut hashes = BTreeMap::from([("sha1", loose.sha1.clone())]);
-                if let Ok(sha512) = polyio::sha512_file(&local).await {
-                    hashes.insert("sha512", sha512);
-                }
+            let indexed = if index_download(&loose.url) {
+                index_hashes(&loose.sha1, Some(&local)).await
+            } else {
+                None
+            };
+            if let Some((hashes, file_size)) = indexed {
                 index_files.push(IndexFileOut {
                     path: loose.path.clone(),
                     hashes,
                     env: None,
                     downloads: vec![loose.url.clone()],
-                    file_size: loose.size,
+                    file_size,
                 });
                 report.carried += 1;
             } else if local.is_file() {
@@ -675,19 +690,21 @@ pub async fn write_share_archive(
                 meter.advance(file.size);
             }
             SharedFileSource::Download { url, local } => {
-                let mut hashes = BTreeMap::from([("sha1", file.sha1.clone())]);
-                if let Some(local) = local
-                    && let Ok(sha512) = polyio::sha512_file(local).await
-                {
-                    hashes.insert("sha512", sha512);
+                match index_hashes(&file.sha1, local.as_deref()).await {
+                    Some((hashes, file_size)) => index_files.push(IndexFileOut {
+                        path: file.path.clone(),
+                        hashes,
+                        env: (!file.enabled).then(optional_env),
+                        downloads: vec![url.clone()],
+                        file_size,
+                    }),
+                    None => share.downloads.push(SharedDownload {
+                        path: file.path.clone(),
+                        sha1: file.sha1.clone(),
+                        size: file.size,
+                        url: url.clone(),
+                    }),
                 }
-                index_files.push(IndexFileOut {
-                    path: file.path.clone(),
-                    hashes,
-                    env: (!file.enabled).then(optional_env),
-                    downloads: vec![url.clone()],
-                    file_size: file.size,
-                });
                 report.linked += 1;
                 meter.advance(file.size);
             }
@@ -712,20 +729,23 @@ pub async fn write_share_archive(
         dependencies: index_dependencies(&share),
     };
 
-    let staging_dir = polyio::tempdir().await?;
-    let staging = staging_dir
-        .dir_path()
-        .join(format!("export.{SHARE_EXTENSION}"));
+    let staging = polyio::temp_sibling(dest);
     let carried = content
         .carryover
         .as_ref()
         .map(|carry| (carry.archive.as_path(), carried_entries.as_slice()));
-    write_zip(
-        &staging, &index, &share, icon, &embedded, carried, &mut meter,
-    )
-    .await?;
-    if polyio::rename(&staging, dest).await.is_err() {
-        polyio::copy(&staging, dest).await?;
+    let written = async {
+        write_zip(
+            &staging, &index, &share, icon, &embedded, carried, &mut meter,
+        )
+        .await?;
+        polyio::rename(&staging, dest).await?;
+        ContentResult::Ok(())
+    }
+    .await;
+    if let Err(err) = written {
+        polyio::remove_file(&staging).await.ok();
+        return Err(err);
     }
 
     tracing::info!(

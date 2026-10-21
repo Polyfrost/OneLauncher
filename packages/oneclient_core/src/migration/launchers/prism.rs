@@ -126,6 +126,7 @@ pub async fn detect_at(
         launcher,
         root,
         instances,
+        problem: None,
     }))
 }
 
@@ -384,6 +385,9 @@ pub async fn read_exported(dir: &Path) -> LauncherResult<Option<ExternalInstance
 
 /// Built-in icon keys (`grass`, `flame`, ...) have no file and are skipped
 fn find_icon(icons_dir: &Path, key: &str) -> Option<PathBuf> {
+    if key.contains(['/', '\\', ':']) || key.contains("..") {
+        return None;
+    }
     ICON_EXTENSIONS
         .iter()
         .map(|ext| icons_dir.join(format!("{key}.{ext}")))
@@ -493,6 +497,19 @@ mod tests {
             .await
             .unwrap();
         polyio::write(path, text.as_bytes()).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn icon_keys_cannot_leave_the_icons_folder() {
+        let tmp = polyio::tempdir().await.unwrap();
+        let icons = tmp.dir_path().join("icons");
+        write(icons.join("custom.png"), "png").await;
+        write(tmp.dir_path().join("secret.png"), "png").await;
+        let outside = tmp.dir_path().join("secret");
+
+        assert!(find_icon(&icons, "custom").is_some());
+        assert!(find_icon(&icons, "../secret").is_none());
+        assert!(find_icon(&icons, &outside.to_string_lossy()).is_none());
     }
 
     #[tokio::test]

@@ -53,12 +53,32 @@ pub async fn sha512_file(path: impl AsRef<Path>) -> PolyIOResult<String> {
         .map_err(std::io::Error::other)?
 }
 
+pub async fn sha1_and_sha512_file(path: impl AsRef<Path>) -> PolyIOResult<(String, String)> {
+    let path = path.as_ref().to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        let mut sha1 = sha1::Sha1::new();
+        let mut sha512 = sha2::Sha512::new();
+        read_file_sync(&path, |chunk| {
+            Digest::update(&mut sha1, chunk);
+            Digest::update(&mut sha512, chunk);
+        })?;
+        Ok((to_hex(&sha1.finalize()), to_hex(&sha512.finalize())))
+    })
+    .await
+    .map_err(std::io::Error::other)?
+}
+
 fn digest_file_sync<D: Digest>(path: &Path) -> PolyIOResult<String> {
+    let mut hasher = D::new();
+    read_file_sync(path, |chunk| hasher.update(chunk))?;
+    Ok(to_hex(&hasher.finalize()))
+}
+
+fn read_file_sync(path: &Path, mut on_chunk: impl FnMut(&[u8])) -> PolyIOResult<()> {
     let mut file = std::fs::File::open(path).map_err(|e| IOError::PathIOError {
         source: e,
         path: path.to_string_lossy().to_string(),
     })?;
-    let mut hasher = D::new();
 
     let size = file
         .metadata()
@@ -75,10 +95,10 @@ fn digest_file_sync<D: Digest>(path: &Path) -> PolyIOResult<String> {
         if n == 0 {
             break;
         }
-        hasher.update(&buffer[..n]);
+        on_chunk(&buffer[..n]);
     }
 
-    Ok(to_hex(&hasher.finalize()))
+    Ok(())
 }
 
 #[must_use]
@@ -216,6 +236,17 @@ mod tests {
         stream.update(b"ab");
         stream.update(b"c");
         assert_eq!(stream.finish(), sha1_bytes(b"abc"));
+    }
+
+    #[tokio::test]
+    async fn one_read_gives_both_file_digests() {
+        let dir = crate::tempdir().await.unwrap();
+        let path = dir.dir_path().join("abc");
+        std::fs::write(&path, b"abc").unwrap();
+
+        let (sha1, sha512) = sha1_and_sha512_file(&path).await.unwrap();
+        assert_eq!(sha1, sha1_file(&path).await.unwrap());
+        assert_eq!(sha512, sha512_file(&path).await.unwrap());
     }
 
     #[test]

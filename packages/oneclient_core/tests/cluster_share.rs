@@ -159,46 +159,36 @@ async fn a_cached_modrinth_mod_is_exported_as_a_link() {
     assert!(report.embedded.is_empty(), "{:?}", report.embedded);
 }
 
-#[tokio::test]
-async fn a_jar_from_the_modrinth_cache_is_linked_without_asking_modrinth() {
+async fn link_modrinth_cached_jar(
+    state: &std::sync::Arc<oneclient_core::LauncherState>,
+    cluster_id: i64,
+    version_id: &str,
+    on_disk: &[u8],
+    hash: &str,
+) {
     use oneclient_common::domain::ProviderId;
     use oneclient_content::packages::store::{cache_file_path, relative_cache_path};
     use oneclient_db::dao::artifact as artifact_dao;
 
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let global = state.settings.read().global_game_settings.clone();
     let db = &state.services.db;
-
-    let source = state
-        .clusters
-        .create(
-            &global,
-            CreateClusterOptions::new("Offline", "26.1", GameLoader::Fabric)
-                .kind(ClusterKind::Modded),
-        )
-        .await
-        .unwrap();
-
-    let bytes = jar("cached");
-    let hash = polyio::sha1_bytes(&bytes);
     let file_name = "not-a-real-mod+1.0.jar";
     let cached = cache_file_path(
         ContentType::Mod,
         ProviderId::Modrinth,
         "NoSuchProj",
-        "NoSuchVer",
+        version_id,
         file_name,
     )
     .unwrap();
     std::fs::create_dir_all(cached.parent().unwrap()).unwrap();
-    std::fs::write(&cached, &bytes).unwrap();
+    std::fs::write(&cached, on_disk).unwrap();
     artifact_dao::insert_artifact(
         db,
-        &hash,
+        hash,
         ContentType::Mod as i64,
         &relative_cache_path(&cached).unwrap(),
         file_name,
-        Some(bytes.len() as i64),
+        Some(on_disk.len() as i64),
     )
     .await
     .unwrap();
@@ -206,8 +196,8 @@ async fn a_jar_from_the_modrinth_cache_is_linked_without_asking_modrinth() {
         db,
         ProviderId::Modrinth as i64,
         "NoSuchProj",
-        "NoSuchVer",
-        &hash,
+        version_id,
+        hash,
         "Not A Real Mod",
         "1.0",
         None,
@@ -216,9 +206,30 @@ async fn a_jar_from_the_modrinth_cache_is_linked_without_asking_modrinth() {
     )
     .await
     .unwrap();
-    artifact_dao::link_cluster_artifact(db, source.id, &hash, file_name)
+    artifact_dao::link_cluster_artifact(db, cluster_id, hash, file_name)
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn a_jar_from_the_modrinth_cache_is_linked_without_asking_modrinth() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+
+    let mut options =
+        CreateClusterOptions::new("Offline", "26.1", GameLoader::Fabric).kind(ClusterKind::Modded);
+    options.mc_loader_version = Some("0.16.5".into());
+    let source = state.clusters.create(&global, options).await.unwrap();
+
+    let bytes = jar("cached");
+    link_modrinth_cached_jar(
+        &state,
+        source.id,
+        "NoSuchVer",
+        &bytes,
+        &polyio::sha1_bytes(&bytes),
+    )
+    .await;
 
     let scratch = polyio::testing::ScratchDir::new("cluster-share-offline");
     let dest = scratch.path().join("Offline.mrpack");
@@ -228,6 +239,54 @@ async fn a_jar_from_the_modrinth_cache_is_linked_without_asking_modrinth() {
 
     assert_eq!(report.linked, 1, "the link is built from the cache path");
     assert!(report.embedded.is_empty());
+}
+
+#[tokio::test]
+async fn a_cached_jar_that_changed_on_disk_stays_out_of_the_modrinth_index() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let global = state.settings.read().global_game_settings.clone();
+
+    let mut options = CreateClusterOptions::new("Changed", "1.21.1", GameLoader::Fabric)
+        .kind(ClusterKind::Modded);
+    options.mc_loader_version = Some("0.16.5".into());
+    let source = state.clusters.create(&global, options).await.unwrap();
+
+    let claimed = polyio::sha1_bytes(&jar("original"));
+    link_modrinth_cached_jar(&state, source.id, "ChangedVer", &jar("changed"), &claimed).await;
+
+    let scratch = polyio::testing::ScratchDir::new("cluster-share-changed");
+    let dest = scratch.path().join("Changed.mrpack");
+    export_cluster(&state, source.id, &dest, ExportMode::OneClient, None)
+        .await
+        .unwrap();
+
+    let entries = polyio::read_zip_file_entries(&dest, |name| {
+        name == "modrinth.index.json" || name == "oneclient.cluster.json"
+    })
+    .await
+    .unwrap();
+    let json = |name: &str| -> serde_json::Value {
+        let (_, bytes) = entries.iter().find(|(entry, _)| entry == name).unwrap();
+        serde_json::from_slice(bytes).unwrap()
+    };
+    let path = "mods/not-a-real-mod+1.0.jar";
+    let indexed = json("modrinth.index.json")["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|file| file["path"] == path);
+    assert!(
+        !indexed,
+        "other launchers would get a hash that doesn't match"
+    );
+    let downloads = json("oneclient.cluster.json")["downloads"].clone();
+    let download = downloads
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|download| download["path"] == path)
+        .expect("OneClient still gets the link");
+    assert_eq!(download["sha1"], serde_json::Value::String(claimed));
 }
 
 async fn write_archive(path: &std::path::Path, entries: Vec<(String, Vec<u8>)>) {
@@ -305,15 +364,10 @@ async fn the_enabled_build_wins_when_two_share_a_file_name() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let global = state.settings.read().global_game_settings.clone();
     let ctx = state.services.content();
-    let source = state
-        .clusters
-        .create(
-            &global,
-            CreateClusterOptions::new("Twins", "1.21.1", GameLoader::Fabric)
-                .kind(ClusterKind::Modded),
-        )
-        .await
-        .unwrap();
+    let mut options =
+        CreateClusterOptions::new("Twins", "1.21.1", GameLoader::Fabric).kind(ClusterKind::Modded);
+    options.mc_loader_version = Some("0.16.5".into());
+    let source = state.clusters.create(&global, options).await.unwrap();
 
     let scratch = polyio::testing::ScratchDir::new("cluster-share-twins");
     let mut hashes = Vec::new();
@@ -782,6 +836,12 @@ async fn crafted_download_names_in_a_share_are_refused() {
             "url": "https://edge.forgecdn.net/files/1/2/x.jar"
         })
     })
+    .chain([serde_json::json!({
+        "path": format!("mods/{marker}"),
+        "sha1": "../../../../../.",
+        "size": 1,
+        "url": "https://edge.forgecdn.net/files/1/2/x.jar"
+    })])
     .collect();
     let share = serde_json::json!({
         "format": 1,
@@ -816,7 +876,7 @@ async fn crafted_download_names_in_a_share_are_refused() {
 
     assert_eq!(
         installed.report.failed.len(),
-        3,
+        4,
         "{:?}",
         installed.report.failed
     );

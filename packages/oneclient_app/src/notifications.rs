@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
 use oneclient_content::modpacks::{BlockedFile, ModpackSummary};
@@ -287,6 +287,7 @@ pub struct NotificationState {
     bundle_choices: Option<BundleChoices>,
     package_updates: Option<Vec<PackageUpdateGroup>>,
     blocked_downloads: Option<BlockedDownloads>,
+    blocked_queue: VecDeque<BlockedDownloads>,
     open_cluster: Option<ClusterId>,
     modpack_confirm: Option<ModpackConfirm>,
     /// Resumes the launch that opened the update modal
@@ -463,7 +464,15 @@ impl NotificationState {
     }
 
     pub fn open_blocked_downloads(&mut self, blocked: BlockedDownloads) {
-        self.blocked_downloads = (!blocked.files.is_empty()).then_some(blocked);
+        if blocked.files.is_empty() {
+            return;
+        }
+        match &self.blocked_downloads {
+            Some(open) if open.cluster_id != blocked.cluster_id => {
+                self.blocked_queue.push_back(blocked);
+            }
+            _ => self.blocked_downloads = Some(blocked),
+        }
     }
 
     pub fn open_modpack_confirm(&mut self, confirm: ModpackConfirm) {
@@ -483,7 +492,9 @@ impl NotificationState {
     }
 
     pub fn take_blocked_downloads(&mut self) -> Option<BlockedDownloads> {
-        self.blocked_downloads.take()
+        let closed = self.blocked_downloads.take();
+        self.blocked_downloads = self.blocked_queue.pop_front();
+        closed
     }
 
     pub fn resolve_blocked_downloads(&mut self, cluster_id: ClusterId, sha1s: &[String]) {
@@ -1271,6 +1282,24 @@ mod package_update_tests {
             content_type: oneclient_content::packages::ContentType::Mod,
             page_url: None,
         }
+    }
+
+    #[test]
+    fn manual_downloads_for_a_second_instance_wait_their_turn() {
+        let mut state = NotificationState::default();
+        for (cluster_id, sha1) in [(1, "aa"), (2, "bb")] {
+            state.open_blocked_downloads(BlockedDownloads {
+                cluster_id,
+                cluster_name: "Pack".into(),
+                files: vec![blocked_file(sha1)],
+                added: HashSet::new(),
+                open_when_done: false,
+            });
+        }
+
+        assert_eq!(state.take_blocked_downloads().unwrap().cluster_id, 1);
+        assert_eq!(state.take_blocked_downloads().unwrap().cluster_id, 2);
+        assert!(state.take_blocked_downloads().is_none());
     }
 
     #[test]

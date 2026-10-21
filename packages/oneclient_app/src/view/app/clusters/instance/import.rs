@@ -274,24 +274,35 @@ fn launcher_section(
         .filter(|instance| instance.unsupported_loader.is_none())
         .cloned()
         .collect();
-    let toggle_all = label()
-        .text(if all_picked { "Clear" } else { "Select all" })
-        .font_size(12.)
-        .color(colors::fg_secondary())
-        .a11y_role(AccessibilityRole::Button)
-        .cursor(CursorIcon::Pointer)
-        .on_press(move |_| {
-            let mut list = chosen.write();
-            if all_picked {
-                list.retain(|c| !section_instances.iter().any(|i| i.game_dir == c.game_dir));
-            } else {
-                for instance in &section_instances {
-                    if !list.iter().any(|c| c.game_dir == instance.game_dir) {
-                        list.push(instance.clone());
+    let toggle_all = (!section_instances.is_empty()).then(|| {
+        label()
+            .text(if all_picked { "Clear" } else { "Select all" })
+            .font_size(12.)
+            .color(colors::fg_secondary())
+            .a11y_role(AccessibilityRole::Button)
+            .cursor(CursorIcon::Pointer)
+            .on_press(move |_| {
+                let mut list = chosen.write();
+                if all_picked {
+                    list.retain(|c| !section_instances.iter().any(|i| i.game_dir == c.game_dir));
+                } else {
+                    for instance in &section_instances {
+                        if !list.iter().any(|c| c.game_dir == instance.game_dir) {
+                            list.push(instance.clone());
+                        }
                     }
                 }
-            }
-        });
+            })
+    });
+    let body = match &detection.problem {
+        Some(problem) => label()
+            .width(Size::fill())
+            .text(format!("Couldn't read this install: {problem}"))
+            .font_size(12.)
+            .color(colors::fg_secondary())
+            .into_element(),
+        None => fixed_grid(cards, BUNDLE_COLUMNS, BUNDLE_CARD_H, GRID_GAP),
+    };
 
     rect()
         .vertical()
@@ -320,9 +331,9 @@ fn launcher_section(
                         .text_overflow(TextOverflow::Ellipsis)
                         .color(colors::fg_secondary()),
                 )
-                .child(toggle_all),
+                .maybe_child(toggle_all),
         )
-        .child(fixed_grid(cards, BUNDLE_COLUMNS, BUNDLE_CARD_H, GRID_GAP))
+        .child(body)
         .into_element()
 }
 

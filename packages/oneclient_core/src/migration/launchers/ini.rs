@@ -67,14 +67,19 @@ fn unescape(value: &str) -> String {
             Some('t') => out.push('\t'),
             Some('r') => out.push('\r'),
             Some('x') => {
-                let mut hex = String::new();
-                while hex.len() < 4
-                    && let Some(d) = chars.peek().copied().filter(char::is_ascii_hexdigit)
-                {
-                    hex.push(d);
-                    chars.next();
+                let hex = read_hex(&mut chars);
+                let mut code = u32::from_str_radix(&hex, 16).ok();
+                if let Some(high) = code.filter(|c| (0xD800..0xDC00).contains(c)) {
+                    let mut ahead = chars.clone();
+                    if ahead.next() == Some('\\') && ahead.next() == Some('x') {
+                        let low = u32::from_str_radix(&read_hex(&mut ahead), 16).ok();
+                        if let Some(low) = low.filter(|c| (0xDC00..0xE000).contains(c)) {
+                            code = Some(0x10000 + ((high - 0xD800) << 10) + (low - 0xDC00));
+                            chars = ahead;
+                        }
+                    }
                 }
-                match u32::from_str_radix(&hex, 16).ok().and_then(char::from_u32) {
+                match code.and_then(char::from_u32) {
                     Some(decoded) => out.push(decoded),
                     None => {
                         out.push_str("\\x");
@@ -87,6 +92,17 @@ fn unescape(value: &str) -> String {
         }
     }
     out
+}
+
+fn read_hex(chars: &mut std::iter::Peekable<std::str::Chars<'_>>) -> String {
+    let mut hex = String::new();
+    while hex.len() < 4
+        && let Some(d) = chars.peek().copied().filter(char::is_ascii_hexdigit)
+    {
+        hex.push(d);
+        chars.next();
+    }
+    hex
 }
 
 #[cfg(test)]
@@ -106,6 +122,10 @@ mod tests {
         assert_eq!(ini.get("Env"), Some("{\"A\": \"b\"}"));
         assert!(ini.flag("OverrideMemory"));
         assert_eq!(ini.number::<u32>("MaxMemAlloc"), Some(4096));
+
+        let emoji = Ini::parse("[General]\nname=Fun \\xd83d\\xde00 Pack\nnotes=\\xd83d alone\n");
+        assert_eq!(emoji.get("name"), Some("Fun \u{1F600} Pack"));
+        assert_eq!(emoji.get("notes"), Some("\\xd83d alone"));
     }
 
     #[test]

@@ -242,7 +242,7 @@ pub async fn export_cluster(
         kind,
         mc_version: cluster.mc_version.clone(),
         mc_loader: cluster.mc_loader,
-        mc_loader_version: exported_loader_version(state, &cluster).await,
+        mc_loader_version: exported_loader_version(state, &cluster).await?,
         dedicated_dir: cluster.uses_dedicated_dir() || kind.is_isolated(),
         java: exported_java(state, &cluster).await,
         modpack,
@@ -262,17 +262,30 @@ pub async fn export_cluster(
     Ok(report)
 }
 
-async fn exported_loader_version(state: &Arc<LauncherState>, cluster: &Cluster) -> Option<String> {
+async fn exported_loader_version(
+    state: &Arc<LauncherState>,
+    cluster: &Cluster,
+) -> LauncherResult<Option<String>> {
     if !cluster.mc_loader.is_modded() {
-        return None;
+        return Ok(None);
     }
-    super::prepare::resolved_loader_version(state, cluster)
+    let resolved = super::prepare::resolved_loader_version(state, cluster)
         .await
         .inspect_err(|err| {
             tracing::warn!(cluster_id = cluster.id, error = %err, "could not work out the loader version to export");
         })
         .ok()
-        .flatten()
+        .flatten();
+    match resolved {
+        Some(version) => Ok(Some(version)),
+        None => Err(ContentError::InvalidData {
+            reason: format!(
+                "Couldn't work out which {} version this instance uses. Check your connection and try again.",
+                cluster.mc_loader
+            ),
+        }
+        .into()),
+    }
 }
 
 async fn exported_java(state: &Arc<LauncherState>, cluster: &Cluster) -> Option<SharedJava> {

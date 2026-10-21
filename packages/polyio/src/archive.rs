@@ -18,8 +18,27 @@ async fn open_zip<R: AsyncBufRead + AsyncSeek + Unpin>(
 }
 
 async fn open_zip_file(zip_path: &Path) -> PolyIOResult<FileZipReader> {
+    open_zip_file_with(zip_path, ZipOptions::untrusted()).await
+}
+
+async fn open_large_zip_file(zip_path: &Path) -> PolyIOResult<FileZipReader> {
+    let options = ZipOptions {
+        max_uncompressed_size_per_file: u64::MAX,
+        max_compressed_size_per_file: u64::MAX,
+        max_cd_num_files: 1024 * 1024,
+        max_cd_num_files_load: 1024 * 1024,
+        max_cd_size_in_bytes: 256 * 1024 * 1024,
+        ..ZipOptions::untrusted()
+    };
+    open_zip_file_with(zip_path, options).await
+}
+
+async fn open_zip_file_with(zip_path: &Path, options: ZipOptions) -> PolyIOResult<FileZipReader> {
     let file = tokio::fs::File::open(zip_path).await?;
-    open_zip(tokio::io::BufReader::new(file).compat()).await
+    Ok(
+        ZipArchiveReader::open_with_options(tokio::io::BufReader::new(file).compat(), options)
+            .await?,
+    )
 }
 
 fn entry_name(cdr: &CDR) -> Cow<'_, str> {
@@ -140,7 +159,7 @@ pub async fn zip_uncompressed_size(
     zip_path: impl AsRef<std::path::Path>,
     filter: impl Fn(&str) -> bool,
 ) -> PolyIOResult<u64> {
-    let reader = open_zip_file(zip_path.as_ref()).await?;
+    let reader = open_large_zip_file(zip_path.as_ref()).await?;
     let mut total = 0u64;
     for cdr in reader.cdrs() {
         if filter(&entry_name(cdr)) {
@@ -160,7 +179,7 @@ pub async fn extract_zip_limited(
     let dest_path = dest_path.as_ref().to_path_buf();
 
     off_caller_thread(move || async move {
-        let reader = open_zip_file(&zip_path).await?;
+        let reader = open_large_zip_file(&zip_path).await?;
         extract_entries(
             reader,
             &dest_path,
@@ -256,7 +275,7 @@ pub async fn read_zip_file_entries(
     filter: impl Fn(&str) -> bool,
 ) -> PolyIOResult<Vec<(String, Vec<u8>)>> {
     let zip_path = zip_path.as_ref();
-    let mut reader = open_zip_file(zip_path).await?;
+    let mut reader = open_large_zip_file(zip_path).await?;
     let inner = reader.inner().clone();
 
     let mut out = Vec::new();
@@ -375,7 +394,7 @@ impl ZipEntryCursor {
     fields(zip_path = %zip_path.as_ref().display())
 )]
 pub async fn zip_entry_names(zip_path: impl AsRef<std::path::Path>) -> PolyIOResult<Vec<String>> {
-    let reader = open_zip_file(zip_path.as_ref()).await?;
+    let reader = open_large_zip_file(zip_path.as_ref()).await?;
 
     Ok(reader
         .cdrs()

@@ -307,7 +307,8 @@ static ATOMIC_WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Sibling rather than temp dir `rename` across mount points fails with
 /// `EXDEV` and `/tmp` is often a separate tmpfs on Linux
-fn temp_sibling(path: &Path) -> PathBuf {
+#[must_use]
+pub fn temp_sibling(path: &Path) -> PathBuf {
     let n = ATOMIC_WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
     let stem = path
         .file_name()

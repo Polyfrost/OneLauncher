@@ -4,7 +4,9 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use freya::prelude::spawn_forever;
 use oneclient_common::domain::ProviderId;
+use oneclient_content::ContentError;
 use oneclient_content::modpacks::{SHARE_EXTENSION, detect_format};
+use oneclient_content::packages::PackageError;
 use oneclient_core::clusters::ModpackSource;
 use oneclient_core::{
     ExternalImportReport, ExternalInstance, ImportChoices, InstanceArchive, alternative_version_id,
@@ -68,14 +70,32 @@ fn queued_count() -> usize {
 }
 
 struct RunningImport {
+    actions: Actions,
+    workdirs: HashSet<PathBuf>,
     finished: bool,
+}
+
+impl RunningImport {
+    fn hold(&mut self, jobs: &[ExternalImportJob]) {
+        self.workdirs
+            .extend(jobs.iter().filter_map(|job| job.workdir.clone()));
+    }
 }
 
 impl Drop for RunningImport {
     fn drop(&mut self) {
-        if !self.finished {
-            *queue() = None;
+        if self.finished {
+            return;
         }
+        let dropped = queue().take().unwrap_or_default();
+        self.hold(&dropped);
+        discard_workdir_set(std::mem::take(&mut self.workdirs));
+        self.actions
+            .notify("Import stopped")
+            .body("Something went wrong, so the remaining imports were cancelled. Try importing them again.")
+            .error()
+            .send();
+        self.actions.resume_imports();
     }
 }
 
@@ -166,7 +186,12 @@ impl Actions {
 
         let actions = self.clone();
         spawn_forever(async move {
-            let mut running = RunningImport { finished: false };
+            let mut running = RunningImport {
+                actions: actions.clone(),
+                workdirs: HashSet::new(),
+                finished: false,
+            };
+            running.hold(&jobs);
             let Ok(state) = launcher::state() else {
                 return;
             };
@@ -174,8 +199,6 @@ impl Actions {
 
             let mut imported: Vec<ExternalImportReport> = Vec::new();
             let mut unavailable: Vec<String> = Vec::new();
-            let mut blocked_shown = false;
-            let mut workdirs: HashSet<PathBuf> = HashSet::new();
             let mut done = 0usize;
             let mut batch = jobs;
             loop {
@@ -185,9 +208,8 @@ impl Actions {
                         instance,
                         choices,
                         alternatives,
-                        workdir,
+                        workdir: _,
                     } = job;
-                    workdirs.extend(workdir);
                     let name = instance.name.clone();
                     let total = done + (batch_len - index) + queued_count();
                     let position = done + 1;
@@ -223,13 +245,12 @@ impl Actions {
                     crate::hooks::invalidate_cluster_queries().await;
 
                     match outcome {
-                        Ok(mut report) => {
-                            if !report.blocked.is_empty() && !blocked_shown {
-                                blocked_shown = true;
+                        Ok(report) => {
+                            if !report.blocked.is_empty() {
                                 actions.open_blocked_downloads(BlockedDownloads {
                                     cluster_id: report.cluster_id,
                                     cluster_name: report.cluster_name.clone(),
-                                    files: std::mem::take(&mut report.blocked),
+                                    files: report.blocked.clone(),
                                     added: Default::default(),
                                     open_when_done: false,
                                 });
@@ -253,7 +274,10 @@ impl Actions {
                 }
 
                 match next_batch() {
-                    Some(next) => batch = next,
+                    Some(next) => {
+                        running.hold(&next);
+                        batch = next;
+                    }
                     None => {
                         running.finished = true;
                         break;
@@ -261,7 +285,7 @@ impl Actions {
                 }
             }
 
-            discard_workdir_set(workdirs);
+            discard_workdir_set(std::mem::take(&mut running.workdirs));
             notify_summary(&actions, &imported, &unavailable);
             if let [only] = imported.as_slice() {
                 actions.open_cluster_page(only.cluster_id);
@@ -283,28 +307,37 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let probe = path.clone();
-            let (instance, modpack) = off_ui(async move {
-                let instance = is_instance_archive(&probe).await;
-                let modpack = !instance && detect_format(&probe).await.is_ok();
-                (instance, modpack)
+            let verdict = off_ui(async move {
+                if is_instance_archive(&probe).await {
+                    return Ok(true);
+                }
+                match detect_format(&probe).await {
+                    Ok(_) => Ok(false),
+                    Err(ContentError::Package(PackageError::UnsupportedModpackFormat)) => Err(None),
+                    Err(err) => Err(Some(err.to_string())),
+                }
             })
             .await;
-            if instance {
-                actions.import_instance_archive(path);
-            } else if modpack {
-                actions.install_modpack(ModpackSource::File(path));
-            } else {
-                let file = path
-                    .file_name()
-                    .map(|name| name.to_string_lossy().into_owned())
-                    .unwrap_or_else(|| "the file".to_string());
-                actions
-                    .notify(format!("Can't import {file}"))
-                    .body(
-                        "This .zip isn't a OneClient, Prism Launcher, MultiMC or CurseForge export.",
-                    )
-                    .error()
-                    .send();
+            match verdict {
+                Ok(true) => actions.import_instance_archive(path),
+                Ok(false) => actions.install_modpack(ModpackSource::File(path)),
+                Err(reason) => {
+                    let file = path
+                        .file_name()
+                        .map(|name| name.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "the file".to_string());
+                    if let Some(reason) = &reason {
+                        tracing::warn!(file, error = %reason, "could not read the dropped file");
+                    }
+                    actions
+                        .notify(format!("Can't import {file}"))
+                        .body(reason.unwrap_or_else(|| {
+                            "This .zip isn't a OneClient, Prism Launcher, MultiMC or CurseForge export."
+                                .to_string()
+                        }))
+                        .error()
+                        .send();
+                }
             }
         });
     }

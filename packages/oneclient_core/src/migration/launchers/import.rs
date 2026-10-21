@@ -600,13 +600,24 @@ async fn import_content(
     // Disabled files arrive staged under their real name (see
     // `LocalContent::import_path`) and are switched off after linking
     let mut to_import = Vec::new();
-    let mut seen = HashSet::new();
+    let mut seen = HashMap::new();
     for file in &scanned.files {
         if file.content_type == ContentType::Mod && cluster.lacks_mod_loader() {
             report.mods_skipped += 1;
             continue;
         }
-        if linked.contains(&file.hash) || !seen.insert(file.hash.clone()) {
+        if linked.contains(&file.hash) {
+            continue;
+        }
+        if let Some(first) = seen.insert(file.hash.clone(), file.content_type) {
+            if first != file.content_type {
+                report.content_failed.push(
+                    file.path
+                        .file_name()
+                        .map(|n| n.to_string_lossy().into_owned())
+                        .unwrap_or_default(),
+                );
+            }
             continue;
         }
 
@@ -625,7 +636,17 @@ async fn import_content(
             }));
     }
 
-    for file in scanned.files.iter().filter(|f| !f.enabled) {
+    let enabled: HashSet<&str> = scanned
+        .files
+        .iter()
+        .filter(|f| f.enabled)
+        .map(|f| f.hash.as_str())
+        .collect();
+    for file in scanned
+        .files
+        .iter()
+        .filter(|f| !f.enabled && !enabled.contains(f.hash.as_str()))
+    {
         if file.content_type == ContentType::Mod && cluster.lacks_mod_loader() {
             continue;
         }
@@ -926,7 +947,7 @@ async fn move_tree(source: &Path, dest: &Path, skipped: &mut Vec<String>) {
         if !target.exists() && polyio::rename(entry.path(), &target).await.is_ok() {
             continue;
         }
-        copy_tree(&entry.path(), &target, source, COPY_EXCLUDE_TOP, skipped).await;
+        copy_tree(&entry.path(), &target, source, &[], skipped).await;
     }
 }
 
@@ -1132,6 +1153,24 @@ mod tests {
         assert!(dst.join("options.txt").is_file());
         assert!(dst.join("saves/World/level.dat").is_file());
         assert!(!dst.join("saves/World/session.lock").exists());
+        assert!(!dst.join("logs").exists());
+    }
+
+    #[tokio::test]
+    async fn moving_into_an_existing_folder_keeps_its_nested_folders() {
+        let src = polyio::tempdir().await.unwrap();
+        let dst = polyio::tempdir().await.unwrap();
+        let (src, dst) = (src.dir_path(), dst.dir_path());
+        touch(src.join("kubejs/assets/pack/texture.png")).await;
+        touch(src.join("logs/latest.log")).await;
+        touch(dst.join("kubejs/startup_scripts/main.js")).await;
+
+        let mut skipped = Vec::new();
+        move_tree(src, dst, &mut skipped).await;
+
+        assert!(skipped.is_empty(), "{skipped:?}");
+        assert!(dst.join("kubejs/assets/pack/texture.png").is_file());
+        assert!(dst.join("kubejs/startup_scripts/main.js").is_file());
         assert!(!dst.join("logs").exists());
     }
 

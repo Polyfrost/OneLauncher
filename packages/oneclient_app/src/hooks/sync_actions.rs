@@ -52,6 +52,14 @@ impl Actions {
                     return;
                 }
             };
+            if oneclient_core::clusters::is_resetting(cluster_id) {
+                actions
+                    .notify("Couldn't sync from the shared folder")
+                    .body("This instance is being reset. Wait for the reset to finish, then try again.")
+                    .error()
+                    .send();
+                return;
+            }
             let _shown = ShownSync::start(actions.station(), cluster_id);
 
             let events = actions.events();

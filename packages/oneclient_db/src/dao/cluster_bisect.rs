@@ -44,21 +44,6 @@ pub async fn list_mods(
     .await
 }
 
-pub async fn session_hashes(
-    pool: &SqlitePool,
-    cluster_id: i64,
-) -> Result<Vec<String>, sqlx::Error> {
-    sqlx::query_scalar!(
-        r#"
-        SELECT hash FROM cluster_bisect_mods
-        WHERE cluster_id = ?
-        "#,
-        cluster_id
-    )
-    .fetch_all(pool)
-    .await
-}
-
 pub async fn is_active(pool: &SqlitePool, cluster_id: i64) -> Result<bool, sqlx::Error> {
     let found = sqlx::query_scalar!(
         r#"

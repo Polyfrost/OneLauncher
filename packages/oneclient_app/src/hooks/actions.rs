@@ -3,10 +3,15 @@
 //! Always `spawn_forever` never `spawn` Freya's `spawn` cancels the task when
 //! the calling component unmounts this work is app-scoped not component-scoped
 
+mod external_import;
+pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
+pub(crate) use modpacks::listed;
 pub use modpacks::modpack_job_running;
 mod release_migration;
+mod share;
+pub use share::exporting;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -34,7 +39,9 @@ use crate::notifications::{
     BundleChoices, ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef,
     OptionalModsGroup, OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
 };
-use crate::state::{AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, RelocationState};
+use crate::state::{
+    AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, MissingModInstall, RelocationState,
+};
 use crate::{invalidate_java_queries, launcher};
 
 /// Over-disabling is the cheaper mistake a dead button beats a second game
@@ -997,7 +1004,13 @@ impl Actions {
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
         if modpack_job_running(cluster_id) {
             self.notify("The modpack is still being set up")
-                .body("Wait for it to finish installing, then press Play again.")
+                .body("Wait for the modpack to finish, or close its dialog, then press Play again.")
+                .send();
+            return;
+        }
+        if oneclient_core::clusters::is_resetting(cluster_id) {
+            self.notify("This instance is being reset")
+                .body("Wait for the reset to finish, then press Play again.")
                 .send();
             return;
         }
@@ -1016,7 +1029,17 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let started = Instant::now();
-            launch(&actions, cluster_id).await;
+            match super::sync_actions::sync_launch_block(cluster_id).await {
+                Some(reason) => actions
+                    .notify("Wait for the sync to finish")
+                    .body(reason)
+                    .send(),
+                None if modpacks::modpack_job_in_shared_dir(cluster_id).await => actions
+                    .notify("A modpack is still being set up")
+                    .body("It is changing an instance that shares this game folder. Press Play again once it finishes.")
+                    .send(),
+                None => launch(&actions, cluster_id).await,
+            }
 
             // An instant failure would hand the button back inside the same
             // click burst so hold it for the floor either way
@@ -1044,6 +1067,120 @@ impl Actions {
             .write_channel(AppChannel::Game)
             .game
             .error = None;
+    }
+
+    pub fn dismiss_game_crash(&self, cluster_id: ClusterId) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Game)
+            .game
+            .clear_crash(cluster_id);
+    }
+
+    pub fn repair_cluster(&self, cluster_id: ClusterId) {
+        self.dismiss_game_crash(cluster_id);
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            oneclient_core::game::repair_cluster(&state, cluster_id).await;
+        });
+    }
+
+    pub fn install_missing_mod(
+        &self,
+        cluster_id: ClusterId,
+        mod_id: String,
+        name: String,
+        range: Option<oneclient_events::VersionRange>,
+    ) {
+        {
+            let mut channel = self.station.clone().write_channel(AppChannel::Installs);
+            let installs = &mut channel.installs;
+            if !matches!(
+                installs.missing_mod_install(cluster_id, &mod_id),
+                MissingModInstall::Idle | MissingModInstall::Finished(_)
+            ) {
+                return;
+            }
+            installs.begin_missing_lookup(cluster_id, &mod_id);
+        }
+
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else {
+                actions
+                    .station
+                    .clone()
+                    .write_channel(AppChannel::Installs)
+                    .installs
+                    .end_missing_lookup(cluster_id, &mod_id, None);
+                return;
+            };
+
+            let found = off_ui({
+                let state = state.clone();
+                let name = name.clone();
+                let mod_id = mod_id.clone();
+                let range = range.clone();
+                async move {
+                    let provider = state.services.packages.get(ProviderId::Modrinth)?;
+                    oneclient_content::packages::find_mod_for_cluster(
+                        provider,
+                        &mod_id,
+                        Some(&name),
+                        range.as_ref(),
+                        cluster_id,
+                        &state.services.content(),
+                    )
+                    .await
+                }
+            })
+            .await;
+
+            let project_id = found
+                .as_ref()
+                .ok()
+                .and_then(|target| target.as_ref())
+                .map(|target| target.project_id.clone());
+
+            match found {
+                Ok(Some(target)) => actions.install_package(
+                    cluster_id,
+                    ProviderId::Modrinth,
+                    target.project_id,
+                    target.version_id,
+                    None,
+                ),
+                Ok(None) => state
+                    .services
+                    .events
+                    .notify(format!("Could not find {name}"))
+                    .body(if range.is_some() {
+                        format!(
+                            "No version of {name} on Modrinth matches both this cluster and the version the other mods ask for."
+                        )
+                    } else {
+                        format!(
+                            "No version of {name} for this cluster's Minecraft version and loader is on Modrinth."
+                        )
+                    })
+                    .error()
+                    .send(),
+                Err(err) => state
+                    .services
+                    .events
+                    .notify("Install failed")
+                    .body(err.to_string())
+                    .error()
+                    .send(),
+            }
+
+            actions
+                .station
+                .clone()
+                .write_channel(AppChannel::Installs)
+                .installs
+                .end_missing_lookup(cluster_id, &mod_id, project_id);
+        });
     }
 
     pub fn import_local_file(
@@ -1503,6 +1640,24 @@ impl Actions {
 
     /// `syncing_bundles` gates every launch button so the readiness check must
     /// happen before the flag is raised not inside the task
+    /// Lets the signed-out bar show at startup instead of on the first launch
+    pub fn check_sessions() {
+        let state = match launcher::state() {
+            Ok(state) => state,
+            Err(err) => {
+                tracing::error!("session check skipped, launcher not ready: {err:#}");
+                return;
+            }
+        };
+
+        spawn_forever(async move {
+            let signed_out = off_ui(async move { state.auth.check_expired_sessions().await }).await;
+            if signed_out {
+                super::invalidate_auth_queries(None).await;
+            }
+        });
+    }
+
     pub fn sync_bundles(&self) {
         let state = match launcher::state() {
             Ok(state) => state,
@@ -2078,12 +2233,21 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         return;
     };
 
+    // The renewal may have just marked the account signed out the accounts
+    // page and the status bar must pick that up while the game still starts
+    if account.needs_sign_in() {
+        super::invalidate_auth_queries(None).await;
+    }
+
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
 
     let content = state.services.content();
     tokio::spawn(async move {
         if let Err(err) = oneclient_content::packages::refresh_bad_mods(&content).await {
             tracing::warn!(%err, "bad mods list refresh failed, keeping the last one");
+        }
+        if let Err(err) = oneclient_content::packages::refresh_bad_modpacks(&content).await {
+            tracing::warn!(%err, "bad modpacks list refresh failed, keeping the last one");
         }
     });
 

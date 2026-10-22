@@ -1,23 +1,27 @@
 use freya::prelude::*;
+use freya::router::RouterContext;
 use oneclient_common::domain::ContentType;
-use oneclient_core::{BisectExit, BisectStatus};
+use oneclient_core::{BisectExit, BisectRole, BisectStatus};
 
 use crate::components::{Button, CARD_BG, Icon, IconType, OverlayPopup, progress_track};
 use freya::query::UseMutation;
 
+use crate::Route;
 use crate::hooks::{
-    BisectAction, BisectMutation, cluster_content_items, use_bisect, use_bisect_mutation,
-    use_cluster_content, use_game_snapshot,
+    BisectAction, BisectMutation, cluster_content_items, invalidate_logs_queries, use_bisect,
+    use_bisect_mutation, use_cluster_content, use_game_snapshot,
 };
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::settings_row;
 
+use super::OpenGameOutput;
 use super::folder_list::dialog;
 
 #[derive(PartialEq)]
 pub struct BisectBanner {
     pub cluster_id: i64,
+    pub question_hidden: State<bool>,
 }
 
 impl Component for BisectBanner {
@@ -46,6 +50,18 @@ impl Component for BisectBanner {
         let warning = (status.mods_changed() && !status.finishing).then(|| changed_text(&status));
 
         let mut buttons: Vec<Element> = Vec::new();
+        let mut question_hidden = self.question_hidden;
+        if *question_hidden.read() && status.awaiting_answer() && !game_active {
+            buttons.push(
+                Button::new()
+                    .primary()
+                    .height(Size::px(34.))
+                    .font_size(12.)
+                    .on_press(move |_| question_hidden.set(false))
+                    .text("Answer")
+                    .into_element(),
+            );
+        }
         if status.finishing {
             buttons.push(
                 Button::new()
@@ -308,6 +324,7 @@ fn changed_text(status: &BisectStatus) -> String {
 #[derive(PartialEq)]
 pub struct BisectQuestion {
     pub cluster_id: i64,
+    pub hidden: State<bool>,
 }
 
 impl Component for BisectQuestion {
@@ -319,14 +336,17 @@ impl Component for BisectQuestion {
         let mut picking = use_state(|| false);
         let mut picked = use_state(Vec::<String>::new);
 
-        let Some(status) = status.filter(|s| s.awaiting_answer() && !game_active) else {
+        let hidden = self.hidden;
+        let Some(status) =
+            status.filter(|s| s.awaiting_answer() && !game_active && !*hidden.read())
+        else {
             return rect().into_element();
         };
         let busy = crate::hooks::mutation_is_running(&mutation);
 
         let crashed = status.pending_exit == BisectExit::Crashed;
         if status.awaiting_confirmation() {
-            return confirm_question(&status, crashed, busy, mutation);
+            return confirm_question(&status, crashed, busy, mutation, hidden);
         }
         let choosing = *picking.read();
         let suggestion = status.suggestion.clone().filter(|_| !choosing);
@@ -419,6 +439,29 @@ impl Component for BisectQuestion {
             });
 
             let keep = chosen.clone();
+            let cleared: Vec<String> = status
+                .mods
+                .iter()
+                .filter(|m| m.role == BisectRole::Cleared)
+                .map(|m| m.hash.clone())
+                .collect();
+            let unsure = Button::new()
+                .ghost()
+                .width(Size::fill())
+                .enabled(!busy && !cleared.is_empty())
+                .tooltip(if cleared.is_empty() {
+                    "Nothing has been cleared yet. Pick the mods, or skip this launch."
+                } else {
+                    "Turns on every mod already ruled out, so a missing library is likely back"
+                })
+                .on_press(move |_| {
+                    mutation.mutate(BisectAction::KeepOn {
+                        cluster_id,
+                        hashes: cleared.clone(),
+                    });
+                    reset();
+                })
+                .text("I don't know, turn on everything already cleared");
             rect()
                 .vertical()
                 .width(Size::fill())
@@ -435,6 +478,7 @@ impl Component for BisectQuestion {
                                 .children(rows),
                         ),
                 )
+                .child(unsure)
                 .child(
                     rect()
                         .horizontal()
@@ -488,6 +532,7 @@ impl Component for BisectQuestion {
                         })
                         .text("No, this is the problem I'm looking for"),
                 )
+                .child(check_logs_button(cluster_id, busy, hidden))
                 .into_element()
         } else {
             let answer = move |broken: bool| {
@@ -531,6 +576,7 @@ impl Component for BisectQuestion {
                         .on_press(move |_| mutation.mutate(BisectAction::Skip { cluster_id }))
                         .text("I didn't get to test, ask me next time"),
                 )
+                .child(check_logs_button(cluster_id, busy, hidden))
                 .into_element()
         };
 
@@ -589,6 +635,7 @@ fn confirm_question(
     crashed: bool,
     busy: bool,
     mutation: UseMutation<BisectMutation>,
+    hidden: State<bool>,
 ) -> Element {
     let cluster_id = status.cluster_id;
     let names: Vec<&str> = status.culprits().iter().map(|m| m.name.as_str()).collect();
@@ -642,7 +689,8 @@ fn confirm_question(
                 .enabled(!busy)
                 .on_press(move |_| mutation.mutate(BisectAction::Skip { cluster_id }))
                 .text("I didn't get to test, ask me next time"),
-        );
+        )
+        .child(check_logs_button(cluster_id, busy, hidden));
 
     OverlayPopup::new()
         .child(
@@ -688,6 +736,24 @@ fn confirm_question(
                         .child(content),
                 ),
         )
+        .into_element()
+}
+
+fn check_logs_button(cluster_id: i64, busy: bool, mut hidden: State<bool>) -> Element {
+    Button::new()
+        .ghost()
+        .width(Size::fill())
+        .enabled(!busy)
+        .on_press(move |_| {
+            hidden.set(true);
+            if let Some(OpenGameOutput(mut wanted)) = try_consume_root_context::<OpenGameOutput>() {
+                wanted.set(true);
+            }
+            spawn(async { invalidate_logs_queries().await });
+            let _ = RouterContext::get().push(Route::ClusterLogs { cluster_id });
+        })
+        .child(Icon::new(IconType::Terminal).size(14.))
+        .text("Check logs")
         .into_element()
 }
 

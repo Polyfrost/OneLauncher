@@ -20,8 +20,8 @@ use futures_util::StreamExt;
 use crate::bundles::install::{
     BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, decline_unasked_skyblock,
     disable_was_deliberate, external_ids_by_sha1, find_override, find_user_suppression,
-    heal_bundle_activity, install_package_from_bundle, remove_artifact_from_cluster,
-    set_artifact_enabled_to, takes_bundle,
+    heal_bundle_activity, install_package_from_bundle, overrides_outside_declined,
+    remove_artifact_from_cluster, set_artifact_enabled_to, takes_bundle,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
@@ -308,7 +308,7 @@ async fn check_bundle_updates_inner(
         } else {
             let user_disabled = matches!(
                 overrides_map.get(&(bundle_name.clone(), pkg_id.clone())),
-                Some(OverrideType::Disabled)
+                Some(OverrideType::Disabled | OverrideType::Removed)
             );
             let still_shipped = shipped_keys_by_bundle
                 .get(bundle_name)
@@ -490,17 +490,23 @@ pub async fn apply_bundle_updates_with(
     // Must run first
     // the check below never consults `enabled` so unrecorded disables would
     // read as healthy and be left untouched
-    {
+    let archives = {
         let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
         let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Fabric);
-        if let Ok(archives) = bundles.archives_for(ctx, &cluster.mc_version, loader).await {
-            heal_bundle_activity(cluster_id, &archives, ctx).await?;
-            decline_unasked_skyblock(&cluster, &archives, ctx).await?;
+        let archives = bundles.archives_for(ctx, &cluster.mc_version, loader).await;
+        if let Ok(archives) = &archives {
+            heal_bundle_activity(cluster_id, archives, ctx).await?;
+            decline_unasked_skyblock(&cluster, archives, ctx).await?;
         }
-    }
+        archives
+    };
 
     let overrides = bundle_dao::list_overrides(&ctx.db, cluster_id).await?;
     let check = check_bundle_updates_inner(cluster_id, bundles, ctx, &overrides).await?;
+    let suppressing = match &archives {
+        Ok(archives) => overrides_outside_declined(cluster_id, archives, overrides, ctx).await?,
+        Err(_) => overrides,
+    };
 
     tracing::info!(
         cluster_id,
@@ -512,12 +518,21 @@ pub async fn apply_bundle_updates_with(
 
     let mut result = ApplyBundleUpdatesResult::default();
 
+    let wants = match PackageStore::get_cluster(cluster_id, ctx).await {
+        Ok(cluster) => crate::modpacks::imported_wants(&cluster).await,
+        Err(_) => Vec::new(),
+    };
     for removal in check.removals_available {
         if past(deadline) {
             result.stopped_early = true;
             break;
         }
 
+        if let Ok(true) =
+            crate::modpacks::hand_to_wanting_pack(cluster_id, &removal.hash, &wants, ctx).await
+        {
+            continue;
+        }
         match remove_artifact_from_cluster(cluster_id, &removal.hash, false, ctx).await {
             Ok(()) => result.removals_applied.push(removal),
             Err(err) => result
@@ -544,7 +559,7 @@ pub async fn apply_bundle_updates_with(
         s.expect(oneclient_events::TaskCategory::Packages, count, bytes);
     }
 
-    let overrides_ref = &overrides;
+    let overrides_ref = &suppressing;
     let fetched_updates = futures_util::stream::iter(check.updates_available.into_iter().map(
         |update| async move {
             if past(deadline) {
@@ -894,7 +909,7 @@ pub async fn get_bundles_with_update_status(
         .collect();
 
     // Same liveness the updater uses so an untracked older install is not hidden from the list while it still takes on new files
-    let live_bundles = addition_eligible_bundles(
+    let mut live_bundles = addition_eligible_bundles(
         ctx,
         cluster_id,
         &archives,
@@ -904,6 +919,12 @@ pub async fn get_bundles_with_update_status(
         &overrides_map,
     )
     .await?;
+    live_bundles.extend(bundles_awaiting_first_install(
+        &archives,
+        &bundle_packages,
+        &overrides_map,
+        &accepted_bundles(cluster_id, ctx).await?,
+    ));
 
     let (installed_managed_keys, installed_external_hashes) =
         installed_bundle_keys(ctx, &all_linked).await?;
@@ -1066,6 +1087,7 @@ impl<'a> TypeOptOuts<'a> {
         let stray_overrides = overrides
             .iter()
             .filter(|o| !shipped.contains(&(o.bundle_name.as_str(), o.package_id.clone())))
+            .filter(|o| !crate::modpacks::is_imported_bundle(&o.bundle_name))
             .cloned()
             .collect();
 
@@ -1196,6 +1218,40 @@ async fn addition_eligible_bundles(
     Ok(eligible)
 }
 
+fn bundles_awaiting_first_install(
+    archives: &[BundleArchive],
+    bundle_packages: &[BundleTrackedArtifactRow],
+    overrides_map: &HashMap<(String, String), OverrideType>,
+    accepted: &HashSet<String>,
+) -> HashSet<String> {
+    let names: HashSet<&str> = archives
+        .iter()
+        .map(|archive| archive.manifest.name.as_str())
+        .collect();
+    let installed_any = bundle_packages.iter().any(|row| {
+        row.bundle_name
+            .as_deref()
+            .is_some_and(|name| names.contains(name))
+    });
+    if installed_any {
+        return HashSet::new();
+    }
+
+    archives
+        .iter()
+        .filter(|archive| takes_bundle(archive, accepted))
+        .filter(|archive| {
+            archive.manifest.files.iter().any(|file| {
+                let choice = overrides_map
+                    .get(&(archive.manifest.name.clone(), file.kind.package_id()))
+                    .copied();
+                crate::bundles::effective_enabled(file, choice)
+            })
+        })
+        .map(|archive| archive.manifest.name.clone())
+        .collect()
+}
+
 fn live_bundle_names(
     bundle_packages: &[BundleTrackedArtifactRow],
     overrides: &[ClusterBundleOverrideRow],
@@ -1316,7 +1372,7 @@ fn compare_version_segment(left: &str, right: &str) -> Ordering {
     }
 }
 
-fn compare_version_like(left: &str, right: &str) -> Ordering {
+pub(crate) fn compare_version_like(left: &str, right: &str) -> Ordering {
     let left_segments: Vec<String> = left
         .split(|c: char| !c.is_ascii_alphanumeric())
         .filter(|s| !s.is_empty())

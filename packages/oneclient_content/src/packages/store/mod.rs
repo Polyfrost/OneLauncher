@@ -281,6 +281,7 @@ impl PackageStore {
                 content_type: ContentType::from_repr(row.content_type as u8)
                     .unwrap_or(ContentType::Mod),
                 file_name: row.file_name,
+                size_bytes: row.size_bytes.map(|s| s as u64),
                 project_id: row.project_id,
                 version_id: row.version_id,
                 display_name: row.display_name,
@@ -434,11 +435,17 @@ impl PackageStore {
         Ok(report)
     }
 
-    #[tracing::instrument(level = "debug", skip(ctx))]
+    #[tracing::instrument(level = "debug", skip(artifacts, ctx), fields(files = artifacts.len()))]
+    pub async fn describe_artifacts(artifacts: &[(ArtifactRow, ContentType)], ctx: &ContentCtx) {
+        describe_imports(artifacts, ctx).await;
+    }
+
+    #[tracing::instrument(level = "debug", skip(ctx, progress))]
     pub async fn resolve_or_download(
         provider_id: ProviderId,
         project_id: &str,
         version_id: &str,
+        progress: Option<&oneclient_events::GroupedProgressSession>,
         ctx: &ContentCtx,
     ) -> ContentResult<ArtifactRow> {
         let provider = ctx.providers.get(provider_id)?;
@@ -447,7 +454,31 @@ impl PackageStore {
 
         let project = provider.get_project(project_id, ctx).await?;
 
-        Self::download_and_cache(provider_id, &project, &version, false, None, ctx).await
+        let Some(session) = progress else {
+            return Self::download_and_cache(provider_id, &project, &version, false, None, ctx)
+                .await;
+        };
+        let size = version.primary_file().map_or(0, |file| file.size).max(1);
+        session.expect(oneclient_events::TaskCategory::Packages, 1, size);
+        session
+            .run_child(
+                format!("{} {}", project.name, version.version_number),
+                size,
+                oneclient_events::TaskCategory::Packages,
+                |child| async move {
+                    child.set_phase(oneclient_events::TaskPhase::Downloading);
+                    Self::download_and_cache(
+                        provider_id,
+                        &project,
+                        &version,
+                        false,
+                        Some(&child),
+                        ctx,
+                    )
+                    .await
+                },
+            )
+            .await
     }
 }
 

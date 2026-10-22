@@ -7,9 +7,10 @@ use std::time::SystemTime;
 
 use oneclient_common::domain::ContentType;
 use oneclient_content::packages::store::artifact_absolute_path;
+use oneclient_content::packages::types::DependencyKind;
 use oneclient_content::packages::{
-    LinkedArtifactInfo, PackageStore, ProviderId, read_cached_package_meta, read_jar_dependencies,
-    read_jar_manifest,
+    JarDependencies, LinkedArtifactInfo, PackageStore, ProviderId, read_cached_package_meta,
+    read_jar_dependencies, read_jar_manifest,
 };
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster_bisect as bisect_dao;
@@ -195,6 +196,9 @@ pub enum BisectAnswer {
 
 static OPS: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+static JAR_DEPENDENCIES: std::sync::LazyLock<std::sync::Mutex<HashMap<String, JarDependencies>>> =
+    std::sync::LazyLock::new(Default::default);
+
 struct Session {
     round: i64,
     pending_exit: BisectExit,
@@ -323,10 +327,11 @@ pub async fn bisect_status(
     Ok(Some(describe(cluster_id, &session)))
 }
 
-#[tracing::instrument(skip(state))]
+#[tracing::instrument(skip(state, progress))]
 pub async fn start_bisect(
     state: &Arc<LauncherState>,
     cluster_id: i64,
+    progress: impl Fn(&str, u64, u64),
 ) -> LauncherResult<BisectStatus> {
     let _guard = OPS.lock().await;
     ensure_idle(state, cluster_id)?;
@@ -346,6 +351,13 @@ pub async fn start_bisect(
         return Err(BisectError::TooFewMods.into());
     }
 
+    let total = enabled.len() as u64 + 2;
+    for (read, info) in enabled.iter().enumerate() {
+        progress("Reading mods", read as u64, total);
+        jar_dependencies(state, &info.hash).await;
+    }
+
+    progress("Checking dependencies online", total - 2, total);
     let names = mod_names(state, &enabled).await;
     let mods: Vec<(String, String)> = enabled
         .iter()
@@ -361,6 +373,22 @@ pub async fn start_bisect(
     bisect_dao::start(db, cluster_id, &mods).await?;
     tracing::info!(cluster_id, mods = mods.len(), "started problem mod search");
 
+    let listed = tokio::time::timeout(
+        std::time::Duration::from_secs(15),
+        listed_dependency_edges(state, &enabled),
+    )
+    .await
+    .unwrap_or_else(|_| {
+        tracing::warn!(cluster_id, "reading the listed mod dependencies took too long");
+        Vec::new()
+    });
+    if !listed.is_empty()
+        && let Err(err) = bisect_dao::add_edges(db, cluster_id, &listed).await
+    {
+        tracing::warn!(cluster_id, error = %err, "could not save the listed mod dependencies");
+    }
+
+    progress("Switching mods for the first round", total - 1, total);
     let started = match load(state, cluster_id).await {
         Ok(Some(session)) => advance(state, cluster_id, session).await,
         Ok(None) => Err(BisectError::NotRunning.into()),
@@ -529,7 +557,7 @@ pub async fn restart_bisect(
     cluster_id: i64,
 ) -> LauncherResult<BisectStatus> {
     finish_bisect(state, cluster_id, &[]).await?;
-    start_bisect(state, cluster_id).await
+    start_bisect(state, cluster_id, |_, _, _| {}).await
 }
 
 #[tracing::instrument(skip(state))]
@@ -646,10 +674,12 @@ pub async fn keep_bisect_mods_on(
     let edges = edges_from_testing(&session, &targets, BisectEdgeKind::Guessed);
     learn(state, cluster_id, &mut session, edges).await?;
 
-    let note = format!(
-        "{} will stay on with the mods being tested. Launch again.",
+    let kept = if targets.len() > 3 {
+        format!("{} mods", targets.len())
+    } else {
         session.names(&targets)
-    );
+    };
+    let note = format!("{kept} will stay on with the mods being tested. Launch again.");
     let mut status = advance(state, cluster_id, session).await?;
     bisect_dao::set_retry_note(&state.services.db, cluster_id, &note).await?;
     status.retry_note = Some(note);
@@ -958,6 +988,72 @@ async fn suggest(
     Ok(true)
 }
 
+async fn listed_dependency_edges(
+    state: &Arc<LauncherState>,
+    mods: &[&LinkedArtifactInfo],
+) -> Vec<Edge> {
+    let ctx = state.services.content();
+    let mut by_provider: HashMap<ProviderId, Vec<(&str, &str, &str)>> = HashMap::new();
+    for info in mods {
+        if let (Some(provider), Some(project), Some(version)) =
+            (info.provider, &info.project_id, &info.version_id)
+            && provider != ProviderId::Local
+        {
+            by_provider.entry(provider).or_default().push((
+                info.hash.as_str(),
+                project.as_str(),
+                version.as_str(),
+            ));
+        }
+    }
+
+    let mut edges: Vec<Edge> = Vec::new();
+    for (provider, listed) in by_provider {
+        let Ok(client) = ctx.providers.get(provider) else {
+            continue;
+        };
+        let version_ids: Vec<String> = listed.iter().map(|(_, _, v)| (*v).to_string()).collect();
+        let mut required: Vec<(String, String)> = Vec::new();
+        for chunk in version_ids.chunks(100) {
+            match client.get_versions(chunk, &ctx).await {
+                Ok(versions) => required.extend(versions.into_iter().flat_map(|version| {
+                    version
+                        .dependencies
+                        .into_iter()
+                        .filter(|d| d.kind == DependencyKind::Required)
+                        .filter_map(|d| d.project_id)
+                        .map(move |project| (version.version_id.clone(), project))
+                })),
+                Err(err) => {
+                    tracing::warn!(?provider, error = %err, "could not read the listed dependencies for the mod search");
+                }
+            }
+        }
+        for edge in required_edges(&listed, &required) {
+            if !edges.contains(&edge) {
+                edges.push(edge);
+            }
+        }
+    }
+    tracing::info!(
+        edges = edges.len(),
+        "read the dependencies mods list on their provider"
+    );
+    edges
+}
+
+fn required_edges(mods: &[(&str, &str, &str)], required: &[(String, String)]) -> Vec<Edge> {
+    let mut edges = Vec::new();
+    for (version, project) in required {
+        for (from, _, _) in mods.iter().filter(|(_, _, v)| v == version) {
+            for (to, _, _) in mods.iter().filter(|(h, p, _)| p == project && h != from) {
+                edges.push((from.to_string(), to.to_string(), BisectEdgeKind::Known));
+            }
+        }
+    }
+    edges
+}
+
 fn edge(session: &Session, from: usize, to: usize, kind: BisectEdgeKind) -> Edge {
     (
         session.hashes[from].clone(),
@@ -1050,6 +1146,24 @@ impl JarEntries {
         }
         None
     }
+}
+
+async fn jar_dependencies(state: &Arc<LauncherState>, hash: &str) -> Option<JarDependencies> {
+    if let Some(known) = JAR_DEPENDENCIES
+        .lock()
+        .ok()
+        .and_then(|cache| cache.get(hash).cloned())
+    {
+        return Some(known);
+    }
+
+    let deps = read_jar_dependencies(&artifact_path(state, hash).await?).await;
+    if deps != JarDependencies::default()
+        && let Ok(mut cache) = JAR_DEPENDENCIES.lock()
+    {
+        cache.insert(hash.to_string(), deps.clone());
+    }
+    Some(deps)
 }
 
 async fn artifact_path(state: &Arc<LauncherState>, hash: &str) -> Option<PathBuf> {
@@ -1216,11 +1330,10 @@ async fn dependency_graph(state: &Arc<LauncherState>, session: &Session) -> Grap
     let mut requires: Vec<Vec<String>> = Vec::with_capacity(session.hashes.len());
 
     for hash in &session.hashes {
-        let Some(path) = artifact_path(state, hash).await else {
+        let Some(deps) = jar_dependencies(state, hash).await else {
             requires.push(Vec::new());
             continue;
         };
-        let deps = read_jar_dependencies(&path).await;
         let index = requires.len();
         for id in deps.provides {
             own.entry(id).or_insert(index);
@@ -1427,6 +1540,38 @@ fn describe(cluster_id: i64, session: &Session) -> BisectStatus {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_listed_dependency_links_to_the_mod_with_that_project() {
+        let mods = [
+            ("chattweaks", "8LNT47ZH", "v1"),
+            ("oneconfig", "AibBIVmj", "v2"),
+            ("fabric-api", "P7dR8mSH", "v3"),
+        ];
+        let required = vec![
+            ("v1".to_string(), "AibBIVmj".to_string()),
+            ("v1".to_string(), "P7dR8mSH".to_string()),
+            ("v1".to_string(), "not-installed".to_string()),
+        ];
+
+        let edges = required_edges(&mods, &required);
+
+        assert_eq!(
+            edges,
+            vec![
+                (
+                    "chattweaks".to_string(),
+                    "oneconfig".to_string(),
+                    BisectEdgeKind::Known
+                ),
+                (
+                    "chattweaks".to_string(),
+                    "fabric-api".to_string(),
+                    BisectEdgeKind::Known
+                ),
+            ]
+        );
+    }
 
     fn graph(own: &[(&str, usize)], bundled: &[(&str, &[usize])]) -> Graph {
         Graph {

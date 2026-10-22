@@ -4,12 +4,18 @@ use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 use oneclient_db::models::OptionalModStatus;
 
 use oneclient_auth::preview_samples;
+use oneclient_core::game::{
+    CrashDiagnosis, ModProblem, ModProblemKind, ModRef, crash_mod_issues, crashdata, suspected_mods,
+};
 use oneclient_core::simulate::Damage;
 use oneclient_net::status::{self, ServiceStatus};
 
 use crate::Actions;
 use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialog, toggle};
-use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch};
+use crate::hooks::{
+    invalidate_auth_queries, settled_or_loading, try_default_account, use_active_cluster_id,
+    use_clusters, use_current_account, use_dispatch,
+};
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
     OptionalModsGroup,
@@ -95,6 +101,11 @@ impl Component for Debug {
                     .child(section(
                         "Auth Error Guidance",
                         vec![AuthGuidancePreview.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
+                        "Session Expiry",
+                        vec![SessionExpirySimulator.into_element()],
                     ))
                     .child(divider())
                     .child(section(
@@ -221,6 +232,7 @@ impl Component for ToastController {
         let info = dispatch.clone();
         let error = dispatch.clone();
         let prog = dispatch.clone();
+        let truncated = dispatch.clone();
         let reset = dispatch;
 
         rect()
@@ -271,6 +283,15 @@ impl Component for ToastController {
                                     .body(body.read().clone())
                                     .error()
                                     .send();
+                            }),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .child(Icon::new(IconType::AlertTriangle).size(16.))
+                            .text("mclo.gs Shortened")
+                            .on_press(move |_| {
+                                crate::components::upload_mclogs::notify_log_truncated(&truncated);
                             }),
                     )
                     .child(
@@ -714,7 +735,7 @@ impl Component for LauncherUpdateSimulator {
             .spacing(10.)
             .child(
                 label()
-                    .text("Drives the real auto-update UX (prompt → download progress → \"restart to apply\") against a fake release, with no network or disk. \"Check for Updates Now\" runs the real check against the release feed.")
+                    .text("Drives the real auto-update UX (prompt → download progress → \"restart to apply\") against a fake release, with no network or disk. \"Simulate Manual Update Toast\" shows the notify-only toast that non-AppImage Linux installs get. \"Check for Updates Now\" runs the real check against the release feed.")
                     .font_size(13.)
                     .color(colors::fg_secondary()),
             )
@@ -729,6 +750,13 @@ impl Component for LauncherUpdateSimulator {
                             .child(Icon::new(IconType::DownloadCloud02).size(16.))
                             .text("Simulate Auto Update")
                             .on_press(|_| crate::updater::spawn_simulated_update()),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .child(Icon::new(IconType::LinkExternal01).size(16.))
+                            .text("Simulate Manual Update Toast")
+                            .on_press(|_| crate::updater::simulate_manual_update_toast()),
                     )
                     .child(
                         Button::new()
@@ -926,6 +954,121 @@ impl Component for AuthGuidancePreview {
     }
 }
 
+#[derive(PartialEq)]
+struct SessionExpirySimulator;
+
+#[derive(Clone, Copy)]
+enum ExpiryKind {
+    /// Skips the network and flips the account straight to signed out
+    SignedOut,
+    /// Leaves detection to Microsoft on the next launch
+    RejectedToken,
+}
+
+impl Component for SessionExpirySimulator {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let current = use_current_account();
+
+        let account = try_default_account(&current).filter(|a| a.is_microsoft());
+        let target = account.as_ref().map(|a| (a.id, a.username.clone()));
+        let usable = account.as_ref().is_some_and(|a| !a.needs_sign_in());
+
+        let description = match &account {
+            Some(a) if a.needs_sign_in() => format!("{} is already signed out.", a.username),
+            Some(a) => format!("Acts on the active account, {}.", a.username),
+            None => "The active account must be a Microsoft account.".to_string(),
+        };
+
+        let button = |text: &'static str, icon: IconType, kind: ExpiryKind| {
+            let dispatch = dispatch.clone();
+            let target = target.clone();
+            Button::new()
+                .danger()
+                .enabled(usable)
+                .child(Icon::new(icon).size(16.))
+                .text(text)
+                .on_press(move |_| {
+                    if let Some((id, username)) = target.clone() {
+                        run_expiry(&dispatch, kind, id, username);
+                    }
+                })
+        };
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                label()
+                    .text(description)
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .spacing(8.)
+                    .child(button(
+                        "Force signed out",
+                        IconType::AlertTriangle,
+                        ExpiryKind::SignedOut,
+                    ))
+                    .child(button(
+                        "Invalidate refresh token",
+                        IconType::RefreshCw01,
+                        ExpiryKind::RejectedToken,
+                    )),
+            )
+            .child(
+                label()
+                    .text("Invalidate keeps the account looking fine until the next launch, where Microsoft answers invalid_grant.")
+                    .font_size(11.)
+                    .color(colors::fg_secondary()),
+            )
+            .into_element()
+    }
+}
+
+fn run_expiry(dispatch: &crate::Actions, kind: ExpiryKind, id: uuid::Uuid, username: String) {
+    let dispatch = dispatch.clone();
+    spawn(async move {
+        let result = match crate::launcher::state() {
+            Ok(state) => match kind {
+                ExpiryKind::SignedOut => state.auth.mark_signed_out(id).await,
+                ExpiryKind::RejectedToken => state.auth.corrupt_refresh_token(id).await,
+            }
+            .map_err(|err| err.to_string()),
+            Err(err) => Err(err.to_string()),
+        };
+        invalidate_auth_queries(Some(id)).await;
+
+        match result {
+            Ok(()) => {
+                let body = match kind {
+                    ExpiryKind::SignedOut => format!("{username} is now signed out"),
+                    ExpiryKind::RejectedToken => {
+                        format!("{username} will be rejected on the next launch")
+                    }
+                };
+                dispatch
+                    .notify("Session expiry simulated")
+                    .body(body)
+                    .icon(IconType::AlertTriangle)
+                    .send();
+            }
+            Err(err) => {
+                dispatch
+                    .notify("Simulation failed")
+                    .body(err)
+                    .error()
+                    .send();
+            }
+        }
+    });
+}
+
 /// Presets are grouped by which layer should catch them same-length corruption only the hashing pass finds truncation the launch-time size check
 #[derive(PartialEq)]
 struct CorruptionSimulator;
@@ -1089,16 +1232,60 @@ impl Component for CorruptionSimulator {
                     .horizontal()
                     .width(Size::fill())
                     .spacing(12.)
-                    .child(crash_repair_button(
-                        "Crash repair prompt (named jar)",
-                        Some("fabric-loader-0.15.11.jar"),
+                    .child(crash_dialog_button(
+                        "Crash: damaged jar",
+                        Some(CrashDiagnosis::CorruptArchive {
+                            file: Some("fabric-loader-0.15.11.jar".to_string()),
+                        }),
                         cluster_id,
                     ))
-                    .child(crash_repair_button(
-                        "Crash repair prompt (no jar named)",
-                        None,
+                    .child(crash_dialog_button(
+                        "Crash: out of memory",
+                        Some(CrashDiagnosis::OutOfMemory),
                         cluster_id,
-                    )),
+                    ))
+                    .child(crash_dialog_button(
+                        "Crash: missing dependency",
+                        Some(CrashDiagnosis::ModLoadFailure {
+                            problems: vec![
+                                ModProblem {
+                                    kind: ModProblemKind::Missing,
+                                    required_by: Some(
+                                        ModRef::with_id("Sodium Extra", "sodium-extra")
+                                            .at(Some("0.6.0")),
+                                    ),
+                                    dependency: ModRef::with_id("Fabric API", "fabric-api"),
+                                    wanted: None,
+                                },
+                                ModProblem {
+                                    kind: ModProblemKind::WrongVersion,
+                                    required_by: Some(
+                                        ModRef::with_id("Iris", "iris").at(Some("1.8.0")),
+                                    ),
+                                    dependency: ModRef::with_id("Sodium", "sodium")
+                                        .at(Some("0.5.1")),
+                                    wanted: Some("0.6.0 or later".to_string()),
+                                },
+                            ],
+                        }),
+                        cluster_id,
+                    ))
+                    .child(crash_dialog_button(
+                        "Crash: incompatible mods",
+                        Some(CrashDiagnosis::ModLoadFailure {
+                            problems: vec![ModProblem {
+                                kind: ModProblemKind::Incompatible,
+                                required_by: Some(
+                                    ModRef::with_id("Sodium", "sodium").at(Some("0.6.0")),
+                                ),
+                                dependency: ModRef::with_id("OptiFabric", "optifabric")
+                                    .at(Some("1.14.3")),
+                                wanted: None,
+                            }],
+                        }),
+                        cluster_id,
+                    ))
+                    .child(crash_dialog_button("Crash: data only", None, cluster_id)),
             )
             .into_element()
     }
@@ -1131,11 +1318,9 @@ fn prompt_button(
         })
 }
 
-/// Accepting really runs the verify pass
-/// To test detection itself corrupt libraries above and launch the game
-fn crash_repair_button(
+fn crash_dialog_button(
     text: &'static str,
-    jar: Option<&'static str>,
+    diagnosis: Option<CrashDiagnosis>,
     cluster_id: State<String>,
 ) -> impl IntoElement {
     Button::new()
@@ -1144,17 +1329,64 @@ fn crash_repair_button(
         .text(text)
         .on_press(move |_| {
             let target = cluster_id.read().trim().parse::<i64>().unwrap_or(1);
+            let diagnosis = diagnosis.clone();
             spawn(async move {
                 let Ok(state) = crate::launcher::state() else {
                     return;
                 };
-                let diagnosis = oneclient_core::game::CrashDiagnosis::CorruptArchive {
-                    file: jar.map(str::to_string),
+
+                let fixes = crashdata::fixes_for(&SAMPLE_CRASH_LOG.join("\n"));
+                let mod_issues = match &diagnosis {
+                    Some(diagnosis) => crash_mod_issues(&state.services, target, diagnosis).await,
+                    None => Vec::new(),
                 };
-                oneclient_core::game::offer_repair(&state, target, &diagnosis).await;
+                let diagnosis = diagnosis.as_ref();
+
+                let name = state
+                    .clusters
+                    .get(target)
+                    .await
+                    .map_or_else(|_| format!("Cluster {target}"), |cluster| cluster.name);
+
+                state
+                    .services
+                    .events
+                    .game_crashed(oneclient_events::GameCrash {
+                        cluster_id: target,
+                        cluster_name: name.clone(),
+                        title: diagnosis
+                            .map_or_else(|| format!("{name} crashed"), CrashDiagnosis::title),
+                        exit: "exit code: 1".to_string(),
+                        played_secs: 252,
+                        cause: diagnosis.map(CrashDiagnosis::body),
+                        suspects: SAMPLE_CRASH_LOG
+                            .iter()
+                            .find_map(|line| suspected_mods(line))
+                            .unwrap_or_default(),
+                        remedy: diagnosis.and_then(CrashDiagnosis::remedy),
+                        fixes,
+                        excerpt: SAMPLE_CRASH_LOG
+                            .iter()
+                            .map(|line| (*line).to_string())
+                            .collect(),
+                        game_dir: oneclient_common::paths::shared_minecraft_dir()
+                            .ok()
+                            .map(|dir| dir.to_string_lossy().to_string()),
+                        mod_issues,
+                    });
             });
         })
 }
+
+const SAMPLE_CRASH_LOG: &[&str] = &[
+    "[12:04:11] [main/INFO]: Loading 42 mods",
+    "[12:04:12] [main/ERROR]: Unable to launch",
+    "java.lang.NullPointerException: Initializing game",
+    "\tat net.minecraft.client.Minecraft.displayGuiScreen(Minecraft.java)",
+    "\tat io.github.moulberry.notenoughupdates.NotEnoughUpdates.onTick",
+    "\tat java.base/java.lang.Thread.run(Thread.java:840)",
+    "\tSuspected Mods: NotEnoughUpdates (notenoughupdates), Minecraft (minecraft)",
+];
 
 fn run_damage(dispatch: &crate::Actions, kind: DamageKind, cluster_id: i64) {
     let dispatch = dispatch.clone();

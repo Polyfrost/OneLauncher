@@ -88,9 +88,27 @@ impl MutationCapability for BisectMutation {
         off_ui(async move {
             match action {
                 BisectAction::Start { cluster_id } => {
-                    oneclient_core::start_bisect(&state, cluster_id)
-                        .await
-                        .map(|_| ())
+                    let events = &state.services.events;
+                    let progress_id = uuid::Uuid::new_v4();
+                    events.progress(progress_id, "Starting mod diagnostics", 0, 0);
+                    let started =
+                        oneclient_core::start_bisect(&state, cluster_id, |label, done, total| {
+                            events.progress(progress_id, label, done, total)
+                        })
+                        .await;
+                    match &started {
+                        Ok(_) => events.finish_progress(
+                            progress_id,
+                            "Mod diagnostics started",
+                            "Launch the game to test the first round.",
+                        ),
+                        Err(err) => events.fail_progress(
+                            progress_id,
+                            "Couldn't start mod diagnostics",
+                            err.to_string(),
+                        ),
+                    }
+                    started.map(|_| ())
                 }
                 BisectAction::Answer { cluster_id, broken } => {
                     let answer = if broken {
@@ -144,8 +162,9 @@ impl MutationCapability for BisectMutation {
         .map_err(|e| e.to_string())
     }
 
-    async fn on_settled(&self, _keys: &BisectAction, result: &Result<(), String>) {
+    async fn on_settled(&self, keys: &BisectAction, result: &Result<(), String>) {
         if let Err(err) = result
+            && !matches!(keys, BisectAction::Start { .. })
             && let Ok(state) = crate::launcher::state()
         {
             state

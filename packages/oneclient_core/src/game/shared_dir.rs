@@ -575,7 +575,7 @@ async fn disable_removed(
     disabled
 }
 
-async fn lock_mods_sync(cluster_id: i64) -> tokio::sync::OwnedMutexGuard<()> {
+pub(crate) async fn lock_mods_sync(cluster_id: i64) -> tokio::sync::OwnedMutexGuard<()> {
     static LOCKS: std::sync::Mutex<
         std::collections::BTreeMap<i64, std::sync::Arc<tokio::sync::Mutex<()>>>,
     > = std::sync::Mutex::new(std::collections::BTreeMap::new());
@@ -1263,6 +1263,63 @@ async fn skip_shadowed_bundle_mods(
     desired
 }
 
+pub(crate) struct LinkedMod {
+    pub hash: String,
+    pub enabled: bool,
+    pub name: Option<String>,
+    pub version: Option<String>,
+}
+
+pub(crate) async fn cluster_mods(services: &LauncherServices, cluster_id: i64) -> Vec<LinkedMod> {
+    let Ok(linked) = PackageStore::list_linked_artifacts(cluster_id, &services.content()).await
+    else {
+        return Vec::new();
+    };
+
+    linked
+        .into_iter()
+        .filter(|link| link.content_type == ContentType::Mod)
+        .map(|link| LinkedMod {
+            hash: link.hash,
+            enabled: link.enabled,
+            name: link.display_name,
+            version: link.display_version,
+        })
+        .collect()
+}
+
+async fn mod_jar_path(services: &LauncherServices, hash: &str) -> Option<PathBuf> {
+    let artifact = artifact_dao::get_artifact_by_hash(&services.db, hash)
+        .await
+        .ok()
+        .flatten()?;
+
+    artifact_absolute_path(&artifact.path).ok()
+}
+
+pub(crate) async fn jar_mod_id(services: &LauncherServices, hash: &str) -> Option<JarModId> {
+    cached_mod_id(hash, &mod_jar_path(services, hash).await?).await
+}
+
+pub(crate) async fn jar_bundled_mod_ids(services: &LauncherServices, hash: &str) -> Vec<JarModId> {
+    static BUNDLED: std::sync::Mutex<std::collections::BTreeMap<String, Vec<JarModId>>> =
+        std::sync::Mutex::new(std::collections::BTreeMap::new());
+
+    if let Some(ids) = BUNDLED.lock().unwrap().get(hash) {
+        return ids.clone();
+    }
+
+    let Some(jar) = mod_jar_path(services, hash).await else {
+        return Vec::new();
+    };
+
+    let ids = oneclient_content::packages::read_jar_bundled_mod_ids(&jar).await;
+    if polyio::try_exists(&jar).await.unwrap_or(false) {
+        BUNDLED.lock().unwrap().insert(hash.to_owned(), ids.clone());
+    }
+    ids
+}
+
 pub async fn shadowed_bundle_mods(state: &LauncherState, cluster_id: i64) -> DuplicateMods {
     let services = &state.services;
     let Ok(linked) = PackageStore::list_linked_artifacts(cluster_id, &services.content()).await
@@ -1419,6 +1476,7 @@ async fn cached_file(
         provider,
         &release.project_id,
         &release.version_id,
+        None,
         &services.content(),
     )
     .await
@@ -2501,6 +2559,7 @@ mod tests {
             enabled,
             content_type: ContentType::Mod,
             file_name: file_name.into(),
+            size_bytes: None,
             project_id: None,
             version_id: None,
             display_name: None,

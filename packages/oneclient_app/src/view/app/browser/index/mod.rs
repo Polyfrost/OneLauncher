@@ -5,6 +5,7 @@ use freya::animation::{
 };
 use freya::prelude::*;
 use freya::router::RouterContext;
+use oneclient_common::domain::GameLoader;
 use oneclient_common::parse_mc_version;
 use oneclient_common::search::normalize_query;
 use oneclient_content::packages::types::ProjectSummary;
@@ -68,6 +69,13 @@ const SORTS: [(SearchSort, &str); 4] = [
     (SearchSort::Updated, "Updated"),
 ];
 
+const LOADERS: [(Option<GameLoader>, &str); 4] = [
+    (None, "Any loader"),
+    (Some(GameLoader::Fabric), "Fabric"),
+    (Some(GameLoader::Forge), "Forge"),
+    (Some(GameLoader::NeoForge), "NeoForge"),
+];
+
 const BROWSE_TYPES: [(&str, &str); 5] = [
     ("mod", "Mods"),
     ("texture", "Textures"),
@@ -103,6 +111,14 @@ fn type_title(package_type: &str) -> &'static str {
         .iter()
         .find(|(slug, _)| *slug == package_type)
         .map_or("Mods", |(_, title)| *title)
+}
+
+fn state_key(cluster_id: i64, package_type: &str, pick_cluster: bool) -> String {
+    if pick_cluster && content_type_for_slug(package_type) == ContentType::Modpack {
+        package_type.to_string()
+    } else {
+        format!("{cluster_id}:{package_type}")
+    }
 }
 
 pub(crate) fn encode_package_id(provider: ProviderId, id: &str) -> String {
@@ -145,7 +161,11 @@ impl Component for Browser {
             pick_cluster: self.pick_cluster,
             key: DiffKey::None,
         }
-        .key((self.cluster_id, self.package_type.as_str()))
+        .key((
+            self.cluster_id,
+            self.package_type.as_str(),
+            self.pick_cluster,
+        ))
     }
 }
 
@@ -168,21 +188,19 @@ impl Component for BrowserBody {
         let cluster_id = self.cluster_id;
         let package_type = self.package_type.clone();
         let content_type = content_type_for_slug(&package_type);
+        let cluster_modpacks = content_type == ContentType::Modpack && !self.pick_cluster;
 
         let store = use_browser_state_store();
-        let state_key = if content_type == ContentType::Modpack {
-            package_type.clone()
-        } else {
-            format!("{cluster_id}:{package_type}")
-        };
+        let state_key = state_key(cluster_id, &package_type, self.pick_cluster);
         let saved = store.peek().get(&state_key).cloned().unwrap_or_default();
 
         let query = use_state(|| saved.query.clone());
-        let provider = use_state(|| saved.provider);
+        let mut provider = use_state(|| saved.provider);
         let view_mode = use_view_state(&format!("browser.{package_type}")).layout;
         let compatible_only = use_browser_compat();
         let selected_categories = use_state(|| saved.categories.clone());
         let sort = use_state(|| saved.sort);
+        let loader = use_state(|| saved.loader);
         let page = use_state(|| saved.page);
 
         {
@@ -194,6 +212,7 @@ impl Component for BrowserBody {
                     provider: *provider.read(),
                     categories: selected_categories.read().clone(),
                     sort: *sort.read(),
+                    loader: *loader.read(),
                     page: *page.read(),
                 };
                 store.write().insert(key.clone(), snapshot);
@@ -207,28 +226,37 @@ impl Component for BrowserBody {
         );
 
         let cluster = use_cluster(cluster_id);
-        let provider_id = *provider.read();
         let compat = *compatible_only.read();
         let cats = selected_categories.read().clone();
 
         let targets_cluster = content_type != ContentType::Modpack;
-        let (game_versions, loaders) = match (compat && targets_cluster, &cluster) {
-            (true, Some(c)) => {
-                let loaders = if content_type == ContentType::Mod {
-                    vec![c.mc_loader]
-                } else {
-                    Vec::new()
-                };
-                (vec![c.mc_version.clone()], loaders)
-            }
-            _ => (Vec::new(), Vec::new()),
+        let compat_cluster = cluster
+            .as_ref()
+            .filter(|_| compat && (targets_cluster || cluster_modpacks));
+        let game_versions = compat_cluster
+            .map(|c| vec![c.mc_version.clone()])
+            .unwrap_or_default();
+        let loader_fixed = compat_cluster.is_some_and(|c| {
+            content_type == ContentType::Mod || (cluster_modpacks && c.mc_loader.is_modded())
+        });
+        let loader_filterable =
+            matches!(content_type, ContentType::Mod | ContentType::Modpack) && !loader_fixed;
+        let picked_loader = (*loader.read()).filter(|_| loader_filterable);
+        let loaders = match (loader_fixed, compat_cluster) {
+            (true, Some(c)) => vec![c.mc_loader],
+            _ => picked_loader.into_iter().collect(),
         };
+        let curseforge_blocked = loader_fixed && loaders.contains(&GameLoader::Ornithe);
+        if curseforge_blocked && *provider.peek() == ProviderId::CurseForge {
+            provider.set(ProviderId::Modrinth);
+        }
+        let provider_id = *provider.read();
 
         let mut page_state = page;
         // Normalised like the search key so a query differing only by a space does not reset the page
         let sort_by = *sort.read();
         let signature = format!(
-            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}",
+            "{provider_id:?}|{}|{compat}|{}|{sort_by:?}|{picked_loader:?}",
             normalize_query(&debounced_query.read()).to_lowercase(),
             cats.join(",")
         );
@@ -314,11 +342,26 @@ impl Component for BrowserBody {
                         packages.chunks(cols).map(|c| c.to_vec()).collect();
 
                     sa.lazy(rows.len(), CARD_H, GRID_SPACING, move |i| {
-                        grid_row(rows[i].clone(), cluster_id, &pkg, &installed, cols).into_element()
+                        grid_row(
+                            rows[i].clone(),
+                            cluster_id,
+                            &pkg,
+                            &installed,
+                            cols,
+                            cluster_modpacks,
+                        )
+                        .into_element()
                     })
                 }
                 ViewLayout::List => sa.lazy(packages.len(), LIST_ROW_H, LIST_SPACING, move |i| {
-                    list_row(packages[i].clone(), cluster_id, &pkg, &installed).into_element()
+                    list_row(
+                        packages[i].clone(),
+                        cluster_id,
+                        &pkg,
+                        &installed,
+                        cluster_modpacks,
+                    )
+                    .into_element()
                 }),
             }
         } else if pending {
@@ -349,13 +392,21 @@ impl Component for BrowserBody {
                 &package_type,
                 cluster
                     .as_ref()
-                    .filter(|_| targets_cluster)
-                    .map(|c| c.name.clone()),
+                    .filter(|_| targets_cluster || cluster_modpacks)
+                    .map(|c| {
+                        let verb = if cluster_modpacks {
+                            "Adding to"
+                        } else {
+                            "Installing to"
+                        };
+                        (verb, c.name.clone())
+                    }),
                 (self.pick_cluster && targets_cluster).then(|| ClusterPicker {
                     cluster_id,
                     package_type: package_type.clone(),
                 }),
                 provider,
+                curseforge_blocked,
                 query,
                 controls_width,
             ))
@@ -396,6 +447,7 @@ impl Component for BrowserBody {
                                 pages,
                                 pending,
                                 sort,
+                                loader_filterable.then_some(loader),
                                 view_mode,
                             ))
                             .child(
@@ -427,9 +479,10 @@ impl Component for BrowserBody {
 
 fn header(
     package_type: &str,
-    cluster_name: Option<String>,
+    target: Option<(&'static str, String)>,
     picker: Option<ClusterPicker>,
     provider: State<ProviderId>,
+    curseforge_blocked: bool,
     query: State<String>,
     mut header_width: State<f32>,
 ) -> impl IntoElement {
@@ -467,7 +520,7 @@ fn header(
                 .maybe_child(match picker {
                     Some(picker) => Some(picker.into_element()),
                     // Without the picker the cluster is fixed so the same pill is read-only
-                    None => cluster_name.map(|name| target_pill(&name).into_element()),
+                    None => target.map(|(verb, name)| target_pill(verb, &name).into_element()),
                 }),
         )
         .child(rect().width(Size::flex(1.0)))
@@ -475,7 +528,12 @@ fn header(
             SegmentedControl::new(provider)
                 .no_tint()
                 .segments(ProviderId::REMOTE_PROVIDERS.iter().map(move |provider| {
-                    let segment = Segment::new(*provider).icon(IconType::from(*provider));
+                    let mut segment = Segment::new(*provider).icon(IconType::from(*provider));
+                    if curseforge_blocked && *provider == ProviderId::CurseForge {
+                        segment = segment
+                            .disabled(true)
+                            .tooltip("CurseForge doesn't have any compatible mods");
+                    }
                     if show_provider_labels {
                         segment.label(provider.to_string())
                     } else {
@@ -498,7 +556,7 @@ fn header(
 }
 
 /// Reads like the cluster dropdown next to it so a fixed target doesn't look like a missing control
-fn target_pill(name: &str) -> impl IntoElement {
+fn target_pill(verb: &'static str, name: &str) -> impl IntoElement {
     rect()
         .horizontal()
         .cross_align(Alignment::Center)
@@ -509,7 +567,7 @@ fn target_pill(name: &str) -> impl IntoElement {
         .background(colors::ghost_overlay())
         .child(
             label()
-                .text("Installing to")
+                .text(verb)
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
@@ -528,6 +586,7 @@ fn results_toolbar(
     pages: Option<usize>,
     pending: bool,
     sort: State<SearchSort>,
+    loader: Option<State<Option<GameLoader>>>,
     view_mode: State<ViewLayout>,
 ) -> impl IntoElement {
     // Blank rather than a stale count while a page is in flight
@@ -554,6 +613,7 @@ fn results_toolbar(
                 .color(colors::fg_primary().with_a(140)),
         )
         .child(rect().width(Size::flex(1.0)))
+        .maybe_child(loader.map(|loader| LoaderPicker { loader }))
         .child(SortPicker { sort })
         .child(
             SegmentedControl::new(view_mode)
@@ -591,6 +651,33 @@ impl Component for SortPicker {
             .on_select(move |idx: usize| {
                 if let Some((picked, _)) = SORTS.get(idx) {
                     sort.set(*picked);
+                }
+            })
+    }
+}
+
+#[derive(PartialEq)]
+struct LoaderPicker {
+    loader: State<Option<GameLoader>>,
+}
+
+impl Component for LoaderPicker {
+    fn render(&self) -> impl IntoElement {
+        let mut loader = self.loader;
+        let current = *loader.read();
+
+        let labels: Vec<String> = LOADERS.iter().map(|(_, l)| (*l).to_string()).collect();
+        let selected = LOADERS
+            .iter()
+            .find(|(l, _)| *l == current)
+            .map_or("Any loader", |(_, l)| *l);
+
+        Dropdown::new(selected, labels)
+            .width(Size::px(132.))
+            .height(Size::px(30.))
+            .on_select(move |idx: usize| {
+                if let Some((picked, _)) = LOADERS.get(idx) {
+                    loader.set(*picked);
                 }
             })
     }
@@ -685,6 +772,8 @@ impl Component for ClusterPicker {
             .unwrap_or_else(|| "Select a version".to_string());
 
         let package_type = self.package_type.clone();
+        let from_key = state_key(self.cluster_id, &package_type, true);
+        let mut store = use_browser_state_store();
 
         rect()
             .horizontal()
@@ -699,9 +788,19 @@ impl Component for ClusterPicker {
                         if let (Some(cluster_id), Some(cluster)) =
                             (ids.get(idx).copied(), clusters.get(idx))
                         {
+                            let to_type = browsable_type(&package_type, cluster);
+                            let carried = (to_type == package_type)
+                                .then(|| store.peek().get(&from_key).cloned())
+                                .flatten();
+                            if let Some(saved) = carried {
+                                store.write().insert(
+                                    state_key(cluster_id, &to_type, true),
+                                    BrowserUiState { page: 0, ..saved },
+                                );
+                            }
                             let _ = RouterContext::get().replace(Route::Browser {
                                 cluster_id,
-                                package_type: browsable_type(&package_type, cluster),
+                                package_type: to_type,
                                 pick_cluster: true,
                             });
                         }

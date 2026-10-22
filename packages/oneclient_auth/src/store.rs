@@ -118,6 +118,35 @@ impl CredentialsStore {
         Ok(())
     }
 
+    /// Drops the dead tokens but keeps the entry and its default slot so the UI
+    /// can offer a sign-in for this exact account
+    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
+    pub async fn mark_signed_out(&mut self, id: Uuid) -> AuthResult<()> {
+        let Some(account) = self.users.get_mut(&id) else {
+            return Err(AuthError::AccountNotFound(id));
+        };
+
+        account.signed_out = true;
+        account.access_token.clear();
+        account.refresh_token.clear();
+        self.save().await?;
+        Ok(())
+    }
+
+    /// Debug aid swaps in a token Microsoft will reject and backdates expiry so
+    /// the next launch walks the real `invalid_grant` path
+    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
+    pub async fn corrupt_refresh_token(&mut self, id: Uuid) -> AuthResult<()> {
+        let Some(account) = self.users.get_mut(&id) else {
+            return Err(AuthError::AccountNotFound(id));
+        };
+
+        account.refresh_token = "oneclient-debug-invalid-refresh-token".to_string();
+        account.expires = chrono::DateTime::UNIX_EPOCH;
+        self.save().await?;
+        Ok(())
+    }
+
     #[tracing::instrument(level = "debug", skip(self), fields(%id))]
     pub async fn remove_account(&mut self, id: Uuid) -> AuthResult<Option<MinecraftAccount>> {
         let removed = self.users.remove(&id);

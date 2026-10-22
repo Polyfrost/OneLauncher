@@ -10,7 +10,7 @@ use crate::hooks::{
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::entrance_motion_layer;
-use crate::view::app::{launch_button_state, launch_syncing};
+use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken};
 
 const HEADER_HEIGHT: f32 = 64.;
 const TABS_HEIGHT: f32 = 38.;
@@ -113,14 +113,23 @@ impl Component for ClusterShell {
         let launcher = use_launcher();
         let cluster = use_cluster(cluster_id);
         let syncing = launch_syncing(&launcher, cluster.as_ref().is_none_or(|c| c.uses_bundles()));
+        let shared_dir_taken = use_shared_dir_taken(cluster_id);
 
         let show_game_log = game.is_active(cluster_id);
         let show_datapacks = cluster
             .as_ref()
             .is_none_or(|c| crate::view::app::cluster::supports_datapacks(&c.mc_version));
         let show_mod_tabs = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
-        let launch_state = launch_button_state(&game, cluster_id, syncing);
+        let launch_state = launch_button_state(&game, cluster_id, syncing, shared_dir_taken);
         let bisecting = use_bisect(cluster_id).is_some();
+        let mut question_hidden = use_state(|| false);
+        let open_game_output = use_state(|| false);
+        use_hook(move || {
+            provide_root_context(crate::view::app::cluster::OpenGameOutput(open_game_output))
+        });
+        use_side_effect_with_deps(&(cluster_id, show_game_log), move |_: &(i64, bool)| {
+            question_hidden.set(false)
+        });
 
         let hidden_tab = !show_mod_tabs
             && matches!(
@@ -192,7 +201,11 @@ impl Component for ClusterShell {
                     .spacing(BAR_SPACING)
                     .maybe_child(header)
                     .maybe_child(bisecting.then(|| {
-                        crate::view::app::cluster::BisectBanner { cluster_id }.into_element()
+                        crate::view::app::cluster::BisectBanner {
+                            cluster_id,
+                            question_hidden,
+                        }
+                        .into_element()
                     }))
                     .child(cluster_tabs(
                         active_tab,
@@ -210,11 +223,13 @@ impl Component for ClusterShell {
                     .padding(Gaps::new(0., SIDE_PADDING, SIDE_PADDING, SIDE_PADDING))
                     .child(AnimatedRouter::<Route>::new(ClusterContentOutlet)),
             )
-            .maybe_child(
-                bisecting.then(|| {
-                    crate::view::app::cluster::BisectQuestion { cluster_id }.into_element()
-                }),
-            )
+            .maybe_child(bisecting.then(|| {
+                crate::view::app::cluster::BisectQuestion {
+                    cluster_id,
+                    hidden: question_hidden,
+                }
+                .into_element()
+            }))
     }
 }
 

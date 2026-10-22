@@ -26,6 +26,12 @@ const ASSET_DOWNLOAD_CONCURRENCY: usize = 32;
 /// Libraries are larger and fewer less fan-out is needed to saturate the link
 const LIBRARY_DOWNLOAD_CONCURRENCY: usize = 16;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativesMode {
+    Extract,
+    LeaveInPlace,
+}
+
 #[derive(Debug, Clone)]
 pub struct PlannedLibrary {
     pub library: Library,
@@ -167,6 +173,7 @@ pub async fn plan_downloads(
     java_arch: &str,
     minecraft_updated: bool,
     force: bool,
+    natives_mode: NativesMode,
 ) -> McResult<DownloadPlan> {
     let legacy = uses_legacy_assets(&version.assets);
     let asset_dir = if legacy {
@@ -227,7 +234,10 @@ pub async fn plan_downloads(
                         &lib_dir.join(&artifact_path),
                         library_artifact_size(&lib),
                     ));
-            let natives = force || !natives_extracted(&natives_dir, &lib, &java_arch);
+            let natives = match natives_mode {
+                NativesMode::Extract => force || !natives_extracted(&natives_dir, &lib, &java_arch),
+                NativesMode::LeaveInPlace => false,
+            };
 
             if !artifact && !natives {
                 continue;
@@ -269,12 +279,14 @@ pub struct VerifyReport {
     /// Mismatched the manifest and were removed
     pub corrupt: usize,
     pub missing: usize,
+    pub unverifiable: usize,
+    pub natives_unextracted: usize,
 }
 
 impl VerifyReport {
     #[must_use]
     pub fn needs_repair(&self) -> bool {
-        self.corrupt > 0 || self.missing > 0
+        self.corrupt > 0 || self.missing > 0 || self.unverifiable > 0
     }
 }
 
@@ -293,6 +305,7 @@ fn arch_segment(java_arch: &str) -> &'static str {
 pub struct NativesReport {
     pub repairable: Vec<String>,
     pub unsupported: Vec<String>,
+    pub unextracted: Vec<String>,
 }
 
 impl NativesReport {
@@ -377,9 +390,10 @@ pub async fn check_natives(
     // One scan for the whole sweep the directory is the same for every library
     let unpacked = any_native_unpacked(&natives_dir).await;
 
-    let mut families: Vec<(String, Vec<JarVerdict>)> = Vec::new();
+    let mut families: Vec<(String, Vec<(JarVerdict, bool)>)> = Vec::new();
     for lib in host_natives {
-        let verdict = if native_download(lib, java_arch).is_some() {
+        let extracted = native_download(lib, java_arch).is_some();
+        let verdict = if extracted {
             if unpacked && natives_extracted(&natives_dir, lib, java_arch) {
                 JarVerdict::Usable
             } else {
@@ -394,17 +408,29 @@ pub async fn check_natives(
 
         let family = natives_family(lib);
         match families.iter_mut().find(|(name, _)| name == &family) {
-            Some((_, verdicts)) => verdicts.push(verdict),
-            None => families.push((family, vec![verdict])),
+            Some((_, verdicts)) => verdicts.push((verdict, extracted)),
+            None => families.push((family, vec![(verdict, extracted)])),
         }
     }
 
     let mut report = NativesReport::default();
     for (family, verdicts) in families {
-        if verdicts.iter().any(|v| matches!(v, JarVerdict::Usable)) {
+        if verdicts
+            .iter()
+            .any(|(v, _)| matches!(v, JarVerdict::Usable))
+        {
             continue;
         }
-        if verdicts.iter().any(|v| matches!(v, JarVerdict::Unreadable)) {
+        if verdicts
+            .iter()
+            .any(|(v, _)| matches!(v, JarVerdict::Unreadable))
+        {
+            if verdicts
+                .iter()
+                .any(|(v, extracted)| *extracted && matches!(v, JarVerdict::Unreadable))
+            {
+                report.unextracted.push(family.clone());
+            }
             report.repairable.push(family);
         } else {
             report.unsupported.push(family);
@@ -436,7 +462,7 @@ pub async fn verify_game_files(
     assets_index: AssetsIndex,
     java_arch: &str,
     minecraft_updated: bool,
-) -> McResult<VerifyReport> {
+) -> McResult<(VerifyReport, Vec<PathBuf>)> {
     let legacy = uses_legacy_assets(&version.assets);
     let asset_dir = if legacy {
         paths::legacy_assets_dir()?
@@ -446,6 +472,7 @@ pub async fn verify_game_files(
     let lib_dir = paths::libraries_dir()?;
 
     let mut targets: Vec<(PathBuf, String)> = Vec::new();
+    let mut unverifiable: Vec<PathBuf> = Vec::new();
 
     for (name, asset) in assets_index.objects {
         let path = asset_object_path(&asset_dir, &name, &asset.hash, legacy);
@@ -473,6 +500,8 @@ pub async fn verify_game_files(
             && !artifact.sha1.is_empty()
         {
             targets.push((lib_dir.join(&artifact_path), artifact.sha1.clone()));
+        } else {
+            unverifiable.push(lib_dir.join(&artifact_path));
         }
     }
 
@@ -492,8 +521,18 @@ pub async fn verify_game_files(
 
     // One blocking task for the whole sweep a spawn_blocking per small asset
     // would cost more than the hashing itself
-    let mut report = tokio::task::spawn_blocking(move || {
+    let (mut report, stale) = tokio::task::spawn_blocking(move || {
         let mut report = VerifyReport::default();
+        let mut stale: Vec<PathBuf> = Vec::new();
+
+        for path in unverifiable {
+            if path.is_file() {
+                stale.push(path);
+            } else {
+                report.missing += 1;
+            }
+        }
+        report.unverifiable = stale.len();
 
         for (index, (path, expected)) in targets.iter().enumerate() {
             if !path.is_file() {
@@ -536,7 +575,7 @@ pub async fn verify_game_files(
             }
         }
 
-        report
+        (report, stale)
     })
     .await
     .map_err(std::io::Error::other)?;
@@ -554,19 +593,21 @@ pub async fn verify_game_files(
         Err(err) => return Err(err),
     };
     report.missing += natives.repairable.len();
+    report.natives_unextracted = natives.unextracted.len();
     report.checked += natives.repairable.len() + natives.unsupported.len();
 
     tracing::info!(
         checked = report.checked,
         corrupt = report.corrupt,
         missing = report.missing,
+        unverifiable = report.unverifiable,
         natives_repairable = natives.repairable.len(),
         natives_unsupported = natives.unsupported.len(),
         elapsed_ms = started.elapsed().as_millis() as u64,
         "verified game files"
     );
 
-    Ok(report)
+    Ok((report, stale))
 }
 
 #[tracing::instrument(skip_all)]
@@ -577,16 +618,26 @@ pub async fn download_minecraft(
     java_arch: &str,
     minecraft_updated: bool,
     force: bool,
+    natives_mode: NativesMode,
 ) -> McResult<()> {
     let started = std::time::Instant::now();
     let asset_index = download_assets_index(ctx, progress, version, force).await?;
-    let plan = plan_downloads(version, asset_index, java_arch, minecraft_updated, force).await?;
+    let plan = plan_downloads(
+        version,
+        asset_index,
+        java_arch,
+        minecraft_updated,
+        force,
+        natives_mode,
+    )
+    .await?;
 
     tracing::info!(
         version = %version.id,
         assets = plan.assets.len(),
         libraries = plan.libraries.len(),
         bytes = plan.total_bytes(),
+        ?natives_mode,
         "planned minecraft download"
     );
 
@@ -1619,7 +1670,12 @@ fn processor_inputs(info: &VersionInfo) -> Option<serde_json::Value> {
     let refs = processors
         .iter()
         .flat_map(|it| &it.args)
-        .chain(info.data.iter().flatten().flat_map(|(_, it)| [&it.client, &it.server]))
+        .chain(
+            info.data
+                .iter()
+                .flatten()
+                .flat_map(|(_, it)| [&it.client, &it.server]),
+        )
         .filter_map(|it| it.strip_prefix('[')?.strip_suffix(']'));
     let named: BTreeSet<&str> = processors
         .iter()

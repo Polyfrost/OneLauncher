@@ -138,7 +138,9 @@ pub(super) async fn read_file_string(path: &Path) -> ClusterResult<String> {
     if is_gz {
         Ok(polyio::read_gz_to_string(path).await?)
     } else {
-        Ok(polyio::read_to_string(path).await?)
+        let bytes = polyio::read(path).await?;
+        Ok(String::from_utf8(bytes)
+            .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into_owned()))
     }
 }
 

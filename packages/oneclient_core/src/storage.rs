@@ -59,7 +59,7 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
     let data = paths::data_dir()?;
     let config = paths::config_dir()?;
 
-    let category_dirs = [
+    let mut category_dirs = vec![
         ("Packages", paths::packages_cache_dir()?),
         ("Minecraft versions", paths::versions_dir()?),
         ("Libraries", paths::libraries_dir()?),
@@ -71,6 +71,11 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
         ("Image cache", paths::images_cache_dir()?),
         ("Bundles", paths::bundles_dir()?),
     ];
+    // Only there once an instance has been reset
+    let reset_backups = paths::cluster_reset_backups_dir()?;
+    if polyio::try_exists(&reset_backups).await.unwrap_or(false) {
+        category_dirs.push(("Reset backups", reset_backups));
+    }
 
     let cluster_list = state.clusters.list().await?;
 
@@ -156,25 +161,11 @@ async fn natives_in_use(state: &LauncherState) -> Option<HashSet<String>> {
 
     let mut in_use = HashSet::new();
     for cluster in clusters {
-        let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
-
-        if cluster.mc_loader == oneclient_common::domain::GameLoader::Vanilla {
-            in_use.insert(mc_version);
-            continue;
-        }
-
-        let resolved = oneclient_mc::get_loader_version_cached(
-            &metadata,
-            &mc_version,
-            cluster.mc_loader,
-            cluster.mc_loader_version.as_deref(),
-        );
-
-        match resolved {
-            Ok(Some(loader)) => {
-                in_use.insert(format!("{mc_version}-{}", loader.id));
+        match crate::game::natives::cached_version_name(&metadata, &cluster) {
+            Some(version_name) => {
+                in_use.insert(version_name);
             }
-            Ok(None) | Err(_) => {
+            None => {
                 tracing::info!(
                     cluster = %cluster.name,
                     loader = %cluster.mc_loader,

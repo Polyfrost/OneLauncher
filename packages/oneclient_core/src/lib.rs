@@ -80,6 +80,9 @@ pub use oneclient_content::bundles::{
     set_bundle_package_override, set_bundle_package_overrides, skip_optional_mods,
 };
 pub use oneclient_content::packages::LinkedArtifactInfo;
+pub use oneclient_content::packages::dependents::{
+    DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
+};
 pub use oneclient_content::packages::updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
     cached_browser_package_updates, check_browser_package_updates, refresh_browser_package_updates,

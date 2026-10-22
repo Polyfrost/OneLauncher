@@ -15,6 +15,7 @@ mod context_menu;
 mod control_center;
 mod crash_dialog;
 mod date_range_picker;
+mod disable_dependents_popup;
 mod dropdown;
 mod dynamic_art;
 mod essential_confirm;
@@ -79,6 +80,7 @@ pub use context_menu::ContextMenu;
 pub use control_center::ControlCenter;
 pub use crash_dialog::CrashDialog;
 pub use date_range_picker::{DateRange, DateRangePicker};
+pub use disable_dependents_popup::DisableDependentsOverlay;
 pub use dropdown::Dropdown;
 pub use dynamic_art::{ART_PREVIEW_EDGE, DynamicArt};
 pub use essential_confirm::EssentialConfirmOverlay;
@@ -109,7 +111,7 @@ pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
     CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action,
     grid_card, icon_box, kebab_button, meta_size, meta_text, on_secondary, package_icon, pill,
-    remote_icon, run_guarded, set_enabled_action, toggle_action,
+    disable_request, guard_disable, remote_icon, run_guarded, set_enabled_action, toggle_action,
 };
 pub use package_row::{
     CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,

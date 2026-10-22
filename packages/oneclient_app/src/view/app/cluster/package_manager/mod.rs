@@ -10,12 +10,12 @@ use oneclient_db::models::OverrideType;
 
 use crate::components::{
     CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry, bundled_delete_action,
-    run_guarded, toggle_action,
+    disable_request, guard_disable, run_guarded, toggle_action,
 };
 use crate::hooks::{
     ClusterAction, EssentialGuardKind, disable_warnings, package_meta_batch, use_cluster_mutation,
-    use_disable_warnings, use_dispatch, use_essential_guard, use_game_snapshot,
-    use_package_meta_batch, use_selection, use_view_state,
+    use_disable_confirm, use_disable_warnings, use_dispatch, use_essential_guard,
+    use_game_snapshot, use_package_meta_batch, use_selection, use_view_state,
 };
 
 use super::folder_list::confirm_dialog;
@@ -505,6 +505,29 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
     tabs
 }
 
+/// Records the dependency lists of anything installed before the launcher kept
+/// them, once per visit to the list.
+///
+/// Disabling a package consults them, and would otherwise pay for the whole
+/// cluster's backfill while the user waits on a toggle. Failures are silent:
+/// the disable path re-runs this and can proceed without it.
+fn warm_dependencies(cluster_id: i64) {
+    use_hook(move || {
+        spawn_forever(async move {
+            let Ok(state) = crate::launcher::state() else {
+                return;
+            };
+
+            if let Err(err) =
+                oneclient_core::ensure_cluster_dependencies(cluster_id, &state.services.content())
+                    .await
+            {
+                tracing::debug!(%err, "could not record the cluster's package dependencies");
+            }
+        });
+    });
+}
+
 #[derive(PartialEq)]
 pub struct PackageManager {
     title: &'static str,
@@ -553,6 +576,8 @@ impl Component for PackageManager {
         let cluster_id = self.cluster_id;
         let content_type = self.content_type;
 
+        warm_dependencies(cluster_id);
+
         // Cleared once on mount so the rows already rendered keep their badges for this visit
         use_hook(|| {
             spawn_forever(async move {
@@ -591,6 +616,7 @@ impl Component for PackageManager {
         let dispatch = use_dispatch();
         let guard = use_essential_guard();
         let warnings_query = use_disable_warnings();
+        let pending_disable = use_disable_confirm();
         let mut confirm_delete = use_state(|| false);
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
@@ -733,17 +759,24 @@ impl Component for PackageManager {
                 if actions.is_empty() {
                     return;
                 }
-                run_guarded(
-                    ClusterAction::Batch(actions),
-                    if enabled { &[] } else { &targets[..] },
-                    match targets.as_slice() {
-                        [only] => only.name.clone(),
-                        _ => format!("{} {noun_plural}", targets.len()),
-                    },
-                    EssentialGuardKind::Disable,
+                let name = match targets.as_slice() {
+                    [only] => only.name.clone(),
+                    _ => format!("{} {noun_plural}", targets.len()),
+                };
+                if enabled {
+                    mutation.mutate(ClusterAction::Batch(actions));
+                    return;
+                }
+                let targets: Vec<&PackageEntry> = targets
+                    .into_iter()
+                    .filter(|p| toggle_action(p, cluster_id, false).is_some())
+                    .collect();
+                guard_disable(
+                    disable_request(&targets, cluster_id, name),
+                    &targets,
                     warnings.clone(),
-                    mutation,
                     guard,
+                    pending_disable,
                 );
             })
             .into()

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE setting_profiles SET java_path = NULL WHERE java_path = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "57e6f0e1b420ec3eb7d468037257ae850c73b2a7c888748e156fe3593fbccd45"
+}

@@ -1,9 +1,9 @@
+mod accounts;
 mod appearance;
 
 mod apis;
 mod changelog;
 mod developer;
-// mod feedback;
 mod java;
 mod language;
 mod launcher;
@@ -12,11 +12,11 @@ mod storage;
 
 use freya::prelude::*;
 
+pub use accounts::SettingsAccounts;
 pub use apis::SettingsApis;
+pub use appearance::SettingsAppearance;
 pub use changelog::SettingsChangelog;
 pub use developer::SettingsDeveloper;
-// pub use feedback::SettingsFeedback;
-pub use appearance::SettingsAppearance;
 pub use java::SettingsJava;
 pub use language::SettingsLanguage;
 pub use launcher::SettingsLauncher;
@@ -24,8 +24,9 @@ pub use minecraft::SettingsMinecraft;
 pub use storage::SettingsStorage;
 
 use crate::{
-    components::{Icon, IconType},
+    components::{Button, Icon, IconType},
     theme::colors,
+    ui::border_all_color,
 };
 
 pub fn settings_page() -> Rect {
@@ -51,7 +52,7 @@ pub fn settings_row(
     description: impl Into<String>,
     trailing: impl IntoElement,
 ) -> impl IntoElement {
-    settings_row_inner(icon, title, description, trailing, false)
+    settings_row_inner(icon, title, description, trailing, RowTone::Normal)
 }
 
 pub fn settings_row_disabled(
@@ -60,7 +61,24 @@ pub fn settings_row_disabled(
     description: impl Into<String>,
     trailing: impl IntoElement,
 ) -> impl IntoElement {
-    settings_row_inner(icon, title, description, trailing, true)
+    settings_row_inner(icon, title, description, trailing, RowTone::Disabled)
+}
+
+/// For destructive actions, tinted red like the other danger notices
+pub fn settings_row_danger(
+    icon: IconType,
+    title: &'static str,
+    description: impl Into<String>,
+    trailing: impl IntoElement,
+) -> impl IntoElement {
+    settings_row_inner(icon, title, description, trailing, RowTone::Danger)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum RowTone {
+    Normal,
+    Disabled,
+    Danger,
 }
 
 fn settings_row_inner(
@@ -68,11 +86,12 @@ fn settings_row_inner(
     title: &'static str,
     description: impl Into<String>,
     trailing: impl IntoElement,
-    disabled: bool,
+    tone: RowTone,
 ) -> impl IntoElement {
     let description = description.into();
+    let danger = tone == RowTone::Danger;
     rect()
-        .maybe(disabled, |el| el.opacity(0.4))
+        .maybe(tone == RowTone::Disabled, |el| el.opacity(0.4))
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)
@@ -80,8 +99,15 @@ fn settings_row_inner(
         .spacing(16.)
         .padding(Gaps::new_symmetric(12., 16.))
         .corner_radius(CornerRadius::new_all(12.))
-        .background(colors::page_elevated())
-        .child(Icon::new(icon))
+        .background(if danger {
+            colors::danger().with_a(26)
+        } else {
+            colors::page_elevated()
+        })
+        .maybe(danger, |el| {
+            el.border(border_all_color(1., colors::danger().with_a(128)))
+        })
+        .child(Icon::new(icon).maybe(danger, |icon| icon.color(colors::danger())))
         .child(
             rect()
                 .vertical()
@@ -102,5 +128,63 @@ fn settings_row_inner(
                 ),
         )
         .child(trailing)
+        .into_element()
+}
+
+#[derive(PartialEq)]
+struct ResetButton<T: Clone + PartialEq + 'static> {
+    values: Vec<(State<T>, T)>,
+}
+
+impl<T: Clone + PartialEq + 'static> Component for ResetButton<T> {
+    fn render(&self) -> impl IntoElement {
+        let at_default = self
+            .values
+            .iter()
+            .all(|(value, default)| *value.read() == *default);
+
+        let values = self.values.clone();
+
+        Button::new()
+            .ghost()
+            .icon()
+            .disabled(at_default)
+            .alt(if at_default {
+                "Already at the default"
+            } else {
+                "Reset to default"
+            })
+            .on_press(move |_| {
+                for (value, default) in &values {
+                    let mut value = *value;
+                    value.set(default.clone());
+                }
+            })
+            .child(
+                Icon::new(IconType::RefreshCcw02)
+                    .size(14.)
+                    .color(colors::fg_secondary()),
+            )
+    }
+}
+
+pub fn resettable<T: Clone + PartialEq + 'static>(
+    control: impl IntoElement,
+    value: State<T>,
+    default: T,
+) -> impl IntoElement {
+    resettable_all(control, vec![(value, default)])
+}
+
+pub fn resettable_all<T: Clone + PartialEq + 'static>(
+    control: impl IntoElement,
+    values: Vec<(State<T>, T)>,
+) -> impl IntoElement {
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(8.)
+        .child(control)
+        .child(ResetButton { values })
         .into_element()
 }

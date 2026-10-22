@@ -101,8 +101,7 @@ fn language_row(
             el.border(border_all_color(1., colors::brand()))
         })
         .a11y_role(AccessibilityRole::Button)
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| {
             selected.set(index);
             chosen.set(name.to_string());

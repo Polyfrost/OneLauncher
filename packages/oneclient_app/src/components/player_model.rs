@@ -121,7 +121,7 @@ impl Component for PlayerModel {
 
         let effect = player_effect();
 
-        let render_cb = RenderCallback::new(move |ctx: &mut CanvasContext| {
+        let render_cb = RenderCallback::new(move |ctx: &mut FillRenderContext| {
             let (Some(effect), Some(skin)) = (&effect, &skin_shader) else {
                 return;
             };
@@ -155,20 +155,15 @@ impl Component for PlayerModel {
             ctx.canvas.draw_rect(SkRect::new(0.0, 0.0, w, h), &paint);
         });
 
-        canvas(render_cb)
+        rect()
             .key(src_ptr as u64)
             .width(self.width.clone())
             .height(self.height.clone())
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Grab))
-            .on_pointer_leave(move |_| {
-                if drag.peek().is_none() {
-                    Cursor::set(CursorIcon::default());
-                }
-            })
+            .cursor(CursorIcon::Grab)
+            .background(render_cb)
             .on_pointer_down(move |e: Event<PointerEventData>| {
                 let loc = e.global_location();
                 drag.set(Some((loc.x as f32, loc.y as f32, yaw(), pitch())));
-                Cursor::set(CursorIcon::Grabbing);
             })
             .on_global_pointer_move(move |e: Event<PointerEventData>| {
                 let Some((sx, sy, yaw0, pitch0)) = *drag.read() else {
@@ -187,10 +182,10 @@ impl Component for PlayerModel {
 
                 Platform::get().send(UserEvent::RequestRedraw);
             })
-            .on_global_pointer_press(move |_: Event<PointerEventData>| {
+            // Global so a release outside the widget still ends the drag
+            .on_global_pointer_up(move |_: Event<PointerEventData>| {
                 if drag.peek().is_some() {
                     drag.set(None);
-                    Cursor::set(CursorIcon::default());
                 }
             })
     }
@@ -245,8 +240,8 @@ void hitBox(float3 ro, float3 rd, float3 cmin, float3 cmax, float3 dims, float3 
             nrm = float3(1.0, 0.0, 0.0);
         }
     } else if (tN == tmin.y) {
-        if (rd.y > 0.0) {            // -Y face (bottom): 180deg from top, flip both axes
-            uv = float2(base.x + d + w + (1.0 - n.x) * w, base.y + (1.0 - n.z) * d);
+		if (rd.y > 0.0) {            // -Y face (bottom): same orientation as the top, shifted by w
+            uv = float2(base.x + d + w + n.x * w, base.y + n.z * d);
             nrm = float3(0.0, -1.0, 0.0);
         } else {                     // +Y face (top)
             uv = float2(base.x + d + n.x * w, base.y + n.z * d);

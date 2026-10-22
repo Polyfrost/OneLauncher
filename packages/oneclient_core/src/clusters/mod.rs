@@ -1,24 +1,39 @@
-//! Cluster orchestration: preparing a cluster for launch, provisioning from the
-//! remote catalog, and applying version migrations.
-//!
-//! The records themselves, plus settings profiles, logs and screenshots, live
-//! in `oneclient_cluster`. These three modules are what compose that crate with
-//! Java, Minecraft metadata, the package store and the versions manifest, which
-//! is why they stay here.
-
+mod java_override;
 mod migrate;
+pub(crate) mod modpack;
+mod modpack_import;
 pub(crate) mod prepare;
 mod provision;
+mod release_migration;
+mod share;
+mod reset;
 mod unlink_legacy;
 
+pub use java_override::apply_bundle_java_override;
 pub use migrate::apply_remote_migrations;
-pub use prepare::{estimate_cluster_download, prepare_cluster, prepare_cluster_locked};
+pub use modpack::{
+    FlaggedModpack, ModpackCluster, ModpackSource, PreparedModpack, create_modpack_instance,
+    install_modpack_instance, prepare_modpack, repair_modpack_cluster, update_modpack_cluster,
+};
+pub use modpack_import::{
+    ExistingPack, FlaggedPackMod, ImportedModpack, LoaderPlan, PreparedImport,
+    has_imported_modpacks, import_modpack_into_cluster, list_imported_modpacks,
+    modpack_file_sources, prepare_modpack_import, release_imported_modpacks,
+    remove_imported_modpack,
+};
+pub use prepare::{
+    estimate_cluster_download, prepare_cluster, prepare_cluster_locked, required_java_major,
+};
 pub use provision::{ensure_from_bundles, ensure_from_versions};
+pub use release_migration::{
+    OfferLookup, ReleaseMigrationOffer, can_migrate_manually, copy_configs, manual_migration_offer,
+    rank_migration_sources, record_new_versions, release_migration_offer,
+};
+pub use share::{ExportMode, SharedCluster, export_cluster};
+pub use reset::{ResetClaim, ResetReport, is_resetting, reset_cluster, reset_unfinished};
 pub use unlink_legacy::{SweepReport, unlink_legacy_cluster_content};
 
-// Re-exported so the rest of the launcher keeps addressing these through
-// `clusters::`, as it did before the split.
 pub use oneclient_cluster::{
-    Cluster, ClusterError, ClusterLinkTarget, ClusterManager, ClusterStage, ClusterUpdate,
-    CreateClusterOptions,
+    Cluster, ClusterError, ClusterKind, ClusterLinkTarget, ClusterManager, ClusterStage,
+    ClusterUpdate, CreateClusterOptions,
 };

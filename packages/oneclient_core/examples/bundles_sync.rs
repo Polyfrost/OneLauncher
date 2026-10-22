@@ -1,6 +1,5 @@
-
-use oneclient_core::dev;
 use oneclient_common::domain::GameLoader;
+use oneclient_core::dev;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

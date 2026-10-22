@@ -2,8 +2,8 @@ use oneclient_java::vendors::runtime_providers;
 use oneclient_net::{NetConfig, RequestClient};
 use polyio::ChecksumAlgorithm;
 
-/// A major every vendor still publishes, so a listing coming back empty means
-/// the query is wrong rather than the release being retired.
+/// A major every vendor still publishes so a listing coming back empty means
+/// the query is wrong rather than the release being retired
 const MAJOR: u32 = 21;
 
 #[tokio::test]
@@ -41,8 +41,6 @@ async fn every_vendor_publishes_a_usable_checksum() {
             continue;
         }
 
-        // A well-formed hash in the wrong algorithm would fail every download,
-        // so assert the algorithm each vendor actually publishes.
         for package in &packages {
             let checksum = package.checksum.as_ref().expect("checked above");
             assert!(
@@ -90,8 +88,7 @@ async fn liberica_publishes_sha1_and_the_rest_publish_sha256() {
         };
 
         assert_eq!(
-            checksum.algorithm,
-            expected,
+            checksum.algorithm, expected,
             "{vendor} changed the algorithm it publishes"
         );
     }

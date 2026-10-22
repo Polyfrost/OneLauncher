@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::ContentResult;
+use crate::error::{ContentError, ContentResult};
 use oneclient_common::domain::{ContentType, ProviderId};
 use oneclient_common::paths;
 
@@ -11,16 +11,36 @@ pub fn cache_file_path(
     version_id: &str,
     file_name: &str,
 ) -> ContentResult<PathBuf> {
-    Ok(paths::package_version_dir(content_type, provider, project_id, version_id)?.join(file_name))
+    let name = safe_file_name(file_name)?;
+    Ok(paths::package_version_dir(content_type, provider, project_id, version_id)?.join(name))
+}
+
+fn safe_file_name(file_name: &str) -> ContentResult<std::ffi::OsString> {
+    let last = file_name.rsplit(['/', '\\']).next().unwrap_or_default();
+    let unusable = || ContentError::InvalidData {
+        reason: format!("'{file_name}' is not a usable file name"),
+    };
+    if matches!(last, "" | "." | "..") {
+        return Err(unusable());
+    }
+    let cleaned = |name: &str| {
+        polyio::sanitize_path(name)
+            .file_name()
+            .map(std::ffi::OsStr::to_os_string)
+            .filter(|name| name != "." && name != "..")
+    };
+    cleaned(last)
+        .or_else(|| cleaned(&format!("_{last}")))
+        .ok_or_else(unusable)
 }
 
 pub fn artifact_absolute_path(stored_path: &str) -> ContentResult<PathBuf> {
-    let root = paths::launcher_dir()?;
+    let root = paths::data_dir()?;
     Ok(root.join(stored_path))
 }
 
 pub fn relative_cache_path(abs: &Path) -> ContentResult<String> {
-    let root = paths::launcher_dir()?;
+    let root = paths::data_dir()?;
 
     let rel = abs
         .strip_prefix(root)

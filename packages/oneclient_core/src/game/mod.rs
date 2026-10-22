@@ -1,7 +1,11 @@
 mod analytics;
 mod error;
+pub mod fabric;
+pub mod gpu;
+mod heal;
 mod launch;
 mod log_replay;
+pub(crate) mod natives;
 mod process;
 mod reattach;
 mod session;
@@ -12,30 +16,38 @@ pub use analytics::{
     Analytics, DayPlaytime, Persona, PlaytimeStats, ServerStat, WEEKDAY_LABELS, aggregate_servers,
     cluster_analytics, global_analytics,
 };
-// Minecraft content lives in `oneclient_mc` now; re-exported so the rest of the
-// launcher keeps addressing it through `game::`.
 pub use oneclient_mc::{
     append_profile_game_arguments, classpaths, download_to_path, fetch_bytes_verified,
     get_classpath_library, get_library, java_arguments, main_class, minecraft_arguments,
     processor_arguments,
 };
+pub mod crashdata;
 pub mod diagnosis;
+pub mod mod_problems;
 
-pub use diagnosis::{CrashDiagnosis, diagnose};
+pub use crashdata::CrashData;
+pub use diagnosis::{CrashDiagnosis, diagnose, suspected_mods};
 pub use error::GameError;
-pub use launch::{LaunchedGame, is_running, launch_cluster, offer_repair};
-pub use process::{
-    GameProcess, GameProcessManager, is_process_alive, kill_process, process_start_time,
-};
-pub use reattach::recover_sessions;
+pub use fabric::{mods_folder_argument, uses_cluster_mods_folder};
+pub use heal::clear_zeroed_files;
+pub use launch::{LaunchedGame, crash_mod_issues, is_running, launch_cluster, repair_cluster};
+pub use mod_problems::{ModProblem, ModProblemKind, ModRef};
 pub use oneclient_mc::{
-    DownloadPlan, confirm_incomplete_install, download_minecraft, download_version_info, get_game_versions,
-    get_loader_version, get_loader_versions, get_loaders_for_version, is_version_updated,
-    game_files_missing, libraries_missing, plan_downloads, resolve_minecraft_version,
-    validate_rules,
+    DownloadPlan, GameVersionInfo, GameVersionKind, NativesMode, NativesReport, PlannedLibrary,
+    check_natives, confirm_incomplete_install, download_minecraft, download_version_info,
+    game_files_missing, get_game_versions, get_loader_version, get_loader_versions,
+    get_loaders_for_version, get_version_ids, get_versions_for_loader, is_version_updated,
+    libraries_missing, natives_missing, plan_downloads, resolve_minecraft_version, validate_rules,
     verify_game_files,
 };
+pub use process::{
+    DirBusy, GameProcess, GameProcessManager, SyncBlock, SyncGuard, is_process_alive, kill_process,
+    process_start_time,
+};
+pub use reattach::recover_sessions;
+pub(crate) use shared_dir::lock_mods_sync;
 pub use shared_dir::{
-    dematerialize_content, import_manual_content, link_cluster_logs, materialize_content,
-    unlink_cluster_logs, write_allowed_symlinks,
+    DuplicateMods, dematerialize_content, import_manual_content, link_cluster_logs,
+    materialize_content, shadowed_bundle_mods, sync_cluster_mods, unlink_cluster_logs,
+    write_allowed_symlinks,
 };

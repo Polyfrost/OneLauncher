@@ -1,28 +1,26 @@
-//! Window-wide file drops.
-//!
-//! [`FileDropOverlay`] is mounted by the app shell and owns every drop: while
-//! files hover the window it shows a veil, and once they land it asks which
-//! cluster they belong to and what each one should be installed as. No view
-//! handles drops itself, so dropping on the mods page and dropping on the home
-//! screen behave identically.
-//!
-//! Freya emits one `FileDrop` event per file, all within the same batch, so the
-//! shell handler accumulates them and the prompt's first render already sees
-//! the whole drop.
+//! Freya emits one `FileDrop` event per file within a single batch so the shell
+//! handler accumulates them before the prompt first renders
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::time::Duration;
 
 use freya::animation::{AnimNum, Ease, Function, OnCreation, use_animation};
 use freya::prelude::*;
 use freya::router::use_route;
-use oneclient_core::clusters::Cluster;
+use oneclient_content::modpacks::detect_format;
 use oneclient_content::packages::ContentType;
+use oneclient_core::clusters::Cluster;
 use oneclient_db::models::ClusterId;
 
 use crate::Route;
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
-use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch};
+use crate::hooks::{
+    add_world_datapacks, settled_or_loading, spawn_world_task, try_cluster_worlds,
+    use_active_cluster_id, use_cluster_worlds, use_clusters, use_datapack_world, use_debounced,
+    use_dispatch,
+};
+use crate::launcher::off_ui;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -32,22 +30,29 @@ const FILE_ROW_H: f32 = 34.;
 const FILE_LIST_MAX_ROWS: usize = 5;
 const TYPE_DROPDOWN_W: f32 = 108.;
 
-/// Content types a dropped entry can be imported as. Worlds are directories and
-/// modpacks/datapacks have no view of their own, so they're deliberately absent.
-const IMPORTABLE: [ContentType; 3] = [
+/// Worlds are directories and modpacks have no view so both are excluded
+const IMPORTABLE: [ContentType; 4] = [
     ContentType::Mod,
     ContentType::ResourcePack,
     ContentType::Shader,
+    ContentType::DataPack,
 ];
 
-/// Names that give away a shaderpack. Only a starting guess; every row has a
-/// dropdown, so a wrong sniff costs the user one click.
 const SHADER_HINTS: [&str; 5] = ["shader", "bsl", "seus", "complementary", "sildur"];
+const DATAPACK_HINTS: [&str; 4] = ["datapack", "data pack", "data_pack", "data-pack"];
+
+fn importable(mod_loader: bool) -> Vec<ContentType> {
+    IMPORTABLE
+        .into_iter()
+        .filter(|ct| mod_loader || !ct.needs_mod_loader())
+        .collect()
+}
 
 fn content_label(content_type: ContentType) -> &'static str {
     match content_type {
         ContentType::ResourcePack => "Textures",
         ContentType::Shader => "Shaders",
+        ContentType::DataPack => "Data packs",
         _ => "Mods",
     }
 }
@@ -62,22 +67,83 @@ fn file_name(path: &Path) -> String {
         .unwrap_or_else(|| path.display().to_string())
 }
 
-/// Best guess at what a dropped entry is. A `.jar` is only ever a mod;
-/// everything else is ambiguous, so the page the drop landed on wins, then a
-/// name sniff, then the most common case.
-fn infer_content_type(path: &Path, route_type: Option<ContentType>) -> ContentType {
+/// Precedence `.jar` is always a mod then the current route then a name sniff
+fn infer_content_type(
+    path: &Path,
+    route_type: Option<ContentType>,
+    mod_loader: bool,
+) -> Option<ContentType> {
     if extension(path).as_deref() == Some("jar") {
-        return ContentType::Mod;
+        return mod_loader.then_some(ContentType::Mod);
     }
     if let Some(route_type) = route_type {
-        return route_type;
+        if mod_loader || !route_type.needs_mod_loader() {
+            return Some(route_type);
+        }
+        if route_type == ContentType::Shader {
+            return None;
+        }
     }
     let name = file_name(path).to_lowercase();
-    if SHADER_HINTS.iter().any(|hint| name.contains(hint)) {
-        ContentType::Shader
+    if DATAPACK_HINTS.iter().any(|hint| name.contains(hint)) {
+        Some(ContentType::DataPack)
+    } else if mod_loader && SHADER_HINTS.iter().any(|hint| name.contains(hint)) {
+        Some(ContentType::Shader)
     } else {
-        ContentType::ResourcePack
+        Some(ContentType::ResourcePack)
     }
+}
+
+const DROP_SETTLE: Duration = Duration::from_millis(300);
+
+pub fn accept_drop(
+    paths: &[PathBuf],
+    mut pending: State<Vec<PathBuf>>,
+    mut modpacks: State<Vec<PathBuf>>,
+) {
+    for path in paths {
+        match extension(path).as_deref() {
+            Some("mrpack") => modpacks.write().push(path.clone()),
+            Some("zip") => {
+                let path = path.clone();
+                spawn(async move {
+                    let probe = path.clone();
+                    let is_modpack = off_ui(async move {
+                        detect_format(&probe).await.is_ok()
+                            || oneclient_core::is_instance_archive(&probe).await
+                    })
+                    .await;
+                    if is_modpack {
+                        modpacks.write().push(path);
+                    } else {
+                        pending.write().push(path);
+                    }
+                });
+            }
+            _ => pending.write().push(path.clone()),
+        }
+    }
+}
+
+fn use_dropped_modpack_driver(pending: State<Vec<PathBuf>>, modpacks: State<Vec<PathBuf>>) {
+    let dispatch = use_dispatch();
+    let settled = use_debounced(
+        (pending.read().is_empty(), modpacks.read().len()),
+        DROP_SETTLE,
+    );
+    let settled = *settled.read();
+
+    use_side_effect_with_deps(&settled, move |&(prompt_closed, queued)| {
+        if !prompt_closed || queued == 0 || !pending.peek().is_empty() {
+            return;
+        }
+
+        let mut modpacks = modpacks;
+        let dropped = std::mem::take(&mut *modpacks.write());
+        for path in dropped {
+            dispatch.import_file(path);
+        }
+    });
 }
 
 fn route_target(route: &Route) -> Option<(ClusterId, ContentType)> {
@@ -85,23 +151,22 @@ fn route_target(route: &Route) -> Option<(ClusterId, ContentType)> {
         Route::ClusterMods { cluster_id } => Some((*cluster_id, ContentType::Mod)),
         Route::ClusterShaders { cluster_id } => Some((*cluster_id, ContentType::Shader)),
         Route::ClusterTextures { cluster_id } => Some((*cluster_id, ContentType::ResourcePack)),
+        Route::ClusterDataPacks { cluster_id } => Some((*cluster_id, ContentType::DataPack)),
         _ => None,
     }
 }
 
-/// Renders the shell's drop affordance and, once files land, the prompt asking
-/// where they should go.
-///
-/// The state lives in the shell (which owns the bubbling `on_file_drop`
-/// handler) and is passed down so the shell itself never re-renders on hover.
+/// State lives in the shell (owner of the bubbling `on_file_drop`) so it never re-renders on hover
 #[derive(PartialEq)]
 pub struct FileDropOverlay {
     pub hovering: State<bool>,
     pub pending: State<Vec<PathBuf>>,
+    pub modpacks: State<Vec<PathBuf>>,
 }
 
 impl Component for FileDropOverlay {
     fn render(&self) -> impl IntoElement {
+        use_dropped_modpack_driver(self.pending, self.modpacks);
         let files = self.pending.read().clone();
 
         if !files.is_empty() {
@@ -120,7 +185,6 @@ impl Component for FileDropOverlay {
     }
 }
 
-/// The full-window "drop anywhere" affordance shown while files are dragged over.
 #[derive(PartialEq)]
 struct DropVeil;
 
@@ -140,7 +204,7 @@ impl Component for DropVeil {
             .position(Position::new_global().top(0.).left(0.))
             .width(Size::window_percent(100.))
             .height(Size::window_percent(100.))
-            // Purely decorative: the drop must reach the shell handler beneath.
+            // Purely decorative the drop must reach the shell handler beneath
             .interactive(false)
             .center()
             .opacity(progress)
@@ -181,7 +245,6 @@ impl Component for DropVeil {
     }
 }
 
-/// Brand-tinted circle holding an icon, used by the veil card and the dialog header.
 fn icon_badge(icon: IconType, size: f32, icon_size: f32) -> impl IntoElement {
     rect()
         .width(Size::px(size))
@@ -211,24 +274,39 @@ impl Component for DropPrompt {
         let target = route_target(&route);
         let initial_cluster = target.map(|(id, _)| id).or(*active_cluster.peek());
         let selected_cluster = use_state(move || initial_cluster);
-        // Only the rows the user actually changed. Everything else falls back to
-        // the inferred type, so a second drop landing mid-prompt still gets one.
+        let remembered_world = use_datapack_world();
+        // Absent entries fall back to the inferred type covering drops landing mid-prompt
         let overrides = use_state(HashMap::<PathBuf, ContentType>::new);
 
         let clusters: Vec<Cluster> = settled_or_loading(&clusters_query).unwrap_or_default();
 
-        let body = if clusters.is_empty() {
-            no_clusters_body(pending)
-        } else {
-            prompt_body(
+        // The remembered cluster may have been deleted while the prompt was open
+        let cluster_id = selected_cluster
+            .read()
+            .filter(|id| clusters.iter().any(|c| c.id == *id))
+            .or_else(|| clusters.first().map(|c| c.id));
+
+        let worlds_query = use_cluster_worlds(cluster_id.unwrap_or_default());
+        let worlds: Vec<String> = try_cluster_worlds(&worlds_query)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|w| w.folder_name)
+            .collect();
+
+        let body = match cluster_id {
+            None => no_clusters_body(pending),
+            Some(cluster_id) => prompt_body(
                 &files,
                 &clusters,
+                cluster_id,
                 target.map(|(_, ct)| ct),
                 selected_cluster,
+                &worlds,
+                remembered_world,
                 overrides,
                 dispatch,
                 pending,
-            )
+            ),
         };
 
         OverlayPopup::new()
@@ -267,7 +345,7 @@ fn dialog_header(title: String, subtitle: String) -> impl IntoElement {
         .horizontal()
         .width(Size::fill())
         // Without Content::Flex the flexed text column doesn't resolve and the
-        // badge stops centring against it.
+        // badge stops centring against it
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(12.)
@@ -318,41 +396,91 @@ fn no_clusters_body(mut pending: State<Vec<PathBuf>>) -> Element {
         .into_element()
 }
 
+#[allow(clippy::too_many_arguments)]
 fn prompt_body(
     files: &[PathBuf],
     clusters: &[Cluster],
+    cluster_id: ClusterId,
     route_type: Option<ContentType>,
     selected_cluster: State<Option<ClusterId>>,
+    worlds: &[String],
+    remembered_world: State<HashMap<ClusterId, String>>,
     overrides: State<HashMap<PathBuf, ContentType>>,
     dispatch: crate::Actions,
     mut pending: State<Vec<PathBuf>>,
 ) -> Element {
-    // The remembered cluster may have been deleted while the prompt was open.
-    let cluster_id = selected_cluster
-        .read()
-        .filter(|id| clusters.iter().any(|c| c.id == *id))
-        .unwrap_or(clusters[0].id);
     let cluster_idx = clusters
         .iter()
         .position(|c| c.id == cluster_id)
         .unwrap_or_default();
 
+    let destination = clusters.get(cluster_idx);
+    let mod_loader = destination.is_none_or(|c| !c.lacks_mod_loader());
+
+    let mut rejected: Vec<PathBuf> = Vec::new();
     let resolved: Vec<(PathBuf, ContentType)> = files
         .iter()
-        .map(|path| {
+        .filter_map(|path| {
             let content_type = overrides
                 .read()
                 .get(path)
                 .copied()
-                .unwrap_or_else(|| infer_content_type(path, route_type));
-            (path.clone(), content_type)
+                .filter(|ct| mod_loader || !ct.needs_mod_loader())
+                .or_else(|| infer_content_type(path, route_type, mod_loader));
+            match content_type {
+                Some(content_type) => Some((path.clone(), content_type)),
+                None => {
+                    rejected.push(path.clone());
+                    None
+                }
+            }
         })
         .collect();
 
+    let has_datapacks = resolved.iter().any(|(_, ct)| *ct == ContentType::DataPack);
+    let world = remembered_world
+        .read()
+        .get(&cluster_id)
+        .filter(|name| worlds.contains(name))
+        .cloned()
+        .or_else(|| worlds.first().cloned());
+    let can_import = !resolved.is_empty() && (!has_datapacks || world.is_some());
+    let skipped = rejected.len();
+    let destination_name = destination.map(|c| c.name.clone()).unwrap_or_default();
+
     let import_list = resolved.clone();
+    let import_world = world.clone();
     let import = move |_| {
-        for (path, content_type) in &import_list {
-            dispatch.import_local_file(cluster_id, *content_type, path.clone());
+        if !can_import {
+            return;
+        }
+        let (datapacks, packages): (Vec<_>, Vec<_>) = import_list
+            .iter()
+            .cloned()
+            .partition(|(_, ct)| *ct == ContentType::DataPack);
+        dispatch.import_local_files(cluster_id, packages);
+        if let Some(world) = import_world.clone()
+            && !datapacks.is_empty()
+        {
+            spawn_world_task(
+                dispatch.clone(),
+                "Couldn't add data packs",
+                add_world_datapacks(
+                    cluster_id,
+                    world,
+                    datapacks.into_iter().map(|(path, _)| path).collect(),
+                ),
+            );
+        }
+        if skipped > 0 {
+            dispatch
+                .notify("Some files weren't added")
+                .body(format!(
+                    "{destination_name} has no mod loader, so {skipped} mod or shader file{} {} skipped.",
+                    if skipped == 1 { "" } else { "s" },
+                    if skipped == 1 { "was" } else { "were" },
+                ))
+                .send();
         }
         pending.set(Vec::new());
     };
@@ -370,7 +498,11 @@ fn prompt_body(
             "Pick a cluster, then check what each one gets installed as.".to_string(),
         ))
         .child(cluster_field(clusters, cluster_idx, selected_cluster))
-        .child(file_field(&resolved, overrides))
+        .maybe_child(
+            has_datapacks
+                .then(|| world_field(worlds, world.as_deref(), cluster_id, remembered_world)),
+        )
+        .child(file_field(&resolved, &rejected, mod_loader, overrides))
         .child(
             rect()
                 .horizontal()
@@ -387,6 +519,7 @@ fn prompt_body(
                 .child(
                     Button::new()
                         .primary()
+                        .enabled(can_import)
                         .on_press(import)
                         .child(Icon::new(IconType::Plus).size(15.))
                         .text(match files.len() {
@@ -438,14 +571,55 @@ fn cluster_field(
     )
 }
 
+fn world_field(
+    worlds: &[String],
+    current: Option<&str>,
+    cluster_id: ClusterId,
+    mut remembered: State<HashMap<ClusterId, String>>,
+) -> Element {
+    let Some(current) = current else {
+        return field(
+            "Destination world",
+            label()
+                .text("This cluster has no worlds yet. Create one in game, then drop the data packs again.")
+                .font_size(12.)
+                .color(colors::fg_secondary()),
+        )
+        .into_element();
+    };
+
+    let names = worlds.to_vec();
+    field(
+        "Destination world",
+        Dropdown::new(current.to_string(), worlds.to_vec())
+            .width(Size::fill())
+            .height(Size::px(32.))
+            .on_select(move |idx: usize| {
+                if let Some(name) = names.get(idx) {
+                    remembered.write().insert(cluster_id, name.clone());
+                }
+            }),
+    )
+    .into_element()
+}
+
 fn file_field(
     resolved: &[(PathBuf, ContentType)],
+    rejected: &[PathBuf],
+    mod_loader: bool,
     overrides: State<HashMap<PathBuf, ContentType>>,
 ) -> impl IntoElement {
-    let visible = resolved.len().clamp(1, FILE_LIST_MAX_ROWS);
+    let visible = (resolved.len() + rejected.len()).clamp(1, FILE_LIST_MAX_ROWS);
     let rows = resolved
         .iter()
-        .map(|(path, content_type)| file_row(path, *content_type, overrides).into_element())
+        .map(|(path, content_type)| {
+            file_row(path, Some(*content_type), mod_loader, overrides).into_element()
+        })
+        .chain(
+            rejected
+                .iter()
+                .map(|path| file_row(path, None, mod_loader, overrides).into_element()),
+        )
         .collect::<Vec<_>>();
 
     field(
@@ -467,14 +641,33 @@ fn file_field(
 
 fn file_row(
     path: &Path,
-    content_type: ContentType,
+    content_type: Option<ContentType>,
+    mod_loader: bool,
     mut overrides: State<HashMap<PathBuf, ContentType>>,
 ) -> impl IntoElement {
     let key = path.to_path_buf();
-    let options: Vec<String> = IMPORTABLE
+    let types = importable(mod_loader);
+    let options: Vec<String> = types
         .iter()
         .map(|ct| content_label(*ct).to_string())
         .collect();
+    let control = match content_type {
+        Some(content_type) => Dropdown::new(content_label(content_type), options)
+            .width(Size::px(TYPE_DROPDOWN_W))
+            .height(Size::px(24.))
+            .on_select(move |idx: usize| {
+                if let Some(content_type) = types.get(idx) {
+                    overrides.write().insert(key.clone(), *content_type);
+                }
+            })
+            .into_element(),
+        None => label()
+            .text("Needs a mod loader")
+            .font_size(12.)
+            .max_lines(1)
+            .color(colors::fg_secondary())
+            .into_element(),
+    };
 
     rect()
         .horizontal()
@@ -494,17 +687,9 @@ fn file_row(
                 .text(file_name(path))
                 .font_size(12.5)
                 .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
                 .width(Size::flex(1.0))
                 .color(colors::fg_primary()),
         )
-        .child(
-            Dropdown::new(content_label(content_type), options)
-                .width(Size::px(TYPE_DROPDOWN_W))
-                .height(Size::px(24.))
-                .on_select(move |idx: usize| {
-                    if let Some(content_type) = IMPORTABLE.get(idx) {
-                        overrides.write().insert(key.clone(), *content_type);
-                    }
-                }),
-        )
+        .child(control)
 }

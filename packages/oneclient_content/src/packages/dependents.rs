@@ -79,14 +79,14 @@ pub enum DisableRoot {
 	Package(ProviderId, String),
 }
 
-/// Everything the cluster has that would have to go down with `root`.
+/// Everything the cluster has that would have to go down with `roots`.
 ///
 /// Reads only what is stored. Call [`ensure_cluster_dependencies`] first if the
 /// cluster may hold packages installed before their dependency lists were kept.
 #[tracing::instrument(level = "debug", skip(ctx))]
 pub async fn disable_impact(
 	cluster_id: i64,
-	root: &DisableRoot,
+	roots: &[DisableRoot],
 	ctx: &ContentCtx,
 ) -> ContentResult<DisableImpact> {
 	let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
@@ -130,8 +130,14 @@ pub async fn disable_impact(
 		}
 	}
 
-	let (roots, root_hashes) = root_keys(root, &linked, &keys_by_hash);
-	let closure = walk(&roots, &root_hashes, &keys_by_hash, &dependents);
+	let mut keys = Vec::new();
+	let mut root_hashes = HashSet::new();
+	for root in roots {
+		let (root_keys, hashes) = root_keys(root, &linked, &keys_by_hash);
+		keys.extend(root_keys);
+		root_hashes.extend(hashes);
+	}
+	let closure = walk(&keys, &root_hashes, &keys_by_hash, &dependents);
 
 	Ok(DisableImpact {
 		required: name_all(&closure.required, &by_hash, ctx).await,
@@ -445,6 +451,23 @@ mod tests {
 		);
 
 		assert_eq!(required, ["b", "c"], "the target itself is never a dependent");
+	}
+
+	#[test]
+	fn several_roots_are_never_each_others_dependents() {
+		let (keys_by_hash, dependents) = graph(&[
+			("b", "a", DependencyKind::Required),
+			("c", "b", DependencyKind::Required),
+			("d", "a", DependencyKind::Required),
+		]);
+		let result = walk(
+			&[key("a"), key("b")],
+			&HashSet::from(["a".to_string(), "b".to_string()]),
+			&keys_by_hash,
+			&dependents,
+		);
+
+		assert_eq!(result.required, ["d", "c"]);
 	}
 
 	#[test]

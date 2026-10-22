@@ -14,7 +14,6 @@ pub fn use_player_skin(uuid: String) -> (Bytes, bool) {
     let steve = use_memo(|| AppAssets::get_bytes("steve.png").unwrap_or_default());
     let alex = use_memo(|| AppAssets::get_bytes("alex.png").unwrap_or_default());
 
-    // No custom skin: pick alex (slim) or steve (classic) from the UUID.
     let default_slim = (java_string_hash(&uuid) & 1) == 1;
 
     match crate::hooks::loaded_image(skin_url.as_deref(), &skin_query) {

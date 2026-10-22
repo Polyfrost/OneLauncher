@@ -1,28 +1,29 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
+use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::ProviderId;
+use oneclient_content::packages::types::SearchSort;
 use oneclient_db::models::ClusterId;
+
+use crate::hooks::ClusterAction;
 
 #[derive(Clone)]
 pub struct ActiveClusterState(pub State<Option<ClusterId>>);
 
 pub fn use_provide_active_cluster(active: ActiveClusterState) {
-    use_provide_root_context(move || active.clone());
+    use_hook(move || provide_root_context(active));
 }
 
 pub fn use_active_cluster_id() -> State<Option<ClusterId>> {
     consume_root_context::<ActiveClusterState>().0
 }
 
-/// Drives the startup splash "curtain": a full-screen cover that stays up after
-/// the router leaves the Startup route until the home view's clusters/art have
-/// settled, then fades out, so the app never reveals a half-populated home.
+/// Startup curtain stays up past the Startup route until home content settles
+/// so the app never reveals a half-populated home
 #[derive(Clone, Copy)]
 pub struct SplashState {
-    /// The curtain is covering the screen (raised when heading into Home).
     pub active: State<bool>,
-    /// Home content (clusters + background) has finished loading.
     pub home_ready: State<bool>,
 }
 
@@ -34,15 +35,52 @@ pub fn use_splash() -> SplashState {
     consume_root_context::<SplashState>()
 }
 
+/// The settings value the window was built from, carried in from startup because
+/// the settings channel is still on its defaults during the first frames
+#[derive(Clone, Copy)]
+pub struct StartMaximizedState(pub bool);
+
+pub fn use_provide_start_maximized(state: StartMaximizedState) {
+    use_provide_root_context(move || state);
+}
+
+pub fn use_start_maximized() -> bool {
+    consume_root_context::<StartMaximizedState>().0
+}
+
+pub const BROWSER_COMPAT_DEFAULT: bool = true;
+
 #[derive(Clone)]
 pub struct BrowserCompatState(pub State<bool>);
 
 pub fn use_provide_browser_compat(state: BrowserCompatState) {
-    use_provide_root_context(move || state.clone());
+    use_hook(move || provide_root_context(state));
 }
 
 pub fn use_browser_compat() -> State<bool> {
     consume_root_context::<BrowserCompatState>().0
+}
+
+#[derive(Clone)]
+pub struct BrowserTypeState(pub State<String>);
+
+pub fn use_provide_browser_type(state: BrowserTypeState) {
+    use_hook(move || provide_root_context(state));
+}
+
+pub fn use_browser_type() -> State<String> {
+    consume_root_context::<BrowserTypeState>().0
+}
+
+#[derive(Clone)]
+pub struct DataPackWorldState(pub State<HashMap<ClusterId, String>>);
+
+pub fn use_provide_datapack_world(state: DataPackWorldState) {
+    use_hook(move || provide_root_context(state));
+}
+
+pub fn use_datapack_world() -> State<HashMap<ClusterId, String>> {
+    consume_root_context::<DataPackWorldState>().0
 }
 
 #[derive(Clone)]
@@ -72,11 +110,44 @@ pub fn use_disable_confirm() -> State<Option<crate::disable::PendingDisable>> {
     consume_root_context::<DisableConfirmState>().0
 }
 
+#[derive(Clone, Copy, PartialEq)]
+pub enum EssentialGuardKind {
+    Disable,
+    Remove,
+}
+
+#[derive(Clone, PartialEq)]
+pub struct PendingEssential {
+    pub name: String,
+    pub body: String,
+    pub kind: EssentialGuardKind,
+    pub then: Guarded,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum Guarded {
+    Mutate(ClusterAction),
+    Disable(crate::disable::DisableRequest),
+}
+
+#[derive(Clone)]
+pub struct EssentialGuardState(pub State<Option<PendingEssential>>);
+
+pub fn use_provide_essential_guard(state: EssentialGuardState) {
+    use_provide_root_context(move || state.clone());
+}
+
+pub fn use_essential_guard() -> State<Option<PendingEssential>> {
+    consume_root_context::<EssentialGuardState>().0
+}
+
 #[derive(Clone)]
 pub struct BrowserUiState {
     pub query: String,
     pub provider: ProviderId,
     pub categories: Vec<String>,
+    pub sort: SearchSort,
+    pub loader: Option<GameLoader>,
     pub page: usize,
 }
 
@@ -86,6 +157,8 @@ impl Default for BrowserUiState {
             query: String::new(),
             provider: ProviderId::Modrinth,
             categories: Vec::new(),
+            sort: SearchSort::Relevance,
+            loader: None,
             page: 0,
         }
     }
@@ -95,7 +168,7 @@ impl Default for BrowserUiState {
 pub struct BrowserStateStore(pub State<HashMap<String, BrowserUiState>>);
 
 pub fn use_provide_browser_state(store: BrowserStateStore) {
-    use_provide_root_context(move || store.clone());
+    use_hook(move || provide_root_context(store));
 }
 
 pub fn use_browser_state_store() -> State<HashMap<String, BrowserUiState>> {
@@ -105,27 +178,77 @@ pub fn use_browser_state_store() -> State<HashMap<String, BrowserUiState>> {
 #[derive(Clone)]
 pub struct OnboardingSelectionState {
     pub selected: State<HashSet<String>>,
-    /// Set once the user changes the selection themselves. Until then the shell
-    /// keeps re-deriving `selected` from the catalog, so a bundle list that
-    /// settles late still gets the right defaults.
+    /// Until set the shell keeps re-deriving `selected` from the catalog so a
+    /// late-settling bundle list still gets the right defaults
     pub user_touched: State<bool>,
-    /// Bundle categories the user had in their v1 install, once the migration
-    /// step has been answered. `None` means "no migration decision yet".
+    /// `None` means "no migration decision yet"
     pub migrated_categories: State<Option<Vec<String>>>,
     pub language: State<String>,
     pub reduce_motion: State<bool>,
-    pub predownload: State<bool>,
-    pub setup_started: State<bool>,
-    /// v1-migration: source folder to import files from (`None` = don't import).
+    /// `None` = don't import
     pub import_folder: State<Option<String>>,
-    /// v1-migration: import into the matching cluster's own dir instead of shared.
     pub import_dedicated: State<bool>,
+    pub picks_location: State<bool>,
 }
 
 pub fn use_provide_onboarding_selection(state: OnboardingSelectionState) {
-    use_provide_root_context(move || state.clone());
+    use_hook(move || provide_root_context(state));
 }
 
 pub fn use_onboarding_selection() -> OnboardingSelectionState {
     consume_root_context::<OnboardingSelectionState>()
+}
+
+#[cfg(test)]
+mod tests {
+    use freya_testing::TestingRunner;
+
+    use super::*;
+
+    /// Stands in for a route layout: it owns the state and publishes it as a root
+    /// context, so unmounting it drops the value the context still points at
+    #[derive(PartialEq)]
+    struct Shell;
+
+    impl Component for Shell {
+        fn render(&self) -> impl IntoElement {
+            let active = use_state(|| None::<ClusterId>);
+            use_provide_active_cluster(ActiveClusterState(active));
+            rect().child(Reader)
+        }
+    }
+
+    #[derive(PartialEq)]
+    struct Reader;
+
+    impl Component for Reader {
+        fn render(&self) -> impl IntoElement {
+            let active = *use_active_cluster_id().read();
+            label().text(format!("{active:?}"))
+        }
+    }
+
+    fn app() -> impl IntoElement {
+        let mounted = use_consume::<State<bool>>();
+        rect().maybe_child(mounted().then(|| Shell.into_element()))
+    }
+
+    #[test]
+    fn a_remounted_shell_replaces_the_dropped_root_state() {
+        let (mut test, mut mounted) = TestingRunner::new(
+            app,
+            Size2D::new(300., 300.),
+            |runner| runner.provide_root_context(|| State::create(true)),
+            1.,
+        );
+        test.sync_and_update();
+
+        // Leaving the shell drops the state the root context holds
+        test.run_in(|| mounted.set(false));
+        test.sync_and_update();
+
+        // Coming back must not hand the reader that dropped state
+        test.run_in(|| mounted.set(true));
+        test.sync_and_update();
+    }
 }

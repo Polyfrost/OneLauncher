@@ -1,370 +1,1049 @@
-use oneclient_db::dao::{cluster as cluster_dao, setting_profile as profile_dao};
-use oneclient_db::models::{ClusterId, ClusterPatch, NewCluster};
-
-use oneclient_common::domain::ContentType;
-use crate::profiles::{
-	create_profile_from_global, resolve_cluster_profile, update_named_profile,
+use oneclient_db::dao::{
+    applied_migration as migration_dao, cluster as cluster_dao, setting_profile as profile_dao,
 };
-use oneclient_common::patch::Patch;
+use oneclient_db::models::{ClusterId, ClusterKind, ClusterPatch, NewCluster};
+
+use crate::error::ClusterResult;
 use crate::profile::GameSettingsProfile;
 use crate::profiles::ProfileUpdate;
-use crate::error::ClusterResult;
+use crate::profiles::{create_profile_from_global, resolve_cluster_profile, update_named_profile};
+use oneclient_common::domain::ContentType;
+use oneclient_common::patch::Patch;
 
 use oneclient_db::DbPool;
 use tokio::sync::Mutex;
 
-use crate::cluster::Cluster;
+use crate::cluster::{Cluster, encode_tags, remove_mods_link};
 use crate::error::ClusterError;
 use crate::options::{ClusterUpdate, CreateClusterOptions};
+use crate::screenshots::thumbnail;
 use crate::stage::ClusterStage;
 
-/// Cluster records: create, read, update, delete, and the settings profile each
-/// one points at.
-///
-/// An instance rather than a bag of associated functions, so the creation lock
-/// lives with the thing it protects instead of on the launcher state. Matches
-/// `BundlesManager`, `VersionsManager`, `JavaService` and `AuthService`.
+const COVER_STEM: &str = "cover";
+const COVER_MAX_EDGE: u32 = 1200;
+
+fn shrink_cover(raw: Vec<u8>) -> (Vec<u8>, bool) {
+    match thumbnail(&raw, COVER_MAX_EDGE) {
+        Some(out) => (Vec::from(out), true),
+        None => (raw, false),
+    }
+}
+
 pub struct ClusterManager {
-	db: DbPool,
-	/// Serialises creation so two concurrent creates cannot resolve to the same
-	/// folder name and race each other onto disk.
-	provisioning: Mutex<()>,
+    db: DbPool,
+    /// Serialises creation so two concurrent creates cannot resolve to the same
+    /// folder name and race each other onto disk
+    provisioning: Mutex<()>,
 }
 
 impl ClusterManager {
-	#[must_use]
-	pub fn new(db: DbPool) -> Self {
-		Self {
-			db,
-			provisioning: Mutex::new(()),
-		}
-	}
+    #[must_use]
+    pub fn new(db: DbPool) -> Self {
+        Self {
+            db,
+            provisioning: Mutex::new(()),
+        }
+    }
 
-	/// Holds the creation lock for the caller.
-	///
-	/// Startup recovery scans the clusters directory and adopts orphan folders;
-	/// it must hold this across the whole scan, or a concurrent create (whose
-	/// folder lands on disk before its row commits) gets adopted into a duplicate
-	/// row.
-	pub async fn provisioning_guard(&self) -> tokio::sync::MutexGuard<'_, ()> {
-		self.provisioning.lock().await
-	}
+    /// Orphan-folder recovery must hold this across its whole scan or a
+    /// concurrent create's folder is adopted into a duplicate row
+    pub async fn provisioning_guard(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.provisioning.lock().await
+    }
 
-	pub fn sanitize_name(name: &str) -> String {
-		let mut name = name.to_string();
-		name.retain(|c| c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ' ' | '.' | '(' | ')'));
-		name.trim().to_string()
-	}
+    pub fn sanitize_name(name: &str) -> String {
+        let mut name = name.to_string();
+        name.retain(crate::naming::is_folder_name_char);
+        let name = name.trim().trim_end_matches(['.', ' ']);
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn get(&self, cluster_id: ClusterId) -> ClusterResult<Cluster> {
-		let row = cluster_dao::get_by_id(&self.db, cluster_id)
-			.await?
-			.ok_or(ClusterError::NotFound(cluster_id))?;
-		Cluster::try_from_row(row)
-	}
+        let stem_len = name.find('.').unwrap_or(name.len());
+        let stem = name[..stem_len].trim_end();
+        if is_reserved_device_name(stem) {
+            return format!("{stem}_{}", &name[stem.len()..]);
+        }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn list(&self) -> ClusterResult<Vec<Cluster>> {
-		let rows = cluster_dao::list_all(&self.db).await?;
-		rows.into_iter()
-			.map(Cluster::try_from_row)
-			.collect::<Result<Vec<_>, _>>()}
+        name.to_string()
+    }
 
-	#[tracing::instrument(skip(self))]
-	pub async fn create(
-		&self,
-		global: &GameSettingsProfile,
-		options: CreateClusterOptions,
-	) -> ClusterResult<Cluster> {
-		let _guard = self.provisioning.lock().await;
-		self.create_core(global, options).await
-	}
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn get(&self, cluster_id: ClusterId) -> ClusterResult<Cluster> {
+        let row = cluster_dao::get_by_id(&self.db, cluster_id)
+            .await?
+            .ok_or(ClusterError::NotFound(cluster_id))?;
+        Cluster::try_from_row(row)
+    }
 
-	/// Create a cluster for a version/loader that doesn't exist yet, and provision it.
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn create_provisioned(
-		&self,
-		global: &GameSettingsProfile,
-		options: CreateClusterOptions,
-	) -> ClusterResult<Option<Cluster>> {
-		let _guard = self.provisioning.lock().await;
-		if cluster_dao::find_by_version_loader(
-			&self.db,
-			&options.mc_version,
-			options.mc_loader as i64,
-		)
-		.await?
-		.is_some()
-		{
-			return Ok(None);
-		}
-		self.create_core(global, options).await.map(Some)
-	}
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn find_by_folder_name(&self, folder_name: &str) -> ClusterResult<Option<Cluster>> {
+        cluster_dao::get_by_folder_name(&self.db, folder_name)
+            .await?
+            .map(Cluster::try_from_row)
+            .transpose()
+    }
 
-	/// Folder-resolve + insert core shared by `create` and `create_provisioned`.
-	/// Callers MUST hold `self.provisioning`; this does not lock.
-	#[tracing::instrument(level = "debug", skip(self, global))]
-	async fn create_core(
-		&self,
-		global: &GameSettingsProfile,
-		options: CreateClusterOptions,
-	) -> ClusterResult<Cluster> {
-		let name = Self::sanitize_name(&options.name);
-		if name.is_empty() {
-			return Err(ClusterError::EmptyName);
-		}
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn list(&self) -> ClusterResult<Vec<Cluster>> {
+        let rows = cluster_dao::list_all(&self.db).await?;
+        rows.into_iter()
+            .map(Cluster::try_from_row)
+            .collect::<Result<Vec<_>, _>>()
+    }
 
-		let folder_name = resolve_unique_folder_name(&name).await?;
-		let cluster_path = oneclient_common::paths::clusters_dir()?.join(&folder_name);
+    #[tracing::instrument(skip(self))]
+    pub async fn create(
+        &self,
+        global: &GameSettingsProfile,
+        options: CreateClusterOptions,
+    ) -> ClusterResult<Cluster> {
+        let _guard = self.provisioning.lock().await;
+        self.create_core(global, options).await
+    }
 
-		match create_inner(&self.db, global, &options, &name, &folder_name, &cluster_path).await {
-			Ok(cluster) => {
-				tracing::info!(cluster_id = cluster.id, name = %cluster.name, "created cluster");
-				Ok(cluster)
-			}
-			Err(err) => {
-				tracing::warn!(name = %name, error = %err, "cluster creation failed, cleaning up directory");
-				let _ = polyio::remove_dir_all(&cluster_path).await;
-				Err(err)
-			}
-		}
-	}
+    /// Returns `None` if a cluster for this version/loader already exists
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn create_provisioned(
+        &self,
+        global: &GameSettingsProfile,
+        mut options: CreateClusterOptions,
+    ) -> ClusterResult<Option<Cluster>> {
+        options.kind = ClusterKind::OneClient;
+        options.user_created = false;
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn update(
-		&self,
-		cluster_id: ClusterId,
-		update: ClusterUpdate,
-	) -> ClusterResult<Cluster> {
-		let _ = self.get(cluster_id).await?;
+        let _guard = self.provisioning.lock().await;
+        if cluster_dao::find_by_version_loader(
+            &self.db,
+            &options.mc_version,
+            options.mc_loader as i64,
+        )
+        .await?
+        .is_some()
+            || cluster_dao::is_provision_dismissed(
+                &self.db,
+                &options.mc_version,
+                options.mc_loader as i64,
+            )
+            .await?
+        {
+            return Ok(None);
+        }
+        self.create_core(global, options).await.map(Some)
+    }
 
-		if let Patch::Set(ref profile_name) = update.setting_profile_name {
-			ensure_profile_exists(&self.db, profile_name).await?;
-		}
+    /// Callers MUST hold `self.provisioning` this does not lock
+    #[tracing::instrument(level = "debug", skip(self, global))]
+    async fn create_core(
+        &self,
+        global: &GameSettingsProfile,
+        options: CreateClusterOptions,
+    ) -> ClusterResult<Cluster> {
+        if options.user_created {
+            let limit = (!options.modpack).then_some(crate::naming::MAX_NAME_CHARS);
+            crate::naming::validate_name(&options.name, limit)
+                .map_err(ClusterError::InvalidName)?;
+            for tag in &options.tags {
+                crate::naming::validate_tag(tag).map_err(ClusterError::InvalidName)?;
+            }
+        }
 
-		let name = update.name.as_deref().map(Self::sanitize_name);
-		if name.as_deref().is_some_and(str::is_empty) {
-			return Err(ClusterError::EmptyName);
-		}
+        let mut folder_stem = Self::sanitize_name(&cap_folder_stem(&options.name));
+        // A name written entirely in another script has nothing ASCII left
+        // for the folder; the name itself is kept as typed
+        if folder_stem.is_empty() && options.user_created {
+            folder_stem = FALLBACK_FOLDER_STEM.to_string();
+        }
+        if folder_stem.is_empty() {
+            return Err(ClusterError::EmptyName);
+        }
 
-		let patch = ClusterPatch {
-			name,
-			setting_profile_name: update.setting_profile_name.into_db_patch(),
-			mc_loader_version: update.mc_loader_version.into_db_patch(),
-			linked_modpack_hash: update.linked_modpack_hash.into_db_patch(),
-		};
+        let name = if options.user_created {
+            options.name.trim().to_string()
+        } else {
+            folder_stem.clone()
+        };
 
-		let row = cluster_dao::update(&self.db, cluster_id, &patch).await?;
-		Cluster::try_from_row(row)
-	}
+        let folder_name = resolve_unique_folder_name(&folder_stem).await?;
+        let cluster_path = oneclient_common::paths::clusters_dir()?.join(&folder_name);
 
-	#[tracing::instrument(skip(self))]
-	pub async fn delete(
-		&self,
-		cluster_id: ClusterId,
-		remove_files: bool,
-	) -> ClusterResult<()> {
-		let cluster = self.get(cluster_id).await?;
+        match create_inner(
+            &self.db,
+            global,
+            &options,
+            &name,
+            &folder_name,
+            &cluster_path,
+        )
+        .await
+        {
+            Ok(cluster) => {
+                tracing::info!(cluster_id = cluster.id, name = %cluster.name, "created cluster");
+                if let Err(err) =
+                    migration_dao::mark_applied(&self.db, &unlinked_mods_repair_id(cluster.id))
+                        .await
+                {
+                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record a one-time repair");
+                }
+                Ok(cluster)
+            }
+            Err(err) => {
+                tracing::warn!(name = %name, error = %err, "cluster creation failed, cleaning up directory");
+                let _ = polyio::remove_dir_all(&cluster_path).await;
+                Err(err)
+            }
+        }
+    }
 
-		if !cluster_dao::delete_by_id(&self.db, cluster_id).await? {
-			return Err(ClusterError::NotFound(cluster_id));
-		}
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn update(
+        &self,
+        cluster_id: ClusterId,
+        update: ClusterUpdate,
+    ) -> ClusterResult<Cluster> {
+        let existing = self.get(cluster_id).await?;
 
-		if remove_files {
-			let path = cluster.dir()?;
-			if path.exists() {
-				polyio::remove_dir_all(&path).await?;
-			}
-		}
+        if let Patch::Set(ref profile_name) = update.setting_profile_name {
+            ensure_profile_exists(&self.db, profile_name).await?;
+        }
 
-		tracing::info!(cluster_id, remove_files, "deleted cluster");
-		Ok(())
-	}
+        if existing.user_created {
+            if let Some(raw) = update.name.as_deref()
+                && raw.trim() != existing.name
+            {
+                let limit = existing
+                    .linked_modpack_hash
+                    .is_none()
+                    .then_some(crate::naming::MAX_NAME_CHARS);
+                crate::naming::validate_name(raw, limit).map_err(ClusterError::InvalidName)?;
+            }
+            for tag in update.tags.iter().flatten() {
+                if !existing.tags.contains(tag) {
+                    crate::naming::validate_tag(tag).map_err(ClusterError::InvalidName)?;
+                }
+            }
+        }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn set_stage(
-		&self,
-		cluster_id: ClusterId,
-		stage: ClusterStage,
-	) -> ClusterResult<Cluster> {
-		let row = cluster_dao::set_stage(&self.db, cluster_id, stage as i64).await?;
-		Cluster::try_from_row(row)
-	}
+        let name = match update.name.as_deref() {
+            Some(raw) if existing.user_created => Some(raw.trim().to_string()),
+            Some(raw) => Some(Self::sanitize_name(raw)),
+            None => None,
+        };
+        if name.as_deref().is_some_and(str::is_empty) {
+            return Err(ClusterError::EmptyName);
+        }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn uses_dedicated_dir(&self, cluster_id: ClusterId) -> ClusterResult<bool> {
-		Ok(self.get(cluster_id).await?.uses_dedicated_dir())
-	}
+        let patch = ClusterPatch {
+            name,
+            setting_profile_name: update.setting_profile_name.into_db_patch(),
+            mc_loader_version: update.mc_loader_version.into_db_patch(),
+            linked_modpack_hash: update.linked_modpack_hash.into_db_patch(),
+            description: update.description.into_db_patch(),
+            tags: update.tags.as_deref().map(encode_tags),
+            cover_path: update.cover_path.into_db_patch(),
+        };
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	/// `is_running` is passed in rather than looked up: whether a game process
-	/// is alive belongs to the game lifecycle, not to cluster records.
-	pub async fn set_dedicated_dir(
-		&self,
-		cluster_id: ClusterId,
-		dedicated: bool,
-		is_running: bool,
-	) -> ClusterResult<()> {
-		if is_running {
-			return Err(ClusterError::AlreadyRunning(cluster_id));
-		}
+        let row = cluster_dao::update(&self.db, cluster_id, &patch).await?;
+        let cluster = Cluster::try_from_row(row)?;
 
-		let cluster = self.get(cluster_id).await?;
-		let marker = cluster.dedicated_marker()?;
-		if dedicated {
-			polyio::create_dir_all(cluster.dir()?).await?;
-			polyio::write(&marker, b"").await.ok();
-		} else if marker.exists() {
-			polyio::remove_file(&marker).await.ok();
-		}
-		Ok(())
-	}
+        if let Ok(dir) = cluster.dir() {
+            crate::identity::write(&dir, &identity_of(&cluster)).await;
+        }
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn add_playtime(
-		&self,
-		cluster_id: ClusterId,
-		duration: std::time::Duration,
-	) -> ClusterResult<Cluster> {
-		let seconds = i64::try_from(duration.as_secs()).unwrap_or(i64::MAX);
-		let row = cluster_dao::add_playtime(&self.db, cluster_id, seconds).await?;
+        Ok(cluster)
+    }
 
-		Cluster::try_from_row(row)
-	}
+    pub async fn ensure_dedicated_marker(&self, cluster: &Cluster) -> ClusterResult<()> {
+        if !cluster.is_isolated() {
+            return Ok(());
+        }
 
-	#[tracing::instrument(level = "debug", skip(self, global, cluster), fields(cluster_id = cluster.id))]
-	pub async fn resolve_settings(
-		&self,
-		global: &GameSettingsProfile,
-		cluster: &Cluster,
-	) -> ClusterResult<GameSettingsProfile> {
-		resolve_cluster_profile(
-			&self.db,
-			global,
-			cluster.setting_profile_name.as_deref(),
-		)
-		.await
-	}
+        let dir = cluster.dir()?;
+        if !oneclient_common::paths::cluster_uses_dedicated_dir(&cluster.folder_name) {
+            polyio::create_dir_all(&dir).await?;
+            polyio::write(dir.join(oneclient_common::paths::DEDICATED_MARKER), b"")
+                .await
+                .ok();
+            tracing::info!(
+                cluster_id = cluster.id,
+                "restored the dedicated directory marker"
+            );
+        }
 
-	#[tracing::instrument(level = "debug", skip(self, update))]
-	pub async fn update_profile(
-		&self,
-		cluster_id: ClusterId,
-		update: ProfileUpdate,
-	) -> ClusterResult<GameSettingsProfile> {
-		let cluster = self.get(cluster_id).await?;
-		let profile_name = cluster
-			.setting_profile_name
-			.ok_or(ClusterError::NoProfile)?;
+        if crate::identity::read(&dir).await.is_none() {
+            crate::identity::write(&dir, &identity_of(cluster)).await;
+            tracing::info!(cluster_id = cluster.id, "restored the instance file");
+        }
+        Ok(())
+    }
 
-		update_named_profile(&self.db, &profile_name, update).await
-	}
+    pub async fn refresh_identity(&self, cluster_id: ClusterId) -> ClusterResult<()> {
+        let cluster = self.get(cluster_id).await?;
+        let dir = cluster.dir()?;
+        let recorded = polyio::try_exists(dir.join(oneclient_common::paths::INSTANCE_FILE))
+            .await
+            .unwrap_or(false);
 
-	#[tracing::instrument(level = "debug", skip(self))]
-	pub async fn create_and_assign_profile(
-		&self,
-		global: &GameSettingsProfile,
-		cluster_id: ClusterId,
-		profile_name: &str,
-	) -> ClusterResult<GameSettingsProfile> {
-		let profile = create_profile_from_global(
-			&self.db,
-			global,
-			profile_name,
-			None,
-			None,
-		)
-		.await?;
+        if recorded || cluster.is_isolated() {
+            crate::identity::write(&dir, &identity_of(&cluster)).await;
+        }
+        Ok(())
+    }
 
-		self.update(
-			cluster_id,
-			ClusterUpdate::default().setting_profile(&profile.name),
-		)
-		.await?;
+    pub async fn sweep_trash(&self) {
+        let Ok(trash) = oneclient_common::paths::cluster_trash_dir() else {
+            return;
+        };
+        let Ok(mut entries) = polyio::read_dir(&trash).await else {
+            return;
+        };
 
-		Ok(profile)
-	}
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let path = entry.path();
+            let name = entry.file_name().to_string_lossy().into_owned();
+            let parsed = name
+                .split_once('-')
+                .and_then(|(id, folder)| Some((id.parse::<ClusterId>().ok()?, folder)));
+
+            if let Some((id, folder)) = parsed
+                && let Ok(Some(row)) = cluster_dao::get_by_id(&self.db, id).await
+                && row.folder_name == folder
+            {
+                let Ok(home) = oneclient_common::paths::cluster_dir(folder) else {
+                    continue;
+                };
+                if polyio::symlink_metadata(&home).await.is_err()
+                    && let Err(err) = polyio::rename(&path, &home).await
+                {
+                    tracing::warn!(cluster_id = id, error = %err, "failed to return a trashed cluster folder whose cluster still exists");
+                }
+                continue;
+            }
+
+            let removed = match entry.file_type().await {
+                Ok(kind) if kind.is_dir() => polyio::remove_dir_all(&path).await,
+                _ => polyio::remove_file(&path).await,
+            };
+            match removed {
+                Ok(()) => {
+                    tracing::info!(entry = %name, "cleared a leftover deleted cluster folder")
+                }
+                Err(err) => {
+                    tracing::warn!(entry = %name, error = %err, "failed to clear a leftover deleted cluster folder")
+                }
+            }
+        }
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn set_cover_from_file(
+        &self,
+        cluster_id: ClusterId,
+        source: &std::path::Path,
+    ) -> ClusterResult<String> {
+        let cluster = self.get(cluster_id).await?;
+        let dir = cluster.dir()?;
+        polyio::create_dir_all(&dir).await?;
+
+        let original_extension = source
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase())
+            .filter(|ext| matches!(ext.as_str(), "png" | "jpg" | "jpeg" | "webp" | "gif"))
+            .unwrap_or_else(|| "png".to_string());
+
+        let raw = polyio::read(source).await?;
+        let (bytes, shrunk) = tokio::task::spawn_blocking(move || shrink_cover(raw))
+            .await
+            .map_err(|err| ClusterError::StdIo(std::io::Error::other(err)))?;
+
+        let extension = if shrunk {
+            "png".to_string()
+        } else {
+            original_extension
+        };
+        let file_name = format!(
+            "{COVER_STEM}-{}.{extension}",
+            chrono::Utc::now().timestamp_millis()
+        );
+        let path = dir.join(&file_name);
+        polyio::write(&path, &bytes).await?;
+
+        let patch = ClusterPatch {
+            cover_path: Some(Some(file_name.clone())),
+            ..Default::default()
+        };
+        let row = match cluster_dao::update(&self.db, cluster_id, &patch).await {
+            Ok(row) => row,
+            Err(err) => {
+                polyio::remove_file(&path).await.ok();
+                return Err(err.into());
+            }
+        };
+        let cluster = Cluster::try_from_row(row)?;
+        crate::identity::write(&dir, &identity_of(&cluster)).await;
+
+        self.clear_cover_files(&dir, Some(&file_name)).await;
+        Ok(file_name)
+    }
+
+    pub async fn clear_cover(&self, cluster_id: ClusterId) -> ClusterResult<()> {
+        let cluster = self.get(cluster_id).await?;
+        if let Ok(dir) = cluster.dir() {
+            self.clear_cover_files(&dir, None).await;
+        }
+        Ok(())
+    }
+
+    async fn clear_cover_files(&self, dir: &std::path::Path, keep: Option<&str>) {
+        let Ok(mut entries) = polyio::read_dir(dir).await else {
+            return;
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let name = entry.file_name();
+            let name = name.to_string_lossy();
+            if keep != Some(name.as_ref()) && is_cover_file(&name) {
+                polyio::remove_file(entry.path()).await.ok();
+            }
+        }
+    }
+
+    #[tracing::instrument(skip(self))]
+    pub async fn delete(&self, cluster_id: ClusterId, remove_files: bool) -> ClusterResult<()> {
+        let cluster = self.get(cluster_id).await?;
+
+        if !cluster.user_created {
+            cluster_dao::dismiss_provision(&self.db, &cluster.mc_version, cluster.mc_loader as i64)
+                .await?;
+        }
+
+        let trashed = if remove_files && cluster.is_isolated() {
+            move_to_trash(&cluster).await
+        } else {
+            None
+        };
+
+        let deleted = cluster_dao::delete_by_id(&self.db, cluster_id).await;
+        if !matches!(deleted, Ok(true))
+            && let Some(trashed) = &trashed
+            && let Ok(home) = cluster.dir()
+            && let Err(err) = polyio::rename(trashed, &home).await
+        {
+            tracing::warn!(cluster_id, error = %err, "failed to put the cluster folder back after its row could not be deleted");
+        }
+        if !deleted? {
+            return Err(ClusterError::NotFound(cluster_id));
+        }
+
+        remove_mods_link(&cluster.folder_name).await;
+
+        if let Some(trashed) = trashed {
+            if let Err(err) = polyio::remove_dir_all(&trashed).await {
+                tracing::warn!(
+                    cluster_id,
+                    dir = %trashed.display(),
+                    error = %err,
+                    "failed to clear the deleted cluster's folder; it will be retried on the next start"
+                );
+            }
+        } else if remove_files {
+            let path = cluster.dir()?;
+            if path.exists() {
+                polyio::remove_dir_all(&path).await?;
+            }
+        }
+
+        tracing::info!(cluster_id, remove_files, "deleted cluster");
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn set_stage(
+        &self,
+        cluster_id: ClusterId,
+        stage: ClusterStage,
+    ) -> ClusterResult<Cluster> {
+        let row = cluster_dao::set_stage(&self.db, cluster_id, stage as i64).await?;
+        Cluster::try_from_row(row)
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn uses_dedicated_dir(&self, cluster_id: ClusterId) -> ClusterResult<bool> {
+        Ok(self.get(cluster_id).await?.uses_dedicated_dir())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    /// `is_running` is passed in because process liveness belongs to the game
+    /// lifecycle not to cluster records
+    pub async fn set_dedicated_dir(
+        &self,
+        cluster_id: ClusterId,
+        dedicated: bool,
+        is_running: bool,
+    ) -> ClusterResult<()> {
+        if is_running {
+            return Err(ClusterError::AlreadyRunning(cluster_id));
+        }
+
+        let cluster = self.get(cluster_id).await?;
+        if !dedicated && cluster.is_isolated() {
+            return Err(ClusterError::DedicatedRequired(cluster_id));
+        }
+
+        let marker = cluster.dedicated_marker()?;
+        if dedicated {
+            polyio::create_dir_all(cluster.dir()?).await?;
+            polyio::write(&marker, b"").await?;
+        } else if marker.exists() {
+            polyio::remove_file(&marker).await?;
+        }
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, on_progress))]
+    pub async fn sync_from_shared(
+        &self,
+        cluster_id: ClusterId,
+        include_worlds: bool,
+        on_progress: impl Fn(&str, u64, u64) + Send + Sync,
+    ) -> ClusterResult<SyncReport> {
+        let cluster = self.get(cluster_id).await?;
+        if !cluster.uses_dedicated_dir() {
+            return Err(ClusterError::NotDedicated(cluster.name));
+        }
+
+        copy_from_shared(
+            &oneclient_common::paths::shared_minecraft_dir()?,
+            &cluster.dir()?,
+            include_worlds,
+            on_progress,
+        )
+        .await
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn mark_played(&self, cluster_id: ClusterId) -> ClusterResult<()> {
+        cluster_dao::touch_last_played(&self.db, cluster_id).await?;
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn add_playtime(
+        &self,
+        cluster_id: ClusterId,
+        duration: std::time::Duration,
+    ) -> ClusterResult<Cluster> {
+        let seconds = i64::try_from(duration.as_secs()).unwrap_or(i64::MAX);
+        let row = cluster_dao::add_playtime(&self.db, cluster_id, seconds).await?;
+
+        Cluster::try_from_row(row)
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, global, cluster), fields(cluster_id = cluster.id))]
+    pub async fn resolve_settings(
+        &self,
+        global: &GameSettingsProfile,
+        cluster: &Cluster,
+    ) -> ClusterResult<GameSettingsProfile> {
+        resolve_cluster_profile(&self.db, global, cluster.setting_profile_name.as_deref()).await
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, update))]
+    pub async fn update_profile(
+        &self,
+        cluster_id: ClusterId,
+        update: ProfileUpdate,
+    ) -> ClusterResult<GameSettingsProfile> {
+        let cluster = self.get(cluster_id).await?;
+        let profile_name = cluster
+            .setting_profile_name
+            .ok_or(ClusterError::NoProfile)?;
+
+        update_named_profile(&self.db, &profile_name, update).await
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn create_and_assign_profile(
+        &self,
+        global: &GameSettingsProfile,
+        cluster_id: ClusterId,
+        profile_name: &str,
+    ) -> ClusterResult<GameSettingsProfile> {
+        let profile =
+            create_profile_from_global(&self.db, global, profile_name, None, None).await?;
+
+        self.update(
+            cluster_id,
+            ClusterUpdate::default().setting_profile(&profile.name),
+        )
+        .await?;
+
+        Ok(profile)
+    }
 }
 
 #[tracing::instrument(level = "debug", skip(db, global, options))]
 async fn create_inner(
-	db: &DbPool,
-	global: &GameSettingsProfile,
-	options: &CreateClusterOptions,
-	name: &str,
-	folder_name: &str,
-	cluster_path: &std::path::Path,
+    db: &DbPool,
+    global: &GameSettingsProfile,
+    options: &CreateClusterOptions,
+    name: &str,
+    folder_name: &str,
+    cluster_path: &std::path::Path,
 ) -> ClusterResult<Cluster> {
-	polyio::create_dir_all(cluster_path).await?;
-	ensure_content_dirs(cluster_path).await?;
+    polyio::create_dir_all(cluster_path).await?;
+    ensure_content_dirs(cluster_path).await?;
 
-	let profile = create_profile_from_global(
-		db,
-		global,
-		name,
-		options.mem_max,
-		None,
-	)
-	.await?;
+    if options.kind.is_isolated() {
+        polyio::write(
+            cluster_path.join(oneclient_common::paths::DEDICATED_MARKER),
+            b"",
+        )
+        .await
+        .ok();
 
-	let row = cluster_dao::insert(
-		db,
-		&NewCluster {
-			name,
-			folder_name,
-			mc_version: &options.mc_version,
-			mc_loader: options.mc_loader as i64,
-			mc_loader_version: options.mc_loader_version.as_deref(),
-			setting_profile_name: Some(&profile.name),
-			stage: ClusterStage::NotReady as i64,
-		},
-	)
-	.await?;
+        crate::identity::write(
+            cluster_path,
+            &crate::identity::InstanceIdentity {
+                name: name.to_string(),
+                mc_version: options.mc_version.clone(),
+                mc_loader: options.mc_loader,
+                mc_loader_version: options.mc_loader_version.clone(),
+                kind: options.kind,
+                user_created: options.user_created,
+                description: options.description.clone(),
+                tags: options.tags.clone(),
+                cover_path: None,
+            },
+        )
+        .await;
+    }
 
-	Cluster::try_from_row(row)
+    let profile =
+        create_profile_from_global(db, global, folder_name, options.mem_max, None).await?;
+
+    let tags = encode_tags(&options.tags);
+
+    let row = cluster_dao::insert(
+        db,
+        &NewCluster {
+            name,
+            folder_name,
+            mc_version: &options.mc_version,
+            mc_loader: options.mc_loader as i64,
+            mc_loader_version: options.mc_loader_version.as_deref(),
+            setting_profile_name: Some(&profile.name),
+            stage: ClusterStage::NotReady as i64,
+            kind: options.kind.as_i64(),
+            user_created: i64::from(options.user_created),
+            description: options.description.as_deref(),
+            tags: &tags,
+            cover_path: None,
+        },
+    )
+    .await?;
+
+    let cluster = Cluster::try_from_row(row)?;
+    crate::identity::write(cluster_path, &identity_of(&cluster)).await;
+    Ok(cluster)
+}
+
+fn is_reserved_device_name(stem: &str) -> bool {
+    let upper = stem.to_ascii_uppercase();
+    match upper.as_str() {
+        "CON" | "PRN" | "AUX" | "NUL" => true,
+        _ => {
+            upper.len() == 4
+                && (upper.starts_with("COM") || upper.starts_with("LPT"))
+                && matches!(upper.as_bytes()[3], b'1'..=b'9')
+        }
+    }
+}
+
+async fn move_to_trash(cluster: &Cluster) -> Option<std::path::PathBuf> {
+    let home = cluster.dir().ok()?;
+    if polyio::symlink_metadata(&home).await.is_err() {
+        return None;
+    }
+
+    let trash = oneclient_common::paths::cluster_trash_dir().ok()?;
+    polyio::create_dir_all(&trash).await.ok()?;
+
+    let dest = trash.join(format!("{}-{}", cluster.id, cluster.folder_name));
+    if polyio::symlink_metadata(&dest).await.is_ok() {
+        polyio::remove_dir_all(&dest).await.ok();
+    }
+
+    match polyio::rename(&home, &dest).await {
+        Ok(()) => Some(dest),
+        Err(err) => {
+            tracing::warn!(
+                cluster_id = cluster.id,
+                error = %err,
+                "could not move the cluster folder aside; deleting it in place"
+            );
+            None
+        }
+    }
+}
+
+fn is_cover_file(name: &str) -> bool {
+    name.rsplit_once('.').is_some_and(|(stem, _)| {
+        stem == COVER_STEM
+            || stem
+                .strip_prefix(COVER_STEM)
+                .is_some_and(|rest| rest.starts_with('-'))
+    })
+}
+
+fn identity_of(cluster: &Cluster) -> crate::identity::InstanceIdentity {
+    crate::identity::InstanceIdentity {
+        name: cluster.name.clone(),
+        mc_version: cluster.mc_version.clone(),
+        mc_loader: cluster.mc_loader,
+        mc_loader_version: cluster.mc_loader_version.clone(),
+        kind: cluster.kind,
+        user_created: cluster.user_created,
+        description: cluster.description.clone(),
+        tags: cluster.tags.clone(),
+        cover_path: cluster.cover_path.clone(),
+    }
+}
+
+pub fn unlinked_mods_repair_id(cluster_id: ClusterId) -> String {
+    format!("clear-unlinked-mods:{cluster_id}")
 }
 
 #[tracing::instrument(level = "debug", skip(pool))]
 async fn ensure_profile_exists(pool: &oneclient_db::DbPool, name: &str) -> ClusterResult<()> {
-	if profile_dao::get_by_name(pool, name).await?.is_none() {
-		return Err(ClusterError::ProfileNotFound(name.to_string()));
-	}
-	Ok(())
+    if profile_dao::get_by_name(pool, name).await?.is_none() {
+        return Err(ClusterError::ProfileNotFound(name.to_string()));
+    }
+    Ok(())
 }
 
+const FALLBACK_FOLDER_STEM: &str = "Instance";
+
 #[tracing::instrument(level = "debug")]
+fn cap_folder_stem(name: &str) -> String {
+    name.trim()
+        .chars()
+        .take(crate::naming::MAX_FOLDER_CHARS)
+        .collect()
+}
+
 async fn resolve_unique_folder_name(name: &str) -> ClusterResult<String> {
-	let cluster_dir = oneclient_common::paths::clusters_dir()?;
-	let mut folder_name = name.to_string();
-	let mut path = cluster_dir.join(&folder_name);
+    let cluster_dir = oneclient_common::paths::clusters_dir()?;
+    let mut folder_name = name.to_string();
+    let mut path = cluster_dir.join(&folder_name);
 
-	if path.exists() {
-		let mut which = 1;
-		loop {
-			let candidate = format!("{folder_name} ({which})");
-			path = cluster_dir.join(&candidate);
-			if !path.exists() {
-				folder_name = candidate;
-				break;
-			}
-			which += 1;
-		}
-	}
+    if path.exists() {
+        let mut which = 1;
+        loop {
+            let candidate = format!("{folder_name} ({which})");
+            path = cluster_dir.join(&candidate);
+            if !path.exists() {
+                folder_name = candidate;
+                break;
+            }
+            which += 1;
+        }
+    }
 
-	Ok(folder_name)
+    Ok(folder_name)
 }
 
 #[tracing::instrument(level = "debug")]
 async fn ensure_content_dirs(cluster_path: &std::path::Path) -> ClusterResult<()> {
-	for content_type in [
-		ContentType::Mod,
-		ContentType::ResourcePack,
-		ContentType::Shader,
-		ContentType::DataPack,
-		ContentType::World,
-	] {
-		polyio::create_dir_all(cluster_path.join(content_type.folder_name())).await?;
-	}
-	Ok(())
+    for content_type in [
+        ContentType::Mod,
+        ContentType::ResourcePack,
+        ContentType::Shader,
+        ContentType::DataPack,
+        ContentType::World,
+    ] {
+        polyio::create_dir_all(cluster_path.join(content_type.folder_name())).await?;
+    }
+    Ok(())
+}
+
+const SYNCED_SETTINGS: [&str; 6] = [
+    "options.txt",
+    "optionsof.txt",
+    "optionsshaders.txt",
+    "servers.dat",
+    "hotbar.nbt",
+    "config",
+];
+
+const SYNC_STAGING: &str = ".sync-staging";
+
+async fn copy_from_shared(
+    shared: &std::path::Path,
+    dest: &std::path::Path,
+    include_worlds: bool,
+    on_progress: impl Fn(&str, u64, u64) + Send + Sync,
+) -> ClusterResult<SyncReport> {
+    if polyio::canonicalize(shared).ok() == polyio::canonicalize(dest).ok() {
+        return Ok(SyncReport::default());
+    }
+
+    let settings: Vec<&str> = SYNCED_SETTINGS
+        .into_iter()
+        .filter(|name| shared.join(name).exists())
+        .collect();
+
+    let shared_saves = shared.join(crate::worlds::SAVES_DIR);
+    let dest_saves = dest.join(crate::worlds::SAVES_DIR);
+    let staging_root = dest.join(SYNC_STAGING);
+    polyio::remove_dir_all(&staging_root).await.ok();
+
+    let mut worlds = Vec::new();
+    if include_worlds && let Ok(mut entries) = polyio::read_dir(&shared_saves).await {
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.path().join(crate::worlds::LEVEL_DAT).is_file() {
+                worlds.push(entry.file_name());
+            }
+        }
+    }
+
+    let total = (settings.len() + worlds.len()) as u64;
+    let mut done = 0;
+
+    for name in settings {
+        on_progress(&format!("Syncing {name}"), done, total);
+        let src = shared.join(name);
+        if src.is_dir() {
+            polyio::copy_dir(&src, &dest.join(name), &[]).await?;
+        } else if src.is_file() {
+            polyio::copy(&src, dest.join(name)).await?;
+        }
+        done += 1;
+    }
+
+    let mut skipped = Vec::new();
+    for name in worlds {
+        let label = name.to_string_lossy().into_owned();
+        on_progress(&format!("Syncing world {label}"), done, total);
+        done += 1;
+        let target = dest_saves.join(&name);
+        if polyio::symlink_metadata(&target).await.is_ok() {
+            skipped.push(label);
+            continue;
+        }
+
+        let staging = staging_root.join(&name);
+        let copied = async {
+            polyio::create_dir_all(&staging).await?;
+            polyio::create_dir_all(&dest_saves).await?;
+            polyio::copy_dir(&shared_saves.join(&name), &staging, &["session.lock"]).await?;
+            rename_with_retry(&staging, &target).await
+        }
+        .await;
+        if let Err(err) = copied {
+            polyio::remove_dir_all(&staging_root).await.ok();
+            return Err(err.into());
+        }
+    }
+
+    polyio::remove_dir_all(&staging_root).await.ok();
+    Ok(SyncReport { skipped, total })
+}
+
+async fn rename_with_retry(
+    from: &std::path::Path,
+    to: &std::path::Path,
+) -> Result<(), polyio::IOError> {
+    let mut attempt = 0;
+    loop {
+        match polyio::rename(from, to).await {
+            Err(_) if attempt < 4 => {
+                attempt += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(250 * attempt)).await;
+            }
+            result => return result,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct SyncReport {
+    pub skipped: Vec<String>,
+    pub total: u64,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        COVER_MAX_EDGE, ClusterManager, cap_folder_stem, copy_from_shared, is_cover_file,
+        shrink_cover,
+    };
+
+    #[tokio::test]
+    async fn syncing_overwrites_settings_but_never_an_existing_world() {
+        let shared = polyio::tempdir().await.expect("shared dir");
+        let dest = polyio::tempdir().await.expect("dest dir");
+        let (shared, dest) = (shared.dir_path(), dest.dir_path());
+
+        for (path, body) in [
+            ("options.txt", "shared"),
+            ("config/sodium.json", "shared"),
+            ("saves/New/level.dat", "shared"),
+            ("saves/New/session.lock", "lock"),
+            ("saves/Kept/level.dat", "shared"),
+            ("saves/junk/readme.txt", "x"),
+            ("screenshots/a.png", "x"),
+        ] {
+            let path = shared.join(path);
+            polyio::create_dir_all(path.parent().unwrap())
+                .await
+                .unwrap();
+            polyio::write(path, body.as_bytes().to_vec()).await.unwrap();
+        }
+        for (path, body) in [("options.txt", "mine"), ("saves/Kept/level.dat", "mine")] {
+            let path = dest.join(path);
+            polyio::create_dir_all(path.parent().unwrap())
+                .await
+                .unwrap();
+            polyio::write(path, body.as_bytes().to_vec()).await.unwrap();
+        }
+
+        let stale = dest.join(".sync-staging/Gone/region/r.0.0.mca");
+        polyio::create_dir_all(stale.parent().unwrap())
+            .await
+            .unwrap();
+        polyio::write(&stale, b"half".to_vec()).await.unwrap();
+
+        let steps = std::sync::Mutex::new(Vec::new());
+        let report = copy_from_shared(shared, dest, true, |_, done, total| {
+            steps.lock().unwrap().push((done, total))
+        })
+        .await
+        .unwrap();
+
+        let read = |path: &str| std::fs::read_to_string(dest.join(path)).unwrap();
+        assert_eq!(
+            steps.into_inner().unwrap(),
+            vec![(0, 4), (1, 4), (2, 4), (3, 4)]
+        );
+        assert_eq!(report.total, 4);
+        assert_eq!(report.skipped, vec!["Kept".to_string()]);
+        assert!(!dest.join(".sync-staging").exists());
+        assert!(!dest.join("saves/New/region").exists());
+        assert_eq!(
+            std::fs::read_dir(dest.join("saves")).unwrap().count(),
+            2,
+            "only New and Kept belong in saves"
+        );
+        assert_eq!(read("options.txt"), "shared");
+        assert_eq!(read("config/sodium.json"), "shared");
+        assert_eq!(read("saves/New/level.dat"), "shared");
+        assert_eq!(read("saves/Kept/level.dat"), "mine");
+        assert!(!dest.join("saves/New/session.lock").exists());
+        assert!(!dest.join("saves/junk").exists());
+        assert!(!dest.join("screenshots").exists());
+    }
+
+    #[tokio::test]
+    async fn an_empty_shared_folder_reports_nothing_to_sync() {
+        let shared = polyio::tempdir().await.expect("shared dir");
+        let dest = polyio::tempdir().await.expect("dest dir");
+
+        let report = copy_from_shared(shared.dir_path(), dest.dir_path(), true, |_, _, _| {})
+            .await
+            .unwrap();
+
+        assert_eq!(report.total, 0);
+        assert!(report.skipped.is_empty());
+    }
+
+    #[tokio::test]
+    async fn settings_only_leaves_worlds_behind() {
+        let shared = polyio::tempdir().await.expect("shared dir");
+        let dest = polyio::tempdir().await.expect("dest dir");
+        let (shared, dest) = (shared.dir_path(), dest.dir_path());
+        for path in ["options.txt", "saves/New/level.dat"] {
+            let path = shared.join(path);
+            polyio::create_dir_all(path.parent().unwrap())
+                .await
+                .unwrap();
+            polyio::write(path, b"shared".to_vec()).await.unwrap();
+        }
+
+        let report = copy_from_shared(shared, dest, false, |_, _, _| {})
+            .await
+            .unwrap();
+
+        assert_eq!(report.total, 1);
+        assert!(dest.join("options.txt").exists());
+        assert!(!dest.join("saves").exists());
+    }
+
+    #[test]
+    fn a_long_modpack_name_gets_a_short_folder() {
+        let name = "All the Mods 10 - To the Sky Community Edition Extended";
+        let folder = ClusterManager::sanitize_name(&cap_folder_stem(name));
+
+        assert_eq!(folder, "All the Mods 10 - To the Sky Community E");
+        assert_eq!(
+            ClusterManager::sanitize_name(&cap_folder_stem("Short Pack")),
+            "Short Pack"
+        );
+    }
+
+    #[test]
+    fn folders_stay_ascii_whatever_the_name() {
+        let folder = |name: &str| ClusterManager::sanitize_name(&cap_folder_stem(name));
+        assert_eq!(folder("Świat 2"), "wiat 2");
+        // Nothing ASCII left: create_core falls back to FALLBACK_FOLDER_STEM
+        assert_eq!(folder("世界"), "");
+        assert!(crate::naming::validate_modpack_instance_name("世界").is_ok());
+    }
+
+    fn png(width: u32, height: u32) -> Vec<u8> {
+        let mut out = Vec::new();
+        image::DynamicImage::ImageRgb8(image::RgbImage::new(width, height))
+            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .expect("encode fixture");
+        out
+    }
+
+    #[test]
+    fn an_oversized_cover_is_shrunk_once_on_assignment() {
+        let raw = png(COVER_MAX_EDGE * 2, COVER_MAX_EDGE);
+        let original_len = raw.len();
+
+        let (bytes, shrunk) = shrink_cover(raw);
+
+        assert!(shrunk);
+        assert!(bytes.len() < original_len);
+        let decoded = image::load_from_memory(&bytes).expect("decode result");
+        assert_eq!(decoded.width(), COVER_MAX_EDGE);
+        assert_eq!(decoded.height(), COVER_MAX_EDGE / 2);
+    }
+
+    #[test]
+    fn a_cover_that_already_fits_is_stored_untouched() {
+        let raw = png(64, 64);
+        let original = raw.clone();
+
+        let (bytes, shrunk) = shrink_cover(raw);
+
+        assert!(!shrunk);
+        assert_eq!(bytes, original);
+    }
+
+    #[test]
+    fn an_undecodable_cover_falls_back_to_the_original_bytes() {
+        let (bytes, shrunk) = shrink_cover(b"not an image".to_vec());
+
+        assert!(!shrunk);
+        assert_eq!(bytes, b"not an image");
+    }
+
+    #[test]
+    fn legacy_and_unique_cover_names_are_both_cleared() {
+        assert!(is_cover_file("cover.png"));
+        assert!(is_cover_file("cover-1759140000000.webp"));
+        assert!(!is_cover_file("covers.png"));
+        assert!(!is_cover_file("cover"));
+        assert!(!is_cover_file("instance.json"));
+    }
 }

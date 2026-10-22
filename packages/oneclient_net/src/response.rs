@@ -2,9 +2,8 @@ use reqwest::Response;
 use uuid::Uuid;
 
 use crate::error::RequestError;
-use oneclient_events::{GroupedProgressChild, EventBus};
+use oneclient_events::{EventBus, GroupedProgressChild};
 
-/// Minimum gap between progress events emitted for a single response body.
 const PROGRESS_INTERVAL: std::time::Duration = std::time::Duration::from_millis(50);
 
 #[derive(Clone, Default)]
@@ -49,20 +48,13 @@ impl ResponseNotifyOptions {
         self
     }
 
-    /// The grouped child these options report against, if any. Lets a caller
-    /// driving the download set phases and finish the child without having to
-    /// keep a second copy of it alongside the options.
     #[must_use]
     pub fn child(&self) -> Option<&GroupedProgressChild> {
         self.child.as_ref()
     }
 
-    /// Fixes the standalone notification's id, so a caller that sends the same
-    /// request more than once keeps updating one notification.
-    ///
-    /// Without this a retried download opens a fresh entry in the UI on every
-    /// attempt, and a flaky connection reads as several stalled installs rather
-    /// than one that is recovering.
+    /// Pins the standalone notification id so a retried request keeps updating
+    /// one notification instead of opening a fresh UI entry per attempt
     #[must_use]
     pub fn pinned(mut self) -> Self {
         if self.standalone_label.is_some() && self.standalone_id.is_none() {
@@ -93,22 +85,20 @@ impl ResponseExt for Response {
         let total = self.content_length().unwrap_or(0).max(1);
         let mut current = 0u64;
 
-        let grouped_child = options
-            .notify
-            .as_ref()
-            .and_then(|n| n.child.clone());
+        let grouped_child = options.notify.as_ref().and_then(|n| n.child.clone());
         let standalone_label = options
             .notify
             .as_ref()
             .and_then(|n| n.standalone_label.clone());
-        let done_label = options
-            .notify
-            .as_ref()
-            .and_then(|n| n.done_label.clone());
+        let done_label = options.notify.as_ref().and_then(|n| n.done_label.clone());
 
-        let standalone_id = standalone_label
-            .as_ref()
-            .map(|_| options.notify.as_ref().and_then(|n| n.standalone_id).unwrap_or_else(Uuid::new_v4));
+        let standalone_id = standalone_label.as_ref().map(|_| {
+            options
+                .notify
+                .as_ref()
+                .and_then(|n| n.standalone_id)
+                .unwrap_or_else(Uuid::new_v4)
+        });
 
         if let Some(ref child) = grouped_child {
             child.set_progress(0, Some(total));
@@ -117,39 +107,35 @@ impl ResponseExt for Response {
         }
 
         let events = events.clone();
-        // A chunk arrives every few KiB; forwarding one event per chunk buries the
-        // UI in tens of thousands of updates per download session, all of which
-        // collapse into the same repainted progress bar. Sample instead, and
-        // always emit the last one so the bar lands on complete.
+        // One event per chunk would bury the UI in tens of thousands of updates
+        // so sample the last one always emits so the bar lands on complete
         let mut last_emit: Option<std::time::Instant> = None;
-        let stream = futures_lite::StreamExt::map(self.bytes_stream(), move |item| {
-            match item {
-                Ok(chunk) => {
-                    current += chunk.len() as u64;
+        let stream = futures_lite::StreamExt::map(self.bytes_stream(), move |item| match item {
+            Ok(chunk) => {
+                current += chunk.len() as u64;
 
-                    let now = std::time::Instant::now();
-                    let due = current >= total
-                        || last_emit.is_none_or(|last| now.duration_since(last) >= PROGRESS_INTERVAL);
+                let now = std::time::Instant::now();
+                let due = current >= total
+                    || last_emit.is_none_or(|last| now.duration_since(last) >= PROGRESS_INTERVAL);
 
-                    if due {
-                        last_emit = Some(now);
-                        if let Some(ref child) = grouped_child {
-                            child.set_progress(current, Some(total));
-                        } else if let (Some(id), Some(label)) = (&standalone_id, &standalone_label) {
-                            let done = current >= total;
-                            let label = if done {
-                                done_label.as_deref().unwrap_or(label)
-                            } else {
-                                label
-                            };
-                            events.progress(*id, label, current, total);
-                        }
+                if due {
+                    last_emit = Some(now);
+                    if let Some(ref child) = grouped_child {
+                        child.set_progress(current, Some(total));
+                    } else if let (Some(id), Some(label)) = (&standalone_id, &standalone_label) {
+                        let done = current >= total;
+                        let label = if done {
+                            done_label.as_deref().unwrap_or(label)
+                        } else {
+                            label
+                        };
+                        events.progress(*id, label, current, total);
                     }
-
-                    Ok(chunk)
                 }
-                Err(err) => Err(RequestError::from(err)),
+
+                Ok(chunk)
             }
+            Err(err) => Err(RequestError::from(err)),
         });
 
         Ok(stream)

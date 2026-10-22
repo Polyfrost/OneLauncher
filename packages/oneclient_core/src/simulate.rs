@@ -1,37 +1,16 @@
-//! Deliberately damaging an installation, so the repair paths can be exercised
-//! without waiting for a real bad connection.
-//!
-//! Every function here breaks files in a *specific* way, because the launcher
-//! catches different damage at different layers and the distinction is the
-//! whole point of testing it:
-//!
-//! - **Same length, wrong bytes** slips past the launch-time size check by
-//!   design, and is only caught by the hashing pass behind "Verify Files".
-//! - **Truncated** is what an interrupted download used to leave behind, and is
-//!   caught cheaply on the next launch.
-//! - **Absent** is the case that used to surface as a raw "No such file or
-//!   directory" naming a path inside the launcher's own metadata folder.
-//!
-//! Destructive by nature. Everything is repairable by the launcher itself,
-//! which is what makes it safe to point at a real installation.
-
 use std::path::{Path, PathBuf};
 
+use oneclient_common::paths;
 use oneclient_content::packages::PackageStore;
 use oneclient_content::packages::store::artifact_absolute_path;
-use oneclient_common::paths;
 use oneclient_db::dao::artifact as artifact_dao;
 
-use crate::state::LauncherState;
 use crate::LauncherResult;
+use crate::state::LauncherState;
 
-/// What a simulation actually did, so the UI can say so rather than claiming
-/// success over an installation that had nothing to break.
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct SimulationReport {
     pub affected: usize,
-    /// A few of the paths touched, for a notification body. Not the full list:
-    /// corrupting 50 assets should not produce a 50-line toast.
     pub samples: Vec<String>,
 }
 
@@ -64,15 +43,10 @@ impl SimulationReport {
     }
 }
 
-/// How a file should be damaged.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Damage {
-    /// Flip bytes in the middle, keeping the length. Passes a size check and
-    /// fails a hash check — the case "Verify Files" exists for.
     Corrupt,
-    /// Cut the file to half its length, as an interrupted write would.
     Truncate,
-    /// Remove it outright.
     Delete,
 }
 
@@ -99,10 +73,8 @@ impl Damage {
                 if bytes.is_empty() {
                     return Ok(());
                 }
-                // Flipping every bit of a few bytes in the middle guarantees a
-                // different hash without changing the length, and lands past
-                // any header a reader might validate first — so the file stays
-                // superficially plausible, exactly like real bit rot.
+                // Mid-file so the damage lands past any header a reader
+                // validates first keeping the file superficially plausible
                 let start = bytes.len() / 2;
                 let end = (start + 8).min(bytes.len());
                 for byte in &mut bytes[start..end] {
@@ -114,11 +86,8 @@ impl Damage {
     }
 }
 
-/// Damages `count` asset objects, spread across the sharded subdirectories.
-///
-/// Spread rather than taken in bulk from one shard because that is how real
-/// damage arrives — a handful of failed requests scattered through a download —
-/// and because it proves the verify pass walks the whole tree.
+/// Spread across shards rather than taken from one so the verify pass has to
+/// walk the whole tree
 #[tracing::instrument(level = "debug")]
 pub async fn damage_assets(count: usize, damage: Damage) -> LauncherResult<SimulationReport> {
     let dir = paths::assets_object_dir()?;
@@ -129,8 +98,8 @@ pub async fn damage_assets(count: usize, damage: Damage) -> LauncherResult<Simul
             return report;
         };
 
-        // One file per shard before taking a second from any, so a small count
-        // never all lands in `00/`.
+        // One file per shard before a second from any so a small count never
+        // all lands in `00/`
         let mut shard_dirs: Vec<PathBuf> = shards
             .flatten()
             .map(|entry| entry.path())
@@ -168,8 +137,7 @@ pub async fn damage_assets(count: usize, damage: Damage) -> LauncherResult<Simul
                 }
             }
 
-            // Every shard is exhausted; asking for more than exists is not an
-            // error, there simply are not that many assets installed.
+            // Every shard exhausted asking for more than exists is not an error
             if !progressed {
                 break;
             }
@@ -188,8 +156,7 @@ pub async fn damage_assets(count: usize, damage: Damage) -> LauncherResult<Simul
     .map_err(Into::into)
 }
 
-/// Damages the installed libraries, which are on the classpath and so tend to
-/// stop the game outright rather than degrade it.
+/// Libraries are on the classpath so damage stops the game outright
 #[tracing::instrument(level = "debug")]
 pub async fn damage_libraries(count: usize, damage: Damage) -> LauncherResult<SimulationReport> {
     let dir = paths::libraries_dir()?;
@@ -237,11 +204,8 @@ pub async fn damage_libraries(count: usize, damage: Damage) -> LauncherResult<Si
     .map_err(Into::into)
 }
 
-/// Removes the whole assets tree.
-///
-/// Reproduces the reported failure exactly: a cluster already marked `Ready`
-/// skips preparation on every later launch, so nothing notices until something
-/// tries to read a path that is no longer there.
+/// Reproduces the reported failure a cluster marked `Ready` skips preparation
+/// on later launches so nothing notices the missing tree until a read fails
 #[tracing::instrument(level = "debug")]
 pub async fn delete_assets_tree() -> LauncherResult<SimulationReport> {
     let dir = paths::assets_dir()?;
@@ -261,11 +225,8 @@ pub async fn delete_assets_tree() -> LauncherResult<SimulationReport> {
     })
 }
 
-/// Damages the installed content of one cluster.
-///
-/// Content is cached content-addressed, so a mod that no longer hashes to its
-/// own key cannot be found again — the repair has to go back to the provider
-/// for it, which is a different path from the game files.
+/// Content is cached content-addressed so a mod that no longer hashes to its
+/// key must be refetched from the provider a different path from game files
 #[tracing::instrument(level = "debug", skip(state))]
 pub async fn damage_cluster_content(
     state: &std::sync::Arc<LauncherState>,
@@ -320,18 +281,15 @@ mod tests {
     use super::*;
 
     fn scratch(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "oneclient-simulate-{tag}-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("oneclient-simulate-{tag}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
 
     #[test]
     fn corrupting_keeps_the_length_and_changes_the_bytes() {
-        // The whole point of this mode: it has to survive a size check so that
-        // only the hashing pass can catch it.
+        // Must survive a size check so only the hashing pass can catch it
         let dir = scratch("corrupt");
         let file = dir.join("object.bin");
         let original: Vec<u8> = (0..=255u8).collect();
@@ -390,9 +348,10 @@ mod tests {
         report.push(Path::new("/tmp/assets/objects/03/dddd"));
 
         assert_eq!(report.affected, 4);
-        // Only a few names are kept, so a large run cannot produce a toast the
-        // size of the asset index.
         assert_eq!(report.samples.len(), 3);
-        assert_eq!(report.summary("Corrupted"), "Corrupted 4 file(s): aaaa and 3 more");
+        assert_eq!(
+            report.summary("Corrupted"),
+            "Corrupted 4 file(s): aaaa and 3 more"
+        );
     }
 }

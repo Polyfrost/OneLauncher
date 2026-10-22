@@ -2,15 +2,17 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
-use crate::error::ClusterResult;
 use crate::cluster::Cluster;
+use crate::error::ClusterResult;
 use oneclient_common::paths;
 
 use super::parse::parse_level;
 use super::{LogFileInfo, LogKind, LogLevel, LogLine, LogsError, ReadOptions};
 
+/// Restricted to cluster dirs the launcher's own logs belong to the live
+/// console and must not be readable deletable or uploadable from a cluster page
 pub(super) fn ensure_allowed(path: &Path) -> ClusterResult<PathBuf> {
-    polyio::ensure_under(path, [paths::logs_dir()?, paths::clusters_dir()?])?
+    polyio::ensure_under(path, [paths::clusters_dir()?])?
         .ok_or_else(|| LogsError::InvalidName(path.display().to_string()).into())
 }
 
@@ -85,15 +87,6 @@ pub fn list_cluster_logs(cluster: &Cluster) -> ClusterResult<Vec<LogFileInfo>> {
         &mut out,
     );
 
-    if let Ok(logs_dir) = paths::logs_dir() {
-        collect_dir(
-            &logs_dir,
-            LogKind::Launcher,
-            |name| name.ends_with(".log") || name.ends_with(".log.gz"),
-            &mut out,
-        );
-    }
-
     out.sort_by_key(|info| std::cmp::Reverse(info.modified));
     Ok(out)
 }
@@ -116,7 +109,7 @@ pub(super) fn lines_from(content: &str, opts: &ReadOptions) -> Vec<LogLine> {
         lines.push(LogLine {
             number: idx + 1,
             level,
-            text: raw.to_string(),
+            text: super::censor(raw).into_owned(),
         });
     }
 
@@ -145,7 +138,9 @@ pub(super) async fn read_file_string(path: &Path) -> ClusterResult<String> {
     if is_gz {
         Ok(polyio::read_gz_to_string(path).await?)
     } else {
-        Ok(polyio::read_to_string(path).await?)
+        let bytes = polyio::read(path).await?;
+        Ok(String::from_utf8(bytes)
+            .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into_owned()))
     }
 }
 

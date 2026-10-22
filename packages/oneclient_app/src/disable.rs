@@ -10,6 +10,7 @@
 use std::time::Duration;
 
 use freya::prelude::{State, WritableUtils, spawn_forever};
+use oneclient_content::bundles::on_user_disable_artifact;
 pub use oneclient_content::packages::DisableRoot;
 use oneclient_content::packages::PackageStore;
 use oneclient_db::models::ClusterId;
@@ -40,8 +41,8 @@ pub struct DisableRequest {
     pub cluster_id: ClusterId,
     /// What to call it on screen.
     pub name: String,
-    pub root: DisableRoot,
-    pub bundle: Option<BundlePackage>,
+    pub roots: Vec<DisableRoot>,
+    pub bundles: Vec<BundlePackage>,
 }
 
 /// A disable waiting on the user: what the modal says, and what applying it
@@ -108,14 +109,18 @@ pub async fn resolve(request: DisableRequest) -> anyhow::Result<Option<PendingDi
     }
 
     let impact =
-        oneclient_core::disable_impact(request.cluster_id, &request.root, &content).await?;
+        oneclient_core::disable_impact(request.cluster_id, &request.roots, &content).await?;
 
-    let mut hashes = match &request.root {
-        DisableRoot::Artifact(hash) => vec![hash.clone()],
-        // Nothing of it is installed, so there is no flag to write — only the
-        // bundle override the caller carries.
-        DisableRoot::Package(..) => Vec::new(),
-    };
+    // A `Package` root has nothing installed, so there is no flag to write —
+    // only the bundle override the caller carries.
+    let mut hashes: Vec<String> = request
+        .roots
+        .iter()
+        .filter_map(|root| match root {
+            DisableRoot::Artifact(hash) => Some(hash.clone()),
+            DisableRoot::Package(..) => None,
+        })
+        .collect();
     hashes.extend(impact.required_hashes());
 
     if impact.is_empty() {
@@ -143,12 +148,15 @@ async fn apply_now(
     content: &oneclient_content::ContentCtx,
 ) -> anyhow::Result<()> {
     let overrides: Vec<(String, String)> = request
-        .bundle
+        .bundles
         .iter()
         .map(|bundle| (bundle.bundle_name.clone(), bundle.package_id.clone()))
         .collect();
 
     PackageStore::disable_artifacts(request.cluster_id, hashes, &overrides, content).await?;
+    for hash in hashes {
+        on_user_disable_artifact(request.cluster_id, hash, content).await?;
+    }
     Ok(())
 }
 
@@ -157,7 +165,12 @@ pub fn title(pending: &PendingDisable) -> String {
     if pending.required.is_empty() {
         format!("Other packages use {}", pending.request.name)
     } else {
-        format!("{} is needed by other packages", pending.request.name)
+        let verb = if pending.request.roots.len() > 1 {
+            "are"
+        } else {
+            "is"
+        };
+        format!("{} {verb} needed by other packages", pending.request.name)
     }
 }
 
@@ -212,7 +225,10 @@ pub fn confirm_label(pending: &PendingDisable) -> String {
         return "Disable anyway".to_string();
     }
 
-    format!("Disable all {}", pending.required.len() + 1)
+    format!(
+        "Disable all {}",
+        pending.required.len() + pending.request.roots.len()
+    )
 }
 
 #[cfg(test)]
@@ -224,8 +240,8 @@ mod tests {
             request: DisableRequest {
                 cluster_id: 1,
                 name: "Sodium".to_string(),
-                root: DisableRoot::Artifact("hash".to_string()),
-                bundle: None,
+                roots: vec![DisableRoot::Artifact("hash".to_string())],
+                bundles: Vec::new(),
             },
             required: required.iter().map(|n| (*n).to_string()).collect(),
             optional: optional.iter().map(|n| (*n).to_string()).collect(),

@@ -18,6 +18,7 @@ pub fn toggle(value: State<bool>) -> impl IntoElement {
     }
 }
 
+#[allow(dead_code)]
 pub fn toggle_disabled(value: State<bool>) -> impl IntoElement {
     Switch {
         value,
@@ -27,13 +28,25 @@ pub fn toggle_disabled(value: State<bool>) -> impl IntoElement {
 }
 
 pub fn toggle_controlled(on: bool, on_toggle: EventHandler<()>) -> ToggleControlled {
-    ToggleControlled { on, on_toggle }
+    ToggleControlled {
+        on,
+        on_toggle,
+        disabled: false,
+    }
 }
 
 #[derive(PartialEq)]
 pub struct ToggleControlled {
     on: bool,
     on_toggle: EventHandler<()>,
+    disabled: bool,
+}
+
+impl ToggleControlled {
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
 }
 
 impl Component for ToggleControlled {
@@ -43,7 +56,7 @@ impl Component for ToggleControlled {
         Switch {
             value,
             on_press: self.on_toggle.clone(),
-            disabled: false,
+            disabled: self.disabled,
         }
     }
 }
@@ -97,10 +110,6 @@ impl Component for Switch {
 
         let text = if on { "On" } else { "Off" };
 
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
         rect()
             .horizontal()
             .cross_align(Alignment::Center)
@@ -109,11 +118,9 @@ impl Component for Switch {
             .a11y_focusable(!disabled)
             .a11y_role(AccessibilityRole::Button)
             .maybe(!disabled, |el| {
-                el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                    .on_all_press(move |_| {
-                        on_press.call(());
-                    })
+                el.cursor(CursorIcon::Pointer).on_press(move |_| {
+                    on_press.call(());
+                })
             })
             .child(
                 label()

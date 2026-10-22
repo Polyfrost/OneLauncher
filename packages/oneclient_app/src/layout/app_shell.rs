@@ -10,21 +10,23 @@ use skia_safe::sampling_options::CubicResampler;
 use crate::Route;
 use crate::components::Button;
 use crate::components::{
-    ART_PREVIEW_EDGE, AppNavbar, DynamicArt, FileDropOverlay, Icon, IconType, OverlayPopup,
-    ScrollArea,
+    ART_PREVIEW_EDGE, AppNavbar, CodeBlock, CrashDialog, DynamicArt, FileDropOverlay, Icon,
+    IconType, OverlayPopup, accept_drop, copy_button,
 };
 use crate::layout::AnimatedAppOutlet;
-use crate::theme;
 use crate::use_settings_snapshot;
 use oneclient_core::clusters::Cluster;
+use oneclient_core::images::BACKGROUND_IMAGE_EDGE;
 use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
-    ActiveClusterState, BrowserCompatState, BrowserStateStore, use_active_cluster_id, use_clusters,
-    use_game_snapshot, use_launcher, use_provide_active_cluster, use_provide_browser_compat,
-    use_provide_browser_state, use_splash,
+    ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
+    BrowserTypeState, DataPackWorldState, use_active_cluster_id, use_clusters, use_game_snapshot,
+    use_launcher, use_provide_active_cluster, use_provide_browser_compat,
+    use_provide_browser_state, use_provide_browser_type, use_provide_datapack_world, use_splash,
 };
 use crate::theme::colors;
+use crate::utils::home_cluster;
 use oneclient_events::LaunchStage;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -37,18 +39,22 @@ impl Component for AppShell {
         let active_cluster = use_state(|| None::<ClusterId>);
         use_provide_active_cluster(ActiveClusterState(active_cluster));
 
-        let browser_compat = use_state(|| true);
+        let browser_compat = use_state(|| BROWSER_COMPAT_DEFAULT);
         use_provide_browser_compat(BrowserCompatState(browser_compat));
 
         let browser_state = use_state(HashMap::new);
         use_provide_browser_state(BrowserStateStore(browser_state));
 
-        // Window-wide file drops. `FileDrop` bubbles, so anything a dedicated
-        // drop zone doesn't claim with `stop_propagation()` ends up here and the
-        // user gets asked where it should go. Only the overlay reads these, so
-        // hovering a file doesn't re-render the shell.
+        let browser_type = use_state(|| "mod".to_string());
+        use_provide_browser_type(BrowserTypeState(browser_type));
+
+        let datapack_world = use_state(HashMap::new);
+        use_provide_datapack_world(DataPackWorldState(datapack_world));
+
+        // `FileDrop` bubbles so anything a drop zone doesn't `stop_propagation()` lands here
         let mut drop_hovering = use_state(|| false);
-        let mut drop_pending = use_state(Vec::<PathBuf>::new);
+        let drop_pending = use_state(Vec::<PathBuf>::new);
+        let dropped_modpacks = use_state(Vec::<PathBuf>::new);
 
         let game = use_game_snapshot();
 
@@ -76,7 +82,7 @@ impl Component for AppShell {
             .on_global_file_hover_cancelled(move |_| drop_hovering.set(false))
             .on_file_drop(move |e: Event<FileEventData>| {
                 drop_hovering.set(false);
-				drop_pending.write().extend_from_slice(&e.file_paths);
+                accept_drop(&e.file_paths, drop_pending, dropped_modpacks);
             })
             .child(AppNavbar)
             .child(AppHomeBackground)
@@ -89,11 +95,17 @@ impl Component for AppShell {
             .child(FileDropOverlay {
                 hovering: drop_hovering,
                 pending: drop_pending,
+                modpacks: dropped_modpacks,
             })
             .maybe_child(
                 game.error
                     .clone()
                     .map(|message| LaunchErrorDialog { message }.into_element()),
+            )
+            .maybe_child(
+                game.current_crash()
+                    .filter(|_| game.error.is_none())
+                    .map(|crash| CrashDialog { crash }.into_element()),
             )
     }
 }
@@ -113,20 +125,6 @@ struct LaunchErrorDialog {
 impl Component for LaunchErrorDialog {
     fn render(&self) -> impl IntoElement {
         let dispatch = crate::hooks::use_dispatch();
-        let lines: Vec<Element> = self
-            .message
-            .lines()
-            .map(|line| {
-                label()
-                    .text(line.to_string())
-                    .font_family(theme::MONO_FONT)
-                    .font_size(12.)
-                    .width(Size::fill())
-                    .color(colors::fg_primary())
-                    .into_element()
-            })
-            .collect();
-
         let close = dispatch.clone();
         let outside_close = dispatch.clone();
         let copy_dispatch = dispatch.clone();
@@ -173,19 +171,9 @@ impl Component for LaunchErrorDialog {
                                     .color(colors::fg_secondary()),
                             )
                             .child(
-                                rect()
-                                    .width(Size::fill())
-                                    .height(Size::px(260.))
+                                CodeBlock::new(self.message.clone())
                                     .background(CODE_BG)
-                                    .corner_radius(CornerRadius::new_all(8.))
-                                    .padding(Gaps::new_all(12.))
-                                    .overflow(Overflow::Clip)
-                                    .child(
-                                        ScrollArea::new()
-                                            .width(Size::fill())
-                                            .height(Size::fill())
-                                            .children(lines),
-                                    ),
+                                    .height(260.),
                             )
                             .child(
                                 rect()
@@ -193,7 +181,11 @@ impl Component for LaunchErrorDialog {
                                     .width(Size::fill())
                                     .main_align(Alignment::End)
                                     .spacing(10.)
-                                    .child(copy_error_button(&self.message, copy_dispatch))
+                                    .child(copy_button(
+                                        self.message.clone(),
+                                        "Error message copied to your clipboard.",
+                                        copy_dispatch,
+                                    ))
                                     .child(
                                         Button::new()
                                             .primary()
@@ -206,33 +198,10 @@ impl Component for LaunchErrorDialog {
     }
 }
 
-fn copy_error_button(message: &str, dispatch: crate::Actions) -> impl IntoElement {
-    let message = message.to_string();
-    Button::new()
-        .secondary()
-        .on_press(move |_| {
-            if let Err(err) = freya::text_edit::Clipboard::set(message.clone()) {
-                tracing::warn!("clipboard copy failed: {err:?}");
-                dispatch
-                    .notify("Copy failed")
-                    .body("Could not copy the error to the clipboard.")
-                    .error()
-                    .send();
-            } else {
-                dispatch
-                    .notify("Copied to clipboard")
-                    .body("Error message copied to your clipboard.")
-                    .info()
-                    .icon(IconType::ClipboardCheck)
-                    .send();
-            }
-        })
-        .child(Icon::new(IconType::Copy01).size(14.))
-        .text("Copy")
-        .into_element()
-}
+pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
+    let alpha = alpha.clamp(0., 1.);
+    let scale = |a: u8| (f32::from(a) * alpha).round() as u8;
 
-pub(crate) fn appshell_overlay() -> Rect {
     rect()
         .width(Size::fill())
         .height(Size::fill())
@@ -245,53 +214,36 @@ pub(crate) fn appshell_overlay() -> Rect {
                 .width(Size::fill())
                 .background(
                     LinearGradient::new()
-                        .stop((Color::BLACK.with_a(100), 0.))
-                        .stop((colors::page().with_a(255), 95.0)),
+                        .stop((Color::BLACK.with_a(scale(100)), 0.))
+                        .stop((colors::page().with_a(scale(255)), 95.0)),
                 ),
         )
         .child(
             rect()
                 .height(Size::fill())
                 .width(Size::fill())
-                .background(colors::page()),
+                .background(colors::page().with_a(scale(255))),
         )
 }
 
 pub const HOME_BACKGROUND_ASSET: &str = "backgrounds/CavesAndCliffs.jpg";
 
-/// The cluster the home background is drawn from: the active one, or the first
-/// in the list before anything is active.
-fn home_cluster(clusters: &[Cluster], active: Option<ClusterId>) -> Option<&Cluster> {
-    active
-        .and_then(|id| clusters.iter().find(|c| c.id == id))
-        .or_else(|| clusters.first())
-}
-
 fn home_art(cluster: Option<&Cluster>) -> DynamicArt {
     cluster
         .map_or_else(DynamicArt::fallback, DynamicArt::for_cluster)
+        .max_edge(BACKGROUND_IMAGE_EDGE)
         .preview_edge(ART_PREVIEW_EDGE)
 }
 
-/// Loads the home background art as soon as the launcher is up, rather than
-/// when Home mounts.
-///
-/// The art is three async hops deep — the cluster list, then the version
-/// manifest holding its url, then the image itself — and none of them start
-/// until something subscribes. Mounted at the root, they overlap the rest of
-/// startup while the splash curtain is still up; left to Home, they run after
-/// it has lifted and show as the built-in fallback lingering on screen.
-///
-/// The queries are global and outlive this component's subscription, so Home
-/// finds them already settled and renders the real art on its first frame.
+/// Warms the home art at the root so its three async hops overlap startup behind the
+/// splash left to Home the fallback lingers on screen after the curtain lifts
 #[derive(PartialEq, Clone, Copy)]
 pub struct HomeArtPrefetch;
 
 impl Component for HomeArtPrefetch {
     fn render(&self) -> impl IntoElement {
-        // Before the launcher is ready every query errors out, and a settled
-        // error is not retried until a new subscriber mounts. Waiting means the
-        // inner component's hooks run once, when they can actually succeed.
+        // Before the launcher is ready every query errors and a settled error is not
+        // retried until a new subscriber mounts
         if !use_launcher().ready {
             return rect().into_element();
         }
@@ -308,8 +260,7 @@ impl Component for HomeArtWarm {
         let art = {
             let reader = clusters_query.read();
             let state = reader.state();
-            // No active cluster this early, so this is the first in the list —
-            // the same one `AppHomeBackground` picks.
+            // No active cluster this early so this picks the same one `AppHomeBackground` will
             let clusters = state.ok().map_or(&[][..], Vec::as_slice);
             home_art(home_cluster(clusters, None))
         };
@@ -330,8 +281,7 @@ impl Component for AppHomeBackground {
         let launcher = use_launcher();
         let splash = use_splash();
 
-        // Once the cluster list has settled and the startup fetch is done, the
-        // home view is populated, so let the splash curtain fade out.
+        // The home view is populated once these settle which releases the splash curtain
         let clusters_settled = matches!(
             &*clusters_query.read().state(),
             QueryStateData::Settled { .. }
@@ -436,7 +386,7 @@ impl Component for ParallaxArt {
         let parallax_enabled = self.parallax_enabled;
         let fade_opacity = self.fade_opacity;
 
-        let render_cb = RenderCallback::new(move |ctx: &mut CanvasContext| {
+        let render_cb = RenderCallback::new(move |ctx: &mut FillRenderContext| {
             let Some(image) = &image else {
                 return;
             };
@@ -534,10 +484,11 @@ impl Component for ParallaxArt {
                     .layer(Layer::Relative(0))
                     .opacity(fade_opacity)
                     .child(
-                        canvas(render_cb)
+                        rect()
                             .key(src_ptr as u64)
                             .width(Size::fill())
-                            .height(Size::fill()),
+                            .height(Size::fill())
+                            .background(render_cb),
                     ),
             )
     }
@@ -583,7 +534,7 @@ half4 main(float2 fragCoord) {
 }
 "#;
 
-pub(crate) fn gradient_overlay_radial() -> impl IntoElement {
+fn gradient_overlay_radial() -> impl IntoElement {
     let effect = use_hook(|| {
         freya::engine::prelude::RuntimeEffect::make_for_shader(VIGNETTE_SPOTLIGHT_SHADER, None)
             .expect("Failed to compile vignette shader")
@@ -617,12 +568,22 @@ pub(crate) fn gradient_overlay_radial() -> impl IntoElement {
         ))
 }
 
+pub(crate) fn navigate_back(at_home: bool) {
+    let router = RouterContext::get();
+    if router.can_go_back() {
+        router.go_back();
+    } else if !at_home {
+        let _ = router.push(Route::Home {});
+    }
+}
+
 pub(crate) fn back_button(destination: &str) -> impl IntoElement {
     Button::new()
         .ghost()
         .small()
         .on_press(|_| {
-            RouterContext::get().go_back();
+            // Only rendered off home so the history-empty fallback is reachable
+            navigate_back(false);
         })
         .margin(Gaps::new(0., 0., 0., 32.))
         .child(Icon::new(IconType::ArrowLeft).size(12.))

@@ -73,7 +73,7 @@ impl WidthCache {
     }
 }
 
-fn clean_line(raw: &str) -> String {
+pub fn clean_line(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut chars = raw.chars();
     let mut col = 0usize;
@@ -247,7 +247,7 @@ fn toolbar(title: String, streaming: bool, auto_scroll: State<bool>) -> impl Int
         .width(Size::fill())
         .cross_align(Alignment::Center)
         .content(Content::Flex)
-        .padding(Gaps::new(12., 20., 12., 20.))
+        .padding(Gaps::new(12., 20., 0., 20.))
         .spacing(12.)
         .child(
             label()
@@ -280,8 +280,7 @@ fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
         } else {
             colors::component_bg()
         })
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| auto_scroll.toggle())
         .child(Icon::new(IconType::ChevronDown).size(13.).color(if on {
             colors::brand()
@@ -456,7 +455,7 @@ fn scroll_body(args: BodyArgs) -> Element {
         .height(Size::px(content_h))
         .on_pointer_down(on_body_down)
         .on_capture_global_pointer_move(on_global_move)
-        .on_capture_global_pointer_press(on_global_release)
+        .on_capture_global_pointer_up(on_global_release)
         .on_global_key_down(on_key_down)
         .child(log_body(
             &lines[..],

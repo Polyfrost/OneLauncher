@@ -4,19 +4,20 @@ use std::str::FromStr;
 
 use chrono::Utc;
 use oneclient_db::dao::bundle as bundle_dao;
+use oneclient_db::dao::package_metadata as meta_dao;
 use oneclient_db::models::{BundleRow, NewBundle};
 use tokio::sync::RwLock;
 
 use crate::bundles::error::BundleError;
 use crate::bundles::manifest::{BundleManifest as RemoteBundleManifest, RemoteBundleRef};
-use crate::bundles::types::BundleArchive;
 use crate::bundles::polymrpack;
-use oneclient_net::RequestError;
-use oneclient_common::domain::GameLoader;
-use oneclient_common::paths;
-use oneclient_net::{EtagPolicy, fetch_cached};
+use crate::bundles::types::{BundleArchive, BundleFileKind};
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
+use oneclient_common::domain::{GameLoader, ProviderId};
+use oneclient_common::paths;
+use oneclient_net::RequestError;
+use oneclient_net::{EtagPolicy, fetch_cached};
 
 #[derive(Debug, Clone)]
 pub struct Bundle {
@@ -37,7 +38,7 @@ impl Bundle {
         let loader = GameLoader::from_repr(row.mc_loader as u8)
             .ok_or(BundleError::InvalidLoader(row.mc_loader))?;
 
-        let launcher_dir = paths::launcher_dir()?;
+        let launcher_dir = paths::data_dir()?;
         let path = launcher_dir.join(&row.disk_path);
 
         Ok(Self {
@@ -95,6 +96,11 @@ impl BundlesManager {
             .map(|entry| entry.remote_path)
             .collect();
 
+        if remote_paths.is_empty() {
+            tracing::error!("bundle catalog listed no bundles; keeping the previous catalog");
+            return Ok(false);
+        }
+
         bundle_dao::hide_bundles_not_in(&ctx.db, &remote_paths).await?;
 
         let bundles_root = paths::bundles_dir()?;
@@ -127,10 +133,6 @@ impl BundlesManager {
         Ok(true)
     }
 
-    /// Seeds the in-memory manifest cache for an archive already on disk.
-    ///
-    /// For callers that put a bundle there themselves (the dev helpers) and would
-    /// otherwise pay a re-read on first use.
     pub async fn cache_archive_manifest(
         &self,
         path: std::path::PathBuf,
@@ -148,21 +150,23 @@ impl BundlesManager {
     ) -> ContentResult<Vec<BundleArchive>> {
         let mut archives = Vec::new();
         for bundle in self.list_for(ctx, mc_version, loader).await? {
-            let manifest = self.manifest_for_archive(&bundle.path).await?;
+            let manifest = self.manifest_for_archive(ctx, &bundle.path).await?;
             archives.push(BundleArchive { bundle, manifest });
         }
         Ok(archives)
     }
 
-    #[tracing::instrument(level = "debug", skip(self))]
+    #[tracing::instrument(level = "debug", skip(self, ctx))]
     async fn manifest_for_archive(
         &self,
+        ctx: &ContentCtx,
         path: &Path,
     ) -> ContentResult<crate::bundles::types::BundleManifest> {
         if let Some(manifest) = self.archive_cache.read().await.get(path) {
             return Ok(manifest.clone());
         }
         let manifest = polymrpack::read_manifest_from_archive(path).await?;
+        record_external_metadata(&manifest, ctx).await;
         self.archive_cache
             .write()
             .await
@@ -178,8 +182,7 @@ impl BundlesManager {
         loader: GameLoader,
     ) -> ContentResult<Vec<Bundle>> {
         let rows =
-            bundle_dao::list_visible_for_version_loader(&ctx.db, mc_version, loader as i64)
-                .await?;
+            bundle_dao::list_visible_for_version_loader(&ctx.db, mc_version, loader as i64).await?;
 
         rows.into_iter()
             .map(Bundle::try_from_row)
@@ -211,7 +214,7 @@ impl BundlesManager {
         let meta = polymrpack::read_meta_from_archive(&disk_path).await?;
 
         let relative_disk_path = disk_path
-            .strip_prefix(paths::launcher_dir()?)
+            .strip_prefix(paths::data_dir()?)
             .map(|p| p.to_string_lossy().into_owned())
             .unwrap_or_else(|_| disk_path.to_string_lossy().into_owned());
 
@@ -239,24 +242,19 @@ impl BundlesManager {
         Ok(())
     }
 
-    /// Fetches the bundle catalog, deferring the ETag commit.
-    ///
-    /// The catalog is only half the payload: each entry then has to download.
-    /// Committing the ETag here would make the next sync answer 304 and skip
-    /// bundles that never actually arrived, so [`BundlesManager::sync`] writes
-    /// it only once every bundle has landed.
+    /// Defers the ETag commit
+    /// bundles download after the catalog so an early ETag would 304 past
+    /// bundles that never arrived
+    /// `sync` commits it once all land
     #[tracing::instrument(level = "debug", skip(ctx))]
-    async fn fetch_manifest(
-        ctx: &ContentCtx,
-    ) -> ContentResult<Option<FetchedManifest>> {
+    async fn fetch_manifest(ctx: &ContentCtx) -> ContentResult<Option<FetchedManifest>> {
         let manifest_path = paths::bundles_dir()?.join("metadata.json");
         let url = format!(
             "{}/oneclient/bundles/metadata.json",
             ctx.net.config().meta_url_base
         );
 
-        let Some(fetched) =
-            fetch_cached(&ctx.net, &url, &manifest_path, EtagPolicy::Defer).await?
+        let Some(fetched) = fetch_cached(&ctx.net, &url, &manifest_path, EtagPolicy::Defer).await?
         else {
             return Ok(None);
         };
@@ -275,12 +273,42 @@ impl Default for BundlesManager {
     }
 }
 
+#[tracing::instrument(level = "debug", skip_all, fields(bundle = %manifest.name))]
+async fn record_external_metadata(
+    manifest: &crate::bundles::types::BundleManifest,
+    ctx: &ContentCtx,
+) {
+    for bundle_file in &manifest.files {
+        let BundleFileKind::External {
+            file,
+            meta: Some(meta),
+            ..
+        } = &bundle_file.kind
+        else {
+            continue;
+        };
+
+        if let Err(err) = meta_dao::upsert_package_metadata(
+            &ctx.db,
+            ProviderId::Local as i64,
+            &file.sha1,
+            meta.name.as_deref().unwrap_or(&file.name),
+            meta.description.as_deref().unwrap_or_default(),
+            &meta.authors.join(", "),
+            meta.icon_url.as_deref(),
+        )
+        .await
+        {
+            tracing::warn!(file = %file.name, error = %err, "failed to record bundle file metadata");
+        }
+    }
+}
+
 struct FetchedManifest {
     manifest: RemoteBundleManifest,
     changed: bool,
     etag: Option<String>,
 }
-
 
 #[tracing::instrument(level = "debug", skip(ctx))]
 async fn download_bundle_if_needed(
@@ -308,7 +336,6 @@ async fn download_bundle_if_needed(
     .await
     .map_err(map_request_error)
 }
-
 
 fn map_request_error(err: RequestError) -> ContentError {
     match err {

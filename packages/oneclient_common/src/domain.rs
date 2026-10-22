@@ -56,6 +56,22 @@ impl ContentType {
         }
     }
 
+    // installed once for the whole launcher rather than per cluster
+    #[must_use]
+    pub const fn is_global(self) -> bool {
+        matches!(self, Self::ResourcePack | Self::Shader)
+    }
+
+    #[must_use]
+    pub const fn needs_mod_loader(self) -> bool {
+        matches!(self, Self::Mod | Self::Shader)
+    }
+
+    #[must_use]
+    pub const fn reloads_in_game(self) -> bool {
+        matches!(self, Self::ResourcePack | Self::Shader)
+    }
+
     pub fn from_folder_name(name: &str) -> Option<Self> {
         match name.to_lowercase().as_str() {
             "mods" | "mod" => Some(Self::Mod),
@@ -125,41 +141,21 @@ pub enum HashAlgorithm {
     Sha1,
 }
 
-/// What the launcher does when a package the user installed from the browser
-/// has a newer version at launch.
-///
-/// Bundle-provided content is not covered by this: bundles carry their own
-/// update flow, and the two must not fight over the same file.
-///
-/// The check itself always runs; this only decides what happens with the
-/// result, so the "out of date" markers in the package manager are populated
-/// no matter which variant is selected.
+/// Applies only to browser-installed packages bundles have their own update flow
+/// The check always runs regardless of variant so "out of date" markers stay populated
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    Hash,
-    Serialize,
-    Deserialize,
-    Default,
-    EnumIter,
-    StrumDisplay,
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumIter, StrumDisplay,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum PackageUpdateMode {
-    /// Apply every update as soon as it is found, with no modal.
     Automatic,
-    /// Never apply and never ask.
     Skip,
-    /// Ask, listing each package so the user decides one at a time.
     #[default]
     Prompt,
 }
 
 impl PackageUpdateMode {
-    /// Display order, defaulting variant first.
+    /// Display order defaulting variant first
     pub const ALL: &[Self] = &[Self::Prompt, Self::Automatic, Self::Skip];
 
     #[must_use]
@@ -171,7 +167,7 @@ impl PackageUpdateMode {
         }
     }
 
-    /// The value stored in the `setting_profiles.browser_update_mode` column.
+    /// The value stored in the `setting_profiles.browser_update_mode` column
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -192,6 +188,64 @@ impl PackageUpdateMode {
     }
 }
 
+/// Passed as `--graphicsBackend` which overrides the in-game setting
+///
+/// `Default` passes nothing so the game's own setting and crash fallback apply
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumIter, StrumDisplay,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphicsBackend {
+    #[default]
+    Default,
+    OpenGl,
+    Vulkan,
+}
+
+impl GraphicsBackend {
+    /// Display order defaulting variant first
+    pub const ALL: &[Self] = &[Self::Default, Self::OpenGl, Self::Vulkan];
+
+    /// The option only exists from 26.2 onwards snapshots and anything that does
+    /// not parse as a release version are left alone
+    #[must_use]
+    pub fn supported_on(mc_version: &str) -> bool {
+        crate::version::parse_mc_version(mc_version)
+            .and_then(|v| Some((v.major, v.minor?)))
+            .is_some_and(|version| version >= (26, 2))
+    }
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Default => "Default",
+            Self::OpenGl => "OpenGL",
+            Self::Vulkan => "Vulkan",
+        }
+    }
+
+    /// The value stored in the `setting_profiles.graphics_backend` column and
+    /// passed to `--graphicsBackend`
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::OpenGl => "opengl",
+            Self::Vulkan => "vulkan",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "default" => Some(Self::Default),
+            "opengl" => Some(Self::OpenGl),
+            "vulkan" => Some(Self::Vulkan),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, FromRepr)]
 #[repr(u8)]
 pub enum GameLoader {
@@ -202,7 +256,7 @@ pub enum GameLoader {
     NeoForge = 2,
     Quilt = 3,
     Fabric = 4,
-    LegacyFabric = 5,
+    Ornithe = 5,
 }
 
 impl GameLoader {
@@ -217,7 +271,7 @@ impl GameLoader {
             Self::NeoForge => interfrost::api::modded::CURRENT_NEOFORGE_FORMAT_VERSION,
             Self::Quilt => interfrost::api::modded::CURRENT_QUILT_FORMAT_VERSION,
             Self::Fabric => interfrost::api::modded::CURRENT_FABRIC_FORMAT_VERSION,
-            Self::LegacyFabric => interfrost::api::modded::CURRENT_LEGACY_FABRIC_FORMAT_VERSION,
+            Self::Ornithe => interfrost::api::modded::CURRENT_ORNITHE_FORMAT_VERSION,
         }
     }
 
@@ -225,12 +279,19 @@ impl GameLoader {
         match self {
             Self::Vanilla => String::from("minecraft"),
             Self::NeoForge => String::from("neo"),
+            Self::Ornithe => String::from("ornithe"),
             _ => self.to_string().to_lowercase().replace(['_', '.', ' '], ""),
         }
     }
 
     pub const fn modded_loaders() -> &'static [Self] {
-        &[Self::Forge, Self::NeoForge, Self::Quilt, Self::Fabric]
+        &[
+            Self::Forge,
+            Self::NeoForge,
+            Self::Quilt,
+            Self::Fabric,
+            Self::Ornithe,
+        ]
     }
 
     pub fn compatible_with(self, other: Self) -> bool {
@@ -240,7 +301,7 @@ impl GameLoader {
             Self::NeoForge => other == Self::NeoForge,
             Self::Quilt => matches!(other, Self::Quilt | Self::Fabric),
             Self::Fabric => other == Self::Fabric,
-            Self::LegacyFabric => other == Self::LegacyFabric,
+            Self::Ornithe => other == Self::Ornithe,
         }
     }
 
@@ -251,7 +312,16 @@ impl GameLoader {
             Self::NeoForge => "neoforge",
             Self::Quilt => "quilt",
             Self::Fabric => "fabric",
-            Self::LegacyFabric => "legacy-fabric",
+            Self::Ornithe => "ornithe",
+        }
+    }
+
+    /// `Display` presents Ornithe as Fabric; content pages name the loader a
+    /// project actually targets
+    pub fn real_name(self) -> String {
+        match self {
+            Self::Ornithe => String::from("Ornithe"),
+            _ => self.to_string(),
         }
     }
 }
@@ -267,7 +337,7 @@ impl FromStr for GameLoader {
                 "neoforge" | "neo" => Self::NeoForge,
                 "quilt" | "quiltloader" => Self::Quilt,
                 "fabric" | "fabricloader" => Self::Fabric,
-                "legacyfabric" => Self::LegacyFabric,
+                "ornithe" => Self::Ornithe,
                 _ => return Err(format!("'{s}' is not a valid game loader")),
             },
         )
@@ -282,16 +352,13 @@ impl Display for GameLoader {
             Self::NeoForge => "NeoForge",
             Self::Quilt => "Quilt",
             Self::Fabric => "Fabric",
-            Self::LegacyFabric => "Legacy Fabric",
+            Self::Ornithe => "Fabric",
         })
     }
 }
 
-/// A game window size.
-///
-/// Lives here rather than with the settings because both sides need it: the
-/// settings profile stores it, and the launch-argument builder turns it into
-/// `--width`/`--height`.
+/// Shared by the settings profile (which stores it) and the launch-argument
+/// builder (which turns it into `--width`/`--height`)
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Resolution {
     pub width: u32,
@@ -308,5 +375,41 @@ impl Resolution {
     #[must_use]
     pub const fn new(width: u32, height: u32) -> Self {
         Self { width, height }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn graphics_backend_is_supported_from_26_2() {
+        for version in ["26.2", "26.2.1", "26.3", "27.0"] {
+            assert!(GraphicsBackend::supported_on(version), "{version}");
+        }
+        for version in [
+            "26.1",
+            "26.1.2",
+            "1.21.5",
+            "1.8.9",
+            "26.2-snapshot-1",
+            "25w14a",
+            "",
+        ] {
+            assert!(!GraphicsBackend::supported_on(version), "{version}");
+        }
+    }
+
+    #[test]
+    fn a_display_name_is_not_a_metadata_path() {
+        assert_eq!(GameLoader::Ornithe.to_string(), "Fabric");
+        assert_eq!(GameLoader::Ornithe.real_name(), "Ornithe");
+        assert_eq!(GameLoader::Fabric.real_name(), "Fabric");
+        assert_eq!(GameLoader::Ornithe.get_format_name(), "ornithe");
+        assert_eq!(GameLoader::Vanilla.get_format_name(), "minecraft");
+        assert_eq!(GameLoader::NeoForge.get_format_name(), "neo");
+        assert_eq!(GameLoader::Fabric.get_format_name(), "fabric");
+        assert_eq!(GameLoader::Quilt.get_format_name(), "quilt");
+        assert_eq!(GameLoader::Forge.get_format_name(), "forge");
     }
 }

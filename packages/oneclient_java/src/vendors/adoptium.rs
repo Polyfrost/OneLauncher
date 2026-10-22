@@ -12,7 +12,6 @@ use crate::vendors::{JavaRuntimeProvider, JavaVendor};
 
 pub struct AdoptiumRuntimeProvider;
 
-// `/v3/info/available_releases`
 #[derive(Debug, Deserialize)]
 struct AdoptiumAvailableReleases {
     available_releases: Vec<u32>,
@@ -39,8 +38,7 @@ struct AdoptiumBinary {
 struct AdoptiumPackage {
     name: String,
     link: String,
-    /// Adoptium's `checksum` is SHA-256; the API has no algorithm field because
-    /// it has only ever published one.
+    /// Always SHA-256 the API has no algorithm field
     #[serde(default)]
     checksum: Option<String>,
     #[serde(default)]
@@ -59,7 +57,6 @@ impl JavaRuntimeProvider for AdoptiumRuntimeProvider {
         major: Option<u32>,
         net: &RequestClient,
     ) -> JavaResult<Vec<JavaPackage>> {
-        // fetched from `/v3/info/available_releases`.
         let (low, high) = match major {
             Some(major) => (major, major),
             None => {
@@ -117,8 +114,7 @@ impl JavaRuntimeProvider for AdoptiumRuntimeProvider {
     }
 }
 
-// One request spanning every GA major via a version range (`[low,high]`),
-// newest build per major, instead of one request per major.
+// A version range spans every GA major in one request instead of one per major
 fn adoptium_url(low: u32, high: u32) -> JavaResult<Url> {
     let range = format!("%5B{low}%2C{}%5D", high + 1);
 
@@ -129,8 +125,7 @@ fn adoptium_url(low: u32, high: u32) -> JavaResult<Url> {
     url.query_pairs_mut()
         .append_pair("os", ADOPTIUM_OS)
         .append_pair("architecture", ADOPTIUM_ARCH)
-        // Kits only: a JRE image is missing tooling the game and its mod
-        // loaders expect, so the launcher never installs one.
+        // Kits only a JRE lacks tooling mod loaders expect
         .append_pair("image_type", "jdk")
         .append_pair("jvm_impl", "hotspot")
         .append_pair("project", "jdk")
@@ -144,7 +139,7 @@ fn adoptium_url(low: u32, high: u32) -> JavaResult<Url> {
     Ok(url)
 }
 
-/// Adoptium alone spells 32-bit x86 `x32`.
+/// Adoptium alone spells 32-bit x86 `x32`
 const ADOPTIUM_ARCH: &str = match HostTarget::CURRENT.arch {
     HostArch::X86 => "x32",
     HostArch::X86_64 => "x64",
@@ -152,8 +147,8 @@ const ADOPTIUM_ARCH: &str = match HostTarget::CURRENT.arch {
     HostArch::Aarch64 => "aarch64",
 };
 
-/// Adoptium says `mac` where the other vendors say `macos`, and publishes musl
-/// builds under `alpine-linux` rather than `linux-musl`.
+/// Adoptium says `mac` where the other vendors say `macos` and publishes musl
+/// builds under `alpine-linux` rather than `linux-musl`
 const ADOPTIUM_OS: &str = match HostTarget::CURRENT.os {
     HostOs::Windows => "windows",
     HostOs::MacOs => "mac",

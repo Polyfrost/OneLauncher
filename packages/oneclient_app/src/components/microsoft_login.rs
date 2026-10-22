@@ -1,9 +1,9 @@
+use crate::state::LoginProgress;
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
 use freya::text_edit::Clipboard;
-use oneclient_core::LauncherError;
 use oneclient_auth::{AuthErrorGuidance, MicrosoftLoginSession};
-use crate::state::LoginProgress;
+use oneclient_core::LauncherError;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{
@@ -87,7 +87,6 @@ pub fn use_microsoft_login() -> MicrosoftLogin {
             return;
         }
 
-        // open the browser immediately
         platform::open_url(session.auth_url());
         finish.mutate(session.clone());
         pending_login.set(Some(session));
@@ -103,7 +102,7 @@ pub fn use_microsoft_login() -> MicrosoftLogin {
         }
     });
 
-    // is true once the flow has some status updates (just to ensure the user has seen the popup) and the flow is still in progress
+    // True once the flow reports progress ensuring the user has seen the popup
     let locked = status.as_ref().is_some_and(|s| s.current > 0);
     let in_flight = begin.read().state().is_loading() || finish.read().state().is_loading();
     let pending = in_flight && !*cancelled.read();
@@ -140,10 +139,16 @@ where
         MutationStateData::Settled { res: Err(err), .. }
         | MutationStateData::Loading {
             res: Some(Err(err)),
-        } => Some(AuthErrorInfo {
-            message: err.to_string(),
-            guidance: err.auth_guidance(),
-        }),
+        } => {
+            // Cancellation arrives as an error surfacing it would persist into the next sign-in
+            if err.is_login_cancelled() {
+                return None;
+            }
+            Some(AuthErrorInfo {
+                message: err.to_string(),
+                guidance: err.auth_guidance(),
+            })
+        }
         _ => None,
     }
 }
@@ -220,10 +225,7 @@ pub(crate) fn login_dialog(
                                         .spacing(18.)
                                         .child(browser_dialog_body(auth_url))
                                         .child(dialog_divider())
-                                        .child(device_code_dialog_body(
-                                            user_code,
-                                            verification_uri,
-                                        ))
+                                        .child(device_code_dialog_body(user_code, verification_uri))
                                         .child(status_row(status, error))
                                         .maybe_child(guidance.map(guidance_block)),
                                 ),
@@ -309,17 +311,13 @@ fn status_row(status: Option<LoginProgress>, error: Option<String>) -> impl Into
 }
 
 fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
-    let mut steps = rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(6.)
-        .child(
-            label()
-                .text("What you can do:")
-                .font_size(12.)
-                .font_weight(FontWeight::SEMI_BOLD)
-                .color(colors::fg_primary()),
-        );
+    let mut steps = rect().vertical().width(Size::fill()).spacing(6.).child(
+        label()
+            .text("What you can do:")
+            .font_size(12.)
+            .font_weight(FontWeight::SEMI_BOLD)
+            .color(colors::fg_primary()),
+    );
 
     for (index, step) in guidance.steps_to_fix.into_iter().enumerate() {
         steps = steps.child(

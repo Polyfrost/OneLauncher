@@ -3,6 +3,7 @@ use sqlx::SqlitePool;
 use crate::DbError;
 use crate::models::JavaVersionRow;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn insert(
     pool: &SqlitePool,
     absolute_path: &str,
@@ -10,24 +11,30 @@ pub async fn insert(
     version: &str,
     vendor: &str,
     os_arch: &str,
+    is_jdk: bool,
+    probe_version: u32,
 ) -> Result<JavaVersionRow, DbError> {
     sqlx::query_as!(
         JavaVersionRow,
         r#"
-		INSERT INTO java_versions (absolute_path, major, version, vendor, os_arch)
-		VALUES (?, ?, ?, ?, ?)
+		INSERT INTO java_versions (absolute_path, major, version, vendor, os_arch, is_jdk, probe_version)
+		VALUES (?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(absolute_path) DO UPDATE SET
 			major = excluded.major,
 			version = excluded.version,
 			vendor = excluded.vendor,
-			os_arch = excluded.os_arch
-		RETURNING absolute_path, major, version, vendor, os_arch
+			os_arch = excluded.os_arch,
+			is_jdk = excluded.is_jdk,
+			probe_version = excluded.probe_version
+		RETURNING absolute_path, major, version, vendor, os_arch, is_jdk as "is_jdk: bool", probe_version
 		"#,
         absolute_path,
         i64::from(major),
         version,
         vendor,
         os_arch,
+        is_jdk,
+        i64::from(probe_version),
     )
     .fetch_one(pool)
     .await
@@ -41,7 +48,8 @@ pub async fn get_by_path(
     let row = sqlx::query_as!(
         JavaVersionRow,
         r#"
-        SELECT absolute_path, major, version, vendor, os_arch FROM java_versions 
+        SELECT absolute_path, major, version, vendor, os_arch, is_jdk as "is_jdk: bool", probe_version
+        FROM java_versions
         WHERE absolute_path = ?
         "#,
         absolute_path,
@@ -59,7 +67,7 @@ pub async fn get_latest_by_major(
     let row = sqlx::query_as!(
         JavaVersionRow,
         r#"
-		SELECT absolute_path, major, version, vendor, os_arch
+		SELECT absolute_path, major, version, vendor, os_arch, is_jdk as "is_jdk: bool", probe_version
 		FROM java_versions
 		WHERE major = ?
 		ORDER BY version DESC
@@ -74,15 +82,27 @@ pub async fn get_latest_by_major(
 }
 
 pub async fn delete_by_path(pool: &SqlitePool, absolute_path: &str) -> Result<(), DbError> {
+    let mut tx = pool.begin().await?;
+
+    sqlx::query!(
+        r#"
+        UPDATE setting_profiles SET java_path = NULL WHERE java_path = ?
+        "#,
+        absolute_path,
+    )
+    .execute(&mut *tx)
+    .await?;
+
     sqlx::query!(
         r#"
         DELETE FROM java_versions WHERE absolute_path = ?
         "#,
         absolute_path,
     )
-    .execute(pool)
+    .execute(&mut *tx)
     .await?;
 
+    tx.commit().await?;
     Ok(())
 }
 
@@ -90,7 +110,8 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<JavaVersionRow>, DbError>
     let rows = sqlx::query_as!(
         JavaVersionRow,
         r#"
-        SELECT absolute_path, major, version, vendor, os_arch FROM java_versions 
+        SELECT absolute_path, major, version, vendor, os_arch, is_jdk as "is_jdk: bool", probe_version
+        FROM java_versions
         ORDER BY major DESC, version DESC
         "#,
     )
@@ -98,4 +119,37 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<JavaVersionRow>, DbError>
     .await?;
 
     Ok(rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn delete_clears_profile_reference() {
+        let pool = SqlitePool::connect("sqlite::memory:")
+            .await
+            .expect("in-memory sqlite");
+        sqlx::migrate!().run(&pool).await.expect("migrations run");
+
+        insert(&pool, "/jdk/bin/java", 21, "21.0.1", "Zulu", "x64", true, 1)
+            .await
+            .expect("insert java");
+        sqlx::query("INSERT INTO setting_profiles (name, java_path) VALUES ('p', '/jdk/bin/java')")
+            .execute(&pool)
+            .await
+            .expect("insert profile");
+
+        delete_by_path(&pool, "/jdk/bin/java")
+            .await
+            .expect("delete despite profile reference");
+
+        let java_path: Option<String> =
+            sqlx::query_scalar("SELECT java_path FROM setting_profiles WHERE name = 'p'")
+                .fetch_one(&pool)
+                .await
+                .expect("profile kept");
+        assert_eq!(java_path, None);
+        assert!(get_by_path(&pool, "/jdk/bin/java").await.unwrap().is_none());
+    }
 }

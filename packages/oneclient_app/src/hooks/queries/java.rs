@@ -14,9 +14,7 @@ impl QueryCapability for ListJavaRuntimesQuery {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state().map_err(|e| e.to_string())?;
-        state.java.list_runtimes()
-            .await
-            .map_err(|e| e.to_string())
+        state.java.list_runtimes().await.map_err(|e| e.to_string())
     }
 }
 
@@ -29,7 +27,7 @@ pub fn java_runtimes(query: &UseQuery<ListJavaRuntimesQuery>) -> Vec<JavaRuntime
 }
 
 pub async fn invalidate_java_queries() {
-    QueriesStorage::<ListJavaRuntimesQuery>::try_invalidate_all().await;
+    QueriesStorage::<ListJavaRuntimesQuery>::invalidate_all().await;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -47,7 +45,9 @@ impl QueryCapability for ProviderVersionsQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state().map_err(|e| e.to_string())?;
-        state.java.available_versions(&keys.vendor)
+        state
+            .java
+            .available_versions(&keys.vendor)
             .await
             .map_err(|e| e.to_string())
     }

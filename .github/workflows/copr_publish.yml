@@ -1,0 +1,60 @@
+name: Publish COPR Package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. oneclient-2.0.1)'
+        required: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Parse release tag
+        id: parse
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          if [[ "$TAG" =~ ^oneclient-(.+)$ ]]; then
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Tag '$TAG' does not match oneclient-*"
+            exit 1
+          fi
+
+  publish-bin:
+    needs: resolve
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install tooling
+        run: dnf -y install rpm-build rpmdevtools copr-cli bsdtar git
+
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Prepare spec
+        env:
+          VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          SPEC="distribution/copr/oneclient-bin.spec"
+          sed -i "s/^Version:.*/Version:        ${VERSION}/" "$SPEC"
+          sed -i "s/^Release:.*/Release:        1%{?dist}/" "$SPEC"
+
+      - name: Build SRPM
+        run: |
+          rpmdev-setuptree
+          spectool -g -R distribution/copr/oneclient-bin.spec
+          rpmbuild -bs distribution/copr/oneclient-bin.spec
+
+      - name: Submit to COPR
+        env:
+          COPR_CONFIG_CONTENT: ${{ secrets.COPR_CONFIG }}
+        run: |
+          mkdir -p ~/.config
+          printf '%s' "$COPR_CONFIG_CONTENT" > ~/.config/copr
+          chmod 600 ~/.config/copr
+          copr-cli build polyfrost/OneClient ~/rpmbuild/SRPMS/oneclient-bin-*.src.rpm

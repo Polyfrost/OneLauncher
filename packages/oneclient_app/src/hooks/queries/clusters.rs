@@ -23,11 +23,8 @@ pub fn use_clusters() -> UseQuery<ListClustersQuery> {
     use_query(Query::new(ListClustersKeys, ListClustersQuery))
 }
 
-/// The one cluster a route is about, pulled out of the list query.
-///
-/// There is no per-cluster query, since the list is always loaded and small, so
-/// this is a lookup, not a fetch. It is a hook because it subscribes to the
-/// list on the caller's behalf.
+/// A lookup not a fetch there is no per-cluster query the list is always
+/// loaded and small A hook because it subscribes to the list
 pub fn use_cluster(cluster_id: i64) -> Option<Cluster> {
     let clusters = super::state::settled_or_loading(&use_clusters()).unwrap_or_default();
     clusters.into_iter().find(|c| c.id == cluster_id)

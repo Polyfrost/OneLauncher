@@ -1,23 +1,23 @@
 use super::*;
 
 use oneclient_content::packages::ProviderId;
-use oneclient_content::packages::types::{ProjectDetail, ProjectMember};
+use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSummary};
 
-use crate::Actions;
 use crate::components::{Button, Icon, IconType};
+use crate::utils::shorten;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-#[allow(clippy::too_many_arguments)]
+const BUTTON_NAME_CHARS: usize = 22;
+
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
-    latest_version: Option<String>,
-    provider: ProviderId,
-    cluster_id: i64,
-    dispatch: Actions,
+    latest_version: Option<VersionSummary>,
+    installer: Installer,
     confirm: State<Option<String>>,
     installed: Option<Installed>,
     installing: bool,
+    waiting: bool,
 ) -> impl IntoElement {
     let Some(project) = project else {
         return rect()
@@ -27,13 +27,17 @@ pub(super) fn sidebar(
     };
 
     let project_id = project.id.clone();
-    // Nothing to do when the cluster already has exactly this version, and
-    // nothing to do twice while the install that was just started is running.
+    // Nothing to do when this version is already there or while an install is running
     let have_latest = match (&installed, &latest_version) {
-        (Some(installed), Some(latest)) => installed.is_version(latest),
+        (Some(installed), Some(latest)) => installed.is_version(&latest.version_id),
         _ => false,
     };
-    let can_install = latest_version.is_some() && !have_latest && !installing;
+    let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
+    let import_prompt = installer.import_prompt;
+    let enable = installed
+        .as_ref()
+        .and_then(Installed::disabled_bundled)
+        .and_then(|version| version.enable_action(installer.cluster_id));
 
     rect()
         .vertical()
@@ -48,22 +52,11 @@ pub(super) fn sidebar(
                 .overflow(Overflow::Clip)
                 .background(PANEL_BG)
                 .border(border_all_color(1., colors::component_border()))
-                // The badge rides on the artwork here for the same reason it
-                // does on a listing card: it belongs to the package, and it
-                // used to sit in a strip of its own between the card and the
-                // install button.
                 .child(
                     rect()
                         .width(Size::fill())
                         .overflow(Overflow::Clip)
-                        .child(PackageBanner::new(project.icon_url.clone(), 110.))
-                        .maybe_child(installed.as_ref().map(|installed| {
-                            rect()
-                                .position(Position::new_absolute().top(8.).left(8.))
-                                .layer(Layer::Relative(7))
-                                .child(installed_badge_overlay(installed.source))
-                                .into_element()
-                        })),
+                        .child(PackageBanner::new(project.icon_url.clone(), 110.)),
                 )
                 .child(
                     rect()
@@ -82,7 +75,7 @@ pub(super) fn sidebar(
                         .child(ProviderTag {
                             text: format!("{} on {}", project.content_type, project.provider),
                             provider: project.provider,
-                            url: provider_project_url(&project),
+                            url: project.web_url(),
                             confirm,
                         })
                         .maybe(!project.summary.is_empty(), |el| {
@@ -116,30 +109,57 @@ pub(super) fn sidebar(
                         ),
                 ),
         )
-        .child(
-            Button::new()
+        .child(match enable {
+            Some(action) => EnableButton {
+                action,
+                variant: EnableVariant::Sidebar,
+            }
+            .into_element(),
+            None => Button::new()
                 .primary()
                 .width(Size::fill())
                 .enabled(can_install)
-                .on_press(move |_| {
-                    if let Some(version_id) = latest_version.clone() {
-                        dispatch.install_package(
-                            cluster_id,
-                            provider,
-                            project_id.clone(),
-                            version_id,
-                        );
+                .on_press({
+                    let installer = installer.clone();
+                    move |_| {
+                        if let Some(latest) = latest_version.clone() {
+                            installer.install_latest(
+                                project_id.clone(),
+                                latest.version_id,
+                                latest.version_number,
+                            );
+                        }
                     }
                 })
                 .child(Icon::new(IconType::Download01).size(14.))
-                .text(if installing {
-                    "Installing..."
+                .text(if installing && installer.add_to_cluster {
+                    "Adding...".to_string()
+                } else if installing {
+                    "Installing...".to_string()
+                } else if installer.add_to_cluster {
+                    match &installer.cluster_name {
+                        Some(name) => format!("Add to {}", shorten(name, BUTTON_NAME_CHARS, "\u{2026}")),
+                        None => "Add to this instance".to_string(),
+                    }
+                } else if installer.modpack {
+                    "Install...".to_string()
                 } else if have_latest {
-                    "Latest installed"
+                    "Latest installed".to_string()
                 } else {
-                    "Install latest"
-                }),
-        )
+                    "Install latest".to_string()
+                })
+                .into_element(),
+        })
+        .maybe_child(import_prompt.map(|mut prompt| {
+            Button::new()
+                .secondary()
+                .width(Size::fill())
+                .enabled(!installing && !waiting)
+                .on_press(move |_| prompt.set(true))
+                .child(Icon::new(IconType::Plus).size(14.))
+                .text("Add to an instance")
+                .into_element()
+        }))
         .maybe(
             !project.members.is_empty() || !project.author.is_empty(),
             |el| el.child(authors_card(&project, confirm)),
@@ -151,27 +171,7 @@ pub(super) fn sidebar(
         .into_element()
 }
 
-/// The package's own page on the provider's site. Modrinth doesn't hand one
-/// out, so it's rebuilt from the slug; CurseForge already lists it as "Website".
-fn provider_project_url(project: &ProjectDetail) -> Option<String> {
-    match project.provider {
-        ProviderId::Modrinth => Some(format!(
-            "{}{}/{}",
-            ProviderId::Modrinth.website(),
-            project.content_type.modrinth_type(),
-            project.slug
-        )),
-        ProviderId::CurseForge => project
-            .links
-            .iter()
-            .find(|(label, _)| label == "Website")
-            .map(|(_, url)| url.clone()),
-        ProviderId::Local => None,
-    }
-}
-
-/// "Mod on Modrinth", linking out to the package's page there when the provider
-/// has one. Plain text otherwise, so a local package doesn't look clickable.
+/// Plain text when the provider has no page so a local package doesn't look clickable
 #[derive(PartialEq)]
 struct ProviderTag {
     text: String,
@@ -214,9 +214,8 @@ impl Component for ProviderTag {
                     .maybe(focused, |el| {
                         el.border(border_all_color(1., colors::brand()))
                     })
-                    .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                    .on_all_press(move |_| confirm.set(Some(url.clone())))
+                    .cursor(CursorIcon::Pointer)
+                    .on_press(move |_| confirm.set(Some(url.clone())))
             })
     }
 }
@@ -225,8 +224,7 @@ fn card(title: &str, rows: Vec<Element>) -> impl IntoElement {
     card_spaced(title, rows, 10.)
 }
 
-/// `card` with the gap between rows chosen by the caller: a list of one-line
-/// links reads better tight than the multi-line author and detail rows do.
+/// `card` with a caller-chosen row gap one-line link lists read better tight
 fn card_spaced(title: &str, rows: Vec<Element>, spacing: f32) -> impl IntoElement {
     rect()
         .vertical()
@@ -310,9 +308,8 @@ impl Component for AuthorRow {
                 el.a11y_id(a11y_id)
                     .a11y_focusable(true)
                     .a11y_role(AccessibilityRole::Button)
-                    .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                    .on_all_press(move |_| confirm.set(Some(url.clone())))
+                    .cursor(CursorIcon::Pointer)
+                    .on_press(move |_| confirm.set(Some(url.clone())))
             })
             .maybe(interactive && focused, |el| {
                 el.border(border_all_color(1., colors::brand()))
@@ -348,7 +345,7 @@ fn details_card(project: &ProjectDetail) -> impl IntoElement {
         rows.push(pill_detail("Versions", &project.game_versions));
     }
     if !project.loaders.is_empty() {
-        let loaders: Vec<String> = project.loaders.iter().map(|l| l.to_string()).collect();
+        let loaders: Vec<String> = project.loaders.iter().map(|l| l.real_name()).collect();
         rows.push(pill_detail("Loaders", &loaders));
     }
     if let Some(license) = &project.license {
@@ -448,9 +445,8 @@ impl Component for LinkRow {
             .maybe(focused, |el| {
                 el.border(border_all_color(1., colors::brand()))
             })
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(move |_| confirm.set(Some(url.clone())))
+            .cursor(CursorIcon::Pointer)
+            .on_press(move |_| confirm.set(Some(url.clone())))
             .child(
                 Icon::new(IconType::Link03)
                     .size(14.)

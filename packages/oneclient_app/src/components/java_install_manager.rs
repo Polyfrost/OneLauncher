@@ -8,6 +8,7 @@ use crate::ui::border_all_color;
 
 fn providers() -> Vec<(JavaVendor, &'static str)> {
     vec![
+        (JavaVendor::Microsoft, "Microsoft JDK (Fastest/Recommended)"),
         (JavaVendor::Zulu, "Azul Zulu"),
         (JavaVendor::Adoptium, "Eclipse Temurin"),
         (JavaVendor::Corretto, "Amazon Corretto"),
@@ -15,9 +16,7 @@ fn providers() -> Vec<(JavaVendor, &'static str)> {
     ]
 }
 
-/// Reusable "Install Java" picker. Lists downloadable runtimes per provider and
-/// calls `on_install` with the chosen `(vendor, major)`. When `suggested` is set,
-/// the matching major is pulled to the top and highlighted.
+/// Calls `on_install` with the chosen `(vendor, major)`
 #[derive(PartialEq)]
 pub struct JavaInstallManager {
     suggested: Option<u32>,
@@ -68,7 +67,6 @@ impl Component for JavaInstallManager {
         let versions_query = use_provider_versions(vendor.clone());
         let (mut versions, loading) = provider_versions(&versions_query);
 
-        // Pull the suggested major to the top so it reads as the default choice.
         if let Some(major) = suggested {
             versions.sort_by_key(|v| v.major != major);
         }

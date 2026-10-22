@@ -1,8 +1,10 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use futures_util::{StreamExt, stream};
 use interfrost::api::minecraft::{
-    Asset, AssetsIndex, DownloadType, Library, Os, Version, VersionInfo,
+    Asset, AssetsIndex, DownloadType, Library, LibraryDownload, Os, Version, VersionInfo,
 };
 use interfrost::api::modded::LoaderVersion;
 use reqwest::Method;
@@ -10,31 +12,40 @@ use reqwest::Method;
 use crate::download::{download_to_path, fetch_bytes_verified};
 use crate::rules::validate_rules;
 
-use crate::manifest::MetadataStore;
-use oneclient_common::os_ext::OsExt;
-use oneclient_common::domain::GameLoader;
-use oneclient_events::{Choice, GroupedProgressSession, Prompt, TaskCategory, TaskPhase};
-use oneclient_common::paths;
 use crate::McCtx;
 use crate::error::{McError, McResult};
+use crate::manifest::{MetadataStore, entry_matches_version, manifest_supports_version};
+use oneclient_common::domain::GameLoader;
+use oneclient_common::os_ext::OsExt;
+use oneclient_common::paths;
+use oneclient_events::{Choice, GroupedProgressSession, Prompt, TaskCategory, TaskPhase};
 
-/// Asset objects are tiny (median ~10 KiB) and latency-bound, so throughput
-/// scales with how many are in flight, not with bandwidth.
+/// Asset objects are tiny (median ~10 KiB) and latency-bound so throughput
+/// scales with how many are in flight not with bandwidth
 const ASSET_DOWNLOAD_CONCURRENCY: usize = 32;
-/// Libraries are larger and fewer; less fan-out is needed to saturate the link.
+/// Libraries are larger and fewer less fan-out is needed to saturate the link
 const LIBRARY_DOWNLOAD_CONCURRENCY: usize = 16;
 
-/// Everything a version still needs, with what is already on disk subtracted.
-///
-/// Computed once, up-front, so the size shown before a download starts and the
-/// denominators the progress bars fill against come from the same numbers.
-/// Without it the estimate assumes a full download while the bars discover
-/// their own total as files are added, so neither matches reality.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativesMode {
+    Extract,
+    LeaveInPlace,
+}
+
+#[derive(Debug, Clone)]
+pub struct PlannedLibrary {
+    pub library: Library,
+    pub artifact: bool,
+    pub natives: bool,
+}
+
+/// Computed up-front so the pre-download size estimate and the progress-bar
+/// denominators come from the same numbers
 #[derive(Debug, Default)]
 pub struct DownloadPlan {
     pub assets: Vec<(String, Asset)>,
     pub asset_bytes: u64,
-    pub libraries: Vec<Library>,
+    pub libraries: Vec<PlannedLibrary>,
     pub library_bytes: u64,
     pub client: bool,
     pub client_bytes: u64,
@@ -47,6 +58,11 @@ impl DownloadPlan {
     }
 }
 
+#[must_use]
+pub fn uses_legacy_assets(assets: &str) -> bool {
+    matches!(assets, "legacy" | "pre-1.6")
+}
+
 fn asset_object_path(dir: &Path, name: &str, hash: &str, legacy: bool) -> PathBuf {
     if legacy {
         dir.join(name.replace('/', std::path::MAIN_SEPARATOR_STR))
@@ -55,17 +71,9 @@ fn asset_object_path(dir: &Path, name: &str, hash: &str, legacy: bool) -> PathBu
     }
 }
 
-/// Whether `path` is present and as long as the manifest promised.
-///
-/// `exists()` and `metadata()` are the same `stat` syscall, so checking the
-/// length costs nothing over the presence check it replaces — and it catches the
-/// truncated files an interrupted download leaves behind, which is what nearly
-/// all download corruption looks like in practice. Comparing content instead
-/// would mean reading and hashing every one of ~5000 assets on every launch;
-/// that belongs behind an explicit repair action, not in the launch path.
-///
-/// An `expected` of 0 means the manifest did not say, so presence is all there
-/// is to go on.
+/// Size not hash catches interrupted-download truncation without reading
+/// ~5000 assets per launch
+/// `expected` of 0 means the manifest gave no size
 fn matches_expected_size(path: &Path, expected: u64) -> bool {
     match std::fs::metadata(path) {
         Ok(meta) => expected == 0 || meta.len() == expected,
@@ -73,8 +81,8 @@ fn matches_expected_size(path: &Path, expected: u64) -> bool {
     }
 }
 
-/// The artifact size a library's manifest entry promises, or 0 when it carries
-/// no artifact metadata (maven-coordinate libraries from loader manifests).
+/// 0 when the entry carries no artifact metadata (maven-coordinate libraries
+/// from loader manifests)
 fn library_artifact_size(lib: &Library) -> u64 {
     lib.downloads
         .as_ref()
@@ -82,25 +90,82 @@ fn library_artifact_size(lib: &Library) -> u64 {
         .map_or(0, |artifact| u64::from(artifact.size))
 }
 
-fn native_download_size(lib: &Library, java_arch: &str) -> u64 {
-    let Some((os_key, classifiers)) = lib.natives.as_ref().and_then(|natives| {
+pub(crate) fn has_main_artifact(lib: &Library) -> bool {
+    lib.downloads
+        .as_ref()
+        .is_none_or(|downloads| downloads.artifact.is_some())
+}
+
+fn native_download<'a>(lib: &'a Library, java_arch: &str) -> Option<&'a LibraryDownload> {
+    let (os_key, classifiers) = lib.natives.as_ref().and_then(|natives| {
         Some((
             natives.get(&Os::native_arch(java_arch))?,
             lib.downloads.as_ref()?.classifiers.as_ref()?,
         ))
-    }) else {
-        return 0;
-    };
+    })?;
 
-    let parsed = os_key.replace("${arch}", oneclient_common::constants::ARCH_WIDTH);
-    classifiers
-        .get(&parsed)
-        .map_or(0, |native| u64::from(native.size))
+    classifiers.get(&os_key.replace("${arch}", oneclient_common::constants::ARCH_WIDTH))
 }
 
-/// Stats every candidate file, so it runs on the blocking pool. An asset index
-/// is thousands of entries. Doing it here also means the download fan-outs no
-/// longer stat each file from inside a concurrency slot.
+fn native_download_size(lib: &Library, java_arch: &str) -> u64 {
+    native_download(lib, java_arch).map_or(0, |native| u64::from(native.size))
+}
+
+const NATIVES_RECEIPTS: &str = ".extracted";
+
+fn natives_receipt(natives_dir: &Path, lib: &Library) -> PathBuf {
+    natives_dir
+        .join(NATIVES_RECEIPTS)
+        .join(polyio::sanitize_path(lib.name.replace(':', "_")))
+}
+
+fn natives_extracted(natives_dir: &Path, lib: &Library, java_arch: &str) -> bool {
+    let Some(native) = native_download(lib, java_arch) else {
+        return true;
+    };
+
+    match std::fs::read_to_string(natives_receipt(natives_dir, lib)) {
+        Ok(recorded) => native.sha1.is_empty() || recorded.trim() == native.sha1,
+        Err(_) => false,
+    }
+}
+
+fn natives_classifier(lib: &Library) -> Option<&str> {
+    lib.name
+        .split(':')
+        .nth(3)
+        .filter(|classifier| classifier.starts_with("natives-"))
+}
+
+/// Pre-LWJGL3 macOS natives jars ship `.jnilib` so a single suffix would read
+/// an intact extraction as empty and repair it on every check
+const NATIVE_SUFFIXES: &[&str] = if cfg!(windows) {
+    &[".dll"]
+} else if cfg!(target_os = "macos") {
+    &[".dylib", ".jnilib"]
+} else {
+    &[".so"]
+};
+
+fn is_native_file(name: &str) -> bool {
+    NATIVE_SUFFIXES.iter().any(|suffix| name.ends_with(suffix))
+}
+
+fn carries_natives(lib: &Library, java_arch: &str) -> bool {
+    native_download(lib, java_arch).is_some() || natives_classifier(lib).is_some()
+}
+
+async fn record_natives(natives_dir: &Path, lib: &Library, sha1: &str) -> McResult<()> {
+    let path = natives_receipt(natives_dir, lib);
+    if let Some(parent) = path.parent() {
+        polyio::create_dir_all(parent).await?;
+    }
+    polyio::write(&path, sha1.as_bytes()).await?;
+    Ok(())
+}
+
+/// Stats thousands of files so it runs on the blocking pool and keeps the
+/// download fan-outs from stat-ing inside a concurrency slot
 #[tracing::instrument(skip_all, level = "debug")]
 pub async fn plan_downloads(
     version: &VersionInfo,
@@ -108,8 +173,9 @@ pub async fn plan_downloads(
     java_arch: &str,
     minecraft_updated: bool,
     force: bool,
+    natives_mode: NativesMode,
 ) -> McResult<DownloadPlan> {
-    let legacy = version.assets == "legacy";
+    let legacy = uses_legacy_assets(&version.assets);
     let asset_dir = if legacy {
         paths::legacy_assets_dir()?
     } else {
@@ -127,6 +193,7 @@ pub async fn plan_downloads(
 
     let libraries = version.libraries.clone();
     let java_arch = java_arch.to_string();
+    let natives_dir = paths::natives_dir()?.join(&version.id);
 
     tokio::task::spawn_blocking(move || {
         let mut plan = DownloadPlan::default();
@@ -151,21 +218,42 @@ pub async fn plan_downloads(
             }
 
             // A library whose coordinates don't resolve is kept in the plan so the
-            // download path still reports it as a failure rather than skipping it.
+            // download path still reports it as a failure rather than skipping it
             let Ok(artifact_path) = interfrost::utils::get_path_from_artifact(&lib.name) else {
-                plan.libraries.push(lib);
+                plan.libraries.push(PlannedLibrary {
+                    library: lib,
+                    artifact: true,
+                    natives: true,
+                });
                 continue;
             };
 
-            if !force
-                && matches_expected_size(&lib_dir.join(&artifact_path), library_artifact_size(&lib))
-            {
+            let artifact = has_main_artifact(&lib)
+                && (force
+                    || !matches_expected_size(
+                        &lib_dir.join(&artifact_path),
+                        library_artifact_size(&lib),
+                    ));
+            let natives = match natives_mode {
+                NativesMode::Extract => force || !natives_extracted(&natives_dir, &lib, &java_arch),
+                NativesMode::LeaveInPlace => false,
+            };
+
+            if !artifact && !natives {
                 continue;
             }
 
-            plan.library_bytes += library_artifact_size(&lib);
-            plan.library_bytes += native_download_size(&lib, &java_arch);
-            plan.libraries.push(lib);
+            if artifact {
+                plan.library_bytes += library_artifact_size(&lib);
+            }
+            if natives {
+                plan.library_bytes += native_download_size(&lib, &java_arch);
+            }
+            plan.libraries.push(PlannedLibrary {
+                library: lib,
+                artifact,
+                natives,
+            });
         }
 
         if let Some((path, size)) = client {
@@ -185,39 +273,188 @@ pub async fn plan_downloads(
     .map_err(Into::into)
 }
 
-/// What a hash-level sweep of the installed game files found.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct VerifyReport {
-    /// Files present on disk that were read and hashed.
     pub checked: usize,
-    /// Files whose contents did not match the manifest and were removed.
+    /// Mismatched the manifest and were removed
     pub corrupt: usize,
-    /// Files the manifest lists that were not on disk at all.
     pub missing: usize,
+    pub unverifiable: usize,
+    pub natives_unextracted: usize,
 }
 
 impl VerifyReport {
-    /// Whether anything needs re-downloading.
     #[must_use]
     pub fn needs_repair(&self) -> bool {
-        self.corrupt > 0 || self.missing > 0
+        self.corrupt > 0 || self.missing > 0 || self.unverifiable > 0
     }
 }
 
-/// Reads and hashes every installed game file, deleting the ones that do not
-/// match the manifest.
-///
-/// This is the expensive counterpart to the size check the launch path uses:
-/// it reads every asset and library off disk, which is why it belongs behind an
-/// explicit user action rather than in the pre-launch flow. Size catches the
-/// truncation an interrupted download leaves; only hashing catches a file whose
-/// bytes went bad some other way — a failing disk, a half-synced cloud folder,
-/// an antivirus rewrite, or a partial file written before the launcher started
-/// publishing downloads by rename.
-///
-/// Nothing is re-downloaded here. Corrupt files are removed so that the normal
-/// download path, which already knows how to fetch and verify exactly what is
-/// missing, repairs them on the next prepare.
+const ARCH_SEGMENTS: [&str; 4] = ["x64", "arm64", "x86", "arm32"];
+
+fn arch_segment(java_arch: &str) -> &'static str {
+    match java_arch {
+        "aarch64" => "arm64",
+        "arm" => "arm32",
+        "x86" => "x86",
+        _ => "x64",
+    }
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct NativesReport {
+    pub repairable: Vec<String>,
+    pub unsupported: Vec<String>,
+    pub unextracted: Vec<String>,
+}
+
+impl NativesReport {
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.repairable.is_empty() && self.unsupported.is_empty()
+    }
+}
+
+enum JarVerdict {
+    Usable,
+    WrongArch,
+    Unreadable,
+}
+
+async fn inspect_jar(path: &Path, java_arch: &str) -> JarVerdict {
+    let names = match polyio::zip_entry_names(path).await {
+        Ok(names) => names,
+        Err(err) => {
+            tracing::debug!(path = %path.display(), "could not read natives jar: {err}");
+            return JarVerdict::Unreadable;
+        }
+    };
+
+    let natives: Vec<&String> = names.iter().filter(|name| is_native_file(name)).collect();
+
+    if natives.is_empty() {
+        return JarVerdict::WrongArch;
+    }
+
+    let wanted = arch_segment(java_arch);
+    if natives
+        .iter()
+        .any(|name| name.split('/').any(|part| part == wanted))
+    {
+        return JarVerdict::Usable;
+    }
+
+    if natives
+        .iter()
+        .all(|name| !name.split('/').any(|part| ARCH_SEGMENTS.contains(&part)))
+    {
+        return JarVerdict::Usable;
+    }
+
+    JarVerdict::WrongArch
+}
+
+fn natives_family(lib: &Library) -> String {
+    let parts: Vec<&str> = lib.name.split(':').collect();
+    match parts.as_slice() {
+        [group, artifact, ..] => format!("{group}:{artifact}"),
+        _ => lib.name.clone(),
+    }
+}
+
+async fn any_native_unpacked(natives_dir: &Path) -> bool {
+    let Ok(mut entries) = polyio::read_dir(natives_dir).await else {
+        return false;
+    };
+
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        if is_native_file(&entry.file_name().to_string_lossy()) {
+            return true;
+        }
+    }
+
+    false
+}
+
+#[tracing::instrument(skip(version), fields(version_id = %version.id), level = "debug")]
+pub async fn check_natives(
+    version: &VersionInfo,
+    java_arch: &str,
+    minecraft_updated: bool,
+) -> McResult<NativesReport> {
+    let natives_dir = paths::natives_dir()?.join(&version.id);
+    let lib_dir = paths::libraries_dir()?;
+
+    let host_natives = natives_for_host(version, java_arch, minecraft_updated)?;
+
+    // One scan for the whole sweep the directory is the same for every library
+    let unpacked = any_native_unpacked(&natives_dir).await;
+
+    let mut families: Vec<(String, Vec<(JarVerdict, bool)>)> = Vec::new();
+    for lib in host_natives {
+        let extracted = native_download(lib, java_arch).is_some();
+        let verdict = if extracted {
+            if unpacked && natives_extracted(&natives_dir, lib, java_arch) {
+                JarVerdict::Usable
+            } else {
+                JarVerdict::Unreadable
+            }
+        } else {
+            match interfrost::utils::get_path_from_artifact(&lib.name) {
+                Ok(rel) => inspect_jar(&lib_dir.join(&rel), java_arch).await,
+                Err(_) => continue,
+            }
+        };
+
+        let family = natives_family(lib);
+        match families.iter_mut().find(|(name, _)| name == &family) {
+            Some((_, verdicts)) => verdicts.push((verdict, extracted)),
+            None => families.push((family, vec![(verdict, extracted)])),
+        }
+    }
+
+    let mut report = NativesReport::default();
+    for (family, verdicts) in families {
+        if verdicts
+            .iter()
+            .any(|(v, _)| matches!(v, JarVerdict::Usable))
+        {
+            continue;
+        }
+        if verdicts
+            .iter()
+            .any(|(v, _)| matches!(v, JarVerdict::Unreadable))
+        {
+            if verdicts
+                .iter()
+                .any(|(v, extracted)| *extracted && matches!(v, JarVerdict::Unreadable))
+            {
+                report.unextracted.push(family.clone());
+            }
+            report.repairable.push(family);
+        } else {
+            report.unsupported.push(family);
+        }
+    }
+
+    if !report.repairable.is_empty() {
+        tracing::warn!(libraries = ?report.repairable, "natives are missing or unreadable");
+    }
+    if !report.unsupported.is_empty() {
+        tracing::error!(
+            libraries = ?report.unsupported,
+            platform = %format!("{}-{java_arch}", oneclient_common::constants::TARGET_OS),
+            "natives are installed but hold nothing loadable on this platform"
+        );
+    }
+
+    Ok(report)
+}
+
+/// Expensive reads every asset and library so it belongs behind an explicit
+/// user action not the launch path
+/// Nothing is re-downloaded here corrupt files are deleted so the next prepare
+/// refetches them
 #[tracing::instrument(skip(progress, version, assets_index), fields(version_id = %version.id), level = "debug")]
 pub async fn verify_game_files(
     progress: &GroupedProgressSession,
@@ -225,8 +462,8 @@ pub async fn verify_game_files(
     assets_index: AssetsIndex,
     java_arch: &str,
     minecraft_updated: bool,
-) -> McResult<VerifyReport> {
-    let legacy = version.assets == "legacy";
+) -> McResult<(VerifyReport, Vec<PathBuf>)> {
+    let legacy = uses_legacy_assets(&version.assets);
     let asset_dir = if legacy {
         paths::legacy_assets_dir()?
     } else {
@@ -234,9 +471,8 @@ pub async fn verify_game_files(
     };
     let lib_dir = paths::libraries_dir()?;
 
-    // Assets are content-addressed by their own hash; libraries and the client
-    // carry theirs in the manifest.
     let mut targets: Vec<(PathBuf, String)> = Vec::new();
+    let mut unverifiable: Vec<PathBuf> = Vec::new();
 
     for (name, asset) in assets_index.objects {
         let path = asset_object_path(&asset_dir, &name, &asset.hash, legacy);
@@ -255,8 +491,8 @@ pub async fn verify_game_files(
         let Ok(artifact_path) = interfrost::utils::get_path_from_artifact(&lib.name) else {
             continue;
         };
-        // Only libraries whose manifest entry carries a hash can be checked;
-        // maven-coordinate entries from loader manifests publish none.
+        // Only libraries whose manifest entry carries a hash can be checked
+        // maven-coordinate entries from loader manifests publish none
         if let Some(artifact) = lib
             .downloads
             .as_ref()
@@ -264,6 +500,8 @@ pub async fn verify_game_files(
             && !artifact.sha1.is_empty()
         {
             targets.push((lib_dir.join(&artifact_path), artifact.sha1.clone()));
+        } else {
+            unverifiable.push(lib_dir.join(&artifact_path));
         }
     }
 
@@ -281,11 +519,20 @@ pub async fn verify_game_files(
     let started = std::time::Instant::now();
     let child_for_progress = child.clone();
 
-    // One blocking task for the whole sweep rather than one per file: hashing
-    // thousands of small assets is dominated by per-file overhead, and a
-    // spawn_blocking dispatch each would cost more than the hashing itself.
-    let report = tokio::task::spawn_blocking(move || {
+    // One blocking task for the whole sweep a spawn_blocking per small asset
+    // would cost more than the hashing itself
+    let (mut report, stale) = tokio::task::spawn_blocking(move || {
         let mut report = VerifyReport::default();
+        let mut stale: Vec<PathBuf> = Vec::new();
+
+        for path in unverifiable {
+            if path.is_file() {
+                stale.push(path);
+            } else {
+                report.missing += 1;
+            }
+        }
+        report.unverifiable = stale.len();
 
         for (index, (path, expected)) in targets.iter().enumerate() {
             if !path.is_file() {
@@ -294,7 +541,9 @@ pub async fn verify_game_files(
             }
 
             match polyio::sha1_file_sync(path) {
-                Ok(actual) if polyio::normalize_hash(&actual) == polyio::normalize_hash(expected) => {
+                Ok(actual)
+                    if polyio::normalize_hash(&actual) == polyio::normalize_hash(expected) =>
+                {
                     report.checked += 1;
                 }
                 Ok(actual) => {
@@ -311,37 +560,54 @@ pub async fn verify_game_files(
                     }
                 }
                 Err(err) => {
-                    // Unreadable is as good as corrupt: the game cannot use it
-                    // either. Removing it lets the download path replace it.
+                    // Unreadable is as good as corrupt removing it lets the
+                    // download path replace it
                     tracing::warn!(path = %path.display(), "could not hash: {err}");
                     report.corrupt += 1;
                     let _ = std::fs::remove_file(path);
                 }
             }
 
-            // Reporting every file would emit thousands of events; the child's
-            // own sampling is per-call, so throttle here instead.
+            // The child's sampling is per-call so throttle here or this emits
+            // thousands of events
             if index % 64 == 0 {
                 child_for_progress.set_progress(index as u64, Some(total.max(1)));
             }
         }
 
-        report
+        (report, stale)
     })
     .await
     .map_err(std::io::Error::other)?;
 
     child.finish();
 
+    // A version that ships nothing for this platform is a fact about the version
+    // not a verification failure so the rest of the sweep still counts
+    let natives = match check_natives(version, java_arch, minecraft_updated).await {
+        Ok(natives) => natives,
+        Err(err @ McError::NoNativesForPlatform { .. }) => {
+            tracing::error!("{err}");
+            NativesReport::default()
+        }
+        Err(err) => return Err(err),
+    };
+    report.missing += natives.repairable.len();
+    report.natives_unextracted = natives.unextracted.len();
+    report.checked += natives.repairable.len() + natives.unsupported.len();
+
     tracing::info!(
         checked = report.checked,
         corrupt = report.corrupt,
         missing = report.missing,
+        unverifiable = report.unverifiable,
+        natives_repairable = natives.repairable.len(),
+        natives_unsupported = natives.unsupported.len(),
         elapsed_ms = started.elapsed().as_millis() as u64,
         "verified game files"
     );
 
-    Ok(report)
+    Ok((report, stale))
 }
 
 #[tracing::instrument(skip_all)]
@@ -352,21 +618,31 @@ pub async fn download_minecraft(
     java_arch: &str,
     minecraft_updated: bool,
     force: bool,
+    natives_mode: NativesMode,
 ) -> McResult<()> {
     let started = std::time::Instant::now();
     let asset_index = download_assets_index(ctx, progress, version, force).await?;
-    let plan = plan_downloads(version, asset_index, java_arch, minecraft_updated, force).await?;
+    let plan = plan_downloads(
+        version,
+        asset_index,
+        java_arch,
+        minecraft_updated,
+        force,
+        natives_mode,
+    )
+    .await?;
 
     tracing::info!(
         version = %version.id,
         assets = plan.assets.len(),
         libraries = plan.libraries.len(),
         bytes = plan.total_bytes(),
+        ?natives_mode,
         "planned minecraft download"
     );
 
-    // Reserve each category's real total before any child appears, so the bars
-    // start at the right denominator instead of growing towards it.
+    // Reserve each category's real total before any child appears so the bars
+    // start at the right denominator instead of growing towards it
     progress.expect(
         TaskCategory::Assets,
         plan.assets.len() as u64,
@@ -377,27 +653,20 @@ pub async fn download_minecraft(
         plan.libraries.len() as u64,
         plan.library_bytes,
     );
-    progress.expect(TaskCategory::Client, u64::from(plan.client), plan.client_bytes);
+    progress.expect(
+        TaskCategory::Client,
+        u64::from(plan.client),
+        plan.client_bytes,
+    );
 
     let DownloadPlan {
         assets, libraries, ..
     } = plan;
 
     let (failed_assets, _client, failed_libraries) = tokio::try_join!(
-        download_assets(
-            ctx,
-            progress,
-            version.assets == "legacy",
-            assets,
-        ),
+        download_assets(ctx, progress, uses_legacy_assets(&version.assets), assets,),
         download_client(ctx, progress, version, force),
-        download_libraries(
-            ctx,
-            progress,
-            version.id.clone(),
-            libraries,
-            java_arch,
-        ),
+        download_libraries(ctx, progress, version.id.clone(), libraries, java_arch,),
     )?;
 
     confirm_incomplete_install(ctx, failed_assets, failed_libraries).await?;
@@ -411,24 +680,14 @@ pub async fn download_minecraft(
     Ok(())
 }
 
-/// What the user chose to do about files that could not be downloaded.
 enum IncompleteInstall {
     LaunchAnyway,
 }
 
-/// Asks whether to launch with files missing, when some could not be fetched.
-///
-/// Individual assets and libraries are downloaded concurrently and their
-/// failures counted rather than propagated, so that one unreachable file does
-/// not abandon the other four thousand. That count used to be logged and
-/// dropped, which meant an install that had visibly failed still went on to
-/// launch a game with missing textures, sounds, or a library the loader needs —
-/// and the user's only clue was a crash later.
-///
-/// Each of these already survived every retry `oneclient_net` makes, so this is
-/// not a transient blip. It is still the user's call: a
-/// handful of missing assets is often survivable, and refusing to launch would
-/// strand someone offline who just wants to play.
+/// Download failures are counted not propagated so one unreachable file does
+/// not abandon the other four thousand
+/// They already survived every retry but it stays the user's call refusing to
+/// launch would strand offline players
 #[tracing::instrument(skip(ctx), level = "debug")]
 pub async fn confirm_incomplete_install(
     ctx: &McCtx,
@@ -447,9 +706,6 @@ pub async fn confirm_incomplete_install(
     );
 
     let body = match (failed_assets, failed_libraries) {
-        // Libraries are on the classpath, so a missing one usually means the
-        // game will not start at all. Say so rather than implying it is as
-        // survivable as a missing sound file.
         (0, libraries) => format!(
             "{libraries} librar{} could not be downloaded after several attempts. \
              The game will most likely fail to start without {}.",
@@ -487,9 +743,8 @@ pub async fn confirm_incomplete_install(
                 Ok(())
             }
         },
-        // Dismissed, or the prompt could not be delivered. Both mean nobody
-        // agreed to launch a broken install, so the safe reading is to stop —
-        // a headless caller with no UI attached should not silently opt in.
+        // Dismissed or undeliverable nobody agreed to launch a broken install
+        // and a headless caller must not silently opt in
         Ok(None) => Err(McError::IncompleteInstallCancelled { failed }),
         Err(err) => {
             tracing::warn!("could not ask about the incomplete install: {err}");
@@ -498,11 +753,14 @@ pub async fn confirm_incomplete_install(
     }
 }
 
+static VERSION_INFO_REFRESHED: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
+
 #[tracing::instrument(skip(ctx, progress), level = "debug")]
 pub async fn download_version_info(
     ctx: &McCtx,
     progress: Option<&GroupedProgressSession>,
     version: &Version,
+    game_loader: GameLoader,
     loader: Option<&LoaderVersion>,
     force: bool,
 ) -> McResult<VersionInfo> {
@@ -510,29 +768,92 @@ pub async fn download_version_info(
         .map(|it| format!("{}-{}", version.id, it.id))
         .unwrap_or_else(|| version.id.clone());
 
-    let path = paths::versions_dir()?
-        .join(&version_id)
-        .join(format!("{version_id}.json"));
+    let dir = paths::versions_dir()?.join(&version_id);
+    let format_version = game_loader.get_format_version();
+    let stem = match loader {
+        Some(_) => format!("{version_id}.{}", game_loader.get_format_name()),
+        None => version_id.clone(),
+    };
+    let path = dir.join(version_info_file_name(&stem, format_version));
 
-    let result = if path.exists() && !force {
-        let data = polyio::read(&path).await?;
-        serde_json::from_slice(&data)?
+    let cached = if force {
+        None
     } else {
-        tracing::debug!(
-            version_id = %version_id,
-            "downloading Minecraft version metadata"
-        );
+        let mut cached = read_cached_version_info(&path).await;
+        if cached.is_none() && loader.is_some() {
+            let legacy = version_info_file_name(&version_id, format_version);
+            cached = read_cached_version_info(&dir.join(legacy))
+                .await
+                .filter(|info| profile_matches_loader(&info.libraries, game_loader));
+        }
+        cached
+    };
 
-        let version_url = version.url.parse().map_err(McError::Url)?;
-        let requester = ctx.net.clone();
-        let mut info: VersionInfo = match progress {
-            Some(progress) => {
-                progress
-                    .run_child(
-                        format!("Version metadata ({version_id})"),
-                        1,
-                        TaskCategory::Metadata,
-                        |child| {
+    if let Some(cached) = cached {
+        if loader.is_some()
+            && oneclient_net::status::current().online
+            && VERSION_INFO_REFRESHED.lock().unwrap().insert(path.clone())
+        {
+            let ctx = ctx.clone();
+            let version = version.clone();
+            let loader = loader.cloned();
+            let installed = processor_inputs(&cached);
+            tokio::spawn(async move {
+                let refresh = async {
+                    let info =
+                        fetch_version_info(&ctx, None, &version, loader.as_ref(), &version_id)
+                            .await?;
+                    if processor_inputs(&info) != installed {
+                        tracing::warn!(
+                            version_id = %version_id,
+                            "loader processors changed upstream, keeping cached profile until reinstall"
+                        );
+                        return Ok(());
+                    }
+                    polyio::write_json_atomic(&path, &info).await?;
+                    McResult::Ok(())
+                };
+                if let Err(err) = refresh.await {
+                    tracing::warn!(
+                        version_id = %version_id,
+                        "could not refresh version metadata, keeping cached copy: {err}"
+                    );
+                }
+            });
+        }
+        return Ok(cached);
+    }
+
+    let info = fetch_version_info(ctx, progress, version, loader, &version_id).await?;
+    polyio::write_json_atomic(&path, &info).await?;
+    if loader.is_some() {
+        VERSION_INFO_REFRESHED.lock().unwrap().insert(path);
+    }
+    Ok(info)
+}
+
+async fn fetch_version_info(
+    ctx: &McCtx,
+    progress: Option<&GroupedProgressSession>,
+    version: &Version,
+    loader: Option<&LoaderVersion>,
+    version_id: &str,
+) -> McResult<VersionInfo> {
+    tracing::debug!(
+        version_id = %version_id,
+        "downloading Minecraft version metadata"
+    );
+
+    let version_url = version.url.parse().map_err(McError::Url)?;
+    let requester = ctx.net.clone();
+    let mut info: VersionInfo = match progress {
+        Some(progress) => {
+            progress
+                .run_child(
+                    format!("Version metadata ({version_id})"),
+                    1,
+                    TaskCategory::Metadata,
+                    |child| {
                         let requester = requester.clone();
                         async move {
                             child.set_progress(0, Some(1));
@@ -543,26 +864,27 @@ pub async fn download_version_info(
                             child.set_progress(1, Some(1));
                             Ok::<VersionInfo, McError>(result)
                         }
-                    })
-                    .await?
-            }
-            None => requester
-                .send_json(Method::GET, version_url, None, &[])
-                .await
-                .map_err(McError::from)?,
-        };
+                    },
+                )
+                .await?
+        }
+        None => requester
+            .send_json(Method::GET, version_url, None, &[])
+            .await
+            .map_err(McError::from)?,
+    };
 
-        if let Some(loader) = loader {
-            let loader_url = loader.url.parse().map_err(McError::Url)?;
-            let requester = ctx.net.clone();
-            let partial: interfrost::api::modded::PartialVersionInfo = match progress {
-                Some(progress) => {
-                    progress
-                        .run_child(
-                            format!("Loader metadata ({version_id})"),
-                            1,
-                            TaskCategory::Metadata,
-                            |child| {
+    if let Some(loader) = loader {
+        let loader_url = loader.url.parse().map_err(McError::Url)?;
+        let requester = ctx.net.clone();
+        let partial: interfrost::api::modded::PartialVersionInfo = match progress {
+            Some(progress) => {
+                progress
+                    .run_child(
+                        format!("Loader metadata ({version_id})"),
+                        1,
+                        TaskCategory::Metadata,
+                        |child| {
                             let requester = requester.clone();
                             async move {
                                 child.set_progress(0, Some(1));
@@ -571,38 +893,32 @@ pub async fn download_version_info(
                                     .await
                                     .map_err(McError::from)?;
                                 child.set_progress(1, Some(1));
-                                Ok::<interfrost::api::modded::PartialVersionInfo, McError>(
-                                    result,
-                                )
+                                Ok::<interfrost::api::modded::PartialVersionInfo, McError>(result)
                             }
-                        })
-                        .await?
-                }
-                None => requester
-                    .send_json(Method::GET, loader_url, None, &[])
-                    .await
-                    .map_err(McError::from)?,
-            };
-
-            info = interfrost::api::modded::merge_partial_version(partial, info);
-
-            for lib in &mut info.libraries {
-                lib.name = lib.name.replace("${interpulse.gameVersion}", &version.id);
+                        },
+                    )
+                    .await?
             }
+            None => requester
+                .send_json(Method::GET, loader_url, None, &[])
+                .await
+                .map_err(McError::from)?,
+        };
+
+        let legacy_args = info.minecraft_arguments.clone();
+        info = interfrost::api::modded::merge_partial_version(partial, info);
+        if info.minecraft_arguments.is_none() {
+            info.minecraft_arguments = legacy_args;
         }
 
-        info.id.clone_from(&version_id);
-
-        if let Some(parent) = path.parent() {
-            polyio::create_dir_all(parent).await?;
+        for lib in &mut info.libraries {
+            lib.name = lib.name.replace("${interpulse.gameVersion}", &version.id);
         }
+    }
 
-        polyio::write(&path, &serde_json::to_vec(&info)?).await?;
+    info.id = version_id.to_owned();
 
-        info
-    };
-
-    Ok(result)
+    Ok(info)
 }
 
 #[tracing::instrument(skip_all, level = "debug")]
@@ -656,8 +972,8 @@ pub async fn download_assets(
 
     polyio::create_dir_all(&dir).await?;
 
-    // Objects are sharded into 256 fixed subdirectories; creating them once
-    // here saves a blocking-pool round trip on every one of the ~5000 files.
+    // Objects are sharded into 256 fixed subdirectories creating them once
+    // here saves a blocking-pool round trip on every one of the ~5000 files
     if !legacy {
         let dir = dir.clone();
         tokio::task::spawn_blocking(move || {
@@ -737,11 +1053,8 @@ pub async fn download_client(
         .join(&version.id)
         .join(format!("{}.jar", version.id));
 
-    // A size check, not a hash: this runs on every launch, and re-reading the
-    // whole ~25 MiB jar to hash it costs more than everything else in the
-    // pre-launch check combined. The jar is only ever published by a rename
-    // after its hash matched, so a wrong-but-right-length jar is not a state the
-    // launcher can produce.
+    // Size not hash the jar is only published by rename after its hash
+    // matched so a wrong-but-right-length jar is unreachable
     let expected_size = u64::from(client.size);
     if !force
         && let Ok(meta) = polyio::stat(&path).await
@@ -769,6 +1082,89 @@ pub async fn download_client(
     Ok(path)
 }
 
+fn natives_for_host<'a>(
+    version_info: &'a VersionInfo,
+    java_arch: &str,
+    minecraft_updated: bool,
+) -> Result<Vec<&'a Library>, McError> {
+    let mut selected = Vec::new();
+    let mut any_declared = false;
+
+    for lib in &version_info.libraries {
+        if natives_classifier(lib).is_some() || lib.natives.is_some() {
+            any_declared = true;
+        }
+
+        if let Some(rules) = &lib.rules
+            && !validate_rules(rules, java_arch, minecraft_updated)
+        {
+            continue;
+        }
+        if !lib.downloadable {
+            continue;
+        }
+        if carries_natives(lib, java_arch) {
+            selected.push(lib);
+        }
+    }
+
+    if any_declared && selected.is_empty() {
+        return Err(McError::NoNativesForPlatform {
+            version: version_info.id.clone(),
+            platform: format!("{}-{java_arch}", oneclient_common::constants::TARGET_OS),
+        });
+    }
+
+    Ok(selected)
+}
+
+#[tracing::instrument(skip(version_info), level = "debug")]
+pub fn natives_missing(
+    version_info: &VersionInfo,
+    java_arch: &str,
+    minecraft_updated: bool,
+) -> McResult<bool> {
+    let host_natives = natives_for_host(version_info, java_arch, minecraft_updated)?;
+    let natives_dir = paths::natives_dir()?.join(&version_info.id);
+
+    if !natives_dir.is_dir() {
+        tracing::warn!(path = %natives_dir.display(), "natives directory is missing; will repair");
+        return Ok(true);
+    }
+
+    let lib_dir = paths::libraries_dir()?;
+
+    for lib in host_natives {
+        if native_download(lib, java_arch).is_some() {
+            if !natives_extracted(&natives_dir, lib, java_arch) {
+                tracing::warn!(library = %lib.name, "natives were never extracted; will repair");
+                return Ok(true);
+            }
+            continue;
+        }
+
+        if !lib.include_in_classpath {
+            tracing::error!(
+                library = %lib.name,
+                "a natives jar was dropped from the classpath; the game will not find it"
+            );
+        }
+
+        if !has_main_artifact(lib) {
+            continue;
+        }
+        let Ok(rel) = interfrost::utils::get_path_from_artifact(&lib.name) else {
+            continue;
+        };
+        if !matches_expected_size(&lib_dir.join(&rel), library_artifact_size(lib)) {
+            tracing::warn!(library = %lib.name, "missing or truncated natives jar; will repair");
+            return Ok(true);
+        }
+    }
+
+    Ok(false)
+}
+
 #[tracing::instrument(skip(version_info), level = "debug")]
 pub fn libraries_missing(
     version_info: &VersionInfo,
@@ -785,6 +1181,9 @@ pub fn libraries_missing(
         if !lib.include_in_classpath {
             continue;
         }
+        if !has_main_artifact(lib) {
+            continue;
+        }
         let Ok(rel) = interfrost::utils::get_path_from_artifact(&lib.name) else {
             continue;
         };
@@ -793,17 +1192,12 @@ pub fn libraries_missing(
             return Ok(true);
         }
     }
-    Ok(false)
+
+    natives_missing(version_info, java_arch, minecraft_updated)
 }
 
-/// Whether the assets tree this version needs is absent.
-///
-/// The index names every asset the version expects and lives inside the assets
-/// directory, so checking both catches a deleted index and a deleted assets
-/// tree — the second being the case users actually hit.
-///
-/// Takes its paths rather than resolving them, so it can be tested without the
-/// process-global launcher directory.
+/// Takes its paths rather than resolving them so it can be tested without the
+/// process-global launcher directory
 fn assets_tree_missing(index: &Path, objects: &Path) -> bool {
     if !index.is_file() {
         tracing::warn!(path = %index.display(), "assets index is missing; will repair");
@@ -818,19 +1212,9 @@ fn assets_tree_missing(index: &Path, objects: &Path) -> bool {
     false
 }
 
-/// Whether anything the game needs to start is absent, so the launch path can
-/// repair before it tries rather than fail part-way through.
-///
-/// A cluster marked `Ready` skips preparation entirely on every later launch,
-/// so nothing re-checks its files. Delete the assets directory out from under a
-/// ready cluster and the launcher walks straight into an error naming a path
-/// inside its own metadata folder — which tells the user nothing they can act
-/// on. Checking here turns that into an automatic repair.
-///
-/// Only the coarse checks belong here: the assets tree as a whole, the client
-/// jar, and the classpath libraries. Verifying the ~5000 individual asset
-/// objects is the job of `download_minecraft`'s plan once a repair starts, and
-/// doing it on every launch would cost far more than it saves.
+/// A `Ready` cluster skips preparation so nothing else re-checks its files
+/// this turns a deleted assets tree into an automatic repair
+/// Coarse checks only per-object verification belongs to `download_minecraft`'s plan
 #[tracing::instrument(skip(version_info), level = "debug")]
 pub fn game_files_missing(
     version_info: &VersionInfo,
@@ -838,7 +1222,7 @@ pub fn game_files_missing(
     minecraft_updated: bool,
 ) -> McResult<bool> {
     let index = paths::assets_index_dir()?.join(format!("{}.json", version_info.asset_index.id));
-    let objects = if version_info.assets == "legacy" {
+    let objects = if uses_legacy_assets(&version_info.assets) {
         paths::legacy_assets_dir()?
     } else {
         paths::assets_object_dir()?
@@ -874,23 +1258,29 @@ pub async fn download_libraries(
     ctx: &McCtx,
     progress: &GroupedProgressSession,
     version: String,
-    libraries: Vec<Library>,
+    libraries: Vec<PlannedLibrary>,
     java_arch: &str,
 ) -> McResult<usize> {
-    if libraries.is_empty() {
-        return Ok(0);
-    }
-
     let lib_dir = paths::libraries_dir()?;
     let natives_dest = paths::natives_dir()?.join(&version);
     let java_arch = java_arch.to_string();
 
-    polyio::create_dir_all(&lib_dir).await?;
     polyio::create_dir_all(&natives_dest).await?;
+
+    if libraries.is_empty() {
+        return Ok(0);
+    }
+
+    polyio::create_dir_all(&lib_dir).await?;
 
     let started = std::time::Instant::now();
     let count = libraries.len();
-    let requests = stream::iter(libraries.into_iter().map(|lib| {
+    let requests = stream::iter(libraries.into_iter().map(|planned| {
+        let PlannedLibrary {
+            library: lib,
+            artifact: wants_artifact,
+            natives: wants_natives,
+        } = planned;
         let lib_dir = lib_dir.clone();
         let natives_dest = natives_dest.clone();
         let java_arch = java_arch.clone();
@@ -899,14 +1289,16 @@ pub async fn download_libraries(
         let progress = progress.clone();
 
         async move {
-            // Rule evaluation and the on-disk check already happened in
-            // `plan_downloads`; everything here is known to need fetching.
             let artifact_path = interfrost::utils::get_path_from_artifact(&lib.name)
                 .map_err(|_| McError::LibraryPath(lib.name.clone()))?;
             let path = lib_dir.join(&artifact_path);
 
             tokio::try_join!(
                 async {
+                    if !wants_artifact {
+                        return Ok::<_, McError>(());
+                    }
+
                     if let Some(interfrost::api::minecraft::LibraryDownloads {
                         artifact: Some(ref artifact),
                         ..
@@ -950,40 +1342,37 @@ pub async fn download_libraries(
                     Ok(())
                 },
                 async {
-                    if let Some((os_key, classifiers)) = lib.natives.as_ref().and_then(|natives| {
-                        Some((
-                            natives.get(&Os::native_arch(&java_arch))?,
-                            lib.downloads.as_ref()?.classifiers.as_ref()?,
-                        ))
-                    }) {
-                        let parsed = os_key.replace("${arch}", oneclient_common::constants::ARCH_WIDTH);
-                        if let Some(native) = classifiers.get(&parsed) {
-                            let data = fetch_bytes_verified(
-                                &requester,
-                                &events,
-                                &progress,
-                                format!("Natives {}", lib_short(&lib.name)),
-                                TaskCategory::Natives,
-                                u64::from(native.size),
-                                &native.url,
-                                &native.sha1,
-                            )
-                            .await?;
+                    if !wants_natives {
+                        return Ok(());
+                    }
 
-                            let extract = progress.child(
-                                format!("Natives {}", lib_short(&lib.name)),
-                                1,
-                                TaskCategory::Natives,
-                            );
-                            extract.set_phase(oneclient_events::TaskPhase::Extracting);
-                            polyio::unzip_bytes_filtered(
-                                data,
-                                Some(|name: &str| !name.starts_with("META-INF")),
-                                &natives_dest,
-                            )
-                            .await?;
-                            extract.finish();
-                        }
+                    if let Some(native) = native_download(&lib, &java_arch) {
+                        let data = fetch_bytes_verified(
+                            &requester,
+                            &events,
+                            &progress,
+                            format!("Natives {}", lib_short(&lib.name)),
+                            TaskCategory::Natives,
+                            u64::from(native.size),
+                            &native.url,
+                            &native.sha1,
+                        )
+                        .await?;
+
+                        let extract = progress.child(
+                            format!("Natives {}", lib_short(&lib.name)),
+                            1,
+                            TaskCategory::Natives,
+                        );
+                        extract.set_phase(oneclient_events::TaskPhase::Extracting);
+                        polyio::unzip_bytes_filtered(
+                            data,
+                            Some(|name: &str| !name.starts_with("META-INF")),
+                            &natives_dest,
+                        )
+                        .await?;
+                        record_natives(&natives_dest, &lib, &native.sha1).await?;
+                        extract.finish();
                     }
 
                     Ok(())
@@ -1026,16 +1415,73 @@ pub async fn get_loader_versions(
     }
 
     let manifest = metadata.get_modded_or_fetch(ctx, loader).await?;
+    if !manifest_supports_version(manifest, mc_version) {
+        return Ok(Vec::new());
+    }
+
     for entry in &manifest.game_versions {
-        let id = entry
-            .id
-            .replace("${interpulse.gameVersion}", mc_version)
-            .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version);
-        if id == mc_version {
+        if entry_matches_version(&entry.id, mc_version) && !entry.loaders.is_empty() {
             return Ok(entry.loaders.iter().map(|l| l.id.clone()).collect());
         }
     }
     Ok(Vec::new())
+}
+
+fn resolve_loader_from_manifest(
+    manifest: &interfrost::api::modded::Manifest,
+    mc_version: &str,
+    loader_version: Option<&str>,
+) -> (bool, Option<LoaderVersion>) {
+    if !manifest_supports_version(manifest, mc_version) {
+        return (false, None);
+    }
+
+    let mut saw_matching_game_version = false;
+
+    for entry in &manifest.game_versions {
+        if !entry_matches_version(&entry.id, mc_version) {
+            continue;
+        }
+
+        saw_matching_game_version = true;
+
+        if let Some(requested) = loader_version {
+            if let Some(found) = entry
+                .loaders
+                .iter()
+                .find(|loader_entry| loader_entry.id == requested)
+            {
+                return (saw_matching_game_version, Some(found.clone()));
+            }
+            continue;
+        }
+
+        if let Some(found) = entry
+            .loaders
+            .iter()
+            .find(|l| l.stable)
+            .or_else(|| entry.loaders.first())
+        {
+            return (saw_matching_game_version, Some(found.clone()));
+        }
+    }
+
+    (saw_matching_game_version, None)
+}
+
+#[tracing::instrument(skip(metadata), level = "debug")]
+pub fn get_loader_version_cached(
+    metadata: &MetadataStore,
+    mc_version: &str,
+    loader: GameLoader,
+    loader_version: Option<&str>,
+) -> McResult<Option<LoaderVersion>> {
+    if loader == GameLoader::Vanilla {
+        return Ok(None);
+    }
+
+    let manifest = metadata.get_modded(loader)?;
+    Ok(resolve_loader_from_manifest(manifest, mc_version, loader_version).1)
 }
 
 #[tracing::instrument(skip(metadata, ctx), level = "debug")]
@@ -1051,42 +1497,7 @@ pub async fn get_loader_version(
     }
 
     let resolve_from_manifest = |manifest: &interfrost::api::modded::Manifest| {
-        let mut saw_matching_game_version = false;
-
-        for entry in &manifest.game_versions {
-            if entry
-                .id
-                .replace("${interpulse.gameVersion}", mc_version)
-                .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
-                != mc_version
-            {
-                continue;
-            }
-
-            saw_matching_game_version = true;
-
-            if let Some(requested) = loader_version {
-                if let Some(found) = entry
-                    .loaders
-                    .iter()
-                    .find(|loader_entry| loader_entry.id == requested)
-                {
-                    return (saw_matching_game_version, Some(found.clone()));
-                }
-                continue;
-            }
-
-            if let Some(found) = entry
-                .loaders
-                .iter()
-                .find(|l| l.stable)
-                .or_else(|| entry.loaders.first())
-            {
-                return (saw_matching_game_version, Some(found.clone()));
-            }
-        }
-
-        (saw_matching_game_version, None)
+        resolve_loader_from_manifest(manifest, mc_version, loader_version)
     };
 
     let mut manifest = metadata.get_modded_or_fetch(ctx, loader).await?;
@@ -1104,9 +1515,14 @@ pub async fn get_loader_version(
         }
     }
 
+    let no_matching_version = || McError::NoMatchingVersion {
+        loader,
+        version: mc_version.to_string(),
+    };
+
     if let Some(requested) = loader_version {
         if !saw_matching {
-            return Err(McError::NoMatchingVersion);
+            return Err(no_matching_version());
         }
         return Err(McError::RequestedLoaderVersionNotFound {
             requested: requested.to_string(),
@@ -1116,7 +1532,7 @@ pub async fn get_loader_version(
     if saw_matching {
         Err(McError::NoMatchingLoader)
     } else {
-        Err(McError::NoMatchingVersion)
+        Err(no_matching_version())
     }
 }
 
@@ -1135,7 +1551,8 @@ pub async fn resolve_minecraft_version(
         version_index = manifest.versions.iter().position(|it| it.id == mc_version);
     }
 
-    let version_index = version_index.ok_or(McError::NoMatchingVersion)?;
+    let version_index =
+        version_index.ok_or_else(|| McError::InvalidVersion(mc_version.to_string()))?;
     let versions = &manifest.versions;
 
     Ok((
@@ -1154,6 +1571,61 @@ pub async fn get_game_versions(
     Ok(manifest.versions.clone())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GameVersionKind {
+    Release,
+    Snapshot,
+    Beta,
+    Alpha,
+}
+
+impl GameVersionKind {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Release => "Release",
+            Self::Snapshot => "Snapshot",
+            Self::Beta => "Beta",
+            Self::Alpha => "Alpha",
+        }
+    }
+
+    #[must_use]
+    pub const fn is_release(self) -> bool {
+        matches!(self, Self::Release)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameVersionInfo {
+    pub id: String,
+    pub kind: GameVersionKind,
+    pub released: chrono::DateTime<chrono::Utc>,
+}
+
+#[tracing::instrument(skip(metadata, ctx), level = "debug")]
+pub async fn get_version_ids(
+    metadata: &mut MetadataStore,
+    ctx: &McCtx,
+) -> McResult<Vec<GameVersionInfo>> {
+    use interfrost::api::minecraft::VersionType;
+
+    Ok(get_game_versions(metadata, ctx)
+        .await?
+        .into_iter()
+        .map(|version| GameVersionInfo {
+            id: version.id,
+            kind: match version.type_ {
+                VersionType::Release => GameVersionKind::Release,
+                VersionType::Snapshot => GameVersionKind::Snapshot,
+                VersionType::OldBeta => GameVersionKind::Beta,
+                VersionType::OldAlpha => GameVersionKind::Alpha,
+            },
+            released: version.release_time,
+        })
+        .collect())
+}
+
 #[tracing::instrument(skip(metadata, ctx), level = "debug")]
 pub async fn get_loaders_for_version(
     metadata: &mut MetadataStore,
@@ -1163,26 +1635,170 @@ pub async fn get_loaders_for_version(
     metadata.get_loaders_for_version(ctx, mc_version).await
 }
 
+#[tracing::instrument(skip(metadata, ctx), level = "debug")]
+pub async fn get_versions_for_loader(
+    metadata: &mut MetadataStore,
+    ctx: &McCtx,
+    loader: GameLoader,
+) -> McResult<Option<Vec<String>>> {
+    metadata.get_versions_for_loader(ctx, loader).await
+}
+
 #[must_use]
 pub fn is_version_updated(version_index: usize, versions: &[Version]) -> bool {
     version_index <= versions.iter().position(|x| x.id == "22w16a").unwrap_or(0)
+}
+
+async fn read_cached_version_info(path: &Path) -> Option<VersionInfo> {
+    if !path.exists() {
+        return None;
+    }
+
+    polyio::read_json::<VersionInfo>(path)
+        .await
+        .inspect_err(|err| {
+            tracing::warn!(
+                path = %path.display(),
+                "cached version metadata is unusable, redownloading: {err}"
+            );
+        })
+        .ok()
+}
+
+fn processor_inputs(info: &VersionInfo) -> Option<serde_json::Value> {
+    let processors = info.processors.as_deref().unwrap_or_default();
+    let refs = processors
+        .iter()
+        .flat_map(|it| &it.args)
+        .chain(
+            info.data
+                .iter()
+                .flatten()
+                .flat_map(|(_, it)| [&it.client, &it.server]),
+        )
+        .filter_map(|it| it.strip_prefix('[')?.strip_suffix(']'));
+    let named: BTreeSet<&str> = processors
+        .iter()
+        .flat_map(|it| std::iter::once(&it.jar).chain(&it.classpath))
+        .map(String::as_str)
+        .chain(refs)
+        .collect();
+    let libraries: Vec<&Library> = info
+        .libraries
+        .iter()
+        .filter(|lib| named.contains(lib.name.as_str()))
+        .collect();
+    serde_json::to_value((&info.processors, &info.data, libraries)).ok()
+}
+
+fn profile_matches_loader(libraries: &[Library], loader: GameLoader) -> bool {
+    let has = |group: &str| libraries.iter().any(|lib| lib.name.starts_with(group));
+    match loader {
+        GameLoader::Forge => !has("net.neoforged"),
+        GameLoader::NeoForge => has("net.neoforged"),
+        GameLoader::Fabric => !has("org.quiltmc") && !has("net.ornithemc"),
+        GameLoader::Quilt => has("org.quiltmc") && !has("net.ornithemc"),
+        GameLoader::Ornithe => has("net.ornithemc"),
+        GameLoader::Vanilla => true,
+    }
+}
+
+fn version_info_file_name(stem: &str, format_version: usize) -> String {
+    if format_version == 0 {
+        format!("{stem}.json")
+    } else {
+        format!("{stem}.v{format_version}.json")
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_format_bump_moves_the_cached_version_info() {
+        assert_eq!(version_info_file_name("1.8.9", 0), "1.8.9.json");
+        assert_eq!(
+            version_info_file_name("1.8.9-0.19.5", 1),
+            "1.8.9-0.19.5.v1.json"
+        );
+    }
+
+    #[test]
+    fn a_shared_legacy_profile_only_stands_in_for_its_own_loader() {
+        let libs = |names: &[&str]| -> Vec<Library> {
+            names
+                .iter()
+                .map(|name| serde_json::from_value(serde_json::json!({ "name": name })).unwrap())
+                .collect()
+        };
+        let forge = libs(&["net.minecraftforge:forge:1.20.1-47.1.106"]);
+        let neo = libs(&[
+            "net.minecraftforge:eventbus:6.0.5",
+            "net.neoforged:forge:1.20.1-47.1.106",
+        ]);
+        let fabric = libs(&["net.fabricmc:fabric-loader:0.16.0"]);
+        let quilt = libs(&[
+            "net.fabricmc:intermediary:1.20.1",
+            "org.quiltmc:quilt-loader:0.26.0",
+        ]);
+
+        assert!(profile_matches_loader(&forge, GameLoader::Forge));
+        assert!(!profile_matches_loader(&forge, GameLoader::NeoForge));
+        assert!(profile_matches_loader(&neo, GameLoader::NeoForge));
+        assert!(!profile_matches_loader(&neo, GameLoader::Forge));
+        assert!(profile_matches_loader(&fabric, GameLoader::Fabric));
+        assert!(!profile_matches_loader(&fabric, GameLoader::Quilt));
+        assert!(profile_matches_loader(&quilt, GameLoader::Quilt));
+        assert!(!profile_matches_loader(&quilt, GameLoader::Fabric));
+
+        let ornithe = libs(&[
+            "net.fabricmc:fabric-loader:0.16.5",
+            "net.ornithemc:calamus-intermediary:1.14.4",
+        ]);
+        assert!(profile_matches_loader(&ornithe, GameLoader::Ornithe));
+        assert!(!profile_matches_loader(&ornithe, GameLoader::Fabric));
+        assert!(!profile_matches_loader(&fabric, GameLoader::Ornithe));
+    }
+
+    #[test]
+    fn a_changed_processor_library_counts_as_changed_input() {
+        let info = |installer: &str, lwjgl: &str| -> VersionInfo {
+            serde_json::from_value(serde_json::json!({
+                "assetIndex": { "id": "1", "sha1": "", "size": 0, "totalSize": 0, "url": "" },
+                "assets": "1",
+                "downloads": {},
+                "id": "1.20.1-47.1.106",
+                "libraries": [
+                    { "name": "net.minecraftforge:installertools:1.3.0", "url": installer },
+                    { "name": "de.oceanlabs.mcp:mcp_config:1.20.1@zip", "url": installer },
+                    { "name": "org.lwjgl:lwjgl:3.3.1", "url": lwjgl },
+                ],
+                "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+                "minimumLauncherVersion": 0,
+                "releaseTime": "2023-06-12T00:00:00Z",
+                "time": "2023-06-12T00:00:00Z",
+                "type": "release",
+                "data": { "MCP": { "client": "[de.oceanlabs.mcp:mcp_config:1.20.1@zip]", "server": "" } },
+                "processors": [
+                    { "jar": "net.minecraftforge:installertools:1.3.0", "classpath": [], "args": ["{MCP}"] },
+                ],
+            }))
+            .unwrap()
+        };
+
+        let installed = processor_inputs(&info("a", "a"));
+        assert_eq!(processor_inputs(&info("a", "b")), installed);
+        assert_ne!(processor_inputs(&info("b", "a")), installed);
+    }
+
     fn scratch(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "oneclient-install-{tag}-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("oneclient-install-{tag}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
 
-    /// Lays out the assets tree a ready cluster is expected to have, returning
-    /// the index file and objects directory that `game_files_missing` checks.
     fn install_assets(dir: &Path) -> (PathBuf, PathBuf) {
         let indexes = dir.join("assets").join("indexes");
         let objects = dir.join("assets").join("objects");
@@ -1196,6 +1812,112 @@ mod tests {
     }
 
     #[test]
+    fn a_natives_only_library_has_no_main_jar_to_fetch() {
+        let natives_only = serde_json::from_str::<Library>(
+            r#"{
+                "name": "org.lwjgl.lwjgl:lwjgl-platform:2.9.4+legacyfabric.15",
+                "downloads": { "classifiers": { "natives-osx": { "sha1": "a", "size": 1, "url": "https://maven.legacyfabric.net/natives-osx.jar" } } },
+                "natives": { "osx-arm64": "natives-osx" }
+            }"#,
+        )
+        .unwrap();
+        let with_artifact = serde_json::from_str::<Library>(
+            r#"{
+                "name": "org.ow2.asm:asm:9.10.1",
+                "downloads": { "artifact": { "sha1": "b", "size": 2, "url": "https://maven.fabricmc.net/asm.jar" } }
+            }"#,
+        )
+        .unwrap();
+        let coordinates_only =
+            serde_json::from_str::<Library>(r#"{ "name": "net.fabricmc:fabric-loader:0.19.5" }"#)
+                .unwrap();
+
+        assert!(!has_main_artifact(&natives_only));
+        assert!(has_main_artifact(&with_artifact));
+        assert!(has_main_artifact(&coordinates_only));
+    }
+
+    #[test]
+    fn old_versions_keep_their_assets_in_a_flat_tree() {
+        assert!(uses_legacy_assets("pre-1.6"));
+        assert!(uses_legacy_assets("legacy"));
+        assert!(!uses_legacy_assets("1.8"));
+        assert!(!uses_legacy_assets("1.14"));
+    }
+
+    #[test]
+    fn a_manifest_without_a_wildcard_resolves_per_game_version() {
+        let manifest = serde_json::from_str::<interfrost::api::modded::Manifest>(
+            r#"{"gameVersions": [
+                { "id": "b1.7.3", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/b1.7.3/0.19.5.json", "stable": true },
+                    { "id": "0.19.4", "url": "https://meta.example/b1.7.3/0.19.4.json", "stable": false }
+                ]},
+                { "id": "1.8.9", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/1.8.9/0.19.5.json", "stable": true }
+                ]}
+            ]}"#,
+        )
+        .unwrap();
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "b1.7.3", None);
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.5");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "b1.7.3", Some("0.19.4"));
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.4");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.21", None);
+        assert!(!saw && resolved.is_none());
+    }
+
+    #[test]
+    fn a_wildcard_only_supplies_loaders_for_versions_the_manifest_lists() {
+        let manifest = serde_json::from_str::<interfrost::api::modded::Manifest>(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/0.19.5.json", "stable": true },
+                    { "id": "0.19.4", "url": "https://meta.example/0.19.4.json", "stable": false }
+                ]},
+                { "id": "1.21.1", "stable": true, "loaders": [] },
+                { "id": "1.14", "stable": true, "loaders": [] }
+            ]}"#,
+        )
+        .unwrap();
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.21.1", None);
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.5");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.14", Some("0.19.4"));
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.4");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.8.9", None);
+        assert!(
+            !saw && resolved.is_none(),
+            "fabric publishes no intermediary below 1.14 so the wildcard must not claim 1.8.9"
+        );
+    }
+
+    #[test]
+    fn a_manifest_that_is_only_a_wildcard_still_covers_every_version() {
+        let manifest = serde_json::from_str::<interfrost::api::modded::Manifest>(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/0.19.5.json", "stable": true }
+                ]}
+            ]}"#,
+        )
+        .unwrap();
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.8.9", None);
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.5");
+    }
+
+    #[test]
     fn a_complete_assets_tree_needs_no_repair() {
         let dir = scratch("assets-ok");
         let (index, objects) = install_assets(&dir);
@@ -1206,13 +1928,10 @@ mod tests {
     }
 
     #[test]
-    fn a_deleted_assets_directory_asks_for_a_repair() {
-        // The reported failure: a cluster marked Ready whose assets tree was
-        // deleted underneath it. Nothing re-checked it, so the launch walked
-        // into "No such file or directory" on the launcher's own metadata path.
-        let dir = scratch("assets-deleted");
+    fn a_deleted_objects_directory_asks_for_a_repair() {
+        let dir = scratch("assets-no-objects");
         let (index, objects) = install_assets(&dir);
-        std::fs::remove_dir_all(dir.join("assets")).unwrap();
+        std::fs::remove_dir_all(&objects).unwrap();
 
         assert!(assets_tree_missing(&index, &objects));
 
@@ -1232,9 +1951,8 @@ mod tests {
 
     #[test]
     fn an_index_that_is_a_directory_is_not_mistaken_for_a_file() {
-        // `create_dir_all` on a path that should hold a file is a shape the
-        // launcher has produced before; `is_file` has to be the check, not
-        // `exists`.
+        // The launcher has produced this shape before so the check must be
+        // `is_file` not `exists`
         let dir = scratch("assets-index-dir");
         let (index, objects) = install_assets(&dir);
         std::fs::remove_file(&index).unwrap();
@@ -1260,8 +1978,6 @@ mod tests {
     fn size_check_rejects_a_truncated_file() {
         let dir = scratch("size-short");
         let file = dir.join("object.bin");
-        // What a dropped connection used to leave behind, and what every later
-        // launch used to skip over because the path merely existed.
         std::fs::write(&file, b"0123").unwrap();
 
         assert!(!matches_expected_size(&file, 10));
@@ -1278,9 +1994,12 @@ mod tests {
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
-    /// A context whose bus is drained by the test, so `ask` has somebody to
-    /// talk to. No request is ever sent through the client.
-    fn test_ctx() -> (McCtx, tokio::sync::mpsc::UnboundedReceiver<oneclient_events::Event>) {
+    /// The bus is drained by the test so `ask` has somebody to talk to no
+    /// request is ever sent through the client
+    fn test_ctx() -> (
+        McCtx,
+        tokio::sync::mpsc::UnboundedReceiver<oneclient_events::Event>,
+    ) {
         let (events, rx) = oneclient_events::EventBus::channel();
         let net = oneclient_net::RequestClient::new(oneclient_net::NetConfig::default())
             .expect("a client");
@@ -1307,13 +2026,12 @@ mod tests {
 
         let asking = tokio::spawn(async move { confirm_incomplete_install(&ctx, 3, 0).await });
 
-        let Some(oneclient_events::Event::Notification(
-            oneclient_events::Notification::Prompt(request),
-        )) = rx.recv().await
+        let Some(oneclient_events::Event::Notification(oneclient_events::Notification::Prompt(
+            request,
+        ))) = rx.recv().await
         else {
             panic!("expected a prompt");
         };
-        // Assets alone should not claim the game will fail to start.
         assert!(request.body.contains("3 game assets"), "{}", request.body);
         request
             .reply
@@ -1329,19 +2047,13 @@ mod tests {
 
         let asking = tokio::spawn(async move { confirm_incomplete_install(&ctx, 0, 2).await });
 
-        let Some(oneclient_events::Event::Notification(
-            oneclient_events::Notification::Prompt(request),
-        )) = rx.recv().await
+        let Some(oneclient_events::Event::Notification(oneclient_events::Notification::Prompt(
+            request,
+        ))) = rx.recv().await
         else {
             panic!("expected a prompt");
         };
-        // Missing libraries are a classpath problem, so the wording should be
-        // blunter than it is for assets.
-        assert!(
-            request.body.contains("fail to start"),
-            "{}",
-            request.body
-        );
+        assert!(request.body.contains("fail to start"), "{}", request.body);
         request.reply.send(None).unwrap();
 
         let err = asking.await.unwrap().expect_err("dismissal must cancel");
@@ -1354,8 +2066,6 @@ mod tests {
     #[tokio::test]
     async fn a_bus_with_nobody_listening_cancels_rather_than_launching() {
         let (ctx, rx) = test_ctx();
-        // A headless run with no UI attached: nobody can agree to a broken
-        // install, so it must not proceed by default.
         drop(rx);
 
         let err = confirm_incomplete_install(&ctx, 1, 1)
@@ -1373,8 +2083,7 @@ mod tests {
         let file = dir.join("object.bin");
         std::fs::write(&file, b"anything").unwrap();
 
-        // Maven-coordinate libraries carry no artifact metadata, so presence is
-        // all there is to check.
+        // Maven-coordinate libraries carry no artifact metadata
         assert!(matches_expected_size(&file, 0));
         assert!(!matches_expected_size(&dir.join("nope.bin"), 0));
 

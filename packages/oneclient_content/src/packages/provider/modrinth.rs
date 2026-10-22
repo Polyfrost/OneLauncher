@@ -10,22 +10,26 @@ use serde::de::DeserializeOwned;
 
 use super::PackageProvider;
 use super::http::fetch_json_with_headers;
+use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
-use oneclient_common::constants::MODRINTH_API_URL;
-use oneclient_net::{RequestClient, RequestError};
-use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::types::{
-    DependencyKind, GalleryImage, PackageBody, Page, ProjectDetail, ProjectMember, ProjectSummary,
-    ReleaseType, SearchFilters, VersionDependency, VersionDetail, VersionFile, VersionLookup,
-    VersionSummary,
+    DependencyKind, GalleryImage, InstalledPackage, PackageBody, Page, ProjectDetail,
+    ProjectMember, ProjectSummary, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
+    VersionFile, VersionLookup, VersionSummary,
 };
-use crate::ctx::ContentCtx;
+use oneclient_common::constants::MODRINTH_API_URL;
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
+use oneclient_net::{RequestClient, RequestError};
 
 pub struct ModrinthProvider;
 
 fn v2(path: &str) -> String {
     format!("{MODRINTH_API_URL}/v2{path}")
+}
+
+fn v3(path: &str) -> String {
+    format!("{MODRINTH_API_URL}/v3{path}")
 }
 
 async fn fetch_json<T: DeserializeOwned>(
@@ -34,7 +38,14 @@ async fn fetch_json<T: DeserializeOwned>(
     url: impl reqwest::IntoUrl,
     body: Option<serde_json::Value>,
 ) -> Result<T, RequestError> {
-    fetch_json_with_headers(client, method, url, body, &client.config().modrinth_headers()).await
+    fetch_json_with_headers(
+        client,
+        method,
+        url,
+        body,
+        &client.config().modrinth_headers(),
+    )
+    .await
 }
 
 #[async_trait::async_trait]
@@ -60,11 +71,14 @@ impl PackageProvider for ModrinthProvider {
             let mut params = url.query_pairs_mut();
             params.append_pair("limit", &limit.to_string());
             params.append_pair("offset", &offset.to_string());
-            params.append_pair("query", filters.query.as_deref().unwrap_or_default());
+            params.append_pair("query", &filters.normalized_query());
 
             let mut groups: Vec<Vec<String>> = Vec::new();
             if let Some(content_type) = filters.content_type {
-                groups.push(vec![format!("project_type:{}", content_type.modrinth_type())]);
+                groups.push(vec![format!(
+                    "project_type:{}",
+                    content_type.modrinth_type()
+                )]);
             }
             if let Some(versions) = &filters.game_versions {
                 let group: Vec<String> = versions.iter().map(|v| format!("versions:{v}")).collect();
@@ -87,7 +101,10 @@ impl PackageProvider for ModrinthProvider {
                 }
             }
             if !groups.is_empty() {
-                params.append_pair("facets", &serde_json::to_string(&groups).unwrap_or_default());
+                params.append_pair(
+                    "facets",
+                    &serde_json::to_string(&groups).unwrap_or_default(),
+                );
             }
 
             if let Some(sort) = filters.sort {
@@ -117,12 +134,15 @@ impl PackageProvider for ModrinthProvider {
             game_versions: Vec<String>,
             downloads: u64,
             icon_url: Option<String>,
+            #[serde(default)]
+            featured_gallery: Option<String>,
+            #[serde(default)]
+            gallery: Vec<String>,
             date_created: DateTime<Utc>,
             date_modified: DateTime<Utc>,
         }
 
-        let response: Response =
-            fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
+        let response: Response = fetch_json(&ctx.net, Method::GET, url.as_str(), None).await?;
 
         Ok(Page {
             offset: response.offset,
@@ -140,6 +160,10 @@ impl PackageProvider for ModrinthProvider {
                     summary: h.description,
                     author: h.author,
                     icon_url: h.icon_url,
+                    banner_url: h
+                        .featured_gallery
+                        .or_else(|| h.gallery.into_iter().next())
+                        .filter(|url| !url.is_empty()),
                     downloads: h.downloads,
                     created: h.date_created,
                     updated: h.date_modified,
@@ -160,17 +184,22 @@ impl PackageProvider for ModrinthProvider {
         project_id: &str,
         ctx: &ContentCtx,
     ) -> ContentResult<ProjectDetail> {
-        let project_url = v2(&format!("/project/{project_id}"));
-        let members_url = v2(&format!("/project/{project_id}/members"));
-        let project_fut =
-            fetch_json::<ModrinthProject>(&ctx.net, Method::GET, &project_url, None);
-        let members_fut =
-            fetch_json::<Vec<ModrinthMember>>(&ctx.net, Method::GET, &members_url, None);
-        let (raw, members) = tokio::join!(project_fut, members_fut);
+        Ok(fetch_modrinth_project(&ctx.net, project_id).await?.0)
+    }
 
-        let mut detail = raw?.into_detail();
-        if let Ok(members) = members {
-            apply_modrinth_members(&mut detail, members);
+    #[tracing::instrument(level = "debug", skip(self, ctx))]
+    async fn get_project_with_body(
+        &self,
+        project_id: &str,
+        ctx: &ContentCtx,
+    ) -> ContentResult<ProjectDetail> {
+        let (mut detail, org_id) = fetch_modrinth_project(&ctx.net, project_id).await?;
+        if let Some(id) = org_id {
+            let org = fetch_modrinth_organizations(&ctx.net, std::slice::from_ref(&id))
+                .await
+                .ok()
+                .and_then(|mut orgs| orgs.remove(&id));
+            apply_modrinth_organization(&mut detail, org);
         }
         Ok(detail)
     }
@@ -186,9 +215,11 @@ impl PackageProvider for ModrinthProvider {
             name: String,
             project_type: String,
         }
-        let tags: Vec<Tag> =
-            fetch_json(&ctx.net, Method::GET, &v2("/tag/category"), None).await?;
-        let want = content_type.modrinth_type();
+        let tags: Vec<Tag> = fetch_json(&ctx.net, Method::GET, &v2("/tag/category"), None).await?;
+        let want = match content_type {
+            ContentType::DataPack => ContentType::Mod.modrinth_type(),
+            other => other.modrinth_type(),
+        };
         Ok(tags
             .into_iter()
             .filter(|t| t.project_type == want)
@@ -205,16 +236,10 @@ impl PackageProvider for ModrinthProvider {
         if project_ids.is_empty() {
             return Ok(Vec::new());
         }
-        let ids = project_ids
-            .iter()
-            .map(|id| format!("\"{id}\""))
-            .collect::<Vec<_>>()
-            .join(",");
-
         let raw: Vec<ModrinthProject> = fetch_json(
             &ctx.net,
             Method::GET,
-            &v2(&format!("/projects?ids=[{ids}]")),
+            &v2(&format!("/projects?ids={}", ids_param(project_ids))),
             None,
         )
         .await?;
@@ -226,18 +251,34 @@ impl PackageProvider for ModrinthProvider {
             .into_iter()
             .collect();
 
-        let mut members_by_team = fetch_modrinth_team_members(&ctx.net, &team_ids)
-            .await
-            .unwrap_or_default();
+        let org_ids: Vec<String> = raw
+            .iter()
+            .filter_map(|p| p.organization.clone())
+            .collect::<HashSet<_>>()
+            .into_iter()
+            .collect();
+
+        let (members_by_team, orgs) = tokio::join!(
+            fetch_modrinth_team_members(&ctx.net, &team_ids),
+            fetch_modrinth_organizations(&ctx.net, &org_ids),
+        );
+        let mut members_by_team = members_by_team.unwrap_or_default();
+        let orgs = orgs.unwrap_or_default();
 
         Ok(raw
             .into_iter()
             .map(|project| {
                 let team_id = project.team.clone();
+                let org = project
+                    .organization
+                    .as_ref()
+                    .and_then(|id| orgs.get(id))
+                    .cloned();
                 let mut detail = project.into_detail();
                 if let Some(members) = members_by_team.remove(&team_id) {
                     apply_modrinth_members(&mut detail, members);
                 }
+                apply_modrinth_organization(&mut detail, org);
                 detail
             })
             .collect())
@@ -345,13 +386,8 @@ impl PackageProvider for ModrinthProvider {
             "algorithm": "sha1"
         });
 
-        let fetched: HashMap<String, ModrinthVersion> = fetch_json(
-            &ctx.net,
-            Method::POST,
-            &v2("/version_files"),
-            Some(body),
-        )
-        .await?;
+        let fetched: HashMap<String, ModrinthVersion> =
+            fetch_json(&ctx.net, Method::POST, &v2("/version_files"), Some(body)).await?;
 
         let mut out = HashMap::new();
         for identity in identities {
@@ -362,6 +398,130 @@ impl PackageProvider for ModrinthProvider {
 
         Ok(out)
     }
+
+    #[tracing::instrument(level = "debug", skip(self, packages, ctx))]
+    async fn latest_for_game_version(
+        &self,
+        packages: &[InstalledPackage],
+        mc_version: &str,
+        loader: GameLoader,
+        ctx: &ContentCtx,
+    ) -> ContentResult<HashMap<String, VersionDetail>> {
+        let mut groups: HashMap<ContentType, Vec<String>> = HashMap::new();
+        for package in packages {
+            groups
+                .entry(package.content_type)
+                .or_default()
+                .push(package.hash.clone());
+        }
+
+        let mut out = HashMap::new();
+        for (content_type, hashes) in groups {
+            let loaders = modrinth_loader_filter(content_type, loader);
+
+            let releases =
+                latest_version_files(ctx, &hashes, mc_version, loaders.as_deref(), true).await?;
+            let missing: Vec<String> = hashes
+                .iter()
+                .filter(|hash| !releases.contains_key(*hash))
+                .cloned()
+                .collect();
+            out.extend(releases);
+
+            if !missing.is_empty() {
+                out.extend(
+                    latest_version_files(ctx, &missing, mc_version, loaders.as_deref(), false)
+                        .await?,
+                );
+            }
+        }
+
+        Ok(out)
+    }
+}
+
+fn modrinth_loader_filter(content_type: ContentType, loader: GameLoader) -> Option<Vec<String>> {
+    if content_type != ContentType::Mod || !loader.is_modded() {
+        return None;
+    }
+    Some(
+        [
+            GameLoader::Forge,
+            GameLoader::NeoForge,
+            GameLoader::Quilt,
+            GameLoader::Fabric,
+            GameLoader::Ornithe,
+        ]
+        .into_iter()
+        .filter(|other| loader.compatible_with(*other))
+        .map(|other| other.modrinth_name().to_string())
+        .collect(),
+    )
+}
+
+async fn latest_version_files(
+    ctx: &ContentCtx,
+    hashes: &[String],
+    mc_version: &str,
+    loaders: Option<&[String]>,
+    releases_only: bool,
+) -> ContentResult<HashMap<String, VersionDetail>> {
+    if hashes.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let mut body = serde_json::json!({
+        "hashes": hashes,
+        "algorithm": "sha1",
+        "game_versions": [mc_version],
+    });
+    if let Some(loaders) = loaders {
+        body["loaders"] = serde_json::json!(loaders);
+    }
+    if releases_only {
+        body["version_types"] = serde_json::json!(["release"]);
+    }
+
+    let fetched: HashMap<String, ModrinthVersion> = fetch_json(
+        &ctx.net,
+        Method::POST,
+        &v2("/version_files/update"),
+        Some(body),
+    )
+    .await?;
+
+    Ok(fetched
+        .into_iter()
+        .map(|(hash, version)| (polyio::normalize_hash(&hash), version.into()))
+        .collect())
+}
+
+fn ids_param(ids: &[String]) -> String {
+    let quoted = ids
+        .iter()
+        .map(|id| format!("\"{id}\""))
+        .collect::<Vec<_>>()
+        .join(",");
+    format!("[{quoted}]")
+}
+
+async fn fetch_modrinth_project(
+    client: &RequestClient,
+    project_id: &str,
+) -> ContentResult<(ProjectDetail, Option<String>)> {
+    let project_url = v2(&format!("/project/{project_id}"));
+    let members_url = v2(&format!("/project/{project_id}/members"));
+    let project_fut = fetch_json::<ModrinthProject>(client, Method::GET, &project_url, None);
+    let members_fut = fetch_json::<Vec<ModrinthMember>>(client, Method::GET, &members_url, None);
+    let (raw, members) = tokio::join!(project_fut, members_fut);
+
+    let mut raw = raw?;
+    let org_id = raw.organization.take();
+    let mut detail = raw.into_detail();
+    if let Ok(members) = members {
+        apply_modrinth_members(&mut detail, members);
+    }
+    Ok((detail, org_id))
 }
 
 #[tracing::instrument(level = "debug", skip(client, team_ids))]
@@ -372,15 +532,10 @@ async fn fetch_modrinth_team_members(
     if team_ids.is_empty() {
         return Ok(HashMap::new());
     }
-    let ids = team_ids
-        .iter()
-        .map(|id| format!("\"{id}\""))
-        .collect::<Vec<_>>()
-        .join(",");
     let teams: Vec<Vec<ModrinthMember>> = fetch_json(
         client,
         Method::GET,
-        &v2(&format!("/teams?ids=[{ids}]")),
+        &v2(&format!("/teams?ids={}", ids_param(team_ids))),
         None,
     )
     .await?;
@@ -393,11 +548,51 @@ async fn fetch_modrinth_team_members(
         .collect())
 }
 
+#[tracing::instrument(level = "debug", skip(client, org_ids))]
+async fn fetch_modrinth_organizations(
+    client: &RequestClient,
+    org_ids: &[String],
+) -> Result<HashMap<String, ProjectMember>, RequestError> {
+    #[derive(Deserialize)]
+    struct Organization {
+        id: String,
+        slug: String,
+        name: String,
+        #[serde(default)]
+        icon_url: Option<String>,
+    }
+
+    if org_ids.is_empty() {
+        return Ok(HashMap::new());
+    }
+    let orgs: Vec<Organization> = fetch_json(
+        client,
+        Method::GET,
+        &v3(&format!("/organizations?ids={}", ids_param(org_ids))),
+        None,
+    )
+    .await?;
+    Ok(orgs
+        .into_iter()
+        .map(|org| {
+            let member = ProjectMember {
+                url: Some(format!("https://modrinth.com/organization/{}", org.slug)),
+                name: org.name,
+                role: "Organization".to_string(),
+                avatar_url: org.icon_url,
+            };
+            (org.id, member)
+        })
+        .collect())
+}
+
 #[derive(Deserialize)]
 struct ModrinthProject {
     id: String,
     slug: String,
     team: String,
+    #[serde(default)]
+    organization: Option<String>,
     project_type: String,
     title: String,
     description: String,
@@ -424,13 +619,14 @@ struct ModrinthProject {
 #[derive(Deserialize)]
 struct ModrinthGalleryItem {
     url: String,
-    /// The image as it was uploaded. `url` is Modrinth's own re-encoded copy,
-    /// small enough to look soft once it is blown up to fill a gallery tile, so
-    /// this is preferred where the API hands it out.
+    /// Original upload
+    /// `url` is Modrinth's re-encoded copy and looks soft when scaled up
     #[serde(default)]
     raw_url: Option<String>,
     #[serde(default)]
     title: Option<String>,
+    #[serde(default)]
+    featured: bool,
 }
 
 #[derive(Deserialize)]
@@ -460,7 +656,10 @@ impl ModrinthMember {
 }
 
 fn apply_modrinth_members(detail: &mut ProjectDetail, members: Vec<ModrinthMember>) {
-    detail.members = members.into_iter().map(ModrinthMember::into_member).collect();
+    detail.members = members
+        .into_iter()
+        .map(ModrinthMember::into_member)
+        .collect();
     if detail.author.is_empty() {
         detail.author = detail
             .members
@@ -470,6 +669,14 @@ fn apply_modrinth_members(detail: &mut ProjectDetail, members: Vec<ModrinthMembe
             .map(|m| m.name.clone())
             .unwrap_or_default();
     }
+}
+
+fn apply_modrinth_organization(detail: &mut ProjectDetail, org: Option<ProjectMember>) {
+    let Some(org) = org else { return };
+    if detail.author.is_empty() {
+        detail.author = org.name.clone();
+    }
+    detail.members.insert(0, org);
 }
 
 #[derive(Deserialize)]
@@ -482,7 +689,7 @@ struct ModrinthLicense {
 impl ModrinthProject {
     fn into_detail(self) -> ProjectDetail {
         let body = if let Some(raw) = self.body {
-            PackageBody::Raw(raw)
+            PackageBody::raw(raw)
         } else if let Some(url) = self.body_url {
             PackageBody::Url(url)
         } else {
@@ -519,11 +726,9 @@ impl ModrinthProject {
                 .gallery
                 .into_iter()
                 .map(|g| GalleryImage {
-                    url: g
-                        .raw_url
-                        .filter(|url| !url.is_empty())
-                        .unwrap_or(g.url),
+                    url: g.raw_url.filter(|url| !url.is_empty()).unwrap_or(g.url),
                     title: g.title.filter(|t| !t.is_empty()),
+                    featured: g.featured,
                 })
                 .collect(),
             license,
@@ -650,6 +855,7 @@ impl From<ModrinthVersion> for VersionSummary {
                 .collect(),
             downloads: v.downloads,
             file_size,
+            dependencies: v.dependencies.into_iter().map(Into::into).collect(),
         }
     }
 }
@@ -686,13 +892,11 @@ fn parse_release_type(s: &str) -> ReleaseType {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// Guards the field names against the shape Modrinth actually serves; a
-    /// rename here silently empties the dependency list.
+    /// A field rename here silently empties the dependency list
     #[test]
     fn version_carries_its_dependencies() {
         let raw = serde_json::json!({

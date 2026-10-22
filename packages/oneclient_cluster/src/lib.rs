@@ -1,14 +1,6 @@
-//! Cluster records and everything that belongs to one: the settings profile it
-//! launches with, and the logs and screenshots it writes.
-//!
-//! Not the whole of cluster management, though. Preparing a cluster for launch,
-//! provisioning from the remote catalog and applying version migrations all need
-//! Java, Minecraft metadata, the package store and the versions manifest; they
-//! compose this crate rather than living in it, and stay in `oneclient_core`.
-//!
-//! It carries no event bus: nothing here reports progress or asks questions. It
-//! does take a network client, for the one thing that needs it: uploading a log
-//! to mclo.gs.
+//! Launch prep catalog provisioning and version migrations stay in
+//! `oneclient_core` they need Java MC metadata and the package store
+//! No event bus here the network client exists only for mclo.gs uploads
 
 mod cluster;
 mod error;
@@ -17,14 +9,19 @@ mod options;
 mod profile;
 mod stage;
 
+pub mod identity;
 pub mod logs;
+pub mod naming;
 pub mod profiles;
 pub mod screenshots;
+pub mod worlds;
 
-pub use cluster::{Cluster, ClusterLinkTarget};
+pub use cluster::{Cluster, ClusterLinkTarget, encode_tags, remove_mods_link};
 pub use error::{ClusterError, ClusterResult};
-pub use manager::ClusterManager;
+pub use identity::InstanceIdentity;
+pub use manager::{ClusterManager, SyncReport, unlinked_mods_repair_id};
+pub use oneclient_db::models::ClusterKind;
 pub use options::{ClusterUpdate, CreateClusterOptions};
-pub use profile::{GameSettingsProfile, PackageUpdateMode, SettingsOsExtra};
+pub use profile::{GameSettingsProfile, GraphicsBackend, PackageUpdateMode, SettingsOsExtra};
 pub use profiles::ProfileUpdate;
 pub use stage::ClusterStage;

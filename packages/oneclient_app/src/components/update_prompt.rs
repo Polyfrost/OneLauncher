@@ -22,8 +22,7 @@ impl Component for UpdatePromptOverlay {
             return rect().into_element();
         };
 
-        // Recognise the update prompt by the choice it offers rather than by a
-        // prompt-kind enum, so the event layer needn't enumerate every prompt.
+        // Recognised by the choice it offers so the event layer needn't enumerate prompts
         if !prompt.has_choice(UPDATE_CHOICE_INSTALL) {
             return rect().into_element();
         }

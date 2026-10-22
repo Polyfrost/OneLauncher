@@ -2,16 +2,21 @@ use freya::prelude::*;
 use freya::query::UseQuery;
 use freya::router::RouterContext;
 
-use crate::components::{Button, Icon, IconType, ScrollArea, Segment, SegmentedControl, toggle};
+use crate::components::{
+    Button, Icon, IconType, Markdown, MarkdownStyle, OverlayPopup, ScrollArea, Segment,
+    SegmentedControl,
+};
 use crate::hooks::{
     TermsQuery, has_migration_data, terms_document, terms_error, terms_is_loading, use_dispatch,
-    use_migration, use_settings_snapshot, use_terms,
+    use_migration, use_onboarding_selection, use_settings_snapshot, use_terms,
 };
 use crate::platform::open_url;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_page, step_heading};
+
+const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
 #[derive(Clone, Copy, PartialEq)]
 enum LegalTab {
@@ -33,8 +38,8 @@ impl Component for OnboardingTerms {
         let error = terms_error(&query);
         let loading = terms_is_loading(&query);
 
-        let accepted = use_state(|| false);
         let tab = use_state(|| LegalTab::Terms);
+        let confirming_decline = use_state(|| false);
 
         let returning = settings.seen_onboarding;
         let next = if returning {
@@ -44,7 +49,13 @@ impl Component for OnboardingTerms {
         } else {
             Route::OnboardingLanguage {}
         };
-        let back = (!returning).then_some(Route::OnboardingWelcome {});
+        let back = (!returning).then(|| {
+            if *use_onboarding_selection().picks_location.read() {
+                Route::OnboardingLocation {}
+            } else {
+                Route::OnboardingWelcome {}
+            }
+        });
 
         let terms_version = document.as_ref().map(|doc| doc.version).unwrap_or(1);
         let privacy_version = document
@@ -79,23 +90,55 @@ impl Component for OnboardingTerms {
             .width(Size::fill())
             .spacing(16.)
             .child(step_heading(
-                "Terms & Privacy",
-                "Please read and accept these before continuing.",
+                if returning {
+                    "Terms & Privacy updated"
+                } else {
+                    "Terms & Privacy"
+                },
+                if returning {
+                    "We've updated these since you last accepted. Review and accept to carry on \
+                     where you left off."
+                } else {
+                    "Please read and accept these before continuing."
+                },
             ))
             .maybe_child(tabs)
             .child(body)
             .child(link_row(terms_url, privacy_url))
-            .child(accept_row(accepted))
             .into_element();
 
-        onboarding_page(
-            onboarding_illustration(IconType::File02),
-            content,
-            terms_nav(back, *accepted.read() && !loading, move || {
-                dispatch.accept_tos(terms_version, privacy_version);
+        let accept_dispatch = dispatch.clone();
+        let accept_next = next.clone();
+        let nav = terms_nav(
+            back,
+            !loading,
+            move || {
+                accept_dispatch.accept_tos(terms_version, privacy_version);
+                let _ = RouterContext::get().replace(accept_next.clone());
+            },
+            move || {
+                let mut confirming = confirming_decline;
+                confirming.set(true);
+            },
+        );
+
+        let modal = confirming_decline.read().then(|| {
+            let next = next.clone();
+            decline_modal(confirming_decline, move || {
+                dispatch.decline_tos();
                 let _ = RouterContext::get().replace(next.clone());
-            }),
-        )
+            })
+        });
+
+        rect()
+            .width(Size::fill())
+            .height(Size::fill())
+            .child(onboarding_page(
+                onboarding_illustration(IconType::File02),
+                content,
+                nav,
+            ))
+            .maybe_child(modal)
     }
 }
 
@@ -141,23 +184,21 @@ fn markdown_body(markdown: &str) -> Element {
             .height(Size::flex(1.0))
             .padding(Gaps::new_all(16.))
             .child(
-                MarkdownViewer::new(markdown.to_string())
+                Markdown::new(markdown.to_string())
                     .width(Size::fill())
-                    .color(colors::fg_primary())
-                    .color_link(colors::code_info())
-                    .background_code(colors::component_bg())
-                    .color_code(colors::fg_primary())
-                    .background_blockquote(colors::component_bg())
-                    .border_blockquote(colors::brand())
-                    .background_divider(colors::component_border())
-                    .heading_h1(20.)
-                    .heading_h2(17.)
-                    .heading_h3(15.)
-                    .heading_h4(14.)
-                    .heading_h5(13.)
-                    .heading_h6(12.)
-                    .paragraph_size(13.)
-                    .code_font_size(12.),
+                    .style(MarkdownStyle {
+                        color: colors::fg_primary(),
+                        color_link: colors::code_info(),
+                        color_code: colors::fg_primary(),
+                        background_code: colors::component_bg(),
+                        background_blockquote: colors::component_bg(),
+                        border_blockquote: colors::brand(),
+                        background_divider: colors::component_border(),
+                        headings: [20., 17., 15., 14., 13., 12.],
+                        paragraph_size: 13.,
+                        code_font_size: 12.,
+                        ..MarkdownStyle::default()
+                    }),
             ),
     )
     .into_element()
@@ -234,46 +275,14 @@ fn external_link_button(text: &'static str, url: String) -> impl IntoElement {
         .child(Icon::new(IconType::LinkExternal01).size(14.))
 }
 
-fn accept_row(accepted: State<bool>) -> impl IntoElement {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .spacing(16.)
-        .content(Content::Flex)
-        .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
-        .background(colors::page_elevated())
-        .border(border_all_color(1., colors::component_border()))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(3.)
-                .child(
-                    label()
-                        .text("I accept the Terms of Service and Privacy Policy")
-                        .font_size(14.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text("Required to use OneClient.")
-                        .font_size(11.)
-                        .color(colors::fg_secondary()),
-                ),
-        )
-        .child(toggle(accepted))
-        .into_element()
-}
-
 fn terms_nav(
     back: Option<Route>,
-    next_enabled: bool,
-    on_next: impl FnMut() + 'static,
-) -> impl IntoElement {
-    let mut on_next = on_next;
+    accept_enabled: bool,
+    on_accept: impl FnMut() + 'static,
+    on_decline: impl FnMut() + 'static,
+) -> Element {
+    let mut on_accept = on_accept;
+    let mut on_decline = on_decline;
     rect()
         .horizontal()
         .width(Size::fill())
@@ -293,12 +302,106 @@ fn terms_nav(
         }))
         .child(
             Button::new()
+                .secondary()
+                .width(Size::px(140.))
+                .on_press(move |_| on_decline())
+                .text("Decline")
+                .child(Icon::new(IconType::X).size(16.)),
+        )
+        .child(
+            Button::new()
                 .primary()
                 .width(Size::px(140.))
-                .enabled(next_enabled)
-                .on_press(move |_| on_next())
-                .text("Next")
-                .child(Icon::new(IconType::ArrowRight).size(16.)),
+                .enabled(accept_enabled)
+                .on_press(move |_| on_accept())
+                .text("Accept")
+                .child(Icon::new(IconType::Check).size(16.)),
+        )
+        .into_element()
+}
+
+fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) -> Element {
+    let mut on_confirm = on_confirm;
+    let mut confirming = confirming;
+
+    OverlayPopup::new()
+        .on_close(move |_| confirming.set(false))
+        .child(
+            rect()
+                .width(Size::window_percent(100.))
+                .height(Size::window_percent(100.))
+                .center()
+                .child(
+                    rect()
+                        .vertical()
+                        .width(Size::px(460.))
+                        .max_width(Size::window_percent(90.))
+                        .spacing(14.)
+                        .padding(Gaps::new_all(20.))
+                        .corner_radius(CornerRadius::new_all(14.))
+                        .background(CARD_BG)
+                        .border(border_all_color(1., colors::danger()))
+                        .child(
+                            rect()
+                                .horizontal()
+                                .cross_align(Alignment::Center)
+                                .spacing(10.)
+                                .child(
+                                    Icon::new(IconType::AlertTriangle)
+                                        .size(20.)
+                                        .color(colors::code_warn()),
+                                )
+                                .child(
+                                    label()
+                                        .text("Continue without accepting?")
+                                        .font_size(16.)
+                                        .font_weight(FontWeight::SEMI_BOLD)
+                                        .color(colors::fg_primary()),
+                                ),
+                        )
+                        .child(
+                            label()
+                                .text(
+                                    "This will disable access to world hosting, \
+                                     all social features, the OneClient nametag indicator, \
+                                     and more.",
+                                )
+                                .font_size(12.)
+                                .width(Size::fill())
+                                .max_lines(4)
+                                .color(colors::fg_secondary()),
+                        )
+                        .child(
+                            label()
+                                .text(
+                                    "You can accept later under Settings > Launcher. That takes \
+                                     effect after a restart.",
+                                )
+                                .font_size(11.)
+                                .width(Size::fill())
+                                .max_lines(3)
+                                .color(colors::fg_secondary().with_a(180)),
+                        )
+                        .child(
+                            rect()
+                                .horizontal()
+                                .width(Size::fill())
+                                .main_align(Alignment::End)
+                                .spacing(8.)
+                                .child(
+                                    Button::new()
+                                        .secondary()
+                                        .on_press(move |_| confirming.set(false))
+                                        .text("Cancel"),
+                                )
+                                .child(
+                                    Button::new()
+                                        .danger()
+                                        .on_press(move |_| on_confirm())
+                                        .text("Decline"),
+                                ),
+                        ),
+                ),
         )
         .into_element()
 }

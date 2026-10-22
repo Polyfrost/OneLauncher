@@ -5,6 +5,9 @@ use freya::query::{
     use_mutation, use_query,
 };
 use oneclient_core::LauncherError;
+
+use crate::launcher::off_ui;
+use oneclient_core::relocate::{Leftovers, discard_leftovers, leftovers};
 use oneclient_core::storage::{StorageReport, storage_report};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -20,18 +23,10 @@ impl QueryCapability for StorageReportQuery {
 
     async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
-        storage_report(&state).await
+        off_ui(async move { storage_report(&state).await }).await
     }
 }
 
-/// How long a scan stays good for.
-///
-/// The report walks every file under the launcher directory, which on a
-/// well-used install is tens of thousands of them. `stale_time` defaults to
-/// zero, meaning the scan would re-run every single time the page is mounted —
-/// so leaving the page and coming back would rescan the whole tree. Disk usage
-/// does not move on its own, and the page has a refresh button for when the
-/// user knows it has.
 const STORAGE_STALE_TIME: Duration = Duration::from_secs(120);
 
 pub fn use_storage_report() -> UseQuery<StorageReportQuery> {
@@ -43,14 +38,12 @@ pub fn try_storage_report(query: &UseQuery<StorageReportQuery>) -> Option<Storag
 }
 
 pub async fn invalidate_storage_queries() {
-    QueriesStorage::<StorageReportQuery>::try_invalidate_all().await;
+    QueriesStorage::<StorageReportQuery>::invalidate_all().await;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum StorageAction {
-    /// Delete cached package files no artifact refers to.
     CleanUnreferencedCache,
-    /// Clear content links older launchers wrote into cluster folders.
     CleanLegacyClusterContent,
 }
 
@@ -64,19 +57,23 @@ impl MutationCapability for StorageActionMutation {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state().map_err(|e| e.to_string())?;
+        let keys = *keys;
 
-        match keys {
-            StorageAction::CleanUnreferencedCache => {
-                oneclient_core::storage::clean_unreferenced_cache(&state)
-                    .await
-                    .map(|_| ())
+        off_ui(async move {
+            match keys {
+                StorageAction::CleanUnreferencedCache => {
+                    oneclient_core::storage::clean_unreferenced_cache(&state)
+                        .await
+                        .map(|_| ())
+                }
+                StorageAction::CleanLegacyClusterContent => {
+                    oneclient_core::storage::clean_cluster_leftovers(&state)
+                        .await
+                        .map(|_| ())
+                }
             }
-            StorageAction::CleanLegacyClusterContent => {
-                oneclient_core::storage::clean_legacy_cluster_content(&state)
-                    .await
-                    .map(|_| ())
-            }
-        }
+        })
+        .await
         .map_err(|e| e.to_string())
     }
 
@@ -91,4 +88,63 @@ pub type UseStorageAction = UseMutation<StorageActionMutation>;
 
 pub fn use_storage_action() -> UseStorageAction {
     use_mutation(Mutation::new(StorageActionMutation))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LeftoversKeys;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct LeftoversQuery;
+
+impl QueryCapability for LeftoversQuery {
+    type Ok = Option<Leftovers>;
+    type Err = LauncherError;
+    type Keys = LeftoversKeys;
+
+    async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state()?;
+        Ok(off_ui(async move { leftovers(&state).await }).await)
+    }
+}
+
+pub fn use_leftovers() -> UseQuery<LeftoversQuery> {
+    use_query(Query::new(LeftoversKeys, LeftoversQuery).stale_time(STORAGE_STALE_TIME))
+}
+
+pub fn try_leftovers(query: &UseQuery<LeftoversQuery>) -> Option<Leftovers> {
+    super::state::settled_or_loading(query).flatten()
+}
+
+pub async fn invalidate_leftovers_queries() {
+    QueriesStorage::<LeftoversQuery>::invalidate_all().await;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DiscardLeftoversKeys;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct DiscardLeftoversMutation;
+
+impl MutationCapability for DiscardLeftoversMutation {
+    type Ok = u64;
+    type Err = String;
+    type Keys = DiscardLeftoversKeys;
+
+    async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state().map_err(|err| err.to_string())?;
+        off_ui(async move { discard_leftovers(&state).await }).await
+    }
+
+    async fn on_settled(&self, _keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {
+        if result.is_ok() {
+            invalidate_leftovers_queries().await;
+            invalidate_storage_queries().await;
+        }
+    }
+}
+
+pub type UseDiscardLeftovers = UseMutation<DiscardLeftoversMutation>;
+
+pub fn use_discard_leftovers() -> UseDiscardLeftovers {
+    use_mutation(Mutation::new(DiscardLeftoversMutation))
 }

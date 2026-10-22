@@ -5,13 +5,13 @@ use oneclient_core::game::{Analytics, DayPlaytime, PlaytimeStats};
 
 use crate::components::{Icon, IconType};
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{border_all_color, columns_for};
 
 mod charts;
 mod servers;
 mod tiles;
 
-use charts::{DailyChart, WhenChart, distribution_card};
+use charts::{DailyChart, PlaytimeChart, distribution_card};
 use servers::servers_section;
 use tiles::{personas_row, tiles_row};
 
@@ -19,9 +19,7 @@ pub fn analytics_body(analytics: &Analytics) -> Element {
     analytics_body_inner(analytics, false)
 }
 
-/// `force_all` keeps the sections that are normally hidden for lack of data
-/// (session length, servers) on screen, so the zeroed empty state still shows
-/// the whole layout.
+/// `force_all` keeps the normally-hidden sections (session length servers) on screen
 fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
     let stats = &analytics.playtime;
 
@@ -29,14 +27,13 @@ fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
 
     root = root.child(tiles_row(analytics, force_all));
 
-    if !stats.personas.is_empty() {
-        root = root.child(personas_row(&stats.personas));
+    if !analytics.personas.is_empty() {
+        root = root.child(personas_row(&analytics.personas));
     }
 
-    let mut charts: Vec<Element> = vec![
-        WhenChart::from_stats(stats).into_element(),
-        DailyChart::new(stats.daily.clone()).into_element(),
-    ];
+    root = root.child(DailyChart::new(stats.daily.clone()));
+
+    let mut charts: Vec<Element> = vec![PlaytimeChart::from_stats(stats).into_element()];
     if let Some(dist) = distribution_card(&stats.session_secs, force_all) {
         charts.push(dist);
     }
@@ -49,48 +46,39 @@ fn analytics_body_inner(analytics: &Analytics, force_all: bool) -> Element {
     root.into_element()
 }
 
-/// Renders the full analytics layout with zeroed data, dimmed behind a scrim
-/// with `note` centered on top. Used by the cluster overview and global
-/// statistics pages when nothing has been recorded yet, so the charts and stats
-/// are always visible without inventing numbers.
 pub fn analytics_placeholder(note: &str) -> Element {
     rect()
+        .vertical()
         .width(Size::fill())
-        .child(analytics_body_inner(&empty_analytics(), true))
+        .spacing(24.)
         .child(
             rect()
-                .position(Position::new_absolute())
                 .width(Size::fill())
-                .height(Size::fill())
-                .layer(Layer::Relative(1))
+                .padding(Gaps::new_symmetric(16., 24.))
+                .corner_radius(CornerRadius::new_all(12.))
+                .background(colors::page_elevated())
+                .border(border_all_color(1., colors::component_border()))
                 .center()
-                .padding(40.)
-                .background(colors::page_overlay())
-                // swallow clicks so the placeholder controls aren't interactive
-                .on_press(|_| {})
                 .child(
-                    rect()
-                        .max_width(Size::px(360.))
-                        .padding(Gaps::new_symmetric(16., 24.))
-                        .corner_radius(CornerRadius::new_all(12.))
-                        .background(colors::page_elevated())
-                        .border(border_all_color(1., colors::component_border()))
-                        .center()
-                        .child(
-                            label()
-                                .text(note.to_string())
-                                .font_size(14.)
-                                .text_align(TextAlign::Center)
-                                .color(colors::fg_secondary()),
-                        ),
+                    label()
+                        .text(note.to_string())
+                        .width(Size::fill())
+                        .font_size(14.)
+                        .text_align(TextAlign::Center)
+                        .color(colors::fg_secondary()),
                 ),
+        )
+        .child(
+            rect()
+                .width(Size::fill())
+                .opacity(0.4)
+                .interactive(false)
+                .child(analytics_body_inner(&empty_analytics(), true)),
         )
         .into_element()
 }
 
-/// Every field zeroed: real, honest "nothing recorded" data rather than
-/// invented numbers. The daily series is a run of zero-second days ending today
-/// so the timeline still renders its columns for each range selector.
+/// A run of zero-second days ending today so the timeline still renders columns for each range
 fn empty_analytics() -> Analytics {
     const EMPTY_DAYS: i64 = 90;
 
@@ -110,40 +98,64 @@ fn empty_analytics() -> Analytics {
         per_hour: [0; 24],
         daily,
         session_secs: Vec::new(),
+        longest_session_secs: 0,
         active_days: 0,
+        current_streak: 0,
+        longest_streak: 0,
         avg_secs_per_active_day: 0.0,
         peak_hour: None,
         peak_weekday: None,
         night_share: 0.0,
-        personas: Vec::new(),
     };
 
     Analytics {
         playtime,
         servers: Vec::new(),
+        personas: Vec::new(),
     }
 }
 
+const CHART_GAP: f32 = 16.;
+const CHART_MIN_W: f32 = 420.;
+
 fn charts_grid(cards: Vec<Element>) -> Element {
-    let mut grid = rect().vertical().width(Size::fill()).spacing(24.);
-    for pair in cards.chunks(2) {
-        if pair.len() == 1 {
-            grid = grid.child(rect().width(Size::fill()).child(pair[0].clone()));
-            continue;
+    ChartsGrid { cards }.into_element()
+}
+
+#[derive(PartialEq)]
+struct ChartsGrid {
+    cards: Vec<Element>,
+}
+
+impl Component for ChartsGrid {
+    fn render(&self) -> impl IntoElement {
+        let mut width = use_state(|| 0f32);
+        let cols = columns_for(*width.read(), CHART_MIN_W, 2, CHART_GAP);
+
+        let mut grid = rect().vertical().width(Size::fill()).spacing(24.);
+        for chunk in self.cards.chunks(cols) {
+            let mut row = rect()
+                .horizontal()
+                .content(Content::Flex)
+                .width(Size::fill())
+                .cross_align(Alignment::Start)
+                .spacing(CHART_GAP);
+            for card in chunk {
+                row = row.child(rect().width(Size::flex(1.0)).child(card.clone()));
+            }
+            for _ in chunk.len()..cols {
+                row = row.child(rect().width(Size::flex(1.0)));
+            }
+            grid = grid.child(row);
         }
 
-        let mut row = rect()
-            .horizontal()
-            .content(Content::Flex)
-            .width(Size::fill())
-            .cross_align(Alignment::Start)
-            .spacing(16.);
-        for card in pair {
-            row = row.child(rect().width(Size::flex(1.0)).child(card.clone()));
-        }
-        grid = grid.child(row);
+        grid.on_sized(move |e: Event<SizedEventData>| {
+            let w = e.area.width();
+            if (w - *width.peek()).abs() > 0.5 {
+                width.set(w);
+            }
+        })
     }
-    grid.into_element()
 }
 
 pub(super) fn chart_card(
@@ -212,9 +224,7 @@ pub(super) fn nav_button(
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .maybe(enabled, |el| {
-            el.on_press(on_press)
-                .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            el.on_press(on_press).cursor(CursorIcon::Pointer)
         })
         .child(Icon::new(icon).size(14.).color(color))
         .into_element()

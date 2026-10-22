@@ -35,26 +35,24 @@ impl QueryCapability for CachedImageQuery {
     }
 }
 
-/// The bytes of a cached image, once they are there.
-///
-/// The url comes back with them because callers key their image handle on it;
-/// a stale url paired with fresh bytes renders the wrong picture for a frame.
-pub fn loaded_image(url: Option<&str>, query: &UseQuery<CachedImageQuery>) -> Option<(String, Bytes)> {
+/// Returns the url alongside the bytes callers key their image handle on it
+/// and a stale url with fresh bytes renders the wrong picture for a frame
+pub fn loaded_image(
+    url: Option<&str>,
+    query: &UseQuery<CachedImageQuery>,
+) -> Option<(String, Bytes)> {
     let url = url?;
     let bytes = super::state::settled_or_loading(query)?;
     Some((url.to_string(), bytes))
 }
 
 pub fn use_cached_image(url: Option<String>, max_edge: u32) -> UseQuery<CachedImageQuery> {
+    let url = url.unwrap_or_default();
+    let keys = (!url.is_empty()).then_some(CachedImageKeys { url, max_edge });
+
     use_query(
-        Query::new(
-            CachedImageKeys {
-                url: url.unwrap_or_default(),
-                max_edge,
-            },
-            CachedImageQuery,
-        )
-        .stale_time(IMAGE_STALE)
-        .clean_time(IMAGE_CLEAN),
+        Query::new(keys, CachedImageQuery)
+            .stale_time(IMAGE_STALE)
+            .clean_time(IMAGE_CLEAN),
     )
 }

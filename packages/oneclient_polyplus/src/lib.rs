@@ -1,8 +1,3 @@
-//! Poly+ playtime reporting.
-//!
-//! Opens a websocket to the Poly+ backend for the signed-in account and keeps
-//! it alive while the user plays. Depends only on the auth service.
-
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
@@ -40,6 +35,9 @@ pub enum PlusError {
         body: String,
     },
 
+    #[error("Poly+ is off because the Terms of Service and Privacy Policy were declined")]
+    ConsentRequired,
+
     #[error(transparent)]
     Request(#[from] reqwest::Error),
 
@@ -66,12 +64,14 @@ enum Event {
     Message(Option<Message>),
 }
 
-/// Starts the Poly+ playtime reporter.
-///
-/// Takes the state it needs rather than reaching for a global; idempotent, so
-/// the first caller's handle is the one used for the process lifetime.
+/// Idempotent the first caller's handle is used for the process lifetime
 pub fn start(auth: Arc<oneclient_auth::AuthService>) {
     if STARTED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+
+    if plus_blocked() {
+        tracing::info!("[plus] playtime reporting stays off: terms and privacy policy declined");
         return;
     }
 
@@ -87,6 +87,15 @@ pub fn start(auth: Arc<oneclient_auth::AuthService>) {
         let mut delay = RECONNECT_DELAY;
 
         loop {
+            // Consent can only be withdrawn while the launcher is up, never
+            // restored, so ending the task is final rather than a pause
+            if plus_blocked() {
+                tracing::info!(
+                    "[plus] ending playtime reporting: terms and privacy policy declined"
+                );
+                return;
+            }
+
             delay = match session(&auth, &client).await {
                 Outcome::Connected | Outcome::NoAccount => RECONNECT_DELAY,
                 Outcome::Failed => (delay * 2).min(MAX_RECONNECT_DELAY),
@@ -97,9 +106,12 @@ pub fn start(auth: Arc<oneclient_auth::AuthService>) {
     });
 }
 
+fn plus_blocked() -> bool {
+    oneclient_common::consent::blocks_url(base_url())
+}
+
 fn build_client() -> Result<reqwest::Client, reqwest::Error> {
-    #[cfg_attr(not(target_os = "windows"), allow(unused_mut))]
-    let mut builder = reqwest::Client::builder()
+    let builder = reqwest::Client::builder()
         .tcp_keepalive(Some(Duration::from_secs(15)))
         .connect_timeout(Duration::from_secs(10))
         // reqwest-websocket only supports Http <1.1
@@ -111,15 +123,7 @@ fn build_client() -> Result<reqwest::Client, reqwest::Error> {
             env!("CARGO_PKG_HOMEPAGE")
         ));
 
-    // Same WSAEMSGSIZE problem as the main client; see `oneclient_net::service`.
-    // The `hickory-dns` feature is enabled workspace-wide, so every builder is
-    // opted in unless it says otherwise.
-    #[cfg(target_os = "windows")]
-    {
-        builder = builder.no_hickory_dns();
-    }
-
-    builder.build()
+    builder.no_hickory_dns().build()
 }
 
 fn base_url() -> &'static str {
@@ -182,18 +186,13 @@ async fn run_session(
     tracing::info!("[plus] playtime websocket connected for {}", account.id);
 
     let account_id = account.id;
-    pump(&mut websocket, PING_INTERVAL, account_id, || {
-        account_changed(auth, account_id)
+    pump(&mut websocket, PING_INTERVAL, account_id, || async move {
+        plus_blocked() || account_changed(auth, account_id).await
     })
     .await
 }
 
-/// Keeps the playtime socket alive, stopping when `should_stop` says the
-/// session is no longer valid or the server hangs up.
-///
-/// Takes a predicate rather than the launcher state: this is a websocket ping
-/// loop, and whether the signed-in account changed is the caller's business.
-/// It also means the loop is testable without standing up a launcher.
+/// Returns when `should_stop` reports the session invalid or the server hangs up
 async fn pump<F, Fut>(
     websocket: &mut reqwest_websocket::WebSocket,
     ping_interval: Duration,
@@ -217,9 +216,7 @@ where
         match event {
             Event::Ping => {
                 if should_stop().await {
-                    tracing::info!(
-                        "[plus] default account changed, ending playtime session for {account_id}"
-                    );
+                    tracing::info!("[plus] ending playtime session for {account_id}");
                     break;
                 }
 
@@ -237,10 +234,11 @@ where
     Ok(())
 }
 
-async fn login(
-    client: &reqwest::Client,
-    account: &MinecraftAccount,
-) -> Result<String, PlusError> {
+async fn login(client: &reqwest::Client, account: &MinecraftAccount) -> Result<String, PlusError> {
+    if plus_blocked() {
+        return Err(PlusError::ConsentRequired);
+    }
+
     let server_id = generate_server_id();
 
     let join = client
@@ -354,9 +352,12 @@ mod tests {
 
         let pumped = tokio::time::timeout(
             Duration::from_secs(10),
-            pump(&mut websocket, Duration::from_millis(50), Uuid::nil(), || async {
-                false
-            }),
+            pump(
+                &mut websocket,
+                Duration::from_millis(50),
+                Uuid::nil(),
+                || async { false },
+            ),
         )
         .await
         .expect("pump should return once the server closes the socket");

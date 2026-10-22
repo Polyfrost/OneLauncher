@@ -1,3 +1,4 @@
+use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Stdio;
 use std::sync::Arc;
@@ -5,24 +6,30 @@ use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use interfrost::api::minecraft::ArgumentType;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
 use crate::ClusterStage;
-use oneclient_auth::MinecraftAccount;
-use crate::clusters::Cluster;
-use oneclient_discord::Presence;
-use crate::game::session::SessionRecorder;
-use crate::game::tail::spawn_log_tail;
-use crate::game::GameError;
-use oneclient_mc::{
-    self as arguments, download_minecraft, download_version_info, get_loader_version,
-    game_files_missing, resolve_minecraft_version,
-};
-use oneclient_events::{GroupedProgressSession, LaunchStage};
-use crate::settings::GameSettingsProfile;
-use crate::state::LauncherState;
 use crate::LauncherResult;
+use crate::clusters::Cluster;
+use crate::game::diagnosis::{CrashDiagnosis, CrashWatch};
+use crate::game::mod_problems::{
+    InstalledJar, attach_bundled, attach_jar, has_unmatched, has_unmatched_missing,
+};
+use crate::game::session::SessionRecorder;
+use crate::game::shared_dir::{cluster_mods, jar_bundled_mod_ids, jar_mod_id};
+use crate::game::tail::spawn_log_tail;
+use crate::game::{DirBusy, GameError};
+use crate::settings::{GameSettingsProfile, GraphicsBackend};
+use crate::state::{LauncherServices, LauncherState};
+use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
+use oneclient_discord::Presence;
+use oneclient_events::{CrashModIssue, CrashRemedy, GroupedProgressSession, LaunchStage};
+use oneclient_mc::{
+    self as arguments, download_minecraft, download_version_info, game_files_missing,
+    get_loader_version, resolve_minecraft_version,
+};
 
 pub fn is_running(state: &LauncherState, cluster_id: i64) -> bool {
     state.games.is_running(cluster_id)
@@ -43,43 +50,122 @@ pub async fn launch_cluster(
 ) -> LauncherResult<LaunchedGame> {
     tracing::info!(cluster_id, search_for_java, "launching cluster");
 
-    let parallel = state.settings.read().allow_parallel_running_clusters;
-    if !parallel && state.games.is_running(cluster_id) {
-        tracing::warn!(cluster_id, "cluster already running; refusing launch");
+    // Parallel clusters or not a cluster runs only once a second game would
+    // share its directory and its slot in the process manager
+    if state.games.is_active(cluster_id) {
+        tracing::warn!(
+            cluster_id,
+            "cluster already launching or running; refusing launch"
+        );
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
 
+    let result = start(state, cluster_id, account, search_for_java).await;
+
+    if result.is_err() {
+        state.games.remove(cluster_id);
+        state
+            .services
+            .events
+            .game_stage(cluster_id, LaunchStage::Exited);
+    }
+
+    result
+}
+
+async fn start(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    account: &MinecraftAccount,
+    search_for_java: bool,
+) -> LauncherResult<LaunchedGame> {
     let events = state.services.events.clone();
     let stage = |s: LaunchStage| {
         state.games.set_stage(cluster_id, s);
         events.game_stage(cluster_id, s);
     };
 
+    // The stage goes first so a click while this waits is refused as already
+    // active rather than queued behind it
     stage(LaunchStage::Checking);
+    let launch_slot = match state.games.try_launch_slot() {
+        Some(slot) => slot,
+        None => {
+            tracing::debug!(cluster_id, "another launch is preparing; waiting for it");
+            stage(LaunchStage::Waiting);
+            let slot = state.games.launch_slot().await;
+            stage(LaunchStage::Checking);
+            slot
+        }
+    };
+
+    // Checked only once this launch counts as active, a reset claims itself before checking
+    // for that, so the two can't both go ahead
+    if crate::clusters::is_resetting(cluster_id) {
+        return Err(GameError::Resetting.into());
+    }
+    match crate::clusters::reset_unfinished(state, cluster_id).await {
+        Ok(true) => return Err(GameError::ResetUnfinished.into()),
+        Ok(false) => {}
+        // Only a guard against launching a half-reset cluster, not worth failing every launch over
+        Err(err) => {
+            tracing::warn!(cluster_id, error = %err, "could not check for an unfinished reset; launching anyway");
+        }
+    }
 
     let existing = state.clusters.get(cluster_id).await?;
 
     let game_dir = existing.game_dir()?;
     let dedicated = existing.uses_dedicated_dir();
 
-    // Every cluster without a dedicated folder plays out of the same shared
-    // directory, so a second game there would materialize its content over the
-    // running one's. `dir_in_use_by` waves a cluster past its own session, which
-    // parallel launches make reachable, so the directory is checked outright.
-    if !dedicated && let Some(other) = state.games.dir_in_use(&game_dir) {
-        tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
-        let name = running_cluster_name(state, other).await;
-        return Err(GameError::SharedDirectoryBusy(name).into());
+    // Non-dedicated clusters share one directory so a second game there would
+    // materialize over the running one's
+    match state.games.claim_dir(cluster_id, &game_dir, !dedicated) {
+        Ok(()) => {}
+        Err(DirBusy::Syncing(syncing)) if syncing == cluster_id => {
+            return Err(GameError::Syncing.into());
+        }
+        Err(DirBusy::Syncing(syncing)) => {
+            tracing::warn!(
+                cluster_id,
+                syncing,
+                "shared game dir is being synced from; refusing launch"
+            );
+            let name = running_cluster_name(state, syncing).await;
+            return Err(GameError::SharedDirectorySyncing(name).into());
+        }
+        Err(DirBusy::Game(other)) if dedicated => {
+            return Err(GameError::DirectoryInUse(other).into());
+        }
+        Err(DirBusy::Game(other)) => {
+            tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
+            let name = running_cluster_name(state, other).await;
+            return Err(GameError::SharedDirectoryBusy(name).into());
+        }
     }
 
-    if let Some(other) = state.games.dir_in_use_by(&game_dir, cluster_id) {
-        return Err(GameError::DirectoryInUse(other).into());
+    match state.clusters.mark_played(cluster_id).await {
+        Ok(()) => events.signal(oneclient_events::Signal::ClustersChanged),
+        Err(err) => tracing::debug!(cluster_id, error = %err, "could not record the launch time"),
     }
 
     let progress = GroupedProgressSession::start(
         &state.services.events,
         format!("Launching {}", existing.name),
     );
+
+    if existing.uses_bundles()
+        && let Err(err) = crate::clusters::apply_bundle_java_override(
+            state,
+            cluster_id,
+            search_for_java,
+            false,
+            Some(&progress),
+        )
+        .await
+    {
+        tracing::warn!(cluster_id, error = %err, "failed to apply bundle java override");
+    }
 
     let cluster = if existing.stage == ClusterStage::Ready {
         existing
@@ -103,13 +189,14 @@ pub async fn launch_cluster(
             }
         }
     };
-    if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
-        cluster_id,
-        state.bundles.as_ref(),
-        Some(&progress),
-        &state.services.content(),
-    )
-    .await
+    if cluster.uses_bundles()
+        && let Err(err) = oneclient_content::bundles::install_cluster_bundles(
+            cluster_id,
+            state.bundles.as_ref(),
+            Some(&progress),
+            &state.services.content(),
+        )
+        .await
     {
         tracing::warn!(cluster_id, error = %err, "failed to install bundle content");
     }
@@ -123,9 +210,7 @@ pub async fn launch_cluster(
         let mut metadata = state.metadata.lock().await;
 
         let (version, _index, updated) =
-            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version)
-                .await
-                .map_err(|_| GameError::InvalidVersion(cluster.mc_version.clone()))?;
+            resolve_minecraft_version(&mut metadata, &state.services.mc(), &mc_version).await?;
 
         let loader_version = get_loader_version(
             &mut metadata,
@@ -140,6 +225,7 @@ pub async fn launch_cluster(
             &state.services.mc(),
             Some(&progress),
             &version,
+            cluster.mc_loader,
             loader_version.as_ref(),
             false,
         )
@@ -173,8 +259,14 @@ pub async fn launch_cluster(
         "resolved launch metadata"
     );
 
-    let java = if let Some(runtime) =
-        state.java.runtime_for_profile(profile.java_path.as_deref()).await?
+    if let Some(dir) = crate::game::natives::natives_dir(&version_name) {
+        state.games.set_natives(cluster_id, dir);
+    }
+
+    let java = if let Some(runtime) = state
+        .java
+        .runtime_for_profile(profile.java_path.as_deref())
+        .await?
     {
         runtime
     } else {
@@ -184,14 +276,22 @@ pub async fn launch_cluster(
             .map(|v| v.major_version)
             .ok_or(GameError::MissingJavaVersion)?;
 
-        state.java.prepare(major, search_for_java, false, None).await?
+        state
+            .java
+            .prepare(major, search_for_java, false, None)
+            .await?
     };
 
     match game_files_missing(&version_info, &java.os_arch, updated) {
         Ok(true) => {
             tracing::info!(cluster_id, "missing game files; repairing");
-            let _ = state.clusters.set_stage(cluster_id, ClusterStage::Repairing).await;
+            let _ = state
+                .clusters
+                .set_stage(cluster_id, ClusterStage::Repairing)
+                .await;
             stage(LaunchStage::Downloading);
+            let natives_mode =
+                crate::game::natives::natives_mode(state, &version_name, Some(cluster_id));
             if let Err(err) = download_minecraft(
                 &state.services.mc(),
                 &progress,
@@ -199,6 +299,7 @@ pub async fn launch_cluster(
                 &java.os_arch,
                 updated,
                 false,
+                natives_mode,
             )
             .await
             {
@@ -206,9 +307,17 @@ pub async fn launch_cluster(
                 stage(LaunchStage::Exited);
                 return Err(err.into());
             }
-            let _ = state.clusters.set_stage(cluster_id, ClusterStage::Ready).await;
+            let _ = state
+                .clusters
+                .set_stage(cluster_id, ClusterStage::Ready)
+                .await;
         }
         Ok(false) => {}
+        Err(err @ oneclient_mc::McError::NoNativesForPlatform { .. }) => {
+            progress.finish();
+            stage(LaunchStage::Exited);
+            return Err(err.into());
+        }
         Err(err) => tracing::warn!(cluster_id, error = %err, "repair check failed"),
     }
 
@@ -223,19 +332,19 @@ pub async fn launch_cluster(
         tracing::warn!(cluster_id, error = %err, "failed to write allowed_symlinks.txt");
     }
 
-    // The one moment nothing is holding the content open: put what the database
-    // says into the game dir, and clear out what it no longer says. This is
-    // where a package removed or disabled mid-session actually leaves the
-    // folder, for dedicated and shared clusters alike.
-    if let Err(err) = crate::game::materialize_content(&state.services, &cluster, &cwd).await {
+    let custom_args = profile.launch_args.clone().unwrap_or_default();
+    let loader_version_id = loader_version.as_ref().map(|lv| lv.id.as_str());
+
+    let mods_in_cluster =
+        crate::game::uses_cluster_mods_folder(cluster.mc_loader, loader_version_id, &custom_args);
+
+    if let Err(err) =
+        crate::game::materialize_content(&state.services, &cluster, &cwd, mods_in_cluster).await
+    {
         tracing::warn!(cluster_id, error = %err, "failed to materialize cluster content");
     }
 
     if !dedicated {
-        // Redirect the shared dir's `logs`/`crash-reports` into this cluster's
-        // own folder so its output is attributable while it plays; unlinked on
-        // exit. Keeps the shared `.minecraft` (and the launcher's own logs dir)
-        // free of another cluster's leftovers.
         crate::game::link_cluster_logs(&cluster, &cwd).await;
     }
 
@@ -243,6 +352,7 @@ pub async fn launch_cluster(
         .join(&version_name)
         .join(format!("{version_name}.jar"));
     let natives = paths::natives_dir()?.join(&version_name);
+    polyio::create_dir_all(&natives).await?;
     let libraries = paths::libraries_dir()?;
     let assets = paths::assets_dir()?;
 
@@ -256,21 +366,32 @@ pub async fn launch_cluster(
         updated,
     )?;
 
-    let jvm_args = arguments::java_arguments(
-        updated,
+    let mut jvm_args = arguments::java_arguments(
         arg_map.get(&ArgumentType::Jvm).map(Vec::as_slice),
         &natives,
         &libraries,
         &classpaths,
         &version_name,
-        profile.mem_max.unwrap_or(2048),
+        profile
+            .mem_max
+            .unwrap_or_else(oneclient_common::default_mem_max),
         profile.launch_args.clone().unwrap_or_default(),
         &java.os_arch,
         java.major,
     )?;
 
+    let mods_dir = paths::cluster_mods_dir(&cluster.folder_name)?;
+    if let Some(arg) = crate::game::mods_folder_argument(
+        cluster.mc_loader,
+        loader_version_id,
+        &custom_args,
+        &mods_dir,
+    ) {
+        tracing::debug!(cluster_id, mods_dir = %mods_dir.display(), "redirecting fabric mods folder");
+        jvm_args.push(arg);
+    }
+
     let mut mc_args = arguments::minecraft_arguments(
-        updated,
         arg_map.get(&ArgumentType::Game).map(Vec::as_slice),
         version_info.minecraft_arguments.as_deref(),
         &account.access_token,
@@ -284,9 +405,30 @@ pub async fn launch_cluster(
         profile.resolution.unwrap_or_default(),
         &java.os_arch,
     )?;
-    arguments::append_profile_game_arguments(&mut mc_args, profile.force_fullscreen, None);
+    if let Some(backend) = profile.graphics_backend
+        && backend != GraphicsBackend::Default
+        && GraphicsBackend::supported_on(&mc_version)
+    {
+        mc_args.extend([
+            "--graphicsBackend".to_string(),
+            backend.as_str().to_string(),
+        ]);
+    }
+    arguments::append_profile_game_arguments(
+        &mut mc_args,
+        profile.force_fullscreen,
+        profile.game_args.as_deref(),
+    );
 
-    run_hook(profile.hook_pre.as_deref(), &cwd).await;
+    drop(launch_slot);
+
+    if let Some(reason) = run_hook(profile.hook_pre.as_deref(), &cwd).await {
+        events
+            .notify("Pre-launch command failed")
+            .body(reason)
+            .error()
+            .send();
+    }
 
     tracing::info!(
         cluster_id,
@@ -298,33 +440,47 @@ pub async fn launch_cluster(
     );
     tracing::debug!(cluster_id, ?jvm_args, main_class = %version_info.main_class, "jvm arguments");
 
-    let mut command = base_command(&profile, &java.absolute_path);
+    let (mut command, wrapper) = base_command(&profile, &java.absolute_path);
+
+    if let Some(gpu) = profile.gpu() {
+        crate::game::gpu::select(&mut command, &java.absolute_path, gpu).await;
+    }
+
     apply_env(&mut command, &profile);
+
     command
         .args(jvm_args)
         .arg(&version_info.main_class)
         .args(mc_args)
         .current_dir(&cwd);
 
+    let header = format!(
+        "OneClient {} · {} · {version_name} · Java {}\n\n{}\n\n",
+        env!("CARGO_PKG_VERSION"),
+        cluster.name,
+        java.major,
+        command_line(command.as_std(), &version_info.main_class),
+    );
+
     let log_path = oneclient_cluster::logs::cluster_output_log(&cluster)?;
     if let Some(parent) = log_path.parent() {
         polyio::create_dir_all(parent).await.ok();
     }
 
-    // The game's output goes straight to the log file rather than through pipes
-    // held by the launcher. A pipe would tie the game's lifetime to ours: once
-    // the launcher exits its read end closes, and the game's next write to a
-    // broken stdout takes it down with us. Writing to a file keeps the two
-    // independent, and the launcher tails that file for the live console.
-    // A cloned handle shares the file offset, so stdout and stderr interleave
-    // into one stream instead of overwriting each other.
-    // `Stdio` needs owned std handles, so the tokio files are unwrapped only
-    // once the async work of opening and cloning them is done.
+    // A file not a pipe a pipe would die with the launcher and take the game's
+    // next stdout write down with it
+    // The cloned handle shares the file offset
+    // so stdout and stderr interleave instead of overwriting
     let handles = match tokio::fs::File::create(&log_path).await {
-        Ok(out) => match out.try_clone().await {
-            Ok(err) => Ok((out.into_std().await, err.into_std().await)),
-            Err(err) => Err(err),
-        },
+        Ok(mut out) => {
+            if let Err(err) = out.write_all(header.as_bytes()).await {
+                tracing::warn!(cluster_id, error = %err, "failed to write the launch header");
+            }
+            match out.try_clone().await {
+                Ok(err) => Ok((out.into_std().await, err.into_std().await)),
+                Err(err) => Err(err),
+            }
+        }
         Err(err) => Err(err),
     };
 
@@ -340,24 +496,31 @@ pub async fn launch_cluster(
     command.stdin(Stdio::null());
     detach(&mut command);
 
-    let mut child = command
-        .spawn()
-        .map_err(|err| GameError::Spawn(err.to_string()))?;
+    let mut child = command.spawn().map_err(|err| match &wrapper {
+        Some(program) => GameError::wrapper_spawn(program, &err),
+        None => GameError::Spawn(err.to_string()),
+    })?;
     let pid = child.id();
 
     stage(LaunchStage::Running);
     state.games.set_pid(cluster_id, pid);
-    state.games.set_dir(cluster_id, cwd.clone());
     state.discord.set_presence(Presence::Playing {
         cluster: cluster.name.clone(),
         mc_version: cluster.mc_version.clone(),
     });
 
-    let recorder =
-        SessionRecorder::start(state, cluster_id, profile.mem_max.unwrap_or(2048), &java).await;
+    let recorder = SessionRecorder::start(
+        state,
+        cluster_id,
+        profile
+            .mem_max
+            .unwrap_or_else(oneclient_common::default_mem_max),
+        &java,
+    )
+    .await;
 
-    // Pin the process to the session row so that if the launcher exits before
-    // the game does, the next start can tell whether it is still playing.
+    // Pinned to the session row so that if the launcher exits first the next
+    // start can tell whether the game is still playing
     if let (Some(recorder), Some(pid)) = (recorder.as_ref(), pid) {
         recorder
             .record_process(pid, crate::game::process_start_time(pid))
@@ -368,7 +531,7 @@ pub async fn launch_cluster(
         .as_ref()
         .and_then(SessionRecorder::started_at)
         .unwrap_or_else(Utc::now);
-    let crash_watch = crate::game::diagnosis::CrashWatch::new();
+    let crash_watch = CrashWatch::new();
     let tail = spawn_log_tail(
         cluster_id,
         log_path,
@@ -384,20 +547,21 @@ pub async fn launch_cluster(
     let post_hook = profile.hook_post.clone();
     tokio::spawn(async move {
         let cluster = cluster;
-        let status = tokio::select! {
-            status = child.wait() => status,
+        let (status, stopped) = tokio::select! {
+            status = child.wait() => (status, false),
             _ = kill_rx => {
                 let _ = child.start_kill();
-                child.wait().await
+                (child.wait().await, true)
             }
         };
 
         tail.stop().await;
 
         let outcome = match status {
+            Ok(_) if stopped => Exit::Killed,
             Ok(status) => Exit::Observed {
                 code: status.code().map(i64::from),
-                success: status.success(),
+                success: status.success() || killed(&status),
                 display: status.to_string(),
             },
             Err(err) => Exit::Failed(err.to_string()),
@@ -416,6 +580,7 @@ pub async fn launch_cluster(
                 outcome,
                 owns_slot: true,
                 diagnosis: crash_watch.take(),
+                watch: Some(crash_watch),
             },
         )
         .await;
@@ -424,8 +589,6 @@ pub async fn launch_cluster(
     Ok(LaunchedGame { cluster_id, pid })
 }
 
-/// Names the cluster in the user's way for a refusal they have to act on.
-/// Falls back to the id, which is still better than no answer at all.
 async fn running_cluster_name(state: &Arc<LauncherState>, cluster_id: i64) -> String {
     state
         .clusters
@@ -434,9 +597,8 @@ async fn running_cluster_name(state: &Arc<LauncherState>, cluster_id: i64) -> St
         .map_or_else(|_| format!("Cluster {cluster_id}"), |cluster| cluster.name)
 }
 
-/// Cut the game loose from the launcher's process group / console, so signals
-/// aimed at the launcher (a terminal Ctrl-C, a console window closing) don't
-/// reach the game as collateral.
+/// Cuts the game loose from the launcher's process group/console so signals
+/// aimed at the launcher (Ctrl-C console close) don't reach the game
 fn detach(command: &mut Command) {
     #[cfg(unix)]
     {
@@ -455,41 +617,54 @@ fn detach(command: &mut Command) {
     }
 }
 
-/// How a session ended, as far as anyone could tell.
+#[cfg(unix)]
+fn killed(status: &std::process::ExitStatus) -> bool {
+    use std::os::unix::process::ExitStatusExt;
+    const SIGKILL: i32 = 9;
+    const JVM_SIGTERM_EXIT: i32 = 143;
+    status.signal() == Some(SIGKILL) || status.code() == Some(JVM_SIGTERM_EXIT)
+}
+
+#[cfg(not(unix))]
+fn killed(_status: &std::process::ExitStatus) -> bool {
+    false
+}
+
+fn counts_as_crash(outcome: &Exit, diagnosis: Option<&CrashDiagnosis>, reported: bool) -> bool {
+    let broken = diagnosis.is_some_and(CrashDiagnosis::leaves_game_broken);
+
+    match outcome {
+        Exit::Observed { success, .. } => {
+            !success || broken || diagnosis.is_some_and(CrashDiagnosis::is_fatal)
+        }
+        Exit::Failed(_) => true,
+        Exit::Inferred => diagnosis.is_some() || reported,
+        Exit::Killed => broken,
+    }
+}
+
 pub(crate) enum Exit {
-    /// The launcher was there and saw the process exit.
     Observed {
         code: Option<i64>,
         success: bool,
         display: String,
     },
-    /// Waiting on the process itself failed.
     Failed(String),
-    /// The game exited while the launcher was closed; the time was recovered
-    /// from its log, and the exit code is gone for good.
     Inferred,
+    Killed,
 }
 
 pub(crate) struct SessionEnd {
     pub started_at: DateTime<Utc>,
     pub ended_at: DateTime<Utc>,
     pub outcome: Exit,
-    /// Whether this session is the one currently holding the cluster's running
-    /// slot. A stale session recovered from the database may share its cluster
-    /// with a game that is playing right now. Booking the old session's
-    /// playtime is right, but clearing that slot would report the live game as
-    /// exited.
     pub owns_slot: bool,
-    /// What the game's own output said about why it died, when the launcher
-    /// recognised the cause. `None` for a clean exit, an unrecognised crash, or
-    /// a session recovered after the fact with no log being watched.
-    pub diagnosis: Option<crate::game::diagnosis::CrashDiagnosis>,
+    pub diagnosis: Option<CrashDiagnosis>,
+    pub watch: Option<CrashWatch>,
 }
 
-/// Everything that has to happen once a game is gone: clear its running state,
-/// bank the playtime, close the session row, run the post hook and unwind the
-/// shared-directory plumbing. Shared by the live exit path and by recovery of
-/// sessions that outlived the launcher.
+/// Shared by the live exit path and by recovery of sessions that outlived the
+/// launcher
 pub(crate) async fn finalize_session(
     state: &Arc<LauncherState>,
     cluster: &Cluster,
@@ -521,18 +696,24 @@ pub(crate) async fn finalize_session(
     if let Some(recorder) = recorder {
         let code = match &end.outcome {
             Exit::Observed { code, .. } => *code,
-            Exit::Failed(_) | Exit::Inferred => None,
+            Exit::Failed(_) | Exit::Inferred | Exit::Killed => None,
         };
         recorder.finish_at(&end.ended_at.to_rfc3339(), code).await;
     }
 
-    run_hook(post_hook, cwd).await;
+    if let Some(reason) = run_hook(post_hook, cwd).await {
+        state
+            .services
+            .events
+            .notify("Post-exit command failed")
+            .body(reason)
+            .error()
+            .send();
+    }
 
     if dedicated {
-        // The folder stays materialized between sessions so it remains a real
-        // Minecraft directory for external tools; the next launch reconciles it.
-        // Adopting drop-ins now just means the UI is right the moment the game
-        // closes rather than at the next launch.
+        // The folder stays materialized so it remains a real Minecraft directory
+        // for external tools adopting drop-ins now keeps the UI right on close
         crate::game::import_manual_content(&state.services, cluster, cwd).await;
     } else {
         if let Err(err) = crate::game::dematerialize_content(&state.services, cluster, cwd).await {
@@ -542,77 +723,188 @@ pub(crate) async fn finalize_session(
     }
 
     let name = &cluster.name;
-    let crashed = !matches!(end.outcome, Exit::Observed { success: true, .. });
+    let reported = end.watch.as_ref().is_some_and(CrashWatch::reported_crash);
+    let crashed = counts_as_crash(&end.outcome, end.diagnosis.as_ref(), reported);
 
-    match end.outcome {
-        Exit::Observed { success: true, .. } => state
+    crate::bisect::record_bisect_exit(
+        state,
+        cluster_id,
+        match end.outcome {
+            Exit::Failed(_) | Exit::Inferred => crate::bisect::GameExit::Unknown,
+            _ if crashed => crate::bisect::GameExit::Crashed,
+            Exit::Observed { .. } | Exit::Killed => crate::bisect::GameExit::Clean,
+        },
+        end.watch
+            .as_ref()
+            .map(CrashWatch::take_missing)
+            .unwrap_or_default(),
+        cwd,
+        std::time::SystemTime::from(end.started_at),
+    )
+    .await;
+
+    let display = match &end.outcome {
+        Exit::Observed {
+            success: false,
+            display,
+            ..
+        } => display.clone(),
+        Exit::Failed(err) => err.clone(),
+        Exit::Observed { .. } | Exit::Inferred | Exit::Killed => String::new(),
+    };
+
+    match &end.outcome {
+        Exit::Observed { success: true, .. } => {}
+        Exit::Observed { .. } => state
             .services
             .events
-            .notify("Game closed").body(format!("{name} exited")).send(),
-        Exit::Observed { display, .. } => state
-            .services
-            .events
-            .notify("Game crashed").body(format!("{name} exited with {display}")).error().send(),
+            .notify("Game crashed")
+            .body(format!("{name} exited with {display}"))
+            .error()
+            .send(),
         Exit::Failed(err) => state
             .services
             .events
-            .notify("Game error").body(format!("{name}: {err}")).error().send(),
-        // Nothing was watching, so there is no crash to report and no news the
-        // user wants a popup about, so the session is just booked and closed.
+            .notify("Game error")
+            .body(format!("{name}: {err}"))
+            .error()
+            .send(),
+        Exit::Killed => {}
         Exit::Inferred => {}
     }
 
-    // Only after the crash notice, and only when the game actually died: a
-    // `ZipException` the game recovered from is not worth interrupting a
-    // finished session over.
-    if crashed && let Some(diagnosis) = end.diagnosis {
-        offer_repair(state, cluster_id, &diagnosis).await;
+    if crashed {
+        report_crash(state, cluster, cwd, &display, played, &end).await;
     }
 }
 
-/// Offers to verify and repair after a crash the launcher recognised.
-///
-/// Asks rather than acting: verification reads every installed file and can
-/// re-download a good part of the game, which is not something to start behind
-/// the user's back the moment they close a crashed session. Declining is a real
-/// answer — the same offer comes back on the next crash.
-#[tracing::instrument(skip(state, diagnosis), level = "debug")]
-pub async fn offer_repair(
+async fn report_crash(
     state: &Arc<LauncherState>,
-    cluster_id: i64,
-    diagnosis: &crate::game::diagnosis::CrashDiagnosis,
+    cluster: &Cluster,
+    cwd: &Path,
+    display: &str,
+    played: Duration,
+    end: &SessionEnd,
 ) {
-    enum Answer {
-        Verify,
+    let watch = end.watch.as_ref();
+    let diagnosis = end.diagnosis.as_ref();
+
+    let reported = watch.is_some_and(CrashWatch::reported_crash);
+    let suspects = watch.map(CrashWatch::suspects).unwrap_or_default();
+    let excerpt = watch.map(CrashWatch::excerpt).unwrap_or_default();
+    let document = watch.map(CrashWatch::document).unwrap_or_default();
+    let fixes = crate::game::crashdata::fixes_for(&document);
+
+    if diagnosis.is_none()
+        && !reported
+        && suspects.is_empty()
+        && !crate::game::crashdata::has_solution(&fixes)
+    {
+        tracing::debug!(
+            cluster_id = cluster.id,
+            suggestions = fixes.len(),
+            "no recognised cause, leaving it to the toast"
+        );
+        return;
     }
 
-    let answer = state
+    let mod_issues = match diagnosis {
+        Some(diagnosis) => crash_mod_issues(&state.services, cluster.id, diagnosis).await,
+        None => Vec::new(),
+    };
+
+    state
         .services
         .events
-        .ask(
-            oneclient_events::Prompt::new("A damaged file crashed the game", diagnosis.body())
-                .option(
-                    oneclient_events::Choice::primary("verify", "Verify and repair"),
-                    Answer::Verify,
-                )
-                .dismiss("Not now"),
-        )
-        .await;
+        .game_crashed(oneclient_events::GameCrash {
+            cluster_id: cluster.id,
+            cluster_name: cluster.name.clone(),
+            title: diagnosis.map_or_else(
+                || format!("{} crashed", cluster.name),
+                CrashDiagnosis::title,
+            ),
+            exit: display.to_string(),
+            played_secs: played.as_secs(),
+            cause: diagnosis.map(CrashDiagnosis::body),
+            remedy: diagnosis
+                .and_then(CrashDiagnosis::remedy)
+                .or_else(|| (!suspects.is_empty()).then_some(CrashRemedy::OpenMods)),
+            suspects,
+            fixes,
+            excerpt,
+            game_dir: Some(cwd.to_string_lossy().to_string()),
+            mod_issues,
+        });
+}
 
-    match answer {
-        Ok(Some(_)) => {}
-        // Dismissed, or nobody was there to ask. Neither is consent to spend
-        // several minutes re-downloading the game.
-        Ok(None) => {
-            tracing::info!(cluster_id, "user declined the post-crash repair");
-            return;
+pub async fn crash_mod_issues(
+    services: &LauncherServices,
+    cluster_id: i64,
+    diagnosis: &CrashDiagnosis,
+) -> Vec<CrashModIssue> {
+    let mut mod_issues = diagnosis.mod_issues();
+    if mod_issues.is_empty() {
+        return mod_issues;
+    }
+
+    let jars: Vec<InstalledJar> = cluster_mods(services, cluster_id)
+        .await
+        .into_iter()
+        .map(|jar| InstalledJar {
+            hash: jar.hash,
+            enabled: jar.enabled,
+            name: jar.name,
+            id: None,
+            version: jar.version,
+        })
+        .collect();
+
+    for jar in &jars {
+        attach_jar(&mut mod_issues, jar);
+    }
+
+    for jar in &jars {
+        if !has_unmatched(&mod_issues) {
+            return mod_issues;
         }
-        Err(err) => {
-            tracing::warn!(cluster_id, "could not offer a post-crash repair: {err}");
-            return;
+
+        if let Some(found) = jar_mod_id(services, &jar.hash).await {
+            attach_jar(
+                &mut mod_issues,
+                &InstalledJar {
+                    id: Some(found.id),
+                    version: found.version.or_else(|| jar.version.clone()),
+                    ..jar.clone()
+                },
+            );
         }
     }
 
+    for jar in jars.iter().filter(|jar| !jar.enabled) {
+        if !has_unmatched_missing(&mod_issues) {
+            break;
+        }
+
+        for found in jar_bundled_mod_ids(services, &jar.hash).await {
+            attach_bundled(
+                &mut mod_issues,
+                jar,
+                &InstalledJar {
+                    hash: jar.hash.clone(),
+                    enabled: jar.enabled,
+                    name: None,
+                    id: Some(found.id),
+                    version: found.version,
+                },
+            );
+        }
+    }
+
+    mod_issues
+}
+
+#[tracing::instrument(skip(state), level = "debug")]
+pub async fn repair_cluster(state: &Arc<LauncherState>, cluster_id: i64) {
     match crate::verify::verify_cluster_files(state, cluster_id).await {
         Ok(report) => {
             state
@@ -635,25 +927,90 @@ pub async fn offer_repair(
     }
 }
 
-fn base_command(profile: &GameSettingsProfile, java_path: &str) -> Command {
-    if let Some(wrapper) = profile
+fn base_command(profile: &GameSettingsProfile, java_path: &str) -> (Command, Option<String>) {
+    let Some(wrapper) = profile
         .hook_wrapper
         .as_deref()
         .map(str::trim)
         .filter(|hook| !hook.is_empty())
-    {
-        let mut split = wrapper.split_whitespace();
-        let mut command = Command::new(split.next().unwrap_or("sh"));
-        command.args(split);
-        command.arg(java_path);
-        command
-    } else {
-        Command::new(java_path)
+    else {
+        return (Command::new(java_path), None);
+    };
+
+    let mut split = wrapper.split_whitespace();
+    let Some(program) = split.next() else {
+        return (Command::new(java_path), None);
+    };
+
+    let mut command = Command::new(program);
+    command.args(split);
+    command.arg(java_path);
+    (command, Some(program.to_string()))
+}
+
+fn command_line(command: &std::process::Command, main_class: &str) -> String {
+    #[cfg(not(windows))]
+    const CONTINUATION: &str = " \\\n  ";
+    #[cfg(windows)]
+    const CONTINUATION: &str = " `\n  ";
+
+    let mut out = String::new();
+    if let Some(dir) = command.get_current_dir() {
+        let _ = writeln!(out, "cd {}", shell_quote(&dir.to_string_lossy()));
     }
+
+    for (key, value) in command.get_envs() {
+        let (key, Some(value)) = (key.to_string_lossy(), value) else {
+            continue;
+        };
+        let value = shell_quote(&value.to_string_lossy());
+        #[cfg(not(windows))]
+        let _ = write!(out, "{key}={value} ");
+        #[cfg(windows)]
+        let _ = writeln!(out, "$env:{key} = {value}");
+    }
+
+    #[cfg(windows)]
+    {
+        out += "& ";
+    }
+    out += &shell_quote(&command.get_program().to_string_lossy());
+
+    for arg in command.get_args() {
+        let arg = arg.to_string_lossy();
+        let arg = oneclient_cluster::logs::censor(&arg);
+        out += if arg.starts_with('-') || arg == main_class {
+            CONTINUATION
+        } else {
+            " "
+        };
+        out += &shell_quote(&arg);
+    }
+
+    out
+}
+
+#[cfg(not(windows))]
+fn shell_quote(arg: &str) -> String {
+    let plain = !arg.is_empty()
+        && arg
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"_-./=:,+@%".contains(&b));
+    if plain {
+        arg.to_string()
+    } else {
+        format!("'{}'", arg.replace('\'', r"'\''"))
+    }
+}
+
+#[cfg(windows)]
+fn shell_quote(arg: &str) -> String {
+    format!("'{}'", arg.replace('\'', "''"))
 }
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     command.env_remove("_JAVA_OPTIONS");
+
     if let Some(env) = &profile.launch_env {
         for pair in env.split_whitespace() {
             if let Some((key, value)) = pair.split_once('=') {
@@ -664,10 +1021,8 @@ fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
 }
 
 #[tracing::instrument(skip(cwd), fields(hook), level = "debug")]
-async fn run_hook(hook: Option<&str>, cwd: &Path) {
-    let Some(hook) = hook.map(str::trim).filter(|h| !h.is_empty()) else {
-        return;
-    };
+async fn run_hook(hook: Option<&str>, cwd: &Path) -> Option<String> {
+    let hook = hook.map(str::trim).filter(|h| !h.is_empty())?;
 
     #[cfg(windows)]
     let mut command = {
@@ -683,7 +1038,147 @@ async fn run_hook(hook: Option<&str>, cwd: &Path) {
     };
 
     command.current_dir(cwd);
-    if let Err(err) = command.status().await {
-        tracing::warn!("hook '{hook}' failed: {err}");
+    command.stderr(Stdio::piped());
+    command.stdin(Stdio::null());
+    oneclient_common::process::no_window(command.as_std_mut());
+
+    let mut child = match command.spawn() {
+        Ok(child) => child,
+        Err(err) => {
+            tracing::warn!("hook '{hook}' could not start: {err}");
+            return Some(format!("The command shell could not be started: {err}"));
+        }
+    };
+
+    let collector = child.stderr.take().map(|mut pipe| {
+        tokio::spawn(async move {
+            let mut buf = Vec::new();
+            let _ = pipe.read_to_end(&mut buf).await;
+            buf
+        })
+    });
+
+    let status = match child.wait().await {
+        Ok(status) => status,
+        Err(err) => {
+            if let Some(collector) = collector {
+                collector.abort();
+            }
+            tracing::warn!("hook '{hook}' could not be waited on: {err}");
+            return Some(format!("The command could not be waited on: {err}"));
+        }
+    };
+
+    if status.success() {
+        if let Some(collector) = collector {
+            collector.abort();
+        }
+        return None;
+    }
+
+    let detail = match collector {
+        Some(mut collector) => {
+            match tokio::time::timeout(Duration::from_millis(200), &mut collector).await {
+                Ok(Ok(buf)) => stderr_detail(&buf),
+                _ => {
+                    collector.abort();
+                    None
+                }
+            }
+        }
+        None => None,
+    };
+
+    let message = match (detail, status.code()) {
+        (Some(detail), _) => detail,
+        (None, Some(code)) => format!("The command exited with code {code}"),
+        (None, None) => "The command was stopped before it finished".to_string(),
+    };
+
+    tracing::warn!("hook '{hook}' failed: {message}");
+    Some(message)
+}
+
+fn stderr_detail(bytes: &[u8]) -> Option<String> {
+    let text = String::from_utf8_lossy(bytes);
+    let line = text
+        .lines()
+        .rev()
+        .map(str::trim)
+        .find(|line| !line.is_empty())?;
+
+    const MAX: usize = 300;
+    if line.chars().count() <= MAX {
+        return Some(line.to_string());
+    }
+
+    let mut clipped: String = line.chars().take(MAX).collect();
+    clipped.push('…');
+    Some(clipped)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn clean() -> Exit {
+        Exit::Observed {
+            code: Some(0),
+            success: true,
+            display: "exit code: 0".to_string(),
+        }
+    }
+
+    #[test]
+    fn a_clean_exit_after_running_out_of_memory_is_a_crash() {
+        assert!(counts_as_crash(
+            &clean(),
+            Some(&CrashDiagnosis::OutOfMemory),
+            false
+        ));
+    }
+
+    #[test]
+    fn stopping_a_game_that_ran_out_of_memory_is_a_crash() {
+        assert!(counts_as_crash(
+            &Exit::Killed,
+            Some(&CrashDiagnosis::OutOfMemory),
+            false
+        ));
+        assert!(!counts_as_crash(&Exit::Killed, None, false));
+    }
+
+    #[test]
+    fn a_clean_exit_with_nothing_wrong_is_not_a_crash() {
+        assert!(!counts_as_crash(&clean(), None, false));
+        assert!(!counts_as_crash(
+            &clean(),
+            Some(&CrashDiagnosis::ModLinkage),
+            false
+        ));
+    }
+
+    #[test]
+    fn a_failing_exit_code_is_always_a_crash() {
+        let failed = Exit::Observed {
+            code: Some(1),
+            success: false,
+            display: "exit code: 1".to_string(),
+        };
+        assert!(counts_as_crash(&failed, None, false));
+    }
+
+    #[test]
+    fn a_load_failure_counts_on_a_clean_exit_however_long_loading_took() {
+        let load_failure = CrashDiagnosis::ModLoadFailure {
+            problems: Vec::new(),
+        };
+        assert!(counts_as_crash(&clean(), Some(&load_failure), false));
+    }
+
+    #[test]
+    fn an_unobserved_exit_counts_when_the_game_wrote_a_crash_report() {
+        assert!(counts_as_crash(&Exit::Inferred, None, true));
+        assert!(!counts_as_crash(&Exit::Inferred, None, false));
     }
 }

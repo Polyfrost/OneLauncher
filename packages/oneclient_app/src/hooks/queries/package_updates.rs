@@ -4,10 +4,8 @@ use freya::query::{Query, QueryCapability, UseQuery, use_query};
 use oneclient_core::{BrowserPackageUpdate, LauncherError};
 use oneclient_db::models::ClusterId;
 
-/// What the last launch-time check recorded for one cluster.
-///
-/// Reads the cache table only: the check itself runs on launch, so rendering a
-/// package list must never be what talks to a provider.
+/// Reads the cache table only rendering a package list must never talk to a
+/// provider The check itself runs on launch
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct PackageUpdatesQuery {
     pub cluster_id: ClusterId,
@@ -44,7 +42,6 @@ pub fn package_updates(query: &UseQuery<PackageUpdatesQuery>) -> Vec<BrowserPack
     super::state::settled_or_loading(query).unwrap_or_default()
 }
 
-/// The artifact hashes with a newer version waiting, for marking rows stale.
 pub fn stale_hashes(query: &UseQuery<PackageUpdatesQuery>) -> HashSet<String> {
     package_updates(query)
         .into_iter()

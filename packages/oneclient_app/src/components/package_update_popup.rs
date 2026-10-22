@@ -1,23 +1,20 @@
-//! The launch-time "these packages are out of date" modal.
-//!
-//! Only ever shows packages the user installed from the browser; bundle content
-//! has its own flow and is never listed here.
-//!
-//! Every row carries its own dropdown, so a user who wants a single mod moved
-//! forward is not made to take the rest with it. Nothing happens until Proceed:
-//! the choices are collected first and applied in one pass, which is why the
-//! rows stay put while they are being answered.
+//! Only lists packages installed from the browser bundle content has its own flow
 
 use std::collections::HashMap;
 
 use freya::prelude::*;
+use oneclient_common::{PackageUpdateMode, Patch};
+use oneclient_content::packages::types::version_web_url;
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
-use oneclient_core::BrowserPackageUpdate;
+use oneclient_core::{BrowserPackageUpdate, ProfileUpdate};
 use oneclient_db::models::ClusterId;
 
-use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::components::{
+    Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea, Spinner, checkbox_labeled,
+};
 use crate::hooks::{
-    package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch,
+    package_meta_batch, project_web_urls, query_is_loading, use_dispatch, use_link_confirm,
+    use_notifications_snapshot, use_package_meta_batch, use_project_web_urls,
 };
 use crate::notifications::PackageUpdateGroup;
 use crate::theme::colors;
@@ -29,13 +26,13 @@ const DIALOG_H: f32 = 420.;
 const CHOICE_DROPDOWN_W: f32 = 150.;
 
 type MetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
+/// CurseForge project pages by project id Modrinth links resolve from ids alone
+struct PageMap {
+    urls: HashMap<String, String>,
+    loading: bool,
+}
 
-/// What Proceed should do with one row.
-///
-/// The two skips differ only in whether the answer outlives the modal: a plain
-/// skip leaves the package stale and it is offered again next launch, while
-/// [`RowChoice::SkipVersion`] records that this exact version was declined and
-/// stops it being raised until a newer one appears.
+/// `Skip` is re-offered next launch `SkipVersion` persists the decline until a newer version
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 enum RowChoice {
     #[default]
@@ -60,7 +57,6 @@ impl RowChoice {
     }
 }
 
-/// Identifies a row across the whole modal, which may span several clusters.
 type RowKey = (ClusterId, String);
 
 fn row_key(update: &BrowserPackageUpdate) -> RowKey {
@@ -75,15 +71,13 @@ impl Component for PackageUpdatePopup {
         let snapshot = use_notifications_snapshot();
         let dispatch = use_dispatch();
 
-        // Only the rows the user actually touched. Everything absent is an
-        // Update, so a group that arrives while the modal is open still gets a
-        // sensible default without being reconciled into the map.
+        // Absent entries default to Update so groups arriving mid-modal need no reconciliation
         let choices = use_state(HashMap::<RowKey, RowChoice>::new);
+        let mut dont_show_again = use_state(|| false);
 
         let groups = snapshot.package_updates.clone();
 
-        // Hooks run unconditionally, so the meta lookup is built from a possibly
-        // empty id list and happens before the early return below.
+        // Hooks run unconditionally so this must precede the early return below
         let mut meta = MetaMap::new();
         for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {
             let ids: Vec<String> = groups
@@ -99,7 +93,22 @@ impl Component for PackageUpdatePopup {
             }
         }
 
+        let curseforge_ids: Vec<String> = groups
+            .iter()
+            .flatten()
+            .flat_map(|group| &group.packages)
+            .filter(|update| update.provider == ProviderId::CurseForge)
+            .map(|update| update.project_id.clone())
+            .collect();
+        let pages_query = use_project_web_urls(ProviderId::CurseForge, curseforge_ids);
+        let pages = PageMap {
+            urls: project_web_urls(&pages_query),
+            loading: query_is_loading(&pages_query),
+        };
+
         let Some(groups) = groups.filter(|groups| !groups.is_empty()) else {
+            // The popup stays mounted, so the tick must not survive into the next prompt
+            dont_show_again.set_if_modified(false);
             return rect().into_element();
         };
 
@@ -112,7 +121,14 @@ impl Component for PackageUpdatePopup {
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
                     .center()
-                    .child(dialog(&groups, &meta, dispatch, choices)),
+                    .child(dialog(
+                        &groups,
+                        &meta,
+                        &pages,
+                        dispatch,
+                        choices,
+                        dont_show_again,
+                    )),
             )
             .into_element()
     }
@@ -125,11 +141,29 @@ fn resolve_name(update: &BrowserPackageUpdate, meta: &MetaMap) -> String {
         .unwrap_or_else(|| update.display_name.clone())
 }
 
+fn changelog_url(update: &BrowserPackageUpdate, pages: &PageMap) -> Option<String> {
+    let project_url = pages.urls.get(&update.project_id).map(String::as_str);
+    version_web_url(
+        update.provider,
+        &update.project_id,
+        &update.latest_version_id,
+        project_url,
+    )
+}
+
+fn changelog_loading(update: &BrowserPackageUpdate, pages: &PageMap) -> bool {
+    update.provider == ProviderId::CurseForge
+        && pages.loading
+        && !pages.urls.contains_key(&update.project_id)
+}
+
 fn dialog(
     groups: &[PackageUpdateGroup],
     meta: &MetaMap,
+    pages: &PageMap,
     dispatch: crate::Actions,
     choices: State<HashMap<RowKey, RowChoice>>,
+    dont_show_again: State<bool>,
 ) -> impl IntoElement {
     rect()
         .vertical()
@@ -147,18 +181,29 @@ fn dialog(
             0.,
             Color::from_argb(150, 0, 0, 0),
         )))
-        .child(content(groups, meta, dispatch, choices))
+        .child(content(
+            groups,
+            meta,
+            pages,
+            dispatch,
+            choices,
+            dont_show_again,
+        ))
 }
 
 fn content(
     groups: &[PackageUpdateGroup],
     meta: &MetaMap,
+    pages: &PageMap,
     dispatch: crate::Actions,
     choices: State<HashMap<RowKey, RowChoice>>,
+    dont_show_again: State<bool>,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
     let proceed_dispatch = dispatch.clone();
+    let dsa_dispatch = dispatch.clone();
     let total: usize = groups.iter().map(|group| group.packages.len()).sum();
+    let clusters: Vec<ClusterId> = groups.iter().map(|group| group.cluster_id).collect();
 
     let subtitle = match groups {
         [only] => format!(
@@ -205,48 +250,77 @@ fn content(
                         .color(colors::fg_secondary()),
                 ),
         )
-        .child(update_list(groups, meta, groups.len() > 1, choices))
+        .child(update_list(groups, meta, pages, groups.len() > 1, choices))
         .child(
             rect()
                 .horizontal()
                 .width(Size::fill())
                 .cross_align(Alignment::Center)
-                .main_align(Alignment::End)
+                .main_align(Alignment::SpaceBetween)
                 .spacing(8.)
                 .child(
-                    Button::new()
-                        .ghost()
-                        .on_press(move |_| dismiss.close_package_updates())
-                        .text("Cancel"),
+                    rect()
+                        .direction(Direction::Horizontal)
+                        .main_align(Alignment::Start)
+                        .cross_align(Alignment::Center)
+                        .spacing(6.)
+                        .child(checkbox_labeled(dont_show_again, "Don't show again?")),
                 )
                 .child(
-                    Button::new()
-                        .primary()
-                        .on_press(move |_| {
-                            let answers = choices.read();
-                            for update in &all {
-                                match answers
-                                    .get(&row_key(update))
-                                    .copied()
-                                    .unwrap_or_default()
-                                {
-                                    RowChoice::Update => {
-                                        proceed_dispatch.apply_package_update(update.clone());
+                    rect()
+                        .width(Size::fill())
+                        .direction(Direction::Horizontal)
+                        .cross_align(Alignment::Center)
+                        .main_align(Alignment::End)
+                        .spacing(8.)
+                        .child(
+                            Button::new()
+                                .ghost()
+                                .on_press(move |_| dismiss.close_package_updates())
+                                .text("Cancel"),
+                        )
+                        .child(
+                            Button::new()
+                                .primary()
+                                .on_press(move |_| {
+                                    if *dont_show_again.peek() {
+                                        // A cluster override outranks the global one, so the prompt
+                                        // is only silenced by writing the cluster that raised it
+                                        for cluster_id in &clusters {
+                                            dsa_dispatch.update_cluster_profile(
+                                                *cluster_id,
+                                                ProfileUpdate {
+                                                    browser_update_mode: Patch::Set(
+                                                        PackageUpdateMode::Skip,
+                                                    ),
+                                                    ..Default::default()
+                                                },
+                                            );
+                                        }
                                     }
-                                    // Nothing to record: the package stays
-                                    // stale and is offered again next launch.
-                                    RowChoice::Skip => {}
-                                    RowChoice::SkipVersion => proceed_dispatch
-                                        .skip_package_update(
-                                            update.cluster_id,
-                                            update.hash.clone(),
-                                        ),
-                                }
-                            }
-                            proceed_dispatch.close_package_updates();
-                        })
-                        .child(Icon::new(IconType::DownloadCloud02).size(15.))
-                        .text("Proceed"),
+
+                                    let answers = choices.read();
+                                    let mut chosen = Vec::new();
+                                    for update in &all {
+                                        match answers
+                                            .get(&row_key(update))
+                                            .copied()
+                                            .unwrap_or_default()
+                                        {
+                                            RowChoice::Update => chosen.push(update.clone()),
+                                            RowChoice::Skip => {}
+                                            RowChoice::SkipVersion => proceed_dispatch
+                                                .skip_package_update(
+                                                    update.cluster_id,
+                                                    update.hash.clone(),
+                                                ),
+                                        }
+                                    }
+                                    proceed_dispatch.proceed_package_updates(chosen);
+                                })
+                                .child(Icon::new(IconType::DownloadCloud02).size(15.))
+                                .text("Proceed"),
+                        ),
                 ),
         )
 }
@@ -254,6 +328,7 @@ fn content(
 fn update_list(
     groups: &[PackageUpdateGroup],
     meta: &MetaMap,
+    pages: &PageMap,
     show_headers: bool,
     choices: State<HashMap<RowKey, RowChoice>>,
 ) -> impl IntoElement {
@@ -275,9 +350,16 @@ fn update_list(
                 .copied()
                 .unwrap_or_default();
             scroll = scroll.child(
-                UpdateRow::new(resolve_name(update, meta), update.clone(), choice, choices)
-                    .key(key)
-                    .into_element(),
+                UpdateRow::new(
+                    resolve_name(update, meta),
+                    changelog_url(update, pages),
+                    changelog_loading(update, pages),
+                    update.clone(),
+                    choice,
+                    choices,
+                )
+                .key(key)
+                .into_element(),
             );
         }
     }
@@ -307,6 +389,8 @@ fn cluster_header(name: &str, first: bool) -> impl IntoElement {
 
 struct UpdateRow {
     name: String,
+    changelog_url: Option<String>,
+    changelog_loading: bool,
     update: BrowserPackageUpdate,
     choice: RowChoice,
     choices: State<HashMap<RowKey, RowChoice>>,
@@ -316,12 +400,16 @@ struct UpdateRow {
 impl UpdateRow {
     fn new(
         name: String,
+        changelog_url: Option<String>,
+        changelog_loading: bool,
         update: BrowserPackageUpdate,
         choice: RowChoice,
         choices: State<HashMap<RowKey, RowChoice>>,
     ) -> Self {
         Self {
             name,
+            changelog_url,
+            changelog_loading,
             update,
             choice,
             choices,
@@ -332,7 +420,11 @@ impl UpdateRow {
 
 impl PartialEq for UpdateRow {
     fn eq(&self, other: &Self) -> bool {
-        self.name == other.name && self.update == other.update && self.choice == other.choice
+        self.name == other.name
+            && self.changelog_url == other.changelog_url
+            && self.changelog_loading == other.changelog_loading
+            && self.update == other.update
+            && self.choice == other.choice
     }
 }
 
@@ -348,9 +440,14 @@ impl Component for UpdateRow {
         let choice = self.choice;
         let mut choices = self.choices;
         let key = row_key(&update);
+        let mut confirm = use_link_confirm();
+        let changelog_url = self.changelog_url.clone();
+        let changelog_icon = if self.changelog_loading {
+            Spinner::new(15.).into_element()
+        } else {
+            Icon::new(IconType::File02).size(15.).into_element()
+        };
 
-        // "1.0.2 to 1.1.0" when both are known; a provider that records neither
-        // still gets a usable row rather than an empty line.
         let versions = match (
             update.installed_version_name.is_empty(),
             update.latest_version_name.is_empty(),
@@ -391,14 +488,21 @@ impl Component for UpdateRow {
                             .width(Size::fill())
                             .color(colors::fg_primary()),
                     )
-                    .child(
-                        label()
-                            .text(versions)
-                            .font_size(11.)
-                            .max_lines(1)
-                            .width(Size::fill())
-                            .color(colors::fg_secondary()),
-                    ),
+                    .child(VersionsLabel { text: versions }),
+            )
+            .child(
+                // Stays in place while CurseForge's project page is still loading so rows don't shift
+                Button::new()
+                    .ghost()
+                    .icon()
+                    .tooltip("View changelog")
+                    .enabled(changelog_url.is_some())
+                    .on_press(move |_| {
+                        if let Some(url) = &changelog_url {
+                            confirm.set(Some(url.clone()));
+                        }
+                    })
+                    .child(changelog_icon),
             )
             .child(
                 Dropdown::new(choice.label(), RowChoice::options())
@@ -411,4 +515,74 @@ impl Component for UpdateRow {
                     }),
             )
     }
+}
+
+/// Wide enough that the versions line is laid out at its natural width before clipping
+const VERSIONS_TRACK_PX: f32 = 4096.;
+
+/// Cuts from the start so the version being updated to stays readable
+#[derive(PartialEq)]
+struct VersionsLabel {
+    text: String,
+}
+
+impl Component for VersionsLabel {
+    fn render(&self) -> impl IntoElement {
+        let mut box_width = use_state(|| 0f32);
+        let mut text_width = use_state(|| 0f32);
+        let mut clip_width = use_state(|| 0f32);
+
+        // Decided against the whole row so showing the ellipsis can't flip it back
+        let overflowing = *text_width.read() > *box_width.read() + 0.5;
+        let offset = if overflowing {
+            (*clip_width.read() - *text_width.read()).min(0.)
+        } else {
+            0.
+        };
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .content(Content::Flex)
+            .overflow(Overflow::Clip)
+            .on_sized(move |event: Event<SizedEventData>| {
+                let width = event.data().area.width();
+                if (width - *box_width.peek()).abs() > 0.5 {
+                    box_width.set(width);
+                }
+            })
+            .maybe(overflowing, |el| el.child(versions_text("…".to_string())))
+            .child(
+                rect()
+                    .width(Size::flex(1.0))
+                    .overflow(Overflow::Clip)
+                    .on_sized(move |event: Event<SizedEventData>| {
+                        let width = event.data().area.width();
+                        if (width - *clip_width.peek()).abs() > 0.5 {
+                            clip_width.set(width);
+                        }
+                    })
+                    .child(
+                        rect().width(Size::px(VERSIONS_TRACK_PX)).child(
+                            rect()
+                                .offset_x(offset)
+                                .on_sized(move |event: Event<SizedEventData>| {
+                                    let width = event.data().area.width();
+                                    if (width - *text_width.peek()).abs() > 0.5 {
+                                        text_width.set(width);
+                                    }
+                                })
+                                .child(versions_text(self.text.clone())),
+                        ),
+                    ),
+            )
+    }
+}
+
+fn versions_text(text: String) -> impl IntoElement {
+    label()
+        .text(text)
+        .font_size(11.)
+        .max_lines(1)
+        .color(colors::fg_secondary())
 }

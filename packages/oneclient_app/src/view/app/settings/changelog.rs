@@ -4,9 +4,9 @@ use freya::animation::{
 use freya::prelude::*;
 
 use super::settings_page;
-use crate::components::{Icon, IconType};
+use crate::components::{Icon, IconType, Markdown, MarkdownStyle};
 use crate::hooks::{
-    changelog_error, changelog_groups, changelog_is_loading, latest_changelog_version,
+    changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,
     use_changelog, use_dispatch, use_settings_snapshot,
 };
 use crate::theme::colors;
@@ -22,9 +22,7 @@ impl Component for SettingsChangelog {
         let mut marked = use_state(|| None::<String>);
         let installed_version = env!("CARGO_PKG_VERSION").to_string();
 
-        // Opening this page counts as reading the changelog, so clear the sidebar
-        // dot once the newest entry is known. `marked` keeps us from re-sending the
-        // command while the settings snapshot catches up.
+        // Opening this page counts as reading it `marked` avoids re-sending while the settings snapshot catches up
         if let Some(latest) = latest_changelog_version(&query) {
             let already_marked = marked.peek().as_deref() == Some(latest.as_str());
             let already_seen = settings.seen_changelog_version.as_deref() == Some(latest.as_str());
@@ -57,15 +55,15 @@ impl Component for SettingsChangelog {
                 .into_element();
         }
 
-        let groups = changelog_groups(&query).unwrap_or_default();
+        let entries = changelog_entries(&query).unwrap_or_default();
 
         settings_page()
-            .children(groups.into_iter().enumerate().map(|(i, group)| {
-                let current = group.version == installed_version;
+            .children(entries.into_iter().enumerate().map(|(i, entry)| {
+                let current = entry.version == installed_version;
                 ReleaseCard {
-                    version: group.version,
+                    version: entry.version,
                     current,
-                    changes: group.changes,
+                    body: entry.body,
                     initially_open: i == 0,
                 }
                 .into_element()
@@ -74,15 +72,14 @@ impl Component for SettingsChangelog {
     }
 }
 
-/// Chevron angle for a collapsed card: `ChevronDown` swung a quarter turn
-/// anticlockwise points right.
+/// `ChevronDown` swung a quarter turn anticlockwise points right
 const CHEVRON_CLOSED_DEG: f32 = -90.;
 
 #[derive(PartialEq)]
 struct ReleaseCard {
     version: String,
     current: bool,
-    changes: Vec<String>,
+    body: String,
     initially_open: bool,
 }
 
@@ -91,9 +88,7 @@ impl Component for ReleaseCard {
         let mut open = use_state(|| self.initially_open);
         let is_open = *open.read();
 
-        // One chevron that swings between pointing right (collapsed) and down
-        // (expanded), so the arrow tracks the section instead of cutting to a
-        // different glyph that did not follow the state.
+        // One chevron that swings so the arrow tracks the section instead of cutting to a different glyph
         let swing = use_animation_with_dependencies(&is_open, |conf, open| {
             conf.on_creation(OnCreation::Run);
             conf.on_change(OnChange::Rerun);
@@ -115,12 +110,6 @@ impl Component for ReleaseCard {
             self.version.clone()
         };
 
-        let changes = self.changes.clone();
-
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
         rect()
             .vertical()
             .width(Size::fill())
@@ -134,8 +123,7 @@ impl Component for ReleaseCard {
                     .width(Size::fill())
                     .cross_align(Alignment::Center)
                     .main_align(Alignment::SpaceBetween)
-                    .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                    .cursor(CursorIcon::Pointer)
                     .on_press(move |_| {
                         let next = !*open.peek();
                         *open.write() = next;
@@ -147,51 +135,37 @@ impl Component for ReleaseCard {
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
-                    .child(Icon::new(IconType::ChevronDown).size(18.).rotate(chevron_deg)),
+                    .child(
+                        Icon::new(IconType::ChevronDown)
+                            .size(18.)
+                            .rotate(chevron_deg),
+                    ),
             )
             .maybe_child(is_open.then(|| {
-                rect()
-                    .vertical()
-                    .width(Size::fill())
-                    .spacing(4.)
-                    .padding(Gaps::new(0., 0., 0., 6.))
-                    .children(if changes.is_empty() {
-                        vec![
-                            rect()
-                                .child(
-                                    label()
-                                        .text("No changes recorded for this version.")
-                                        .font_size(12.)
-                                        .color(colors::fg_secondary()),
-                                )
-                                .into_element(),
-                        ]
-                    } else {
-                        changes
-                            .into_iter()
-                            .map(|change| {
-                                rect()
-                                    .horizontal()
-                                    .width(Size::fill())
-                                    .spacing(8.)
-                                    .child(
-                                        label()
-                                            .text("•")
-                                            .font_size(12.)
-                                            .color(colors::fg_secondary()),
-                                    )
-                                    .child(
-                                        label()
-                                            .text(change)
-                                            .font_size(12.)
-                                            .width(Size::flex(1.0))
-                                            .color(colors::fg_primary()),
-                                    )
-                                    .into_element()
-                            })
-                            .collect()
-                    })
-                    .into_element()
+                if self.body.trim().is_empty() {
+                    label()
+                        .text("No changes recorded for this version.")
+                        .font_size(12.)
+                        .color(colors::fg_secondary())
+                        .into_element()
+                } else {
+                    Markdown::new(self.body.clone())
+                        .width(Size::fill())
+                        .style(MarkdownStyle {
+                            color: colors::fg_primary(),
+                            color_link: colors::code_info(),
+                            color_code: colors::fg_primary(),
+                            background_code: colors::component_bg(),
+                            background_blockquote: colors::component_bg(),
+                            border_blockquote: colors::brand(),
+                            background_divider: colors::component_border(),
+                            headings: [18., 16., 14., 13., 12., 12.],
+                            paragraph_size: 12.,
+                            code_font_size: 11.,
+                            ..MarkdownStyle::default()
+                        })
+                        .into_element()
+                }
             }))
             .into_element()
     }

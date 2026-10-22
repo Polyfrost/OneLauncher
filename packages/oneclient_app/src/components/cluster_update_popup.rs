@@ -4,7 +4,9 @@ use freya::{prelude::*, router::RouterContext};
 use oneclient_content::packages::{CachedPackageMeta, ProviderId};
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TabBar, TabItem};
-use crate::hooks::{package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch};
+use crate::hooks::{
+    package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch,
+};
 use crate::notifications::{ClusterUpdateItem, ClusterUpdateSummary};
 use crate::routes::Route;
 use crate::theme::colors;
@@ -21,25 +23,32 @@ enum UpdateTab {
     Updates,
     Additions,
     Removals,
+    Optional,
 }
 
 impl UpdateTab {
-    const ALL: [UpdateTab; 3] = [UpdateTab::Updates, UpdateTab::Additions, UpdateTab::Removals];
+    const ALL: [UpdateTab; 4] = [
+        UpdateTab::Updates,
+        UpdateTab::Additions,
+        UpdateTab::Removals,
+        UpdateTab::Optional,
+    ];
 
     fn label(self) -> &'static str {
         match self {
             UpdateTab::Updates => "Updated",
             UpdateTab::Additions => "Added",
             UpdateTab::Removals => "Removed",
+            UpdateTab::Optional => "Optional",
         }
     }
 
-    /// Empty-state copy; the tab labels don't read as sentences on their own.
     fn empty_text(self) -> &'static str {
         match self {
             UpdateTab::Updates => "Nothing was updated.",
             UpdateTab::Additions => "Nothing was added.",
             UpdateTab::Removals => "Nothing was removed.",
+            UpdateTab::Optional => "Nothing optional was offered.",
         }
     }
 
@@ -48,6 +57,7 @@ impl UpdateTab {
             UpdateTab::Updates => IconType::RefreshCw01,
             UpdateTab::Additions => IconType::Plus,
             UpdateTab::Removals => IconType::Trash01,
+            UpdateTab::Optional => IconType::Plus,
         }
     }
 
@@ -56,6 +66,7 @@ impl UpdateTab {
             UpdateTab::Updates => colors::brand(),
             UpdateTab::Additions => colors::success(),
             UpdateTab::Removals => colors::danger(),
+            UpdateTab::Optional => colors::brand(),
         }
     }
 
@@ -64,11 +75,11 @@ impl UpdateTab {
             UpdateTab::Updates => &summary.updated,
             UpdateTab::Additions => &summary.added,
             UpdateTab::Removals => &summary.removed,
+            UpdateTab::Optional => &summary.optional,
         }
     }
 }
 
-/// One cluster's resolved package names for the active tab.
 struct ClusterGroup {
     cluster_id: i64,
     cluster_name: String,
@@ -86,16 +97,24 @@ impl Component for ClusterUpdatePopup {
 
         let summaries = snapshot.cluster_update.clone();
 
-        // Resolve pretty display names through the package-meta cache. Hooks
-        // must run unconditionally, so gather ids (empty when no summary) and
-        // query every remote provider before the early return below.
+        // Hooks must run unconditionally so query every provider before the early return below
         let all_items: Vec<&ClusterUpdateItem> = summaries
             .iter()
             .flatten()
-            .flat_map(|s| s.updated.iter().chain(&s.added).chain(&s.removed))
+            .flat_map(|s| {
+                s.updated
+                    .iter()
+                    .chain(&s.added)
+                    .chain(&s.removed)
+                    .chain(&s.optional)
+            })
             .collect();
         let mut meta = MetaMap::new();
-        for provider in ProviderId::REMOTE_PROVIDERS.iter().copied() {
+        for provider in ProviderId::REMOTE_PROVIDERS
+            .iter()
+            .copied()
+            .chain([ProviderId::Local])
+        {
             let ids: Vec<String> = all_items
                 .iter()
                 .filter(|i| i.provider == provider)
@@ -170,8 +189,7 @@ fn content(
     let total: usize = summaries.iter().map(|s| s.total()).sum();
     let active_tab = *active.read();
 
-    // A batch sync can touch several clusters; a single-cluster update keeps the
-    // plain wording and the "Open cluster" shortcut in the footer.
+    // A batch sync can touch several clusters single-cluster keeps the footer shortcut
     let single = match summaries {
         [only] => Some((only.cluster_id, only.cluster_name.clone())),
         _ => None,
@@ -189,8 +207,7 @@ fn content(
         ),
     };
 
-    // Tab row: every category always shown with a count pill, even at zero, so
-    // the modal shape stays stable across clusters.
+    // Every category is shown even at zero so the modal shape stays stable
     let tabs = TabBar::new()
         .width(Size::fill())
         .height(Size::px(30.))
@@ -203,8 +220,7 @@ fn content(
                 .on_press(move |_| *set.write() = tab)
         }));
 
-    // Clusters with nothing in the active category drop out, so the list never
-    // shows an empty section header.
+    // Clusters empty in the active category drop out avoiding empty section headers
     let groups: Vec<ClusterGroup> = summaries
         .iter()
         .filter_map(|summary| {
@@ -344,14 +360,8 @@ fn change_list(
     scroll.into_element()
 }
 
-/// Section header naming the cluster a run of changes belongs to. Pressing it
-/// jumps straight to that cluster, which is the multi-cluster stand-in for the
-/// footer's "Open cluster" shortcut.
-fn cluster_header(
-    group: &ClusterGroup,
-    first: bool,
-    dispatch: crate::Actions,
-) -> impl IntoElement {
+/// Multi-cluster stand-in for the footer's "Open cluster" shortcut
+fn cluster_header(group: &ClusterGroup, first: bool, dispatch: crate::Actions) -> impl IntoElement {
     let cluster_id = group.cluster_id;
     let count = group.names.len();
 
@@ -365,8 +375,7 @@ fn cluster_header(
         .margin(Gaps::new(if first { 0. } else { 8. }, 0., 3., 0.))
         .corner_radius(CornerRadius::new_all(8.))
         .background(colors::component_bg())
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(move |_| open_cluster(&dispatch, cluster_id))
         .child(
             label()

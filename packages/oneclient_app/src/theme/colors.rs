@@ -11,10 +11,6 @@ pub fn page_elevated() -> Color {
     Color::from_rgb(21, 28, 34)
 }
 
-pub fn page_overlay() -> Color {
-    Color::from_argb(140, 17, 23, 28)
-}
-
 pub fn fg_primary() -> Color {
     Color::from_rgb(213, 219, 255)
 }

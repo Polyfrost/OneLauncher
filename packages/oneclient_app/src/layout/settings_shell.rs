@@ -5,12 +5,15 @@ use freya::animation::*;
 use freya::prelude::*;
 use freya::router::*;
 use freya::text_edit::Clipboard;
+use oneclient_common::search::{MatchScore, SearchQuery};
 use sysinfo::CpuRefreshKind;
 use sysinfo::MemoryRefreshKind;
 use sysinfo::RefreshKind;
 use sysinfo::System;
 
-use crate::components::{Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput};
+use crate::components::{
+    Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput, TooltipPlacement, use_tooltip_anchor,
+};
 use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
 use crate::routes::Route;
 use crate::theme::colors;
@@ -19,6 +22,7 @@ use crate::use_dispatch;
 const SIDEBAR_WIDTH_PX: f32 = 225.;
 const ITEM_HEIGHT_PX: f32 = 33.;
 const SEARCH_WIDTH_PX: f32 = 256.;
+const SEARCH_MIN_WIDTH_PX: f32 = 120.;
 const SEARCH_RESULTS_MAX: usize = 12;
 
 thread_local! {
@@ -50,9 +54,8 @@ struct SearchItem {
     route: Route,
 }
 
-// TODO: Replace this with inventory crate or something
+// TODO Replace this with inventory crate or something
 const SEARCH_INDEX: &[SearchItem] = &[
-    // Launcher
     SearchItem {
         id: "launcher.discord_rpc",
         icon: IconType::Link03,
@@ -65,11 +68,21 @@ const SEARCH_INDEX: &[SearchItem] = &[
         id: "launcher.folder",
         icon: IconType::Folder,
         title: "Launcher Folder",
-        description: "Open the launcher data directory.",
-        keywords: &["data dir", "directory", "folder", "open"],
+        description: "Open the launcher data directory, or move it to another drive.",
+        keywords: &[
+            "data dir",
+            "directory",
+            "folder",
+            "open",
+            "move",
+            "change",
+            "relocate",
+            "location",
+            "drive",
+            "disk",
+        ],
         route: Route::SettingsLauncher {},
     },
-    // Appearance
     SearchItem {
         id: "appearance.accent_color",
         icon: IconType::PaintPour,
@@ -102,7 +115,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["reduce motion", "animations", "effects"],
         route: Route::SettingsAppearance {},
     },
-    // APIs
     SearchItem {
         id: "apis.modrinth_key",
         icon: IconType::Key01,
@@ -127,7 +139,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["endpoint", "api", "backend", "url"],
         route: Route::SettingsApis {},
     },
-    // Minecraft settings
     SearchItem {
         id: "minecraft.force_fullscreen",
         icon: IconType::Maximize01,
@@ -176,7 +187,7 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["hook", "command", "post exit", "postexit"],
         route: Route::SettingsMinecraft {},
     },
-    // Java (routing only, page isn't built from settings_row_focus yet)
+    // Java routing only the page is not built from settings_row_focus yet
     SearchItem {
         id: "java.install",
         icon: IconType::Download01,
@@ -193,7 +204,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["java", "runtime", "custom", "folder", "path"],
         route: Route::SettingsJava {},
     },
-    // Storage
     SearchItem {
         id: "storage.usage",
         icon: IconType::Database01,
@@ -208,12 +218,10 @@ const SEARCH_INDEX: &[SearchItem] = &[
         title: "Free up space",
         description: "Remove cached packages and leftovers nothing is using.",
         keywords: &[
-            "storage", "clean", "cleanup", "free", "space", "cache", "unused", "orphan",
-            "leftover",
+            "storage", "clean", "cleanup", "free", "space", "cache", "unused", "orphan", "leftover",
         ],
         route: Route::SettingsStorage {},
     },
-    // Language
     SearchItem {
         id: "language.select",
         icon: IconType::Globe01,
@@ -225,7 +233,6 @@ const SEARCH_INDEX: &[SearchItem] = &[
         ],
         route: Route::SettingsLanguage {},
     },
-    // Developer
     SearchItem {
         id: "developer.compat_only",
         icon: IconType::SearchMd,
@@ -258,14 +265,13 @@ const SEARCH_INDEX: &[SearchItem] = &[
         keywords: &["debug", "page"],
         route: Route::SettingsDeveloper {},
     },
-    // Navigation-level items
     SearchItem {
         id: "nav.accounts",
         icon: IconType::Users01,
         title: "Accounts",
         description: "Manage Minecraft / Microsoft accounts.",
         keywords: &["account", "login", "microsoft", "msa"],
-        route: Route::Accounts {},
+        route: Route::SettingsAccounts {},
     },
     SearchItem {
         id: "nav.changelog",
@@ -325,7 +331,7 @@ impl SettingsTab {
     fn route(self) -> Option<Route> {
         match self {
             Self::MinecraftSettings => Some(Route::SettingsMinecraft {}),
-            Self::Accounts => Some(Route::Accounts {}),
+            Self::Accounts => Some(Route::SettingsAccounts {}),
             Self::LauncherSettings => Some(Route::SettingsLauncher {}),
             Self::Java => Some(Route::SettingsJava {}),
             Self::Storage => Some(Route::SettingsStorage {}),
@@ -371,6 +377,7 @@ pub struct SettingsShell;
 fn route_tab(route: &Route) -> SettingsTab {
     match route {
         Route::SettingsMinecraft {} => SettingsTab::MinecraftSettings,
+        Route::SettingsAccounts {} => SettingsTab::Accounts,
         Route::SettingsLauncher {} => SettingsTab::LauncherSettings,
         Route::SettingsJava {} => SettingsTab::Java,
         Route::SettingsStorage {} => SettingsTab::Storage,
@@ -390,7 +397,8 @@ impl Component for SettingsShell {
         let changelog_unread = has_unread_changelog();
 
         let search = use_state(String::new);
-        let query = search.read().trim().to_string();
+        let header_width = use_state(|| 0f32);
+        let query = SearchQuery::new(&search.read());
         let scroll = use_scroll_controller(ScrollConfig::default);
         SETTINGS_SCROLL_CONTROLLER.with(|cell| *cell.borrow_mut() = Some(scroll));
 
@@ -419,7 +427,7 @@ impl Component for SettingsShell {
                     .into_element(),
             ]
         } else {
-            search_results(query, search)
+            search_results(&query, search)
         };
 
         rect()
@@ -437,12 +445,17 @@ impl Component for SettingsShell {
                     .height(Size::fill())
                     .overflow(Overflow::Clip)
                     .spacing(24.)
-                    .child(content_header(active.label().to_string(), search))
+                    .child(content_header(
+                        active.label().to_string(),
+                        search,
+                        header_width,
+                    ))
                     .child(
                         ScrollArea::new()
                             .width(Size::fill())
                             .height(Size::flex(1.0))
                             .show_scrollbar(true)
+                            .scrollbar_gutter(true)
                             .spacing(4.)
                             .scroll_controller(scroll)
                             .on_ctx(|ctx| {
@@ -454,27 +467,45 @@ impl Component for SettingsShell {
     }
 }
 
-fn content_header(title: String, search: State<String>) -> impl IntoElement {
+fn content_header(title: String, search: State<String>, mut width: State<f32>) -> impl IntoElement {
+    let search_width = search_width_for(*width.read());
+
     rect()
         .horizontal()
         .width(Size::fill())
+        .content(Content::Flex)
         .cross_align(Alignment::Center)
-        .main_align(Alignment::SpaceBetween)
+        .spacing(12.)
+        .on_sized(move |event: Event<SizedEventData>| {
+            let next = event.data().area.width();
+            if (*width.peek() - next).abs() > 0.5 {
+                width.set(next);
+            }
+        })
         .child(
             label()
                 .text(title)
                 .font_size(30.)
                 .font_weight(FontWeight::SEMI_BOLD)
+                .max_lines(1)
+                .width(Size::flex(1.0))
                 .color(colors::fg_primary()),
         )
-        .child(search_box(search))
+        .child(search_box(search, search_width))
 }
 
-fn search_box(mut search: State<String>) -> impl IntoElement {
+fn search_width_for(header_width: f32) -> f32 {
+    if header_width <= 0. {
+        return SEARCH_WIDTH_PX;
+    }
+    (header_width * 0.45).clamp(SEARCH_MIN_WIDTH_PX, SEARCH_WIDTH_PX)
+}
+
+fn search_box(mut search: State<String>, width: f32) -> impl IntoElement {
     let has_query = !search.read().trim().is_empty();
     let base = TextInput::new(search)
         .placeholder("Search settings...")
-        .width(Size::px(SEARCH_WIDTH_PX))
+        .width(Size::px(width))
         .leading(
             Icon::new(IconType::SearchMd)
                 .size(16.)
@@ -491,8 +522,7 @@ fn search_box(mut search: State<String>) -> impl IntoElement {
             .padding(Gaps::new_symmetric(2., 2.))
             .corner_radius(CornerRadius::new_all(6.))
             .background(Color::TRANSPARENT)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+            .cursor(CursorIcon::Pointer)
             .on_press(move |_| search.set(String::new()))
             .child(
                 Icon::new(IconType::XClose)
@@ -503,19 +533,32 @@ fn search_box(mut search: State<String>) -> impl IntoElement {
     )
 }
 
-fn search_results(query: String, mut search: State<String>) -> Vec<Element> {
-    let q = query.to_lowercase();
-    let mut matches: Vec<SearchItem> = SEARCH_INDEX
+/// A title hit outranks a keyword or description hit however well those scored
+fn settings_score(item: &SearchItem, query: &SearchQuery) -> Option<(u8, MatchScore)> {
+    if let Some(score) = query.score(item.title) {
+        return Some((2, score));
+    }
+    if let Some(score) = query.best_score(item.keywords.iter().copied()) {
+        return Some((1, score));
+    }
+    query.score(item.description).map(|score| (0, score))
+}
+
+fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element> {
+    let mut scored: Vec<(u8, MatchScore, SearchItem)> = SEARCH_INDEX
         .iter()
-        .filter(|&item| {
-            item.title.to_lowercase().contains(&q)
-                || item.description.to_lowercase().contains(&q)
-                || item.keywords.iter().any(|k| k.to_lowercase().contains(&q))
-        })
-        .cloned()
+        .filter_map(|item| settings_score(item, query).map(|(f, s)| (f, s, item.clone())))
         .collect();
 
-    matches.sort_by_key(|m| m.title.len());
+    // Shortest title last it is the entry closest to being just the query
+    scored.sort_by_key(|(field, score, item)| {
+        (
+            std::cmp::Reverse(*field),
+            std::cmp::Reverse(*score),
+            item.title.len(),
+        )
+    });
+    let mut matches: Vec<SearchItem> = scored.into_iter().map(|(_, _, item)| item).collect();
     matches.truncate(SEARCH_RESULTS_MAX);
 
     if matches.is_empty() {
@@ -564,12 +607,11 @@ fn search_results(query: String, mut search: State<String>) -> Vec<Element> {
                 .padding(Gaps::new_symmetric(12., 16.))
                 .corner_radius(CornerRadius::new_all(12.))
                 .background(colors::page_elevated())
-                .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+                .cursor(CursorIcon::Pointer)
                 .on_press(move |_| {
                     set_pending_setting_focus(id);
                     search.set(String::new());
-                    let _ = RouterContext::get().push(route.clone());
+                    let _ = RouterContext::get().replace(route.clone());
                 })
                 .child(Icon::new(item.icon))
                 .child(
@@ -603,9 +645,7 @@ fn search_results(query: String, mut search: State<String>) -> Vec<Element> {
     out
 }
 
-/// True when the newest changelog entry is newer than the one the user last read.
-/// While the changelog is still loading or failed to load we show no dot rather
-/// than guessing.
+/// False while the changelog is loading or failed rather than guessing
 fn has_unread_changelog() -> bool {
     let settings = use_settings_snapshot().settings;
     let query = use_changelog();
@@ -626,7 +666,7 @@ fn sidebar(active: SettingsTab, changelog_unread: bool) -> impl IntoElement {
         .padding(Gaps::new(16., 0., 0., 0.))
         .content(Content::Flex)
         .child(
-            rect()
+            ScrollArea::new()
                 .width(Size::fill())
                 .height(Size::flex(1.0))
                 .spacing(16.)
@@ -692,6 +732,10 @@ impl SidebarInfo {
 impl Component for SidebarInfo {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
+        let tooltip = use_tooltip_anchor(
+            Some("Click to copy to clipboard".into()),
+            TooltipPlacement::Top,
+        );
 
         let items: [Cow<'static, str>; 4] = [
             Cow::Borrowed(concat!(
@@ -720,6 +764,7 @@ impl Component for SidebarInfo {
                     .notify("Copy failed")
                     .body("Could not copy system information to the clipboard.")
                     .error()
+                    .toast_only()
                     .send();
             } else {
                 dispatch
@@ -727,28 +772,27 @@ impl Component for SidebarInfo {
                     .body("System information copied to your clipboard.")
                     .info()
                     .icon(IconType::ClipboardCheck)
+                    .toast_only()
                     .send();
             }
         };
 
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
-        rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(4.)
-            .font_size(12.)
-            .color(colors::fg_secondary())
-            .children(
-                items
-                    .into_iter()
-                    .map(|item| label().text(item).into_element()),
-            )
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_press(copy_to_clipboard)
+        tooltip.attach(
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(4.)
+                .font_size(12.)
+                .padding(Gaps::new(15., 0., 0., 0.))
+                .color(colors::fg_secondary())
+                .children(
+                    items
+                        .into_iter()
+                        .map(|item| label().text(item).into_element()),
+                )
+                .cursor(CursorIcon::Pointer)
+                .on_press(copy_to_clipboard),
+        )
     }
 }
 
@@ -793,17 +837,12 @@ impl Component for SidebarItem {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(move |_| {
-                *hovering.write() = true;
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                *hovering.write() = false;
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| *hovering.write() = true)
+            .on_pointer_leave(move |_| *hovering.write() = false)
             .map(route, |el, route| {
-                el.on_all_press(move |_| {
-                    let _ = RouterContext::get().push(route.clone());
+                el.on_press(move |_| {
+                    let _ = RouterContext::get().replace(route.clone());
                 })
             });
 

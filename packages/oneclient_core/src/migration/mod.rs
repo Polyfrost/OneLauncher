@@ -1,3 +1,4 @@
+pub mod launchers;
 pub mod oneclient_v1;
 pub mod vanilla;
 
@@ -39,15 +40,16 @@ impl MigrationSource {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceInstance {
-    /// Source-local identifier (v1: the cluster row id). Purely informational.
+    /// Source-local identifier (v1 the cluster row id)
+    /// Purely informational
     pub instance_id: i64,
     pub folder_name: String,
     pub mc_version: String,
-	/// Used for any "migrated" clusters (e.g. 26.1 fabric -> 26.1.2 fabric)
+    /// Set for "migrated" clusters (e.g. 26.1 fabric -> 26.1.2 fabric)
     pub target_mc_version: Option<String>,
     pub mc_loader: GameLoader,
-    /// Bundle categories the user had installed on this instance, e.g.
-    /// `["HUD", "Performance"]`. Empty when the source has no category concept.
+    pub target_mc_loader: Option<GameLoader>,
+    /// Empty when the source has no category concept
     pub categories: Vec<String>,
     pub has_game_dir: bool,
 }
@@ -62,17 +64,23 @@ pub struct MigrationDetection {
 impl SourceInstance {
     #[must_use]
     pub fn import_version(&self) -> &str {
-        self.target_mc_version.as_deref().unwrap_or(&self.mc_version)
+        self.target_mc_version
+            .as_deref()
+            .unwrap_or(&self.mc_version)
+    }
+
+    #[must_use]
+    pub fn import_loader(&self) -> GameLoader {
+        self.target_mc_loader.unwrap_or(self.mc_loader)
     }
 }
 
-/// Where an imported game directory should land in *this* launcher.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ImportTarget {
-    /// Copy into the shared `<launcher_dir>/.minecraft`.
+    /// Copy into the shared `<launcher_dir>/.minecraft`
     Shared,
-    /// Copy into a specific new cluster's own folder and mark it dedicated so
-    /// `Cluster::game_dir()` resolves there instead of the shared dir.
+    /// Copy into the new cluster's own folder and mark it dedicated so
+    /// `Cluster::game_dir()` resolves there instead of the shared dir
     Dedicated { new_cluster_id: i64 },
 }
 
@@ -125,6 +133,7 @@ mod tests {
             mc_version: "26.1".to_string(),
             target_mc_version: None,
             mc_loader: GameLoader::Fabric,
+            target_mc_loader: None,
             categories: Vec::new(),
             has_game_dir: true,
         };
@@ -132,6 +141,24 @@ mod tests {
 
         instance.target_mc_version = Some("26.1.2".to_string());
         assert_eq!(instance.import_version(), "26.1.2");
+    }
+
+    #[test]
+    fn import_loader_prefers_resolved_target() {
+        let mut instance = SourceInstance {
+            instance_id: 1,
+            folder_name: "1.20.1 Forge".to_string(),
+            mc_version: "1.20.1".to_string(),
+            target_mc_version: None,
+            mc_loader: GameLoader::Forge,
+            target_mc_loader: None,
+            categories: Vec::new(),
+            has_game_dir: true,
+        };
+        assert_eq!(instance.import_loader(), GameLoader::Forge);
+
+        instance.target_mc_loader = Some(GameLoader::NeoForge);
+        assert_eq!(instance.import_loader(), GameLoader::NeoForge);
     }
 
     #[test]

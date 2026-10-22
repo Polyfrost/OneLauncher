@@ -1,21 +1,10 @@
-//! Download speed and time-remaining estimation.
-//!
-//! One shared estimator, so the notification engine and the onboarding
-//! installer show the same numbers arrived at the same way.
-
 use std::time::Instant;
 
-/// Weight given to the existing average when a new sample arrives.
-///
-/// Downloads are bursty (a single asset finishing can spike the instantaneous
-/// rate several-fold) so the average is kept sluggish on purpose.
+/// Weight of the existing average per sample kept sluggish because downloads are bursty
 const SMOOTHING: f64 = 0.7;
 
-/// An exponentially-weighted average of transfer rate, plus the ETA that falls
-/// out of it.
 #[derive(Debug, Clone, Copy, Default)]
 pub struct TransferMeter {
-    /// Timestamp and byte count of the last sample.
     last_sample: Option<(Instant, u64)>,
     speed_bps: f64,
 }
@@ -23,19 +12,14 @@ pub struct TransferMeter {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TransferStats {
     pub speed_bps: f64,
-    /// `None` until there is enough signal to estimate, or when the total is
-    /// unknown.
+    /// `None` until there is enough signal to estimate or when the total is unknown
     pub eta_secs: Option<u64>,
 }
 
 impl TransferMeter {
-    /// Records progress and returns the current estimate.
-    ///
-    /// `completed` and `total` are cumulative byte counts. Samples closer
-    /// together than a few hundred milliseconds are ignored rather than folded
-    /// in: the elapsed divisor gets small enough to swamp the average with
-    /// noise, which is what the fixed-tick version was working around by
-    /// sampling on a timer instead.
+    /// `completed` and `total` are cumulative bytes
+    /// Samples under 250ms apart are not folded in
+    /// the tiny elapsed divisor would swamp the average with noise
     pub fn sample(&mut self, completed: u64, total: u64) -> Option<TransferStats> {
         let now = Instant::now();
 
@@ -70,8 +54,7 @@ impl TransferMeter {
         let remaining = total.saturating_sub(completed);
         Some(TransferStats {
             speed_bps: self.speed_bps,
-            // No total means no estimate, which beats a countdown derived from a
-            // denominator that is still climbing.
+            // No total means no estimate the denominator may still be climbing
             eta_secs: (total > 0).then(|| (remaining as f64 / self.speed_bps) as u64),
         })
     }
@@ -111,8 +94,6 @@ mod tests {
         assert!(late < early, "eta should shrink: {early} -> {late}");
     }
 
-    /// Rapid updates are the common case during an asset fan-out; they must not
-    /// divide by a near-zero elapsed and blow the average up.
     #[test]
     fn samples_taken_too_close_together_do_not_distort_the_average() {
         let mut meter = TransferMeter::default();

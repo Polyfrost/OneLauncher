@@ -6,7 +6,6 @@ use freya::{
 use oneclient_auth::MinecraftAccount;
 
 use crate::{
-    ui::{divider},
     Route,
     components::{Avatar, Button, Icon, IconType, OverlayPopup},
     hooks::{
@@ -14,6 +13,7 @@ use crate::{
         use_accounts, use_current_account, use_dispatch, use_set_default_account,
     },
     theme::colors,
+    ui::divider,
 };
 
 #[derive(PartialEq)]
@@ -54,7 +54,6 @@ impl Component for AccountPanel {
         });
         let progress = intro.read().value();
 
-        // active account first, then the rest
         let mut ordered: Vec<MinecraftAccount> = Vec::new();
         if let Some(account) = default_account.clone() {
             ordered.push(account);
@@ -92,7 +91,7 @@ impl Component for AccountPanel {
             .opacity(progress)
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
-            .blur(12.)
+            .backdrop_blur(12.)
             .corner_radius(CornerRadius::new_all(12.))
             .border(
                 Border::new()
@@ -108,16 +107,60 @@ impl Component for AccountPanel {
                 Color::from_argb(120, 0, 0, 0),
             )))
             .child(
-                label()
-                    .text("Accounts")
-                    .font_size(18.)
-                    .font_weight(FontWeight::MEDIUM)
-                    .a11y_role(AccessibilityRole::TitleBar),
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .cross_align(Alignment::Center)
+                    .spacing(6.)
+                    .child(BackToControlCenter)
+                    .child(
+                        label()
+                            .text("Accounts")
+                            .font_size(18.)
+                            .font_weight(FontWeight::MEDIUM)
+                            .a11y_role(AccessibilityRole::TitleBar),
+                    ),
             )
             .child(divider())
             .child(rows)
             .child(divider())
             .child(Footer)
+    }
+}
+
+#[derive(PartialEq)]
+struct BackToControlCenter;
+
+impl Component for BackToControlCenter {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let mut hovered = use_state(|| false);
+
+        let back = move |_| {
+            dispatch.close_account_switcher();
+            dispatch.open_control_center();
+        };
+
+        rect()
+            .width(Size::px(28.))
+            .height(Size::px(28.))
+            .center()
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(Color::RED.with_a(0))
+            .maybe(*hovered.read(), |el| {
+                el.background(colors::ghost_overlay_hover())
+            })
+            .cursor(CursorIcon::Pointer)
+            .a11y_role(AccessibilityRole::Button)
+            .a11y_alt("Back to control center")
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
+            .on_press(back)
+            .child(
+                Icon::new(IconType::ArrowLeft)
+                    .size(18.)
+                    .color(colors::fg_secondary()),
+            )
     }
 }
 
@@ -180,16 +223,9 @@ impl Component for AccountRow {
             .maybe(*hovered.read() && !active, |el| {
                 el.background(colors::ghost_overlay_hover())
             })
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                if !active {
-                    Cursor::set(CursorIcon::Pointer);
-                }
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor((!active).then_some(CursorIcon::Pointer))
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(switch)
             .child(
                 Avatar::new(id.to_string())
@@ -235,7 +271,7 @@ impl Component for Footer {
         let dispatch = use_dispatch();
         let open_accounts = move |_| {
             dispatch.close_account_switcher();
-            let _ = RouterContext::get().push(Route::Accounts {});
+            let _ = RouterContext::get().push(Route::SettingsAccounts {});
         };
 
         Button::new()

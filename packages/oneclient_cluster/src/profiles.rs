@@ -1,13 +1,6 @@
-//! Named settings profiles.
-//!
-//! A profile is a sparse override on the launcher's global baseline: every
-//! `Option` field left `None` inherits the global value, which is why
-//! [`ProfileUpdate`] carries `Patch::Clear`. Clearing a field means "go back to
-//! inheriting" rather than "set to nothing".
-//!
-//! These take the global baseline as a `&GameSettingsProfile` parameter rather
-//! than reading the launcher settings, so this crate does not depend on the
-//! launcher config that embeds it.
+//! A profile is a sparse override on the global baseline a `None` field
+//! inherits so `Patch::Clear` means "inherit again" not "set to nothing"
+//! The baseline is passed in so this crate needn't depend on launcher config
 
 use oneclient_common::patch::Patch;
 use oneclient_db::DbPool;
@@ -15,7 +8,7 @@ use oneclient_db::DbPool;
 use crate::error::{ClusterError, ClusterResult};
 use crate::profile::{GameSettingsProfile, SettingsOsExtra};
 use oneclient_common::Resolution;
-use oneclient_common::domain::PackageUpdateMode;
+use oneclient_common::domain::{GraphicsBackend, PackageUpdateMode};
 
 #[tracing::instrument(level = "debug", skip(pool, global))]
 pub async fn get_profile_or_default(
@@ -33,12 +26,8 @@ pub async fn get_profile_or_default(
 }
 
 #[tracing::instrument(level = "debug", skip(pool, global))]
-/// Resolves the profile a cluster should launch with.
-///
-/// A named profile is a sparse override on the global baseline: any field
-/// left `None` inherits the global value. Falling back to the baseline whole
-/// when the name is missing or unknown keeps a deleted profile from bricking a
-/// cluster.
+/// Falls back to the whole baseline when the name is missing or unknown so a
+/// deleted profile cannot brick a cluster
 pub async fn resolve_cluster_profile(
     pool: &DbPool,
     global: &GameSettingsProfile,
@@ -87,9 +76,7 @@ pub async fn create_profile_from_global(
     let mut profile = global.clone();
 
     profile.name = name.to_string();
-    if let Some(mem) = mem_max {
-        profile.mem_max = Some(mem);
-    }
+    profile.mem_max = mem_max;
 
     if let Some(fullscreen) = force_fullscreen {
         profile.force_fullscreen = Some(fullscreen);
@@ -128,12 +115,14 @@ pub struct ProfileUpdate {
     pub force_fullscreen: Patch<bool>,
     pub mem_max: Patch<u32>,
     pub launch_args: Patch<String>,
+    pub game_args: Patch<String>,
     pub launch_env: Patch<String>,
     pub hook_pre: Patch<String>,
     pub hook_wrapper: Patch<String>,
     pub hook_post: Patch<String>,
     pub os_extra: Patch<SettingsOsExtra>,
     pub browser_update_mode: Patch<PackageUpdateMode>,
+    pub graphics_backend: Patch<GraphicsBackend>,
 }
 
 impl ProfileUpdate {
@@ -145,6 +134,8 @@ impl ProfileUpdate {
         self.mem_max.apply_to_option(&mut profile.mem_max);
         self.launch_args
             .apply_to_command_option(&mut profile.launch_args);
+        self.game_args
+            .apply_to_command_option(&mut profile.game_args);
         self.launch_env
             .apply_to_command_option(&mut profile.launch_env);
         self.hook_pre.apply_to_command_option(&mut profile.hook_pre);
@@ -155,6 +146,8 @@ impl ProfileUpdate {
         self.os_extra.apply_to_option(&mut profile.os_extra);
         self.browser_update_mode
             .apply_to_option(&mut profile.browser_update_mode);
+        self.graphics_backend
+            .apply_to_option(&mut profile.graphics_backend);
     }
 }
 
@@ -175,4 +168,3 @@ pub async fn update_named_profile(
 
     upsert_named_profile(pool, &profile).await
 }
-

@@ -16,10 +16,6 @@ pub fn is_default_file(file: &BundleFile) -> bool {
     file.enabled && !file.hidden
 }
 
-pub fn is_optional_file(file: &BundleFile) -> bool {
-    !file.enabled && !file.hidden
-}
-
 pub fn default_selection(
     items: &[ClusterBundles],
     opted_in_categories: Option<&[String]>,

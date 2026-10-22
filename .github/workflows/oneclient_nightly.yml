@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: true
 
 # Nightlies are unsigned test builds, so they do not need the release profile's
-# whole-program optimization — and that optimization is exactly what makes them
+# whole-program optimization - and that optimization is exactly what makes them
 # slow. `lto = "fat"` + `codegen-units = 1` force a single-threaded re-optimization
 # of the entire dependency graph at link time, on every run, which no cache can
 # ever skip. Thin LTO keeps nearly all of the runtime benefit at a fraction of the
@@ -21,7 +21,7 @@ concurrency:
 # output directory and every path below is unaffected. The shipped release binary
 # is untouched: oneclient_release.yml still builds the fat-LTO profile from
 # Cargo.toml. That difference is why the two workflows must not share a cache
-# namespace — see `cache-namespace` on the Setup Rust step.
+# namespace - see `cache-namespace` on the Setup Rust step.
 env:
   CARGO_PROFILE_RELEASE_LTO: thin
   CARGO_PROFILE_RELEASE_CODEGEN_UNITS: '16'
@@ -85,6 +85,7 @@ jobs:
             libfontconfig-dev libfreetype-dev \
             libgl1-mesa-dev libx11-dev libxcursor-dev libxi-dev libxrandr-dev \
             libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libdbus-1-dev \
+            libgtk-3-dev libayatana-appindicator3-dev \
             libfuse2
 
       - name: Install cargo-packager
@@ -114,6 +115,47 @@ jobs:
             echo "::error::Binary requires macOS $minos but the bundle advertises ${{ matrix.macos_deployment_target }}."
             exit 1
           fi
+
+      - name: (macOS) Compile app icon catalog
+        if: startsWith(matrix.platform, 'macos')
+        shell: bash
+        run: |
+          set -euo pipefail
+          out="packages/oneclient_app/icons/generated"
+          mkdir -p "$out"
+          xcrun actool packages/oneclient_app/icons/OneClient.icon \
+            --compile "$out" \
+            --app-icon OneClient \
+            --output-partial-info-plist "$out/partial.plist" \
+            --platform macosx \
+            --minimum-deployment-target 26.0 \
+            --errors --warnings --notices
+          rm -f "$out/OneClient.icns"
+          test -f "$out/Assets.car" || { echo "::error::actool produced no Assets.car"; exit 1; }
+
+      - name: (Windows) Stage app-local VC++ runtime
+        if: matrix.platform == 'windows-latest'
+        shell: bash
+        run: python3 distribution/windows/bundle-crt.py
+
+      - name: (Windows) Verify staged runtime is Microsoft-signed
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $dlls = @(Get-ChildItem 'target/crt/*.dll')
+          if ($dlls.Count -eq 0) { Write-Error 'no CRT DLLs staged'; exit 1 }
+          foreach ($dll in $dlls) {
+            $sig = Get-AuthenticodeSignature $dll.FullName
+            Write-Host "$($dll.Name): $($sig.Status) $($sig.SignerCertificate.Subject)"
+            if ($sig.Status -ne 'Valid') {
+              Write-Error "$($dll.Name) signature is $($sig.Status), refusing to ship it"
+              exit 1
+            }
+            if ($sig.SignerCertificate.Subject -notmatch 'O=Microsoft Corporation') {
+              Write-Error "$($dll.Name) is not signed by Microsoft"
+              exit 1
+            }
+          }
 
       - name: Package (unsigned)
         shell: bash
@@ -148,8 +190,37 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          cp target/release/.cargo-packager/deb/*/data/usr/share/applications/oneclient_app.desktop \
+             target/release/oneclient_app.desktop
           cargo generate-rpm -p packages/oneclient_app
           cp target/generate-rpm/*.rpm "${{ steps.outdir.outputs.dir }}/"
+
+      - name: (Windows) Smoke-test installer layout
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dest = 'C:\oneclient-smoke'
+          Remove-Item -Recurse -Force $dest -ErrorAction SilentlyContinue
+          $exe = Resolve-Path (Get-ChildItem '${{ steps.outdir.outputs.dir }}/*-setup.exe')[0].FullName
+          # NSIS: /S is silent, /D= sets the install dir and must be the last arg.
+          $p = Start-Process -FilePath $exe -ArgumentList '/S', "/D=$dest" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { Write-Error "installer exited $($p.ExitCode)"; exit 1 }
+
+          Write-Host '--- installed layout ---'
+          Get-ChildItem -Recurse $dest | ForEach-Object { Write-Host $_.FullName }
+
+          if (-not (Test-Path "$dest\oneclient_app.exe")) {
+            Write-Error "oneclient_app.exe is not at the root of $dest"
+            exit 1
+          }
+          foreach ($dll in @(Get-ChildItem 'target/crt/*.dll')) {
+            if (-not (Test-Path (Join-Path $dest $dll.Name))) {
+              Write-Error "$($dll.Name) did not land beside oneclient_app.exe - cargo-packager put resources elsewhere, so app-local CRT loading will not work"
+              exit 1
+            }
+          }
+          Write-Host "OK: $($(Get-ChildItem 'target/crt/*.dll').Count) CRT DLLs sit beside oneclient_app.exe"
 
       # Upload debug info (dSYM / .dwp / .pdb produced by the release profile's
       # split-debuginfo) to Sentry so nightly crash reports get real file/function/
@@ -193,21 +264,61 @@ jobs:
           for f in "${{ steps.outdir.outputs.dir }}"/*.dmg \
                    "${{ steps.outdir.outputs.dir }}"/*.deb \
                    "${{ steps.outdir.outputs.dir }}"/*.rpm \
-                   "${{ steps.outdir.outputs.dir }}"/*.AppImage \
-                   "${{ steps.outdir.outputs.dir }}"/*-setup.exe; do
+                   "${{ steps.outdir.outputs.dir }}"/*.AppImage; do
             [ -e "$f" ] || continue
             cp "$f" dist/
           done
+          # Raw executable, renamed per platform so the unzipped uploads don't collide.
+          bin="${{ steps.outdir.outputs.dir }}/oneclient_app"
+          ext=""
+          [ -e "$bin.exe" ] && ext=".exe"
+          cp "$bin$ext" "dist/oneclient_app-${{ matrix.os_key }}-${{ matrix.arch }}$ext"
           if [ -z "$(ls -A dist)" ]; then
             echo "::error::No installers found in ${{ steps.outdir.outputs.dir }}"
             exit 1
           fi
           ls -la dist
 
-      - name: Upload unsigned installers
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      - name: Upload unsigned executable
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: oneclient-nightly-${{ matrix.os_key }}-${{ matrix.arch }}
-          path: dist/*
+          path: dist/oneclient_app-${{ matrix.os_key }}-${{ matrix.arch }}*
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: (macOS) Upload unsigned dmg
+        if: matrix.os_key == 'darwin'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: dist/*.dmg
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: (Linux) Upload unsigned deb
+        if: matrix.os_key == 'linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: dist/*.deb
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: (Linux) Upload unsigned rpm
+        if: matrix.os_key == 'linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: dist/*.rpm
+          archive: false
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: (Linux) Upload unsigned AppImage
+        if: matrix.os_key == 'linux'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          path: dist/*.AppImage
+          archive: false
           if-no-files-found: error
           retention-days: 14

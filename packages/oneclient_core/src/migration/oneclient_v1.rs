@@ -99,6 +99,7 @@ async fn detect_inner(root: &Path, db_path: &Path) -> LauncherResult<MigrationDe
             mc_version,
             target_mc_version: None,
             mc_loader,
+            target_mc_loader: None,
             categories,
             has_game_dir,
         });
@@ -159,7 +160,7 @@ pub async fn import_game_dir(
             let cluster = state.clusters.get(*new_cluster_id).await?;
             let dir = cluster.dir()?;
             polyio::create_dir_all(&dir).await?;
-            // Mark dedicated so game_dir() resolves to this cluster's own dir.
+            // Mark dedicated so game_dir() resolves to this cluster's own dir
             polyio::write(cluster.dedicated_marker()?, Vec::new()).await?;
             dir
         }

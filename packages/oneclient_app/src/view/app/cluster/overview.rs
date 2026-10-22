@@ -4,7 +4,7 @@ use crate::components::ScrollArea;
 use crate::hooks::{try_cluster_analytics, use_cluster_analytics};
 use crate::layout::cluster_content;
 use crate::theme::colors;
-use crate::ui::{centered_note};
+use crate::ui::centered_note;
 use crate::view::app::{analytics_body, analytics_placeholder};
 
 use super::cluster_not_found;
@@ -19,11 +19,12 @@ impl Component for ClusterOverview {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
 
+        let query = use_cluster_analytics(cluster_id);
+
         let Some(cluster) = use_cluster(cluster_id) else {
             return cluster_content().child(cluster_not_found()).into_element();
         };
 
-        let query = use_cluster_analytics(cluster_id);
         let analytics = try_cluster_analytics(&query);
 
         let body: Element = match &analytics {
@@ -39,6 +40,7 @@ impl Component for ClusterOverview {
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::fill())
+                    .scrollbar_gutter(true)
                     .child(
                         rect()
                             .vertical()

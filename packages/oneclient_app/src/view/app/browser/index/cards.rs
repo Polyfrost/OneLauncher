@@ -5,25 +5,42 @@ use std::collections::HashMap;
 use freya::router::RouterContext;
 use oneclient_content::packages::types::ProjectSummary;
 use oneclient_content::packages::{ContentType, ProviderId};
+use oneclient_core::clusters::ModpackSource;
 
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{
-    content_type_for_slug, use_browser_compat, use_cluster, use_dispatch, use_installs_snapshot,
-    use_package_versions_when, version_list,
+    ALL_VERSIONS, ClusterAction, VERSIONS_PAGE_SIZE, content_type_for_slug, use_browser_compat,
+    use_cluster, use_dispatch, use_installs_snapshot, use_package_versions_when, version_list,
 };
 use crate::routes::Route;
+use crate::view::app::browser::cluster_version;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
 type InstalledMap = HashMap<(ProviderId, String), Installed>;
 
-/// Diameter of the round install button.
-const INSTALL_BUTTON: f32 = 30.;
+/// Height of the install control, matched by the installed pill that replaces it
+const INSTALL_BUTTON_H: f32 = 28.;
 
-fn installed_for(installed: &InstalledMap, item: &ProjectSummary) -> Option<InstallSource> {
+#[derive(Clone, PartialEq)]
+struct CardInstalled {
+    source: InstallSource,
+    enable: Option<ClusterAction>,
+}
+
+fn installed_for(
+    installed: &InstalledMap,
+    item: &ProjectSummary,
+    cluster_id: i64,
+) -> Option<CardInstalled> {
     installed
         .get(&(item.provider, item.id.clone()))
-        .map(|installed| installed.source)
+        .map(|installed| CardInstalled {
+            source: installed.source,
+            enable: installed
+                .disabled_bundled()
+                .and_then(|version| version.enable_action(cluster_id)),
+        })
 }
 
 pub(super) fn grid_row(
@@ -31,12 +48,14 @@ pub(super) fn grid_row(
     cluster_id: i64,
     package_type: &str,
     installed: &InstalledMap,
+    cols: usize,
+    add_to_cluster: bool,
 ) -> impl IntoElement {
     let package_type = package_type.to_string();
-    let fill = GRID_COLUMNS - row.len();
-    let installed: Vec<Option<InstallSource>> = row
+    let fill = cols.saturating_sub(row.len());
+    let installed: Vec<Option<CardInstalled>> = row
         .iter()
-        .map(|item| installed_for(installed, item))
+        .map(|item| installed_for(installed, item, cluster_id))
         .collect();
 
     rect()
@@ -49,8 +68,14 @@ pub(super) fn grid_row(
             row.into_iter()
                 .zip(installed)
                 .map(move |(item, installed)| {
-                    PackageCard::new(item, cluster_id, package_type.clone(), installed)
-                        .into_element()
+                    PackageCard::new(
+                        item,
+                        cluster_id,
+                        package_type.clone(),
+                        installed,
+                        add_to_cluster,
+                    )
+                    .into_element()
                 }),
         )
         .maybe(fill > 0, move |mut el| {
@@ -62,11 +87,18 @@ pub(super) fn grid_row(
         .into_element()
 }
 
-fn open_package(cluster_id: i64, package_type: &str, provider: ProviderId, id: &str) {
+fn open_package(
+    cluster_id: i64,
+    package_type: &str,
+    provider: ProviderId,
+    id: &str,
+    add_to_cluster: bool,
+) {
     let _ = RouterContext::get().push(Route::BrowserPackage {
         cluster_id,
         package_type: package_type.to_string(),
         package_id: encode_package_id(provider, id),
+        add_to_cluster,
     });
 }
 
@@ -75,7 +107,8 @@ struct PackageCard {
     item: ProjectSummary,
     cluster_id: i64,
     package_type: String,
-    installed: Option<InstallSource>,
+    installed: Option<CardInstalled>,
+    add_to_cluster: bool,
 }
 
 impl PackageCard {
@@ -83,13 +116,15 @@ impl PackageCard {
         item: ProjectSummary,
         cluster_id: i64,
         package_type: String,
-        installed: Option<InstallSource>,
+        installed: Option<CardInstalled>,
+        add_to_cluster: bool,
     ) -> Self {
         Self {
             item,
             cluster_id,
             package_type,
             installed,
+            add_to_cluster,
         }
     }
 }
@@ -100,22 +135,23 @@ impl Component for PackageCard {
         let provider = self.item.provider;
         let package_type = self.package_type.clone();
         let icon_url = self.item.icon_url.clone();
+        let banner = match self.item.banner_url.clone() {
+            Some(url) => PackageBanner::new(Some(url), BANNER_H).sharp(),
+            None => PackageBanner::new(icon_url.clone(), BANNER_H),
+        };
         let cluster_id = self.cluster_id;
+        let add_to_cluster = self.add_to_cluster;
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
 
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
         rect()
             .vertical()
             .width(Size::flex(1.0))
             .height(Size::px(CARD_H))
-            .corner_radius(CornerRadius::new_all(10.))
-            .background(CARD_BG)
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(colors::component_bg())
             .border(border_all_color(
                 1.,
                 if focused {
@@ -128,44 +164,34 @@ impl Component for PackageCard {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
+            .cursor(CursorIcon::Pointer)
+            .on_press(move |_| {
+                open_package(cluster_id, &package_type, provider, &id, add_to_cluster)
+            })
             .child(
                 rect()
-                    .margin(Gaps::new_all(1.))
-                    .corner_radius(CornerRadius::new(10., 10., 0., 0.))
+                    .width(Size::fill())
+                    .height(Size::px(BANNER_H))
                     .overflow(Overflow::Clip)
-                    .child(PackageBanner::new(icon_url, BANNER_H))
-                    // Sat in the banner's top-left corner rather than down in
-                    // the footer: it is the first thing worth knowing about a
-                    // result, and the opposite corner is the install button's.
-                    .maybe_child(self.installed.map(|installed| {
-                        rect()
-                            .position(Position::new_absolute().top(8.).left(8.))
-                            .layer(Layer::Relative(7))
-                            .child(installed_badge_overlay(installed))
-                            .into_element()
-                    }))
-                    .maybe_child(self.installed.is_none().then(|| {
-                        rect()
-                            .position(Position::new_absolute().top(8.).right(8.))
-                            .layer(Layer::Relative(7))
-                            .child(InstallButton::new(
-                                &self.item,
-                                self.cluster_id,
-                                &self.package_type,
-                                false,
-                            ))
-                            .into_element()
-                    })),
+                    // No installed badge, the control at the foot of the card already states it
+                    .child(banner.backdrop_only()),
+            )
+            .child(
+                rect()
+                    .position(
+                        Position::new_absolute()
+                            .top(BANNER_H - CARD_ICON + CARD_ICON_OVERHANG)
+                            .left(14.),
+                    )
+                    .layer(Layer::Relative(7))
+                    .child(Thumbnail::new(icon_url, CARD_ICON).radius(6.)),
             )
             .child(
                 rect()
                     .vertical()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
-                    .padding(Gaps::new_all(12.))
+                    .padding(Gaps::new(CARD_ICON_OVERHANG + 6., 14., 12., 14.))
                     .main_align(Alignment::SpaceBetween)
                     .child(
                         rect()
@@ -175,35 +201,46 @@ impl Component for PackageCard {
                             .child(
                                 label()
                                     .text(self.item.name.clone())
-                                    .font_size(16.)
-                                    .font_weight(FontWeight::MEDIUM)
+                                    .font_size(14.)
+                                    .font_weight(FontWeight::SEMI_BOLD)
                                     .max_lines(1)
-                                    .color(CARD_NAME),
+                                    .color(colors::fg_primary()),
                             )
                             .child(
                                 rect()
                                     .horizontal()
                                     .cross_align(Alignment::Center)
-                                    .spacing(4.)
+                                    .spacing(5.)
                                     .child(
                                         label()
-                                            .text(format!("by {}", self.item.author))
+                                            .text(format!(
+                                                "by {} · {} downloads",
+                                                self.item.author,
+                                                abbreviate_number(self.item.downloads)
+                                            ))
                                             .font_size(10.)
                                             .max_lines(1)
-                                            .color(colors::fg_secondary()),
+                                            .color(colors::fg_primary().with_a(140)),
                                     )
-                                    .child(Icon::new(self.item.provider).size(12.)),
+                                    .child(Icon::new(self.item.provider).size(11.)),
                             )
                             .child(
                                 label()
                                     .text(self.item.summary.clone())
                                     .font_size(11.)
+                                    .line_height(1.45)
                                     .max_lines(2)
                                     .width(Size::fill())
-                                    .color(colors::fg_secondary()),
+                                    .color(colors::fg_primary().with_a(184)),
                             ),
                     )
-                    .child(downloads_row(self.item.downloads)),
+                    .child(InstallButton::new(
+                        &self.item,
+                        self.cluster_id,
+                        &self.package_type,
+                        self.installed.clone(),
+                        self.add_to_cluster,
+                    )),
             )
     }
 }
@@ -213,12 +250,14 @@ pub(super) fn list_row(
     cluster_id: i64,
     package_type: &str,
     installed: &InstalledMap,
+    add_to_cluster: bool,
 ) -> impl IntoElement {
     ListRow {
-        installed: installed_for(installed, &item),
+        installed: installed_for(installed, &item, cluster_id),
         item,
         cluster_id,
         package_type: package_type.to_string(),
+        add_to_cluster,
     }
 }
 
@@ -227,7 +266,8 @@ struct ListRow {
     item: ProjectSummary,
     cluster_id: i64,
     package_type: String,
-    installed: Option<InstallSource>,
+    installed: Option<CardInstalled>,
+    add_to_cluster: bool,
 }
 
 impl Component for ListRow {
@@ -237,14 +277,11 @@ impl Component for ListRow {
         let id = item.id.clone();
         let provider = item.provider;
         let package_type = self.package_type.clone();
+        let add_to_cluster = self.add_to_cluster;
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
-
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
 
         rect()
             .horizontal()
@@ -253,8 +290,8 @@ impl Component for ListRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_all(16.))
-            .corner_radius(CornerRadius::new_all(10.))
-            .background(CARD_BG)
+            .corner_radius(CornerRadius::new_all(8.))
+            .background(colors::component_bg())
             .border(border_all_color(
                 1.,
                 if focused {
@@ -268,10 +305,11 @@ impl Component for ListRow {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-            .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-            .on_all_press(move |_| open_package(cluster_id, &package_type, provider, &id))
-            .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(8.))
+            .cursor(CursorIcon::Pointer)
+            .on_press(move |_| {
+                open_package(cluster_id, &package_type, provider, &id, add_to_cluster)
+            })
+            .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(6.))
             .child(
                 rect()
                     .vertical()
@@ -286,26 +324,18 @@ impl Component for ListRow {
                                 label()
                                     .text(item.name.clone())
                                     .font_size(15.)
-                                    .font_weight(FontWeight::MEDIUM)
+                                    .font_weight(FontWeight::SEMI_BOLD)
                                     .max_lines(1)
-                                    .color(CARD_NAME),
+                                    .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
                                     .text(format!("by {}", item.author))
                                     .font_size(10.)
                                     .max_lines(1)
-                                    .color(colors::fg_secondary()),
+                                    .color(colors::fg_primary().with_a(140)),
                             )
-                            .child(Icon::new(item.provider).size(12.))
-                            // Beside the attribution rather than out at the far
-                            // right, where it drifted away from the package it
-                            // describes and crowded the install button.
-                            .maybe_child(
-                                self.installed.map(|installed| {
-                                    installed_badge(installed, 10.).into_element()
-                                }),
-                            ),
+                            .child(Icon::new(item.provider).size(12.)),
                     )
                     .child(
                         label()
@@ -313,44 +343,47 @@ impl Component for ListRow {
                             .font_size(11.)
                             .max_lines(2)
                             .width(Size::fill())
-                            .color(colors::fg_secondary()),
+                            .color(colors::fg_primary().with_a(184)),
                     ),
             )
             .child(downloads_row(item.downloads))
-            // Kept in place once the package is in the cluster, rather than
-            // dropped: a row that loses its button leaves the ones around it
-            // looking misaligned. Disabled says the same thing and holds still.
             .child(InstallButton::new(
                 &self.item,
                 self.cluster_id,
                 &self.package_type,
-                self.installed.is_some(),
+                self.installed.clone(),
+                self.add_to_cluster,
             ))
     }
 }
 
-/// Installs a listing entry's latest compatible version without making the user
-/// open its page first. Same version pick and same dispatch as the install
-/// button on the package page.
 #[derive(PartialEq)]
 struct InstallButton {
     provider: ProviderId,
     project_id: String,
     cluster_id: i64,
     content_type: ContentType,
-    /// The cluster already has this one, so there is nothing left to press.
-    /// Callers that hide the button entirely in that case pass `false`.
-    installed: bool,
+    /// Cluster already has this one, so the control becomes a static pill
+    installed: Option<CardInstalled>,
+    add_to_cluster: bool,
 }
 
 impl InstallButton {
-    fn new(item: &ProjectSummary, cluster_id: i64, package_type: &str, installed: bool) -> Self {
+    fn new(
+        item: &ProjectSummary,
+        cluster_id: i64,
+        package_type: &str,
+        installed: Option<CardInstalled>,
+        add_to_cluster: bool,
+    ) -> Self {
+        let content_type = content_type_for_slug(package_type);
         Self {
             provider: item.provider,
             project_id: item.id.clone(),
             cluster_id,
-            content_type: content_type_for_slug(package_type),
+            content_type,
             installed,
+            add_to_cluster: add_to_cluster && content_type == ContentType::Modpack,
         }
     }
 }
@@ -365,9 +398,9 @@ impl Component for InstallButton {
         let compat = *use_browser_compat().read();
         let cluster = use_cluster(cluster_id);
 
-        // The same narrowing the package page does before calling the first
-        // entry of the list "latest", so both agree on what gets installed.
-        let (game_version, loader) = match (compat, &cluster) {
+        // The same narrowing the package page does so both agree on what "latest" installs
+        let is_modpack = self.content_type == ContentType::Modpack;
+        let (game_version, loader) = match (compat && !is_modpack, &cluster) {
             (true, Some(c)) => (
                 Some(c.mc_version.clone()),
                 (self.content_type == ContentType::Mod).then_some(c.mc_loader),
@@ -375,62 +408,159 @@ impl Component for InstallButton {
             _ => (None, None),
         };
 
-        let installed = self.installed;
-
         let versions = version_list(&use_package_versions_when(
-            !installed,
+            self.installed.is_none(),
             provider,
             project_id.clone(),
             game_version,
             loader,
             0,
+            if is_modpack {
+                ALL_VERSIONS
+            } else {
+                VERSIONS_PAGE_SIZE
+            },
         ));
-        let latest = versions.first().map(|v| v.version_id.clone());
+        let add_to_cluster = self.add_to_cluster;
+        let latest = if add_to_cluster {
+            cluster
+                .as_ref()
+                .and_then(|c| cluster_version(&versions, c))
+        } else {
+            preferred_version(&versions, self.content_type)
+        }
+        .map(|v| v.version_id.clone());
+        let is_datapack = self.content_type == ContentType::DataPack;
+        let mut world_prompt = use_state(|| None::<String>);
+        let mut modpack_prompt = use_state(|| false);
+        let mut choices = use_state(Vec::new);
 
-        // Nothing to start twice while the install that was just kicked off is
-        // still running, and nothing to start before the version list arrives.
-        let installing = use_installs_snapshot().is_installing(cluster_id, provider, &project_id);
+        // Nothing to start twice while an install is running or before versions arrive
+        let (installing, waiting) =
+            use_installs_snapshot().package_busy(is_modpack, cluster_id, provider, &project_id);
+
+        if let Some(installed) = &self.installed {
+            if let Some(action) = installed.enable.clone() {
+                return EnableButton {
+                    action,
+                    variant: EnableVariant::Card {
+                        height: INSTALL_BUTTON_H,
+                    },
+                }
+                .into_element();
+            }
+            let installed = installed.source;
+            let color = installed.color();
+            return rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .height(Size::px(INSTALL_BUTTON_H))
+                .spacing(6.)
+                .padding(Gaps::new_symmetric(0., 10.))
+                .corner_radius(CornerRadius::new_all(6.))
+                .background(colors::component_bg())
+                .border(border_all_color(1., colors::component_border()))
+                .child(Icon::new(IconType::CheckCircle).size(12.).color(color))
+                .child(
+                    label()
+                        .text(installed.label())
+                        .font_size(11.)
+                        .font_weight(FontWeight::NORMAL)
+                        .max_lines(1)
+                        .color(colors::fg_secondary()),
+                )
+                .into_element();
+        }
+
+        let incompatible = add_to_cluster && latest.is_none() && !versions.is_empty();
 
         rect()
-            // The card behind this is one big press target. A press on the
-            // button is not a press on the card, so it stops here rather than
-            // opening the package page on top of the install.
-            .on_all_press(|e: Event<PressEventData>| e.stop_propagation())
+            // The card behind is one big press target stop here so the package page doesn't open on top of the install
+            .on_press(|e: Event<PressEventData>| e.stop_propagation())
             .child(
                 Button::new()
                     .primary()
-                    .width(Size::px(INSTALL_BUTTON))
-                    .height(Size::px(INSTALL_BUTTON))
-                    .padding(Gaps::new_all(0.))
-                    .corner_radius(CornerRadius::new_all(INSTALL_BUTTON / 2.))
-                    .alt(if installed {
-                        "Already installed"
-                    } else if installing {
-                        "Installing"
-                    } else {
-                        "Install"
-                    })
-                    .enabled(!installed && latest.is_some() && !installing)
-                    .on_press(move |_| {
-                        if let Some(version_id) = latest.clone() {
-                            dispatch.install_package(
-                                cluster_id,
-                                provider,
-                                project_id.clone(),
-                                version_id,
-                            );
+                    .small()
+                    .height(Size::px(INSTALL_BUTTON_H))
+                    .padding(Gaps::new_symmetric(0., 11.))
+                    .enabled(latest.is_some() && !installing && !waiting)
+                    .on_press({
+                        let project_id = project_id.clone();
+                        move |_| {
+                            let Some(version_id) = latest.clone() else {
+                                return;
+                            };
+                            if add_to_cluster {
+                                dispatch.import_modpack(
+                                    cluster_id,
+                                    ModpackSource::Provider {
+                                        provider,
+                                        project_id: project_id.clone(),
+                                        version_id,
+                                    },
+                                );
+                            } else if is_datapack {
+                                world_prompt.set(Some(version_id));
+                            } else if is_modpack {
+                                let picks = minecraft_choices(&versions);
+                                if picks.len() > 1 {
+                                    choices.set(picks);
+                                    modpack_prompt.set(true);
+                                } else {
+                                    dispatch.install_modpack(ModpackSource::Provider {
+                                        provider,
+                                        project_id: project_id.clone(),
+                                        version_id,
+                                    });
+                                }
+                            } else {
+                                dispatch.install_package(
+                                    cluster_id,
+                                    provider,
+                                    project_id.clone(),
+                                    version_id,
+                                    None,
+                                );
+                            }
                         }
                     })
                     .child(
                         Icon::new(if installing {
                             IconType::Loading02
                         } else {
-                            IconType::Download01
+                            IconType::Plus
                         })
-                        .size(15.)
+                        .size(12.)
                         .color(colors::fg_primary()),
+                    )
+                    .child(
+                        label()
+                            .text(match (installing, add_to_cluster) {
+                                (true, true) => "Adding",
+                                (true, false) => "Installing",
+                                (false, true) if incompatible => "Incompatible",
+                                (false, true) => "Add",
+                                (false, false) => "Install",
+                            })
+                            .font_size(11.)
+                            .font_weight(FontWeight::SEMI_BOLD)
+                            .max_lines(1)
+                            .color(colors::fg_primary()),
                     ),
             )
+            .maybe_child(world_prompt.read().is_some().then_some(WorldInstallPrompt {
+                cluster_id,
+                provider,
+                project_id: project_id.clone(),
+                pending: world_prompt,
+            }))
+            .maybe_child(modpack_prompt.read().then(|| ModpackVersionPrompt {
+                provider,
+                project_id,
+                choices: choices.read().clone(),
+                open: modpack_prompt,
+            }))
+            .into_element()
     }
 }
 
@@ -442,13 +572,13 @@ fn downloads_row(downloads: u64) -> impl IntoElement {
         .child(
             Icon::new(IconType::Download01)
                 .size(12.)
-                .color(colors::fg_secondary()),
+                .color(colors::fg_primary().with_a(140)),
         )
         .child(
             label()
                 .text(abbreviate_number(downloads))
                 .font_size(11.)
-                .color(colors::fg_secondary()),
+                .color(colors::fg_primary().with_a(140)),
         )
 }
 

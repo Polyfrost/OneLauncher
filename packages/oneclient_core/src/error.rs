@@ -68,6 +68,9 @@ pub enum LauncherError {
     #[error(transparent)]
     ScreenshotsError(#[from] oneclient_cluster::screenshots::ScreenshotsError),
 
+    #[error(transparent)]
+    BisectError(#[from] crate::bisect::BisectError),
+
     #[error("minecraft: {0}")]
     Minecraft(String),
 }
@@ -83,27 +86,32 @@ impl LauncherError {
         }
     }
 
-    /// Whether this failure reads as "the install is missing pieces", and so is
-    /// worth repairing rather than just reporting.
-    ///
-    /// Something like
-    /// `An error occurred whilst accessing path '.../metadata/assets': No such
-    /// file or directory (os error 2)` is a dead end as a message: it names a
-    /// path the user did not create and cannot fix, when the actual answer is
-    /// that a file the install needs is not there and should be downloaded
-    /// again.
-    ///
-    /// Deliberately narrow. Only a genuine not-found reaches here: a permission
-    /// error, a full disk, or an unreachable network share would all survive a
-    /// repair unchanged, and re-downloading the game to rediscover that would
-    /// waste a lot of the user's time.
+    /// Not something to report the dialog is already gone by the time it lands
+    #[must_use]
+    pub fn is_login_cancelled(&self) -> bool {
+        matches!(
+            self,
+            LauncherError::AuthError(oneclient_auth::AuthError::LoginCancelled)
+        )
+    }
+
+    /// A dialog the user backed out of rather than anything that went wrong
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.is_login_cancelled()
+            || matches!(
+                self,
+                LauncherError::JavaError(oneclient_java::JavaError::Cancelled)
+            )
+    }
+
+    /// Whether the install is missing pieces and so is worth repairing
     #[must_use]
     pub fn indicates_missing_files(&self) -> bool {
         let mut source: Option<&(dyn std::error::Error + 'static)> = Some(self);
 
-        // Walk the chain rather than matching the top variant: by the time this
-        // surfaces it has usually been wrapped two or three layers deep, and the
-        // `io::Error` that actually carries the kind is at the bottom.
+        // Walk the chain the `io::Error` carrying the kind is usually wrapped
+        // two or three layers deep by the time this surfaces
         while let Some(err) = source {
             if let Some(io) = err.downcast_ref::<std::io::Error>()
                 && io.kind() == std::io::ErrorKind::NotFound
@@ -118,8 +126,6 @@ impl LauncherError {
 }
 
 pub trait SentryExclusion {
-    /// Whether this error is expected/environmental noise that should be kept out
-    /// of Sentry rather than reported as a crash.
     fn is_sentry_excluded(&self) -> bool {
         false
     }
@@ -141,9 +147,8 @@ impl SentryExclusion for std::io::Error {
     fn is_sentry_excluded(&self) -> bool {
         use std::io::ErrorKind;
 
-        // Out of disk space. `ErrorKind::StorageFull` is still unstable, so match
-        // the raw OS codes instead. Codes are platform-gated so a Unix errno can't
-        // collide with a Windows code (112 is the unrelated EHOSTDOWN on Linux).
+        // `ErrorKind::StorageFull` is still unstable so match raw OS codes
+        // Platform-gated 112 is the unrelated EHOSTDOWN on Linux
         if let Some(code) = self.raw_os_error() {
             #[cfg(unix)]
             if code == 28 {
@@ -158,7 +163,6 @@ impl SentryExclusion for std::io::Error {
             let _ = code;
         }
 
-        // Lost/refused network connections during downloads.
         matches!(
             self.kind(),
             ErrorKind::ConnectionRefused
@@ -172,8 +176,7 @@ impl SentryExclusion for std::io::Error {
 
 impl SentryExclusion for reqwest::Error {
     fn is_sentry_excluded(&self) -> bool {
-        // Connectivity problems (offline, connection refused, timed out) are the
-        // user's network, not a launcher bug.
+        // Connectivity problems are the user's network not a launcher bug
         self.is_timeout() || self.is_connect()
     }
 }
@@ -181,8 +184,9 @@ impl SentryExclusion for reqwest::Error {
 impl SentryExclusion for polyio::IOError {
     fn is_sentry_excluded(&self) -> bool {
         match self {
-            polyio::IOError::IOError(source)
-            | polyio::IOError::PathIOError { source, .. } => source.is_sentry_excluded(),
+            polyio::IOError::IOError(source) | polyio::IOError::PathIOError { source, .. } => {
+                source.is_sentry_excluded()
+            }
             _ => false,
         }
     }
@@ -194,9 +198,8 @@ pub type LauncherResult<T> = Result<T, LauncherError>;
 mod tests {
     use super::*;
 
-    /// The OS-level "no such file or directory" the filesystem actually
-    /// returns, rather than a synthesized `ErrorKind`: they map to the same
-    /// kind, but only this one renders the `(os error 2)` text users report.
+    /// Raw OS error rather than a synthesized `ErrorKind` same kind but only
+    /// this one renders the `(os error 2)` text users report
     fn not_found(path: &str) -> LauncherError {
         LauncherError::IoError(polyio::IOError::PathIOError {
             source: std::io::Error::from_raw_os_error(2),
@@ -206,10 +209,7 @@ mod tests {
 
     #[test]
     fn a_missing_asset_directory_asks_for_a_repair() {
-        // The exact shape users report: a path deep in the launcher's own
-        // metadata that they never created and cannot fix by hand.
-        let path =
-            "/Users/someone/Library/Application Support/org.Polyfrost.OneClient-dev/metadata/assets";
+        let path = "/Users/someone/Library/Application Support/org.Polyfrost.OneClient-dev/metadata/assets";
         let err = not_found(path);
 
         assert!(err.indicates_missing_files(), "{err}");
@@ -218,8 +218,6 @@ mod tests {
 
     #[test]
     fn a_not_found_nested_several_layers_deep_is_still_found() {
-        // By the time this surfaces it has usually been wrapped on its way up,
-        // so matching only the outermost variant would miss it.
         let err = LauncherError::McError(oneclient_mc::McError::Io(polyio::IOError::PathIOError {
             source: std::io::Error::from(std::io::ErrorKind::NotFound),
             path: "metadata/libraries/foo.jar".to_string(),
@@ -229,10 +227,36 @@ mod tests {
     }
 
     #[test]
+    fn dismissing_a_dialog_is_a_cancellation_not_a_failure() {
+        assert!(LauncherError::JavaError(oneclient_java::JavaError::Cancelled).is_cancelled());
+        assert!(LauncherError::AuthError(oneclient_auth::AuthError::LoginCancelled).is_cancelled());
+    }
+
+    /// The whole point of the split anything that is not a dismissal keeps
+    /// reporting at `error`
+    #[test]
+    fn real_java_failures_are_not_cancellations() {
+        for err in [
+            oneclient_java::JavaError::MissingJava,
+            oneclient_java::JavaError::PackageNotFound { major: 21 },
+            oneclient_java::JavaError::InvalidJavaPath {
+                path: "/opt/not-java".to_string(),
+            },
+            oneclient_java::JavaError::VersionMismatch {
+                expected: 21,
+                found: 8,
+            },
+        ] {
+            let err = LauncherError::JavaError(err);
+            assert!(!err.is_cancelled(), "{err}");
+        }
+
+        assert!(!LauncherError::NotInitialized.is_cancelled());
+        assert!(!not_found("metadata/assets").is_cancelled());
+    }
+
+    #[test]
     fn failures_a_repair_could_not_fix_are_left_alone() {
-        // Re-downloading the entire game to rediscover that the disk is full,
-        // or that the folder is not writable, would waste a lot of the user's
-        // time and end at the same error.
         for kind in [
             std::io::ErrorKind::PermissionDenied,
             std::io::ErrorKind::ConnectionRefused,
@@ -246,8 +270,6 @@ mod tests {
         }
 
         assert!(!LauncherError::NotInitialized.indicates_missing_files());
-        assert!(
-            !LauncherError::Minecraft("bad manifest".into()).indicates_missing_files()
-        );
+        assert!(!LauncherError::Minecraft("bad manifest".into()).indicates_missing_files());
     }
 }

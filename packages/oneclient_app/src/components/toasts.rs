@@ -10,19 +10,19 @@ use freya::{
 use oneclient_events::Level;
 
 use crate::{
-    ui::{divider},
-    components::{Button, ButtonSize, Icon, IconType},
-    hooks::{use_dispatch, use_notifications_snapshot},
+    components::{Button, ButtonSize, Icon, IconType, TooltipPlacement, progress_track},
+    hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
+    motion::use_animations_enabled,
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
+    ui::divider,
 };
 
 const TOAST_W: f32 = 300.;
 const TRAVEL: f32 = 320.;
-const TTL_MS: f32 = 5000.;
-/// Toasts sit below the navbar rather than on top of it: the startup/bundle-sync
-/// progress toast is on screen exactly when Home first appears, and at any
-/// smaller offset its card covered the nav links and account controls.
+const TTL_MS: f32 = crate::notifications::MESSAGE_TOAST_TTL.as_millis() as f32;
+const TTL_STEP: std::time::Duration = std::time::Duration::from_millis(100);
+/// Below the navbar a smaller offset let the startup progress toast cover the nav links
 const TOP_PX: f32 = crate::theme::NAVBAR_HEIGHT_PX + 12.;
 
 #[derive(Clone, Copy, PartialEq)]
@@ -61,7 +61,7 @@ pub struct Toasts;
 impl Component for Toasts {
     fn render(&self) -> impl IntoElement {
         let snapshot = use_notifications_snapshot();
-        // How many toasts the pointer is over; while any is hovered, every toast's timer pauses.
+        // While any toast is hovered every toast's timer pauses
         let hovering = use_state(|| 0usize);
 
         let entries: Vec<InboxEntry> = snapshot
@@ -99,7 +99,6 @@ impl Component for Toasts {
 #[derive(PartialEq)]
 struct ToastCard {
     entry: InboxEntry,
-    /// Shared across every toast: how many of them the pointer is currently over.
     hovering: State<usize>,
     key: DiffKey,
 }
@@ -116,6 +115,7 @@ impl Component for ToastCard {
         let id = entry.id;
         let variant = Variant::of(&entry);
         let dispatch = use_dispatch();
+        let confirm_link = use_link_confirm();
 
         let slide = use_animation(|conf| {
             conf.on_creation(OnCreation::Run);
@@ -129,22 +129,40 @@ impl Component for ToastCard {
             AnimNum::new(0., 1.).time(260).ease(Ease::Out)
         });
 
-        // Hovering any toast freezes this bar where it is; leaving runs out the remaining TTL.
+        let animations = use_animations_enabled();
         let paused = *self.hovering.read() > 0;
         let mut was_paused = use_state(|| false);
         let mut from_pct = use_state(|| 100.);
         let mut run_start = use_state(Instant::now);
+        let mut wall_pct = use_state(|| 100.);
 
         if paused != *was_paused.peek() {
             if paused {
-                let elapsed_pct = run_start.peek().elapsed().as_secs_f32() * 1000. / TTL_MS * 100.;
-                let remaining = *from_pct.peek() - elapsed_pct;
-                from_pct.set(remaining.clamp(0., 100.));
+                let remaining = remaining_pct(*from_pct.peek(), *run_start.peek());
+                from_pct.set(remaining);
+                wall_pct.set(remaining);
             } else {
                 run_start.set(Instant::now());
             }
             was_paused.set(paused);
         }
+
+        let mut ticker = use_state(|| None::<OwnedTaskHandle>);
+        use_side_effect_with_deps(&(animations, paused), move |&(animations, paused)| {
+            if animations || paused {
+                ticker.set(None);
+                return;
+            }
+            let handle = spawn(async move {
+                let platform = Platform::get();
+                loop {
+                    wall_pct.set(remaining_pct(*from_pct.peek(), *run_start.peek()));
+                    platform.send(UserEvent::RequestRedraw);
+                    tokio::time::sleep(TTL_STEP).await;
+                }
+            });
+            ticker.set(Some(handle.owned()));
+        });
 
         let ttl_bar_anim =
             use_animation_with_dependencies(&(paused, *from_pct.peek()), |conf, deps| {
@@ -164,9 +182,12 @@ impl Component for ToastCard {
 
         let offset = slide.read().value();
         let opacity = fade.read().value();
-        let ttl_pct = ttl_bar_anim.read().value();
+        let ttl_pct = if animations {
+            ttl_bar_anim.read().value()
+        } else {
+            *wall_pct.read()
+        };
 
-        // A card can be unmounted while hovered (dismissing it), which emits no `out` event.
         let mut hovering = self.hovering;
         let hover_flag = use_hook(|| Rc::new(Cell::new(false)));
         let (over_flag, out_flag, drop_flag) =
@@ -187,7 +208,7 @@ impl Component for ToastCard {
 
         let card = match variant {
             Variant::Progress => progress_card(&entry),
-            Variant::Action => action_card(&entry, dispatch.clone(), id, ttl_pct),
+            Variant::Action => action_card(&entry, dispatch.clone(), confirm_link, id, ttl_pct),
             Variant::Message => message_card(&entry, dispatch, id, ttl_pct),
         };
 
@@ -195,8 +216,8 @@ impl Component for ToastCard {
             .width(Size::px(TOAST_W))
             .offset_x(offset)
             .opacity(opacity)
-            // `over`/`out` rather than `enter`/`leave`: the latter are exclusive to the deepest
-            // node, so moving onto the close button would count as leaving the toast.
+            // `enter`/`leave` are exclusive to the deepest node so the close button would
+            // read as leaving the toast
             .on_pointer_over(move |_| {
                 if over_flag.replace(true) {
                     return;
@@ -219,6 +240,11 @@ impl Component for ToastCard {
             })
             .child(card)
     }
+}
+
+fn remaining_pct(from_pct: f32, run_start: Instant) -> f32 {
+    let elapsed_pct = run_start.elapsed().as_secs_f32() * 1000. / TTL_MS * 100.;
+    (from_pct - elapsed_pct).clamp(0., 100.)
 }
 
 fn toast_shell(entry: &InboxEntry) -> Rect {
@@ -303,6 +329,8 @@ fn close_button(dispatch: crate::Actions, id: u64) -> impl IntoElement {
                 .size(ButtonSize::Icon)
                 .width(Size::px(28.))
                 .height(Size::px(28.))
+                .tooltip("Dismiss")
+                .tooltip_placement(TooltipPlacement::Left)
                 .on_press(move |_| dispatch.dismiss_toast(id))
                 .child(
                     Icon::new(IconType::XClose)
@@ -312,12 +340,7 @@ fn close_button(dispatch: crate::Actions, id: u64) -> impl IntoElement {
         )
 }
 
-fn message_card(
-    entry: &InboxEntry,
-    dispatch: crate::Actions,
-    id: u64,
-    ttl_pct: f32,
-) -> Rect {
+fn message_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: f32) -> Rect {
     toast_shell(entry)
         .child(
             rect()
@@ -334,7 +357,13 @@ fn message_card(
         .child(ttl_bar(entry, ttl_pct))
 }
 
-fn action_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: f32) -> Rect {
+fn action_card(
+    entry: &InboxEntry,
+    dispatch: crate::Actions,
+    confirm_link: State<Option<String>>,
+    id: u64,
+    ttl_pct: f32,
+) -> Rect {
     let action = entry.actions.first().cloned();
 
     toast_shell(entry)
@@ -355,7 +384,7 @@ fn action_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: f
                         .child(header(entry)),
                 )
                 .child(divider())
-                .child(action_row(action, dispatch, id)),
+                .child(action_row(action, dispatch, confirm_link, id)),
         )
         .child(ttl_bar(entry, ttl_pct))
 }
@@ -363,6 +392,7 @@ fn action_card(entry: &InboxEntry, dispatch: crate::Actions, id: u64, ttl_pct: f
 fn action_row(
     action: Option<crate::notifications::NotificationAction>,
     dispatch: crate::Actions,
+    confirm_link: State<Option<String>>,
     id: u64,
 ) -> impl IntoElement {
     let dismiss = dispatch.clone();
@@ -371,6 +401,10 @@ fn action_row(
         .map(|a| a.label.clone())
         .unwrap_or_else(|| "Review".to_string());
     let review_kind = action.map(|a| a.kind);
+    let review_icon = match review_kind {
+        Some(NotificationActionKind::OpenUrl(_)) => IconType::LinkExternal01,
+        _ => IconType::Eye,
+    };
 
     rect()
         .horizontal()
@@ -393,20 +427,12 @@ fn action_row(
                 .primary()
                 .width(Size::flex(1.0))
                 .on_press(move |_| match &review_kind {
-                    Some(kind) => run_action(&dispatch, kind),
+                    Some(kind) => super::notifications::run_action(&dispatch, confirm_link, kind),
                     None => dispatch.mark_notification_read(id),
                 })
-                .child(Icon::new(IconType::Eye).size(16.))
+                .child(Icon::new(review_icon).size(16.))
                 .text(review_label),
         )
-}
-
-fn run_action(dispatch: &crate::Actions, kind: &NotificationActionKind) {
-    match kind {
-        NotificationActionKind::OpenClusterUpdate(summaries) => {
-            dispatch.open_cluster_update(summaries.clone());
-        }
-    }
 }
 
 fn progress_card(entry: &InboxEntry) -> Rect {
@@ -444,19 +470,13 @@ fn progress_card(entry: &InboxEntry) -> Rect {
                             .color(colors::fg_secondary()),
                     )
                     .child(
-                        rect()
-                            .width(Size::fill())
-                            .height(Size::px(6.))
-                            .margin(Gaps::new(8., 0., 0., 0.))
-                            .corner_radius(CornerRadius::new_all(50.))
-                            .background(colors::brand().with_a(128))
-                            .child(
-                                rect()
-                                    .width(Size::percent(frac * 100.0))
-                                    .height(Size::px(6.))
-                                    .corner_radius(CornerRadius::new_all(50.))
-                                    .background(colors::brand()),
-                            ),
+                        progress_track(
+                            frac * 100.0,
+                            6.,
+                            colors::brand(),
+                            colors::brand().with_a(128),
+                        )
+                        .margin(Gaps::new(8., 0., 0., 0.)),
                     ),
             ),
     )

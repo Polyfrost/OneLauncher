@@ -96,20 +96,18 @@ pub async fn get_bundle_tracked(
     .await
 }
 
-pub async fn has_bundle_mapping(
+pub async fn has_bundle_mapping_for_package(
     pool: &SqlitePool,
     cluster_id: i64,
-    bundle_name: &str,
     package_id: &str,
 ) -> Result<bool, sqlx::Error> {
     let row = sqlx::query_scalar!(
         r#"
         SELECT 1 FROM cluster_artifacts
-        WHERE cluster_id = ? AND bundle_name = ? AND package_id = ?
+        WHERE cluster_id = ? AND bundle_name IS NOT NULL AND package_id = ?
         LIMIT 1
         "#,
         cluster_id,
-        bundle_name,
         package_id
     )
     .fetch_optional(pool)
@@ -191,6 +189,44 @@ pub async fn remove_override(
     Ok(())
 }
 
+pub async fn clear_disabled_overrides(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    package_id: &str,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query!(
+        r#"
+        DELETE FROM cluster_bundle_overrides
+        WHERE cluster_id = ? AND package_id = ? AND override_type = 'disabled'
+        "#,
+        cluster_id,
+        package_id
+    )
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
+
+/// Opt-in (`enabled`) rows are left alone they say the opposite thing
+pub async fn clear_suppressing_overrides(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    package_id: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        DELETE FROM cluster_bundle_overrides
+        WHERE cluster_id = ? AND package_id = ? AND override_type IN ('disabled', 'removed')
+        "#,
+        cluster_id,
+        package_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 pub async fn list_overrides(
     pool: &SqlitePool,
     cluster_id: i64,
@@ -206,4 +242,140 @@ pub async fn list_overrides(
     )
     .fetch_all(pool)
     .await
+}
+
+pub async fn list_type_opt_outs(
+    pool: &SqlitePool,
+    cluster_id: i64,
+) -> Result<Vec<(String, i64)>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT bundle_name, content_type
+        FROM cluster_bundle_type_opt_outs
+        WHERE cluster_id = ?
+        "#,
+        cluster_id
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.bundle_name, r.content_type))
+        .collect())
+}
+
+pub async fn set_type_opt_out(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    bundle_name: &str,
+    content_type: i64,
+    opted_out: bool,
+) -> Result<(), sqlx::Error> {
+    if opted_out {
+        sqlx::query!(
+            r#"
+            INSERT OR IGNORE INTO cluster_bundle_type_opt_outs (cluster_id, bundle_name, content_type)
+            VALUES (?, ?, ?)
+            "#,
+            cluster_id,
+            bundle_name,
+            content_type
+        )
+        .execute(pool)
+        .await?;
+    } else {
+        sqlx::query!(
+            r#"
+            DELETE FROM cluster_bundle_type_opt_outs
+            WHERE cluster_id = ? AND bundle_name = ? AND content_type = ?
+            "#,
+            cluster_id,
+            bundle_name,
+            content_type
+        )
+        .execute(pool)
+        .await?;
+    }
+    Ok(())
+}
+
+pub async fn list_bundle_choices(
+    pool: &SqlitePool,
+    cluster_id: i64,
+) -> Result<Vec<(String, bool)>, sqlx::Error> {
+    let rows = sqlx::query!(
+        r#"
+        SELECT bundle_name, accepted
+        FROM cluster_bundle_choices
+        WHERE cluster_id = ?
+        "#,
+        cluster_id
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| (r.bundle_name, r.accepted != 0))
+        .collect())
+}
+
+pub async fn save_bundle_choices(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    choices: &[(String, bool)],
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    for (bundle_name, accepted) in choices {
+        sqlx::query!(
+            r#"
+            INSERT OR REPLACE INTO cluster_bundle_choices (cluster_id, bundle_name, accepted)
+            VALUES (?, ?, ?)
+            "#,
+            cluster_id,
+            bundle_name,
+            accepted
+        )
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await
+}
+
+pub async fn predates_bundle_choices(
+    pool: &SqlitePool,
+    cluster_id: i64,
+) -> Result<bool, sqlx::Error> {
+    sqlx::query_scalar(
+        r#"
+        SELECT EXISTS (
+            SELECT 1
+            FROM clusters c, _sqlx_migrations m
+            WHERE c.id = ? AND m.version = 20261005120000
+                AND (c.created_at IS NULL OR datetime(c.created_at) < m.installed_on)
+        )
+        "#,
+    )
+    .bind(cluster_id)
+    .fetch_one(pool)
+    .await
+}
+
+pub async fn copy_bundle_choices(
+    pool: &SqlitePool,
+    source_cluster_id: i64,
+    target_cluster_id: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query!(
+        r#"
+        INSERT OR IGNORE INTO cluster_bundle_choices (cluster_id, bundle_name, accepted)
+        SELECT ?, bundle_name, accepted
+        FROM cluster_bundle_choices
+        WHERE cluster_id = ?
+        "#,
+        target_cluster_id,
+        source_cluster_id
+    )
+    .execute(pool)
+    .await?;
+    Ok(())
 }

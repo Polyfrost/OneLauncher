@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
-use crate::components::{Icon, IconType};
+use crate::components::tooltip::use_tooltip_anchor;
+use crate::components::{Icon, IconType, TooltipPlacement};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -9,6 +10,8 @@ pub struct Segment<T> {
     value: T,
     icon: Option<IconType>,
     label: Option<String>,
+    disabled: bool,
+    tooltip: Option<Box<str>>,
 }
 
 impl<T> Segment<T> {
@@ -17,7 +20,19 @@ impl<T> Segment<T> {
             value,
             icon: None,
             label: None,
+            disabled: false,
+            tooltip: None,
         }
+    }
+
+    pub fn disabled(mut self, disabled: bool) -> Self {
+        self.disabled = disabled;
+        self
+    }
+
+    pub fn tooltip(mut self, tooltip: impl Into<Box<str>>) -> Self {
+        self.tooltip = Some(tooltip.into());
+        self
     }
 
     pub fn icon(mut self, icon: IconType) -> Self {
@@ -120,7 +135,8 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentedControl<T> {
                     icon_size,
                     tint,
                     equal_width,
-                    disabled,
+                    disabled: disabled || seg.disabled,
+                    tooltip: seg.tooltip.clone(),
                 }
                 .into_element()
             }))
@@ -138,12 +154,14 @@ struct SegmentButton<T: Copy + PartialEq + 'static> {
     tint: bool,
     equal_width: Option<f32>,
     disabled: bool,
+    tooltip: Option<Box<str>>,
 }
 
 impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
     fn render(&self) -> impl IntoElement {
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
+        let tooltip = use_tooltip_anchor(self.tooltip.clone(), TooltipPlacement::default());
 
         let mut selected = self.selected;
         let value = self.value;
@@ -160,7 +178,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
             colors::fg_secondary()
         };
 
-        rect()
+        let rect = rect()
             .horizontal()
             .height(Size::fill())
             .cross_align(Alignment::Center)
@@ -184,9 +202,8 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
                 el.border(border_all_color(1., colors::brand()))
             })
             .maybe(!disabled, |el| {
-                el.on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-                    .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
-                    .on_all_press(move |_| *selected.write() = value)
+                el.cursor(CursorIcon::Pointer)
+                    .on_press(move |_| *selected.write() = value)
             })
             .maybe_child(self.icon.map(|icon| {
                 let mut ic = Icon::new(icon);
@@ -209,6 +226,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
                     })
                     .color(content_color)
                     .into_element()
-            }))
+            }));
+        tooltip.attach(rect)
     }
 }

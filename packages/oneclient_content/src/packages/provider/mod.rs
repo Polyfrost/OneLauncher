@@ -7,14 +7,14 @@ pub use curseforge::CurseForgeProvider;
 pub use modrinth::ModrinthProvider;
 pub use registry::PackageProviderRegistry;
 
-use oneclient_common::domain::ProviderId;
-use crate::packages::file_identity::FileIdentity;
 use super::types::{
-    Page, ProjectDetail, ProjectSummary, SearchFilters, VersionDetail, VersionLookup,
-    VersionSummary,
+    InstalledPackage, Page, ProjectDetail, ProjectSummary, SearchFilters, VersionDetail,
+    VersionLookup, VersionSummary,
 };
-use crate::error::ContentResult;
 use crate::ctx::ContentCtx;
+use crate::error::ContentResult;
+use crate::packages::file_identity::FileIdentity;
+use oneclient_common::domain::ProviderId;
 
 #[async_trait::async_trait]
 pub trait PackageProvider: Send + Sync {
@@ -26,16 +26,12 @@ pub trait PackageProvider: Send + Sync {
         ctx: &ContentCtx,
     ) -> ContentResult<Page<ProjectSummary>>;
 
-    async fn get_project(
-        &self,
-        project_id: &str,
-        ctx: &ContentCtx,
-    ) -> ContentResult<ProjectDetail>;
+    async fn get_project(&self, project_id: &str, ctx: &ContentCtx)
+    -> ContentResult<ProjectDetail>;
 
-    /// Same as [`PackageProvider::get_project`], but guarantees [`ProjectDetail::body`]
-    /// is populated when the provider has one. Only worth calling when the body is
-    /// actually rendered: providers that serve descriptions separately pay an extra
-    /// request here, so install paths should stay on `get_project`.
+    /// Populates [`ProjectDetail::body`]
+    /// Costs an extra request on providers that serve descriptions separately
+    /// so install paths should stay on `get_project`
     async fn get_project_with_body(
         &self,
         project_id: &str,
@@ -78,6 +74,14 @@ pub trait PackageProvider: Send + Sync {
         identities: &[FileIdentity],
         ctx: &ContentCtx,
     ) -> ContentResult<VersionLookup>;
+
+    async fn latest_for_game_version(
+        &self,
+        packages: &[InstalledPackage],
+        mc_version: &str,
+        loader: oneclient_common::domain::GameLoader,
+        ctx: &ContentCtx,
+    ) -> ContentResult<std::collections::HashMap<String, VersionDetail>>;
 
     async fn list_categories(
         &self,

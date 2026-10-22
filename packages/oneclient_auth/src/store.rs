@@ -111,13 +111,39 @@ impl CredentialsStore {
     }
 
     #[tracing::instrument(level = "debug", skip_all, fields(%account.id))]
-    pub async fn commit_refreshed_account(
-        &mut self,
-        account: MinecraftAccount,
-    ) -> AuthResult<()> {
+    pub async fn commit_refreshed_account(&mut self, account: MinecraftAccount) -> AuthResult<()> {
         self.users.insert(account.id, account);
         self.save().await?;
         tracing::debug!("stored refreshed Microsoft account");
+        Ok(())
+    }
+
+    /// Drops the dead tokens but keeps the entry and its default slot so the UI
+    /// can offer a sign-in for this exact account
+    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
+    pub async fn mark_signed_out(&mut self, id: Uuid) -> AuthResult<()> {
+        let Some(account) = self.users.get_mut(&id) else {
+            return Err(AuthError::AccountNotFound(id));
+        };
+
+        account.signed_out = true;
+        account.access_token.clear();
+        account.refresh_token.clear();
+        self.save().await?;
+        Ok(())
+    }
+
+    /// Debug aid swaps in a token Microsoft will reject and backdates expiry so
+    /// the next launch walks the real `invalid_grant` path
+    #[tracing::instrument(level = "debug", skip(self), fields(%id))]
+    pub async fn corrupt_refresh_token(&mut self, id: Uuid) -> AuthResult<()> {
+        let Some(account) = self.users.get_mut(&id) else {
+            return Err(AuthError::AccountNotFound(id));
+        };
+
+        account.refresh_token = "oneclient-debug-invalid-refresh-token".to_string();
+        account.expires = chrono::DateTime::UNIX_EPOCH;
+        self.save().await?;
         Ok(())
     }
 
@@ -168,8 +194,8 @@ impl CredentialsStore {
         Ok(Some(id))
     }
 
-    /// The current account as stored. Never touches the network: callers that
-    /// need a usable token go through [`crate::AuthService::account_for_launch`].
+    /// Never touches the network callers that need a usable token go through
+    /// [`crate::AuthService::account_for_launch`]
     #[tracing::instrument(level = "debug", skip_all)]
     pub async fn default_account(&mut self) -> AuthResult<Option<MinecraftAccount>> {
         let Some(id) = self.resolve_default_id().await? else {
@@ -187,10 +213,8 @@ impl CredentialsStore {
     }
 }
 
-/// Whether a renewal failure was the network rather than a rejected token.
-///
-/// A transient failure must keep the existing (possibly stale) token: throwing
-/// it away because Wi-Fi dropped would sign the user out of a working account.
+/// A transient failure must keep the existing token discarding it because
+/// Wi-Fi dropped would sign the user out of a working account
 pub(crate) fn is_transient_auth_error(err: &AuthError) -> bool {
     matches!(
         err,

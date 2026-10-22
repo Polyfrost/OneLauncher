@@ -1,10 +1,4 @@
-//! The package page's gallery tab.
-//!
-//! Laid out like the cluster's screenshots: a grid of tiles that open into a
-//! full-window viewer with arrows between them. The difference is where the
-//! pixels come from — these are remote images behind the shared image cache
-//! rather than files on disk, so a tile and the opened view ask the cache for
-//! the same url at two different sizes instead of sharing one decode.
+//! Remote images behind the shared image cache a tile and the opened view ask for the same url at two different sizes
 
 use super::*;
 
@@ -13,16 +7,13 @@ use oneclient_content::packages::types::GalleryImage;
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{loaded_image, query_is_busy, use_cached_image};
 use crate::theme::colors;
-use crate::ui::{border_all_color, flow_grid, grid_columns_for_width};
+use crate::ui::{ImageFallbackExt, border_all_color, flow_grid, grid_columns_for_width};
 
-/// How wide a tile is allowed to get before the grid takes another column.
 const MAX_COL_W: f32 = 400.;
 const GRID_GAP: f32 = 16.;
 const TILE_PREVIEW_H: f32 = 168.;
 
-/// Downscale ceilings handed to the image cache. A tile never shows more than
-/// its own width, and asking for the full thing there was what made the grid
-/// slow to fill; the opened view is the one that needs the detail.
+/// Downscale ceilings for the image cache full-size tiles made the grid slow to fill
 const TILE_EDGE: u32 = 640;
 const FULL_EDGE: u32 = 2048;
 
@@ -94,10 +85,6 @@ impl Component for GalleryTile {
         let mut hovered = use_state(|| false);
         let on_open = self.on_open.clone();
 
-        use_drop(|| {
-            Cursor::set(CursorIcon::default());
-        });
-
         let preview = rect()
             .width(Size::fill())
             .height(Size::px(TILE_PREVIEW_H))
@@ -110,6 +97,7 @@ impl Component for GalleryTile {
                     .height(Size::fill())
                     .aspect_ratio(AspectRatio::Max)
                     .image_cover(ImageCover::Center)
+                    .fallback(broken_image(32.))
                     .into_element()
             }));
 
@@ -132,14 +120,9 @@ impl Component for GalleryTile {
                 .alignment(BorderAlignment::Inner),
             )
             .a11y_role(AccessibilityRole::Button)
-            .on_pointer_enter(move |_| {
-                hovered.set(true);
-                Cursor::set(CursorIcon::Pointer);
-            })
-            .on_pointer_leave(move |_| {
-                hovered.set(false);
-                Cursor::set(CursorIcon::default());
-            })
+            .cursor(CursorIcon::Pointer)
+            .on_pointer_enter(move |_| hovered.set(true))
+            .on_pointer_leave(move |_| hovered.set(false))
             .on_press(move |_| on_open.call(()))
             .child(preview)
             .maybe(self.image.title.is_some(), |el| {
@@ -159,8 +142,6 @@ impl Component for GalleryTile {
     }
 }
 
-/// The opened image, filling the window with the rest of the gallery a key
-/// press away.
 #[derive(PartialEq)]
 struct GalleryViewer {
     images: Vec<GalleryImage>,
@@ -177,13 +158,13 @@ impl Component for GalleryViewer {
             move || start
         });
 
+        let idx = (*index.read()).min(len.saturating_sub(1));
+        let query = use_cached_image(self.images.get(idx).map(|i| i.url.clone()), FULL_EDGE);
+
         if len == 0 {
             return rect().into_element();
         }
-        let idx = (*index.read()).min(len - 1);
         let image = self.images[idx].clone();
-
-        let query = use_cached_image(Some(image.url.clone()), FULL_EDGE);
         let loaded = loaded_image(Some(&image.url), &query);
 
         let close = self.on_close.clone();
@@ -202,12 +183,10 @@ impl Component for GalleryViewer {
                     .width(Size::fill())
                     .height(Size::fill())
                     .aspect_ratio(AspectRatio::Min)
+                    .fallback(broken_image(48.))
                     .into_element()
             }))
-            // The tile's smaller copy is already cached, but this one is a
-            // fresh fetch at full size, so the first moment of the opened view
-            // says so rather than showing an empty frame. Only while it is
-            // still working: a fetch that failed is not loading.
+            // A full-size fetch separate from the tile's cached copy a failed fetch is not loading
             .maybe_child(query_is_busy(&query).then(|| {
                 label()
                     .text("Loading image...")
@@ -268,6 +247,19 @@ impl Component for GalleryViewer {
     }
 }
 
+fn broken_image(size: f32) -> Element {
+    rect()
+        .center()
+        .width(Size::fill())
+        .height(Size::fill())
+        .child(
+            Icon::new(IconType::FileX02)
+                .size(size)
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
+}
+
 fn chevron_btn(
     icon: IconType,
     enabled: bool,
@@ -292,8 +284,7 @@ fn chevron_btn(
     }
 
     base.background(Color::from_argb(140, 0, 0, 0))
-        .on_pointer_enter(|_| Cursor::set(CursorIcon::Pointer))
-        .on_pointer_leave(|_| Cursor::set(CursorIcon::default()))
+        .cursor(CursorIcon::Pointer)
         .on_press(on_press)
         .child(Icon::new(icon).size(26.).color(colors::fg_primary()))
         .into_element()
@@ -341,6 +332,7 @@ fn header_row(
             Button::new()
                 .ghost()
                 .icon()
+                .tooltip("Close")
                 .on_press(on_close)
                 .child(Icon::new(IconType::XClose).size(18.)),
         )

@@ -1,9 +1,9 @@
+use crate::state::LoginProgress;
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
 use freya::text_edit::Clipboard;
-use oneclient_core::LauncherError;
 use oneclient_auth::{AuthErrorGuidance, MicrosoftLoginSession};
-use crate::state::LoginProgress;
+use oneclient_core::LauncherError;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{
@@ -225,10 +225,7 @@ pub(crate) fn login_dialog(
                                         .spacing(18.)
                                         .child(browser_dialog_body(auth_url))
                                         .child(dialog_divider())
-                                        .child(device_code_dialog_body(
-                                            user_code,
-                                            verification_uri,
-                                        ))
+                                        .child(device_code_dialog_body(user_code, verification_uri))
                                         .child(status_row(status, error))
                                         .maybe_child(guidance.map(guidance_block)),
                                 ),
@@ -314,17 +311,13 @@ fn status_row(status: Option<LoginProgress>, error: Option<String>) -> impl Into
 }
 
 fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
-    let mut steps = rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(6.)
-        .child(
-            label()
-                .text("What you can do:")
-                .font_size(12.)
-                .font_weight(FontWeight::SEMI_BOLD)
-                .color(colors::fg_primary()),
-        );
+    let mut steps = rect().vertical().width(Size::fill()).spacing(6.).child(
+        label()
+            .text("What you can do:")
+            .font_size(12.)
+            .font_weight(FontWeight::SEMI_BOLD)
+            .color(colors::fg_primary()),
+    );
 
     for (index, step) in guidance.steps_to_fix.into_iter().enumerate() {
         steps = steps.child(

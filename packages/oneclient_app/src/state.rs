@@ -6,6 +6,8 @@ use std::sync::Arc;
 
 use freya::radio::RadioChannel;
 use oneclient_common::domain::ProviderId;
+use oneclient_content::packages::release_migration::ReleaseMigrationPlan;
+use oneclient_core::clusters::Cluster;
 use oneclient_core::relocate::{RelocationOutcome, RelocationPlan};
 use oneclient_core::settings::LauncherSettings;
 use oneclient_events::LaunchStage;
@@ -20,11 +22,13 @@ pub enum AppChannel {
     Notifications,
     Game,
     AccountSwitcher,
+    ControlCenter,
     MicrosoftLogin,
     Installs,
     StorageScan,
     Relocation,
     PendingLaunch,
+    ReleaseMigration,
 }
 
 impl RadioChannel<AppState> for AppChannel {}
@@ -42,11 +46,61 @@ pub struct AppState {
     pub center_open: bool,
     pub game: GameState,
     pub account_switcher_open: bool,
+    pub control_center_open: bool,
     pub microsoft_login: Option<LoginProgress>,
     pub installs: InstallState,
     pub storage_scan: Option<StorageScanProgress>,
     pub relocation: RelocationState,
     pub pending_launch: Option<String>,
+    pub release_migration: Option<ReleaseMigrationPrompt>,
+    pub release_migration_checking: HashSet<i64>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PromptOrigin {
+    NewRelease,
+    Manual,
+    Simulated,
+    Fake,
+}
+
+#[derive(Clone, Debug)]
+pub enum ReleasePlanState {
+    Loading,
+    Ready(ReleaseMigrationPlan),
+    Failed,
+}
+
+#[derive(Clone, Debug)]
+pub struct ReleaseMigrationPrompt {
+    pub key: String,
+    pub target: Cluster,
+    pub target_dedicated: bool,
+    pub java_major: Option<u32>,
+    pub sources: Vec<Cluster>,
+    pub selected: i64,
+    pub plans: HashMap<i64, ReleasePlanState>,
+    pub origin: PromptOrigin,
+}
+
+impl ReleaseMigrationPrompt {
+    #[must_use]
+    pub fn source(&self) -> Option<&Cluster> {
+        self.sources
+            .iter()
+            .find(|cluster| cluster.id == self.selected)
+    }
+
+    #[must_use]
+    pub fn plan(&self) -> Option<&ReleasePlanState> {
+        self.plans.get(&self.selected)
+    }
+
+    #[must_use]
+    pub fn is_cross_loader(&self) -> bool {
+        self.source()
+            .is_some_and(|source| source.mc_loader != self.target.mc_loader)
+    }
 }
 
 /// A move of the data folder owns the whole window while it runs: the router
@@ -67,6 +121,22 @@ pub struct RelocationState {
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct InstallState {
     pending: HashSet<(i64, ProviderId, String)>,
+    pub flagged: Option<FlaggedInstallPrompt>,
+    pub modpack_busy: bool,
+    pub modpack_project: Option<(ProviderId, String)>,
+    pub modpack_cluster: Option<i64>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct FlaggedInstallPrompt {
+    pub cluster_id: i64,
+    pub provider: ProviderId,
+    pub project_id: String,
+    pub version_id: String,
+    pub name: String,
+    pub mc_version: String,
+    pub explanation: Option<String>,
+    pub alternatives: Vec<oneclient_content::packages::ResolvedAlternative>,
 }
 
 impl InstallState {
@@ -77,6 +147,36 @@ impl InstallState {
     pub fn finish(&mut self, cluster_id: i64, provider: ProviderId, project_id: &str) {
         self.pending
             .remove(&(cluster_id, provider, project_id.to_string()));
+    }
+
+    #[must_use]
+    pub fn is_modpack_job(&self, cluster_id: i64) -> bool {
+        self.modpack_cluster == Some(cluster_id)
+    }
+
+    #[must_use]
+    pub fn package_busy(
+        &self,
+        is_modpack: bool,
+        cluster_id: i64,
+        provider: ProviderId,
+        project_id: &str,
+    ) -> (bool, bool) {
+        if !is_modpack {
+            return (self.is_installing(cluster_id, provider, project_id), false);
+        }
+        let installing =
+            self.modpack_project
+                .as_ref()
+                .is_some_and(|(busy_provider, busy_project)| {
+                    *busy_provider == provider && busy_project == project_id
+                });
+        (installing, self.modpack_busy)
+    }
+
+    #[must_use]
+    pub fn cluster_installing(&self, cluster_id: i64) -> bool {
+        self.pending.iter().any(|(id, _, _)| *id == cluster_id)
     }
 
     #[must_use]
@@ -153,9 +253,28 @@ pub struct GameState {
     /// Launches started from the UI but not yet answered by core which takes a few
     /// hundred ms every click in that window otherwise spawns its own game
     pending: HashSet<i64>,
+    shared_syncs: HashSet<i64>,
 }
 
 impl GameState {
+    pub fn set_shared_sync(&mut self, cluster_id: i64, syncing: bool) {
+        if syncing {
+            self.shared_syncs.insert(cluster_id);
+        } else {
+            self.shared_syncs.remove(&cluster_id);
+        }
+    }
+
+    #[must_use]
+    pub fn is_syncing_shared(&self, cluster_id: i64) -> bool {
+        self.shared_syncs.contains(&cluster_id)
+    }
+
+    #[must_use]
+    pub fn any_shared_sync(&self) -> bool {
+        !self.shared_syncs.is_empty()
+    }
+
     #[must_use]
     pub fn stage(&self, cluster_id: i64) -> Option<LaunchStage> {
         self.stages.get(&cluster_id).copied()
@@ -180,21 +299,25 @@ impl GameState {
         }
     }
 
+    /// `shared` lists the other clusters that would share the launch's game dir
+    /// empty for a dedicated cluster with parallel clusters allowed only those
+    /// can be in the way
     #[must_use]
-    pub fn launch_block(&self, cluster_id: i64, parallel: bool) -> Option<LaunchBlock> {
+    pub fn launch_block(
+        &self,
+        cluster_id: i64,
+        parallel: bool,
+        shared: &[i64],
+    ) -> Option<LaunchBlock> {
         if let Some(block) = self.block_for(cluster_id) {
             return Some(block);
-        }
-
-        if parallel {
-            return None;
         }
 
         self.stages
             .keys()
             .chain(self.pending.iter())
             .copied()
-            .filter(|id| *id != cluster_id)
+            .filter(|id| *id != cluster_id && (!parallel || shared.contains(id)))
             .find_map(|id| self.block_for(id))
     }
 
@@ -210,6 +333,13 @@ impl GameState {
     #[must_use]
     pub fn is_busy(&self, cluster_id: i64) -> bool {
         self.stage(cluster_id).is_some_and(LaunchStage::is_busy)
+    }
+
+    pub fn running_clusters(&self) -> impl Iterator<Item = i64> + '_ {
+        self.stages
+            .iter()
+            .filter(|(_, stage)| **stage == LaunchStage::Running)
+            .map(|(id, _)| *id)
     }
 
     #[must_use]
@@ -231,7 +361,8 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::view::app::launch_button_state;
+    use crate::view::app::{launch_button_state, shared_dir_taken};
+    use crate::view::onboarding::test_support::cluster;
 
     #[test]
     fn a_second_click_is_refused_before_core_answers() {
@@ -264,9 +395,32 @@ mod tests {
         let mut game = GameState::default();
         game.stages.insert(1, LaunchStage::Running);
 
-        assert_eq!(game.launch_block(1, false), Some(LaunchBlock::Running(1)));
-        assert_eq!(game.launch_block(2, false), Some(LaunchBlock::Running(1)));
-        assert_eq!(game.launch_block(2, true), None);
+        assert_eq!(
+            game.launch_block(1, false, &[]),
+            Some(LaunchBlock::Running(1))
+        );
+        assert_eq!(
+            game.launch_block(2, false, &[]),
+            Some(LaunchBlock::Running(1))
+        );
+        assert_eq!(game.launch_block(2, true, &[]), None);
+    }
+
+    #[test]
+    fn parallel_clusters_still_hold_one_shared_game() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Running);
+
+        // 2 shares the game dir with 1 and 3 has its own
+        assert_eq!(
+            game.launch_block(2, true, &[1]),
+            Some(LaunchBlock::Running(1))
+        );
+        assert_eq!(game.launch_block(3, true, &[]), None);
+        assert_eq!(
+            game.launch_block(1, true, &[]),
+            Some(LaunchBlock::Running(1))
+        );
     }
 
     #[test]
@@ -274,8 +428,14 @@ mod tests {
         let mut game = GameState::default();
         game.stages.insert(1, LaunchStage::Downloading);
 
-        assert_eq!(game.launch_block(1, false), Some(LaunchBlock::Starting(1)));
-        assert_eq!(game.launch_block(2, false), Some(LaunchBlock::Starting(1)));
+        assert_eq!(
+            game.launch_block(1, false, &[]),
+            Some(LaunchBlock::Starting(1))
+        );
+        assert_eq!(
+            game.launch_block(2, false, &[]),
+            Some(LaunchBlock::Starting(1))
+        );
     }
 
     #[test]
@@ -283,8 +443,14 @@ mod tests {
         let mut game = GameState::default();
         game.begin_launch(1);
 
-        assert_eq!(game.launch_block(1, false), Some(LaunchBlock::Starting(1)));
-        assert_eq!(game.launch_block(2, false), Some(LaunchBlock::Starting(1)));
+        assert_eq!(
+            game.launch_block(1, false, &[]),
+            Some(LaunchBlock::Starting(1))
+        );
+        assert_eq!(
+            game.launch_block(2, false, &[]),
+            Some(LaunchBlock::Starting(1))
+        );
     }
 
     #[test]
@@ -292,23 +458,84 @@ mod tests {
         let mut game = GameState::default();
         game.stages.insert(1, LaunchStage::Exited);
 
-        assert_eq!(game.launch_block(2, false), None);
-        assert_eq!(game.launch_block(1, false), None);
+        assert_eq!(game.launch_block(2, false, &[]), None);
+        assert_eq!(game.launch_block(1, false, &[]), None);
     }
 
     #[test]
     fn the_button_disables_on_the_claim_alone() {
         let mut game = GameState::default();
-        assert_eq!(launch_button_state(&game, 1, false), ("Launch", true));
+        assert_eq!(
+            launch_button_state(&game, 1, false, false),
+            ("Launch", true)
+        );
 
         game.begin_launch(1);
-        assert_eq!(launch_button_state(&game, 1, false), ("Launching", false));
+        assert_eq!(
+            launch_button_state(&game, 1, false, false),
+            ("Launching", false)
+        );
 
         // Held past a failure which parks the stage at `Exited`
         game.stages.insert(1, LaunchStage::Exited);
-        assert_eq!(launch_button_state(&game, 1, false), ("Launching", false));
+        assert_eq!(
+            launch_button_state(&game, 1, false, false),
+            ("Launching", false)
+        );
 
         game.finish_launch(1);
-        assert_eq!(launch_button_state(&game, 1, false), ("Launch", true));
+        assert_eq!(
+            launch_button_state(&game, 1, false, false),
+            ("Launch", true)
+        );
+    }
+
+    #[test]
+    fn a_queued_launch_says_it_is_waiting() {
+        let mut game = GameState::default();
+        game.stages.insert(1, LaunchStage::Waiting);
+
+        assert_eq!(
+            launch_button_state(&game, 1, false, false),
+            ("Waiting", false)
+        );
+        assert!(game.is_busy(1));
+    }
+
+    #[test]
+    fn a_taken_shared_dir_blocks_only_an_idle_cluster() {
+        let mut game = GameState::default();
+        assert_eq!(
+            launch_button_state(&game, 1, false, true),
+            ("Folder in use", false)
+        );
+
+        game.stages.insert(1, LaunchStage::Running);
+        assert_eq!(
+            launch_button_state(&game, 1, false, true),
+            ("Running", false)
+        );
+    }
+
+    #[test]
+    fn a_shared_sync_takes_the_shared_dir_but_not_a_dedicated_one() {
+        let mut game = GameState::default();
+        let shared = cluster(1);
+        let dedicated = Cluster {
+            kind: oneclient_db::models::ClusterKind::Vanilla,
+            ..cluster(2)
+        };
+        let clusters = [shared, dedicated];
+
+        game.set_shared_sync(3, true);
+        assert!(shared_dir_taken(&game, &clusters, 1));
+        assert!(!shared_dir_taken(&game, &clusters, 2));
+        assert_eq!(
+            launch_button_state(&game, 3, false, false),
+            ("Syncing", false)
+        );
+
+        game.set_shared_sync(3, false);
+        assert!(!shared_dir_taken(&game, &clusters, 1));
     }
 }

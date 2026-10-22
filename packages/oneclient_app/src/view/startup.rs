@@ -3,12 +3,12 @@ use freya::{prelude::*, router::*};
 
 use crate::AppAssets;
 use crate::Route;
-use crate::hooks::{
-    terms_document, terms_is_loading, use_launcher, use_notifications_snapshot, use_settings_snapshot,
-    use_splash, use_terms,
-};
-use crate::hooks::use_dispatch;
 use crate::components::{Button, progress_track};
+use crate::hooks::use_dispatch;
+use crate::hooks::{
+    terms_document, terms_is_loading, use_launcher, use_notifications_snapshot,
+    use_settings_snapshot, use_splash, use_terms,
+};
 use crate::theme::colors;
 
 /// Startup is a sequence of boolean gates, not measurable work, so the bar steps
@@ -227,7 +227,9 @@ impl Component for Startup {
         if is_error {
             content = content
                 .child(rect().height(Size::px(6.)))
-                .child(RecoveryActions { snapshots: launcher.snapshots })
+                .child(RecoveryActions {
+                    snapshots: launcher.snapshots,
+                })
                 .child(
                     label()
                         .text(format!(

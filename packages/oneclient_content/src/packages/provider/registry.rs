@@ -1,15 +1,14 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
-
 use super::{CurseForgeProvider, ModrinthProvider, PackageProvider};
+use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
-use oneclient_common::domain::ProviderId;
 use crate::packages::error::PackageError;
 use crate::packages::file_identity::FileIdentity;
 use crate::packages::store::artifact_absolute_path;
 use crate::packages::types::{ProviderVersionLookup, VersionDetail};
-use crate::ctx::ContentCtx;
+use oneclient_common::domain::ProviderId;
 
 #[derive(Clone)]
 pub struct PackageProviderRegistry {

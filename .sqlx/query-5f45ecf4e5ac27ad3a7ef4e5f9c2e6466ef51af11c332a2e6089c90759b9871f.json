@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT bundle_name, content_type\n        FROM cluster_bundle_type_opt_outs\n        WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "bundle_name",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bundle_type_opt_outs",
+            "name": "bundle_name"
+          }
+        }
+      },
+      {
+        "name": "content_type",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bundle_type_opt_outs",
+            "name": "content_type"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "5f45ecf4e5ac27ad3a7ef4e5f9c2e6466ef51af11c332a2e6089c90759b9871f"
+}

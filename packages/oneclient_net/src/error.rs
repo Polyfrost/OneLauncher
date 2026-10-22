@@ -82,7 +82,7 @@ pub enum RequestError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NetworkFailure {
     Certificate,
-	Handshake,
+    Handshake,
     Dns,
     Generic,
 }

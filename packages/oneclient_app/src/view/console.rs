@@ -85,7 +85,11 @@ fn raise_to_debug() {
 }
 
 fn restore_directives() {
-    let Some(previous) = PREVIOUS_DIRECTIVES.lock().expect("console directives").take() else {
+    let Some(previous) = PREVIOUS_DIRECTIVES
+        .lock()
+        .expect("console directives")
+        .take()
+    else {
         return;
     };
 

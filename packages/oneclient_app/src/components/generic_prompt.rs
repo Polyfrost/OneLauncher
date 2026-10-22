@@ -79,9 +79,7 @@ impl Component for GenericPromptOverlay {
                             .pick_folder()
                             .await
                         {
-                            dispatch.answer_prompt(
-                                Answer::new(id).with_folder(handle.path()),
-                            );
+                            dispatch.answer_prompt(Answer::new(id).with_folder(handle.path()));
                         }
                     });
                 }

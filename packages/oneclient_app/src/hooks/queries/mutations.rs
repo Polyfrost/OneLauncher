@@ -1,9 +1,16 @@
 use freya::query::{Mutation, MutationCapability, QueriesStorage, UseMutation, use_mutation};
+use oneclient_common::domain::GameLoader;
 use oneclient_content::packages::LiveSync;
-use oneclient_db::models::ClusterId;
+use oneclient_core::BundleArchive;
+use oneclient_db::models::{ClusterId, ClusterKind, OverrideType};
+use std::collections::HashSet;
+use std::path::PathBuf;
 
-use super::bundles::{BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery};
-use super::cluster_content::ClusterContentQuery;
+use super::bundles::{
+    BundleOverridesQuery, BundleUpdatesQuery, BundlesWithStatusQuery, ImportedModpacksQuery,
+    ModpackSourcesQuery,
+};
+use super::cluster_content::{ClusterContentQuery, MigratableRoutesQuery, ShadowedModsQuery};
 use super::clusters::ListClustersQuery;
 use super::package_updates::PackageUpdatesQuery;
 use super::settings_profiles::{
@@ -23,12 +30,56 @@ async fn timed(step: &'static str, fut: impl std::future::Future<Output = ()>) {
 
 pub async fn invalidate_cluster_queries() {
     let started = std::time::Instant::now();
-    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::invalidate_all()).await;
-    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::invalidate_all()).await;
-    timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::invalidate_all()).await;
-    timed("clusters", QueriesStorage::<ListClustersQuery>::invalidate_all()).await;
-    timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::invalidate_all()).await;
-    timed("package_updates", QueriesStorage::<PackageUpdatesQuery>::invalidate_all()).await;
+    timed(
+        "cluster_content",
+        QueriesStorage::<ClusterContentQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "shadowed_mods",
+        QueriesStorage::<ShadowedModsQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundle_overrides",
+        QueriesStorage::<BundleOverridesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundles_with_status",
+        QueriesStorage::<BundlesWithStatusQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "migratable_routes",
+        QueriesStorage::<MigratableRoutesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "clusters",
+        QueriesStorage::<ListClustersQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundle_updates",
+        QueriesStorage::<BundleUpdatesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "package_updates",
+        QueriesStorage::<PackageUpdatesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "modpack_sources",
+        QueriesStorage::<ModpackSourcesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "imported_modpacks",
+        QueriesStorage::<ImportedModpacksQuery>::invalidate_all(),
+    )
+    .await;
     tracing::debug!(
         target: "oneclient_app::perf",
         ms = started.elapsed().as_millis() as u64,
@@ -40,6 +91,7 @@ pub async fn invalidate_cluster_queries() {
 /// this before dropping its busy flag
 pub async fn invalidate_cluster_content_queries() {
     QueriesStorage::<ClusterContentQuery>::invalidate_all().await;
+    QueriesStorage::<MigratableRoutesQuery>::invalidate_all().await;
 }
 
 /// Everything [`invalidate_cluster_queries`] does bar the cluster list and the
@@ -47,10 +99,26 @@ pub async fn invalidate_cluster_content_queries() {
 /// The bundle queries do move a toggle writes a bundle override and both read
 /// those back
 async fn invalidate_enabled_flag_queries() {
-    timed("cluster_content", QueriesStorage::<ClusterContentQuery>::invalidate_all()).await;
-    timed("bundle_overrides", QueriesStorage::<BundleOverridesQuery>::invalidate_all()).await;
-    timed("bundles_with_status", QueriesStorage::<BundlesWithStatusQuery>::invalidate_all()).await;
-    timed("bundle_updates", QueriesStorage::<BundleUpdatesQuery>::invalidate_all()).await;
+    timed(
+        "cluster_content",
+        QueriesStorage::<ClusterContentQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundle_overrides",
+        QueriesStorage::<BundleOverridesQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundles_with_status",
+        QueriesStorage::<BundlesWithStatusQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "bundle_updates",
+        QueriesStorage::<BundleUpdatesQuery>::invalidate_all(),
+    )
+    .await;
 }
 
 pub async fn invalidate_profile_queries() {
@@ -59,6 +127,36 @@ pub async fn invalidate_profile_queries() {
     QueriesStorage::<ClusterProfileQuery>::invalidate_all().await;
     QueriesStorage::<ClusterSettingsQuery>::invalidate_all().await;
     QueriesStorage::<ListClustersQuery>::invalidate_all().await;
+}
+
+fn bundle_selection_overrides(
+    archives: &[BundleArchive],
+    selected: &[String],
+) -> Vec<(String, String, OverrideType)> {
+    let taken = |archive: &BundleArchive| selected.contains(&archive.manifest.name);
+
+    let mut kept: HashSet<String> = HashSet::new();
+    for archive in archives.iter().filter(|archive| taken(archive)) {
+        for file in archive.manifest.files.iter().filter(|file| file.enabled) {
+            kept.insert(file.kind.package_id());
+        }
+    }
+
+    let mut overrides = Vec::new();
+    for archive in archives.iter().filter(|archive| !taken(archive)) {
+        for file in archive.manifest.files.iter().filter(|file| file.enabled) {
+            let package_id = file.kind.package_id();
+            if kept.contains(&package_id) {
+                continue;
+            }
+            overrides.push((
+                archive.manifest.name.clone(),
+                package_id,
+                OverrideType::Removed,
+            ));
+        }
+    }
+    overrides
 }
 
 #[derive(Clone, PartialEq, Eq, Hash)]
@@ -79,6 +177,10 @@ pub enum ClusterAction {
         cluster_id: ClusterId,
         hash: String,
     },
+    DeleteBundledArtifact {
+        cluster_id: ClusterId,
+        hash: String,
+    },
     SetBundlePackageEnabled {
         cluster_id: ClusterId,
         bundle_name: String,
@@ -95,6 +197,33 @@ pub enum ClusterAction {
     VerifyFiles {
         cluster_id: ClusterId,
     },
+    CreateInstance {
+        kind: ClusterKind,
+        name: String,
+        mc_version: String,
+        mc_loader: GameLoader,
+        mc_loader_version: Option<String>,
+        description: Option<String>,
+        tags: Vec<String>,
+        cover_source: Option<PathBuf>,
+        bundles: Option<Vec<String>>,
+        dedicated: bool,
+    },
+    UpdateInstance {
+        cluster_id: ClusterId,
+        name: String,
+        description: Option<String>,
+        tags: Vec<String>,
+        cover_source: Option<PathBuf>,
+        clear_cover: bool,
+    },
+    DeleteInstance {
+        cluster_id: ClusterId,
+    },
+    ResetInstance {
+        cluster_id: ClusterId,
+    },
+    Batch(Vec<ClusterAction>),
 }
 
 impl MutationCapability for ClusterMutation {
@@ -103,10 +232,32 @@ impl MutationCapability for ClusterMutation {
     type Keys = ClusterAction;
 
     async fn run(&self, keys: &ClusterAction) -> Result<(), String> {
+        if let ClusterAction::Batch(actions) = keys {
+            let mut errors = Vec::new();
+            for action in actions {
+                if let Err(err) = Box::pin(self.run(action)).await {
+                    errors.push(err);
+                }
+            }
+            return if errors.is_empty() {
+                Ok(())
+            } else {
+                Err(errors.join("\n"))
+            };
+        }
         let started = std::time::Instant::now();
         let state = crate::launcher::state().map_err(|e| e.to_string())?;
         let services = &state.services;
         let content = &state.services.content();
+        let notify_deferred = |live: LiveSync, cluster_id: ClusterId| {
+            if live == LiveSync::Deferred && state.games.is_active(cluster_id) {
+                services
+                    .events
+                    .notify("Saved for the next launch")
+                    .body("Minecraft is running, but this could not be added to the open game.")
+                    .send();
+            }
+        };
         let result = match keys {
             ClusterAction::SetArtifactEnabled {
                 cluster_id,
@@ -114,20 +265,23 @@ impl MutationCapability for ClusterMutation {
                 enabled,
             } => oneclient_core::set_artifact_enabled_to(*cluster_id, hash, *enabled, content)
                 .await
-                .map(|live| {
-                    if live == LiveSync::Deferred && state.games.is_active(*cluster_id) {
-                        services
-                            .events
-                            .notify("Saved for the next launch")
-                            .body("Minecraft is running, but this could not be added to the open game.")
-                            .send();
-                    }
-                }),
+                .map(|live| notify_deferred(live, *cluster_id)),
             ClusterAction::RemoveArtifact { cluster_id, hash } => {
-                oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, true, content).await
+                oneclient_core::delete_artifact(*cluster_id, hash, content).await
             }
             ClusterAction::RemoveBundlePackageFromDisk { cluster_id, hash } => {
-                oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, false, content).await
+                oneclient_core::remove_artifact_from_cluster(*cluster_id, hash, false, content)
+                    .await
+            }
+            ClusterAction::DeleteBundledArtifact { cluster_id, hash } => {
+                async {
+                    let live =
+                        oneclient_core::set_artifact_enabled_to(*cluster_id, hash, false, content)
+                            .await?;
+                    notify_deferred(live, *cluster_id);
+                    oneclient_core::on_user_remove_artifact(*cluster_id, hash, content).await
+                }
+                .await
             }
             ClusterAction::SetBundlePackageEnabled {
                 cluster_id,
@@ -146,26 +300,51 @@ impl MutationCapability for ClusterMutation {
                 )
                 .await
             }
+            ClusterAction::SetDedicatedDir { cluster_id, .. }
+                if state.games.is_syncing(*cluster_id) =>
+            {
+                Err(oneclient_content::ContentError::InvalidData {
+                    reason: "Wait for the sync to finish before changing the folder.".to_string(),
+                })
+            }
             ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated,
             } => {
-                state
-                    .clusters
-                    .set_dedicated_dir(
-                        *cluster_id,
-                        *dedicated,
-                        state.games.is_active(*cluster_id),
-                    )
-                    .await
-                .map_err(|err| oneclient_content::ContentError::InvalidData {
-                    reason: err.to_string(),
-                })
+                // Switching moves the instance's files, which a reset is moving too
+                if oneclient_core::clusters::is_resetting(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the reset to finish before changing the directory."
+                            .to_string(),
+                    })
+                } else if oneclient_core::clusters::has_imported_modpacks(&state, *cluster_id).await {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Remove the modpacks added to this instance under Added Modpacks before changing its folder."
+                            .to_string(),
+                    })
+                } else {
+                    state
+                        .clusters
+                        .set_dedicated_dir(
+                            *cluster_id,
+                            *dedicated,
+                            state.games.is_active(*cluster_id),
+                        )
+                        .await
+                        .map_err(|err| oneclient_content::ContentError::InvalidData {
+                            reason: err.to_string(),
+                        })
+                }
             }
             ClusterAction::VerifyFiles { cluster_id } => {
                 // Reports its own outcome not the generic failure toast a
                 // verify that finds nothing wrong is still a useful result
-                match oneclient_core::verify_cluster_files(&state, *cluster_id).await {
+                let (state, cluster_id) = (state.clone(), *cluster_id);
+                match crate::launcher::off_ui(async move {
+                    oneclient_core::verify_cluster_files(&state, cluster_id).await
+                })
+                .await
+                {
                     Ok(report) => {
                         let notify = services.events.notify("Verification complete");
                         let notify = notify.body(report.summary());
@@ -181,6 +360,272 @@ impl MutationCapability for ClusterMutation {
                     }),
                 }
             }
+            ClusterAction::CreateInstance {
+                kind,
+                name,
+                mc_version,
+                mc_loader,
+                mc_loader_version,
+                description,
+                tags,
+                cover_source,
+                bundles,
+                dedicated,
+            } => {
+                let global = state.settings.read().global_game_settings.clone();
+                let mut options = oneclient_core::clusters::CreateClusterOptions::new(
+                    name.clone(),
+                    mc_version.clone(),
+                    *mc_loader,
+                )
+                .kind(*kind)
+                .user_created(true)
+                .tags(tags.clone());
+                options.mc_loader_version = mc_loader_version.clone();
+                options.description = description.clone();
+
+                match state.clusters.create(&global, options).await {
+                    Ok(cluster) => {
+                        if *dedicated
+                            && let Err(err) =
+                                state.clusters.set_dedicated_dir(cluster.id, true, false).await
+                        {
+                            tracing::warn!(cluster_id = cluster.id, error = %err, "failed to give the new instance a dedicated directory");
+                            services
+                                .events
+                                .notify("Couldn't give the instance its own folder")
+                                .body(format!("It uses the shared folder for now: {err}"))
+                                .error()
+                                .send();
+                        }
+
+                        services
+                            .events
+                            .signal(oneclient_events::Signal::ClustersChanged);
+
+                        if let Some(source) = cover_source
+                            && let Err(err) =
+                                state.clusters.set_cover_from_file(cluster.id, source).await
+                        {
+                            tracing::warn!(cluster_id = cluster.id, error = %err, "failed to store the instance cover");
+                        }
+
+                        if cluster.uses_bundles() {
+                            if let Some(selected) = bundles {
+                                let archives = state
+                                    .bundles
+                                    .archives_for(content, &cluster.mc_version, cluster.mc_loader)
+                                    .await
+                                    .unwrap_or_default();
+                                let overrides = bundle_selection_overrides(&archives, selected);
+                                if let Err(err) = oneclient_core::set_bundle_package_overrides(
+                                    cluster.id, &overrides, content,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
+                                }
+                                let choices: Vec<_> = archives
+                                    .iter()
+                                    .filter(|archive| !archive.manifest.enabled)
+                                    .map(|archive| {
+                                        let name = &archive.manifest.name;
+                                        (name.clone(), selected.contains(name))
+                                    })
+                                    .collect();
+                                if let Err(err) = oneclient_content::bundles::set_bundle_choices(
+                                    cluster.id, &choices, content,
+                                )
+                                .await
+                                {
+                                    tracing::warn!(cluster_id = cluster.id, error = %err, "failed to record the bundle choices for the new instance");
+                                }
+                            }
+
+                            let session = oneclient_events::GroupedProgressSession::start(
+                                &services.events,
+                                format!("Setting up {}", cluster.name),
+                            );
+                            if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
+                                cluster.id,
+                                state.bundles.as_ref(),
+                                Some(&session),
+                                content,
+                            )
+                            .await
+                            {
+                                tracing::warn!(cluster_id = cluster.id, error = %err, "failed to install bundle content for the new instance");
+                            }
+                            if let Err(err) = oneclient_core::apply_bundle_java_override(
+                                &state,
+                                cluster.id,
+                                true,
+                                true,
+                                Some(&session),
+                            )
+                            .await
+                            {
+                                tracing::warn!(cluster_id = cluster.id, error = %err, "failed to apply the bundle java override for the new instance");
+                            }
+                            session.finish();
+                        }
+                        Ok(())
+                    }
+                    Err(err) => Err(oneclient_content::ContentError::InvalidData {
+                        reason: err.to_string(),
+                    }),
+                }
+            }
+            ClusterAction::UpdateInstance {
+                cluster_id,
+                name,
+                description,
+                tags,
+                cover_source,
+                clear_cover,
+            } => {
+                let cover = if *clear_cover {
+                    state.clusters.clear_cover(*cluster_id).await.ok();
+                    oneclient_common::Patch::Clear
+                } else if let Some(source) = cover_source {
+                    match state
+                        .clusters
+                        .set_cover_from_file(*cluster_id, source)
+                        .await
+                    {
+                        Ok(_) => oneclient_common::Patch::Unchanged,
+                        Err(err) => {
+                            tracing::warn!(cluster_id, error = %err, "failed to store the instance cover");
+                            oneclient_common::Patch::Unchanged
+                        }
+                    }
+                } else {
+                    oneclient_common::Patch::Unchanged
+                };
+
+                let update = oneclient_core::clusters::ClusterUpdate {
+                    name: Some(name.clone()),
+                    description: match description {
+                        Some(text) => oneclient_common::Patch::Set(text.clone()),
+                        None => oneclient_common::Patch::Clear,
+                    },
+                    tags: Some(tags.clone()),
+                    cover_path: cover,
+                    ..Default::default()
+                };
+
+                state
+                    .clusters
+                    .update(*cluster_id, update)
+                    .await
+                    .map(|_| ())
+                    .map_err(|err| oneclient_content::ContentError::InvalidData {
+                        reason: err.to_string(),
+                    })
+            }
+            ClusterAction::DeleteInstance { cluster_id } => {
+                if crate::hooks::modpack_job_running(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the modpack to finish, or close its dialog, before deleting this instance."
+                            .to_string(),
+                    })
+                } else if state.games.is_active(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Close the game before deleting this instance.".to_string(),
+                    })
+                } else if state.games.is_syncing(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the sync to finish before deleting this instance."
+                            .to_string(),
+                    })
+                } else {
+                    let (released, id) = (state.clone(), *cluster_id);
+                    crate::launcher::off_ui(async move {
+                        oneclient_core::clusters::release_imported_modpacks(&released, id).await;
+                    })
+                    .await;
+                    let outcome = state
+                        .clusters
+                        .delete(*cluster_id, true)
+                        .await
+                        .map_err(|err| oneclient_content::ContentError::InvalidData {
+                            reason: err.to_string(),
+                        });
+                    if outcome.is_ok() {
+                        services
+                            .events
+                            .signal(oneclient_events::Signal::ClustersChanged);
+                    }
+                    outcome
+                }
+            }
+            ClusterAction::ResetInstance { cluster_id } => {
+                // Claimed here on the UI thread, where modpack jobs are claimed too, so neither
+                // can slip in while the other is being handed to a background task
+                let claim = oneclient_core::clusters::ResetClaim::take(*cluster_id);
+                if crate::hooks::modpack_job_running(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the modpack to finish, or close its dialog, before resetting this instance."
+                            .to_string(),
+                    })
+                } else if crate::hooks::exporting(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the export to finish before resetting this instance."
+                            .to_string(),
+                    })
+                } else if state.games.is_active(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Close the game before resetting this instance.".to_string(),
+                    })
+                } else if state.games.is_syncing(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the sync from the shared folder to finish before resetting this instance."
+                            .to_string(),
+                    })
+                } else if let Some(claim) = claim {
+                    let (state, cluster_id) = (state.clone(), *cluster_id);
+                    let outcome = crate::launcher::off_ui(async move {
+                        let name = state
+                            .clusters
+                            .get(cluster_id)
+                            .await
+                            .map(|cluster| cluster.name)
+                            .unwrap_or_default();
+                        let session = oneclient_events::GroupedProgressSession::start(
+                            &state.services.events,
+                            format!("Resetting {name}"),
+                        );
+                        let result = oneclient_core::clusters::reset_cluster(
+                            &state,
+                            claim,
+                            Some(&session),
+                        )
+                        .await;
+                        session.finish();
+                        result
+                    })
+                    .await;
+                    services
+                        .events
+                        .signal(oneclient_events::Signal::ClustersChanged);
+                    invalidate_profile_queries().await;
+                    invalidate_cluster_queries().await;
+                    match outcome {
+                        Ok(report) => {
+                            notify_reset(services, &report);
+                            Ok(())
+                        }
+                        Err(err) => Err(oneclient_content::ContentError::InvalidData {
+                            reason: err.to_string(),
+                        }),
+                    }
+                } else {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "This instance is already being reset.".to_string(),
+                    })
+                }
+            }
+            ClusterAction::Batch(_) => unreachable!(),
         };
         tracing::debug!(
             target: "oneclient_app::perf",
@@ -195,13 +640,71 @@ impl MutationCapability for ClusterMutation {
         if let Err(err) = result
             && let Ok(state) = crate::launcher::state()
         {
-            state.services.events.notify("Action failed").body(err).error().send();
+            state
+                .services
+                .events
+                .notify("Action failed")
+                .body(err)
+                .error()
+                .send();
         }
-        if matches!(keys, ClusterAction::SetArtifactEnabled { .. }) {
+        let enabled_only = match keys {
+            ClusterAction::Batch(actions) => actions
+                .iter()
+                .all(|a| matches!(a, ClusterAction::SetArtifactEnabled { .. })),
+            keys => matches!(keys, ClusterAction::SetArtifactEnabled { .. }),
+        };
+        if enabled_only {
             invalidate_enabled_flag_queries().await;
         } else {
             invalidate_cluster_queries().await;
         }
+    }
+}
+
+fn notify_reset(
+    services: &oneclient_core::LauncherServices,
+    report: &oneclient_core::clusters::ResetReport,
+) {
+    if let Some(err) = &report.reinstall_error {
+        let mut body = format!("Its content could not be installed again: {err}.");
+        if let Some(backup) = &report.backup_dir {
+            body.push_str(&format!(
+                " The files it replaced were moved to {}.",
+                backup.display()
+            ));
+        }
+        body.push_str(" Run Reset Instance again to finish. Until then it can't be launched.");
+        services
+            .events
+            .notify("Reset didn't finish")
+            .body(body)
+            .error()
+            .send();
+        return;
+    }
+
+    let mut body = if report.kept_shared_configs {
+        "Its mods and settings are back to how they were. Config files in the shared game folder were kept.".to_string()
+    } else {
+        "Its mods, settings and config files are back to how they were.".to_string()
+    };
+    if let Some(backup) = &report.backup_dir {
+        body.push_str(&format!(
+            " The files it replaced were moved to {}.",
+            backup.display()
+        ));
+    }
+
+    let notify = services.events.notify("Instance reset");
+    if report.not_moved.is_empty() {
+        notify.body(body).send();
+    } else {
+        body.push_str(&format!(
+            " These could not be moved and were left in place: {}.",
+            report.not_moved.join(", ")
+        ));
+        notify.body(body).error().send();
     }
 }
 

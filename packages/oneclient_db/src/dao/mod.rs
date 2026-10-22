@@ -8,4 +8,5 @@ pub mod cluster_optional_mod;
 pub mod game_session;
 pub mod java;
 pub mod package_metadata;
+pub mod release_migration_waitlist;
 pub mod setting_profile;

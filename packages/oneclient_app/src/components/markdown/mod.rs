@@ -6,6 +6,7 @@ use pulldown_cmark::HeadingLevel;
 mod image;
 mod parse;
 mod render;
+mod svg_compat;
 
 #[derive(Clone, PartialEq)]
 pub struct MarkdownStyle {
@@ -37,7 +38,7 @@ impl Default for MarkdownStyle {
             paragraph_size: 16.,
             code_font_size: 14.,
             table_font_size: 14.,
-            code_font_family: Cow::Borrowed("Jetbrains Mono"),
+            code_font_family: Cow::Borrowed(crate::theme::MONO_FONT),
         }
     }
 }
@@ -115,4 +116,3 @@ impl Component for Markdown {
         self.key.clone().or(self.default_key())
     }
 }
-

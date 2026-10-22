@@ -2,6 +2,7 @@ use super::*;
 
 use crate::components::ScrollArea;
 use crate::theme::colors;
+use crate::ui::border_all_color;
 use crate::utils::capitalize;
 
 #[derive(PartialEq)]
@@ -13,7 +14,7 @@ pub(super) struct CategorySidebar {
 impl Component for CategorySidebar {
     fn render(&self) -> impl IntoElement {
         let selected = self.selected;
-        let list = rect().vertical().width(Size::fill()).spacing(2.).children(
+        let list = rect().vertical().width(Size::fill()).spacing(1.).children(
             self.categories.clone().into_iter().map(move |cat| {
                 let is_selected = selected.read().contains(&cat);
                 let mut selected = selected;
@@ -41,14 +42,15 @@ impl Component for CategorySidebar {
 
         rect()
             .vertical()
-            .width(Size::px(CATEGORY_SIDEBAR_W))
-            .height(Size::fill())
+            .width(Size::fill())
+            .height(Size::flex(1.0))
             .spacing(8.)
             .child(
                 label()
                     .text("CATEGORIES")
                     .font_size(11.)
-                    .font_weight(FontWeight::LIGHT)
+                    .font_weight(FontWeight::MEDIUM)
+                    .letter_spacing(1.4)
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -92,8 +94,19 @@ impl Component for CategoryRow {
         };
 
         rect()
+            .horizontal()
             .width(Size::fill())
-            .padding(Gaps::new_symmetric(3., 0.))
+            .height(Size::px(29.))
+            .cross_align(Alignment::Center)
+            .padding(Gaps::new_symmetric(0., 10.))
+            .corner_radius(CornerRadius::new_all(8.))
+            .maybe(selected, |el| {
+                el.background(colors::brand().with_a(40))
+                    .border(border_all_color(1., colors::brand().with_a(115)))
+            })
+            .maybe(!selected && hovered, |el| {
+                el.background(colors::ghost_overlay())
+            })
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
@@ -104,10 +117,10 @@ impl Component for CategoryRow {
             .child(
                 label()
                     .text(capitalize(&self.name))
-                    .font_size(13.)
+                    .font_size(12.)
                     .max_lines(1)
                     .font_weight(if selected {
-                        FontWeight::SEMI_BOLD
+                        FontWeight::MEDIUM
                     } else {
                         FontWeight::NORMAL
                     })

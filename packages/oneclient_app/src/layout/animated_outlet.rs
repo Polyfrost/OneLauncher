@@ -43,6 +43,8 @@ fn is_cluster_route(route: &Route) -> bool {
             | Route::ClusterMods { .. }
             | Route::ClusterShaders { .. }
             | Route::ClusterTextures { .. }
+            | Route::ClusterWorlds { .. }
+            | Route::ClusterDataPacks { .. }
             | Route::ClusterSettings { .. }
     )
 }
@@ -85,6 +87,7 @@ fn is_text_entry(role: AccessibilityRole) -> bool {
 fn enter_kind(from: &Route, to: &Route) -> Enter {
     if (is_sidebar_route(from) && is_sidebar_route(to))
         || (is_cluster_route(from) && is_cluster_route(to))
+        || (matches!(from, Route::Browser { .. }) && matches!(to, Route::Browser { .. }))
     {
         Enter::None
     } else if hides_overlay(from) {
@@ -252,7 +255,7 @@ impl Component for AnimatedAppOutlet {
             .height(Size::fill())
             .overflow(Overflow::Clip)
             .on_global_key_down(on_global_key)
-            .on_global_pointer_press(on_global_pointer)
+            .on_global_pointer_up(on_global_pointer)
             .maybe_child(overlay)
             .child(column)
     }

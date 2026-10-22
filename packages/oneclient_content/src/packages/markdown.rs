@@ -179,7 +179,10 @@ mod tests {
 
         assert!(out.contains("# Mod"), "{out}");
         assert!(out.contains("### Tagline"), "{out}");
-        assert!(out.contains("[![Badge](badge.svg)](https://example.com)"), "{out}");
+        assert!(
+            out.contains("[![Badge](badge.svg)](https://example.com)"),
+            "{out}"
+        );
         assert!(!out.contains("<div"), "{out}");
     }
 
@@ -196,6 +199,9 @@ mod tests {
     #[test]
     fn does_not_mistake_other_tags_for_breaks() {
         assert_eq!(replace_break_tags("<brick>x</brick>"), "<brick>x</brick>");
-        assert_eq!(replace_break_tags("a<br class=\"x\">b"), format!("a{BREAK}b"));
+        assert_eq!(
+            replace_break_tags("a<br class=\"x\">b"),
+            format!("a{BREAK}b")
+        );
     }
 }

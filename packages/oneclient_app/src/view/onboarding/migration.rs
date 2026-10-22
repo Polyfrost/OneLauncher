@@ -32,8 +32,9 @@ pub(crate) fn matching_new_cluster_id(
     new: &[ClusterBundles],
 ) -> Option<i64> {
     let want = instance.import_version();
+    let loader = instance.import_loader();
     new.iter()
-        .find(|cb| cb.cluster.mc_version == want && cb.cluster.mc_loader == instance.mc_loader)
+        .find(|cb| cb.cluster.mc_version == want && cb.cluster.mc_loader == loader)
         .map(|cb| cb.cluster.id)
 }
 

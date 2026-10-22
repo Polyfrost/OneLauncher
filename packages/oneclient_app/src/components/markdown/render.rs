@@ -3,32 +3,29 @@ use freya::prelude::*;
 use super::MarkdownStyle;
 use super::image::MarkdownImage;
 use super::parse::{Block, Inline, List, TextSpan};
+use crate::components::CodeBlock;
 use crate::hooks::LinkConfirmState;
 
 pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element {
     match block {
-        Block::Heading { level, spans } => {
-            render_spans(spans, style.heading_size(*level), style.color, style.color_code)
-                .font_weight(FontWeight::BOLD)
-                .key(key)
-                .into()
-        }
+        Block::Heading { level, spans } => render_spans(
+            spans,
+            style.heading_size(*level),
+            style.color,
+            style.color_code,
+        )
+        .font_weight(FontWeight::BOLD)
+        .key(key)
+        .into(),
         Block::Paragraph { content } => render_content(content, style.paragraph_size, style)
             .key(key)
             .into(),
-        Block::Code { code } => rect()
-            .key(key)
-            .width(Size::fill())
+        Block::Code { code } => CodeBlock::new(code.clone())
+            .color(style.color_code)
             .background(style.background_code)
-            .corner_radius(CornerRadius::new_all(6.))
-            .padding(Gaps::new_all(12.))
-            .child(
-                label()
-                    .text(code.clone())
-                    .font_family(style.code_font_family.clone())
-                    .font_size(style.code_font_size)
-                    .color(style.color_code),
-            )
+            .font_family(style.code_font_family.clone())
+            .font_size(style.code_font_size)
+            .key(key)
             .into(),
         Block::List(list) => render_list(list, style).key(key).into(),
         Block::Image { url, alt } => rect()
@@ -53,7 +50,9 @@ pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element
                     .alignment(BorderAlignment::Inner),
             )
             .background(style.background_blockquote)
-            .child(render_content(content, style.paragraph_size, style).font_slant(FontSlant::Italic))
+            .child(
+                render_content(content, style.paragraph_size, style).font_slant(FontSlant::Italic),
+            )
             .into(),
         Block::Rule => rect()
             .key(key)
@@ -74,7 +73,9 @@ fn styled_span(span: &TextSpan, text_color: Color, code_color: Color) -> Span<'s
         styled = styled.font_slant(FontSlant::Italic);
     }
     if span.code {
-        styled.font_family("monospace").color(code_color)
+        styled
+            .font_family(crate::theme::MONO_FONT)
+            .color(code_color)
     } else {
         styled.color(text_color)
     }
@@ -215,12 +216,7 @@ impl KeyExt for MarkdownLink {
 }
 
 impl MarkdownLink {
-    fn new(
-        url: String,
-        title: Option<String>,
-        content: Vec<Inline>,
-        style: MarkdownStyle,
-    ) -> Self {
+    fn new(url: String, title: Option<String>, content: Vec<Inline>, style: MarkdownStyle) -> Self {
         Self {
             url,
             title,
@@ -242,18 +238,24 @@ impl Component for MarkdownLink {
         let mut text = paragraph().font_size(self.style.paragraph_size);
         for item in &self.content {
             text = match item {
-                Inline::Span(span) => {
-                    text.span(styled_span(span, self.style.color_link, self.style.color_code))
-                }
+                Inline::Span(span) => text.span(styled_span(
+                    span,
+                    self.style.color_link,
+                    self.style.color_code,
+                )),
                 Inline::Image { url, alt } => {
                     text.child(MarkdownImage::new(url.clone(), alt.clone()))
                 }
-                Inline::Link { content, .. } => content.iter().fold(text, |text, item| match item {
-                    Inline::Span(span) => {
-                        text.span(styled_span(span, self.style.color_link, self.style.color_code))
-                    }
-                    _ => text,
-                }),
+                Inline::Link { content, .. } => {
+                    content.iter().fold(text, |text, item| match item {
+                        Inline::Span(span) => text.span(styled_span(
+                            span,
+                            self.style.color_link,
+                            self.style.color_code,
+                        )),
+                        _ => text,
+                    })
+                }
             };
         }
 

@@ -1,8 +1,8 @@
 use parking_lot::RwLock;
 
-use oneclient_events::EventBus;
-use oneclient_common::paths;
 use crate::{LauncherError, LauncherResult};
+use oneclient_common::paths;
+use oneclient_events::EventBus;
 
 use super::launcher::LauncherSettings;
 use oneclient_cluster::GameSettingsProfile;
@@ -17,7 +17,9 @@ pub async fn load_settings(notify: Option<&EventBus>) -> LauncherSettings {
             LauncherSettings::default()
         } else {
             let data = polyio::read(&path).await?;
-            serde_json::from_slice(&data)?
+            let mut settings: LauncherSettings = serde_json::from_slice(&data)?;
+            settings.migrate();
+            settings
         })
     }
     .await
@@ -27,7 +29,11 @@ pub async fn load_settings(notify: Option<&EventBus>) -> LauncherSettings {
             tracing::warn!("failed to read settings file: {err}");
 
             if let Some(notify) = notify {
-                notify.notify("Settings").body("Failed to load settings").error().send();
+                notify
+                    .notify("Settings")
+                    .body("Failed to load settings")
+                    .error()
+                    .send();
             }
 
             recover_after_failed_load().await

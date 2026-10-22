@@ -87,13 +87,7 @@ async fn run_check(auto_install: bool, events: EventBus) -> anyhow::Result<()> {
     // under a package-managed path that an install would fail on or clobber
     if !can_self_update() {
         tracing::info!("install is not self-updatable (non-AppImage Linux); notifying only");
-        events
-            .notify("Update available")
-            .body(format!(
-                "OneClient {} is available. Download the latest package from {} to update.",
-                update.version, RELEASES_URL
-            ))
-            .send();
+        notify_manual_update(&events, &update.version);
         return Ok(());
     }
 
@@ -105,14 +99,34 @@ async fn run_check(auto_install: bool, events: EventBus) -> anyhow::Result<()> {
     download_and_install(update, events).await
 }
 
-fn can_self_update() -> bool {
-	if cfg!(debug_assertions) {
-		return false;
-	}
+fn notify_manual_update(events: &EventBus, version: &str) {
+    events
+        .notify("Update available")
+        .body(format!(
+            "OneClient {version} is available. Download the latest package from {RELEASES_URL} to update."
+        ))
+        .link(RELEASES_URL)
+        .send();
+}
 
-	if std::env::var_os("ONECLIENT_DISABLE_AUTOUPDATE").is_some_and(|val| val.eq_ignore_ascii_case("1")) {
-		return false;
-	}
+/// Debug-only shows the notify-only toast that non-self-updatable installs get
+pub fn simulate_manual_update_toast() {
+    match crate::launcher::state() {
+        Ok(state) => notify_manual_update(&state.services.events, "9999.9999.9999"),
+        Err(err) => tracing::warn!("simulated update toast failed: {err:#}"),
+    }
+}
+
+fn can_self_update() -> bool {
+    if cfg!(debug_assertions) {
+        return false;
+    }
+
+    if std::env::var_os("ONECLIENT_DISABLE_AUTOUPDATE")
+        .is_some_and(|val| val.eq_ignore_ascii_case("1"))
+    {
+        return false;
+    }
 
     #[cfg(target_os = "linux")]
     {

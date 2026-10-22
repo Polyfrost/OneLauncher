@@ -1,7 +1,7 @@
 use freya::prelude::*;
 use oneclient_content::packages::ProviderId;
 
-use crate::components::{Icon, provider_badge};
+use crate::components::{Icon, IconType, github_badge, provider_badge};
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
@@ -16,6 +16,7 @@ pub(super) const GRID_GAP: f32 = 10.;
 #[derive(PartialEq)]
 pub(super) struct OnboardingModCard {
     pub(super) provider: ProviderId,
+    pub(super) github_hosted: bool,
     pub(super) name: String,
     pub(super) author: String,
     pub(super) description: String,
@@ -36,10 +37,10 @@ impl Component for OnboardingModCard {
                 .height(Size::px(44.))
                 .aspect_ratio(AspectRatio::Min)
                 .corner_radius(CornerRadius::new_all(8.))
-                .fallback(icon_box(self.provider))
+                .fallback(icon_box(self.placeholder_icon()))
                 .into_element(),
 
-            None => icon_box(self.provider).into_element(),
+            None => icon_box(self.placeholder_icon()).into_element(),
         };
 
         let (bg, border, alpha) = if self.enabled {
@@ -82,7 +83,11 @@ impl Component for OnboardingModCard {
                                 .color(colors::fg_secondary().with_a(alpha)),
                         )
                     })
-                    .child(provider_badge(self.provider)),
+                    .child(if self.github_hosted {
+                        github_badge()
+                    } else {
+                        provider_badge(self.provider)
+                    }),
             );
 
         let description = (!self.description.is_empty()).then(|| {
@@ -132,14 +137,24 @@ impl Component for OnboardingModCard {
     }
 }
 
-fn icon_box(provider: ProviderId) -> impl IntoElement {
+impl OnboardingModCard {
+    fn placeholder_icon(&self) -> IconType {
+        if self.github_hosted {
+            IconType::Github
+        } else {
+            self.provider.into()
+        }
+    }
+}
+
+fn icon_box(icon: IconType) -> impl IntoElement {
     rect()
         .center()
         .width(Size::px(44.))
         .height(Size::px(44.))
         .corner_radius(CornerRadius::new_all(8.))
         .background(colors::component_bg())
-        .child(Icon::new(provider).size(20.).color(colors::fg_secondary()))
+        .child(Icon::new(icon).size(20.).color(colors::fg_secondary()))
         .into_element()
 }
 

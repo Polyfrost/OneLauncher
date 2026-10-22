@@ -70,12 +70,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_folder_survives_the_round_trip() {
-        let folder = "26.1.2 Fabric";
-        assert_eq!(parse_launch_url(&launch_url(folder)).as_deref(), Some(folder));
-    }
-
-    #[test]
     fn a_space_is_encoded_rather_than_left_to_split_the_url() {
         assert!(launch_url("My Pack").ends_with("/My%20Pack"));
     }

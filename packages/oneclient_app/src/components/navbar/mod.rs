@@ -29,12 +29,7 @@ pub fn window_controls() -> impl IntoElement {
         });
     };
 
-    let close = |_| {
-        let platform = Platform::get();
-        Platform::get().with_window(Platform::window_id(), move |window| {
-            platform.close_window(window.id());
-        });
-    };
+    let close = |_| crate::platform::close();
 
     rect()
         .horizontal()
@@ -44,16 +39,19 @@ pub fn window_controls() -> impl IntoElement {
         .layer(Layer::OverlayLevel(15))
         .child(
             navbar_button()
+                .tooltip("Minimize")
                 .child(Icon::new(IconType::Minus))
                 .on_press(minimize),
         )
         .child(
             navbar_button()
+                .tooltip("Maximize")
                 .child(Icon::new(IconType::Maximize01).size(20.))
                 .on_press(maximize),
         )
         .child(
             navbar_button()
+                .tooltip("Close")
                 .child(Icon::new(IconType::X))
                 .on_press(close),
         )

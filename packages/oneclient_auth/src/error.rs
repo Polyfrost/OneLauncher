@@ -35,7 +35,10 @@ pub enum MinecraftAuthError {
     },
     // Rendered via `error_chain` reqwest's `Display` names only the URL and the
     // cause we need (certificate handshake DNS refused) is under it
-    #[error("failed to request using HTTP during MSA step {step:?}: {}", oneclient_net::error_chain(source))]
+    #[error(
+        "failed to request using HTTP during MSA step {step:?}: {}",
+        oneclient_net::error_chain(source)
+    )]
     RequestError {
         step: MinecraftAuthStep,
         #[source]
@@ -66,6 +69,9 @@ pub enum MinecraftAuthError {
         message: String,
         redirect: Option<String>,
     },
+    /// Retrying cannot fix this only a fresh interactive sign-in can
+    #[error("Microsoft rejected the saved sign-in ({error})")]
+    RefreshTokenRevoked { error: String },
     #[error(
         "The sign-in service returned an error (HTTP {status_code}) during step {step:?}. Please wait a moment and try again."
     )]
@@ -79,12 +85,24 @@ pub enum MinecraftAuthError {
 pub fn friendly_xbox_error(code: u64) -> Option<&'static str> {
     Some(match code {
         2_148_916_227 => "This account has been banned or suspended from Xbox.",
-        2_148_916_229 => "This account is a child account that must be added to a Family group by an adult before signing in.",
-        2_148_916_233 => "This Microsoft account does not have an Xbox profile yet. Create one at xbox.com, then try again.",
-        2_148_916_234 => "This account has not accepted the Xbox Terms of Service. Sign in at xbox.com to accept them first.",
-        2_148_916_235 => "Xbox Live is not available in your country or region, so sign-in is blocked.",
-        2_148_916_236 | 2_148_916_237 => "This account requires adult verification (South Korea) before it can sign in.",
-        2_148_916_238 => "This is a child account. An adult must add it to a Microsoft Family group before it can sign in.",
+        2_148_916_229 => {
+            "This account is a child account that must be added to a Family group by an adult before signing in."
+        }
+        2_148_916_233 => {
+            "This Microsoft account does not have an Xbox profile yet. Create one at xbox.com, then try again."
+        }
+        2_148_916_234 => {
+            "This account has not accepted the Xbox Terms of Service. Sign in at xbox.com to accept them first."
+        }
+        2_148_916_235 => {
+            "Xbox Live is not available in your country or region, so sign-in is blocked."
+        }
+        2_148_916_236 | 2_148_916_237 => {
+            "This account requires adult verification (South Korea) before it can sign in."
+        }
+        2_148_916_238 => {
+            "This is a child account. An adult must add it to a Microsoft Family group before it can sign in."
+        }
         _ => return None,
     })
 }
@@ -115,6 +133,11 @@ pub enum AuthError {
 
     #[error("invalid offline username: {reason}")]
     InvalidOfflineUsername { reason: String },
+
+    #[error(
+        "Your Microsoft sign-in for {username} has expired. Sign in to it again in Settings > Accounts."
+    )]
+    SessionExpired { username: String },
 
     #[error("account {0} is not registered")]
     AccountNotFound(uuid::Uuid),

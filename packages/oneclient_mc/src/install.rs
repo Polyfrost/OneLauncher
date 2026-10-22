@@ -1,4 +1,6 @@
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 use futures_util::{StreamExt, stream};
 use interfrost::api::minecraft::{
@@ -10,19 +12,25 @@ use reqwest::Method;
 use crate::download::{download_to_path, fetch_bytes_verified};
 use crate::rules::validate_rules;
 
-use crate::manifest::MetadataStore;
-use oneclient_common::os_ext::OsExt;
-use oneclient_common::domain::GameLoader;
-use oneclient_events::{Choice, GroupedProgressSession, Prompt, TaskCategory, TaskPhase};
-use oneclient_common::paths;
 use crate::McCtx;
 use crate::error::{McError, McResult};
+use crate::manifest::{MetadataStore, entry_matches_version, manifest_supports_version};
+use oneclient_common::domain::GameLoader;
+use oneclient_common::os_ext::OsExt;
+use oneclient_common::paths;
+use oneclient_events::{Choice, GroupedProgressSession, Prompt, TaskCategory, TaskPhase};
 
 /// Asset objects are tiny (median ~10 KiB) and latency-bound so throughput
 /// scales with how many are in flight not with bandwidth
 const ASSET_DOWNLOAD_CONCURRENCY: usize = 32;
 /// Libraries are larger and fewer less fan-out is needed to saturate the link
 const LIBRARY_DOWNLOAD_CONCURRENCY: usize = 16;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NativesMode {
+    Extract,
+    LeaveInPlace,
+}
 
 #[derive(Debug, Clone)]
 pub struct PlannedLibrary {
@@ -165,6 +173,7 @@ pub async fn plan_downloads(
     java_arch: &str,
     minecraft_updated: bool,
     force: bool,
+    natives_mode: NativesMode,
 ) -> McResult<DownloadPlan> {
     let legacy = uses_legacy_assets(&version.assets);
     let asset_dir = if legacy {
@@ -225,7 +234,12 @@ pub async fn plan_downloads(
                         &lib_dir.join(&artifact_path),
                         library_artifact_size(&lib),
                     ));
-            let natives = force || !natives_extracted(&natives_dir, &lib, &java_arch);
+            let natives = match natives_mode {
+                NativesMode::Extract => {
+                    force || !natives_extracted(&natives_dir, &lib, &java_arch)
+                }
+                NativesMode::LeaveInPlace => false,
+            };
 
             if !artifact && !natives {
                 continue;
@@ -267,6 +281,7 @@ pub struct VerifyReport {
     /// Mismatched the manifest and were removed
     pub corrupt: usize,
     pub missing: usize,
+    pub natives_unextracted: usize,
 }
 
 impl VerifyReport {
@@ -291,6 +306,7 @@ fn arch_segment(java_arch: &str) -> &'static str {
 pub struct NativesReport {
     pub repairable: Vec<String>,
     pub unsupported: Vec<String>,
+    pub unextracted: Vec<String>,
 }
 
 impl NativesReport {
@@ -315,10 +331,7 @@ async fn inspect_jar(path: &Path, java_arch: &str) -> JarVerdict {
         }
     };
 
-    let natives: Vec<&String> = names
-        .iter()
-        .filter(|name| is_native_file(name))
-        .collect();
+    let natives: Vec<&String> = names.iter().filter(|name| is_native_file(name)).collect();
 
     if natives.is_empty() {
         return JarVerdict::WrongArch;
@@ -378,9 +391,10 @@ pub async fn check_natives(
     // One scan for the whole sweep the directory is the same for every library
     let unpacked = any_native_unpacked(&natives_dir).await;
 
-    let mut families: Vec<(String, Vec<JarVerdict>)> = Vec::new();
+    let mut families: Vec<(String, Vec<(JarVerdict, bool)>)> = Vec::new();
     for lib in host_natives {
-        let verdict = if native_download(lib, java_arch).is_some() {
+        let extracted = native_download(lib, java_arch).is_some();
+        let verdict = if extracted {
             if unpacked && natives_extracted(&natives_dir, lib, java_arch) {
                 JarVerdict::Usable
             } else {
@@ -395,17 +409,23 @@ pub async fn check_natives(
 
         let family = natives_family(lib);
         match families.iter_mut().find(|(name, _)| name == &family) {
-            Some((_, verdicts)) => verdicts.push(verdict),
-            None => families.push((family, vec![verdict])),
+            Some((_, verdicts)) => verdicts.push((verdict, extracted)),
+            None => families.push((family, vec![(verdict, extracted)])),
         }
     }
 
     let mut report = NativesReport::default();
     for (family, verdicts) in families {
-        if verdicts.iter().any(|v| matches!(v, JarVerdict::Usable)) {
+        if verdicts.iter().any(|(v, _)| matches!(v, JarVerdict::Usable)) {
             continue;
         }
-        if verdicts.iter().any(|v| matches!(v, JarVerdict::Unreadable)) {
+        if verdicts.iter().any(|(v, _)| matches!(v, JarVerdict::Unreadable)) {
+            if verdicts
+                .iter()
+                .any(|(v, extracted)| *extracted && matches!(v, JarVerdict::Unreadable))
+            {
+                report.unextracted.push(family.clone());
+            }
             report.repairable.push(family);
         } else {
             report.unsupported.push(family);
@@ -503,7 +523,9 @@ pub async fn verify_game_files(
             }
 
             match polyio::sha1_file_sync(path) {
-                Ok(actual) if polyio::normalize_hash(&actual) == polyio::normalize_hash(expected) => {
+                Ok(actual)
+                    if polyio::normalize_hash(&actual) == polyio::normalize_hash(expected) =>
+                {
                     report.checked += 1;
                 }
                 Ok(actual) => {
@@ -553,6 +575,7 @@ pub async fn verify_game_files(
         Err(err) => return Err(err),
     };
     report.missing += natives.repairable.len();
+    report.natives_unextracted = natives.unextracted.len();
     report.checked += natives.repairable.len() + natives.unsupported.len();
 
     tracing::info!(
@@ -576,16 +599,26 @@ pub async fn download_minecraft(
     java_arch: &str,
     minecraft_updated: bool,
     force: bool,
+    natives_mode: NativesMode,
 ) -> McResult<()> {
     let started = std::time::Instant::now();
     let asset_index = download_assets_index(ctx, progress, version, force).await?;
-    let plan = plan_downloads(version, asset_index, java_arch, minecraft_updated, force).await?;
+    let plan = plan_downloads(
+        version,
+        asset_index,
+        java_arch,
+        minecraft_updated,
+        force,
+        natives_mode,
+    )
+    .await?;
 
     tracing::info!(
         version = %version.id,
         assets = plan.assets.len(),
         libraries = plan.libraries.len(),
         bytes = plan.total_bytes(),
+        ?natives_mode,
         "planned minecraft download"
     );
 
@@ -601,27 +634,20 @@ pub async fn download_minecraft(
         plan.libraries.len() as u64,
         plan.library_bytes,
     );
-    progress.expect(TaskCategory::Client, u64::from(plan.client), plan.client_bytes);
+    progress.expect(
+        TaskCategory::Client,
+        u64::from(plan.client),
+        plan.client_bytes,
+    );
 
     let DownloadPlan {
         assets, libraries, ..
     } = plan;
 
     let (failed_assets, _client, failed_libraries) = tokio::try_join!(
-        download_assets(
-            ctx,
-            progress,
-            uses_legacy_assets(&version.assets),
-            assets,
-        ),
+        download_assets(ctx, progress, uses_legacy_assets(&version.assets), assets,),
         download_client(ctx, progress, version, force),
-        download_libraries(
-            ctx,
-            progress,
-            version.id.clone(),
-            libraries,
-            java_arch,
-        ),
+        download_libraries(ctx, progress, version.id.clone(), libraries, java_arch,),
     )?;
 
     confirm_incomplete_install(ctx, failed_assets, failed_libraries).await?;
@@ -708,11 +734,14 @@ pub async fn confirm_incomplete_install(
     }
 }
 
+static VERSION_INFO_REFRESHED: Mutex<BTreeSet<PathBuf>> = Mutex::new(BTreeSet::new());
+
 #[tracing::instrument(skip(ctx, progress), level = "debug")]
 pub async fn download_version_info(
     ctx: &McCtx,
     progress: Option<&GroupedProgressSession>,
     version: &Version,
+    game_loader: GameLoader,
     loader: Option<&LoaderVersion>,
     force: bool,
 ) -> McResult<VersionInfo> {
@@ -720,29 +749,92 @@ pub async fn download_version_info(
         .map(|it| format!("{}-{}", version.id, it.id))
         .unwrap_or_else(|| version.id.clone());
 
-    let path = paths::versions_dir()?
-        .join(&version_id)
-        .join(format!("{version_id}.json"));
+    let dir = paths::versions_dir()?.join(&version_id);
+    let format_version = game_loader.get_format_version();
+    let stem = match loader {
+        Some(_) => format!("{version_id}.{}", game_loader.get_format_name()),
+        None => version_id.clone(),
+    };
+    let path = dir.join(version_info_file_name(&stem, format_version));
 
-    let result = if path.exists() && !force {
-        let data = polyio::read(&path).await?;
-        serde_json::from_slice(&data)?
+    let cached = if force {
+        None
     } else {
-        tracing::debug!(
-            version_id = %version_id,
-            "downloading Minecraft version metadata"
-        );
+        let mut cached = read_cached_version_info(&path).await;
+        if cached.is_none() && loader.is_some() {
+            let legacy = version_info_file_name(&version_id, format_version);
+            cached = read_cached_version_info(&dir.join(legacy))
+                .await
+                .filter(|info| profile_matches_loader(&info.libraries, game_loader));
+        }
+        cached
+    };
 
-        let version_url = version.url.parse().map_err(McError::Url)?;
-        let requester = ctx.net.clone();
-        let mut info: VersionInfo = match progress {
-            Some(progress) => {
-                progress
-                    .run_child(
-                        format!("Version metadata ({version_id})"),
-                        1,
-                        TaskCategory::Metadata,
-                        |child| {
+    if let Some(cached) = cached {
+        if loader.is_some()
+            && oneclient_net::status::current().online
+            && VERSION_INFO_REFRESHED.lock().unwrap().insert(path.clone())
+        {
+            let ctx = ctx.clone();
+            let version = version.clone();
+            let loader = loader.cloned();
+            let installed = processor_inputs(&cached);
+            tokio::spawn(async move {
+                let refresh = async {
+                    let info =
+                        fetch_version_info(&ctx, None, &version, loader.as_ref(), &version_id)
+                            .await?;
+                    if processor_inputs(&info) != installed {
+                        tracing::warn!(
+                            version_id = %version_id,
+                            "loader processors changed upstream, keeping cached profile until reinstall"
+                        );
+                        return Ok(());
+                    }
+                    polyio::write_json_atomic(&path, &info).await?;
+                    McResult::Ok(())
+                };
+                if let Err(err) = refresh.await {
+                    tracing::warn!(
+                        version_id = %version_id,
+                        "could not refresh version metadata, keeping cached copy: {err}"
+                    );
+                }
+            });
+        }
+        return Ok(cached);
+    }
+
+    let info = fetch_version_info(ctx, progress, version, loader, &version_id).await?;
+    polyio::write_json_atomic(&path, &info).await?;
+    if loader.is_some() {
+        VERSION_INFO_REFRESHED.lock().unwrap().insert(path);
+    }
+    Ok(info)
+}
+
+async fn fetch_version_info(
+    ctx: &McCtx,
+    progress: Option<&GroupedProgressSession>,
+    version: &Version,
+    loader: Option<&LoaderVersion>,
+    version_id: &str,
+) -> McResult<VersionInfo> {
+    tracing::debug!(
+        version_id = %version_id,
+        "downloading Minecraft version metadata"
+    );
+
+    let version_url = version.url.parse().map_err(McError::Url)?;
+    let requester = ctx.net.clone();
+    let mut info: VersionInfo = match progress {
+        Some(progress) => {
+            progress
+                .run_child(
+                    format!("Version metadata ({version_id})"),
+                    1,
+                    TaskCategory::Metadata,
+                    |child| {
                         let requester = requester.clone();
                         async move {
                             child.set_progress(0, Some(1));
@@ -753,26 +845,27 @@ pub async fn download_version_info(
                             child.set_progress(1, Some(1));
                             Ok::<VersionInfo, McError>(result)
                         }
-                    })
-                    .await?
-            }
-            None => requester
-                .send_json(Method::GET, version_url, None, &[])
-                .await
-                .map_err(McError::from)?,
-        };
+                    },
+                )
+                .await?
+        }
+        None => requester
+            .send_json(Method::GET, version_url, None, &[])
+            .await
+            .map_err(McError::from)?,
+    };
 
-        if let Some(loader) = loader {
-            let loader_url = loader.url.parse().map_err(McError::Url)?;
-            let requester = ctx.net.clone();
-            let partial: interfrost::api::modded::PartialVersionInfo = match progress {
-                Some(progress) => {
-                    progress
-                        .run_child(
-                            format!("Loader metadata ({version_id})"),
-                            1,
-                            TaskCategory::Metadata,
-                            |child| {
+    if let Some(loader) = loader {
+        let loader_url = loader.url.parse().map_err(McError::Url)?;
+        let requester = ctx.net.clone();
+        let partial: interfrost::api::modded::PartialVersionInfo = match progress {
+            Some(progress) => {
+                progress
+                    .run_child(
+                        format!("Loader metadata ({version_id})"),
+                        1,
+                        TaskCategory::Metadata,
+                        |child| {
                             let requester = requester.clone();
                             async move {
                                 child.set_progress(0, Some(1));
@@ -781,42 +874,32 @@ pub async fn download_version_info(
                                     .await
                                     .map_err(McError::from)?;
                                 child.set_progress(1, Some(1));
-                                Ok::<interfrost::api::modded::PartialVersionInfo, McError>(
-                                    result,
-                                )
+                                Ok::<interfrost::api::modded::PartialVersionInfo, McError>(result)
                             }
-                        })
-                        .await?
-                }
-                None => requester
-                    .send_json(Method::GET, loader_url, None, &[])
-                    .await
-                    .map_err(McError::from)?,
-            };
-
-            let legacy_args = info.minecraft_arguments.clone();
-            info = interfrost::api::modded::merge_partial_version(partial, info);
-            if info.minecraft_arguments.is_none() {
-                info.minecraft_arguments = legacy_args;
+                        },
+                    )
+                    .await?
             }
+            None => requester
+                .send_json(Method::GET, loader_url, None, &[])
+                .await
+                .map_err(McError::from)?,
+        };
 
-            for lib in &mut info.libraries {
-                lib.name = lib.name.replace("${interpulse.gameVersion}", &version.id);
-            }
+        let legacy_args = info.minecraft_arguments.clone();
+        info = interfrost::api::modded::merge_partial_version(partial, info);
+        if info.minecraft_arguments.is_none() {
+            info.minecraft_arguments = legacy_args;
         }
 
-        info.id.clone_from(&version_id);
-
-        if let Some(parent) = path.parent() {
-            polyio::create_dir_all(parent).await?;
+        for lib in &mut info.libraries {
+            lib.name = lib.name.replace("${interpulse.gameVersion}", &version.id);
         }
+    }
 
-        polyio::write(&path, &serde_json::to_vec(&info)?).await?;
+    info.id = version_id.to_owned();
 
-        info
-    };
-
-    Ok(result)
+    Ok(info)
 }
 
 #[tracing::instrument(skip_all, level = "debug")]
@@ -1313,12 +1396,12 @@ pub async fn get_loader_versions(
     }
 
     let manifest = metadata.get_modded_or_fetch(ctx, loader).await?;
+    if !manifest_supports_version(manifest, mc_version) {
+        return Ok(Vec::new());
+    }
+
     for entry in &manifest.game_versions {
-        let id = entry
-            .id
-            .replace("${interpulse.gameVersion}", mc_version)
-            .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version);
-        if id == mc_version {
+        if entry_matches_version(&entry.id, mc_version) && !entry.loaders.is_empty() {
             return Ok(entry.loaders.iter().map(|l| l.id.clone()).collect());
         }
     }
@@ -1330,15 +1413,14 @@ fn resolve_loader_from_manifest(
     mc_version: &str,
     loader_version: Option<&str>,
 ) -> (bool, Option<LoaderVersion>) {
+    if !manifest_supports_version(manifest, mc_version) {
+        return (false, None);
+    }
+
     let mut saw_matching_game_version = false;
 
     for entry in &manifest.game_versions {
-        if entry
-            .id
-            .replace("${interpulse.gameVersion}", mc_version)
-            .replace(interfrost::api::modded::DUMMY_REPLACE_STRING, mc_version)
-            != mc_version
-        {
+        if !entry_matches_version(&entry.id, mc_version) {
             continue;
         }
 
@@ -1395,10 +1477,9 @@ pub async fn get_loader_version(
         return Ok(None);
     }
 
-    let resolve_from_manifest =
-        |manifest: &interfrost::api::modded::Manifest| {
-            resolve_loader_from_manifest(manifest, mc_version, loader_version)
-        };
+    let resolve_from_manifest = |manifest: &interfrost::api::modded::Manifest| {
+        resolve_loader_from_manifest(manifest, mc_version, loader_version)
+    };
 
     let mut manifest = metadata.get_modded_or_fetch(ctx, loader).await?;
     let (mut saw_matching, mut resolved) = resolve_from_manifest(manifest);
@@ -1415,9 +1496,14 @@ pub async fn get_loader_version(
         }
     }
 
+    let no_matching_version = || McError::NoMatchingVersion {
+        loader,
+        version: mc_version.to_string(),
+    };
+
     if let Some(requested) = loader_version {
         if !saw_matching {
-            return Err(McError::NoMatchingVersion);
+            return Err(no_matching_version());
         }
         return Err(McError::RequestedLoaderVersionNotFound {
             requested: requested.to_string(),
@@ -1427,7 +1513,7 @@ pub async fn get_loader_version(
     if saw_matching {
         Err(McError::NoMatchingLoader)
     } else {
-        Err(McError::NoMatchingVersion)
+        Err(no_matching_version())
     }
 }
 
@@ -1466,6 +1552,61 @@ pub async fn get_game_versions(
     Ok(manifest.versions.clone())
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GameVersionKind {
+    Release,
+    Snapshot,
+    Beta,
+    Alpha,
+}
+
+impl GameVersionKind {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Release => "Release",
+            Self::Snapshot => "Snapshot",
+            Self::Beta => "Beta",
+            Self::Alpha => "Alpha",
+        }
+    }
+
+    #[must_use]
+    pub const fn is_release(self) -> bool {
+        matches!(self, Self::Release)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GameVersionInfo {
+    pub id: String,
+    pub kind: GameVersionKind,
+    pub released: chrono::DateTime<chrono::Utc>,
+}
+
+#[tracing::instrument(skip(metadata, ctx), level = "debug")]
+pub async fn get_version_ids(
+    metadata: &mut MetadataStore,
+    ctx: &McCtx,
+) -> McResult<Vec<GameVersionInfo>> {
+    use interfrost::api::minecraft::VersionType;
+
+    Ok(get_game_versions(metadata, ctx)
+        .await?
+        .into_iter()
+        .map(|version| GameVersionInfo {
+            id: version.id,
+            kind: match version.type_ {
+                VersionType::Release => GameVersionKind::Release,
+                VersionType::Snapshot => GameVersionKind::Snapshot,
+                VersionType::OldBeta => GameVersionKind::Beta,
+                VersionType::OldAlpha => GameVersionKind::Alpha,
+            },
+            released: version.release_time,
+        })
+        .collect())
+}
+
 #[tracing::instrument(skip(metadata, ctx), level = "debug")]
 pub async fn get_loaders_for_version(
     metadata: &mut MetadataStore,
@@ -1475,20 +1616,161 @@ pub async fn get_loaders_for_version(
     metadata.get_loaders_for_version(ctx, mc_version).await
 }
 
+#[tracing::instrument(skip(metadata, ctx), level = "debug")]
+pub async fn get_versions_for_loader(
+    metadata: &mut MetadataStore,
+    ctx: &McCtx,
+    loader: GameLoader,
+) -> McResult<Option<Vec<String>>> {
+    metadata.get_versions_for_loader(ctx, loader).await
+}
+
 #[must_use]
 pub fn is_version_updated(version_index: usize, versions: &[Version]) -> bool {
     version_index <= versions.iter().position(|x| x.id == "22w16a").unwrap_or(0)
+}
+
+async fn read_cached_version_info(path: &Path) -> Option<VersionInfo> {
+    if !path.exists() {
+        return None;
+    }
+
+    polyio::read_json::<VersionInfo>(path)
+        .await
+        .inspect_err(|err| {
+            tracing::warn!(
+                path = %path.display(),
+                "cached version metadata is unusable, redownloading: {err}"
+            );
+        })
+        .ok()
+}
+
+fn processor_inputs(info: &VersionInfo) -> Option<serde_json::Value> {
+    let processors = info.processors.as_deref().unwrap_or_default();
+    let refs = processors
+        .iter()
+        .flat_map(|it| &it.args)
+        .chain(info.data.iter().flatten().flat_map(|(_, it)| [&it.client, &it.server]))
+        .filter_map(|it| it.strip_prefix('[')?.strip_suffix(']'));
+    let named: BTreeSet<&str> = processors
+        .iter()
+        .flat_map(|it| std::iter::once(&it.jar).chain(&it.classpath))
+        .map(String::as_str)
+        .chain(refs)
+        .collect();
+    let libraries: Vec<&Library> = info
+        .libraries
+        .iter()
+        .filter(|lib| named.contains(lib.name.as_str()))
+        .collect();
+    serde_json::to_value((&info.processors, &info.data, libraries)).ok()
+}
+
+fn profile_matches_loader(libraries: &[Library], loader: GameLoader) -> bool {
+    let has = |group: &str| libraries.iter().any(|lib| lib.name.starts_with(group));
+    match loader {
+        GameLoader::Forge => !has("net.neoforged"),
+        GameLoader::NeoForge => has("net.neoforged"),
+        GameLoader::Fabric => !has("org.quiltmc") && !has("net.ornithemc"),
+        GameLoader::Quilt => has("org.quiltmc") && !has("net.ornithemc"),
+        GameLoader::Ornithe => has("net.ornithemc"),
+        GameLoader::Vanilla => true,
+    }
+}
+
+fn version_info_file_name(stem: &str, format_version: usize) -> String {
+    if format_version == 0 {
+        format!("{stem}.json")
+    } else {
+        format!("{stem}.v{format_version}.json")
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    #[test]
+    fn a_format_bump_moves_the_cached_version_info() {
+        assert_eq!(version_info_file_name("1.8.9", 0), "1.8.9.json");
+        assert_eq!(
+            version_info_file_name("1.8.9-0.19.5", 1),
+            "1.8.9-0.19.5.v1.json"
+        );
+    }
+
+    #[test]
+    fn a_shared_legacy_profile_only_stands_in_for_its_own_loader() {
+        let libs = |names: &[&str]| -> Vec<Library> {
+            names
+                .iter()
+                .map(|name| serde_json::from_value(serde_json::json!({ "name": name })).unwrap())
+                .collect()
+        };
+        let forge = libs(&["net.minecraftforge:forge:1.20.1-47.1.106"]);
+        let neo = libs(&[
+            "net.minecraftforge:eventbus:6.0.5",
+            "net.neoforged:forge:1.20.1-47.1.106",
+        ]);
+        let fabric = libs(&["net.fabricmc:fabric-loader:0.16.0"]);
+        let quilt = libs(&[
+            "net.fabricmc:intermediary:1.20.1",
+            "org.quiltmc:quilt-loader:0.26.0",
+        ]);
+
+        assert!(profile_matches_loader(&forge, GameLoader::Forge));
+        assert!(!profile_matches_loader(&forge, GameLoader::NeoForge));
+        assert!(profile_matches_loader(&neo, GameLoader::NeoForge));
+        assert!(!profile_matches_loader(&neo, GameLoader::Forge));
+        assert!(profile_matches_loader(&fabric, GameLoader::Fabric));
+        assert!(!profile_matches_loader(&fabric, GameLoader::Quilt));
+        assert!(profile_matches_loader(&quilt, GameLoader::Quilt));
+        assert!(!profile_matches_loader(&quilt, GameLoader::Fabric));
+
+        let ornithe = libs(&[
+            "net.fabricmc:fabric-loader:0.16.5",
+            "net.ornithemc:calamus-intermediary:1.14.4",
+        ]);
+        assert!(profile_matches_loader(&ornithe, GameLoader::Ornithe));
+        assert!(!profile_matches_loader(&ornithe, GameLoader::Fabric));
+        assert!(!profile_matches_loader(&fabric, GameLoader::Ornithe));
+    }
+
+    #[test]
+    fn a_changed_processor_library_counts_as_changed_input() {
+        let info = |installer: &str, lwjgl: &str| -> VersionInfo {
+            serde_json::from_value(serde_json::json!({
+                "assetIndex": { "id": "1", "sha1": "", "size": 0, "totalSize": 0, "url": "" },
+                "assets": "1",
+                "downloads": {},
+                "id": "1.20.1-47.1.106",
+                "libraries": [
+                    { "name": "net.minecraftforge:installertools:1.3.0", "url": installer },
+                    { "name": "de.oceanlabs.mcp:mcp_config:1.20.1@zip", "url": installer },
+                    { "name": "org.lwjgl:lwjgl:3.3.1", "url": lwjgl },
+                ],
+                "mainClass": "cpw.mods.bootstraplauncher.BootstrapLauncher",
+                "minimumLauncherVersion": 0,
+                "releaseTime": "2023-06-12T00:00:00Z",
+                "time": "2023-06-12T00:00:00Z",
+                "type": "release",
+                "data": { "MCP": { "client": "[de.oceanlabs.mcp:mcp_config:1.20.1@zip]", "server": "" } },
+                "processors": [
+                    { "jar": "net.minecraftforge:installertools:1.3.0", "classpath": [], "args": ["{MCP}"] },
+                ],
+            }))
+            .unwrap()
+        };
+
+        let installed = processor_inputs(&info("a", "a"));
+        assert_eq!(processor_inputs(&info("a", "b")), installed);
+        assert_ne!(processor_inputs(&info("b", "a")), installed);
+    }
+
     fn scratch(tag: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "oneclient-install-{tag}-{}",
-            uuid::Uuid::new_v4()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("oneclient-install-{tag}-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&dir).unwrap();
         dir
     }
@@ -1567,6 +1849,51 @@ mod tests {
     }
 
     #[test]
+    fn a_wildcard_only_supplies_loaders_for_versions_the_manifest_lists() {
+        let manifest = serde_json::from_str::<interfrost::api::modded::Manifest>(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/0.19.5.json", "stable": true },
+                    { "id": "0.19.4", "url": "https://meta.example/0.19.4.json", "stable": false }
+                ]},
+                { "id": "1.21.1", "stable": true, "loaders": [] },
+                { "id": "1.14", "stable": true, "loaders": [] }
+            ]}"#,
+        )
+        .unwrap();
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.21.1", None);
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.5");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.14", Some("0.19.4"));
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.4");
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.8.9", None);
+        assert!(
+            !saw && resolved.is_none(),
+            "fabric publishes no intermediary below 1.14 so the wildcard must not claim 1.8.9"
+        );
+    }
+
+    #[test]
+    fn a_manifest_that_is_only_a_wildcard_still_covers_every_version() {
+        let manifest = serde_json::from_str::<interfrost::api::modded::Manifest>(
+            r#"{"gameVersions": [
+                { "id": "${interfrost.gameVersion}", "stable": true, "loaders": [
+                    { "id": "0.19.5", "url": "https://meta.example/0.19.5.json", "stable": true }
+                ]}
+            ]}"#,
+        )
+        .unwrap();
+
+        let (saw, resolved) = resolve_loader_from_manifest(&manifest, "1.8.9", None);
+        assert!(saw);
+        assert_eq!(resolved.unwrap().id, "0.19.5");
+    }
+
+    #[test]
     fn a_complete_assets_tree_needs_no_repair() {
         let dir = scratch("assets-ok");
         let (index, objects) = install_assets(&dir);
@@ -1577,10 +1904,10 @@ mod tests {
     }
 
     #[test]
-    fn a_deleted_assets_directory_asks_for_a_repair() {
-        let dir = scratch("assets-deleted");
+    fn a_deleted_objects_directory_asks_for_a_repair() {
+        let dir = scratch("assets-no-objects");
         let (index, objects) = install_assets(&dir);
-        std::fs::remove_dir_all(dir.join("assets")).unwrap();
+        std::fs::remove_dir_all(&objects).unwrap();
 
         assert!(assets_tree_missing(&index, &objects));
 
@@ -1645,7 +1972,10 @@ mod tests {
 
     /// The bus is drained by the test so `ask` has somebody to talk to no
     /// request is ever sent through the client
-    fn test_ctx() -> (McCtx, tokio::sync::mpsc::UnboundedReceiver<oneclient_events::Event>) {
+    fn test_ctx() -> (
+        McCtx,
+        tokio::sync::mpsc::UnboundedReceiver<oneclient_events::Event>,
+    ) {
         let (events, rx) = oneclient_events::EventBus::channel();
         let net = oneclient_net::RequestClient::new(oneclient_net::NetConfig::default())
             .expect("a client");
@@ -1672,9 +2002,9 @@ mod tests {
 
         let asking = tokio::spawn(async move { confirm_incomplete_install(&ctx, 3, 0).await });
 
-        let Some(oneclient_events::Event::Notification(
-            oneclient_events::Notification::Prompt(request),
-        )) = rx.recv().await
+        let Some(oneclient_events::Event::Notification(oneclient_events::Notification::Prompt(
+            request,
+        ))) = rx.recv().await
         else {
             panic!("expected a prompt");
         };
@@ -1693,17 +2023,13 @@ mod tests {
 
         let asking = tokio::spawn(async move { confirm_incomplete_install(&ctx, 0, 2).await });
 
-        let Some(oneclient_events::Event::Notification(
-            oneclient_events::Notification::Prompt(request),
-        )) = rx.recv().await
+        let Some(oneclient_events::Event::Notification(oneclient_events::Notification::Prompt(
+            request,
+        ))) = rx.recv().await
         else {
             panic!("expected a prompt");
         };
-        assert!(
-            request.body.contains("fail to start"),
-            "{}",
-            request.body
-        );
+        assert!(request.body.contains("fail to start"), "{}", request.body);
         request.reply.send(None).unwrap();
 
         let err = asking.await.unwrap().expect_err("dismissal must cancel");

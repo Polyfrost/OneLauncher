@@ -2,8 +2,8 @@ use std::path::{Path, PathBuf};
 
 use chrono::{DateTime, Utc};
 
-use crate::error::ClusterResult;
 use crate::cluster::Cluster;
+use crate::error::ClusterResult;
 use oneclient_common::paths;
 
 use super::parse::parse_level;
@@ -109,7 +109,7 @@ pub(super) fn lines_from(content: &str, opts: &ReadOptions) -> Vec<LogLine> {
         lines.push(LogLine {
             number: idx + 1,
             level,
-            text: raw.to_string(),
+            text: super::censor(raw).into_owned(),
         });
     }
 

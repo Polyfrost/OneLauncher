@@ -5,8 +5,8 @@ use chrono::{DateTime, Utc};
 use thiserror::Error;
 
 use crate::cluster::Cluster;
-use oneclient_common::paths;
 use crate::error::ClusterResult;
+use oneclient_common::paths;
 
 #[derive(Debug, Error)]
 pub enum ScreenshotsError {
@@ -33,8 +33,11 @@ fn is_image(name: &str) -> bool {
 }
 
 fn ensure_in_clusters(path: &Path) -> ClusterResult<PathBuf> {
-    polyio::ensure_under(path, [paths::clusters_dir()?, paths::shared_minecraft_dir()?])?
-        .ok_or_else(|| ScreenshotsError::InvalidPath(path.display().to_string()).into())
+    polyio::ensure_under(
+        path,
+        [paths::clusters_dir()?, paths::shared_minecraft_dir()?],
+    )?
+    .ok_or_else(|| ScreenshotsError::InvalidPath(path.display().to_string()).into())
 }
 
 #[tracing::instrument(level = "debug", skip(cluster), fields(cluster_id = cluster.id))]
@@ -87,16 +90,18 @@ pub fn list_cluster_screenshots(cluster: &Cluster) -> ClusterResult<Vec<Screensh
 
 #[tracing::instrument(level = "debug")]
 pub fn load_screenshot(path: &Path, max_edge: Option<u32>) -> ClusterResult<Bytes> {
-    let path = ensure_in_clusters(path)?;
-    let raw = std::fs::read(&path).map_err(ScreenshotsError::Io)?;
-    let bytes = match max_edge {
-        Some(edge) => thumbnail(&raw, edge).unwrap_or_else(|| Bytes::from(raw)),
-        None => Bytes::from(raw),
-    };
-    Ok(bytes)
+    load_picked_image(&ensure_in_clusters(path)?, max_edge)
 }
 
-fn thumbnail(raw: &[u8], max_edge: u32) -> Option<Bytes> {
+pub fn load_picked_image(path: &Path, max_edge: Option<u32>) -> ClusterResult<Bytes> {
+    let raw = std::fs::read(path).map_err(ScreenshotsError::Io)?;
+    Ok(match max_edge {
+        Some(edge) => thumbnail(&raw, edge).unwrap_or_else(|| Bytes::from(raw)),
+        None => Bytes::from(raw),
+    })
+}
+
+pub(crate) fn thumbnail(raw: &[u8], max_edge: u32) -> Option<Bytes> {
     let img = image::load_from_memory(raw).ok()?;
     if img.width().max(img.height()) <= max_edge {
         return None;
@@ -105,7 +110,9 @@ fn thumbnail(raw: &[u8], max_edge: u32) -> Option<Bytes> {
 
     let mut out = Vec::new();
     let mut cursor = std::io::Cursor::new(&mut out);
-    resized.write_to(&mut cursor, image::ImageFormat::Png).ok()?;
+    resized
+        .write_to(&mut cursor, image::ImageFormat::Png)
+        .ok()?;
     Some(Bytes::from(out))
 }
 
@@ -117,5 +124,48 @@ pub fn delete_screenshot(path: &Path) -> ClusterResult<()> {
     match trash::delete(&path) {
         Ok(()) => Ok(()),
         Err(err) => Err(ScreenshotsError::Trash(err.to_string()).into()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn scratch_png(tag: &str) -> PathBuf {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        static NEXT: AtomicU32 = AtomicU32::new(0);
+
+        let unique = NEXT.fetch_add(1, Ordering::Relaxed);
+        let dir = std::env::temp_dir().join(format!(
+            "oneclient-picked-{tag}-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("cover.png");
+
+        let image = image::RgbImage::new(4, 3);
+        image.save(&path).unwrap();
+
+        path
+    }
+
+    #[test]
+    fn a_file_the_user_picked_outside_the_launcher_folders_still_loads() {
+        let path = scratch_png("outside");
+
+        let bytes = load_picked_image(&path, None).expect("a picked file reads");
+        assert!(!bytes.is_empty());
+
+        assert!(
+            load_screenshot(&path, None).is_err(),
+            "the screenshot loader must keep refusing paths outside the launcher folders"
+        );
+    }
+
+    #[test]
+    fn a_missing_picked_file_is_an_error_not_an_empty_image() {
+        let missing = std::env::temp_dir().join("oneclient-picked-missing-does-not-exist.png");
+
+        assert!(load_picked_image(&missing, None).is_err());
     }
 }

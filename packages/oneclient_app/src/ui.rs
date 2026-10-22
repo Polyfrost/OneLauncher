@@ -92,6 +92,44 @@ pub fn relative_time(created_at: Instant) -> String {
     }
 }
 
+pub fn last_played_label(ts: Option<chrono::DateTime<chrono::Utc>>) -> String {
+    let Some(ts) = ts else {
+        return "Never".to_string();
+    };
+    match (chrono::Utc::now() - ts).num_days() {
+        ..=0 => "Today".to_string(),
+        1 => "Yesterday".to_string(),
+        d @ 2..=6 => format!("{d} days ago"),
+        d @ 7..=13 => format!("{} week ago", d / 7),
+        d @ 14..=29 => format!("{} weeks ago", d / 7),
+        d @ 30..=59 => format!("{} month ago", d / 30),
+        d => format!("{} months ago", d / 30),
+    }
+}
+
+/// Gap the clamped menu keeps from the window edges
+pub const EDGE_MARGIN: f32 = 8.;
+
+/// `root_size` is physical while the press position is logical, so it has to be
+/// scaled down before the two are compared
+pub fn clamp_to_window(x: f32, y: f32, width: f32, height: f32) -> (f32, f32) {
+    let platform = Platform::get();
+    let scale = *platform.scale_factor.peek() as f32;
+    if scale <= 0. {
+        return (x, y);
+    }
+
+    let window = *platform.root_size.peek();
+    let clamp = |pos: f32, len: f32, limit: f32| {
+        pos.clamp(EDGE_MARGIN, (limit - len - EDGE_MARGIN).max(EDGE_MARGIN))
+    };
+
+    (
+        clamp(x, width, window.width / scale),
+        clamp(y, height, window.height / scale),
+    )
+}
+
 /// Returns the `Rect` not an `Element` so callers can inset or round it
 pub fn divider() -> Rect {
     rect()
@@ -112,6 +150,54 @@ pub fn centered_note(text: &str) -> Element {
                 .color(theme::colors::fg_secondary()),
         )
         .into_element()
+}
+
+pub fn grid_columns_for_width(width: f32, max_col: f32, gap: f32) -> usize {
+    if width <= 0. {
+        return 1;
+    }
+
+    (((width + gap) / (max_col + gap)).ceil() as usize).max(1)
+}
+
+pub fn columns_for(width: f32, min_cell: f32, max: usize, gap: f32) -> usize {
+    let max = max.max(1);
+    if width <= 0. {
+        return max;
+    }
+
+    (((width + gap) / (min_cell + gap)).floor() as usize).clamp(1, max)
+}
+
+pub fn fixed_grid(cards: Vec<Element>, columns: usize, card_height: f32, gap: f32) -> Element {
+    let columns = columns.max(1);
+    let mut root = rect().vertical().width(Size::fill()).spacing(gap);
+
+    for (index, chunk) in cards.chunks(columns).enumerate() {
+        let mut row = rect()
+            .key(index)
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::px(card_height))
+            .content(Content::Flex)
+            .spacing(gap);
+
+        for card in chunk {
+            row = row.child(
+                rect()
+                    .width(Size::flex(1.0))
+                    .height(Size::fill())
+                    .child(card.clone()),
+            );
+        }
+        for _ in chunk.len()..columns {
+            row = row.child(rect().width(Size::flex(1.0)).height(Size::fill()));
+        }
+
+        root = root.child(row.into_element());
+    }
+
+    root.into_element()
 }
 
 /// Short final rows are padded with empty flex cells so tiles keep the column width
@@ -182,4 +268,15 @@ impl ImageFallbackExt for ImageViewer {
         let placeholder = placeholder.into_element();
         self.error_renderer(move |_: String| placeholder.clone())
     }
+}
+
+pub fn window_logical_size() -> Size2D {
+    let platform = Platform::get();
+    let scale = *platform.scale_factor.peek() as f32;
+    let size = *platform.root_size.peek();
+    if scale <= 0. {
+        return size;
+    }
+
+    Size2D::new(size.width / scale, size.height / scale)
 }

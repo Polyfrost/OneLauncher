@@ -1,11 +1,14 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
+use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
 use crate::Route;
 use crate::components::{IconType, link_button, toggle};
-use crate::hooks::{use_browser_compat, use_dispatch, use_settings_snapshot};
-use crate::view::app::settings::{section_header, settings_row};
+use crate::hooks::{
+    BROWSER_COMPAT_DEFAULT, use_browser_compat, use_dispatch, use_settings_snapshot,
+};
+use crate::view::app::settings::{resettable, section_header, settings_row};
 use crate::view::console::open_log_console;
 
 #[derive(PartialEq)]
@@ -14,6 +17,7 @@ pub struct SettingsDeveloper;
 impl Component for SettingsDeveloper {
     fn render(&self) -> impl IntoElement {
         let settings = use_settings_snapshot().settings;
+        let defaults = LauncherSettings::default();
         let dispatch = use_dispatch();
 
         let log_debug = use_state({
@@ -28,9 +32,7 @@ impl Component for SettingsDeveloper {
                 first.set(false);
                 return;
             }
-            let mut next = settings.clone();
-            next.log_debug = enabled;
-            dispatch.set_settings(next);
+            dispatch.edit_settings(|settings| settings.log_debug = enabled);
         });
 
         let browser_compat = use_browser_compat();
@@ -41,14 +43,18 @@ impl Component for SettingsDeveloper {
                 IconType::SearchMd,
                 "Compatible content only",
                 "Filter the content browser to the active cluster's version and loader.",
-                toggle(browser_compat),
+                resettable(
+                    toggle(browser_compat),
+                    browser_compat,
+                    BROWSER_COMPAT_DEFAULT,
+                ),
             ))
             .child(section_header("DEV TOOLS"))
             .child(settings_row(
                 IconType::Sliders04,
                 "Log Debug Info",
                 "WARNING! This requires a restart to apply. Logs out debug info.",
-                toggle(log_debug),
+                resettable(toggle(log_debug), log_debug, defaults.log_debug),
             ))
             .child(settings_row(
                 IconType::Terminal,

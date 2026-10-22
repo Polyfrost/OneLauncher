@@ -45,15 +45,14 @@ impl Component for ScreenshotViewer {
             move || start
         });
         let mut menu = use_state(|| None::<(f32, f32)>);
+        let action = use_screenshot_action();
+        let dispatch = use_dispatch();
 
         if len == 0 {
             return rect().into_element();
         }
         let idx = (*index.read()).min(len - 1);
         let info = shots[idx].clone();
-
-        let action = use_screenshot_action();
-        let dispatch = use_dispatch();
 
         let close = self.on_close.clone();
         let scrim_close = self.on_close.clone();
@@ -81,6 +80,7 @@ impl Component for ScreenshotViewer {
                 action,
                 dispatch.clone(),
                 move |()| menu_close.call(()),
+                None,
             )
             .overlay_level(OVERLAY_MAX_LEVEL)
             .on_close(move |_| menu.set(None))
@@ -182,6 +182,7 @@ impl Component for ScreenshotViewer {
                                                     .body("Screenshot copied to your clipboard.")
                                                     .info()
                                                     .icon(IconType::ClipboardCheck)
+                                                    .toast_only()
                                                     .send();
                                             })
                                             .child(Icon::new(IconType::Copy01).size(14.))
@@ -216,13 +217,20 @@ pub fn screenshot_context_menu(
     action: UseScreenshotAction,
     dispatch: Actions,
     on_deleted: impl Into<EventHandler<()>>,
+    on_select: Option<EventHandler<()>>,
 ) -> ContextMenu {
     let open_path = path.clone();
     let copy_path = path.clone();
     let delete_path = path;
     let on_deleted = on_deleted.into();
 
-    ContextMenu::new(x, y)
+    let context_menu = match on_select {
+        Some(on_select) => ContextMenu::new(x, y)
+            .action(IconType::Check, "Select", on_select)
+            .separator(),
+        None => ContextMenu::new(x, y),
+    };
+    context_menu
         .action(IconType::Folder, "Open in folder", move |()| {
             if let Some(dir) = open_path.parent() {
                 crate::platform::open_path(&dir.to_string_lossy());
@@ -235,6 +243,7 @@ pub fn screenshot_context_menu(
                 .body("Screenshot copied to your clipboard.")
                 .info()
                 .icon(IconType::ClipboardCheck)
+                .toast_only()
                 .send();
         })
         .separator()
@@ -324,6 +333,7 @@ fn header_row(
             Button::new()
                 .ghost()
                 .icon()
+                .tooltip("Close")
                 .on_press(on_close)
                 .child(Icon::new(IconType::XClose).size(18.)),
         )

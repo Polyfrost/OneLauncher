@@ -10,9 +10,7 @@ use crate::hooks::{
     use_migration, use_onboarding_bundles, use_provide_onboarding_selection, use_settings_snapshot,
 };
 use crate::theme::colors;
-use crate::view::onboarding::{
-    LoadingBackdrop, default_selection, onboarding_step_index, onboarding_total,
-};
+use crate::view::onboarding::{default_selection, onboarding_step_index, onboarding_total};
 
 #[derive(PartialEq)]
 pub struct OnboardingShell;
@@ -24,8 +22,6 @@ impl Component for OnboardingShell {
         let migrated_categories = use_state(|| None::<Vec<String>>);
         let language = use_state(|| "English".to_string());
         let reduce_motion = use_state(|| false);
-        let predownload = use_state(|| true);
-        let setup_started = use_state(|| false);
         let import_folder = use_state(|| None::<String>);
         let import_dedicated = use_state(|| false);
         let picks_location = use_state({
@@ -38,8 +34,6 @@ impl Component for OnboardingShell {
             migrated_categories,
             language,
             reduce_motion,
-            predownload,
-            setup_started,
             import_folder,
             import_dedicated,
             picks_location,
@@ -70,14 +64,6 @@ impl Component for OnboardingShell {
                 selected.set(defaults);
             }
         });
-        let show_backdrop =
-            matches!(&route, Route::OnboardingDownloading {}) && *setup_started.read();
-        let backdrop = show_backdrop.then(|| {
-            let clusters = onboarding_bundles_items(&bundles)
-                .map(|items| items.into_iter().map(|cb| cb.cluster).collect())
-                .unwrap_or_default();
-            LoadingBackdrop { clusters }.into_element()
-        });
 
         rect()
             .vertical()
@@ -86,7 +72,6 @@ impl Component for OnboardingShell {
             .background(colors::page())
             .color(colors::fg_primary())
             .overflow(Overflow::Clip)
-            .maybe_child(backdrop)
             .child(
                 rect()
                     .vertical()

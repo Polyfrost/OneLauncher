@@ -5,13 +5,13 @@ use freya::{
 use oneclient_events::Level;
 
 use crate::{
-    ui::{divider, relative_time},
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
-    hooks::{use_dispatch, use_notifications_snapshot},
+    hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
     transfer::TransferStats,
-    utils::{format_duration_hms, format_size},
+    ui::{divider, relative_time},
+    utils::{format_durations, format_size},
 };
 
 #[derive(PartialEq)]
@@ -48,9 +48,13 @@ impl Component for NotificationPanel {
 
         let progress = intro.read().value();
 
-        let entries = inbox.len();
         let mut rows: Vec<Element> = Vec::new();
-        if entries == 0 {
+        // Toast-only notices are ephemeral: never surface them in the center
+        let visible: Vec<InboxEntry> = inbox
+            .into_iter()
+            .filter(|entry| !entry.toast_only)
+            .collect();
+        if visible.is_empty() {
             rows.push(
                 label()
                     .text("No notifications")
@@ -59,8 +63,8 @@ impl Component for NotificationPanel {
                     .into_element(),
             );
         } else {
-            let last = entries - 1;
-            for (i, entry) in inbox.into_iter().enumerate() {
+            let last = visible.len() - 1;
+            for (i, entry) in visible.into_iter().enumerate() {
                 let id = entry.id;
                 rows.push(NotifEntryRow::new(entry, i != last).key(id).into_element());
             }
@@ -70,6 +74,7 @@ impl Component for NotificationPanel {
             .width(Size::fill())
             .height(Size::flex(1.0))
             .spacing(8.)
+            .scrollbar_gutter(true)
             .children(rows);
 
         rect()
@@ -82,7 +87,7 @@ impl Component for NotificationPanel {
             .opacity(progress)
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
-            .blur(12.)
+            .backdrop_blur(12.)
             .corner_radius(CornerRadius::new_all(12.))
             .border(
                 Border::new()
@@ -139,6 +144,7 @@ impl Component for NotifEntryRow {
         let entry = self.entry.clone();
         let id = entry.id;
         let dispatch = use_dispatch();
+        let confirm_link = use_link_confirm();
         let enter_dispatch = dispatch.clone();
         let body_dispatch = dispatch.clone();
         let click_dismissable = entry.click_dismissable();
@@ -177,7 +183,7 @@ impl Component for NotifEntryRow {
                             .color(level_color(&entry.level)),
                     ),
             )
-            .child(row_body(&entry, body_dispatch));
+            .child(row_body(&entry, body_dispatch, confirm_link));
 
         rect()
             .vertical()
@@ -212,7 +218,9 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
                     let now = !*expanded.peek();
                     expanded.set(now);
                 })
-                .child(ChevronToggle { expanded: is_expanded })
+                .child(ChevronToggle {
+                    expanded: is_expanded,
+                })
                 .child(
                     label()
                         .text(if is_expanded {
@@ -279,8 +287,8 @@ fn task_row(task: &crate::notifications::TaskView) -> impl IntoElement {
 }
 
 #[derive(PartialEq)]
-struct ChevronToggle {
-    expanded: bool,
+pub struct ChevronToggle {
+    pub expanded: bool,
 }
 
 impl Component for ChevronToggle {
@@ -328,7 +336,11 @@ fn phase_badge(phase: &str) -> impl IntoElement {
         .into_element()
 }
 
-fn row_body(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
+fn row_body(
+    entry: &InboxEntry,
+    dispatch: crate::Actions,
+    confirm_link: State<Option<String>>,
+) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::flex(1.0))
@@ -375,10 +387,14 @@ fn row_body(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
-        .child(row_extra(entry, dispatch))
+        .child(row_extra(entry, dispatch, confirm_link))
 }
 
-fn row_extra(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
+fn row_extra(
+    entry: &InboxEntry,
+    dispatch: crate::Actions,
+    confirm_link: State<Option<String>>,
+) -> impl IntoElement {
     if let Some((current, total)) = entry.progress.filter(|_| entry.is_loading) {
         let frac = (current as f32 / total.max(1) as f32).clamp(0.0, 1.0);
         let bar = progress_track(
@@ -431,7 +447,7 @@ fn row_extra(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
                     } else {
                         ButtonVariant::Secondary
                     })
-                    .on_press(move |_| run_action(&action_dispatch, &kind)),
+                    .on_press(move |_| run_action(&action_dispatch, confirm_link, &kind)),
             );
         }
 
@@ -445,7 +461,7 @@ fn transfer_footer(stats: TransferStats) -> Element {
     let speed = format!("{}/s", format_size(stats.speed_bps as u64));
     let eta = stats
         .eta_secs
-        .map(|secs| format!("{} left", format_duration_hms(secs as i64)));
+        .map(|secs| format!("{} left", format_durations(secs as i64)));
 
     rect()
         .horizontal()
@@ -469,11 +485,16 @@ fn transfer_footer(stats: TransferStats) -> Element {
         .into_element()
 }
 
-fn run_action(dispatch: &crate::Actions, kind: &NotificationActionKind) {
+pub(crate) fn run_action(
+    dispatch: &crate::Actions,
+    mut confirm_link: State<Option<String>>,
+    kind: &NotificationActionKind,
+) {
     match kind {
         NotificationActionKind::OpenClusterUpdate(summaries) => {
             dispatch.open_cluster_update(summaries.clone());
         }
+        NotificationActionKind::OpenUrl(url) => confirm_link.set(Some(url.clone())),
     }
 }
 
@@ -483,7 +504,10 @@ struct Footer;
 impl Component for Footer {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let is_empty = use_notifications_snapshot().inbox.is_empty();
+        let is_empty = !use_notifications_snapshot()
+            .inbox
+            .iter()
+            .any(|e| e.dismissable());
 
         rect()
             .horizontal()
@@ -525,4 +549,3 @@ fn level_color(level: &Level) -> Color {
         Level::Error => colors::danger(),
     }
 }
-

@@ -281,6 +281,7 @@ fn clamp_line(line: &str) -> String {
 #[derive(Default)]
 struct Watched {
     crash_report: bool,
+    report_cause: bool,
     pending_frame: bool,
     suspects: Vec<String>,
     problems: Vec<ModProblem>,
@@ -424,13 +425,24 @@ impl Watched {
     }
 
     fn capture_diagnosis(&mut self, line: &str) {
-        if self.diagnosis.is_some() {
+        if matches!(
+            self.diagnosis,
+            Some(CrashDiagnosis::ModLoadFailure { .. } | CrashDiagnosis::OutOfMemory)
+        ) {
             return;
         }
 
         let Some(diagnosis) = diagnose(line) else {
             return;
         };
+
+        let replaces = self.diagnosis.is_none()
+            || diagnosis == CrashDiagnosis::OutOfMemory
+            || (self.crash_report && !self.report_cause);
+        if !replaces {
+            return;
+        }
+        self.report_cause |= self.crash_report;
 
         tracing::warn!(?diagnosis, "recognised a crash cause in the game log");
 
@@ -941,6 +953,26 @@ mod tests {
             .filter_map(|problem| problem.required_by.map(|by| by.name))
             .collect();
         assert_eq!(names, vec!["Indium", "Sodium Extra"]);
+    }
+
+    #[test]
+    fn the_cause_in_the_crash_report_outranks_an_earlier_warning() {
+        let watch = CrashWatch::new();
+        watch.observe("[WARN]: Caught java.lang.NoSuchMethodError in an optional integration");
+        watch.observe("---- Minecraft Crash Report ----");
+        watch.observe("java.lang.UnsupportedClassVersionError: bad class");
+        watch.observe("java.lang.NoSuchFieldError: later noise");
+
+        assert_eq!(watch.take(), Some(CrashDiagnosis::UnsupportedJava));
+    }
+
+    #[test]
+    fn running_out_of_memory_outranks_an_earlier_warning() {
+        let watch = CrashWatch::new();
+        watch.observe("[WARN]: java.util.zip.ZipException: broken resource pack");
+        watch.observe("java.lang.OutOfMemoryError: Java heap space");
+
+        assert_eq!(watch.take(), Some(CrashDiagnosis::OutOfMemory));
     }
 
     #[test]

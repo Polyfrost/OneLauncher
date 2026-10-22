@@ -333,7 +333,7 @@ fn squash(text: &str) -> String {
 }
 
 /// Falls back to the newest prerelease when no release fits the cluster
-pub(crate) async fn pick_version(
+pub async fn pick_version(
     provider: &dyn PackageProvider,
     project_id: &str,
     cluster: &ClusterRow,

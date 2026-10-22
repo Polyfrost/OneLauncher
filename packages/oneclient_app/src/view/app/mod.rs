@@ -28,6 +28,7 @@ pub fn launch_button_state(
         Some(LaunchStage::Running) => ("Running", false),
         // The click's own flag held for a beat after a failure so a burst of clicks starts one game
         _ if game.is_launch_pending(cluster_id) => ("Launching", false),
+        _ if game.is_syncing_shared(cluster_id) => ("Syncing", false),
         // Core refuses it anyway the shared game dir holds one game at a time
         _ if shared_dir_taken => ("Folder in use", false),
         _ => ("Launch", true),
@@ -48,12 +49,12 @@ pub fn shared_dir_taken(game: &GameSnapshot, clusters: &[Cluster], cluster_id: i
         .filter(|c| c.id != cluster_id && (game.is_active(c.id) || game.is_launch_pending(c.id)))
         .peekable();
 
-    others.peek().is_some()
+    (others.peek().is_some() || game.any_shared_sync())
         && clusters
             .iter()
             .find(|c| c.id == cluster_id)
             .is_some_and(|c| !c.uses_dedicated_dir())
-        && others.any(|c| !c.uses_dedicated_dir())
+        && (game.any_shared_sync() || others.any(|c| !c.uses_dedicated_dir()))
 }
 
 pub fn use_shared_dir_taken(cluster_id: i64) -> bool {
@@ -68,6 +69,7 @@ pub fn launch_syncing(launcher: &LauncherInit, uses_bundles: bool) -> bool {
 
 pub(crate) use analytics::{analytics_body, analytics_placeholder};
 pub use clusters::Clusters;
+pub(crate) use clusters::DeleteInstanceModal;
 pub use debug::Debug;
 pub use home::Home;
 pub use skins::AccountSkins;

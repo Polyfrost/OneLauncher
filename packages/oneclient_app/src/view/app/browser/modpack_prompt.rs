@@ -1,13 +1,14 @@
 use std::collections::HashSet;
 
 use freya::prelude::*;
+use oneclient_common::domain::GameLoader;
 use oneclient_common::version::parse_mc_version;
 use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ReleaseType, VersionSummary};
-use oneclient_core::clusters::ModpackSource;
+use oneclient_core::clusters::{Cluster, ModpackSource};
 
 use crate::components::{Button, Icon, IconType, ScrollArea};
-use crate::hooks::use_dispatch;
+use crate::hooks::{listed, use_dispatch};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::cluster::dialog;
@@ -67,7 +68,7 @@ fn push_choice(choices: &mut Vec<MinecraftChoice>, mc: &str, pick: &VersionSumma
         return;
     }
     let mut detail = vec![pick.version_number.clone()];
-    detail.extend(pick.loaders.iter().map(|l| l.to_string()));
+    detail.extend(pick.loaders.iter().map(|l| l.real_name()));
     match pick.release_type {
         ReleaseType::Release => {}
         ReleaseType::Beta => detail.push("Beta".to_string()),
@@ -79,6 +80,274 @@ fn push_choice(choices: &mut Vec<MinecraftChoice>, mc: &str, pick: &VersionSumma
         version_id: pick.version_id.clone(),
         detail: detail.join("  ·  "),
     });
+}
+
+#[derive(Clone, PartialEq)]
+pub(crate) struct LoaderOption {
+    pub loader: GameLoader,
+    pub choices: Vec<MinecraftChoice>,
+}
+
+pub(crate) fn loader_options(versions: &[VersionSummary]) -> Vec<LoaderOption> {
+    let mut loaders: Vec<GameLoader> = Vec::new();
+    for loader in versions.iter().flat_map(|v| &v.loaders) {
+        if loader.is_modded() && !loaders.contains(loader) {
+            loaders.push(*loader);
+        }
+    }
+    loaders
+        .into_iter()
+        .map(|loader| {
+            let fitting: Vec<VersionSummary> = versions
+                .iter()
+                .filter(|v| {
+                    v.loaders.contains(&loader) || v.loaders.iter().all(|l| !l.is_modded())
+                })
+                .cloned()
+                .collect();
+            LoaderOption {
+                loader,
+                choices: minecraft_choices(&fitting),
+            }
+        })
+        .filter(|option| !option.choices.is_empty())
+        .collect()
+}
+
+fn loader_detail(option: &LoaderOption) -> String {
+    format!(
+        "Minecraft {}",
+        listed(option.choices.iter().map(|choice| choice.mc.clone()))
+    )
+}
+
+#[derive(PartialEq)]
+pub(crate) struct ModpackLoaderPrompt {
+    pub options: Vec<LoaderOption>,
+    pub open: State<bool>,
+    pub chosen: State<Option<GameLoader>>,
+    pub version_open: State<bool>,
+}
+
+impl Component for ModpackLoaderPrompt {
+    fn render(&self) -> impl IntoElement {
+        let mut open = self.open;
+        let mut chosen = self.chosen;
+        let mut version_open = self.version_open;
+        let mut selected = use_state(|| 0usize);
+        let current = (*selected.read()).min(self.options.len().saturating_sub(1));
+
+        let rows: Vec<Element> = self
+            .options
+            .iter()
+            .enumerate()
+            .map(|(i, option)| {
+                radio_row(
+                    option.loader.to_string(),
+                    loader_detail(option),
+                    i == current,
+                    move || selected.set(i),
+                )
+                .into_element()
+            })
+            .collect();
+        let shown = self.options.len().min(VISIBLE_ROWS) as f32;
+        let list_h = shown * ROW_H + (shown - 1.).max(0.) * ROW_GAP;
+        let control = ScrollArea::new()
+            .width(Size::fill())
+            .height(Size::px(list_h))
+            .spacing(ROW_GAP)
+            .children(rows)
+            .into_element();
+
+        let picked = self.options.get(current).cloned();
+        let next = move |_| {
+            let Some(option) = picked.clone() else {
+                return;
+            };
+            chosen.set(Some(option.loader));
+            open.set(false);
+            version_open.set(true);
+        };
+
+        dialog(
+            "Which loader?".to_string(),
+            "This modpack is made for more than one mod loader. Pick the one to install."
+                .to_string(),
+            Some(control),
+            move || open.set(false),
+            [
+                Button::new()
+                    .secondary()
+                    .on_press(move |_| open.set(false))
+                    .text("Cancel")
+                    .into_element(),
+                Button::new()
+                    .primary()
+                    .on_press(next)
+                    .child(Icon::new(IconType::ArrowRight).size(14.))
+                    .text("Continue")
+                    .into_element(),
+            ],
+        )
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub(crate) struct InstanceChoice {
+    cluster_id: i64,
+    name: String,
+    detail: String,
+    version_id: String,
+}
+
+fn fits_cluster(version: &VersionSummary, cluster: &Cluster) -> bool {
+    if !version.game_versions.contains(&cluster.mc_version) {
+        return false;
+    }
+    if cluster.mc_loader.is_modded() {
+        version.loaders.contains(&cluster.mc_loader)
+    } else {
+        version.loaders.iter().all(|loader| !loader.is_modded())
+    }
+}
+
+pub(crate) fn cluster_versions(versions: &[VersionSummary], cluster: &Cluster) -> Vec<VersionSummary> {
+    versions
+        .iter()
+        .filter(|v| fits_cluster(v, cluster))
+        .cloned()
+        .collect()
+}
+
+pub(crate) fn cluster_version<'a>(
+    versions: &'a [VersionSummary],
+    cluster: &Cluster,
+) -> Option<&'a VersionSummary> {
+    let fitting = || versions.iter().filter(|v| fits_cluster(v, cluster));
+    fitting()
+        .find(|v| matches!(v.release_type, ReleaseType::Release))
+        .or_else(|| fitting().next())
+}
+
+pub(crate) fn instance_choices(
+    versions: &[VersionSummary],
+    clusters: &[Cluster],
+) -> Vec<InstanceChoice> {
+    clusters
+        .iter()
+        .filter_map(|cluster| {
+            let pick = cluster_version(versions, cluster)?;
+            let loader = if cluster.mc_loader.is_modded() {
+                cluster.mc_loader.to_string()
+            } else {
+                "Vanilla".to_string()
+            };
+            Some(InstanceChoice {
+                cluster_id: cluster.id,
+                name: cluster.name.clone(),
+                detail: format!(
+                    "Minecraft {}  ·  {loader}  ·  pack {}",
+                    cluster.mc_version, pick.version_number
+                ),
+                version_id: pick.version_id.clone(),
+            })
+        })
+        .collect()
+}
+
+#[derive(PartialEq)]
+pub(crate) struct ModpackInstancePrompt {
+    pub provider: ProviderId,
+    pub project_id: String,
+    pub choices: Vec<InstanceChoice>,
+    pub open: State<bool>,
+}
+
+impl Component for ModpackInstancePrompt {
+    fn render(&self) -> impl IntoElement {
+        let provider = self.provider;
+        let project_id = self.project_id.clone();
+        let mut open = self.open;
+        let dispatch = use_dispatch();
+        let mut selected = use_state(|| None::<i64>);
+        let current = (*selected.read())
+            .and_then(|id| self.choices.iter().position(|choice| choice.cluster_id == id))
+            .unwrap_or(0);
+
+        let rows: Vec<Element> = self
+            .choices
+            .iter()
+            .enumerate()
+            .map(|(i, choice)| {
+                let cluster_id = choice.cluster_id;
+                radio_row(
+                    choice.name.clone(),
+                    choice.detail.clone(),
+                    i == current,
+                    move || selected.set(Some(cluster_id)),
+                )
+                .into_element()
+            })
+            .collect();
+        let control = (!rows.is_empty()).then(|| {
+            let shown = self.choices.len().min(VISIBLE_ROWS) as f32;
+            let list_h = shown * ROW_H + (shown - 1.).max(0.) * ROW_GAP;
+            ScrollArea::new()
+                .width(Size::fill())
+                .height(Size::px(list_h))
+                .spacing(ROW_GAP)
+                .children(rows)
+                .into_element()
+        });
+
+        let picked = self
+            .choices
+            .get(current)
+            .map(|c| (c.cluster_id, c.version_id.clone()));
+        let can_add = picked.is_some();
+        let add = move |_| {
+            let Some((cluster_id, version_id)) = picked.clone() else {
+                return;
+            };
+            dispatch.import_modpack(
+                cluster_id,
+                ModpackSource::Provider {
+                    provider,
+                    project_id: project_id.clone(),
+                    version_id,
+                },
+            );
+            open.set(false);
+        };
+
+        let body = if can_add {
+            "Its mods are added next to the ones already in the instance. Only instances with a matching Minecraft version and loader are listed."
+        } else {
+            "None of your instances use a Minecraft version and loader this pack is made for."
+        };
+
+        dialog(
+            "Add to which instance?".to_string(),
+            body.to_string(),
+            control,
+            move || open.set(false),
+            [
+                Button::new()
+                    .secondary()
+                    .on_press(move |_| open.set(false))
+                    .text("Cancel")
+                    .into_element(),
+                Button::new()
+                    .primary()
+                    .enabled(can_add)
+                    .on_press(add)
+                    .child(Icon::new(IconType::Plus).size(14.))
+                    .text("Add")
+                    .into_element(),
+            ],
+        )
+    }
 }
 
 #[derive(PartialEq)]
@@ -154,6 +423,20 @@ impl Component for ModpackVersionPrompt {
 fn choice_row(
     choice: &MinecraftChoice,
     active: bool,
+    on_select: impl FnMut() + 'static,
+) -> impl IntoElement {
+    radio_row(
+        format!("Minecraft {}", choice.mc),
+        choice.detail.clone(),
+        active,
+        on_select,
+    )
+}
+
+fn radio_row(
+    title: String,
+    detail: String,
+    active: bool,
     mut on_select: impl FnMut() + 'static,
 ) -> impl IntoElement {
     let ring = if active {
@@ -195,7 +478,7 @@ fn choice_row(
                 .spacing(2.)
                 .child(
                     label()
-                        .text(format!("Minecraft {}", choice.mc))
+                        .text(title)
                         .font_size(13.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
@@ -203,7 +486,7 @@ fn choice_row(
                 )
                 .child(
                     label()
-                        .text(choice.detail.clone())
+                        .text(detail)
                         .font_size(11.)
                         .max_lines(1)
                         .color(colors::fg_secondary()),
@@ -255,6 +538,31 @@ mod tests {
     }
 
     #[test]
+    fn loader_options_split_versions_by_loader() {
+        let with = |id, mc: &[&str], loaders: Vec<GameLoader>| VersionSummary {
+            loaders,
+            ..version(id, mc, ReleaseType::Release)
+        };
+        let versions = [
+            with("fabric-26", &["26.3"], vec![GameLoader::Fabric]),
+            with("neo-26", &["26.3"], vec![GameLoader::NeoForge]),
+            with("fabric-21", &["1.21.1"], vec![GameLoader::Fabric]),
+        ];
+        let options = loader_options(&versions);
+        let summary: Vec<(GameLoader, Vec<String>)> = options
+            .iter()
+            .map(|o| (o.loader, o.choices.iter().map(|c| c.version_id.clone()).collect()))
+            .collect();
+        assert_eq!(
+            summary,
+            [
+                (GameLoader::Fabric, vec!["fabric-26".to_string(), "fabric-21".to_string()]),
+                (GameLoader::NeoForge, vec!["neo-26".to_string()]),
+            ]
+        );
+    }
+
+    #[test]
     fn one_choice_per_loader_on_the_same_minecraft_version() {
         use oneclient_common::domain::GameLoader;
         let with = |id, loader, release_type| VersionSummary {
@@ -272,5 +580,63 @@ mod tests {
             .map(|c| c.version_id)
             .collect();
         assert_eq!(ids, ["fabric-new", "forge-rel"]);
+    }
+
+    fn cluster(loader: GameLoader) -> Cluster {
+        Cluster {
+            id: 1,
+            name: "Cluster".to_string(),
+            folder_name: "cluster-1".to_string(),
+            setting_profile_name: None,
+            mc_version: "1.21.1".to_string(),
+            mc_loader: loader,
+            mc_loader_version: None,
+            stage: oneclient_cluster::ClusterStage::default(),
+            created_at: None,
+            last_played: None,
+            overall_played: std::time::Duration::ZERO,
+            linked_modpack_hash: None,
+            kind: oneclient_cluster::ClusterKind::Modded,
+            user_created: true,
+            description: None,
+            tags: Vec::new(),
+            cover_path: None,
+        }
+    }
+
+    #[test]
+    fn the_pack_version_added_to_a_cluster_matches_its_loader() {
+        let with = |id, mc: &[&str], loaders: Vec<GameLoader>, release_type| VersionSummary {
+            loaders,
+            ..version(id, mc, release_type)
+        };
+        let versions = [
+            with("fabric-beta", &["1.21.1"], vec![GameLoader::Fabric], ReleaseType::Beta),
+            with("forge", &["1.21.1"], vec![GameLoader::Forge], ReleaseType::Release),
+            with("fabric-other-mc", &["1.20.1"], vec![GameLoader::Fabric], ReleaseType::Release),
+            with("fabric", &["1.21.1"], vec![GameLoader::Fabric], ReleaseType::Release),
+            with("vanilla", &["1.21.1"], Vec::new(), ReleaseType::Release),
+        ];
+
+        let fabric = cluster(GameLoader::Fabric);
+        assert_eq!(
+            cluster_version(&versions, &fabric).map(|v| v.version_id.as_str()),
+            Some("fabric")
+        );
+        let fitting = cluster_versions(&versions, &fabric);
+        let ids: Vec<&str> = fitting.iter().map(|v| v.version_id.as_str()).collect();
+        assert_eq!(ids, ["fabric-beta", "fabric"]);
+
+        let vanilla = cluster(GameLoader::Vanilla);
+        assert_eq!(
+            cluster_version(&versions, &vanilla).map(|v| v.version_id.as_str()),
+            Some("vanilla")
+        );
+
+        let beta_only = [with("beta", &["1.21.1"], vec![GameLoader::Fabric], ReleaseType::Beta)];
+        assert_eq!(
+            cluster_version(&beta_only, &fabric).map(|v| v.version_id.as_str()),
+            Some("beta")
+        );
     }
 }

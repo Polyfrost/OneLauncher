@@ -69,6 +69,8 @@ pub struct Message {
     pub title: String,
     pub body: String,
     pub level: Level,
+    /// Offered as an "open link" action on the toast and inbox entry
+    pub link: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -94,6 +96,7 @@ pub enum ProgressEvent {
         id: Uuid,
         title: String,
         body: String,
+        level: Level,
     },
 
     Grouped(GroupedProgressEvent),

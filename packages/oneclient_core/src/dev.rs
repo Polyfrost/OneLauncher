@@ -75,7 +75,9 @@ fn spawn_notification_handler(mut rx: oneclient_events::EventReceiver) {
                         pb.set_position(current);
                     }
                 }
-                Event::Progress(ProgressEvent::Complete { id, title, body }) => {
+                Event::Progress(ProgressEvent::Complete {
+                    id, title, body, ..
+                }) => {
                     if let Some(pb) = progress_bars.remove(&id) {
                         pb.finish_with_message(format!("{title}: {body}"));
                     } else {
@@ -160,6 +162,13 @@ fn spawn_notification_handler(mut rx: oneclient_events::EventReceiver) {
                         }
                         session.child_bytes.remove(&child_id);
                         refresh_grouped_parent(session);
+                    }
+                    GroupedProgressEvent::Abort { session_id } => {
+                        if let Some(session) = grouped_sessions.remove(&session_id) {
+                            session
+                                .parent
+                                .abandon_with_message(format!("{} - failed", session.title));
+                        }
                     }
                     GroupedProgressEvent::End { session_id } => {
                         if let Some(session) = grouped_sessions.remove(&session_id) {

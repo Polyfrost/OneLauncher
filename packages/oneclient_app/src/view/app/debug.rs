@@ -735,7 +735,7 @@ impl Component for LauncherUpdateSimulator {
             .spacing(10.)
             .child(
                 label()
-                    .text("Drives the real auto-update UX (prompt → download progress → \"restart to apply\") against a fake release, with no network or disk. \"Check for Updates Now\" runs the real check against the release feed.")
+                    .text("Drives the real auto-update UX (prompt → download progress → \"restart to apply\") against a fake release, with no network or disk. \"Simulate Manual Update Toast\" shows the notify-only toast that non-AppImage Linux installs get. \"Check for Updates Now\" runs the real check against the release feed.")
                     .font_size(13.)
                     .color(colors::fg_secondary()),
             )
@@ -750,6 +750,13 @@ impl Component for LauncherUpdateSimulator {
                             .child(Icon::new(IconType::DownloadCloud02).size(16.))
                             .text("Simulate Auto Update")
                             .on_press(|_| crate::updater::spawn_simulated_update()),
+                    )
+                    .child(
+                        Button::new()
+                            .secondary()
+                            .child(Icon::new(IconType::LinkExternal01).size(16.))
+                            .text("Simulate Manual Update Toast")
+                            .on_press(|_| crate::updater::simulate_manual_update_toast()),
                     )
                     .child(
                         Button::new()

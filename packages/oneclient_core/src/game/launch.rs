@@ -12,7 +12,6 @@ use tokio::process::Command;
 use crate::ClusterStage;
 use crate::LauncherResult;
 use crate::clusters::Cluster;
-use crate::game::GameError;
 use crate::game::diagnosis::{CrashDiagnosis, CrashWatch};
 use crate::game::mod_problems::{
     InstalledJar, attach_bundled, attach_jar, has_unmatched, has_unmatched_missing,
@@ -20,7 +19,8 @@ use crate::game::mod_problems::{
 use crate::game::session::SessionRecorder;
 use crate::game::shared_dir::{cluster_mods, jar_bundled_mod_ids, jar_mod_id};
 use crate::game::tail::spawn_log_tail;
-use crate::settings::GameSettingsProfile;
+use crate::game::{DirBusy, GameError};
+use crate::settings::{GameSettingsProfile, GraphicsBackend};
 use crate::state::{LauncherServices, LauncherState};
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
@@ -99,6 +99,20 @@ async fn start(
         }
     };
 
+    // Checked only once this launch counts as active, a reset claims itself before checking
+    // for that, so the two can't both go ahead
+    if crate::clusters::is_resetting(cluster_id) {
+        return Err(GameError::Resetting.into());
+    }
+    match crate::clusters::reset_unfinished(state, cluster_id).await {
+        Ok(true) => return Err(GameError::ResetUnfinished.into()),
+        Ok(false) => {}
+        // Only a guard against launching a half-reset cluster, not worth failing every launch over
+        Err(err) => {
+            tracing::warn!(cluster_id, error = %err, "could not check for an unfinished reset; launching anyway");
+        }
+    }
+
     let existing = state.clusters.get(cluster_id).await?;
 
     let game_dir = existing.game_dir()?;
@@ -106,13 +120,28 @@ async fn start(
 
     // Non-dedicated clusters share one directory so a second game there would
     // materialize over the running one's
-    if let Err(other) = state.games.claim_dir(cluster_id, &game_dir, !dedicated) {
-        if dedicated {
+    match state.games.claim_dir(cluster_id, &game_dir, !dedicated) {
+        Ok(()) => {}
+        Err(DirBusy::Syncing(syncing)) if syncing == cluster_id => {
+            return Err(GameError::Syncing.into());
+        }
+        Err(DirBusy::Syncing(syncing)) => {
+            tracing::warn!(
+                cluster_id,
+                syncing,
+                "shared game dir is being synced from; refusing launch"
+            );
+            let name = running_cluster_name(state, syncing).await;
+            return Err(GameError::SharedDirectorySyncing(name).into());
+        }
+        Err(DirBusy::Game(other)) if dedicated => {
             return Err(GameError::DirectoryInUse(other).into());
         }
-        tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
-        let name = running_cluster_name(state, other).await;
-        return Err(GameError::SharedDirectoryBusy(name).into());
+        Err(DirBusy::Game(other)) => {
+            tracing::warn!(cluster_id, other, "shared game dir busy; refusing launch");
+            let name = running_cluster_name(state, other).await;
+            return Err(GameError::SharedDirectoryBusy(name).into());
+        }
     }
 
     match state.clusters.mark_played(cluster_id).await {
@@ -376,6 +405,15 @@ async fn start(
         profile.resolution.unwrap_or_default(),
         &java.os_arch,
     )?;
+    if let Some(backend) = profile.graphics_backend
+        && backend != GraphicsBackend::Default
+        && GraphicsBackend::supported_on(&mc_version)
+    {
+        mc_args.extend([
+            "--graphicsBackend".to_string(),
+            backend.as_str().to_string(),
+        ]);
+    }
     arguments::append_profile_game_arguments(
         &mut mc_args,
         profile.force_fullscreen,
@@ -579,8 +617,6 @@ fn detach(command: &mut Command) {
     }
 }
 
-const STARTUP_WINDOW: Duration = Duration::from_secs(120);
-
 #[cfg(unix)]
 fn killed(status: &std::process::ExitStatus) -> bool {
     use std::os::unix::process::ExitStatusExt;
@@ -594,16 +630,15 @@ fn killed(_status: &std::process::ExitStatus) -> bool {
     false
 }
 
-fn counts_as_crash(outcome: &Exit, diagnosis: Option<&CrashDiagnosis>, played: Duration) -> bool {
+fn counts_as_crash(outcome: &Exit, diagnosis: Option<&CrashDiagnosis>, reported: bool) -> bool {
     let broken = diagnosis.is_some_and(CrashDiagnosis::leaves_game_broken);
-    let died_starting = played < STARTUP_WINDOW;
 
     match outcome {
         Exit::Observed { success, .. } => {
-            !success || broken || (died_starting && diagnosis.is_some_and(CrashDiagnosis::is_fatal))
+            !success || broken || diagnosis.is_some_and(CrashDiagnosis::is_fatal)
         }
         Exit::Failed(_) => true,
-        Exit::Inferred => diagnosis.is_some(),
+        Exit::Inferred => diagnosis.is_some() || reported,
         Exit::Killed => broken,
     }
 }
@@ -688,7 +723,8 @@ pub(crate) async fn finalize_session(
     }
 
     let name = &cluster.name;
-    let crashed = counts_as_crash(&end.outcome, end.diagnosis.as_ref(), played);
+    let reported = end.watch.as_ref().is_some_and(CrashWatch::reported_crash);
+    let crashed = counts_as_crash(&end.outcome, end.diagnosis.as_ref(), reported);
 
     let display = match &end.outcome {
         Exit::Observed {
@@ -1076,14 +1112,12 @@ mod tests {
         }
     }
 
-    const LONG_SESSION: Duration = Duration::from_secs(600);
-
     #[test]
     fn a_clean_exit_after_running_out_of_memory_is_a_crash() {
         assert!(counts_as_crash(
             &clean(),
             Some(&CrashDiagnosis::OutOfMemory),
-            LONG_SESSION
+            false
         ));
     }
 
@@ -1092,18 +1126,18 @@ mod tests {
         assert!(counts_as_crash(
             &Exit::Killed,
             Some(&CrashDiagnosis::OutOfMemory),
-            LONG_SESSION
+            false
         ));
-        assert!(!counts_as_crash(&Exit::Killed, None, LONG_SESSION));
+        assert!(!counts_as_crash(&Exit::Killed, None, false));
     }
 
     #[test]
     fn a_clean_exit_with_nothing_wrong_is_not_a_crash() {
-        assert!(!counts_as_crash(&clean(), None, LONG_SESSION));
+        assert!(!counts_as_crash(&clean(), None, false));
         assert!(!counts_as_crash(
             &clean(),
             Some(&CrashDiagnosis::ModLinkage),
-            LONG_SESSION
+            false
         ));
     }
 
@@ -1114,23 +1148,20 @@ mod tests {
             success: false,
             display: "exit code: 1".to_string(),
         };
-        assert!(counts_as_crash(&failed, None, LONG_SESSION));
+        assert!(counts_as_crash(&failed, None, false));
     }
 
     #[test]
-    fn a_load_failure_only_counts_on_a_clean_exit_while_starting() {
+    fn a_load_failure_counts_on_a_clean_exit_however_long_loading_took() {
         let load_failure = CrashDiagnosis::ModLoadFailure {
             problems: Vec::new(),
         };
-        assert!(counts_as_crash(
-            &clean(),
-            Some(&load_failure),
-            Duration::from_secs(5)
-        ));
-        assert!(!counts_as_crash(
-            &clean(),
-            Some(&load_failure),
-            LONG_SESSION
-        ));
+        assert!(counts_as_crash(&clean(), Some(&load_failure), false));
+    }
+
+    #[test]
+    fn an_unobserved_exit_counts_when_the_game_wrote_a_crash_report() {
+        assert!(counts_as_crash(&Exit::Inferred, None, true));
+        assert!(!counts_as_crash(&Exit::Inferred, None, false));
     }
 }

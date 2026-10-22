@@ -51,6 +51,7 @@ impl EventBus {
                 title: title.into(),
                 body: String::new(),
                 level: Level::Info,
+                link: None,
             },
         }
     }
@@ -70,6 +71,16 @@ impl EventBus {
             id,
             title: title.into(),
             body: body.into(),
+            level: Level::Info,
+        });
+    }
+
+    pub fn fail_progress(&self, id: Uuid, title: impl Into<String>, body: impl Into<String>) {
+        self.emit(ProgressEvent::Complete {
+            id,
+            title: title.into(),
+            body: body.into(),
+            level: Level::Error,
         });
     }
 
@@ -151,6 +162,11 @@ pub struct NotificationBuilder<'a> {
 impl NotificationBuilder<'_> {
     pub fn body(mut self, body: impl Into<String>) -> Self {
         self.message.body = body.into();
+        self
+    }
+
+    pub fn link(mut self, url: impl Into<String>) -> Self {
+        self.message.link = Some(url.into());
         self
     }
 

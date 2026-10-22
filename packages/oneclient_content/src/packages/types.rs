@@ -141,6 +141,46 @@ pub struct ProjectDetail {
     pub downloads: u64,
 }
 
+impl ProjectDetail {
+    /// Modrinth doesn't hand a url out so it's rebuilt from the slug CurseForge lists it as "Website"
+    pub fn web_url(&self) -> Option<String> {
+        match self.provider {
+            ProviderId::Modrinth => Some(format!(
+                "{}{}/{}",
+                ProviderId::Modrinth.website(),
+                self.content_type.modrinth_type(),
+                self.slug
+            )),
+            ProviderId::CurseForge => self
+                .links
+                .iter()
+                .find(|(label, _)| label == "Website")
+                .map(|(_, url)| url.clone()),
+            ProviderId::Local => None,
+        }
+    }
+}
+
+/// Where a version's changelog is shown on its provider
+/// Modrinth resolves ids alone CurseForge needs the project page from [`ProjectDetail::web_url`]
+pub fn version_web_url(
+    provider: ProviderId,
+    project_id: &str,
+    version_id: &str,
+    project_url: Option<&str>,
+) -> Option<String> {
+    match provider {
+        ProviderId::Modrinth => Some(format!(
+            "{}project/{project_id}/version/{version_id}",
+            ProviderId::Modrinth.website()
+        )),
+        ProviderId::CurseForge => project_url
+            .filter(|url| !url.is_empty())
+            .map(|url| format!("{}/files/{version_id}", url.trim_end_matches('/'))),
+        ProviderId::Local => None,
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VersionSummary {
     pub version_id: String,
@@ -263,6 +303,7 @@ pub struct LinkedArtifactInfo {
     pub enabled: bool,
     pub content_type: ContentType,
     pub file_name: String,
+    pub size_bytes: Option<u64>,
     pub project_id: Option<String>,
     pub version_id: Option<String>,
     pub display_name: Option<String>,
@@ -272,4 +313,30 @@ pub struct LinkedArtifactInfo {
     pub published_at: Option<String>,
     /// Drives the new/updated badge in the package manager
     pub seen_status: SeenStatus,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn modrinth_version_page_needs_only_ids() {
+        assert_eq!(
+            version_web_url(ProviderId::Modrinth, "AANobbMI", "NM9w06Kr", None).as_deref(),
+            Some("https://modrinth.com/project/AANobbMI/version/NM9w06Kr")
+        );
+    }
+
+    #[test]
+    fn curseforge_version_page_hangs_off_the_project_page() {
+        let page = "https://www.curseforge.com/minecraft/mc-mods/jei/";
+        assert_eq!(
+            version_web_url(ProviderId::CurseForge, "238222", "5101366", Some(page)).as_deref(),
+            Some("https://www.curseforge.com/minecraft/mc-mods/jei/files/5101366")
+        );
+        assert_eq!(
+            version_web_url(ProviderId::CurseForge, "238222", "5101366", None),
+            None
+        );
+    }
 }

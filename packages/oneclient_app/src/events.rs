@@ -102,6 +102,9 @@ impl EventPump {
                         launched.extend(&folded.launched);
                         playing = crate::platform::follow_game(&self.station, &launched, playing);
                     }
+                    if folded.crashed {
+                        crate::platform::focus_window();
+                    }
                 }
 
                 signal = self.signals.recv() => {
@@ -214,11 +217,11 @@ impl EventPump {
                 guard.game.error = Some(message);
             }
             for crash in crashed {
-                guard
-                    .game
-                    .stages
-                    .insert(crash.cluster_id, LaunchStage::Exited);
+                if guard.game.is_active(crash.cluster_id) {
+                    continue;
+                }
                 guard.game.push_crash(crash);
+                folded.crashed = true;
             }
         }
 
@@ -273,6 +276,7 @@ struct Folded {
     touched_engine: bool,
     saw_game_log: bool,
     saw_stage: bool,
+    crashed: bool,
     launched: Vec<i64>,
     clusters: bool,
     java: bool,
@@ -419,6 +423,7 @@ pub fn report_startup_failure(station: &RadioStation<AppState, AppChannel>, err:
                 title: "Launcher failed to start".into(),
                 body: message,
                 level: oneclient_events::Level::Error,
+                link: None,
             },
         )),
     );

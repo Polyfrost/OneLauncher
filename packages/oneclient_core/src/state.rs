@@ -124,6 +124,11 @@ async fn sweep_java_scratch_files() {
 }
 
 pub fn run_startup_tasks(state: &Arc<LauncherState>) {
+    let crash_data = Arc::clone(state);
+    tokio::spawn(async move {
+        crate::game::crashdata::load(&crash_data.services.requester).await;
+    });
+
     let background = Arc::clone(state);
     tokio::spawn(async move {
         sweep_java_scratch_files().await;

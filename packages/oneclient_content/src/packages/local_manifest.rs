@@ -115,6 +115,64 @@ pub async fn read_jar_mod_id(jar: &Path) -> Option<JarModId> {
     })
 }
 
+const MAX_BUNDLED_JARS: usize = 64;
+
+#[tracing::instrument(level = "debug", fields(jar = %jar.display()))]
+pub async fn read_jar_bundled_mod_ids(jar: &Path) -> Vec<JarModId> {
+    let Ok(entries) = polyio::read_zip_file_entries(jar, |name| name == FABRIC).await else {
+        return Vec::new();
+    };
+
+    let Some(json) = entries
+        .first()
+        .and_then(|(_, bytes)| serde_json::from_slice::<serde_json::Value>(bytes).ok())
+    else {
+        return Vec::new();
+    };
+
+    let bundled: Vec<String> = json
+        .pointer("/jars")
+        .and_then(serde_json::Value::as_array)
+        .map(|jars| {
+            jars.iter()
+                .filter_map(|entry| entry.get("file")?.as_str().map(str::to_owned))
+                .take(MAX_BUNDLED_JARS)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if bundled.is_empty() {
+        return Vec::new();
+    }
+
+    let Ok(mut cursor) =
+        polyio::ZipEntryCursor::open(jar, |name| bundled.iter().any(|file| file == name)).await
+    else {
+        return Vec::new();
+    };
+
+    let mut found = Vec::new();
+    for file in &bundled {
+        let Ok(bytes) = cursor.read(file).await else {
+            continue;
+        };
+        let Ok(manifest) =
+            polyio::try_read_zip_entry_bytes(std::io::Cursor::new(bytes), FABRIC).await
+        else {
+            continue;
+        };
+
+        if let Some(id) = std::str::from_utf8(&manifest)
+            .ok()
+            .and_then(|text| parse_mod(FABRIC, text))
+        {
+            found.push(id);
+        }
+    }
+
+    found
+}
+
 fn parse_mod(manifest: &str, text: &str) -> Option<JarModId> {
     let (id, version) = match manifest {
         NEOFORGE | FORGE => {

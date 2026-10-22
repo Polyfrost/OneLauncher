@@ -403,24 +403,22 @@ impl GroupedTasks {
     fn active_body(&self) -> Option<String> {
         let exporting = TaskPhase::Exporting.label();
         let importing = TaskPhase::Importing.label();
-        let mut minecraft = false;
-        let mut packages = false;
-        for child in self
+        let downloads: Vec<&ChildRec> = self
             .children
             .values()
             .filter(|c| c.phase != exporting && c.phase != importing)
-        {
-            if child.category.is_minecraft() {
-                minecraft = true;
-            } else {
-                packages = true;
-            }
-        }
-        if minecraft {
-            return Some("Downloading Minecraft".to_string());
-        }
-        if packages {
-            return Some("Downloading Packages".to_string());
+            .collect();
+
+        if !downloads.is_empty() {
+            let minecraft = downloads.iter().any(|child| child.category.is_minecraft());
+            let scope = if minecraft { "Minecraft" } else { "Packages" };
+            let phase = downloads
+                .iter()
+                .filter(|child| child.category.is_minecraft() == minecraft)
+                .map(|child| child.phase)
+                .find(|phase| *phase != "Downloading")
+                .unwrap_or("Downloading");
+            return Some(format!("{phase} {scope}"));
         }
         if let Some(stage) = self.children.values().find(|c| c.phase == importing) {
             return Some(stage.label.clone());

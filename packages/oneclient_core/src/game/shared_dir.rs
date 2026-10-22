@@ -169,6 +169,13 @@ pub async fn materialize_content(
         }
     }
 
+    let materialized_packs = if isolated {
+        previous.as_ref()
+    } else {
+        previous_global.as_ref()
+    };
+    adopt_hand_edited(services, cluster, &global_root, materialized_packs).await;
+
     if repair_unlinked {
         clear_unlinked_mods_once(
             services,
@@ -471,6 +478,77 @@ async fn ensure_global_links(game_dir: &Path, global_root: &Path) {
             );
         }
     }
+}
+
+async fn adopt_hand_edited(
+    services: &LauncherServices,
+    cluster: &Cluster,
+    root: &Path,
+    previous: Option<&MaterializedManifest>,
+) {
+    let Some(previous) = previous else {
+        return;
+    };
+    let ctx = services.content();
+
+    for content_type in GLOBAL_TYPES {
+        let prefix = format!("{}/", content_type.folder_name());
+        for entry in &previous.entries {
+            let Some(name) = entry.path.strip_prefix(&prefix) else {
+                continue;
+            };
+            let path = root.join(&entry.path);
+            if !edited_by_hand(services, &path, &entry.hash).await {
+                continue;
+            }
+
+            detach_overwritten_link(services, &path, &entry.hash).await;
+
+            match PackageStore::import_local_file(&path, content_type, cluster.id, &ctx).await {
+                Ok(row) if row.hash != entry.hash => {}
+                Ok(_) => continue,
+                Err(err) => {
+                    tracing::warn!(file = name, error = %err, "failed to keep a pack edited by hand");
+                    continue;
+                }
+            }
+
+            tracing::info!(
+                file = name,
+                ?content_type,
+                "pack edited by hand; keeping the edit"
+            );
+            disable_removed(
+                services,
+                cluster,
+                content_type,
+                vec![(name.to_owned(), entry.hash.clone())],
+            )
+            .await;
+        }
+    }
+}
+
+async fn edited_by_hand(services: &LauncherServices, path: &Path, hash: &str) -> bool {
+    let Ok(meta) = polyio::stat(path).await else {
+        return false;
+    };
+    if !meta.is_file() {
+        return false;
+    }
+
+    let size = artifact_dao::get_artifact_by_hash(&services.db, hash)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|artifact| artifact.size_bytes);
+    if size.is_some_and(|size| size as u64 == meta.len()) {
+        return false;
+    }
+
+    polyio::sha1_file(path)
+        .await
+        .is_ok_and(|disk| polyio::normalize_hash(&disk) != hash)
 }
 
 const MASS_REMOVAL_FLOOR: usize = 3;

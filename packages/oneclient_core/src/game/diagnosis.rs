@@ -1,5 +1,7 @@
 use std::collections::VecDeque;
+use std::path::Path;
 use std::sync::{Arc, Mutex};
+use std::time::SystemTime;
 
 use oneclient_events::{CrashModIssue, CrashRemedy};
 
@@ -230,6 +232,302 @@ fn jar_in(line: &str) -> Option<String> {
         .to_string();
 
     (!name.is_empty()).then_some(name)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MissingTarget {
+    Mod(String),
+    Class(String),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissingDependency {
+    pub requester: Option<String>,
+    pub missing: MissingTarget,
+    pub frames: Vec<String>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct LogFindings {
+    pub sure: Vec<MissingDependency>,
+    pub classes: Vec<MissingDependency>,
+}
+
+const MISSING_DEPENDENCY_MARKERS: [&str; 5] = [
+    "which is missing",
+    "Requested by",
+    "MissingModsException",
+    "requires mods [",
+    "NoClassDefFoundError",
+];
+
+const MAX_MISSING: usize = 32;
+const MAX_FRAMES: usize = 24;
+const CRASH_WINDOW: usize = 400;
+
+const IGNORED_FRAME_PREFIXES: [&str; 24] = [
+    "java.",
+    "javax.",
+    "jdk.",
+    "sun.",
+    "com.sun.",
+    "net.minecraft.",
+    "net.minecraftforge.",
+    "net.neoforged.",
+    "net.fabricmc.",
+    "org.quiltmc.",
+    "org.spongepowered.",
+    "cpw.mods.",
+    "com.mojang.",
+    "org.objectweb.",
+    "kotlin.",
+    "scala.",
+    "org.lwjgl.",
+    "io.netty.",
+    "com.google.",
+    "org.apache.",
+    "it.unimi.",
+    "oshi.",
+    "org.slf4j.",
+    "paulscode.",
+];
+
+#[must_use]
+pub fn missing_dependencies(line: &str) -> Vec<MissingDependency> {
+    if !MISSING_DEPENDENCY_MARKERS
+        .iter()
+        .any(|marker| line.contains(marker))
+    {
+        return Vec::new();
+    }
+
+    fabric_missing(line)
+        .or_else(|| forge_missing(line))
+        .map(|found| vec![found])
+        .or_else(|| legacy_forge_missing(line))
+        .or_else(|| missing_class(line).map(|found| vec![found]))
+        .unwrap_or_default()
+}
+
+fn fabric_missing(line: &str) -> Option<MissingDependency> {
+    let end = line.find(", which is missing")?;
+    let head = &line[..end];
+    let after_mod = &head[head.find("Mod '")?..];
+    // Fabric words optional dependencies as recommends or suggests and only
+    // warns about them
+    if !after_mod.contains(" requires ") {
+        return None;
+    }
+    let requester = parenthesised(&after_mod[after_mod.find("' (")?..])?;
+    let target = head.rsplit(" of ").next()?.trim();
+    let missing = if target.ends_with(')') {
+        let open = target.rfind('(')?;
+        &target[open + 1..target.len() - 1]
+    } else {
+        target.rsplit(' ').next()?
+    };
+    Some(MissingDependency {
+        requester: Some(mod_id(requester)?),
+        missing: MissingTarget::Mod(mod_id(missing)?),
+        frames: Vec::new(),
+    })
+}
+
+fn forge_missing(line: &str) -> Option<MissingDependency> {
+    if !line.contains("Requested by") {
+        return None;
+    }
+    if line.contains("Actual version") && !line.contains("MISSING") {
+        return None;
+    }
+    let missing = quoted_after(line, "Mod ID:")?;
+    let requester = quoted_after(line, "Requested by:")?;
+    Some(MissingDependency {
+        requester: Some(mod_id(requester)?),
+        missing: MissingTarget::Mod(mod_id(missing)?),
+        frames: Vec::new(),
+    })
+}
+
+fn legacy_forge_missing(line: &str) -> Option<Vec<MissingDependency>> {
+    let (after, list_start) = if let Some(at) = line.find("MissingModsException") {
+        let after = &line[at..];
+        (&after[after.find("Mod ")? + "Mod ".len()..], "requires [")
+    } else {
+        let after = &line[line.find("The mod ")? + "The mod ".len()..];
+        (after, "requires mods [")
+    };
+    let requester = after.split_whitespace().next()?;
+    let list = &after[after.find(list_start)? + list_start.len()..];
+    let list = list.trim_end();
+    let list = list
+        .strip_suffix("] to be available")
+        .or_else(|| list.strip_suffix(']'))
+        .unwrap_or(list);
+    let found: Vec<MissingDependency> = list
+        .split(", ")
+        .filter_map(|spec| mod_id(spec.split('@').next().unwrap_or(spec)))
+        .map(|missing| MissingDependency {
+            requester: mod_id(requester),
+            missing: MissingTarget::Mod(missing),
+            frames: Vec::new(),
+        })
+        .collect();
+    (!found.is_empty()).then_some(found)
+}
+
+fn missing_class(line: &str) -> Option<MissingDependency> {
+    let marker = "NoClassDefFoundError:";
+    let after = &line[line.find(marker)? + marker.len()..];
+    let class = after.split_whitespace().next()?.replace('.', "/");
+    (!class.is_empty() && !class.starts_with("java/")).then_some(MissingDependency {
+        requester: None,
+        missing: MissingTarget::Class(class),
+        frames: Vec::new(),
+    })
+}
+
+fn frame_class(line: &str) -> Option<String> {
+    let frame = line.trim_start().strip_prefix("at ")?;
+    let call = frame.split('(').next()?.trim();
+    let call = call.rsplit('/').next()?;
+    let (class, _) = call.rsplit_once('.')?;
+    let ours = class.contains('.')
+        && !IGNORED_FRAME_PREFIXES
+            .iter()
+            .any(|prefix| class.starts_with(prefix));
+    ours.then(|| class.replace('.', "/"))
+}
+
+fn continues_trace(line: &str) -> bool {
+    let line = line.trim_start();
+    line.starts_with("at ")
+        || line.starts_with("...")
+        || line.starts_with("Caused by:")
+        || line.starts_with("Suppressed:")
+}
+
+#[derive(Default)]
+struct MissingScan {
+    lines: usize,
+    sure: Vec<MissingDependency>,
+    classes: Vec<(usize, MissingDependency)>,
+    tracing: Option<usize>,
+}
+
+impl MissingScan {
+    fn observe(&mut self, line: &str) {
+        self.lines += 1;
+
+        if let Some(index) = self.tracing {
+            if let Some(class) = frame_class(line) {
+                let frames = &mut self.classes[index].1.frames;
+                if frames.len() < MAX_FRAMES && !frames.contains(&class) {
+                    frames.push(class);
+                }
+                return;
+            }
+            if !continues_trace(line) {
+                self.tracing = None;
+            }
+        }
+
+        for found in missing_dependencies(line) {
+            match &found.missing {
+                MissingTarget::Mod(_) => {
+                    if self.sure.len() < MAX_MISSING && !self.sure.contains(&found) {
+                        self.sure.push(found);
+                    }
+                }
+                MissingTarget::Class(_) => {
+                    if let Some(index) = self
+                        .classes
+                        .iter()
+                        .position(|(_, seen)| seen.missing == found.missing)
+                    {
+                        self.classes[index].0 = self.lines;
+                        self.tracing = Some(index);
+                    } else if self.classes.len() < MAX_MISSING {
+                        self.classes.push((self.lines, found));
+                        self.tracing = Some(self.classes.len() - 1);
+                    }
+                }
+            }
+        }
+    }
+
+    fn finish(&mut self, window: Option<usize>) -> LogFindings {
+        let floor = window.map_or(0, |window| self.lines.saturating_sub(window));
+        self.tracing = None;
+        LogFindings {
+            sure: std::mem::take(&mut self.sure),
+            classes: std::mem::take(&mut self.classes)
+                .into_iter()
+                .filter(|(line, _)| *line > floor)
+                .map(|(_, found)| found)
+                .collect(),
+        }
+    }
+}
+
+pub(crate) async fn crash_report_findings(game_dir: &Path, since: SystemTime) -> LogFindings {
+    let Ok(mut entries) = tokio::fs::read_dir(game_dir.join("crash-reports")).await else {
+        return LogFindings::default();
+    };
+
+    let mut newest: Option<(SystemTime, std::path::PathBuf)> = None;
+    while let Ok(Some(entry)) = entries.next_entry().await {
+        let path = entry.path();
+        if path.extension().is_none_or(|ext| ext != "txt") {
+            continue;
+        }
+        let Ok(modified) = entry.metadata().await.and_then(|meta| meta.modified()) else {
+            continue;
+        };
+        if modified >= since && newest.as_ref().is_none_or(|(time, _)| modified > *time) {
+            newest = Some((modified, path));
+        }
+    }
+
+    let Some((_, path)) = newest else {
+        return LogFindings::default();
+    };
+    let Ok(bytes) = tokio::fs::read(&path).await else {
+        return LogFindings::default();
+    };
+    let text = String::from_utf8_lossy(&bytes);
+
+    let mut scan = MissingScan::default();
+    for line in text.lines() {
+        scan.observe(line);
+    }
+    scan.finish(None)
+}
+
+fn parenthesised(text: &str) -> Option<&str> {
+    let open = text.find('(')?;
+    let close = open + text[open..].find(')')?;
+    Some(&text[open + 1..close])
+}
+
+fn quoted_after<'a>(line: &'a str, label: &str) -> Option<&'a str> {
+    let after = &line[line.find(label)? + label.len()..];
+    let rest = &after[after.find('\'')? + 1..];
+    Some(&rest[..rest.find('\'')?])
+}
+
+fn mod_id(raw: &str) -> Option<String> {
+    let id = raw
+        .trim()
+        .trim_start_matches("mod ")
+        .trim_matches(['\'', '"'])
+        .trim()
+        .to_ascii_lowercase();
+    let valid = !id.is_empty()
+        && id
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.'));
+    valid.then_some(id)
 }
 
 const CRASH_REPORT_MARKERS: [&str; 2] = [
@@ -471,6 +769,7 @@ impl Watched {
 #[derive(Clone, Default)]
 pub(crate) struct CrashWatch {
     inner: Arc<Mutex<Watched>>,
+    missing: Arc<Mutex<MissingScan>>,
 }
 
 impl CrashWatch {
@@ -479,6 +778,10 @@ impl CrashWatch {
     }
 
     pub(crate) fn observe(&self, line: &str) {
+        if let Ok(mut scan) = self.missing.lock() {
+            scan.observe(line);
+        }
+
         let Ok(mut watched) = self.inner.lock() else {
             return;
         };
@@ -518,6 +821,13 @@ impl CrashWatch {
             .lock()
             .ok()
             .and_then(|mut watched| watched.take_diagnosis())
+    }
+
+    pub(crate) fn take_missing(&self) -> LogFindings {
+        self.missing
+            .lock()
+            .map(|mut scan| scan.finish(Some(CRASH_WINDOW)))
+            .unwrap_or_default()
     }
 }
 
@@ -847,6 +1157,215 @@ mod tests {
         let watch = CrashWatch::new();
         watch.observe("[Render thread/INFO]: Stopping!");
         assert_eq!(watch.take(), None);
+    }
+
+    fn needs(requester: Option<&str>, missing: MissingTarget) -> Vec<MissingDependency> {
+        vec![MissingDependency {
+            requester: requester.map(str::to_string),
+            missing,
+            frames: Vec::new(),
+        }]
+    }
+
+    #[test]
+    fn fabric_names_the_mod_and_the_missing_dependency() {
+        assert_eq!(
+            missing_dependencies(
+                "\t - Mod 'Sodium Extra' (sodium-extra) 0.5.1 requires any version of fabric-api, which is missing!"
+            ),
+            needs(
+                Some("sodium-extra"),
+                MissingTarget::Mod("fabric-api".into())
+            )
+        );
+        assert_eq!(
+            missing_dependencies(
+                "\t - Mod 'Mod Menu' (modmenu) 9.0.0 requires version 0.90.0 or later of 'Fabric API' (fabric-api), which is missing!"
+            ),
+            needs(Some("modmenu"), MissingTarget::Mod("fabric-api".into()))
+        );
+        assert_eq!(
+            missing_dependencies(
+                "\t - Mod 'Old' (old) 1.0 requires any version of mod cloth-config2, which is missing!"
+            ),
+            needs(Some("old"), MissingTarget::Mod("cloth-config2".into()))
+        );
+    }
+
+    #[test]
+    fn fabric_optional_dependencies_are_not_missing() {
+        assert!(
+            missing_dependencies(
+                "\t - Mod 'Mod Menu' (modmenu) 9.0.0 recommends any version of fabric-api, which is missing!"
+            )
+            .is_empty()
+        );
+        assert!(
+            missing_dependencies(
+                "\t - Mod 'Mod Menu' (modmenu) 9.0.0 suggests version 1.0 or later of 'Cloth Config' (cloth-config), which is missing!"
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn forge_reports_only_the_missing_ones() {
+        assert_eq!(
+            missing_dependencies(
+                "\tMod ID: 'cloth_config', Requested by: 'examplemod', Expected range: '[11,)', Actual version: '[MISSING]'"
+            ),
+            needs(
+                Some("examplemod"),
+                MissingTarget::Mod("cloth_config".into())
+            )
+        );
+        assert!(
+            missing_dependencies(
+                "\tMod ID: 'cloth_config', Requested by: 'examplemod', Expected range: '[11,)', Actual version: '10.1'"
+            )
+            .is_empty()
+        );
+    }
+
+    #[test]
+    fn a_mod_name_with_brackets_still_finds_the_id() {
+        assert_eq!(
+            missing_dependencies(
+                "\t - Mod 'Zoomify (Fabric)' (zoomify) 2.0 requires any version of yet_another_config_lib_v3, which is missing!"
+            ),
+            needs(
+                Some("zoomify"),
+                MissingTarget::Mod("yet_another_config_lib_v3".into())
+            )
+        );
+    }
+
+    #[test]
+    fn a_version_range_is_not_read_as_a_mod() {
+        assert_eq!(
+            missing_dependencies(
+                "net.minecraftforge.fml.common.MissingModsException: Mod a (A) requires [b@[1.0, 2.0)]"
+            ),
+            needs(Some("a"), MissingTarget::Mod("b".into()))
+        );
+    }
+
+    #[test]
+    fn legacy_forge_lists_every_missing_mod() {
+        assert_eq!(
+            missing_dependencies(
+                "net.minecraftforge.fml.common.MissingModsException: Mod sba (SkyblockAddons) requires [oneconfig@[1.0,), essential]"
+            ),
+            vec![
+                MissingDependency {
+                    requester: Some("sba".into()),
+                    missing: MissingTarget::Mod("oneconfig".into()),
+                    frames: Vec::new(),
+                },
+                MissingDependency {
+                    requester: Some("sba".into()),
+                    missing: MissingTarget::Mod("essential".into()),
+                    frames: Vec::new(),
+                },
+            ]
+        );
+    }
+
+    #[test]
+    fn a_missing_class_has_no_known_requester() {
+        assert_eq!(
+            missing_dependencies("java.lang.NoClassDefFoundError: gg/essential/api/EssentialAPI"),
+            needs(
+                None,
+                MissingTarget::Class("gg/essential/api/EssentialAPI".into())
+            )
+        );
+        assert!(
+            missing_dependencies("java.lang.NoClassDefFoundError: java/awt/Toolkit").is_empty()
+        );
+    }
+
+    #[test]
+    fn the_watch_collects_missing_dependencies_alongside_a_diagnosis() {
+        let watch = CrashWatch::new();
+        watch.observe("java.util.zip.ZipException: error in opening zip file");
+        watch.observe("java.lang.NoClassDefFoundError: a/B");
+        watch.observe("java.lang.NoClassDefFoundError: a/B");
+
+        assert!(watch.take().is_some());
+        assert_eq!(watch.take_missing().classes.len(), 1);
+        assert_eq!(watch.take_missing(), LogFindings::default());
+    }
+
+    #[test]
+    fn forge_189_logs_the_missing_mods_in_its_own_words() {
+        assert_eq!(
+            missing_dependencies(
+                "[Client thread/ERROR] [FML]: The mod sba (SkyblockAddons) requires mods [oneconfig] to be available"
+            ),
+            needs(Some("sba"), MissingTarget::Mod("oneconfig".into()))
+        );
+    }
+
+    #[test]
+    fn loader_messages_are_sure_and_class_errors_are_not() {
+        let watch = CrashWatch::new();
+        watch.observe(
+            "\t - Mod 'Mod Menu' (modmenu) 9.0.0 requires any version of fabric-api, which is missing!",
+        );
+        watch.observe("java.lang.NoClassDefFoundError: a/B");
+
+        let findings = watch.take_missing();
+        assert_eq!(findings.sure.len(), 1);
+        assert_eq!(findings.classes.len(), 1);
+    }
+
+    #[test]
+    fn the_stack_under_a_missing_class_names_the_mods_in_it() {
+        let watch = CrashWatch::new();
+        for line in [
+            "java.lang.NoClassDefFoundError: gg/essential/api/EssentialAPI",
+            "\tat java.base/java.lang.Class.forName0(Native Method)",
+            "\tat TRANSFORMER/minecraft@1.20.1/net.minecraft.client.Minecraft.<init>(Minecraft.java:1)",
+            "\tat TRANSFORMER/coolmod@1.0/com.example.cool.CoolMod.init(CoolMod.java:42)",
+            "\tat com.example.cool.CoolMod$Inner.run(CoolMod.java:50)",
+            "Caused by: java.lang.ClassNotFoundException: gg.essential.api.EssentialAPI",
+            "\t... 12 more",
+            "[Render thread/INFO]: Stopping!",
+            "\tat com.example.other.Unrelated.run(Unrelated.java:1)",
+        ] {
+            watch.observe(line);
+        }
+
+        let classes = watch.take_missing().classes;
+        assert_eq!(classes.len(), 1);
+        assert_eq!(
+            classes[0].frames,
+            ["com/example/cool/CoolMod", "com/example/cool/CoolMod$Inner"]
+        );
+    }
+
+    #[test]
+    fn a_class_error_long_before_the_end_is_not_trusted() {
+        let watch = CrashWatch::new();
+        watch.observe("java.lang.NoClassDefFoundError: dev/emi/emi/api/EmiPlugin");
+        for _ in 0..CRASH_WINDOW {
+            watch.observe("[Render thread/INFO]: still playing");
+        }
+        watch.observe("java.lang.NullPointerException: the real problem");
+
+        assert!(watch.take_missing().classes.is_empty());
+    }
+
+    #[test]
+    fn ordinary_lines_name_no_missing_dependency() {
+        for line in [
+            "[main/INFO]: Loading 42 mods",
+            "[Render thread/WARN]: Missing sound for event: minecraft:item.goat_horn.play",
+            "",
+        ] {
+            assert!(missing_dependencies(line).is_empty(), "{line}");
+        }
     }
 
     #[test]

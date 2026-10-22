@@ -341,6 +341,8 @@ fn make_row(
         advanced: false,
         deleted: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
+        bisect_role: None,
+        locked: false,
         modpack: None,
     }
 }
@@ -512,6 +514,7 @@ pub struct PackageManager {
     cluster_id: i64,
     items: Vec<PackageEntry>,
     categories: Vec<String>,
+    bisecting: bool,
 }
 
 impl PackageManager {
@@ -532,7 +535,13 @@ impl PackageManager {
             cluster_id,
             items,
             categories,
+            bisecting: false,
         }
+    }
+
+    pub fn bisecting(mut self, active: bool) -> Self {
+        self.bisecting = active;
+        self
     }
 }
 
@@ -625,8 +634,10 @@ impl Component for PackageManager {
             .unwrap_or(HiddenFilter::Hide);
         let card_layout = CardLayout::from(*layout.read());
 
+        let bisecting = self.bisecting;
         let disabled_essentials: Vec<&'static str> = items
             .iter()
+            .filter(|_| !bisecting)
             .filter(|package| !package.enabled)
             .filter_map(|package| package.essential.map(|essential| essential.name))
             .collect();
@@ -674,6 +685,9 @@ impl Component for PackageManager {
         if !disabled_essentials.is_empty() {
             notices.push(views::essential_notice(&disabled_essentials));
         }
+        if bisecting {
+            notices.push(views::bisect_notice(noun_plural));
+        }
 
         let (advanced, filtered): (Vec<_>, Vec<_>) = filtered.into_iter().partition(|p| p.advanced);
 
@@ -707,6 +721,9 @@ impl Component for PackageManager {
             let chosen = chosen.clone();
             let warnings = disable_warnings(&warnings_query);
             (move |enabled: bool| {
+                if bisecting {
+                    return;
+                }
                 let targets: Vec<&PackageEntry> =
                     chosen.iter().filter(|p| p.enabled != enabled).collect();
                 let actions: Vec<ClusterAction> = targets

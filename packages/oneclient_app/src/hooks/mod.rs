@@ -35,6 +35,7 @@ pub use actions::{
 pub(crate) use actions::listed;
 pub use queries::ALL_VERSIONS;
 pub(crate) use queries::use_folder_watch;
+pub use queries::{BisectAction, BisectMutation, use_bisect, use_bisect_mutation};
 pub use queries::{
     AddOfflineAccountKeys, AvailableBundlesQuery, BROWSE_PAGE_SIZE, BeginMicrosoftLoginMutation,
     CachedImageQuery, CancelMicrosoftLoginKeys, CancelMicrosoftLoginMutation, ClusterAction,

@@ -144,6 +144,7 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
         };
 
         crate::game::recover_sessions(&background).await;
+        crate::bisect::resume_unfinished_bisects(&background).await;
 
         let content = background.services.content();
         let (versions_res, bundles_res, _, _) = tokio::join!(

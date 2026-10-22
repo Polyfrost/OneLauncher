@@ -580,6 +580,12 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
     }
 }
 
+pub(super) fn bisect_notice(noun_plural: &'static str) -> String {
+    format!(
+        "A problem mod search is running, so {noun_plural} can't be switched on or off here. Use the panel above to stop it."
+    )
+}
+
 pub(super) fn global_notice(noun_plural: &'static str) -> String {
     format!(
         "These {noun_plural} are shared across all your OneClient clusters. Adding one here makes it available in all of them, and turning one off removes it from all of them."

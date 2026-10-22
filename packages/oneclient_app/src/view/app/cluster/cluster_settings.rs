@@ -132,6 +132,11 @@ impl Component for ClusterSettings {
         } else {
             Vec::new()
         };
+        let problem_mod_row: Vec<Element> = if mod_loader {
+            vec![super::FindProblemModRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
 
         let sync_row: Vec<Element> = if cluster.uses_dedicated_dir() && !cluster.is_isolated() {
             vec![SyncSharedRow { cluster_id }.into_element()]
@@ -267,6 +272,7 @@ impl Component for ClusterSettings {
                     .child(imported_section)
                     .child(section_header("REPAIR"))
                     .child(VerifyFilesRow { cluster_id }.into_element())
+                    .append_children(problem_mod_row)
                     .child(
                         ResetInstanceRow {
                             cluster_id,

@@ -215,6 +215,9 @@ impl PackageStore {
         cluster_file_name: Option<&str>,
         ctx: &ContentCtx,
     ) -> ContentResult<bool> {
+        let content_type = ContentType::from_repr(artifact.content_type as u8);
+        ensure_mods_unlocked(cluster.id, content_type, ctx).await?;
+
         let name = cluster_file_name.unwrap_or(&artifact.file_name);
 
         let link =
@@ -477,6 +480,21 @@ impl PackageStore {
             )
             .await
     }
+}
+
+/// A running mod diagnostics session decides which mods are on so adding or
+/// removing one underneath it would make its answer wrong
+pub(crate) async fn ensure_mods_unlocked(
+    cluster_id: i64,
+    content_type: Option<ContentType>,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    if content_type == Some(ContentType::Mod)
+        && oneclient_db::dao::cluster_bisect::is_active(&ctx.db, cluster_id).await?
+    {
+        return Err(PackageError::DiagnosticsRunning.into());
+    }
+    Ok(())
 }
 
 /// Copies the file into the cache unless an identical one is already there and

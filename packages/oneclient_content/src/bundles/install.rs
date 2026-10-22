@@ -2,6 +2,7 @@ use futures_util::StreamExt;
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::cluster as cluster_dao;
+use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterRow;
 use oneclient_db::models::OverrideType;
@@ -567,7 +568,9 @@ pub async fn heal_bundle_activity(
     clear_stale_disables(cluster_id, ctx).await?;
 
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
-    if tracked.iter().all(|row| row.enabled != 0) {
+    if tracked.iter().all(|row| row.enabled != 0)
+        || bisect_dao::is_active(&ctx.db, cluster_id).await?
+    {
         return Ok(());
     }
 
@@ -1175,6 +1178,7 @@ pub(crate) async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCt
     let target = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
         .await?
         .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
+    crate::packages::store::ensure_mods_unlocked(cluster_id, target, ctx).await?;
 
     let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 

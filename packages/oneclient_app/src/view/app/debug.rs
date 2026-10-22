@@ -4,6 +4,9 @@ use oneclient_db::console::{ConsoleQueryResult, run_console_query};
 use oneclient_db::models::OptionalModStatus;
 
 use oneclient_auth::preview_samples;
+use oneclient_core::game::{
+    CrashDiagnosis, ModProblem, ModProblemKind, ModRef, crash_mod_issues, crashdata, suspected_mods,
+};
 use oneclient_core::simulate::Damage;
 use oneclient_net::status::{self, ServiceStatus};
 
@@ -1229,16 +1232,60 @@ impl Component for CorruptionSimulator {
                     .horizontal()
                     .width(Size::fill())
                     .spacing(12.)
-                    .child(crash_repair_button(
-                        "Crash repair prompt (named jar)",
-                        Some("fabric-loader-0.15.11.jar"),
+                    .child(crash_dialog_button(
+                        "Crash: damaged jar",
+                        Some(CrashDiagnosis::CorruptArchive {
+                            file: Some("fabric-loader-0.15.11.jar".to_string()),
+                        }),
                         cluster_id,
                     ))
-                    .child(crash_repair_button(
-                        "Crash repair prompt (no jar named)",
-                        None,
+                    .child(crash_dialog_button(
+                        "Crash: out of memory",
+                        Some(CrashDiagnosis::OutOfMemory),
                         cluster_id,
-                    )),
+                    ))
+                    .child(crash_dialog_button(
+                        "Crash: missing dependency",
+                        Some(CrashDiagnosis::ModLoadFailure {
+                            problems: vec![
+                                ModProblem {
+                                    kind: ModProblemKind::Missing,
+                                    required_by: Some(
+                                        ModRef::with_id("Sodium Extra", "sodium-extra")
+                                            .at(Some("0.6.0")),
+                                    ),
+                                    dependency: ModRef::with_id("Fabric API", "fabric-api"),
+                                    wanted: None,
+                                },
+                                ModProblem {
+                                    kind: ModProblemKind::WrongVersion,
+                                    required_by: Some(
+                                        ModRef::with_id("Iris", "iris").at(Some("1.8.0")),
+                                    ),
+                                    dependency: ModRef::with_id("Sodium", "sodium")
+                                        .at(Some("0.5.1")),
+                                    wanted: Some("0.6.0 or later".to_string()),
+                                },
+                            ],
+                        }),
+                        cluster_id,
+                    ))
+                    .child(crash_dialog_button(
+                        "Crash: incompatible mods",
+                        Some(CrashDiagnosis::ModLoadFailure {
+                            problems: vec![ModProblem {
+                                kind: ModProblemKind::Incompatible,
+                                required_by: Some(
+                                    ModRef::with_id("Sodium", "sodium").at(Some("0.6.0")),
+                                ),
+                                dependency: ModRef::with_id("OptiFabric", "optifabric")
+                                    .at(Some("1.14.3")),
+                                wanted: None,
+                            }],
+                        }),
+                        cluster_id,
+                    ))
+                    .child(crash_dialog_button("Crash: data only", None, cluster_id)),
             )
             .into_element()
     }
@@ -1271,11 +1318,9 @@ fn prompt_button(
         })
 }
 
-/// Accepting really runs the verify pass
-/// To test detection itself corrupt libraries above and launch the game
-fn crash_repair_button(
+fn crash_dialog_button(
     text: &'static str,
-    jar: Option<&'static str>,
+    diagnosis: Option<CrashDiagnosis>,
     cluster_id: State<String>,
 ) -> impl IntoElement {
     Button::new()
@@ -1284,17 +1329,64 @@ fn crash_repair_button(
         .text(text)
         .on_press(move |_| {
             let target = cluster_id.read().trim().parse::<i64>().unwrap_or(1);
+            let diagnosis = diagnosis.clone();
             spawn(async move {
                 let Ok(state) = crate::launcher::state() else {
                     return;
                 };
-                let diagnosis = oneclient_core::game::CrashDiagnosis::CorruptArchive {
-                    file: jar.map(str::to_string),
+
+                let fixes = crashdata::fixes_for(&SAMPLE_CRASH_LOG.join("\n"));
+                let mod_issues = match &diagnosis {
+                    Some(diagnosis) => crash_mod_issues(&state.services, target, diagnosis).await,
+                    None => Vec::new(),
                 };
-                oneclient_core::game::offer_repair(&state, target, &diagnosis).await;
+                let diagnosis = diagnosis.as_ref();
+
+                let name = state
+                    .clusters
+                    .get(target)
+                    .await
+                    .map_or_else(|_| format!("Cluster {target}"), |cluster| cluster.name);
+
+                state
+                    .services
+                    .events
+                    .game_crashed(oneclient_events::GameCrash {
+                        cluster_id: target,
+                        cluster_name: name.clone(),
+                        title: diagnosis
+                            .map_or_else(|| format!("{name} crashed"), CrashDiagnosis::title),
+                        exit: "exit code: 1".to_string(),
+                        played_secs: 252,
+                        cause: diagnosis.map(CrashDiagnosis::body),
+                        suspects: SAMPLE_CRASH_LOG
+                            .iter()
+                            .find_map(|line| suspected_mods(line))
+                            .unwrap_or_default(),
+                        remedy: diagnosis.and_then(CrashDiagnosis::remedy),
+                        fixes,
+                        excerpt: SAMPLE_CRASH_LOG
+                            .iter()
+                            .map(|line| (*line).to_string())
+                            .collect(),
+                        game_dir: oneclient_common::paths::shared_minecraft_dir()
+                            .ok()
+                            .map(|dir| dir.to_string_lossy().to_string()),
+                        mod_issues,
+                    });
             });
         })
 }
+
+const SAMPLE_CRASH_LOG: &[&str] = &[
+    "[12:04:11] [main/INFO]: Loading 42 mods",
+    "[12:04:12] [main/ERROR]: Unable to launch",
+    "java.lang.NullPointerException: Initializing game",
+    "\tat net.minecraft.client.Minecraft.displayGuiScreen(Minecraft.java)",
+    "\tat io.github.moulberry.notenoughupdates.NotEnoughUpdates.onTick",
+    "\tat java.base/java.lang.Thread.run(Thread.java:840)",
+    "\tSuspected Mods: NotEnoughUpdates (notenoughupdates), Minecraft (minecraft)",
+];
 
 fn run_damage(dispatch: &crate::Actions, kind: DamageKind, cluster_id: i64) {
     let dispatch = dispatch.clone();

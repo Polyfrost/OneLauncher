@@ -2,13 +2,15 @@ use std::collections::{HashSet, VecDeque};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_db::models::ClusterRow;
+use oneclient_events::VersionRange;
 
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::provider::PackageProvider;
 use crate::packages::store::PackageStore;
 use crate::packages::types::{
-    DependencyKind, ProjectDetail, ReleaseType, VersionDependency, VersionDetail, VersionSummary,
+    DependencyKind, ProjectDetail, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
+    VersionSummary,
 };
 
 /// Caps the transitive walk so a provider serving a cycle can't spin forever
@@ -149,6 +151,185 @@ pub(crate) async fn resolve_one(
 
     let project = provider.get_project(&version.project_id, ctx).await?;
     Ok(Some(ResolvedDependency { project, version }))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModInstallTarget {
+    pub project_id: String,
+    pub version_id: String,
+    pub name: String,
+}
+
+const MOD_SEARCH_LIMIT: usize = 10;
+
+pub async fn find_mod_for_cluster(
+    provider: &dyn PackageProvider,
+    mod_id: &str,
+    name: Option<&str>,
+    range: Option<&VersionRange>,
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<ModInstallTarget>> {
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+
+    let project = match provider.get_project(mod_id, ctx).await {
+        Ok(project) if project.content_type == ContentType::Mod => Some((project.id, project.name)),
+        Ok(project) => {
+            tracing::debug!(
+                mod_id,
+                content_type = ?project.content_type,
+                "the mod id names a project that is not a mod, searching instead"
+            );
+            search_mod(provider, mod_id, name, &cluster, ctx).await?
+        }
+        Err(err) => {
+            tracing::debug!(
+                mod_id,
+                "no project under the mod id, searching instead: {err}"
+            );
+            search_mod(provider, mod_id, name, &cluster, ctx).await?
+        }
+    };
+
+    let Some((project_id, name)) = project else {
+        return Ok(None);
+    };
+
+    let Some(version) = pick_mod_version(provider, &project_id, range, &cluster, ctx).await? else {
+        return Ok(None);
+    };
+
+    Ok(Some(ModInstallTarget {
+        project_id,
+        version_id: version.version_id,
+        name,
+    }))
+}
+
+async fn pick_mod_version(
+    provider: &dyn PackageProvider,
+    project_id: &str,
+    range: Option<&VersionRange>,
+    cluster: &ClusterRow,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<VersionSummary>> {
+    let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
+    if !loader.is_modded() {
+        return Ok(None);
+    }
+
+    let mut candidates = provider
+        .list_versions(
+            project_id,
+            Some(&cluster.mc_version),
+            Some(loader),
+            0,
+            VERSION_WINDOW,
+            ctx,
+        )
+        .await?
+        .items;
+
+    candidates.retain(|version| {
+        !version.loaders.is_empty()
+            && range
+                .is_none_or(|range| satisfies(range, &version.version_number, &cluster.mc_version))
+    });
+
+    Ok(choose_version(candidates, cluster, loader))
+}
+
+fn numeric_parts(text: &str) -> Option<Vec<u64>> {
+    let text = text.trim().trim_start_matches(['v', 'V']);
+    let parts: Option<Vec<u64>> = text.split('.').map(|part| part.parse().ok()).collect();
+
+    parts.filter(|parts| !parts.is_empty())
+}
+
+fn release_number(version: &str, mc_version: &str) -> Option<Vec<u64>> {
+    version
+        .split(['+', '-', '_', ' '])
+        .filter(|token| !token.is_empty())
+        .filter(|token| !token.to_ascii_lowercase().starts_with("mc"))
+        .filter(|token| *token != mc_version)
+        .find_map(numeric_parts)
+}
+
+fn compare_parts(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
+    let len = a.len().max(b.len());
+    (0..len)
+        .map(|index| a.get(index).unwrap_or(&0).cmp(b.get(index).unwrap_or(&0)))
+        .find(|ordering| ordering.is_ne())
+        .unwrap_or(std::cmp::Ordering::Equal)
+}
+
+fn satisfies(range: &VersionRange, version: &str, mc_version: &str) -> bool {
+    let Some(found) = release_number(version, mc_version) else {
+        return false;
+    };
+
+    let bound =
+        |bound: &Option<String>| bound.as_deref().and_then(|bound| release_number(bound, ""));
+
+    if let Some(min) = bound(&range.min) {
+        let ordering = compare_parts(&found, &min);
+        if ordering.is_lt() || (ordering.is_eq() && !range.min_inclusive) {
+            return false;
+        }
+    }
+
+    if let Some(max) = bound(&range.max) {
+        let ordering = compare_parts(&found, &max);
+        if ordering.is_gt() || (ordering.is_eq() && !range.max_inclusive) {
+            return false;
+        }
+    }
+
+    true
+}
+
+async fn search_mod(
+    provider: &dyn PackageProvider,
+    mod_id: &str,
+    name: Option<&str>,
+    cluster: &ClusterRow,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<(String, String)>> {
+    let loader = GameLoader::from_repr(cluster.mc_loader as u8).unwrap_or(GameLoader::Vanilla);
+    let query = name.unwrap_or(mod_id).replace(['_', '-'], " ");
+
+    let hits = provider
+        .search(
+            &SearchFilters {
+                query: Some(query),
+                limit: Some(MOD_SEARCH_LIMIT),
+                content_type: Some(ContentType::Mod),
+                game_versions: Some(vec![cluster.mc_version.clone()]),
+                loaders: loader.is_modded().then(|| vec![loader]),
+                ..SearchFilters::default()
+            },
+            ctx,
+        )
+        .await?
+        .items;
+
+    let wanted: Vec<String> = std::iter::once(mod_id)
+        .chain(name)
+        .map(squash)
+        .filter(|key| !key.is_empty())
+        .collect();
+
+    Ok(hits
+        .into_iter()
+        .find(|hit| wanted.contains(&squash(&hit.slug)) || wanted.contains(&squash(&hit.name)))
+        .map(|hit| (hit.id, hit.name)))
+}
+
+fn squash(text: &str) -> String {
+    text.chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|c| c.to_ascii_lowercase())
+        .collect()
 }
 
 /// Falls back to the newest prerelease when no release fits the cluster
@@ -438,5 +619,53 @@ mod tests {
         )];
 
         assert!(choose_version(candidates, &cluster, GameLoader::Fabric).is_none());
+    }
+
+    #[test]
+    fn release_numbers_are_read_past_minecraft_and_loader_tags() {
+        for (version, expected) in [
+            ("mc1.21.1-0.6.0-fabric", vec![0, 6, 0]),
+            ("0.120.0+26.3", vec![0, 120, 0]),
+            ("1.8.0+26.3-fabric", vec![1, 8, 0]),
+            ("26.3.0.0.9", vec![26, 3, 0, 0, 9]),
+            ("v2.1", vec![2, 1]),
+        ] {
+            assert_eq!(release_number(version, "26.3"), Some(expected), "{version}");
+        }
+
+        assert_eq!(release_number("beta", "26.3"), None);
+    }
+
+    #[test]
+    fn versions_are_checked_against_the_wanted_range() {
+        let at_least = VersionRange::at_least("0.5.4");
+        assert!(satisfies(&at_least, "mc1.21.1-0.6.0-fabric", "1.21.1"));
+        assert!(!satisfies(&at_least, "mc1.21.1-0.5.3-fabric", "1.21.1"));
+
+        let terrablender = VersionRange::at_least("26.3.0.0.6");
+        assert!(satisfies(&terrablender, "26.3.0.0.9", "26.3"));
+        assert!(!satisfies(&terrablender, "26.3.0.0.5", "26.3"));
+
+        let older = VersionRange {
+            max: Some("2.0".to_string()),
+            ..VersionRange::default()
+        };
+        assert!(satisfies(&older, "1.9.9", "26.3"));
+        assert!(!satisfies(&older, "2.0", "26.3"));
+
+        let exact = VersionRange::exactly("1.2.0");
+        assert!(satisfies(&exact, "1.2", "26.3"));
+        assert!(!satisfies(&exact, "1.2.1", "26.3"));
+    }
+
+    #[test]
+    fn an_unreadable_version_never_satisfies_a_range() {
+        assert!(!satisfies(&VersionRange::at_least("1.0"), "beta", "26.3"));
+    }
+
+    #[test]
+    fn search_hits_are_compared_without_punctuation_or_case() {
+        assert_eq!(squash("entity_texture_features"), "entitytexturefeatures");
+        assert_eq!(squash("Entity-Texture Features"), "entitytexturefeatures");
     }
 }

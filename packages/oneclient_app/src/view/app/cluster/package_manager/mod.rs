@@ -25,7 +25,7 @@ use views::{
     AdvancedSection, Bulk, ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode,
     toolbar_bar,
 };
-pub(super) use views::{empty_hint, empty_shell, empty_title, notice_bar};
+pub(super) use views::{copy_list_button, empty_hint, empty_shell, empty_title, notice_bar};
 
 const CARD_H: f32 = 84.;
 pub(super) const CARD_SPACING: f32 = 8.;
@@ -347,11 +347,11 @@ fn make_row(
 
 const BUNDLED_MARKER: &str = "(bundled)";
 
-fn package_url(item: &PackageEntry) -> Option<String> {
+fn package_url(item: &PackageEntry, content_type: ContentType) -> Option<String> {
     match item.provider {
         ProviderId::Modrinth => Some(format!(
             "https://modrinth.com/{}/{}",
-            ContentType::Mod.modrinth_type(),
+            content_type.modrinth_type(),
             item.package_id
         )),
         ProviderId::CurseForge => Some(format!(
@@ -362,7 +362,7 @@ fn package_url(item: &PackageEntry) -> Option<String> {
     }
 }
 
-fn export_line(item: &PackageEntry) -> String {
+fn export_line(item: &PackageEntry, content_type: ContentType) -> String {
     let version = item
         .version
         .clone()
@@ -378,7 +378,7 @@ fn export_line(item: &PackageEntry) -> String {
         .filter(|version| !version.is_empty());
 
     let mut segments = vec![item.name.clone()];
-    segments.extend(package_url(item).or_else(|| item.github_url.clone()));
+    segments.extend(package_url(item, content_type).or_else(|| item.github_url.clone()));
     segments.extend(version);
     if !item.author.is_empty() {
         segments.push(format!("by {}", item.author));
@@ -396,11 +396,11 @@ fn export_rows(items: &[PackageEntry], hidden: HiddenFilter) -> Vec<PackageEntry
         .collect()
 }
 
-fn mod_list_text(rows: &[PackageEntry]) -> String {
+fn package_list_text(rows: &[PackageEntry], content_type: ContentType) -> String {
     let mut rows: Vec<&PackageEntry> = rows.iter().collect();
     rows.sort_by_key(|p| p.name.to_lowercase());
     rows.iter()
-        .map(|row| export_line(row))
+        .map(|row| export_line(row, content_type))
         .collect::<Vec<_>>()
         .join("\n")
 }
@@ -823,11 +823,8 @@ impl Component for PackageManager {
                 dispatch,
                 toolbar_width,
                 &bulk,
-                if content_type == ContentType::Mod {
-                    export_rows(&items, hidden)
-                } else {
-                    Vec::new()
-                },
+                noun_plural,
+                export_rows(&items, hidden),
             ))
             .child(
                 ContentBox::new(
@@ -1007,7 +1004,7 @@ mod tests {
         assert_eq!(ids, ["kept"]);
         let kept = &exported[0];
         assert_eq!(
-            mod_list_text(&exported),
+            package_list_text(&exported, ContentType::Mod),
             format!(
                 "- {} | {} | enabled",
                 kept.name,

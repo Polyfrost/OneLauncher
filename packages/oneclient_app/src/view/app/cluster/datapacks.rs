@@ -21,7 +21,7 @@ use super::folder_list::{
     matches_search, notify_in_use, search_input, toolbar_action, toolbar_panel,
     use_game_folder_in_use,
 };
-use super::package_manager::{empty_hint, empty_shell, empty_title};
+use super::package_manager::{copy_list_button, empty_hint, empty_shell, empty_title};
 
 const WORLD_PICKER_W: f32 = 220.;
 
@@ -226,6 +226,23 @@ impl Component for ClusterDataPacks {
         let mut controls = vec![search_input(search)];
         controls.extend(folder.clone().map(folder_button));
         controls.push(layout_toggle(layout));
+        if !all.is_empty() {
+            let mut names: Vec<String> = all.iter().map(|p| p.file_name.clone()).collect();
+            names.sort_by_key(|name| name.to_lowercase());
+            controls.push(copy_list_button(
+                dispatch.clone(),
+                names.len(),
+                "data pack",
+                "data packs",
+                move || {
+                    names
+                        .iter()
+                        .map(|name| format!("- {name}"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                },
+            ));
+        }
         let browse_world = world.clone();
         controls.push(
             toolbar_action(IconType::SearchMd, "Browse")

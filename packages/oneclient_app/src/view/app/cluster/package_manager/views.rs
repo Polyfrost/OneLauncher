@@ -305,6 +305,7 @@ pub(super) fn toolbar_bar(
     dispatch: Actions,
     mut toolbar_width: State<f32>,
     bulk: &Bulk,
+    noun_plural: &'static str,
     export: Vec<PackageEntry>,
 ) -> impl IntoElement {
     let local_tab = matches!(tabs.get(active_idx), Some(Tab::Local));
@@ -371,7 +372,13 @@ pub(super) fn toolbar_bar(
             .into_element(),
     );
     if !export.is_empty() {
-        controls.push(CopyListButton { rows: export }.into_element());
+        controls.push(copy_list_button(
+            dispatch.clone(),
+            export.len(),
+            package_type,
+            noun_plural,
+            move || package_list_text(&export, content_type),
+        ));
     }
     controls.push(
         Button::new()
@@ -458,48 +465,44 @@ pub(super) fn toolbar_bar(
         .into_element()
 }
 
-#[derive(PartialEq)]
-struct CopyListButton {
-    rows: Vec<PackageEntry>,
-}
-
-impl Component for CopyListButton {
-    fn render(&self) -> impl IntoElement {
-        let dispatch = use_dispatch();
-        let rows = self.rows.clone();
-        let count = rows.len();
-
-        Button::new()
-            .secondary()
-            .icon()
-            .width(Size::px(34.))
-            .height(Size::px(34.))
-            .on_press(move |_| {
-                if let Err(err) = Clipboard::set(mod_list_text(&rows)) {
-                    tracing::warn!("clipboard copy failed: {err:?}");
-                    dispatch
-                        .notify("Copy failed")
-                        .body("Could not copy your mods to the clipboard.")
-                        .error()
-                        .send();
-                } else {
-                    dispatch
-                        .notify("Copied to clipboard")
-                        .body(format!(
-                            "{count} mod{} copied to your clipboard.",
-                            utils::plural(count as i64)
-                        ))
-                        .info()
-                        .icon(IconType::ClipboardCheck)
-                        .send();
-                }
-            })
-            .child(
-                Icon::new(IconType::Copy01)
-                    .size(16.)
-                    .color(colors::fg_secondary()),
-            )
-    }
+pub(crate) fn copy_list_button(
+    dispatch: Actions,
+    count: usize,
+    noun: &'static str,
+    noun_plural: &'static str,
+    text: impl Fn() -> String + 'static,
+) -> Element {
+    let noun = if count == 1 { noun } else { noun_plural };
+    Button::new()
+        .secondary()
+        .icon()
+        .width(Size::px(34.))
+        .height(Size::px(34.))
+        .on_press(move |_| {
+            if let Err(err) = Clipboard::set(text()) {
+                tracing::warn!("clipboard copy failed: {err:?}");
+                dispatch
+                    .notify("Copy failed")
+                    .body(format!(
+                        "Could not copy your {noun_plural} to the clipboard."
+                    ))
+                    .error()
+                    .send();
+            } else {
+                dispatch
+                    .notify("Copied to clipboard")
+                    .body(format!("{count} {noun} copied to your clipboard."))
+                    .info()
+                    .icon(IconType::ClipboardCheck)
+                    .send();
+            }
+        })
+        .child(
+            Icon::new(IconType::Copy01)
+                .size(16.)
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
 }
 
 #[derive(PartialEq)]

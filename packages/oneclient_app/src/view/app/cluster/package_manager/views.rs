@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use super::*;
 
 use freya::router::RouterContext;
+use freya::text_edit::Clipboard;
 use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
@@ -297,7 +298,6 @@ pub(super) fn toolbar_bar(
     filters: State<BTreeMap<String, String>>,
     show: EnabledFilter,
     hidden: HiddenFilter,
-    uses_bundles: bool,
     layout: State<ViewLayout>,
     cluster_id: i64,
     package_type: &'static str,
@@ -305,6 +305,7 @@ pub(super) fn toolbar_bar(
     dispatch: Actions,
     mut toolbar_width: State<f32>,
     bulk: &Bulk,
+    export: Vec<PackageEntry>,
 ) -> impl IntoElement {
     let local_tab = matches!(tabs.get(active_idx), Some(Tab::Local));
 
@@ -357,7 +358,7 @@ pub(super) fn toolbar_bar(
                     .into_element(),
             )
             .into_element(),
-        filter_button(sort, current_sort, filters, show, hidden, uses_bundles).into_element(),
+        filter_button(sort, current_sort, filters, show, hidden).into_element(),
     ];
 
     controls.push(
@@ -369,6 +370,9 @@ pub(super) fn toolbar_bar(
             .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
             .into_element(),
     );
+    if !export.is_empty() {
+        controls.push(CopyListButton { rows: export }.into_element());
+    }
     controls.push(
         Button::new()
             .primary()
@@ -452,6 +456,50 @@ pub(super) fn toolbar_bar(
         })
         .child(inner)
         .into_element()
+}
+
+#[derive(PartialEq)]
+struct CopyListButton {
+    rows: Vec<PackageEntry>,
+}
+
+impl Component for CopyListButton {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let rows = self.rows.clone();
+        let count = rows.len();
+
+        Button::new()
+            .secondary()
+            .icon()
+            .width(Size::px(34.))
+            .height(Size::px(34.))
+            .on_press(move |_| {
+                if let Err(err) = Clipboard::set(mod_list_text(&rows)) {
+                    tracing::warn!("clipboard copy failed: {err:?}");
+                    dispatch
+                        .notify("Copy failed")
+                        .body("Could not copy your mods to the clipboard.")
+                        .error()
+                        .send();
+                } else {
+                    dispatch
+                        .notify("Copied to clipboard")
+                        .body(format!(
+                            "{count} mod{} copied to your clipboard.",
+                            utils::plural(count as i64)
+                        ))
+                        .info()
+                        .icon(IconType::ClipboardCheck)
+                        .send();
+                }
+            })
+            .child(
+                Icon::new(IconType::Copy01)
+                    .size(16.)
+                    .color(colors::fg_secondary()),
+            )
+    }
 }
 
 #[derive(PartialEq)]
@@ -584,14 +632,13 @@ fn filter_button(
     mut filters: State<BTreeMap<String, String>>,
     show: EnabledFilter,
     hidden: HiddenFilter,
-    uses_bundles: bool,
 ) -> FilterMenu {
     // Hiding hidden packages is the default so it does not count as the filters being touched
     let active = current_sort != SortMode::NameAsc
         || show != EnabledFilter::All
         || hidden != HiddenFilter::Hide;
 
-    let menu = FilterMenu::new(active)
+    FilterMenu::new(active)
         .section(
             "Sort by",
             SortMode::ALL.map(|mode| {
@@ -609,21 +656,17 @@ fn filter_button(
                         .insert(EnabledFilter::STORAGE_KEY.into(), filter.key().into());
                 })
             }),
-        );
-
-    if !uses_bundles {
-        return menu;
-    }
-    menu.section(
-        "Hidden packages",
-        HiddenFilter::ALL.map(|filter| {
-            FilterOption::new(filter.label(), filter == hidden, move |()| {
-                filters
-                    .write()
-                    .insert(HiddenFilter::STORAGE_KEY.into(), filter.key().into());
-            })
-        }),
-    )
+        )
+        .section(
+            "Hidden packages",
+            HiddenFilter::ALL.map(|filter| {
+                FilterOption::new(filter.label(), filter == hidden, move |()| {
+                    filters
+                        .write()
+                        .insert(HiddenFilter::STORAGE_KEY.into(), filter.key().into());
+                })
+            }),
+        )
 }
 
 fn import_from_file(cluster_id: i64, content_type: ContentType, dispatch: Actions) {

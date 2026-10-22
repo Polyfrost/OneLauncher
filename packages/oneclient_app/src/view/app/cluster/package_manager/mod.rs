@@ -345,6 +345,66 @@ fn make_row(
     }
 }
 
+const BUNDLED_MARKER: &str = "(bundled)";
+
+fn package_url(item: &PackageEntry) -> Option<String> {
+    match item.provider {
+        ProviderId::Modrinth => Some(format!(
+            "https://modrinth.com/{}/{}",
+            ContentType::Mod.modrinth_type(),
+            item.package_id
+        )),
+        ProviderId::CurseForge => Some(format!(
+            "https://www.curseforge.com/projects/{}",
+            item.package_id
+        )),
+        ProviderId::Local => None,
+    }
+}
+
+fn export_line(item: &PackageEntry) -> String {
+    let version = item
+        .version
+        .clone()
+        .filter(|version| !version.is_empty())
+        .map(|version| {
+            if item.in_bundle() {
+                format!("{version} {BUNDLED_MARKER}")
+            } else {
+                version
+            }
+        })
+        .or_else(|| item.bundle_name.clone())
+        .filter(|version| !version.is_empty());
+
+    let mut segments = vec![item.name.clone()];
+    segments.extend(package_url(item).or_else(|| item.github_url.clone()));
+    segments.extend(version);
+    if !item.author.is_empty() {
+        segments.push(format!("by {}", item.author));
+    }
+    segments.push(if item.enabled { "enabled" } else { "disabled" }.to_string());
+
+    format!("- {}", segments.join(" | "))
+}
+
+fn export_rows(items: &[PackageEntry], hidden: HiddenFilter) -> Vec<PackageEntry> {
+    items
+        .iter()
+        .filter(|p| hidden.keep(p) && Tab::All.matches(p))
+        .cloned()
+        .collect()
+}
+
+fn mod_list_text(rows: &[PackageEntry]) -> String {
+    let mut rows: Vec<&PackageEntry> = rows.iter().collect();
+    rows.sort_by_key(|p| p.name.to_lowercase());
+    rows.iter()
+        .map(|row| export_line(row))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 #[derive(Clone)]
 pub(super) enum Tab {
     All,
@@ -512,9 +572,6 @@ impl Component for PackageManager {
         let shares_content = cluster
             .as_ref()
             .map(|cluster| cluster.shares_content(content_type));
-        let uses_bundles = cluster
-            .as_ref()
-            .is_none_or(|cluster| cluster.uses_bundles());
         let active = use_state(|| 0usize);
 
         let search = use_state(String::new);
@@ -759,7 +816,6 @@ impl Component for PackageManager {
                 filters,
                 show,
                 hidden,
-                uses_bundles,
                 layout,
                 cluster_id,
                 package_type,
@@ -767,6 +823,11 @@ impl Component for PackageManager {
                 dispatch,
                 toolbar_width,
                 &bulk,
+                if content_type == ContentType::Mod {
+                    export_rows(&items, hidden)
+                } else {
+                    Vec::new()
+                },
             ))
             .child(
                 ContentBox::new(
@@ -860,9 +921,8 @@ mod tests {
         );
     }
 
-    #[test]
-    fn deleted_tab_holds_only_deleted_mods() {
-        let installed_off = |hash: &str| LinkedArtifactInfo {
+    fn installed_off(hash: &str) -> LinkedArtifactInfo {
+        LinkedArtifactInfo {
             hash: hash.to_string(),
             cluster_file_name: format!("{hash}.jar"),
             enabled: false,
@@ -876,7 +936,11 @@ mod tests {
             published_at: None,
             seen_status: oneclient_core::SeenStatus::Seen,
             size_bytes: None,
-        };
+        }
+    }
+
+    #[test]
+    fn deleted_tab_holds_only_deleted_mods() {
         let taken = bundle(
             "Taken",
             true,
@@ -915,6 +979,40 @@ mod tests {
         assert!(
             rows.iter()
                 .any(|p| p.package_id == "turned-off" && Tab::All.matches(p))
+        );
+    }
+
+    #[test]
+    fn mod_list_skips_deleted_and_declined_mods() {
+        let taken = bundle(
+            "Taken",
+            true,
+            vec![file("kept", true, false), file("deleted", true, false)],
+        );
+        let declined = bundle("Declined", false, vec![file("only-declined", true, false)]);
+        let overrides = HashMap::from([(
+            (taken.archive.manifest.name.clone(), "deleted".to_string()),
+            "removed".to_string(),
+        )]);
+        let rows = bundle_packages(
+            vec![installed_off("deleted")],
+            &[taken, declined],
+            &overrides,
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+        let exported = export_rows(&rows, HiddenFilter::Hide);
+        let ids: Vec<&str> = exported.iter().map(|p| p.package_id.as_str()).collect();
+        assert_eq!(ids, ["kept"]);
+        let kept = &exported[0];
+        assert_eq!(
+            mod_list_text(&exported),
+            format!(
+                "- {} | {} | enabled",
+                kept.name,
+                kept.bundle_name.clone().unwrap()
+            )
         );
     }
 }

@@ -10,8 +10,8 @@ pub use gc::{
     remove_unreferenced_files,
 };
 pub use link::{
-    LiveSync, drop_unmanaged_mod, link_or_copy, remove_entry, sweep_staging_files,
-    try_link_materialized, try_unlink_materialized,
+    LiveSync, drop_unmanaged_mod, link_or_copy, remove_entry, sharing_cluster_ids,
+    sweep_staging_files, try_link_materialized, try_unlink_materialized,
 };
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
 
@@ -364,7 +364,8 @@ impl PackageStore {
         .await?;
 
         if link::shares_content(&cluster, content_type) {
-            artifact_dao::set_enabled_for_hash(&ctx.db, hash, i64::from(enabled)).await?;
+            let sharing = link::sharing_cluster_ids(&ctx.db).await?;
+            artifact_dao::set_enabled_for_hash(&ctx.db, hash, i64::from(enabled), &sharing).await?;
         }
 
         // Only the enable side has an outcome to report; a pack that is not in

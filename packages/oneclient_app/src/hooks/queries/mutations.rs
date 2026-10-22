@@ -323,17 +323,38 @@ impl MutationCapability for ClusterMutation {
                             .to_string(),
                     })
                 } else {
-                    state
+                    let switching = state
+                        .clusters
+                        .get(*cluster_id)
+                        .await
+                        .is_ok_and(|cluster| cluster.uses_dedicated_dir() != *dedicated);
+                    let result = state
                         .clusters
                         .set_dedicated_dir(
                             *cluster_id,
                             *dedicated,
                             state.games.is_active(*cluster_id),
                         )
-                        .await
-                        .map_err(|err| oneclient_content::ContentError::InvalidData {
-                            reason: err.to_string(),
-                        })
+                        .await;
+                    if result.is_ok()
+                        && switching
+                        && let Ok(cluster) = state.clusters.get(*cluster_id).await
+                    {
+                        if !*dedicated {
+                            oneclient_core::game::join_shared_folder(&state.services, &cluster)
+                                .await;
+                        } else if let Ok(dir) = cluster.dir() {
+                            oneclient_core::game::leave_shared_folder(
+                                &state.services,
+                                &cluster,
+                                &dir,
+                            )
+                            .await;
+                        }
+                    }
+                    result.map_err(|err| oneclient_content::ContentError::InvalidData {
+                        reason: err.to_string(),
+                    })
                 }
             }
             ClusterAction::VerifyFiles { cluster_id } => {

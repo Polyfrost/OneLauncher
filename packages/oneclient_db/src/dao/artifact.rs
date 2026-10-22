@@ -68,7 +68,8 @@ pub async fn delete_artifact_if_unused(pool: &SqlitePool, hash: &str) -> Result<
 
 use crate::models::GlobalArtifactRow;
 
-/// One row per hash across the OneClient clusters for content that is installed globally
+/// One row per hash across `sharing` (the clusters playing from the shared
+/// folder) for content that is installed globally
 ///
 /// `enabled` is the OR over the clusters: one cluster still having a pack on is
 /// enough to keep it in the folder, because there is one folder and it can only
@@ -82,6 +83,7 @@ use crate::models::GlobalArtifactRow;
 pub async fn list_global_artifacts(
     pool: &SqlitePool,
     content_type: i64,
+    sharing: &[i64],
 ) -> Result<Vec<GlobalArtifactRow>, sqlx::Error> {
     sqlx::query_as::<_, GlobalArtifactRow>(
         r#"
@@ -91,15 +93,123 @@ pub async fn list_global_artifacts(
 			MAX(ca.enabled) AS enabled
 		FROM cluster_artifacts ca
 		JOIN artifacts a ON a.hash = ca.hash
-		JOIN clusters c ON c.id = ca.cluster_id
-		WHERE a.content_type = ? AND c.kind = ?
+		WHERE a.content_type = ? AND ca.cluster_id IN (SELECT value FROM json_each(?))
 		GROUP BY ca.hash
 		"#,
     )
     .bind(content_type)
-    .bind(ClusterKind::OneClient.as_i64())
+    .bind(json_ids(sharing))
     .fetch_all(pool)
     .await
+}
+
+pub async fn copy_global_links(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    content_type: i64,
+    sharing: &[i64],
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+		INSERT OR IGNORE INTO cluster_artifacts (
+			cluster_id, hash, cluster_file_name, enabled, bundle_name,
+			bundle_version_id, package_id, installed_at, seen_status
+		)
+		SELECT ?, hash, cluster_file_name, enabled, bundle_name,
+			bundle_version_id, package_id, installed_at, seen_status
+		FROM (
+			SELECT ca.*, ROW_NUMBER() OVER (
+				PARTITION BY ca.hash ORDER BY ca.enabled DESC, ca.cluster_file_name
+			) AS pick
+			FROM cluster_artifacts ca
+			JOIN artifacts a ON a.hash = ca.hash
+			WHERE a.content_type = ? AND ca.cluster_id IN (SELECT value FROM json_each(?))
+		)
+		WHERE pick = 1
+		"#,
+    )
+    .bind(cluster_id)
+    .bind(content_type)
+    .bind(json_ids(sharing))
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
+
+pub async fn give_global_links(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    content_type: i64,
+    sharing: &[i64],
+) -> Result<u64, sqlx::Error> {
+    let sharing = json_ids(sharing);
+    let result = sqlx::query(
+        r#"
+		INSERT OR IGNORE INTO cluster_artifacts (
+			cluster_id, hash, cluster_file_name, enabled, bundle_name,
+			bundle_version_id, package_id, installed_at, seen_status
+		)
+		SELECT s.value, ca.hash, ca.cluster_file_name, ca.enabled, ca.bundle_name,
+			ca.bundle_version_id, ca.package_id, ca.installed_at, ca.seen_status
+		FROM cluster_artifacts ca
+		JOIN artifacts a ON a.hash = ca.hash
+		JOIN json_each(?) s
+		WHERE ca.cluster_id = ? AND a.content_type = ? AND ca.enabled = 1
+			AND NOT EXISTS (
+				SELECT 1 FROM cluster_artifacts other
+				WHERE other.hash = ca.hash
+					AND other.cluster_id IN (SELECT value FROM json_each(?))
+			)
+		"#,
+    )
+    .bind(&sharing)
+    .bind(cluster_id)
+    .bind(content_type)
+    .bind(&sharing)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
+
+pub async fn align_global_enabled(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    content_type: i64,
+    sharing: &[i64],
+) -> Result<u64, sqlx::Error> {
+    let sharing = json_ids(sharing);
+    let result = sqlx::query(
+        r#"
+		UPDATE cluster_artifacts SET enabled = shared.enabled
+		FROM (
+			SELECT other.hash, MAX(other.enabled) AS enabled
+			FROM cluster_artifacts other
+			JOIN artifacts a ON a.hash = other.hash
+			WHERE a.content_type = ? AND other.cluster_id != ?
+				AND other.cluster_id IN (SELECT value FROM json_each(?))
+			GROUP BY other.hash
+		) AS shared
+		WHERE cluster_artifacts.cluster_id = ? AND cluster_artifacts.hash = shared.hash
+			AND cluster_artifacts.enabled != shared.enabled
+		"#,
+    )
+    .bind(content_type)
+    .bind(cluster_id)
+    .bind(&sharing)
+    .bind(cluster_id)
+    .execute(pool)
+    .await?;
+
+    Ok(result.rows_affected())
+}
+
+fn json_ids(ids: &[i64]) -> String {
+    format!(
+        "[{}]",
+        ids.iter().map(i64::to_string).collect::<Vec<_>>().join(",")
+    )
 }
 
 /// Sets the flag on every cluster sharing the global folder that has this artifact
@@ -111,16 +221,17 @@ pub async fn set_enabled_for_hash(
     pool: &SqlitePool,
     hash: &str,
     enabled: i64,
+    sharing: &[i64],
 ) -> Result<u64, sqlx::Error> {
     let result = sqlx::query(
         r#"
 		UPDATE cluster_artifacts SET enabled = ?
-		WHERE hash = ? AND cluster_id IN (SELECT id FROM clusters WHERE kind = ?)
+		WHERE hash = ? AND cluster_id IN (SELECT value FROM json_each(?))
 		"#,
     )
     .bind(enabled)
     .bind(hash)
-    .bind(ClusterKind::OneClient.as_i64())
+    .bind(json_ids(sharing))
     .execute(pool)
     .await?;
 

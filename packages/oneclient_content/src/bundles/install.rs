@@ -1,7 +1,6 @@
 use futures_util::StreamExt;
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
-use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterRow;
 use oneclient_db::models::OverrideType;
@@ -1220,7 +1219,7 @@ async fn sharing_scope(
         return Ok(None);
     }
 
-    let sharing = cluster_dao::list_oneclient_ids(&ctx.db).await?;
+    let sharing = crate::packages::store::sharing_cluster_ids(&ctx.db).await?;
 
     Ok(sharing.contains(&cluster_id).then_some(sharing))
 }

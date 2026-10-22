@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use oneclient_common::domain::{ContentType, GameLoader};
 use oneclient_content::packages::PackageStore;
 use oneclient_core::clusters::{

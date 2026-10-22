@@ -298,7 +298,6 @@ pub(super) fn toolbar_bar(
     filters: State<BTreeMap<String, String>>,
     show: EnabledFilter,
     hidden: HiddenFilter,
-    uses_bundles: bool,
     layout: State<ViewLayout>,
     cluster_id: i64,
     package_type: &'static str,
@@ -306,7 +305,7 @@ pub(super) fn toolbar_bar(
     dispatch: Actions,
     mut toolbar_width: State<f32>,
     bulk: &Bulk,
-    export: Option<ModListExport>,
+    export: Vec<PackageEntry>,
 ) -> impl IntoElement {
     let local_tab = matches!(tabs.get(active_idx), Some(Tab::Local));
 
@@ -359,7 +358,7 @@ pub(super) fn toolbar_bar(
                     .into_element(),
             )
             .into_element(),
-        filter_button(sort, current_sort, filters, show, hidden, uses_bundles).into_element(),
+        filter_button(sort, current_sort, filters, show, hidden).into_element(),
     ];
 
     controls.push(
@@ -371,7 +370,9 @@ pub(super) fn toolbar_bar(
             .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
             .into_element(),
     );
-    controls.extend(export.map(|export| CopyListButton { export }.into_element()));
+    if !export.is_empty() {
+        controls.push(CopyListButton { rows: export }.into_element());
+    }
     controls.push(
         Button::new()
             .primary()
@@ -459,14 +460,14 @@ pub(super) fn toolbar_bar(
 
 #[derive(PartialEq)]
 struct CopyListButton {
-    export: ModListExport,
+    rows: Vec<PackageEntry>,
 }
 
 impl Component for CopyListButton {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let text = self.export.text.clone();
-        let count = self.export.count;
+        let rows = self.rows.clone();
+        let count = rows.len();
 
         Button::new()
             .secondary()
@@ -474,7 +475,7 @@ impl Component for CopyListButton {
             .width(Size::px(34.))
             .height(Size::px(34.))
             .on_press(move |_| {
-                if let Err(err) = Clipboard::set(text.clone()) {
+                if let Err(err) = Clipboard::set(mod_list_text(&rows)) {
                     tracing::warn!("clipboard copy failed: {err:?}");
                     dispatch
                         .notify("Copy failed")
@@ -631,14 +632,13 @@ fn filter_button(
     mut filters: State<BTreeMap<String, String>>,
     show: EnabledFilter,
     hidden: HiddenFilter,
-    uses_bundles: bool,
 ) -> FilterMenu {
     // Hiding hidden packages is the default so it does not count as the filters being touched
     let active = current_sort != SortMode::NameAsc
         || show != EnabledFilter::All
         || hidden != HiddenFilter::Hide;
 
-    let menu = FilterMenu::new(active)
+    FilterMenu::new(active)
         .section(
             "Sort by",
             SortMode::ALL.map(|mode| {
@@ -656,21 +656,17 @@ fn filter_button(
                         .insert(EnabledFilter::STORAGE_KEY.into(), filter.key().into());
                 })
             }),
-        );
-
-    if !uses_bundles {
-        return menu;
-    }
-    menu.section(
-        "Hidden packages",
-        HiddenFilter::ALL.map(|filter| {
-            FilterOption::new(filter.label(), filter == hidden, move |()| {
-                filters
-                    .write()
-                    .insert(HiddenFilter::STORAGE_KEY.into(), filter.key().into());
-            })
-        }),
-    )
+        )
+        .section(
+            "Hidden packages",
+            HiddenFilter::ALL.map(|filter| {
+                FilterOption::new(filter.label(), filter == hidden, move |()| {
+                    filters
+                        .write()
+                        .insert(HiddenFilter::STORAGE_KEY.into(), filter.key().into());
+                })
+            }),
+        )
 }
 
 fn import_from_file(cluster_id: i64, content_type: ContentType, dispatch: Actions) {

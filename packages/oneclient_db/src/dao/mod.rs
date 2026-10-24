@@ -5,6 +5,7 @@ pub mod bundle;
 pub mod cluster;
 pub mod cluster_bisect;
 pub mod cluster_bundle;
+pub mod cluster_flag;
 pub mod cluster_optional_mod;
 pub mod game_session;
 pub mod java;

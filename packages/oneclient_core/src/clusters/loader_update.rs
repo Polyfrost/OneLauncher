@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use oneclient_common::domain::GameLoader;
 use oneclient_content::modpacks::is_newer_version;
-use oneclient_db::dao::applied_migration as migration_dao;
+use oneclient_db::dao::cluster_flag as flag_dao;
 use oneclient_events::Signal;
 
 use crate::LauncherResult;
@@ -10,8 +10,7 @@ use crate::clusters::{Cluster, ClusterUpdate};
 use crate::game::get_loader_versions;
 use crate::state::LauncherState;
 
-const LOADER_UPDATE_ALWAYS: &str = "loader-update-always";
-const LOADER_UPDATE_NEVER: &str = "loader-update-never";
+const LOADER_UPDATE: &str = "loader-update";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoaderUpdatePolicy {
@@ -28,14 +27,12 @@ pub async fn loader_update_policy(
         return Ok(LoaderUpdatePolicy::Always);
     }
 
-    let db = &state.services.db;
-    if migration_dao::is_applied(db, &format!("{LOADER_UPDATE_ALWAYS}:{}", cluster.id)).await? {
-        return Ok(LoaderUpdatePolicy::Always);
-    }
-    if migration_dao::is_applied(db, &format!("{LOADER_UPDATE_NEVER}:{}", cluster.id)).await? {
-        return Ok(LoaderUpdatePolicy::Never);
-    }
-    Ok(LoaderUpdatePolicy::Ask)
+    let policy = flag_dao::get(&state.services.db, cluster.id, LOADER_UPDATE).await?;
+    Ok(match policy.as_deref() {
+        Some("always") => LoaderUpdatePolicy::Always,
+        Some("never") => LoaderUpdatePolicy::Never,
+        _ => LoaderUpdatePolicy::Ask,
+    })
 }
 
 pub async fn set_loader_update_policy(
@@ -44,15 +41,14 @@ pub async fn set_loader_update_policy(
     policy: LoaderUpdatePolicy,
 ) -> LauncherResult<()> {
     let db = &state.services.db;
-    let always = format!("{LOADER_UPDATE_ALWAYS}:{cluster_id}");
-    let never = format!("{LOADER_UPDATE_NEVER}:{cluster_id}");
-
-    migration_dao::forget(db, &always).await?;
-    migration_dao::forget(db, &never).await?;
     match policy {
-        LoaderUpdatePolicy::Ask => {}
-        LoaderUpdatePolicy::Always => migration_dao::mark_applied(db, &always).await?,
-        LoaderUpdatePolicy::Never => migration_dao::mark_applied(db, &never).await?,
+        LoaderUpdatePolicy::Ask => flag_dao::clear(db, cluster_id, LOADER_UPDATE).await?,
+        LoaderUpdatePolicy::Always => {
+            flag_dao::set(db, cluster_id, LOADER_UPDATE, Some("always")).await?;
+        }
+        LoaderUpdatePolicy::Never => {
+            flag_dao::set(db, cluster_id, LOADER_UPDATE, Some("never")).await?;
+        }
     }
     Ok(())
 }

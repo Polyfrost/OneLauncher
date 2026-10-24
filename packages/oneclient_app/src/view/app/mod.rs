@@ -2,8 +2,8 @@ mod analytics;
 mod clusters;
 mod debug;
 mod home;
-mod skins;
 mod stats;
+mod wardrobe;
 
 pub mod browser;
 pub mod cluster;
@@ -72,5 +72,5 @@ pub use clusters::Clusters;
 pub(crate) use clusters::DeleteInstanceModal;
 pub use debug::Debug;
 pub use home::Home;
-pub use skins::AccountSkins;
 pub use stats::Stats;
+pub use wardrobe::Wardrobe;

@@ -320,6 +320,45 @@ pub async fn read_zip_file_entries(
     Ok(out)
 }
 
+pub async fn read_zip_bytes_entry<K: Ord>(
+    data: Vec<u8>,
+    rank: impl Fn(&str) -> Option<K>,
+) -> PolyIOResult<Option<(String, Vec<u8>)>> {
+    let mut reader = open_zip(futures_lite::io::Cursor::new(data)).await?;
+    let mut candidates: Vec<(K, String, usize, u64)> = Vec::new();
+    for (index, cdr) in reader.cdrs().iter().enumerate() {
+        let Some(name) = cdr.insecure_file_name.as_str() else {
+            continue;
+        };
+        if name.ends_with('/') {
+            continue;
+        }
+        let Some(key) = rank(name) else {
+            continue;
+        };
+        candidates.push((key, name.to_string(), index, cdr.uncompressed_size()?));
+    }
+    candidates.sort_by(|a, b| a.0.cmp(&b.0).then_with(|| a.1.cmp(&b.1)));
+
+    for (_, name, index, declared) in candidates {
+        if declared > MAX_ZIP_ENTRY_BYTES {
+            continue;
+        }
+        let entry_reader = reader.file(index).await?;
+        let mut data = Vec::new();
+        futures_lite::AsyncReadExt::read_to_end(
+            &mut futures_lite::AsyncReadExt::take(entry_reader, MAX_ZIP_ENTRY_BYTES + 1),
+            &mut data,
+        )
+        .await?;
+        if data.len() as u64 <= MAX_ZIP_ENTRY_BYTES {
+            return Ok(Some((name, data)));
+        }
+    }
+
+    Ok(None)
+}
+
 pub const MAX_STREAMED_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
 
 pub const MAX_METADATA_ENTRY_BYTES: u64 = 64 * 1024 * 1024;

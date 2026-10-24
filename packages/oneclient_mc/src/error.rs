@@ -50,6 +50,9 @@ pub enum McError {
     #[error("minecraft: {0}")]
     Minecraft(String),
 
+    #[error("minecraft returned HTTP {status}: {body}")]
+    MinecraftStatus { status: u16, body: String },
+
     #[error("failed to parse metadata: {0}")]
     ParseError(#[from] serde_json::Error),
 
@@ -89,6 +92,17 @@ impl McError {
                 )
             }
             _ => false,
+        }
+    }
+
+    #[must_use]
+    pub fn http_status(&self) -> Option<u16> {
+        match self {
+            Self::MinecraftStatus { status, .. }
+            | Self::Request(oneclient_net::RequestError::HttpStatus { status, .. }) => {
+                Some(*status)
+            }
+            _ => None,
         }
     }
 }

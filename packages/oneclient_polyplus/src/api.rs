@@ -429,6 +429,26 @@ pub async fn cape_texture(url: &str) -> Result<Bytes, PlusError> {
         .ok_or_else(|| PlusError::Asset("the cape has no texture".into()))
 }
 
+pub async fn bundle_files(url: &str) -> Result<Vec<(String, Bytes)>, PlusError> {
+    let bytes = download(url).await?;
+    if !bytes.starts_with(b"PK") {
+        let name = if bytes.starts_with(b"\x89PNG") {
+            "texture.png"
+        } else {
+            "animation.json"
+        };
+        return Ok(vec![(name.to_string(), bytes)]);
+    }
+
+    let entries = polyio::read_zip_bytes_entries(bytes.to_vec())
+        .await
+        .map_err(|err| PlusError::Asset(err.to_string()))?;
+    Ok(entries
+        .into_iter()
+        .map(|(name, data)| (name, Bytes::from(data)))
+        .collect())
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 pub struct StoreTags {
     #[serde(default)]

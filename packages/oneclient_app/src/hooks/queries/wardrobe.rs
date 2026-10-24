@@ -427,23 +427,42 @@ impl QueryCapability for SkinsQuery {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct CapeTextureKeys {
+pub struct CosmeticBundleKeys {
     pub url: Option<String>,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct CapeTextureQuery;
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CosmeticBundle {
+    pub geometry: Option<Bytes>,
+    pub animation: Option<Bytes>,
+    pub texture: Option<Bytes>,
+    pub sheet: Option<Bytes>,
+    pub pet: Option<Bytes>,
+}
 
-impl QueryCapability for CapeTextureQuery {
-    type Ok = Bytes;
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct CosmeticBundleQuery;
+
+impl QueryCapability for CosmeticBundleQuery {
+    type Ok = CosmeticBundle;
     type Err = String;
-    type Keys = CapeTextureKeys;
+    type Keys = CosmeticBundleKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let Some(url) = keys.url.as_deref() else {
-            return Err("No cape".into());
+            return Err("No cosmetic".into());
         };
-        api::cape_texture(url).await.map_err(plus_message)
+        let files = api::bundle_files(url).await.map_err(plus_message)?;
+        let names: Vec<&str> = files.iter().map(|(name, _)| name.as_str()).collect();
+        let parts = plusrenderer::bundle::parts(&names);
+        let pick = |index: Option<usize>| index.map(|index| files[index].1.clone());
+        Ok(CosmeticBundle {
+            geometry: pick(parts.geometry),
+            animation: pick(parts.animation),
+            texture: pick(parts.texture),
+            sheet: pick(parts.sheet),
+            pet: pick(names.iter().position(|name| *name == "pet.json")),
+        })
     }
 }
 
@@ -640,8 +659,8 @@ pub fn use_swatch(url: Option<String>, cape: bool) -> UseQuery<SwatchQuery> {
     use_query(Query::new(SwatchKeys { url, cape }, SwatchQuery).stale_time(TEXTURE_STALE))
 }
 
-pub fn use_cape_texture(url: Option<String>) -> UseQuery<CapeTextureQuery> {
-    use_query(Query::new(CapeTextureKeys { url }, CapeTextureQuery).stale_time(TEXTURE_STALE))
+pub fn use_cosmetic_bundle(url: Option<String>) -> UseQuery<CosmeticBundleQuery> {
+    use_query(Query::new(CosmeticBundleKeys { url }, CosmeticBundleQuery).stale_time(TEXTURE_STALE))
 }
 
 async fn invalidate_after(action: &WardrobeAction) {

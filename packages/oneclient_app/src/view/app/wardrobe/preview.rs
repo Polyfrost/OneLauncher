@@ -6,8 +6,8 @@ use uuid::Uuid;
 
 use super::page::{
     BACK_VIEW_TYPES, Section, Selection, Shared, VariantPick, WardrobeData, add_to_cart, cart_key,
-    cart_name, collection_label, is_new, perform, perform_then, shop_thumbnail, type_label,
-    variant_label,
+    cart_name, collection_label, equip_slot, is_new, perform, perform_then, shop_thumbnail,
+    type_label, variant_label,
 };
 use super::parts::{BACK_YAW, CapeSource, CoverThumb, FRONT_YAW, LookThumb, money, price_label};
 use crate::components::{Button, Icon, IconType, ScrollArea, Segment, SegmentedControl, TextInput};
@@ -415,6 +415,7 @@ impl Component for PreviewPanel {
         }
         overlay = overlay.maybe_child(status_text(&status));
 
+        let trying_on = *shared.trying_on.read();
         let (skin, cape) = match &picked {
             Some(Selection::Skin(id)) => (
                 data.skin(*id)
@@ -425,13 +426,14 @@ impl Component for PreviewPanel {
                 Some(outfit) => data.outfit_look(outfit),
                 None => (None, data.current_cape()),
             },
-            Some(Selection::MojangCape(id)) => (
+            Some(Selection::MojangCape(id)) if trying_on => (
                 None,
                 data.mojang_cape(id)
                     .map(|cape| CapeSource::Mojang(cape.url.clone())),
             ),
             Some(Selection::Owned(_))
-                if owned.is_some_and(|group| group.kind == api::CosmeticType::Cape) =>
+                if trying_on
+                    && owned.is_some_and(|group| group.kind == api::CosmeticType::Cape) =>
             {
                 (
                     None,
@@ -442,6 +444,27 @@ impl Component for PreviewPanel {
                 )
             }
             _ => (None, data.current_cape()),
+        };
+
+        let equipped = match &picked {
+            Some(Selection::Outfit(id)) => data.outfit(*id).map(|outfit| outfit.equipped.clone()),
+            _ => None,
+        }
+        .unwrap_or_else(|| data.equipped());
+        let try_on = owned.filter(|_| trying_on).and_then(|group| {
+            let variant = data.selected_variant(group)?;
+            let slot = equip_slot(group, variant)?;
+            let resolved = group.variant_for_skin(variant.id, data.slim);
+            Some((slot, data.variant(resolved)?.1.url.clone()?))
+        });
+        let cosmetics = data.look_cosmetics(&equipped, try_on);
+        let emote = match &picked {
+            Some(Selection::Emote(id)) => data
+                .emotes()
+                .iter()
+                .find(|emote| emote.id == *id)
+                .and_then(|emote| emote.url.clone()),
+            _ => None,
         };
 
         panel_box()
@@ -456,6 +479,8 @@ impl Component for PreviewPanel {
                         uuid: data.uuid.clone(),
                         skin,
                         cape,
+                        cosmetics,
+                        emote,
                         yaw: if show_back { BACK_YAW } else { FRONT_YAW },
                         zoom: 1.0,
                         interactive: true,

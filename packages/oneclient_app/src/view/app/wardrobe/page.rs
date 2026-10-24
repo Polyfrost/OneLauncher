@@ -396,6 +396,30 @@ impl WardrobeData {
         (skin, cape)
     }
 
+    pub fn look_cosmetics(
+        &self,
+        equipped: &HashMap<BodySlot, i32>,
+        try_on: Option<(BodySlot, String)>,
+    ) -> Vec<(BodySlot, String)> {
+        let tried = try_on.as_ref().map(|(slot, _)| *slot);
+        let mut cosmetics: Vec<(BodySlot, String)> = equipped
+            .iter()
+            .filter(|(slot, _)| Some(**slot) != tried)
+            .filter_map(|(slot, id)| Some((*slot, self.variant(*id)?.1.url.clone()?)))
+            .chain(try_on)
+            .filter(|(slot, _)| *slot != BodySlot::Cape)
+            .collect();
+        cosmetics.sort();
+        cosmetics
+    }
+
+    pub fn equipped(&self) -> HashMap<BodySlot, i32> {
+        self.plus
+            .as_ref()
+            .map(|plus| plus.equipped.clone())
+            .unwrap_or_default()
+    }
+
     pub fn outfits_in_order(&self) -> Vec<OutfitInfo> {
         favorites_first(
             self.outfits
@@ -464,8 +488,30 @@ pub(super) fn shop_thumbnail(
             uuid: data.uuid.clone(),
             skin: None,
             cape: Some(CapeSource::Plus(api::asset_url(asset))),
+            cosmetics: Vec::new(),
+            emote: None,
             yaw: BACK_YAW,
             zoom: if interactive { 1.0 } else { CAPE_ZOOM },
+            interactive,
+        }
+        .into_element();
+    }
+    if interactive && let Some(asset) = variant.asset_id.or(item.asset_id) {
+        let url = api::asset_url(asset);
+        let emote = item.kind == CosmeticType::Emote;
+        let try_on = item.kind.default_slot().map(|slot| (slot, url.clone()));
+        return LookThumb {
+            uuid: data.uuid.clone(),
+            skin: None,
+            cape: data.current_cape(),
+            cosmetics: data.look_cosmetics(&data.equipped(), try_on),
+            emote: emote.then_some(url),
+            yaw: if BACK_VIEW_TYPES.contains(&item.kind) {
+                BACK_YAW
+            } else {
+                FRONT_YAW
+            },
+            zoom: 1.0,
             interactive,
         }
         .into_element();
@@ -479,7 +525,7 @@ pub(super) fn shop_thumbnail(
     .into_element()
 }
 
-fn equip_slot(group: &CosmeticGroup, variant: &CosmeticVariant) -> Option<BodySlot> {
+pub(super) fn equip_slot(group: &CosmeticGroup, variant: &CosmeticVariant) -> Option<BodySlot> {
     let allowed = |slot: BodySlot| {
         (variant.allowed_slots.is_empty() && group.allowed_slots.is_empty())
             || variant.allowed_slots.contains(&slot)
@@ -719,6 +765,7 @@ struct Anchors {
 #[derive(Clone, Copy)]
 pub(super) struct Shared {
     pub selection: State<Option<Selection>>,
+    pub trying_on: State<bool>,
     pub adding_skin: State<bool>,
     pub show_cart: State<bool>,
     pub cart: State<Vec<CartEntry>>,
@@ -732,6 +779,7 @@ pub(super) struct Shared {
 impl PartialEq for Shared {
     fn eq(&self, other: &Self) -> bool {
         self.selection == other.selection
+            && self.trying_on == other.trying_on
             && self.adding_skin == other.adding_skin
             && self.show_cart == other.show_cart
             && self.cart == other.cart
@@ -809,6 +857,7 @@ impl Component for WardrobeBody {
         let scroll = use_scroll_controller(ScrollConfig::default);
         let shared = Shared {
             selection: use_state(|| None::<Selection>),
+            trying_on: use_state(|| false),
             adding_skin: use_state(|| false),
             show_cart: use_state(|| false),
             cart: use_state(Vec::<CartEntry>::new),
@@ -1546,20 +1595,22 @@ impl GridCtx<'_> {
 
     fn select(&self, picked: Selection) -> EventHandler<()> {
         let mut selection = self.shared.selection;
+        let mut trying_on = self.shared.trying_on;
         let mut show_cart = self.shared.show_cart;
         let mut adding_skin = self.shared.adding_skin;
         EventHandler::new(move |()| {
             show_cart.set(false);
             adding_skin.set(false);
+            trying_on.set(true);
             selection.set(Some(picked.clone()));
         })
     }
 
-    fn select_and(&self, picked: Selection, then: EventHandler<()>) -> EventHandler<()> {
-        let select = self.select(picked);
+    fn equip(&self, toggle: EventHandler<()>) -> EventHandler<()> {
+        let mut trying_on = self.shared.trying_on;
         EventHandler::new(move |()| {
-            select.call(());
-            then.call(());
+            trying_on.set(false);
+            toggle.call(());
         })
     }
 
@@ -1885,13 +1936,15 @@ fn mojang_card(ctx: &GridCtx, cape: &MojangCape) -> Element {
             uuid: data.uuid.clone(),
             skin: None,
             cape: Some(CapeSource::Mojang(cape.url.clone())),
+            cosmetics: Vec::new(),
+            emote: None,
             yaw: BACK_YAW,
             zoom: CAPE_ZOOM,
             interactive: false,
         }
         .into_element(),
         menu: vec![{
-            let toggle = ctx.select_and(picked.clone(), toggle.clone());
+            let toggle = ctx.equip(toggle.clone());
             MenuAction::new(
                 if active {
                     IconType::XClose
@@ -1908,7 +1961,7 @@ fn mojang_card(ctx: &GridCtx, cape: &MojangCape) -> Element {
         swatches: Vec::new(),
         on_pick: None,
         on_select: ctx.select(picked.clone()),
-        on_action: ctx.select_and(picked, toggle),
+        on_action: ctx.equip(toggle),
     }
     .into_element()
 }
@@ -1925,13 +1978,15 @@ fn owned_card(ctx: &GridCtx, group: &CosmeticGroup) -> Element {
         Ok(keys) => ctx.run(keys),
         Err(message) => EventHandler::new(move |()| status.set(Some(message.clone()))),
     };
-    let on_equip = ctx.select_and(picked.clone(), toggle);
+    let on_equip = ctx.equip(toggle);
 
     let thumbnail = match variant {
         Some(variant) if group.kind == CosmeticType::Cape => LookThumb {
             uuid: data.uuid.clone(),
             skin: None,
             cape: variant.url.clone().map(CapeSource::Plus),
+            cosmetics: Vec::new(),
+            emote: None,
             yaw: BACK_YAW,
             zoom: CAPE_ZOOM,
             interactive: false,
@@ -2322,6 +2377,8 @@ fn outfit_card(ctx: &GridCtx, outfit: &OutfitInfo) -> Element {
         badge: outfit.favorite.then(Badge::favorite),
         thumbnail: LookThumb {
             uuid: data.uuid.clone(),
+            cosmetics: data.look_cosmetics(&outfit.equipped, None),
+            emote: None,
             skin,
             cape,
             yaw: FRONT_YAW,
@@ -2489,6 +2546,8 @@ fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
             uuid: data.uuid.clone(),
             skin: Some((skin.url.clone(), slim)),
             cape: None,
+            cosmetics: Vec::new(),
+            emote: None,
             yaw: FRONT_YAW,
             zoom: 1.0,
             interactive: false,

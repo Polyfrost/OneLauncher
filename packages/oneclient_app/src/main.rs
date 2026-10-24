@@ -262,7 +262,7 @@ fn main() {
             std::env::var("ONECLIENT_GPU_CACHE_BYTES")
                 .ok()
                 .and_then(|v| v.parse::<usize>().ok())
-                .unwrap_or(96 * 1024 * 1024),
+                .unwrap_or(128 * 1024 * 1024),
         )
         .with_plugin(freya::borderless::BorderlessPlugin::new())
         .with_plugin(freya::metrics::MetricsPlugin::default())

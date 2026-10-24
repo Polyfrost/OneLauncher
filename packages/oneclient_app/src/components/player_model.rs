@@ -1,38 +1,33 @@
 use std::cell::RefCell;
+use std::rc::Rc;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
-use freya::engine::prelude::{
-    Data, Paint, SamplingOptions, Shader, SkData, SkImage, SkRect, TileMode,
-};
+use freya::engine::prelude::{SkData, SkImage, SkRect};
 use freya::prelude::*;
-use skia_safe::RuntimeEffect;
-use skia_safe::runtime_effect::ChildPtr;
+use oneclient_polyplus::api;
+use plusrenderer::animation::Loop;
+use plusrenderer::build::Buffers;
+use plusrenderer::{Arms, BodySlot, Camera, Scene, bundle};
+use skia_safe::vertices::VertexMode;
+use skia_safe::{
+    BlendMode, Canvas, FilterMode, ImageInfo, Matrix, MipmapMode, Paint, Point, SamplingOptions,
+    Surface, TileMode, Vertices, surfaces,
+};
 
 use crate::hooks::use_player_skin;
+use crate::hooks::wardrobe::CosmeticBundle;
 
-const CAM_DIST: f32 = 80.0;
-const CAM_FOCAL: f32 = 1.85;
+const PLAYER: usize = 0;
+const CAPE: usize = 1;
+const FIRST_COSMETIC: usize = 2;
+const CAM_DIST: f32 = 52.;
+const MODEL_CENTER_Y: f32 = 16.;
 const DRAG_SENSITIVITY: f32 = 0.01;
 const PITCH_LIMIT: f32 = 1.3;
-
-thread_local! {
-    static EFFECT: RefCell<Option<RuntimeEffect>> = const { RefCell::new(None) };
-}
-
-fn player_effect() -> Option<RuntimeEffect> {
-    EFFECT.with(|cell| {
-        let mut slot = cell.borrow_mut();
-
-        if slot.is_none() {
-            match RuntimeEffect::make_for_shader(PLAYER_SKSL, None) {
-                Ok(effect) => *slot = Some(effect),
-                Err(err) => tracing::error!("player model SkSL failed to compile: {err}"),
-            }
-        }
-
-        slot.clone()
-    })
-}
+// Every animated frame repaints the whole window, so cosmetics animate slower than the display.
+const ANIMATION_FRAME: Duration = Duration::from_millis(33);
+const EMOTE_PAUSE: f32 = 1.;
 
 #[derive(PartialEq, Clone)]
 pub struct PlayerModel {
@@ -43,6 +38,8 @@ pub struct PlayerModel {
     pitch: f32,
     skin: Option<(Bytes, bool)>,
     cape: Option<Bytes>,
+    cosmetics: Vec<(api::BodySlot, CosmeticBundle)>,
+    emote: Option<Bytes>,
     zoom: f32,
     focus_y: f32,
     draggable: bool,
@@ -58,6 +55,8 @@ impl PlayerModel {
             pitch: -0.1,
             skin: None,
             cape: None,
+            cosmetics: Vec::new(),
+            emote: None,
             zoom: 1.0,
             focus_y: 0.0,
             draggable: true,
@@ -89,6 +88,16 @@ impl PlayerModel {
         self
     }
 
+    pub fn cosmetics(mut self, cosmetics: Vec<(api::BodySlot, CosmeticBundle)>) -> Self {
+        self.cosmetics = cosmetics;
+        self
+    }
+
+    pub fn emote(mut self, emote: Option<Bytes>) -> Self {
+        self.emote = emote;
+        self
+    }
+
     pub fn width(mut self, width: Size) -> Self {
         self.width = width;
         self
@@ -111,42 +120,224 @@ impl PlayerModel {
     }
 }
 
+#[derive(PartialEq)]
+struct Look {
+    skin: Bytes,
+    slim: bool,
+    cape: Option<Bytes>,
+    cosmetics: Vec<(api::BodySlot, CosmeticBundle)>,
+    emote: Option<Bytes>,
+}
+
+#[derive(PartialEq, Clone, Copy)]
+struct Frame {
+    yaw: f32,
+    pitch: f32,
+    distance: f32,
+    target_y: f32,
+    seconds: f32,
+    size: (f32, f32),
+    scale: f32,
+}
+
+#[derive(Default)]
+struct Player {
+    look: Option<Look>,
+    scene: Scene,
+    textures: Vec<Option<SkImage>>,
+    start: Option<Instant>,
+    /// When a one-shot emote plays again, and how often.
+    replay: Option<(f32, f32)>,
+    surface: Option<Surface>,
+    frame: Option<(Frame, SkImage)>,
+}
+
+impl Player {
+    // Freya repaints every visible model each frame, so draw from the last frame's image while nothing changed.
+    fn paint(&mut self, canvas: &Canvas, frame: Frame) {
+        let (w, h) = frame.size;
+        let pixels = (
+            (w * frame.scale).ceil() as i32,
+            (h * frame.scale).ceil() as i32,
+        );
+        if self.frame.as_ref().map(|(last, _)| last) != Some(&frame) {
+            self.frame = None;
+            if self.surface.as_ref().map(|s| (s.width(), s.height())) != Some(pixels) {
+                let info = ImageInfo::new_n32_premul(pixels, None);
+                self.surface = canvas
+                    .new_surface(&info, None)
+                    .or_else(|| surfaces::raster(&info, None, None));
+            }
+            let Some(surface) = self.surface.as_mut() else {
+                return;
+            };
+
+            // Fit the full height, or twice the width when the box is narrow.
+            let fit = h.min(w * 2.);
+            let camera = Camera::orbit(
+                -frame.yaw.to_degrees(),
+                frame.pitch.to_degrees(),
+                frame.distance,
+                [0., frame.target_y, 0.],
+            );
+            self.scene.pose(frame.seconds);
+            let buffers = self.scene.build(&camera, [w, fit]);
+
+            let offscreen = surface.canvas();
+            offscreen.clear(skia_safe::Color::TRANSPARENT);
+            offscreen.save();
+            offscreen.scale((frame.scale, frame.scale));
+            offscreen.translate((0., (h - fit) / 2.));
+            draw(offscreen, buffers, &self.textures);
+            offscreen.restore();
+            self.frame = Some((frame, surface.image_snapshot()));
+        }
+
+        if let Some((_, image)) = &self.frame {
+            canvas.draw_image_rect(image, None, SkRect::from_wh(w, h), &Paint::default());
+        }
+    }
+
+    fn seconds(&self) -> f32 {
+        self.start.map_or(0., |start| start.elapsed().as_secs_f32())
+    }
+
+    /// Plays a finished one-shot emote again, returning whether it did.
+    fn replay_emote(&mut self, now: f32) -> bool {
+        let Some((at, period)) = self.replay.filter(|(at, _)| now >= *at) else {
+            return false;
+        };
+        self.scene.play(PLAYER, at);
+        self.replay = Some((at + period, period));
+        true
+    }
+
+    fn load(&mut self, look: Look) {
+        let mut scene = Scene::default();
+        let mut textures = vec![decode(&look.skin), None];
+
+        scene.load_player(PLAYER, if look.slim { Arms::Slim } else { Arms::Wide });
+        self.replay = None;
+        if let Some(json) = look.emote.as_deref().and_then(utf8) {
+            match scene.load_animation(PLAYER, json) {
+                Ok(()) => scene.play(PLAYER, 0.),
+                Err(err) => tracing::warn!("emote failed to load: {err}"),
+            }
+            let animation = plusrenderer::animation::parse(json, &mut Default::default())
+                .ok()
+                .and_then(|animations| animations.into_iter().next());
+            if let Some(animation) = animation.filter(|a| a.loop_mode == Loop::Once) {
+                let period = animation.length + EMOTE_PAUSE;
+                self.replay = Some((period, period));
+            }
+        }
+
+        if let Some(cape) = look.cape.as_ref().and_then(decode) {
+            let [w, h] = [cape.width() as u32, cape.height() as u32];
+            let (frames, frame_seconds) = bundle::cape_sheet([w, w / 2], [w, h], "cape.sheet");
+            scene.load_cape(CAPE, frames, frame_seconds);
+            textures[CAPE] = Some(cape);
+        }
+
+        for (index, (slot, cosmetic)) in look.cosmetics.iter().enumerate() {
+            let index = FIRST_COSMETIC + index;
+            let Some(body) = body_slot(*slot) else {
+                continue;
+            };
+            let Some(geometry) = cosmetic.geometry.as_deref().and_then(utf8) else {
+                continue;
+            };
+            let pet = cosmetic
+                .pet
+                .as_deref()
+                .and_then(|json| serde_json::from_slice::<serde_json::Value>(json).ok());
+            // Flying and walking pets roam beside the player in game; only shoulder pets attach.
+            if pet.as_ref().is_some_and(|pet| {
+                !pet["archetype"]
+                    .as_str()
+                    .is_some_and(|kind| kind.eq_ignore_ascii_case("shoulder"))
+            }) {
+                continue;
+            }
+            let model = match plusrenderer::bedrock::parse_one(geometry) {
+                Ok(model) => model,
+                Err(err) => {
+                    tracing::warn!("cosmetic geometry failed to parse: {err}");
+                    continue;
+                }
+            };
+
+            let texture = cosmetic.texture.as_ref().and_then(decode);
+            let size = texture
+                .as_ref()
+                .map(|image| [image.width() as u32, image.height() as u32]);
+            let anchor = pet.as_ref().and_then(|pet| pet["anchor"].as_str());
+            scene.load_cosmetic(index, model, body, anchor, size);
+            if let Some(scale) = pet.as_ref().and_then(|pet| pet["scale"].as_f64()) {
+                scene.set_scale(index, scale as f32);
+            }
+            if let Some(json) = cosmetic.animation.as_deref().and_then(utf8)
+                && scene.load_animation(index, json).is_ok()
+            {
+                scene.play(index, 0.);
+            }
+
+            textures.resize(index + 1, None);
+            textures[index] = texture;
+        }
+
+        self.scene = scene;
+        self.textures = textures;
+        self.start = Some(Instant::now());
+        self.frame = None;
+        self.look = Some(look);
+    }
+}
+
 impl Component for PlayerModel {
     fn render(&self) -> impl IntoElement {
         let (profile_skin, profile_slim) = use_player_skin(self.uuid.clone());
-        let (skin_bytes, is_slim) = self.skin.clone().unwrap_or((profile_skin, profile_slim));
+        let (skin, slim) = self.skin.clone().unwrap_or((profile_skin, profile_slim));
 
-        let mut cache = use_state(|| None::<(usize, Shader)>);
-        let src_ptr = skin_bytes.as_ptr() as usize;
-        let cache_copy = cache.peek().cloned();
-        let skin_shader = match cache_copy {
-            Some((ptr, shader)) if ptr == src_ptr => Some(shader),
-            _ => {
-                let shader = decode_skin_shader(&skin_bytes);
-                if let Some(shader) = &shader {
-                    cache.set(Some((src_ptr, shader.clone())));
-                }
-                shader
-            }
-        };
+        let player = use_hook(|| Rc::new(RefCell::new(Player::default())));
+        let mut seconds = use_state(|| 0f32);
 
-        let mut cape_cache = use_state(|| None::<(usize, Shader, f32)>);
-        let cape_ptr = self
-            .cape
-            .as_ref()
-            .map_or(0, |bytes| bytes.as_ptr() as usize);
-        let cape_copy = cape_cache.peek().clone();
-        let cape_shader = match (&self.cape, cape_copy) {
-            (None, _) => None,
-            (Some(_), Some((ptr, shader, scale))) if ptr == cape_ptr => Some((shader, scale)),
-            (Some(bytes), _) => {
-                let decoded = decode_cape_shader(bytes);
-                if let Some((shader, scale)) = &decoded {
-                    cape_cache.set(Some((cape_ptr, shader.clone(), *scale)));
-                }
-                decoded
-            }
+        let look = Look {
+            skin,
+            slim,
+            cape: self.cape.clone(),
+            cosmetics: self.cosmetics.clone(),
+            emote: self.emote.clone(),
         };
+        {
+            let mut player = player.borrow_mut();
+            if player.look.as_ref() != Some(&look) {
+                player.load(look);
+                if *seconds.peek() != 0. {
+                    seconds.set(0.);
+                }
+            }
+        }
+
+        use_hook({
+            let player = player.clone();
+            let animate = self.draggable;
+            move || {
+                if !animate {
+                    return;
+                }
+                spawn(async move {
+                    loop {
+                        tokio::time::sleep(ANIMATION_FRAME).await;
+                        let mut player = player.borrow_mut();
+                        let now = player.seconds();
+                        if player.replay_emote(now) || player.scene.is_animating() {
+                            seconds.set(now);
+                        }
+                    }
+                });
+            }
+        });
 
         let mut yaw = use_state({
             let v = self.yaw;
@@ -173,62 +364,33 @@ impl Component for PlayerModel {
             drag.set(None);
         }
 
-        let effect = player_effect();
         let draggable = self.draggable;
-        let zoom = self.zoom;
-        let focus_y = self.focus_y;
+        let distance = CAM_DIST / self.zoom;
+        let target_y = MODEL_CENTER_Y + self.focus_y;
+        let (cur_yaw, cur_pitch, now) = (yaw(), pitch(), seconds());
+        let draw_player = player.clone();
 
-        let render_cb = RenderCallback::new(move |ctx: &mut FillRenderContext| {
-            let (Some(effect), Some(skin)) = (&effect, &skin_shader) else {
-                return;
-            };
-
+        let render_cb = RenderCallback::new(move |ctx| {
             let (w, h) = (ctx.size.width, ctx.size.height);
-
             if w <= 0.0 || h <= 0.0 {
                 return;
             }
 
-            let (cur_yaw, cur_pitch) = (yaw(), pitch());
-
-            let slim = if is_slim { 1.0 } else { 0.0 };
-            let (cape, has_cape, cape_scale) = match &cape_shader {
-                Some((shader, scale)) => (shader.clone(), 1.0, *scale),
-                None => (blank_shader(), 0.0, 1.0),
-            };
-
-            let mut uniforms = Vec::with_capacity(40);
-            for value in [
-                w,
-                h,
-                cur_yaw,
-                cur_pitch,
-                CAM_DIST,
-                CAM_FOCAL * zoom,
-                slim,
-                has_cape,
-                cape_scale,
-                focus_y,
-            ] {
-                uniforms.extend_from_slice(&value.to_le_bytes());
-            }
-
-            let Some(shader) = effect.make_shader(
-                Data::new_copy(&uniforms),
-                &[ChildPtr::from(skin.clone()), ChildPtr::from(cape)],
-                None,
-            ) else {
-                return;
-            };
-
-            let mut paint = Paint::default();
-            paint.set_anti_alias(true);
-            paint.set_shader(shader);
-            ctx.canvas.draw_rect(SkRect::new(0.0, 0.0, w, h), &paint);
+            draw_player.borrow_mut().paint(
+                ctx.canvas,
+                Frame {
+                    yaw: cur_yaw,
+                    pitch: cur_pitch,
+                    distance,
+                    target_y,
+                    seconds: now,
+                    size: (w, h),
+                    scale: ctx.canvas.local_to_device_as_3x3().scale_x(),
+                },
+            );
         });
 
         rect()
-            .key((src_ptr ^ cape_ptr.rotate_left(17)) as u64)
             .width(self.width.clone())
             .height(self.height.clone())
             .cursor(if draggable {
@@ -270,207 +432,77 @@ impl Component for PlayerModel {
     }
 }
 
-fn decode_skin_shader(skin_bytes: &Bytes) -> Option<Shader> {
-    let data = unsafe { SkData::new_bytes(skin_bytes) };
-    let skin = SkImage::from_encoded(data)?;
-    let skin = skin.make_raster_image(None, None).unwrap_or(skin);
-
-    skin.to_shader(
-        (TileMode::Clamp, TileMode::Clamp),
-        SamplingOptions::default(),
-        None,
-    )
+fn utf8(bytes: &[u8]) -> Option<&str> {
+    std::str::from_utf8(bytes).ok()
 }
 
-fn decode_cape_shader(cape_bytes: &Bytes) -> Option<(Shader, f32)> {
-    let data = unsafe { SkData::new_bytes(cape_bytes) };
-    let cape = SkImage::from_encoded(data)?;
-    let cape = cape.make_raster_image(None, None).unwrap_or(cape);
-    let width = cape.width() as f32;
-    let scale = if width >= 64.0 {
-        width / 64.0
-    } else {
-        (width / 22.0).max(1.0 / 64.0)
+fn decode(bytes: &Bytes) -> Option<SkImage> {
+    let image = SkImage::from_encoded(unsafe { SkData::new_bytes(bytes) })?;
+    Some(image.make_raster_image(None, None).unwrap_or(image))
+}
+
+fn body_slot(slot: api::BodySlot) -> Option<BodySlot> {
+    Some(match slot {
+        api::BodySlot::Cape => BodySlot::Cape,
+        api::BodySlot::Backpack => BodySlot::Backpack,
+        api::BodySlot::Glasses => BodySlot::Glasses,
+        api::BodySlot::Wings => BodySlot::Wings,
+        api::BodySlot::LeftHand => BodySlot::LeftHand,
+        api::BodySlot::RightHand => BodySlot::RightHand,
+        api::BodySlot::Hat => BodySlot::Hat,
+        api::BodySlot::Aura => BodySlot::Aura,
+        api::BodySlot::Boots => BodySlot::Boots,
+        api::BodySlot::Shoulder => BodySlot::Shoulder,
+        api::BodySlot::Pet => BodySlot::Pet,
+        api::BodySlot::Unknown => return None,
+    })
+}
+
+// plusrenderer-skia's `draw`, on the Skia build Freya links (the crate pins a newer one).
+fn draw(canvas: &Canvas, buffers: &Buffers, textures: &[Option<SkImage>]) {
+    let points = |v: &[f32]| {
+        v.as_chunks::<2>()
+            .0
+            .iter()
+            .map(|&[x, y]| Point::new(x, y))
+            .collect::<Vec<_>>()
     };
+    let positions = points(&buffers.positions);
+    let uvs = points(&buffers.uvs);
+    let colors: Vec<skia_safe::Color> = buffers
+        .colors
+        .iter()
+        .map(|&c| skia_safe::Color::new(c))
+        .collect();
+    let sampling = SamplingOptions::new(FilterMode::Nearest, MipmapMode::None);
 
-    let shader = cape.to_shader(
-        (TileMode::Clamp, TileMode::Clamp),
-        SamplingOptions::default(),
-        None,
-    )?;
-    Some((shader, scale))
-}
+    for run in &buffers.runs {
+        let Some(Some(image)) = textures.get(run.texture as usize) else {
+            continue;
+        };
 
-fn blank_shader() -> Shader {
-    freya::engine::prelude::shaders::color(freya::engine::prelude::Color::TRANSPARENT)
-}
+        let to_uv = Matrix::scale((1.0 / image.width() as f32, 1.0 / image.height() as f32));
+        let Some(shader) = image.to_shader((TileMode::Clamp, TileMode::Clamp), sampling, &to_uv)
+        else {
+            continue;
+        };
 
-const PLAYER_SKSL: &str = r#"
-uniform float uResX;
-uniform float uResY;
-uniform float uYaw;
-uniform float uPitch;
-uniform float uDist;
-uniform float uFocal;
-uniform float uSlim;
-uniform float uHasCape;
-uniform float uCapeScale;
-uniform float uFocusY;
-uniform shader uSkin;
-uniform shader uCape;
+        let indices = &buffers.indices[run.start as usize..(run.start + run.count) as usize];
+        let (Some(&first), Some(&last)) = (indices.iter().min(), indices.iter().max()) else {
+            continue;
+        };
+        let range = first as usize..=last as usize;
+        let local: Vec<u16> = indices.iter().map(|&i| i - first).collect();
+        let vertices = Vertices::new_copy(
+            VertexMode::Triangles,
+            &positions[range.clone()],
+            &uvs[range.clone()],
+            &colors[range],
+            Some(&local),
+        );
 
-void hitBox(float3 ro, float3 rd, float3 cmin, float3 cmax, float3 dims, float3 td,
-            float2 base, inout float best, inout half4 col) {
-    float3 t1 = (cmin - ro) / rd;
-    float3 t2 = (cmax - ro) / rd;
-    float3 tmin = min(t1, t2);
-    float3 tmax = max(t1, t2);
-    float tN = max(max(tmin.x, tmin.y), tmin.z);
-    float tF = min(min(tmax.x, tmax.y), tmax.z);
-    if (tN > tF || tF < 0.0) { return; }
-    float t = tN;
-    if (t < 0.0 || t >= best) { return; }
-
-    float3 p = ro + rd * t;
-    float3 n = clamp((p - cmin) / dims, 0.0, 1.0); // 0..1 inside the box
-    float w = td.x, h = td.y, d = td.z;            // atlas region sizes
-
-    float2 uv;
-    float3 nrm;
-    if (tN == tmin.x) {
-        if (rd.x > 0.0) {            // -X face (player right)
-            uv = float2(base.x + n.z * d, base.y + d + (1.0 - n.y) * h);
-            nrm = float3(-1.0, 0.0, 0.0);
-        } else {                     // +X face (player left)
-            uv = float2(base.x + d + w + (1.0 - n.z) * d, base.y + d + (1.0 - n.y) * h);
-            nrm = float3(1.0, 0.0, 0.0);
-        }
-    } else if (tN == tmin.y) {
-		if (rd.y > 0.0) {            // -Y face (bottom): same orientation as the top, shifted by w
-            uv = float2(base.x + d + w + n.x * w, base.y + n.z * d);
-            nrm = float3(0.0, -1.0, 0.0);
-        } else {                     // +Y face (top)
-            uv = float2(base.x + d + n.x * w, base.y + n.z * d);
-            nrm = float3(0.0, 1.0, 0.0);
-        }
-    } else {
-        if (rd.z > 0.0) {            // -Z face (back)
-            uv = float2(base.x + 2.0 * d + w + (1.0 - n.x) * w, base.y + d + (1.0 - n.y) * h);
-            nrm = float3(0.0, 0.0, -1.0);
-        } else {                     // +Z face (front)
-            uv = float2(base.x + d + n.x * w, base.y + d + (1.0 - n.y) * h);
-            nrm = float3(0.0, 0.0, 1.0);
-        }
+        let mut paint = Paint::default();
+        paint.set_shader(shader);
+        canvas.draw_vertices(&vertices, BlendMode::Modulate, &paint);
     }
-
-    half4 s = uSkin.eval(uv);
-
-    if (s.a < 0.5) {
-        return;
-    }
-
-    float3 L = normalize(float3(0.4, 0.8, 0.6));
-    float diff = 0.65 + 0.35 * clamp(dot(nrm, L), 0.0, 1.0);
-    col = half4(s.rgb * half(diff), 1.0);
-    best = t;
 }
-
-void hitCape(float3 ro, float3 rd, inout float best, inout half4 col) {
-    float3 cmin = float3(-5.0, -8.0, -3.0);
-    float3 cmax = float3(5.0, 8.0, -2.0);
-    float3 dims = cmax - cmin;
-    float3 t1 = (cmin - ro) / rd;
-    float3 t2 = (cmax - ro) / rd;
-    float3 tmin = min(t1, t2);
-    float3 tmax = max(t1, t2);
-    float tN = max(max(tmin.x, tmin.y), tmin.z);
-    float tF = min(min(tmax.x, tmax.y), tmax.z);
-    if (tN > tF || tF < 0.0) { return; }
-    float t = tN;
-    if (t < 0.0 || t >= best) { return; }
-
-    float3 p = ro + rd * t;
-    float3 n = clamp((p - cmin) / dims, 0.0, 1.0);
-
-    float2 uv;
-    float3 nrm;
-    if (tN == tmin.z) {
-        if (rd.z > 0.0) {
-            uv = float2(1.0 + (1.0 - n.x) * 10.0, 1.0 + (1.0 - n.y) * 16.0);
-            nrm = float3(0.0, 0.0, -1.0);
-        } else {
-            uv = float2(12.0 + n.x * 10.0, 1.0 + (1.0 - n.y) * 16.0);
-            nrm = float3(0.0, 0.0, 1.0);
-        }
-    } else if (tN == tmin.x) {
-        uv = float2(rd.x > 0.0 ? 0.5 : 11.5, 1.0 + (1.0 - n.y) * 16.0);
-        nrm = float3(rd.x > 0.0 ? -1.0 : 1.0, 0.0, 0.0);
-    } else {
-        uv = float2(rd.y > 0.0 ? 11.0 + n.x * 10.0 : 1.0 + n.x * 10.0, 0.5);
-        nrm = float3(0.0, rd.y > 0.0 ? -1.0 : 1.0, 0.0);
-    }
-
-    half4 s = uCape.eval(uv * uCapeScale);
-    if (s.a < 0.5) {
-        return;
-    }
-
-    float3 L = normalize(float3(0.4, 0.8, 0.6));
-    float diff = 0.65 + 0.35 * clamp(dot(nrm, L), 0.0, 1.0);
-    col = half4(s.rgb * half(diff), 1.0);
-    best = t;
-}
-
-half4 main(float2 fragCoord) {
-    float2 res = float2(uResX, uResY);
-    float2 uv = (fragCoord - 0.5 * res) / min(res.y, res.x * 2.0);
-    uv.y = -uv.y;                    // screen y is down; world y is up
-
-    float cy = cos(uYaw), sy = sin(uYaw);
-    float cp = cos(uPitch), sp = sin(uPitch);
-    float3 target = float3(0.0, uFocusY, 0.0);
-    float3 ro = target + float3(sy * cp, sp, cy * cp) * uDist;
-    float3 fwd = normalize(target - ro);
-    float3 right = normalize(cross(fwd, float3(0.0, 1.0, 0.0)));
-    float3 up = cross(right, fwd);
-    float3 rd = normalize(fwd * uFocal + right * uv.x + up * uv.y);
-
-    float best = 1e9;
-    half4 col = half4(0.0);
-
-    float aw = uSlim > 0.5 ? 3.0 : 4.0;  // arm width: slim = 3px, classic = 4px
-    float sw = aw + 0.5;                  // arm overlay (sleeve) width
-
-    hitBox(ro, rd, float3(-4.0, 8.0, -4.0), float3(4.0, 16.0, 4.0),
-           float3(8.0, 8.0, 8.0), float3(8.0, 8.0, 8.0), float2(0.0, 0.0), best, col);   // head
-    hitBox(ro, rd, float3(-4.0, -4.0, -2.0), float3(4.0, 8.0, 2.0),
-           float3(8.0, 12.0, 4.0), float3(8.0, 12.0, 4.0), float2(16.0, 16.0), best, col); // body
-    hitBox(ro, rd, float3(-4.0 - aw, -4.0, -2.0), float3(-4.0, 8.0, 2.0),
-           float3(aw, 12.0, 4.0), float3(aw, 12.0, 4.0), float2(40.0, 16.0), best, col); // right arm
-    hitBox(ro, rd, float3(4.0, -4.0, -2.0), float3(4.0 + aw, 8.0, 2.0),
-           float3(aw, 12.0, 4.0), float3(aw, 12.0, 4.0), float2(32.0, 48.0), best, col); // left arm
-    hitBox(ro, rd, float3(-4.0, -16.0, -2.0), float3(0.0, -4.0, 2.0),
-           float3(4.0, 12.0, 4.0), float3(4.0, 12.0, 4.0), float2(0.0, 16.0), best, col);  // right leg
-    hitBox(ro, rd, float3(0.0, -16.0, -2.0), float3(4.0, -4.0, 2.0),
-           float3(4.0, 12.0, 4.0), float3(4.0, 12.0, 4.0), float2(16.0, 48.0), best, col); // left leg
-
-    hitBox(ro, rd, float3(-4.5, 7.5, -4.5), float3(4.5, 16.5, 4.5),
-           float3(9.0, 9.0, 9.0), float3(8.0, 8.0, 8.0), float2(32.0, 0.0), best, col);    // hat
-    hitBox(ro, rd, float3(-4.25, -4.25, -2.25), float3(4.25, 8.25, 2.25),
-           float3(8.5, 12.5, 4.5), float3(8.0, 12.0, 4.0), float2(16.0, 32.0), best, col);  // jacket
-    hitBox(ro, rd, float3(-3.75 - sw, -4.25, -2.25), float3(-3.75, 8.25, 2.25),
-           float3(sw, 12.5, 4.5), float3(aw, 12.0, 4.0), float2(40.0, 32.0), best, col);  // right sleeve
-    hitBox(ro, rd, float3(3.75, -4.25, -2.25), float3(3.75 + sw, 8.25, 2.25),
-           float3(sw, 12.5, 4.5), float3(aw, 12.0, 4.0), float2(48.0, 48.0), best, col);  // left sleeve
-    hitBox(ro, rd, float3(-4.25, -16.25, -2.25), float3(0.25, -3.75, 2.25),
-           float3(4.5, 12.5, 4.5), float3(4.0, 12.0, 4.0), float2(0.0, 32.0), best, col);   // right pant
-    hitBox(ro, rd, float3(-0.25, -16.25, -2.25), float3(4.25, -3.75, 2.25),
-           float3(4.5, 12.5, 4.5), float3(4.0, 12.0, 4.0), float2(0.0, 48.0), best, col);   // left pant
-
-    if (uHasCape > 0.5) {
-        hitCape(ro, rd, best, col);
-    }
-
-    return col;
-}
-"#;

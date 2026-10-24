@@ -6,10 +6,10 @@ use crate::components::{
 };
 use freya::elements::image::{AspectRatio, ImageHandle, image};
 use freya::engine::prelude::{SkData, SkImage};
-use oneclient_polyplus::api::SwatchArt;
+use oneclient_polyplus::api::{BodySlot, SwatchArt};
 
 use crate::AppAssets;
-use crate::hooks::wardrobe::{use_cape_texture, use_swatch};
+use crate::hooks::wardrobe::{use_cosmetic_bundle, use_swatch};
 use crate::hooks::{loaded_image, settled_or_loading, use_cached_image};
 use crate::theme::colors;
 use crate::ui::{border_all_color, clamp_to_window};
@@ -938,10 +938,25 @@ pub(super) struct LookThumb {
     pub uuid: String,
     pub skin: Option<(String, bool)>,
     pub cape: Option<CapeSource>,
+    pub cosmetics: Vec<(BodySlot, String)>,
+    pub emote: Option<String>,
     pub yaw: f32,
     pub zoom: f32,
     pub interactive: bool,
 }
+
+const COSMETIC_SLOTS: [BodySlot; 10] = [
+    BodySlot::Backpack,
+    BodySlot::Glasses,
+    BodySlot::Wings,
+    BodySlot::LeftHand,
+    BodySlot::RightHand,
+    BodySlot::Hat,
+    BodySlot::Aura,
+    BodySlot::Boots,
+    BodySlot::Shoulder,
+    BodySlot::Pet,
+];
 
 impl Component for LookThumb {
     fn render(&self) -> impl IntoElement {
@@ -957,7 +972,15 @@ impl Component for LookThumb {
             _ => None,
         };
         let mojang_query = use_cached_image(mojang_url.clone(), 0);
-        let plus_query = use_cape_texture(plus_url.clone());
+        let plus_query = use_cosmetic_bundle(plus_url.clone());
+        let url_for = |slot: BodySlot| {
+            self.cosmetics
+                .iter()
+                .find(|(worn, _)| *worn == slot)
+                .map(|(_, url)| url.clone())
+        };
+        let cosmetic_queries = COSMETIC_SLOTS.map(|slot| use_cosmetic_bundle(url_for(slot)));
+        let emote_query = use_cosmetic_bundle(self.emote.clone());
 
         let skin = self.skin.as_ref().map(|(url, slim)| {
             let bytes = loaded_image(Some(url.as_str()), &skin_query)
@@ -969,13 +992,27 @@ impl Component for LookThumb {
             (Some(url), _) => {
                 loaded_image(Some(url.as_str()), &mojang_query).map(|(_, bytes)| bytes)
             }
-            (None, Some(_)) => settled_or_loading(&plus_query),
+            (None, Some(_)) => {
+                settled_or_loading(&plus_query).and_then(|bundle| bundle.sheet.or(bundle.texture))
+            }
             (None, None) => None,
         };
+        let cosmetics = COSMETIC_SLOTS
+            .iter()
+            .zip(&cosmetic_queries)
+            .filter(|(slot, _)| url_for(**slot).is_some())
+            .filter_map(|(slot, query)| Some((*slot, settled_or_loading(query)?)))
+            .collect();
+        let emote = self
+            .emote
+            .as_ref()
+            .and_then(|_| settled_or_loading(&emote_query)?.animation);
 
         PlayerModel::new(self.uuid.clone())
             .skin(skin)
             .cape(cape)
+            .cosmetics(cosmetics)
+            .emote(emote)
             .yaw(self.yaw)
             .zoom(self.zoom)
             .draggable(self.interactive)

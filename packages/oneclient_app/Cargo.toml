@@ -60,6 +60,7 @@ arboard.workspace = true
 image.workspace = true
 
 freya-skia-safe.workspace = true
+plusrenderer.workspace = true
 freya.workspace = true
 freya-core.workspace = true
 pulldown-cmark.workspace = true

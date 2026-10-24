@@ -26,6 +26,7 @@ pub use storage::SettingsStorage;
 use crate::{
     components::{Button, Icon, IconType},
     theme::colors,
+    ui::border_all_color,
 };
 
 pub fn settings_page() -> Rect {
@@ -51,7 +52,7 @@ pub fn settings_row(
     description: impl Into<String>,
     trailing: impl IntoElement,
 ) -> impl IntoElement {
-    settings_row_inner(icon, title, description, trailing, false)
+    settings_row_inner(icon, title, description, trailing, RowTone::Normal)
 }
 
 pub fn settings_row_disabled(
@@ -60,7 +61,24 @@ pub fn settings_row_disabled(
     description: impl Into<String>,
     trailing: impl IntoElement,
 ) -> impl IntoElement {
-    settings_row_inner(icon, title, description, trailing, true)
+    settings_row_inner(icon, title, description, trailing, RowTone::Disabled)
+}
+
+/// For destructive actions, tinted red like the other danger notices
+pub fn settings_row_danger(
+    icon: IconType,
+    title: &'static str,
+    description: impl Into<String>,
+    trailing: impl IntoElement,
+) -> impl IntoElement {
+    settings_row_inner(icon, title, description, trailing, RowTone::Danger)
+}
+
+#[derive(Clone, Copy, PartialEq)]
+enum RowTone {
+    Normal,
+    Disabled,
+    Danger,
 }
 
 fn settings_row_inner(
@@ -68,11 +86,12 @@ fn settings_row_inner(
     title: &'static str,
     description: impl Into<String>,
     trailing: impl IntoElement,
-    disabled: bool,
+    tone: RowTone,
 ) -> impl IntoElement {
     let description = description.into();
+    let danger = tone == RowTone::Danger;
     rect()
-        .maybe(disabled, |el| el.opacity(0.4))
+        .maybe(tone == RowTone::Disabled, |el| el.opacity(0.4))
         .horizontal()
         .width(Size::fill())
         .content(Content::Flex)
@@ -80,8 +99,15 @@ fn settings_row_inner(
         .spacing(16.)
         .padding(Gaps::new_symmetric(12., 16.))
         .corner_radius(CornerRadius::new_all(12.))
-        .background(colors::page_elevated())
-        .child(Icon::new(icon))
+        .background(if danger {
+            colors::danger().with_a(26)
+        } else {
+            colors::page_elevated()
+        })
+        .maybe(danger, |el| {
+            el.border(border_all_color(1., colors::danger().with_a(128)))
+        })
+        .child(Icon::new(icon).maybe(danger, |icon| icon.color(colors::danger())))
         .child(
             rect()
                 .vertical()

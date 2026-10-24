@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
 use oneclient_common::domain::GameLoader;
-use oneclient_core::clusters::Cluster;
+use oneclient_core::clusters::{Cluster, ImportedModpack};
 use oneclient_core::{
     BundleArchive, BundleUpdateCheckResult, BundleWithUpdateStatus, LauncherError,
     get_bundles_with_update_status, list_cluster_bundle_overrides,
@@ -139,6 +139,80 @@ pub fn use_bundle_overrides(cluster_id: ClusterId) -> UseQuery<BundleOverridesQu
         BundleOverridesKeys { cluster_id },
         BundleOverridesQuery { cluster_id },
     ))
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ModpackSourcesQuery {
+    pub cluster_id: ClusterId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ModpackSourcesKeys {
+    pub cluster_id: ClusterId,
+}
+
+impl QueryCapability for ModpackSourcesQuery {
+    type Ok = HashMap<String, String>;
+    type Err = LauncherError;
+    type Keys = ModpackSourcesKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let _ = keys;
+        let state = crate::launcher::state()?;
+        let cluster_id = self.cluster_id;
+        off_ui(async move {
+            oneclient_core::clusters::modpack_file_sources(&state, cluster_id).await
+        })
+        .await
+    }
+}
+
+pub fn use_modpack_sources(cluster_id: ClusterId) -> UseQuery<ModpackSourcesQuery> {
+    use_query(Query::new(
+        ModpackSourcesKeys { cluster_id },
+        ModpackSourcesQuery { cluster_id },
+    ))
+}
+
+pub fn modpack_sources_map(query: &UseQuery<ModpackSourcesQuery>) -> HashMap<String, String> {
+    super::state::settled_or_loading(query).unwrap_or_default()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ImportedModpacksQuery {
+    pub cluster_id: ClusterId,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct ImportedModpacksKeys {
+    pub cluster_id: ClusterId,
+}
+
+impl QueryCapability for ImportedModpacksQuery {
+    type Ok = Vec<ImportedModpack>;
+    type Err = LauncherError;
+    type Keys = ImportedModpacksKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let _ = keys;
+        let state = crate::launcher::state()?;
+        let cluster_id = self.cluster_id;
+        off_ui(async move {
+            oneclient_core::clusters::list_imported_modpacks(&state, cluster_id).await
+        })
+        .await
+    }
+}
+
+pub fn use_imported_modpacks(cluster_id: ClusterId) -> UseQuery<ImportedModpacksQuery> {
+    use_query(Query::new(
+        ImportedModpacksKeys { cluster_id },
+        ImportedModpacksQuery { cluster_id },
+    ))
+}
+
+pub fn imported_modpacks_list(query: &UseQuery<ImportedModpacksQuery>) -> Vec<ImportedModpack> {
+    super::state::settled_or_loading(query).unwrap_or_default()
 }
 
 pub fn bundle_overrides_map(

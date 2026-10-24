@@ -17,7 +17,7 @@ pub use install::{
     on_user_enable_artifact, on_user_remove_artifact, pending_bundle_choices,
     remove_artifact_from_cluster, set_artifact_enabled_to, set_bundle_choices,
     set_bundle_package_enabled, set_bundle_package_opt_in, set_bundle_package_override,
-    set_bundle_package_overrides, taken_bundle_names,
+    set_bundle_package_overrides, taken_bundle_names, wanted_bundle_files,
 };
 pub use manager::{Bundle, BundlesManager};
 pub use manifest::BundleManifest as RemoteBundleManifest;
@@ -25,6 +25,7 @@ pub use optional::{
     PendingOptionalMod, pending_optional_mods, resolve_optional_mods, skip_optional_mods,
 };
 pub use overrides::bundle_override_paths;
+pub(crate) use updates::compare_version_like;
 pub use types::{
     ApplyBundleUpdatesResult, BundleArchive, BundleFile, BundleFileKind, BundleFileType,
     BundleManifest, BundleOptionalPackage, BundlePackageAddition, BundlePackageRemoval,

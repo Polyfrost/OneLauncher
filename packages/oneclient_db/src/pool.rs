@@ -8,7 +8,9 @@ use crate::DbError;
 
 pub type DbPool = SqlitePool;
 
-const BUSY_TIMEOUT: Duration = Duration::from_secs(5);
+/// Bundle updates write from several installs at once and on a slow disk or
+/// under antivirus a single write can take seconds; 5s failed real installs
+const BUSY_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[tracing::instrument(
     skip(database_path),

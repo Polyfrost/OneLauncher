@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sqlx::SqlitePool;
 
-use crate::models::{ClusterKind, ClusterPatch, ClusterRow, NewCluster};
+use crate::models::{ClusterPatch, ClusterRow, NewCluster};
 
 pub async fn get_by_id(pool: &SqlitePool, id: i64) -> Result<Option<ClusterRow>, sqlx::Error> {
     sqlx::query_as!(
@@ -54,13 +54,6 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<ClusterRow>, sqlx::Error>
     )
     .fetch_all(pool)
     .await
-}
-
-pub async fn list_oneclient_ids(pool: &SqlitePool) -> Result<Vec<i64>, sqlx::Error> {
-    sqlx::query_scalar("SELECT id FROM clusters WHERE kind = ?")
-        .bind(ClusterKind::OneClient.as_i64())
-        .fetch_all(pool)
-        .await
 }
 
 pub async fn find_by_version_loader(
@@ -308,6 +301,63 @@ pub async fn delete_by_id(pool: &SqlitePool, id: i64) -> Result<bool, sqlx::Erro
         .await?;
 
     Ok(result.rows_affected() > 0)
+}
+
+pub async fn reset_content_state(
+    pool: &SqlitePool,
+    id: i64,
+    kept_content_types: &[i64],
+) -> Result<(), sqlx::Error> {
+    let kept = format!(
+        "[{}]",
+        kept_content_types
+            .iter()
+            .map(i64::to_string)
+            .collect::<Vec<_>>()
+            .join(",")
+    );
+
+    let mut tx = pool.begin().await?;
+
+    sqlx::query(
+        r#"
+		DELETE FROM cluster_artifacts
+		WHERE cluster_id = ?
+		AND hash NOT IN (
+			SELECT hash FROM artifacts
+			WHERE content_type IN (SELECT value FROM json_each(?))
+		)
+		"#,
+    )
+    .bind(id)
+    .bind(&kept)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query(
+        r#"
+		DELETE FROM browser_package_updates
+		WHERE cluster_id = ?
+		AND hash NOT IN (SELECT hash FROM cluster_artifacts WHERE cluster_id = ?)
+		"#,
+    )
+    .bind(id)
+    .bind(id)
+    .execute(&mut *tx)
+    .await?;
+
+    for statement in [
+        "DELETE FROM cluster_bundle_overrides WHERE cluster_id = ?",
+        "DELETE FROM cluster_optional_mods WHERE cluster_id = ?",
+        "DELETE FROM cluster_bundle_choices WHERE cluster_id = ?",
+        "DELETE FROM cluster_bundle_type_opt_outs WHERE cluster_id = ?",
+        // Packages a release migration is still waiting to bring over would come back later
+        "DELETE FROM release_migration_waitlist WHERE target_cluster_id = ?",
+    ] {
+        sqlx::query(statement).bind(id).execute(&mut *tx).await?;
+    }
+
+    tx.commit().await
 }
 
 #[cfg(test)]

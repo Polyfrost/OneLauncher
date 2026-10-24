@@ -10,7 +10,7 @@ use freya::prelude::*;
 use freya::router::use_route;
 use oneclient_content::modpacks::detect_format;
 use oneclient_content::packages::ContentType;
-use oneclient_core::clusters::{Cluster, ModpackSource};
+use oneclient_core::clusters::Cluster;
 use oneclient_db::models::ClusterId;
 
 use crate::Route;
@@ -24,7 +24,6 @@ use crate::launcher::off_ui;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-const DIALOG_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_W: f32 = 480.;
 const FILE_ROW_H: f32 = 34.;
 const FILE_LIST_MAX_ROWS: usize = 5;
@@ -108,8 +107,11 @@ pub fn accept_drop(
                 let path = path.clone();
                 spawn(async move {
                     let probe = path.clone();
-                    let is_modpack =
-                        off_ui(async move { detect_format(&probe).await.is_ok() }).await;
+                    let is_modpack = off_ui(async move {
+                        detect_format(&probe).await.is_ok()
+                            || oneclient_core::is_instance_archive(&probe).await
+                    })
+                    .await;
                     if is_modpack {
                         modpacks.write().push(path);
                     } else {
@@ -138,7 +140,7 @@ fn use_dropped_modpack_driver(pending: State<Vec<PathBuf>>, modpacks: State<Vec<
         let mut modpacks = modpacks;
         let dropped = std::mem::take(&mut *modpacks.write());
         for path in dropped {
-            dispatch.install_modpack(ModpackSource::File(path));
+            dispatch.import_file(path);
         }
     });
 }
@@ -215,7 +217,7 @@ impl Component for DropVeil {
                     .max_width(Size::px(360.))
                     .offset_y((1. - progress) * 12.)
                     .corner_radius(CornerRadius::new_all(16.))
-                    .background(DIALOG_BG)
+                    .background(colors::card())
                     .border(border_all_color(1., colors::brand().with_a(120)))
                     .shadow(Shadow::from((
                         0.,
@@ -321,7 +323,7 @@ impl Component for DropPrompt {
                             .padding(Gaps::new_all(22.))
                             .spacing(16.)
                             .corner_radius(CornerRadius::new_all(16.))
-                            .background(DIALOG_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .shadow(Shadow::from((
                                 0.,

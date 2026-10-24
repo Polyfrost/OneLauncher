@@ -7,8 +7,6 @@ use crate::hooks::{use_dispatch, use_link_confirm};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-
 #[derive(PartialEq)]
 pub struct ConfirmLinkOverlay;
 
@@ -49,7 +47,7 @@ impl Component for ConfirmLinkOverlay {
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
                             .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 rect()

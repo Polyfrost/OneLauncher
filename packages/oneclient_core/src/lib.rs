@@ -3,6 +3,7 @@
 #[cfg(debug_assertions)]
 pub mod dev;
 
+pub mod bisect;
 pub mod changelog;
 pub mod clusters;
 pub mod disable_warnings;
@@ -23,6 +24,12 @@ pub mod tos;
 pub mod verify;
 pub mod versions;
 
+pub use bisect::{
+    BisectAnswer, BisectError, BisectExit, BisectMod, BisectRole, BisectStatus, BisectSuggestion,
+    accept_bisect_suggestion, answer_bisect, bisect_status, confirm_bisect,
+    decline_bisect_suggestion, finish_bisect, keep_bisect_mods_on, restart_bisect,
+    skip_bisect_answer, start_bisect, undo_bisect_answer,
+};
 pub use changelog::{ChangelogEntry, fetch_changelog};
 pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
@@ -36,6 +43,14 @@ pub use game::{
     get_loaders_for_version, get_version_ids, get_versions_for_loader, launch_cluster,
 };
 pub use images::ImageCacheStore;
+pub use migration::launchers::{
+    ExternalDetection, ExternalImportReport, ExternalInstance, ExternalLauncher, FlaggedImportMod,
+    ImportAlternative, ImportChoices, InstanceArchive, ScreenedInstance, alternative_version_id,
+    detect_all as detect_external_launchers, detect_folder as detect_external_folder,
+    discard_instance_archive, import_instance as import_external_instance, is_instance_archive,
+    open_instance_archive, same_folder as same_external_folder,
+    screen_instances as screen_external_instances, sweep_instance_archives,
+};
 pub use migration::{
     ImportTarget, MigrationDetection, MigrationSource, SourceInstance, detect as detect_migration,
     import_game_dir as import_migration_game_dir,
@@ -59,12 +74,15 @@ pub use oneclient_content::bundles::{
     apply_bundle_updates, apply_bundle_updates_with, check_bundle_updates,
     cluster_has_bundle_content, clusters_sharing_artifact, delete_artifact, effective_enabled,
     get_bundles_with_update_status, install_bundle, install_cluster_bundles,
-    install_package_from_bundle, list_cluster_bundle_overrides, pending_optional_mods,
-    remove_artifact_from_cluster, resolve_optional_mods, set_artifact_enabled_to,
-    set_bundle_package_enabled, set_bundle_package_opt_in, set_bundle_package_override,
-    set_bundle_package_overrides, skip_optional_mods,
+    install_package_from_bundle, list_cluster_bundle_overrides, on_user_remove_artifact,
+    pending_optional_mods, remove_artifact_from_cluster, resolve_optional_mods,
+    set_artifact_enabled_to, set_bundle_package_enabled, set_bundle_package_opt_in,
+    set_bundle_package_override, set_bundle_package_overrides, skip_optional_mods,
 };
 pub use oneclient_content::packages::LinkedArtifactInfo;
+pub use oneclient_content::packages::dependents::{
+    DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
+};
 pub use oneclient_content::packages::updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
     cached_browser_package_updates, check_browser_package_updates, refresh_browser_package_updates,

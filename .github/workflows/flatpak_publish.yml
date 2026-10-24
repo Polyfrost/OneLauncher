@@ -1,0 +1,63 @@
+name: Publish Flatpak Bundle
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag (e.g. oneclient-2.0.1)'
+        required: true
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.parse.outputs.version }}
+    steps:
+      - name: Parse release tag
+        id: parse
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          if [[ "$TAG" =~ ^oneclient-(.+)$ ]]; then
+            echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Tag '$TAG' does not match oneclient-*"
+            exit 1
+          fi
+
+  bundle:
+    needs: resolve
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      options: --privileged
+    env:
+      VERSION: ${{ needs.resolve.outputs.version }}
+      BUNDLE: OneClient_${{ needs.resolve.outputs.version }}_linux_x86_64.flatpak
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Prepare manifest
+        shell: bash
+        run: |
+          URL="https://github.com/${{ github.repository }}/releases/download/oneclient-${VERSION}/OneClient_${VERSION}_linux_x86_64.deb"
+          SHA=$(curl -sfL "$URL" | sha256sum | cut -d' ' -f1)
+          MANIFEST="distribution/flatpak/org.polyfrost.OneClient.yml"
+          sed -i "s|^\(\s*url: \).*\.deb$|\1${URL}|" "$MANIFEST"
+          sed -i "/\.deb$/{n;s|^\(\s*sha256: \).*|\1${SHA}|}" "$MANIFEST"
+
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
+        with:
+          bundle: ${{ env.BUNDLE }}
+          manifest-path: distribution/flatpak/org.polyfrost.OneClient.yml
+          upload-artifact: false
+
+      - name: Upload bundle to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          dnf -y install gh
+          gh release upload "oneclient-${VERSION}" "$BUNDLE" --clobber --repo "${{ github.repository }}"

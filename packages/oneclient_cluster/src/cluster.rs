@@ -134,7 +134,7 @@ impl Cluster {
     }
 
     pub fn shares_content(&self, content_type: oneclient_common::domain::ContentType) -> bool {
-        content_type.is_global() && !self.is_isolated()
+        content_type.is_global() && !self.uses_dedicated_dir()
     }
 
     pub fn modpack_icon_file(&self) -> Option<PathBuf> {

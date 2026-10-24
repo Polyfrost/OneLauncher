@@ -141,7 +141,7 @@ pub enum HashAlgorithm {
     Sha1,
 }
 
-/// Applies only to browser-installed packages bundles have their own update flow
+/// Applies to browser-installed packages and the Fabric loader bundles have their own update flow
 /// The check always runs regardless of variant so "out of date" markers stay populated
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumIter, StrumDisplay,
@@ -183,6 +183,64 @@ impl PackageUpdateMode {
             "automatic" => Some(Self::Automatic),
             "skip" => Some(Self::Skip),
             "prompt" => Some(Self::Prompt),
+            _ => None,
+        }
+    }
+}
+
+/// Passed as `--graphicsBackend` which overrides the in-game setting
+///
+/// `Default` passes nothing so the game's own setting and crash fallback apply
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumIter, StrumDisplay,
+)]
+#[serde(rename_all = "snake_case")]
+pub enum GraphicsBackend {
+    #[default]
+    Default,
+    OpenGl,
+    Vulkan,
+}
+
+impl GraphicsBackend {
+    /// Display order defaulting variant first
+    pub const ALL: &[Self] = &[Self::Default, Self::OpenGl, Self::Vulkan];
+
+    /// The option only exists from 26.2 onwards snapshots and anything that does
+    /// not parse as a release version are left alone
+    #[must_use]
+    pub fn supported_on(mc_version: &str) -> bool {
+        crate::version::parse_mc_version(mc_version)
+            .and_then(|v| Some((v.major, v.minor?)))
+            .is_some_and(|version| version >= (26, 2))
+    }
+
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Default => "Default",
+            Self::OpenGl => "OpenGL",
+            Self::Vulkan => "Vulkan",
+        }
+    }
+
+    /// The value stored in the `setting_profiles.graphics_backend` column and
+    /// passed to `--graphicsBackend`
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::OpenGl => "opengl",
+            Self::Vulkan => "vulkan",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "default" => Some(Self::Default),
+            "opengl" => Some(Self::OpenGl),
+            "vulkan" => Some(Self::Vulkan),
             _ => None,
         }
     }
@@ -323,6 +381,24 @@ impl Resolution {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graphics_backend_is_supported_from_26_2() {
+        for version in ["26.2", "26.2.1", "26.3", "27.0"] {
+            assert!(GraphicsBackend::supported_on(version), "{version}");
+        }
+        for version in [
+            "26.1",
+            "26.1.2",
+            "1.21.5",
+            "1.8.9",
+            "26.2-snapshot-1",
+            "25w14a",
+            "",
+        ] {
+            assert!(!GraphicsBackend::supported_on(version), "{version}");
+        }
+    }
 
     #[test]
     fn a_display_name_is_not_a_metadata_path() {

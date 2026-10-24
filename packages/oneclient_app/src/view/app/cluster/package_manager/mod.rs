@@ -9,12 +9,12 @@ use oneclient_core::{
 use oneclient_db::models::OverrideType;
 
 use crate::components::{
-    CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry, disable_warning_body,
-    toggle_action,
+    CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry, bundled_delete_action,
+    disable_request, guard_disable, run_guarded, toggle_action,
 };
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings, package_meta_batch,
-    use_cluster_mutation, use_disable_warnings, use_dispatch, use_essential_guard,
+    ClusterAction, EssentialGuardKind, disable_warnings, package_meta_batch, use_cluster_mutation,
+    use_disable_confirm, use_disable_warnings, use_dispatch, use_essential_guard,
     use_game_snapshot, use_package_meta_batch, use_selection, use_view_state,
 };
 
@@ -25,7 +25,7 @@ use views::{
     AdvancedSection, Bulk, ContentBox, ContentKind, EnabledFilter, HiddenFilter, SortMode,
     toolbar_bar,
 };
-pub(super) use views::{empty_hint, empty_shell, empty_title, notice_bar};
+pub(super) use views::{copy_list_button, empty_hint, empty_shell, empty_title, notice_bar};
 
 const CARD_H: f32 = 84.;
 pub(super) const CARD_SPACING: f32 = 8.;
@@ -144,6 +144,19 @@ pub fn bundle_packages(
         }
     }
 
+    let pids_with = |wanted: OverrideType| -> HashSet<&str> {
+        overrides
+            .iter()
+            .filter(|(_, ty)| OverrideType::parse(ty) == Some(wanted))
+            .map(|((_, pid), _)| pid.as_str())
+            .collect()
+    };
+    let disabled = pids_with(OverrideType::Disabled);
+    let removed: HashSet<&str> = pids_with(OverrideType::Removed)
+        .into_iter()
+        .filter(|pid| !disabled.contains(pid))
+        .collect();
+
     let mut ordered: Vec<&BundleWithUpdateStatus> = bundles.iter().collect();
     ordered.sort_by_key(|b| !b.opted_in_types.contains(&content_type));
 
@@ -227,6 +240,8 @@ pub fn bundle_packages(
                 opted_in,
             );
             row.advanced = advanced;
+            row.deleted = installed_info.is_some_and(|info| !info.enabled)
+                && removed.contains(row.package_id.as_str());
             row.github_url = file.github_repo_url();
             rows.push(row);
         }
@@ -324,8 +339,72 @@ fn make_row(
         shadowed: false,
         outranked: false,
         advanced: false,
+        deleted: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
+        bisect_role: None,
+        locked: false,
+        modpack: None,
     }
+}
+
+const BUNDLED_MARKER: &str = "(bundled)";
+
+fn package_url(item: &PackageEntry, content_type: ContentType) -> Option<String> {
+    match item.provider {
+        ProviderId::Modrinth => Some(format!(
+            "https://modrinth.com/{}/{}",
+            content_type.modrinth_type(),
+            item.package_id
+        )),
+        ProviderId::CurseForge => Some(format!(
+            "https://www.curseforge.com/projects/{}",
+            item.package_id
+        )),
+        ProviderId::Local => None,
+    }
+}
+
+fn export_line(item: &PackageEntry, content_type: ContentType) -> String {
+    let version = item
+        .version
+        .clone()
+        .filter(|version| !version.is_empty())
+        .map(|version| {
+            if item.in_bundle() {
+                format!("{version} {BUNDLED_MARKER}")
+            } else {
+                version
+            }
+        })
+        .or_else(|| item.bundle_name.clone())
+        .filter(|version| !version.is_empty());
+
+    let mut segments = vec![item.name.clone()];
+    segments.extend(package_url(item, content_type).or_else(|| item.github_url.clone()));
+    segments.extend(version);
+    if !item.author.is_empty() {
+        segments.push(format!("by {}", item.author));
+    }
+    segments.push(if item.enabled { "enabled" } else { "disabled" }.to_string());
+
+    format!("- {}", segments.join(" | "))
+}
+
+fn export_rows(items: &[PackageEntry], hidden: HiddenFilter) -> Vec<PackageEntry> {
+    items
+        .iter()
+        .filter(|p| hidden.keep(p) && Tab::All.matches(p))
+        .cloned()
+        .collect()
+}
+
+fn package_list_text(rows: &[PackageEntry], content_type: ContentType) -> String {
+    let mut rows: Vec<&PackageEntry> = rows.iter().collect();
+    rows.sort_by_key(|p| p.name.to_lowercase());
+    rows.iter()
+        .map(|row| export_line(row, content_type))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 #[derive(Clone)]
@@ -334,6 +413,7 @@ pub(super) enum Tab {
     Category(String),
     Browser,
     Local,
+    Deleted,
 }
 
 impl Tab {
@@ -343,15 +423,20 @@ impl Tab {
             Tab::Category(c) => c.clone(),
             Tab::Browser => "Online".to_string(),
             Tab::Local => "Local".to_string(),
+            Tab::Deleted => "Deleted".to_string(),
         }
     }
 
     pub(super) fn matches(&self, p: &PackageEntry) -> bool {
+        if p.deleted {
+            return matches!(self, Tab::Deleted);
+        }
         match self {
             Tab::All => p.opted_in,
             Tab::Category(c) => p.categories.iter().any(|pc| pc == c),
             Tab::Browser => (p.is_remote() || p.github_hosted) && !p.in_bundle(),
             Tab::Local => !p.is_remote() && !p.github_hosted,
+            Tab::Deleted => false,
         }
     }
 }
@@ -414,7 +499,33 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
 
     tabs.push(Tab::Browser);
     tabs.push(Tab::Local);
+    if items.iter().any(|p| hidden.keep(p) && p.deleted) {
+        tabs.push(Tab::Deleted);
+    }
     tabs
+}
+
+/// Records the dependency lists of anything installed before the launcher kept
+/// them, once per visit to the list.
+///
+/// Disabling a package consults them, and would otherwise pay for the whole
+/// cluster's backfill while the user waits on a toggle. Failures are silent:
+/// the disable path re-runs this and can proceed without it.
+fn warm_dependencies(cluster_id: i64) {
+    use_hook(move || {
+        spawn_forever(async move {
+            let Ok(state) = crate::launcher::state() else {
+                return;
+            };
+
+            if let Err(err) =
+                oneclient_core::ensure_cluster_dependencies(cluster_id, &state.services.content())
+                    .await
+            {
+                tracing::debug!(%err, "could not record the cluster's package dependencies");
+            }
+        });
+    });
 }
 
 #[derive(PartialEq)]
@@ -426,6 +537,7 @@ pub struct PackageManager {
     cluster_id: i64,
     items: Vec<PackageEntry>,
     categories: Vec<String>,
+    bisecting: bool,
 }
 
 impl PackageManager {
@@ -446,7 +558,13 @@ impl PackageManager {
             cluster_id,
             items,
             categories,
+            bisecting: false,
         }
+    }
+
+    pub fn bisecting(mut self, active: bool) -> Self {
+        self.bisecting = active;
+        self
     }
 }
 
@@ -457,6 +575,8 @@ impl Component for PackageManager {
         let package_type = self.package_type;
         let cluster_id = self.cluster_id;
         let content_type = self.content_type;
+
+        warm_dependencies(cluster_id);
 
         // Cleared once on mount so the rows already rendered keep their badges for this visit
         use_hook(|| {
@@ -486,9 +606,6 @@ impl Component for PackageManager {
         let shares_content = cluster
             .as_ref()
             .map(|cluster| cluster.shares_content(content_type));
-        let uses_bundles = cluster
-            .as_ref()
-            .is_none_or(|cluster| cluster.uses_bundles());
         let active = use_state(|| 0usize);
 
         let search = use_state(String::new);
@@ -497,20 +614,40 @@ impl Component for PackageManager {
         let selection = use_selection::<String>();
         let mutation = use_cluster_mutation();
         let dispatch = use_dispatch();
-        let mut guard = use_essential_guard();
+        let guard = use_essential_guard();
         let warnings_query = use_disable_warnings();
+        let pending_disable = use_disable_confirm();
         let mut confirm_delete = use_state(|| false);
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
         let layout = view.layout;
         let query = SearchQuery::new(&search.read());
+
+        let searching = !query.is_empty();
+        let filters = view.filters;
+        use_side_effect_with_deps(&searching, move |&searching| {
+            let mut filters = filters;
+            let next = if searching {
+                HiddenFilter::Show
+            } else {
+                HiddenFilter::Hide
+            };
+            let current = filters
+                .peek()
+                .get(HiddenFilter::STORAGE_KEY)
+                .and_then(|key| HiddenFilter::from_key(key));
+            if current != Some(next) {
+                filters
+                    .write()
+                    .insert(HiddenFilter::STORAGE_KEY.into(), next.key().into());
+            }
+        });
         let sort_mode = sort
             .read()
             .as_deref()
             .and_then(SortMode::from_key)
             .unwrap_or(SortMode::NameAsc);
 
-        let filters = view.filters;
         let show = filters
             .read()
             .get(EnabledFilter::STORAGE_KEY)
@@ -523,8 +660,10 @@ impl Component for PackageManager {
             .unwrap_or(HiddenFilter::Hide);
         let card_layout = CardLayout::from(*layout.read());
 
+        let bisecting = self.bisecting;
         let disabled_essentials: Vec<&'static str> = items
             .iter()
+            .filter(|_| !bisecting)
             .filter(|package| !package.enabled)
             .filter_map(|package| package.essential.map(|essential| essential.name))
             .collect();
@@ -572,6 +711,9 @@ impl Component for PackageManager {
         if !disabled_essentials.is_empty() {
             notices.push(views::essential_notice(&disabled_essentials));
         }
+        if bisecting {
+            notices.push(views::bisect_notice(noun_plural));
+        }
 
         let (advanced, filtered): (Vec<_>, Vec<_>) = filtered.into_iter().partition(|p| p.advanced);
 
@@ -594,11 +736,20 @@ impl Component for PackageManager {
             .filter(|p| p.installed && !p.in_bundle())
             .filter_map(|p| p.hash.clone())
             .collect();
+        let bundled_deletable: Vec<PackageEntry> = chosen
+            .iter()
+            .filter(|_| content_type == ContentType::Mod)
+            .filter(|p| p.installed && p.in_bundle() && !p.deleted)
+            .cloned()
+            .collect();
 
         let set_enabled: EventHandler<bool> = {
             let chosen = chosen.clone();
             let warnings = disable_warnings(&warnings_query);
             (move |enabled: bool| {
+                if bisecting {
+                    return;
+                }
                 let targets: Vec<&PackageEntry> =
                     chosen.iter().filter(|p| p.enabled != enabled).collect();
                 let actions: Vec<ClusterAction> = targets
@@ -608,29 +759,25 @@ impl Component for PackageManager {
                 if actions.is_empty() {
                     return;
                 }
-                let action = ClusterAction::Batch(actions);
-
-                let warned: Vec<String> = targets
-                    .iter()
-                    .filter(|_| !enabled)
-                    .filter_map(|p| {
-                        disable_warning_body(p, warnings.clone())
-                            .map(|body| format!("**{}**\n\n{body}", p.name))
-                    })
-                    .collect();
-                if warned.is_empty() {
-                    mutation.mutate(action);
+                let name = match targets.as_slice() {
+                    [only] => only.name.clone(),
+                    _ => format!("{} {noun_plural}", targets.len()),
+                };
+                if enabled {
+                    mutation.mutate(ClusterAction::Batch(actions));
                     return;
                 }
-                guard.set(Some(PendingEssential {
-                    name: match targets.as_slice() {
-                        [only] => only.name.clone(),
-                        _ => format!("{} {noun_plural}", targets.len()),
-                    },
-                    body: warned.join("\n\n"),
-                    kind: EssentialGuardKind::Disable,
-                    action,
-                }));
+                let targets: Vec<&PackageEntry> = targets
+                    .into_iter()
+                    .filter(|p| toggle_action(p, cluster_id, false).is_some())
+                    .collect();
+                guard_disable(
+                    disable_request(&targets, cluster_id, name),
+                    &targets,
+                    warnings.clone(),
+                    guard,
+                    pending_disable,
+                );
             })
             .into()
         };
@@ -639,13 +786,13 @@ impl Component for PackageManager {
             selection,
             order,
             count: chosen.len(),
-            deletable: deletable.len(),
+            deletable: deletable.len() + bundled_deletable.len(),
             set_enabled,
             delete: (move |()| confirm_delete.set(true)).into(),
         };
 
         let delete_dialog = confirm_delete.read().then(|| {
-            let count = deletable.len();
+            let count = deletable.len() + bundled_deletable.len();
             let noun = if count == 1 {
                 package_type
             } else {
@@ -656,20 +803,48 @@ impl Component for PackageManager {
             } else {
                 String::new()
             };
+            let body = match (deletable.is_empty(), bundled_deletable.is_empty()) {
+                (_, true) => format!("This can't be undone.{shared}"),
+                (true, false) => format!(
+                    "Bundled {noun_plural} are turned off and moved to the Deleted tab, where you can restore them."
+                ),
+                (false, false) => format!(
+                    "Bundled {noun_plural} are turned off and moved to the Deleted tab, where you can restore them. The rest can't be undone.{shared}"
+                ),
+            };
+            let warnings = disable_warnings(&warnings_query);
             confirm_dialog(
                 format!("Delete {count} {noun}?"),
-                format!("This can't be undone.{shared}"),
+                body,
                 move || confirm_delete.set(false),
                 move || {
-                    mutation.mutate(ClusterAction::Batch(
+                    let action = ClusterAction::Batch(
                         deletable
                             .iter()
                             .map(|hash| ClusterAction::RemoveArtifact {
                                 cluster_id,
                                 hash: hash.clone(),
                             })
+                            .chain(
+                                bundled_deletable
+                                    .iter()
+                                    .filter_map(|p| bundled_delete_action(p, cluster_id)),
+                            )
                             .collect(),
-                    ));
+                    );
+                    let targets: Vec<&PackageEntry> = bundled_deletable.iter().collect();
+                    run_guarded(
+                        action,
+                        &targets,
+                        match (deletable.as_slice(), targets.as_slice()) {
+                            ([], [only]) => only.name.clone(),
+                            _ => format!("{count} {noun}"),
+                        },
+                        EssentialGuardKind::Remove,
+                        warnings.clone(),
+                        mutation,
+                        guard,
+                    );
                     selection.exit();
                     confirm_delete.set(false);
                 },
@@ -691,7 +866,6 @@ impl Component for PackageManager {
                 filters,
                 show,
                 hidden,
-                uses_bundles,
                 layout,
                 cluster_id,
                 package_type,
@@ -699,6 +873,8 @@ impl Component for PackageManager {
                 dispatch,
                 toolbar_width,
                 &bulk,
+                noun_plural,
+                export_rows(&items, hidden),
             ))
             .child(
                 ContentBox::new(
@@ -789,6 +965,101 @@ mod tests {
         assert!(
             rows.iter()
                 .any(|p| p.package_id == "only-declined" && declined.matches(p))
+        );
+    }
+
+    fn installed_off(hash: &str) -> LinkedArtifactInfo {
+        LinkedArtifactInfo {
+            hash: hash.to_string(),
+            cluster_file_name: format!("{hash}.jar"),
+            enabled: false,
+            content_type: ContentType::Mod,
+            file_name: format!("{hash}.jar"),
+            project_id: None,
+            version_id: None,
+            display_name: None,
+            display_version: None,
+            provider: None,
+            published_at: None,
+            seen_status: oneclient_core::SeenStatus::Seen,
+            size_bytes: None,
+        }
+    }
+
+    #[test]
+    fn deleted_tab_holds_only_deleted_mods() {
+        let taken = bundle(
+            "Taken",
+            true,
+            vec![
+                file("deleted", true, false),
+                file("turned-off", false, false),
+            ],
+        );
+        let declined = bundle("Declined", false, vec![file("turned-off", true, false)]);
+        let name = |b: &BundleWithUpdateStatus| b.archive.manifest.name.clone();
+        let overrides = HashMap::from([
+            ((name(&taken), "deleted".to_string()), "removed".to_string()),
+            (
+                (name(&taken), "turned-off".to_string()),
+                "disabled".to_string(),
+            ),
+            (
+                (name(&declined), "turned-off".to_string()),
+                "removed".to_string(),
+            ),
+        ]);
+        let rows = bundle_packages(
+            vec![installed_off("deleted"), installed_off("turned-off")],
+            &[taken, declined],
+            &overrides,
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+        let deleted: Vec<&str> = rows
+            .iter()
+            .filter(|p| Tab::Deleted.matches(p))
+            .map(|p| p.package_id.as_str())
+            .collect();
+        assert_eq!(deleted, ["deleted"]);
+        assert!(
+            rows.iter()
+                .any(|p| p.package_id == "turned-off" && Tab::All.matches(p))
+        );
+    }
+
+    #[test]
+    fn mod_list_skips_deleted_and_declined_mods() {
+        let taken = bundle(
+            "Taken",
+            true,
+            vec![file("kept", true, false), file("deleted", true, false)],
+        );
+        let declined = bundle("Declined", false, vec![file("only-declined", true, false)]);
+        let overrides = HashMap::from([(
+            (taken.archive.manifest.name.clone(), "deleted".to_string()),
+            "removed".to_string(),
+        )]);
+        let rows = bundle_packages(
+            vec![installed_off("deleted")],
+            &[taken, declined],
+            &overrides,
+            &PackageMetaMap::new(),
+            &HashSet::new(),
+            ContentType::Mod,
+        );
+        let exported = export_rows(&rows, HiddenFilter::Hide);
+        let ids: Vec<&str> = exported.iter().map(|p| p.package_id.as_str()).collect();
+        assert_eq!(ids, ["kept"]);
+        let kept = &exported[0];
+        assert_eq!(
+            package_list_text(&exported, ContentType::Mod),
+            format!(
+                "- {} | {} | enabled",
+                kept.name,
+                kept.bundle_name.clone().unwrap()
+            )
         );
     }
 }

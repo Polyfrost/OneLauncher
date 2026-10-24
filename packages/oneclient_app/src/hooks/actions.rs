@@ -3,10 +3,15 @@
 //! Always `spawn_forever` never `spawn` Freya's `spawn` cancels the task when
 //! the calling component unmounts this work is app-scoped not component-scoped
 
+mod external_import;
+pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
+pub(crate) use modpacks::listed;
 pub use modpacks::modpack_job_running;
 mod release_migration;
+mod share;
+pub use share::exporting;
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -34,7 +39,9 @@ use crate::notifications::{
     BundleChoices, ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef,
     OptionalModsGroup, OptionalModsOutcome, PackageUpdateGroup, PendingPrompt,
 };
-use crate::state::{AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, RelocationState};
+use crate::state::{
+    AppChannel, AppState, AsyncStatus, FlaggedInstallPrompt, MissingModInstall, RelocationState,
+};
 use crate::{invalidate_java_queries, launcher};
 
 /// Over-disabling is the cheaper mistake a dead button beats a second game
@@ -869,7 +876,8 @@ impl Actions {
                     {
                         Ok(result) => {
                             installed += result.additions_applied.len();
-                            failed += result.additions_failed.len();
+                            failed +=
+                                result.additions_failed.len() + result.downloads_failed.len();
                             applied.push(*cluster_id);
                         }
                         Err(err) => {
@@ -997,7 +1005,13 @@ impl Actions {
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
         if modpack_job_running(cluster_id) {
             self.notify("The modpack is still being set up")
-                .body("Wait for it to finish installing, then press Play again.")
+                .body("Wait for the modpack to finish, or close its dialog, then press Play again.")
+                .send();
+            return;
+        }
+        if oneclient_core::clusters::is_resetting(cluster_id) {
+            self.notify("This instance is being reset")
+                .body("Wait for the reset to finish, then press Play again.")
                 .send();
             return;
         }
@@ -1016,7 +1030,17 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let started = Instant::now();
-            launch(&actions, cluster_id).await;
+            match super::sync_actions::sync_launch_block(cluster_id).await {
+                Some(reason) => actions
+                    .notify("Wait for the sync to finish")
+                    .body(reason)
+                    .send(),
+                None if modpacks::modpack_job_in_shared_dir(cluster_id).await => actions
+                    .notify("A modpack is still being set up")
+                    .body("It is changing an instance that shares this game folder. Press Play again once it finishes.")
+                    .send(),
+                None => launch(&actions, cluster_id).await,
+            }
 
             // An instant failure would hand the button back inside the same
             // click burst so hold it for the floor either way
@@ -1044,6 +1068,120 @@ impl Actions {
             .write_channel(AppChannel::Game)
             .game
             .error = None;
+    }
+
+    pub fn dismiss_game_crash(&self, cluster_id: ClusterId) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Game)
+            .game
+            .clear_crash(cluster_id);
+    }
+
+    pub fn repair_cluster(&self, cluster_id: ClusterId) {
+        self.dismiss_game_crash(cluster_id);
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            oneclient_core::game::repair_cluster(&state, cluster_id).await;
+        });
+    }
+
+    pub fn install_missing_mod(
+        &self,
+        cluster_id: ClusterId,
+        mod_id: String,
+        name: String,
+        range: Option<oneclient_events::VersionRange>,
+    ) {
+        {
+            let mut channel = self.station.clone().write_channel(AppChannel::Installs);
+            let installs = &mut channel.installs;
+            if !matches!(
+                installs.missing_mod_install(cluster_id, &mod_id),
+                MissingModInstall::Idle | MissingModInstall::Finished(_)
+            ) {
+                return;
+            }
+            installs.begin_missing_lookup(cluster_id, &mod_id);
+        }
+
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else {
+                actions
+                    .station
+                    .clone()
+                    .write_channel(AppChannel::Installs)
+                    .installs
+                    .end_missing_lookup(cluster_id, &mod_id, None);
+                return;
+            };
+
+            let found = off_ui({
+                let state = state.clone();
+                let name = name.clone();
+                let mod_id = mod_id.clone();
+                let range = range.clone();
+                async move {
+                    let provider = state.services.packages.get(ProviderId::Modrinth)?;
+                    oneclient_content::packages::find_mod_for_cluster(
+                        provider,
+                        &mod_id,
+                        Some(&name),
+                        range.as_ref(),
+                        cluster_id,
+                        &state.services.content(),
+                    )
+                    .await
+                }
+            })
+            .await;
+
+            let project_id = found
+                .as_ref()
+                .ok()
+                .and_then(|target| target.as_ref())
+                .map(|target| target.project_id.clone());
+
+            match found {
+                Ok(Some(target)) => actions.install_package(
+                    cluster_id,
+                    ProviderId::Modrinth,
+                    target.project_id,
+                    target.version_id,
+                    None,
+                ),
+                Ok(None) => state
+                    .services
+                    .events
+                    .notify(format!("Could not find {name}"))
+                    .body(if range.is_some() {
+                        format!(
+                            "No version of {name} on Modrinth matches both this cluster and the version the other mods ask for."
+                        )
+                    } else {
+                        format!(
+                            "No version of {name} for this cluster's Minecraft version and loader is on Modrinth."
+                        )
+                    })
+                    .error()
+                    .send(),
+                Err(err) => state
+                    .services
+                    .events
+                    .notify("Install failed")
+                    .body(err.to_string())
+                    .error()
+                    .send(),
+            }
+
+            actions
+                .station
+                .clone()
+                .write_channel(AppChannel::Installs)
+                .installs
+                .end_missing_lookup(cluster_id, &mod_id, project_id);
+        });
     }
 
     pub fn import_local_file(
@@ -1416,6 +1554,21 @@ impl Actions {
                 actions.record_bundle_checks([cluster_id]);
             }
 
+            let failures: Vec<String> = result
+                .failures()
+                .chain(&result.downloads_failed)
+                .cloned()
+                .collect();
+            if !failures.is_empty() {
+                state
+                    .services
+                    .events
+                    .notify("Some mods failed to update")
+                    .body(failures.join("\n"))
+                    .error()
+                    .send();
+            }
+
             super::invalidate_cluster_queries().await;
             if let Some(spec) =
                 crate::install::cluster_update_notification(cluster_id, &result, &state.services)
@@ -1565,17 +1718,17 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
-    ) {
+    ) -> bool {
         if !self.bundle_check_due(cluster_id) {
             tracing::debug!(cluster_id, "bundle update check skipped, checked recently");
-            return;
+            return true;
         }
 
         let content = state.services.content();
 
         if let Ok(false) = oneclient_core::cluster_has_bundle_content(cluster_id, &content).await {
             tracing::debug!(cluster_id, "bundle update check skipped, no bundle content");
-            return;
+            return true;
         }
 
         self.station
@@ -1615,51 +1768,91 @@ impl Actions {
 
         // Bundle content is forced, so the update mode never gates it and the
         // modal never lists it
-        let deadline = Instant::now() + BUNDLE_APPLY_BUDGET;
-        let result = match off_ui({
-            let state = state.clone();
-            async move {
-                oneclient_core::apply_bundle_updates(
-                    cluster_id,
-                    state.bundles.as_ref(),
-                    &state.services.content(),
-                    Some(deadline),
-                )
-                .await
-            }
-        })
-        .await
-        {
-            Ok(result) => result,
-            Err(err) => {
-                tracing::warn!(
-                    cluster_id,
-                    error = %err,
-                    "bundle update failed, launching anyway"
-                );
-                return;
-            }
-        };
+        // A failed update leaves the cluster half updated, e.g. a mod that
+        // needs a newer library next to the old library, so one retry then
+        // refuse to launch rather than hand Fabric a set that cannot load
+        let mut changed = false;
+        let mut failures = Vec::new();
+        for attempt in 1..=2 {
+            let deadline = Instant::now() + BUNDLE_APPLY_BUDGET;
+            failures = match off_ui({
+                let state = state.clone();
+                async move {
+                    oneclient_core::apply_bundle_updates(
+                        cluster_id,
+                        state.bundles.as_ref(),
+                        &state.services.content(),
+                        Some(deadline),
+                    )
+                    .await
+                }
+            })
+            .await
+            {
+                Ok(result) => {
+                    if synced && result.settled() {
+                        self.record_bundle_checks([cluster_id]);
+                    }
 
-        if result.stopped_early {
+                    changed |= !result.updates_applied.is_empty()
+                        || !result.additions_applied.is_empty()
+                        || !result.removals_applied.is_empty();
+
+                    if !result.stopped_early {
+                        result.failures().cloned().collect()
+                    } else if attempt == 1 {
+                        tracing::warn!(
+                            cluster_id,
+                            failed = result.downloads_failed.len(),
+                            "bundle updates could not be downloaded in full; launching on the current content, they go at the next launch"
+                        );
+                        Vec::new()
+                    } else {
+                        result.downloads_failed
+                    }
+                }
+                Err(err) if attempt == 1 => {
+                    tracing::warn!(
+                        cluster_id,
+                        error = %err,
+                        "bundle update failed, launching anyway"
+                    );
+                    return true;
+                }
+                Err(err) => vec![format!("{err:#}")],
+            };
+
+            if failures.is_empty() {
+                break;
+            }
             tracing::warn!(
                 cluster_id,
-                "bundle updates ran out of their launch budget; the rest go at the next launch"
+                attempt,
+                failed = failures.len(),
+                "bundle updates failed before launch"
             );
         }
 
-        if synced && result.settled() {
-            self.record_bundle_checks([cluster_id]);
+        if changed {
+            super::invalidate_cluster_queries().await;
         }
 
-        if result.updates_applied.is_empty()
-            && result.additions_applied.is_empty()
-            && result.removals_applied.is_empty()
-        {
-            return;
+        if failures.is_empty() {
+            return true;
         }
 
-        super::invalidate_cluster_queries().await;
+        state
+            .services
+            .events
+            .notify("Launch stopped: mods failed to update")
+            .body(format!(
+                "OneClient could not update {} of this instance's mods, so the game was not started. Try launching again.\n{}",
+                failures.len(),
+                failures.join("\n")
+            ))
+            .error()
+            .send();
+        false
     }
 
     /// The check runs and the cache is written whatever the mode says keeping
@@ -2080,6 +2273,14 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
 
     events.game_stage(cluster_id, oneclient_events::LaunchStage::Checking);
 
+    let was_signed_out = state
+        .auth
+        .default_account()
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|a| a.needs_sign_in());
+
     let account = match state.auth.default_account_for_launch().await {
         Ok(account) => account,
         Err(err) => {
@@ -2096,18 +2297,22 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         return;
     };
 
-    // The renewal may have just marked the account signed out the accounts
+    // The renewal may have just signed the account out or back in the accounts
     // page and the status bar must pick that up while the game still starts
-    if account.needs_sign_in() {
+    if account.needs_sign_in() != was_signed_out {
         super::invalidate_auth_queries(None).await;
     }
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
+    crate::loader_update::offer_before_launch(actions, cluster_id).await;
 
     let content = state.services.content();
     tokio::spawn(async move {
         if let Err(err) = oneclient_content::packages::refresh_bad_mods(&content).await {
             tracing::warn!(%err, "bad mods list refresh failed, keeping the last one");
+        }
+        if let Err(err) = oneclient_content::packages::refresh_bad_modpacks(&content).await {
+            tracing::warn!(%err, "bad modpacks list refresh failed, keeping the last one");
         }
     });
 
@@ -2116,9 +2321,13 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     actions
         .resolve_bundle_choices_before_launch(&state, cluster_id)
         .await;
-    actions
+    if !actions
         .resolve_bundle_updates_before_launch(&state, cluster_id)
-        .await;
+        .await
+    {
+        events.game_stage(cluster_id, oneclient_events::LaunchStage::Exited);
+        return;
+    }
     actions
         .resolve_package_updates_before_launch(&state, cluster_id)
         .await;

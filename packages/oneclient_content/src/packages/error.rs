@@ -31,6 +31,8 @@ pub enum PackageError {
     ProviderNotRegistered(ProviderId),
     #[error("invalid local file: {0}")]
     InvalidLocalFile(String),
+    #[error("Stop mod diagnostics before adding, removing or updating mods in this cluster")]
+    DiagnosticsRunning,
 }
 
 pub type PackageResult<T> = Result<T, PackageError>;

@@ -1,21 +1,23 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
-use oneclient_core::SeenStatus;
+use oneclient_core::{BisectRole, SeenStatus};
 
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
+use crate::disable::{self, BundlePackage, DisableRequest, DisableRoot};
 use crate::essential::EssentialPackage;
+use freya::query::UseMutation;
+
 use crate::hooks::{
-    ClusterAction, EssentialGuardKind, PendingEssential, disable_warnings, loaded_image,
-    use_cached_image, use_cluster_mutation, use_disable_warnings, use_essential_guard,
+    ClusterAction, ClusterMutation, EssentialGuardKind, Guarded, PendingEssential,
+    disable_warnings, loaded_image, use_cached_image, use_cluster_mutation, use_disable_confirm,
+    use_disable_warnings, use_essential_guard,
 };
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
-pub(crate) const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-pub(crate) const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
 pub(crate) const CARD_H: f32 = 84.;
 pub(crate) const CARD_GRID_H: f32 = 112.;
 pub(crate) const GRID_GAP: f32 = 12.;
@@ -23,6 +25,7 @@ pub(crate) const GRID_MIN_W: f32 = 290.;
 const GRID_CARD_PADDING: f32 = 14.;
 const BADGE_STRIP_H: f32 = 20.;
 const BADGE_STRIP_LIFT: f32 = 2.;
+const TAG_LETTER_SPACING: f32 = 0.6;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -63,6 +66,7 @@ pub struct PackageEntry {
     /// False for uninstalled rows of bundles the cluster never took keeps them out of the All tab
     pub opted_in: bool,
     pub advanced: bool,
+    pub deleted: bool,
     /// Only set for browser-installed content bundle packages use the bundle update flow
     pub update_available: bool,
     pub shadowed: bool,
@@ -71,6 +75,9 @@ pub struct PackageEntry {
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
     pub essential: Option<&'static EssentialPackage>,
+    pub bisect_role: Option<BisectRole>,
+    pub locked: bool,
+    pub modpack: Option<String>,
 }
 
 impl PackageEntry {
@@ -93,6 +100,17 @@ impl PackageEntry {
             SeenStatus::Updated => Some(updated_badge()),
             SeenStatus::Seen => None,
         }
+    }
+
+    pub fn bisect_badge(&self) -> Option<Element> {
+        let role = self.bisect_role?;
+        let accent = match role {
+            BisectRole::Testing | BisectRole::Helper => colors::brand(),
+            BisectRole::Waiting => colors::fg_secondary(),
+            BisectRole::Cleared => colors::success(),
+            BisectRole::Found => colors::danger(),
+        };
+        Some(status_tag(role.label(), accent))
     }
 }
 
@@ -164,8 +182,6 @@ impl Component for PackageRow {
         let warnings_query = use_disable_warnings();
         let hovered = use_state(|| false);
 
-        let warning_body = disable_warning_body(&item, disable_warnings(&warnings_query));
-
         let icon_size = match layout {
             CardLayout::List => 44.,
             CardLayout::Grid => 40.,
@@ -174,24 +190,28 @@ impl Component for PackageRow {
         let icon = package_icon(&item, &icon_query, icon_size);
 
         let on_toggle: EventHandler<()> = {
-            let action = toggle_action(&item, cluster_id, !item.enabled);
-            let enabled_now = item.enabled;
-            let name = item.name.clone();
-            let mut guard = guard;
+            let action = toggle_action(&item, cluster_id, !item.enabled).filter(|_| !item.locked);
+            let item = item.clone();
+            let warnings = disable_warnings(&warnings_query);
+            let pending_disable = use_disable_confirm();
             (move |()| {
                 let Some(action) = action.clone() else {
                     return;
                 };
-
-                match warning_body.clone().filter(|_| enabled_now) {
-                    Some(body) => guard.set(Some(PendingEssential {
-                        name: name.clone(),
-                        body,
-                        kind: EssentialGuardKind::Disable,
-                        action,
-                    })),
-                    None => cluster.mutate(action),
+                // Switching one off can take other packages with it, so it goes
+                // through the impact check rather than straight to the flag.
+                // Switching one on never does.
+                if item.enabled {
+                    guard_disable(
+                        disable_request(&[&item], cluster_id, item.name.clone()),
+                        &[&item],
+                        warnings.clone(),
+                        guard,
+                        pending_disable,
+                    );
+                    return;
                 }
+                cluster.mutate(action);
             })
             .into()
         };
@@ -267,6 +287,37 @@ pub(crate) fn toggle_action(
     )
 }
 
+pub(crate) fn disable_request(
+    items: &[&PackageEntry],
+    cluster_id: i64,
+    name: String,
+) -> DisableRequest {
+    let roots = items
+        .iter()
+        .map(|item| match &item.hash {
+            Some(hash) => DisableRoot::Artifact(hash.clone()),
+            None => DisableRoot::Package(item.provider, item.package_id.clone()),
+        })
+        .collect();
+    let bundles = items
+        .iter()
+        .filter(|item| item.hash.is_none())
+        .filter_map(|item| {
+            Some(BundlePackage {
+                bundle_name: item.bundle_name.clone()?,
+                package_id: item.package_id.clone(),
+            })
+        })
+        .collect();
+
+    DisableRequest {
+        cluster_id,
+        name,
+        roots,
+        bundles,
+    }
+}
+
 pub(crate) fn set_enabled_action(
     cluster_id: i64,
     hash: Option<&str>,
@@ -292,6 +343,19 @@ pub(crate) fn set_enabled_action(
     }
 }
 
+pub(crate) fn bundled_delete_action(item: &PackageEntry, cluster_id: i64) -> Option<ClusterAction> {
+    let hash = item.hash.clone()?;
+    Some(if item.deleted {
+        ClusterAction::SetArtifactEnabled {
+            cluster_id,
+            hash,
+            enabled: true,
+        }
+    } else {
+        ClusterAction::DeleteBundledArtifact { cluster_id, hash }
+    })
+}
+
 pub(crate) fn disable_warning_body(
     item: &PackageEntry,
     warnings: Option<oneclient_core::DisableWarnings>,
@@ -306,6 +370,69 @@ pub(crate) fn disable_warning_body(
     }
 }
 
+pub(crate) fn run_guarded(
+    action: ClusterAction,
+    targets: &[&PackageEntry],
+    name: String,
+    kind: EssentialGuardKind,
+    warnings: Option<oneclient_core::DisableWarnings>,
+    cluster: UseMutation<ClusterMutation>,
+    mut guard: State<Option<PendingEssential>>,
+) {
+    let Some(body) = guard_body(targets, &name, warnings) else {
+        cluster.mutate(action);
+        return;
+    };
+    guard.set(Some(PendingEssential {
+        name,
+        body,
+        kind,
+        then: Guarded::Mutate(action),
+    }));
+}
+
+pub(crate) fn guard_disable(
+    request: DisableRequest,
+    targets: &[&PackageEntry],
+    warnings: Option<oneclient_core::DisableWarnings>,
+    mut guard: State<Option<PendingEssential>>,
+    pending_disable: State<Option<disable::PendingDisable>>,
+) {
+    let Some(body) = guard_body(targets, &request.name, warnings) else {
+        disable::request(request, pending_disable);
+        return;
+    };
+    guard.set(Some(PendingEssential {
+        name: request.name.clone(),
+        body,
+        kind: EssentialGuardKind::Disable,
+        then: Guarded::Disable(request),
+    }));
+}
+
+fn guard_body(
+    targets: &[&PackageEntry],
+    name: &str,
+    warnings: Option<oneclient_core::DisableWarnings>,
+) -> Option<String> {
+    let warned: Vec<(&PackageEntry, String)> = targets
+        .iter()
+        .filter_map(|p| Some((*p, disable_warning_body(p, warnings.clone())?)))
+        .collect();
+    match warned.as_slice() {
+        [] => None,
+        [(p, body)] if p.name == name => Some(body.clone()),
+        _ => Some(
+            warned
+                .iter()
+                .map(|(p, body)| format!("**{}**\n\n{body}", p.name))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
 pub fn package_context_menu(
     x: f32,
     y: f32,
@@ -313,6 +440,7 @@ pub fn package_context_menu(
     cluster_id: i64,
     package_type: &'static str,
     on_delete: EventHandler<(String, String)>,
+    on_bundled: Option<EventHandler<()>>,
     on_select: EventHandler<()>,
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone()).action(
@@ -330,6 +458,7 @@ pub fn package_context_menu(
                 cluster_id,
                 package_type: package_type.clone(),
                 package_id: format!("{}:{}", provider as u8, package_id),
+                add_to_cluster: false,
             });
         });
     }
@@ -346,6 +475,16 @@ pub fn package_context_menu(
             "View in folder",
             EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
         );
+    }
+
+    if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.installed) {
+        menu = if item.deleted {
+            menu.separator()
+                .action(IconType::RefreshCcw02, "Restore", on_bundled)
+        } else {
+            menu.separator()
+                .danger_action(IconType::Trash01, "Delete", on_bundled)
+        };
     }
 
     if item.installed && !item.in_bundle() {
@@ -390,12 +529,12 @@ fn list_card(
         .spacing(12.)
         .padding(Gaps::new_all(10.))
         .corner_radius(CornerRadius::new_all(8.))
-        .background(CARD_BG)
+        .background(colors::card())
         .content(Content::Flex)
         .on_secondary_down(on_secondary(on_context.clone()))
         .child(package_info(item, package_type, cluster_id, icon))
         .child(meta_size(item.size))
-        .child(toggle_controlled(item.enabled, on_toggle))
+        .child(toggle_controlled(item.enabled, on_toggle).disabled(item.locked))
         .maybe_child(on_context.map(kebab_button))
         .into_element()
 }
@@ -450,9 +589,9 @@ pub(crate) fn grid_card(
                         .text_overflow(TextOverflow::Ellipsis)
                         .width(Size::fill())
                         .color(if enabled {
-                            Color::WHITE
+                            colors::fg_strong()
                         } else {
-                            CARD_NAME.with_a(alpha)
+                            colors::fg_primary().with_a(alpha)
                         }),
                 )
                 .child(grid_meta(item, package_type, cluster_id, navigable, alpha)),
@@ -472,8 +611,12 @@ pub(crate) fn grid_card(
             .into_element()
     });
 
-    let badged =
-        item.is_outdated() || item.shadowed || item.outranked || item.recency_badge().is_some();
+    let badged = item.is_outdated()
+        || item.shadowed
+        || item.outranked
+        || item.bisect_role.is_some()
+        || item.modpack.is_some()
+        || item.recency_badge().is_some();
     let floating = badged.then(|| {
         rect()
             .horizontal()
@@ -486,9 +629,11 @@ pub(crate) fn grid_card(
             .main_align(Alignment::End)
             .cross_align(Alignment::Center)
             .spacing(4.)
+            .maybe_child(item.modpack.as_deref().map(modpack_badge))
             .maybe_child(item.is_outdated().then(outdated_badge))
             .maybe_child(item.shadowed.then(shadowed_badge))
             .maybe_child(item.outranked.then(outranked_badge))
+            .maybe_child(item.bisect_badge())
             .maybe_child(item.recency_badge())
             .into_element()
     });
@@ -532,7 +677,7 @@ fn grid_meta(
     navigable: bool,
     alpha: u8,
 ) -> Element {
-    let muted = CARD_NAME.with_a(scale_a(alpha, 0.5));
+    let muted = colors::fg_primary().with_a(scale_a(alpha, 0.5));
 
     let source = if let Some(url) = item.github_url.clone() {
         SourceLink {
@@ -553,6 +698,7 @@ fn grid_meta(
                     cluster_id,
                     package_type: package_type.to_string(),
                     package_id: format!("{}:{}", provider as u8, package_id),
+                    add_to_cluster: false,
                 });
             }),
             alpha,
@@ -607,7 +753,7 @@ impl Component for SourceLink {
         } else if *hovered.read() {
             colors::fg_primary_hover()
         } else {
-            CARD_NAME.with_a(scale_a(self.alpha, 0.68))
+            colors::fg_primary().with_a(scale_a(self.alpha, 0.68))
         };
 
         let on_press = self.on_press.clone();
@@ -732,6 +878,7 @@ fn package_info(
                     cluster_id,
                     package_type: package_type.clone(),
                     package_id: format!("{}:{}", provider as u8, package_id),
+                    add_to_cluster: false,
                 });
             })
         })
@@ -755,7 +902,7 @@ fn package_info(
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
                                 .max_width(Size::percent(60.))
-                                .color(CARD_NAME),
+                                .color(colors::fg_primary()),
                         )
                         .child(if let Some(url) = item.github_url.clone() {
                             rect()
@@ -773,9 +920,11 @@ fn package_info(
                         } else {
                             local_badge()
                         })
+                        .maybe_child(item.modpack.as_deref().map(modpack_badge))
                         .maybe_child(item.is_outdated().then(outdated_badge))
                         .maybe_child(item.shadowed.then(shadowed_badge))
                         .maybe_child(item.outranked.then(outranked_badge))
+                        .maybe_child(item.bisect_badge())
                         .maybe_child(item.recency_badge()),
                 )
                 .maybe(!item.author.is_empty(), |el| {
@@ -893,29 +1042,36 @@ fn updated_badge() -> Element {
     status_tag("Updated", colors::success())
 }
 
-fn status_tag(text: &'static str, accent: Color) -> Element {
+fn status_tag(text: impl Into<String>, accent: Color) -> Element {
     rect()
-        .horizontal()
-        .cross_align(Alignment::Center)
-        .spacing(5.)
-        .padding(Gaps::new(2., 6., 2., 6.))
         .corner_radius(CornerRadius::new_all(4.))
         .background(colors::component_bg())
         .child(
             rect()
-                .width(Size::px(6.))
-                .height(Size::px(6.))
-                .corner_radius(CornerRadius::new_all(3.))
-                .background(accent),
-        )
-        .child(
-            label()
-                .text(text)
-                .font_size(11.)
-                .font_weight(FontWeight::MEDIUM)
-                .color(colors::fg_secondary()),
+                .padding(Gaps::new(1., 6., 3., 6. + TAG_LETTER_SPACING))
+                .corner_radius(CornerRadius::new_all(4.))
+                .background(accent.with_a(38))
+                .border(border_all_color(1., accent.with_a(96)))
+                .child(
+                    label()
+                        .text(text.into().to_uppercase())
+                        .font_size(9.)
+                        .font_weight(FontWeight::BOLD)
+                        .letter_spacing(TAG_LETTER_SPACING)
+                        .color(accent),
+                ),
         )
         .into_element()
+}
+
+const MODPACK_TAG_CHARS: usize = 10;
+const MODPACK_TAG_ELLIPSIS: &str = "...";
+
+fn modpack_badge(name: &str) -> Element {
+    status_tag(
+        crate::utils::shorten(name, MODPACK_TAG_CHARS, MODPACK_TAG_ELLIPSIS),
+        colors::code_info(),
+    )
 }
 
 fn local_badge() -> Element {

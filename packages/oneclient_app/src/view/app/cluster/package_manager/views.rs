@@ -3,13 +3,14 @@ use std::collections::BTreeMap;
 use super::*;
 
 use freya::router::RouterContext;
+use freya::text_edit::Clipboard;
 use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, CardLayout, ChevronToggle, ContextMenu, FilterMenu, FilterOption, Icon, IconType,
     LazySection, PackageEntry, PackageRow, ScrollArea, Segment, SegmentedControl, TextInput,
-    package_context_menu, use_shared_delete,
+    bundled_delete_action, package_context_menu, run_guarded, use_shared_delete,
 };
 use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::routes::Route;
@@ -123,7 +124,7 @@ impl HiddenFilter {
 
     const ALL: [HiddenFilter; 2] = [HiddenFilter::Hide, HiddenFilter::Show];
 
-    fn key(self) -> &'static str {
+    pub(super) fn key(self) -> &'static str {
         match self {
             HiddenFilter::Hide => "hide",
             HiddenFilter::Show => "show",
@@ -297,7 +298,6 @@ pub(super) fn toolbar_bar(
     filters: State<BTreeMap<String, String>>,
     show: EnabledFilter,
     hidden: HiddenFilter,
-    uses_bundles: bool,
     layout: State<ViewLayout>,
     cluster_id: i64,
     package_type: &'static str,
@@ -305,6 +305,8 @@ pub(super) fn toolbar_bar(
     dispatch: Actions,
     mut toolbar_width: State<f32>,
     bulk: &Bulk,
+    noun_plural: &'static str,
+    export: Vec<PackageEntry>,
 ) -> impl IntoElement {
     let local_tab = matches!(tabs.get(active_idx), Some(Tab::Local));
 
@@ -357,7 +359,7 @@ pub(super) fn toolbar_bar(
                     .into_element(),
             )
             .into_element(),
-        filter_button(sort, current_sort, filters, show, hidden, uses_bundles).into_element(),
+        filter_button(sort, current_sort, filters, show, hidden).into_element(),
     ];
 
     controls.push(
@@ -367,6 +369,28 @@ pub(super) fn toolbar_bar(
             .equal_width(34.)
             .segment(Segment::new(ViewLayout::List).icon(IconType::ParagraphWrap))
             .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
+            .into_element(),
+    );
+    if !export.is_empty() {
+        controls.push(copy_list_button(
+            dispatch.clone(),
+            export.len(),
+            package_type,
+            noun_plural,
+            move || package_list_text(&export, content_type),
+        ));
+    }
+    let selection = bulk.selection;
+    controls.push(
+        Button::new()
+            .secondary()
+            .height(Size::px(34.))
+            .font_size(12.)
+            .enabled(!bulk.order.is_empty())
+            .tooltip("Select several to enable, disable or delete at once")
+            .on_press(move |_| selection.enter())
+            .child(Icon::new(IconType::Check).size(15.))
+            .text("Select")
             .into_element(),
     );
     controls.push(
@@ -454,6 +478,46 @@ pub(super) fn toolbar_bar(
         .into_element()
 }
 
+pub(crate) fn copy_list_button(
+    dispatch: Actions,
+    count: usize,
+    noun: &'static str,
+    noun_plural: &'static str,
+    text: impl Fn() -> String + 'static,
+) -> Element {
+    let noun = if count == 1 { noun } else { noun_plural };
+    Button::new()
+        .secondary()
+        .icon()
+        .width(Size::px(34.))
+        .height(Size::px(34.))
+        .on_press(move |_| {
+            if let Err(err) = Clipboard::set(text()) {
+                tracing::warn!("clipboard copy failed: {err:?}");
+                dispatch
+                    .notify("Copy failed")
+                    .body(format!(
+                        "Could not copy your {noun_plural} to the clipboard."
+                    ))
+                    .error()
+                    .send();
+            } else {
+                dispatch
+                    .notify("Copied to clipboard")
+                    .body(format!("{count} {noun} copied to your clipboard."))
+                    .info()
+                    .icon(IconType::ClipboardCheck)
+                    .send();
+            }
+        })
+        .child(
+            Icon::new(IconType::Copy01)
+                .size(16.)
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
+}
+
 #[derive(PartialEq)]
 struct CategoryChip {
     label: String,
@@ -529,6 +593,12 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
     }
 }
 
+pub(super) fn bisect_notice(noun_plural: &'static str) -> String {
+    format!(
+        "A problem mod search is running, so {noun_plural} can't be switched on or off here. Use the panel above to stop it."
+    )
+}
+
 pub(super) fn global_notice(noun_plural: &'static str) -> String {
     format!(
         "These {noun_plural} are shared across all your OneClient clusters. Adding one here makes it available in all of them, and turning one off removes it from all of them."
@@ -584,14 +654,13 @@ fn filter_button(
     mut filters: State<BTreeMap<String, String>>,
     show: EnabledFilter,
     hidden: HiddenFilter,
-    uses_bundles: bool,
 ) -> FilterMenu {
     // Hiding hidden packages is the default so it does not count as the filters being touched
     let active = current_sort != SortMode::NameAsc
         || show != EnabledFilter::All
         || hidden != HiddenFilter::Hide;
 
-    let menu = FilterMenu::new(active)
+    FilterMenu::new(active)
         .section(
             "Sort by",
             SortMode::ALL.map(|mode| {
@@ -609,21 +678,17 @@ fn filter_button(
                         .insert(EnabledFilter::STORAGE_KEY.into(), filter.key().into());
                 })
             }),
-        );
-
-    if !uses_bundles {
-        return menu;
-    }
-    menu.section(
-        "Hidden packages",
-        HiddenFilter::ALL.map(|filter| {
-            FilterOption::new(filter.label(), filter == hidden, move |()| {
-                filters
-                    .write()
-                    .insert(HiddenFilter::STORAGE_KEY.into(), filter.key().into());
-            })
-        }),
-    )
+        )
+        .section(
+            "Hidden packages",
+            HiddenFilter::ALL.map(|filter| {
+                FilterOption::new(filter.label(), filter == hidden, move |()| {
+                    filters
+                        .write()
+                        .insert(HiddenFilter::STORAGE_KEY.into(), filter.key().into());
+                })
+            }),
+        )
 }
 
 fn import_from_file(cluster_id: i64, content_type: ContentType, dispatch: Actions) {
@@ -817,6 +882,8 @@ impl Component for ContentBox {
 
         let dispatch = use_dispatch();
         let cluster = use_cluster_mutation();
+        let guard = use_essential_guard();
+        let warnings_query = use_disable_warnings();
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
         let (on_delete, delete_dialog) = use_shared_delete(cluster_id, move |(_, hash)| {
             cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
@@ -897,6 +964,27 @@ impl Component for ContentBox {
                 bulk.menu(x, y, item.package_id.clone())
             } else {
                 let key = item.package_id.clone();
+                let on_bundled = (content_type == ContentType::Mod).then(|| {
+                    let item = item.clone();
+                    let warnings = disable_warnings(&warnings_query);
+                    let handler: EventHandler<()> = (move |()| {
+                        let Some(action) = bundled_delete_action(&item, cluster_id) else {
+                            return;
+                        };
+                        let only = [&item];
+                        run_guarded(
+                            action,
+                            if item.deleted { &[] } else { &only[..] },
+                            item.name.clone(),
+                            EssentialGuardKind::Remove,
+                            warnings.clone(),
+                            cluster,
+                            guard,
+                        );
+                    })
+                    .into();
+                    handler
+                });
                 package_context_menu(
                     x,
                     y,
@@ -904,6 +992,7 @@ impl Component for ContentBox {
                     cluster_id,
                     package_type,
                     on_delete,
+                    on_bundled,
                     (move |()| selection.toggle(key.clone())).into(),
                 )
             };

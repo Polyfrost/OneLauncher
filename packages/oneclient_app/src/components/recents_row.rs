@@ -113,7 +113,6 @@ fn stagger_eased(progress: f32, index: usize, items: usize) -> f32 {
     1.0 - (1.0 - local).powi(3)
 }
 
-
 struct ClusterCard {
     cluster: Cluster,
     index: usize,
@@ -562,7 +561,11 @@ impl Component for OtherVersionsTile {
                     .width(Size::fill())
                     .height(Size::fill())
                     .center()
-                    .child(Icon::new(IconType::DotsGrid).size(50.)),
+                    .child(
+                        Icon::new(IconType::DotsGrid)
+                            .size(50.)
+                            .color(colors::on_art()),
+                    ),
             )
     }
 }

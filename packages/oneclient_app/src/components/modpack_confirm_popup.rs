@@ -714,7 +714,7 @@ impl Component for AlternativeChoice {
             .spacing(10.)
             .padding(Gaps::new_symmetric(0., 8.))
             .corner_radius(CornerRadius::new_all(8.))
-            .background(CARD_BG)
+            .background(colors::card())
             .border(border_all_color(1., colors::component_border()))
             .child(icon)
             .child(

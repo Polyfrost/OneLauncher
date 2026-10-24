@@ -112,6 +112,8 @@ fn primary_color(over_art: bool) -> Color {
 fn secondary_color(over_art: bool) -> Color {
     if over_art {
         theme::colors::on_art_secondary()
+    } else if theme::colors::is_light() {
+        theme::colors::fg_secondary_pressed()
     } else {
         theme::colors::fg_secondary()
     }

@@ -6,8 +6,6 @@ use crate::hooks::use_dispatch;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-
 #[derive(Clone, PartialEq)]
 pub struct PendingBundledInstall {
     pub cluster_id: i64,
@@ -64,7 +62,7 @@ impl Component for BundledInstallWarning {
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
                             .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 rect()

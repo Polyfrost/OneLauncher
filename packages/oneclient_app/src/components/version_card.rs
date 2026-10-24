@@ -116,7 +116,9 @@ impl Component for VersionCard {
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
             .on_press(move |e| on_press.call(e))
-            .maybe(self.menu.is_some(), |el| el.on_secondary_down(open_menu_at(menu_at)))
+            .maybe(self.menu.is_some(), |el| {
+                el.on_secondary_down(open_menu_at(menu_at))
+            })
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
             .maybe_child(self.menu.clone().map(|target| {
@@ -179,7 +181,7 @@ impl Component for VersionCard {
                             .text(format!("{} instances", self.count))
                             .font_size(11.)
                             .font_weight(FontWeight::MEDIUM)
-                            .color(colors::fg_primary()),
+                            .color(colors::on_media()),
                     )
                     .into_element()
             }))

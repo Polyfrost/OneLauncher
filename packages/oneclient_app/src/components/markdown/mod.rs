@@ -30,7 +30,7 @@ impl Default for MarkdownStyle {
     fn default() -> Self {
         Self {
             color: colors::fg_primary(),
-            color_link: Color::from_rgb(90, 160, 255),
+            color_link: colors::code_info(),
             color_code: colors::fg_primary(),
             background_code: colors::component_bg(),
             background_blockquote: colors::component_bg(),

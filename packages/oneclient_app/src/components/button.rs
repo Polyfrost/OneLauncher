@@ -26,8 +26,6 @@ pub enum ButtonSize {
     Icon,
 }
 
-const DISABLED_OPACITY: f32 = 0.5;
-
 struct ButtonColors {
     background: Color,
     hover_background: Color,
@@ -340,7 +338,7 @@ impl Component for Button {
         rect = rect.background(background).color(foreground);
 
         if !enabled() {
-            rect = rect.opacity(DISABLED_OPACITY);
+            rect = rect.opacity(colors::disabled_opacity());
         }
 
         if let Some(border) = border_color {

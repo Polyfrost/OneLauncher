@@ -268,16 +268,16 @@ pub fn on_media() -> Color {
     Color::from_rgb(213, 219, 255)
 }
 
+pub fn is_light() -> bool {
+    palette().tint == (0, 0, 0)
+}
+
 pub fn on_art() -> Color {
-    if palette().tint == (0, 0, 0) {
-        on_media()
-    } else {
-        fg_primary()
-    }
+    if is_light() { on_media() } else { fg_primary() }
 }
 
 pub fn on_art_secondary() -> Color {
-    if palette().tint == (0, 0, 0) {
+    if is_light() {
         on_media().with_a(190)
     } else {
         fg_secondary()
@@ -285,20 +285,11 @@ pub fn on_art_secondary() -> Color {
 }
 
 pub fn art_backdrop() -> Color {
-    if palette().tint == (0, 0, 0) {
-        Color::BLACK
-    } else {
-        page()
-    }
+    if is_light() { Color::BLACK } else { page() }
 }
 
 pub fn shade() -> Color {
-    let palette = palette();
-    if palette.tint == (0, 0, 0) {
-        color(palette.page)
-    } else {
-        Color::BLACK
-    }
+    if is_light() { page() } else { Color::BLACK }
 }
 
 const ON_LIGHT_BG: Rgb = (22, 30, 54);
@@ -355,9 +346,9 @@ pub fn on_brand_strong() -> Color {
 }
 
 pub fn on_brand_disabled() -> Color {
-    let brand = brand_rgb();
-    if needs_dark_text(brand) {
-        color(mix(ON_LIGHT_BG, brand, 0.35))
+    let background = brand_disabled_rgb();
+    if needs_dark_text(background) {
+        color(mix(ON_LIGHT_BG, background, 0.35))
     } else {
         color(ON_DARK_BG_DISABLED)
     }
@@ -375,8 +366,16 @@ pub fn brand_pressed() -> Color {
     color(mix(brand_rgb(), (255, 255, 255), 0.06))
 }
 
+fn brand_disabled_rgb() -> Rgb {
+    mix(brand_rgb(), palette().page, 0.5)
+}
+
 pub fn brand_disabled() -> Color {
-    color(mix(brand_rgb(), palette().page, 0.5))
+    color(brand_disabled_rgb())
+}
+
+pub fn disabled_opacity() -> f32 {
+    if is_light() { 0.75 } else { 0.5 }
 }
 
 fn tinted(alpha: u8) -> Color {
@@ -424,6 +423,22 @@ pub fn component_border_pressed() -> Color {
     tinted(palette().border_alpha[2])
 }
 
+pub fn control_off() -> Color {
+    if is_light() {
+        component_bg_pressed()
+    } else {
+        component_bg()
+    }
+}
+
+pub fn control_border() -> Color {
+    if is_light() {
+        component_border_pressed()
+    } else {
+        component_border()
+    }
+}
+
 pub fn danger() -> Color {
     Color::from_rgb(255, 68, 68)
 }
@@ -444,28 +459,32 @@ pub fn success() -> Color {
     Color::from_rgb(35, 154, 96)
 }
 
+fn code(dark: Rgb, light: Rgb) -> Color {
+    color(if is_light() { light } else { dark })
+}
+
 pub fn code_info() -> Color {
-    Color::from_rgb(97, 175, 239)
+    code((97, 175, 239), (30, 100, 200))
 }
 
 pub fn code_warn() -> Color {
-    Color::from_rgb(229, 192, 123)
+    code((229, 192, 123), (150, 95, 0))
 }
 
 pub fn code_error() -> Color {
-    Color::from_rgb(224, 108, 117)
+    code((224, 108, 117), (200, 45, 55))
 }
 
 pub fn code_debug() -> Color {
-    Color::from_rgb(152, 195, 121)
+    code((152, 195, 121), (55, 125, 45))
 }
 
 pub fn code_chat() -> Color {
-    Color::from_rgb(198, 120, 221)
+    code((198, 120, 221), (150, 50, 170))
 }
 
 pub fn code_muted() -> Color {
-    Color::from_rgb(120, 128, 140)
+    code((120, 128, 140), (95, 104, 118))
 }
 
 pub fn selection_bg() -> Color {

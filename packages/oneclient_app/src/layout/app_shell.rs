@@ -109,8 +109,6 @@ pub fn hides_overlay(route: &Route) -> bool {
     matches!(route, Route::Home {})
 }
 
-const CODE_BG: Color = Color::from_rgb(13, 18, 22);
-
 #[derive(PartialEq)]
 struct LaunchErrorDialog {
     message: String,
@@ -166,7 +164,7 @@ impl Component for LaunchErrorDialog {
                             )
                             .child(
                                 CodeBlock::new(self.message.clone())
-                                    .background(CODE_BG)
+                                    .background(colors::page())
                                     .height(260.),
                             )
                             .child(

@@ -46,7 +46,7 @@ impl Component for Check {
         } else if checked && !disabled {
             colors::brand()
         } else {
-            colors::component_border()
+            colors::control_border()
         };
 
         let background = use_animation_transition(value, |_, checked| {

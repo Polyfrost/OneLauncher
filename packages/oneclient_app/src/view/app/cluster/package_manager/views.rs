@@ -380,6 +380,19 @@ pub(super) fn toolbar_bar(
             move || package_list_text(&export, content_type),
         ));
     }
+    let selection = bulk.selection;
+    controls.push(
+        Button::new()
+            .secondary()
+            .height(Size::px(34.))
+            .font_size(12.)
+            .enabled(!bulk.order.is_empty())
+            .tooltip("Select several to enable, disable or delete at once")
+            .on_press(move |_| selection.enter())
+            .child(Icon::new(IconType::Check).size(15.))
+            .text("Select")
+            .into_element(),
+    );
     controls.push(
         Button::new()
             .primary()

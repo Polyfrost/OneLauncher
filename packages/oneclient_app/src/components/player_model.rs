@@ -3,15 +3,15 @@ use std::rc::Rc;
 use std::time::Instant;
 
 use bytes::Bytes;
-use freya::engine::prelude::{SkData, SkImage};
+use freya::engine::prelude::{SkData, SkImage, SkRect};
 use freya::prelude::*;
 use oneclient_polyplus::api;
 use plusrenderer::build::Buffers;
 use plusrenderer::{Arms, BodySlot, Camera, Scene, bundle};
 use skia_safe::vertices::VertexMode;
 use skia_safe::{
-    BlendMode, Canvas, FilterMode, Matrix, MipmapMode, Paint, Point, SamplingOptions, TileMode,
-    Vertices,
+    BlendMode, Canvas, FilterMode, ImageInfo, Matrix, MipmapMode, Paint, Point, SamplingOptions,
+    Surface, TileMode, Vertices, surfaces,
 };
 
 use crate::hooks::use_player_skin;
@@ -125,6 +125,17 @@ struct Look {
     emote: Option<Bytes>,
 }
 
+#[derive(PartialEq, Clone, Copy)]
+struct Frame {
+    yaw: f32,
+    pitch: f32,
+    distance: f32,
+    target_y: f32,
+    seconds: f32,
+    size: (f32, f32),
+    scale: f32,
+}
+
 #[derive(Default)]
 struct Player {
     look: Option<Look>,
@@ -132,9 +143,56 @@ struct Player {
     textures: Vec<Option<SkImage>>,
     start: Option<Instant>,
     animate: bool,
+    surface: Option<Surface>,
+    frame: Option<(Frame, SkImage)>,
 }
 
 impl Player {
+    // Freya repaints every visible model each frame, so draw from the last frame's image while nothing changed.
+    fn paint(&mut self, canvas: &Canvas, frame: Frame) {
+        let (w, h) = frame.size;
+        let pixels = (
+            (w * frame.scale).ceil() as i32,
+            (h * frame.scale).ceil() as i32,
+        );
+        if self.frame.as_ref().map(|(last, _)| last) != Some(&frame) {
+            self.frame = None;
+            if self.surface.as_ref().map(|s| (s.width(), s.height())) != Some(pixels) {
+                let info = ImageInfo::new_n32_premul(pixels, None);
+                self.surface = canvas
+                    .new_surface(&info, None)
+                    .or_else(|| surfaces::raster(&info, None, None));
+            }
+            let Some(surface) = self.surface.as_mut() else {
+                return;
+            };
+
+            // Fit the full height, or twice the width when the box is narrow.
+            let fit = h.min(w * 2.);
+            let camera = Camera::orbit(
+                -frame.yaw.to_degrees(),
+                frame.pitch.to_degrees(),
+                frame.distance,
+                [0., frame.target_y, 0.],
+            );
+            self.scene.pose(frame.seconds);
+            let buffers = self.scene.build(&camera, [w, fit]);
+
+            let offscreen = surface.canvas();
+            offscreen.clear(skia_safe::Color::TRANSPARENT);
+            offscreen.save();
+            offscreen.scale((frame.scale, frame.scale));
+            offscreen.translate((0., (h - fit) / 2.));
+            draw(offscreen, buffers, &self.textures);
+            offscreen.restore();
+            self.frame = Some((frame, surface.image_snapshot()));
+        }
+
+        if let Some((_, image)) = &self.frame {
+            canvas.draw_image_rect(image, None, SkRect::from_wh(w, h), &Paint::default());
+        }
+    }
+
     fn seconds(&self) -> f32 {
         self.start.map_or(0., |start| start.elapsed().as_secs_f32())
     }
@@ -208,6 +266,7 @@ impl Player {
         self.scene = scene;
         self.textures = textures;
         self.start = Some(Instant::now());
+        self.frame = None;
         self.look = Some(look);
     }
 }
@@ -278,7 +337,7 @@ impl Component for PlayerModel {
 
         let draggable = self.draggable;
         let distance = CAM_DIST / self.zoom;
-        let target = [0., MODEL_CENTER_Y + self.focus_y, 0.];
+        let target_y = MODEL_CENTER_Y + self.focus_y;
         let (cur_yaw, cur_pitch, now) = (yaw(), pitch(), seconds());
         let draw_player = player.clone();
 
@@ -288,22 +347,18 @@ impl Component for PlayerModel {
                 return;
             }
 
-            // Fit the full height, or twice the width when the box is narrow.
-            let fit = h.min(w * 2.);
-            let player = &mut *draw_player.borrow_mut();
-            let camera = Camera::orbit(
-                -cur_yaw.to_degrees(),
-                cur_pitch.to_degrees(),
-                distance,
-                target,
+            draw_player.borrow_mut().paint(
+                ctx.canvas,
+                Frame {
+                    yaw: cur_yaw,
+                    pitch: cur_pitch,
+                    distance,
+                    target_y,
+                    seconds: now,
+                    size: (w, h),
+                    scale: ctx.canvas.local_to_device_as_3x3().scale_x(),
+                },
             );
-            player.scene.pose(now);
-            let buffers = player.scene.build(&camera, [w, fit]);
-
-            ctx.canvas.save();
-            ctx.canvas.translate((0., (h - fit) / 2.));
-            draw(ctx.canvas, buffers, &player.textures);
-            ctx.canvas.restore();
         });
 
         rect()
@@ -404,12 +459,17 @@ fn draw(canvas: &Canvas, buffers: &Buffers, textures: &[Option<SkImage>]) {
         };
 
         let indices = &buffers.indices[run.start as usize..(run.start + run.count) as usize];
+        let (Some(&first), Some(&last)) = (indices.iter().min(), indices.iter().max()) else {
+            continue;
+        };
+        let range = first as usize..=last as usize;
+        let local: Vec<u16> = indices.iter().map(|&i| i - first).collect();
         let vertices = Vertices::new_copy(
             VertexMode::Triangles,
-            &positions,
-            &uvs,
-            &colors,
-            Some(indices),
+            &positions[range.clone()],
+            &uvs[range.clone()],
+            &colors[range],
+            Some(&local),
         );
 
         let mut paint = Paint::default();

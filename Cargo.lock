@@ -4928,6 +4928,7 @@ dependencies = [
  "freya-core",
  "freya-skia-safe",
  "freya-testing",
+ "freya-winit",
  "futures-util",
  "gtk-sys",
  "image",

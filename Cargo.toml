@@ -147,6 +147,7 @@ thiserror = {version = "=2.0.21"}
 freya = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b", features = ["engine", "winit", "router", "remote-asset", "sdk-tokio", "query", "radio", "borderless", "titlebar", "tray", "metrics"]}
 freya-core = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b"}
 freya-testing = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b"}
+freya-winit = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b"}
 freya-skia-safe = "=0.103.2" # draws the plusrenderer player model
 plusrenderer = {git = "https://github.com/Polyfrost/plusrenderer", rev = "914ddf8cae388126407d86925a05fa3db085ebbc"}
 image = {version = "=0.25.10", default-features = false, features = ["png", "jpeg"]}

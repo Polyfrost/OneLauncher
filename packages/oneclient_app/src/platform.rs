@@ -365,6 +365,189 @@ pub mod tray {
     }
 }
 
+#[cfg(target_os = "windows")]
+pub mod frame {
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    use freya::winit::platform::windows::{CornerPreference, WindowExtWindows};
+    use freya::winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+    use freya::winit::window::Window;
+    use freya_winit::plugins::{FreyaPlugin, PluginEvent, PluginHandle};
+    use windows::Win32::Foundation::{HWND, LPARAM, LRESULT, POINT, WPARAM};
+    use windows::Win32::Graphics::Dwm::DwmExtendFrameIntoClientArea;
+    use windows::Win32::Graphics::Gdi::{
+        GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITORINFO, MonitorFromWindow,
+    };
+    use windows::Win32::UI::Controls::MARGINS;
+    use windows::Win32::UI::Shell::{DefSubclassProc, RemoveWindowSubclass, SetWindowSubclass};
+    use windows::Win32::UI::WindowsAndMessaging::{
+        DefWindowProcW, GWL_STYLE, GetWindowLongPtrW, HTBOTTOMRIGHT, HTLEFT, IsZoomed, MINMAXINFO,
+        STYLESTRUCT, SWP_FRAMECHANGED, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SWP_NOZORDER,
+        SetWindowLongPtrW, SetWindowPos, WM_GETMINMAXINFO, WM_NCCALCSIZE, WM_NCDESTROY,
+        WM_NCLBUTTONDOWN, WM_STYLECHANGING, WS_CAPTION, WS_THICKFRAME,
+    };
+
+    static RESIZING: AtomicBool = AtomicBool::new(false);
+
+    pub struct FramePlugin;
+
+    impl FreyaPlugin for FramePlugin {
+        fn plugin_id(&self) -> &'static str {
+            "oneclient-window-frame"
+        }
+
+        fn on_event(&mut self, event: &mut PluginEvent, _handle: PluginHandle) {
+            let PluginEvent::WindowCreated {
+                window,
+                graphics_driver,
+                gpu_name,
+                ..
+            } = event
+            else {
+                return;
+            };
+
+            if window.is_decorated() {
+                return;
+            }
+            let Some(hwnd) = hwnd(window) else {
+                return;
+            };
+
+            match gpu_name.filter(|gpu| {
+                *graphics_driver == "OpenGL" && gpu.contains("Intel") && !gpu.contains("Arc")
+            }) {
+                Some(gpu) => install(hwnd, gpu),
+                None => decorate(window, hwnd),
+            }
+        }
+    }
+
+    fn hwnd(window: &Window) -> Option<HWND> {
+        match window.window_handle().ok()?.as_raw() {
+            RawWindowHandle::Win32(handle) => Some(HWND(handle.hwnd.get() as _)),
+            _ => None,
+        }
+    }
+
+    fn decorate(window: &Window, hwnd: HWND) {
+        window.set_corner_preference(CornerPreference::Round);
+
+        let margins = MARGINS {
+            cxLeftWidth: 1,
+            cxRightWidth: 1,
+            cyTopHeight: 1,
+            cyBottomHeight: 1,
+        };
+        if let Err(err) = unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins) } {
+            tracing::warn!("failed to extend the window frame for its shadow: {err}");
+        }
+    }
+
+    fn install(hwnd: HWND, gpu: &str) {
+        if !unsafe { SetWindowSubclass(hwnd, Some(subclass), 1, 0) }.as_bool() {
+            tracing::warn!("failed to subclass the window for the {gpu} frame fix");
+            return;
+        }
+        restyle(hwnd);
+        tracing::info!("dropped the window frame styles for {gpu} on OpenGL");
+    }
+
+    fn frame_styles(style: u32) -> u32 {
+        if RESIZING.load(Ordering::Relaxed) {
+            (style & !WS_CAPTION.0) | WS_THICKFRAME.0
+        } else {
+            style & !(WS_CAPTION.0 | WS_THICKFRAME.0)
+        }
+    }
+
+    fn monitor_info(hwnd: HWND) -> Option<MONITORINFO> {
+        let mut info = MONITORINFO {
+            cbSize: size_of::<MONITORINFO>() as u32,
+            ..Default::default()
+        };
+        unsafe { GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mut info) }
+            .as_bool()
+            .then_some(info)
+    }
+
+    fn restyle(hwnd: HWND) {
+        let style = unsafe { GetWindowLongPtrW(hwnd, GWL_STYLE) } as u32;
+        unsafe { SetWindowLongPtrW(hwnd, GWL_STYLE, frame_styles(style) as isize) };
+
+        let flags = SWP_FRAMECHANGED | SWP_NOZORDER | SWP_NOACTIVATE;
+        let zoomed = unsafe { IsZoomed(hwnd) }.as_bool();
+        let result = unsafe {
+            match monitor_info(hwnd).filter(|_| zoomed) {
+                Some(MONITORINFO { rcWork: work, .. }) => SetWindowPos(
+                    hwnd,
+                    None,
+                    work.left,
+                    work.top,
+                    work.right - work.left,
+                    work.bottom - work.top,
+                    flags,
+                ),
+                None => SetWindowPos(hwnd, None, 0, 0, 0, 0, flags | SWP_NOMOVE | SWP_NOSIZE),
+            }
+        };
+        if let Err(err) = result {
+            tracing::warn!("failed to apply the window frame styles: {err}");
+        }
+    }
+
+    unsafe extern "system" fn subclass(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+        _id: usize,
+        _data: usize,
+    ) -> LRESULT {
+        unsafe {
+            match msg {
+                WM_STYLECHANGING if wparam.0 as i32 == GWL_STYLE.0 => {
+                    let change = &mut *(lparam.0 as *mut STYLESTRUCT);
+                    change.styleNew = frame_styles(change.styleNew);
+                    DefSubclassProc(hwnd, msg, wparam, lparam)
+                }
+                WM_NCCALCSIZE if !RESIZING.load(Ordering::Relaxed) => {
+                    DefWindowProcW(hwnd, msg, wparam, lparam)
+                }
+                WM_NCLBUTTONDOWN if (HTLEFT..=HTBOTTOMRIGHT).contains(&(wparam.0 as u32)) => {
+                    RESIZING.store(true, Ordering::Relaxed);
+                    restyle(hwnd);
+                    let result = DefSubclassProc(hwnd, msg, wparam, lparam);
+                    RESIZING.store(false, Ordering::Relaxed);
+                    restyle(hwnd);
+                    result
+                }
+                WM_GETMINMAXINFO => {
+                    let result = DefSubclassProc(hwnd, msg, wparam, lparam);
+                    if let Some(info) = monitor_info(hwnd) {
+                        let (work, monitor) = (info.rcWork, info.rcMonitor);
+                        let limits = &mut *(lparam.0 as *mut MINMAXINFO);
+                        limits.ptMaxPosition = POINT {
+                            x: work.left - monitor.left,
+                            y: work.top - monitor.top,
+                        };
+                        limits.ptMaxSize = POINT {
+                            x: work.right - work.left,
+                            y: work.bottom - work.top,
+                        };
+                    }
+                    result
+                }
+                WM_NCDESTROY => {
+                    let _ = RemoveWindowSubclass(hwnd, Some(subclass), 1);
+                    DefSubclassProc(hwnd, msg, wparam, lparam)
+                }
+                _ => DefSubclassProc(hwnd, msg, wparam, lparam),
+            }
+        }
+    }
+}
+
 #[cfg(target_os = "macos")]
 pub mod macos {
     use std::time::Duration;

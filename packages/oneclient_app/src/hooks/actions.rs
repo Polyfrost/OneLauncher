@@ -2304,6 +2304,7 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     }
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
+    crate::loader_update::offer_before_launch(actions, cluster_id).await;
 
     let content = state.services.content();
     tokio::spawn(async move {

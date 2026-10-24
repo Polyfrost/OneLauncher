@@ -15,6 +15,7 @@ mod install;
 pub mod ipc;
 mod launcher;
 mod layout;
+pub mod loader_update;
 pub mod microsoft_java;
 mod motion;
 mod notifications;

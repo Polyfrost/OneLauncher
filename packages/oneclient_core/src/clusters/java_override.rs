@@ -3,13 +3,11 @@ use std::sync::Arc;
 use oneclient_cluster::ProfileUpdate;
 use oneclient_cluster::profiles::get_profile_or_default;
 use oneclient_common::patch::Patch;
-use oneclient_db::dao::applied_migration as migration_dao;
+use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
 use oneclient_events::GroupedProgressSession;
 
 use crate::LauncherResult;
 use crate::state::LauncherState;
-
-pub(crate) const BUNDLE_JAVA_OVERRIDE: &str = "bundle-java-override";
 
 #[tracing::instrument(skip(state, progress))]
 pub async fn apply_bundle_java_override(
@@ -60,8 +58,12 @@ pub async fn apply_bundle_java_override(
         return Ok(());
     };
 
-    let marker = format!("{BUNDLE_JAVA_OVERRIDE}:{cluster_id}:{major}");
-    if migration_dao::is_applied(db, &marker).await? {
+    let applied = major.to_string();
+    if flag_dao::get(db, cluster_id, ClusterFlag::BundleJavaOverride)
+        .await?
+        .as_deref()
+        == Some(&applied)
+    {
         return Ok(());
     }
 
@@ -114,6 +116,12 @@ pub async fn apply_bundle_java_override(
         );
     }
 
-    migration_dao::mark_applied(db, &marker).await?;
+    flag_dao::set(
+        db,
+        cluster_id,
+        ClusterFlag::BundleJavaOverride,
+        Some(&applied),
+    )
+    .await?;
     Ok(())
 }

@@ -876,7 +876,11 @@ async fn sync_cluster_loader_version_from_bundles(
         return Ok(());
     };
 
-    if cluster.mc_loader_version.as_deref() == Some(target.as_str()) {
+    if cluster
+        .mc_loader_version
+        .as_deref()
+        .is_some_and(|current| compare_version_like(current, &target).is_ge())
+    {
         return Ok(());
     }
 

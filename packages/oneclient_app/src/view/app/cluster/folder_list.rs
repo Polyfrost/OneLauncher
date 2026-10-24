@@ -6,9 +6,9 @@ use oneclient_core::clusters::Cluster;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, CardLayout, GRID_GAP, GRID_MIN_W, Icon,
-    IconType, LocalImage, OverlayPopup, ScrollArea, Segment, SegmentedControl, TextInput, badge,
-    icon_box, kebab_button, meta_size, meta_text, on_secondary, open_folder_button,
+    Button, CARD_GRID_H, CARD_H, CardLayout, GRID_GAP, GRID_MIN_W, Icon, IconType, LocalImage,
+    OverlayPopup, ScrollArea, Segment, SegmentedControl, TextInput, badge, icon_box, kebab_button,
+    meta_size, meta_text, on_secondary, open_folder_button,
 };
 use crate::hooks::{
     loaded_image, settled_or_loading, use_cached_image, use_clusters, use_game_snapshot,
@@ -252,7 +252,7 @@ impl Component for FolderCard {
                 .spacing(12.)
                 .padding(Gaps::new_all(10.))
                 .corner_radius(CornerRadius::new_all(8.))
-                .background(CARD_BG)
+                .background(colors::card())
                 .content(Content::Flex)
                 .on_secondary_down(on_secondary(on_context.clone()))
                 .child(self.list_info(icon))
@@ -261,7 +261,7 @@ impl Component for FolderCard {
                 .into_element(),
             CardLayout::Grid => {
                 let hovering = *hovered.read();
-                let muted = CARD_NAME.with_a(127);
+                let muted = colors::fg_primary().with_a(127);
 
                 let header = rect()
                     .horizontal()
@@ -282,7 +282,7 @@ impl Component for FolderCard {
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
                                     .width(Size::fill())
-                                    .color(Color::WHITE),
+                                    .color(colors::fg_strong()),
                             )
                             .child(meta_text(self.grid_meta(), muted)),
                     )
@@ -375,7 +375,7 @@ impl FolderCard {
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
                                     .max_width(Size::percent(60.))
-                                    .color(CARD_NAME),
+                                    .color(colors::fg_primary()),
                             )
                             .child(badge(
                                 Icon::new(self.badge.0)
@@ -471,7 +471,7 @@ pub(crate) fn dialog(
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
                         .corner_radius(CornerRadius::new_all(14.))
-                        .background(CARD_BG)
+                        .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             label()

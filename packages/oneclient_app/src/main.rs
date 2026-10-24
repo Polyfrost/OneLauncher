@@ -10,10 +10,10 @@ use oneclient_app::ipc::{self, Claim};
 use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, DisableConfirmState, DisableDependentsOverlay,
-    EssentialConfirmOverlay, EssentialGuardState, EventPump, LinkConfirmState,
-    StartMaximizedState, cli, constants, events, microsoft_java, platform, router, theme,
-    use_provide_actions, use_provide_disable_confirm, use_provide_essential_guard,
-    use_provide_link_confirm, use_provide_start_maximized,
+    EssentialConfirmOverlay, EssentialGuardState, EventPump, LinkConfirmState, StartMaximizedState,
+    cli, constants, events, microsoft_java, platform, router, theme, use_provide_actions,
+    use_provide_disable_confirm, use_provide_essential_guard, use_provide_link_confirm,
+    use_provide_start_maximized, use_settings_snapshot,
 };
 use std::cell::Cell;
 use tokio::runtime::Builder;
@@ -92,6 +92,14 @@ impl App for OneClientApp {
         use_provide_essential_guard(EssentialGuardState(essential_guard));
 
         use_provide_start_maximized(StartMaximizedState(self.start_maximized));
+
+        let mut palette_revision = use_state(|| 0u32);
+        theme::colors::bind_revision(palette_revision);
+        let appearance = use_settings_snapshot().settings;
+        theme::colors::apply(appearance.theme, appearance.accent_color.as_deref());
+        use_side_effect_with_deps(&(appearance.theme, appearance.accent_color), move |_| {
+            *palette_revision.write() += 1;
+        });
 
         rect()
             .width(Size::fill())
@@ -197,6 +205,8 @@ fn main() {
 
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
+
+    theme::colors::apply(settings.theme, settings.accent_color.as_deref());
 
     let start_maximized = settings.start_maximized;
     let show_tray_icon = settings.show_tray_icon;

@@ -34,7 +34,6 @@ use gallery::gallery_panel;
 use panels::{about_panel, loading_body, tabs, versions_panel};
 use sidebar::sidebar;
 
-const PANEL_BG: Color = Color::from_rgb(21, 28, 34);
 const SIDEBAR_W: f32 = 280.;
 const SCROLLBAR_GUTTER: f32 = 18.;
 

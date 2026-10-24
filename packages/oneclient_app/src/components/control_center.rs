@@ -358,16 +358,18 @@ impl Component for QuickTile {
             colors::component_bg()
         };
 
-        let title_color = if enabled {
-            colors::fg_primary()
-        } else {
+        let title_color = if !enabled {
             colors::fg_primary_disabled()
+        } else if on {
+            colors::on_brand()
+        } else {
+            colors::fg_primary()
         };
 
         let sub_color = if !enabled {
             colors::fg_primary_disabled()
         } else if on {
-            colors::fg_primary().with_a(200)
+            colors::on_brand().with_a(200)
         } else {
             colors::fg_secondary()
         };

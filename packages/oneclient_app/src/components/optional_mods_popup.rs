@@ -18,7 +18,6 @@ use crate::notifications::{
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_W: f32 = 720.;
 const DIALOG_PAD: f32 = 22.;
 const LIST_MAX_H: f32 = 306.;
@@ -155,7 +154,7 @@ fn dialog(
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
         .corner_radius(CornerRadius::new_all(16.))
-        .background(CARD_BG)
+        .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
             0.,

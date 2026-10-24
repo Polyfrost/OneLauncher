@@ -20,7 +20,6 @@ use crate::notifications::PackageUpdateGroup;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_W: f32 = 520.;
 const DIALOG_H: f32 = 420.;
 const CHOICE_DROPDOWN_W: f32 = 150.;
@@ -172,7 +171,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .overflow(Overflow::Clip)
         .corner_radius(CornerRadius::new_all(16.))
-        .background(CARD_BG)
+        .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
             0.,

@@ -50,7 +50,7 @@ pub(super) fn sidebar(
                 .width(Size::fill())
                 .corner_radius(CornerRadius::new_all(12.))
                 .overflow(Overflow::Clip)
-                .background(PANEL_BG)
+                .background(colors::page_elevated())
                 .border(border_all_color(1., colors::component_border()))
                 .child(
                     rect()
@@ -232,7 +232,7 @@ fn card_spaced(title: &str, rows: Vec<Element>, spacing: f32) -> impl IntoElemen
         .spacing(spacing)
         .padding(Gaps::new_all(16.))
         .corner_radius(CornerRadius::new_all(12.))
-        .background(PANEL_BG)
+        .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(
             label()

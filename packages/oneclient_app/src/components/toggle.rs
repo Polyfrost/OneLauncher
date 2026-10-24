@@ -83,14 +83,14 @@ impl Component for Switch {
         let track_border = if focus().is_focused() && !disabled {
             colors::fg_primary()
         } else {
-            colors::component_border()
+            colors::control_border()
         };
 
         let background = use_animation_transition(value, |_, on| {
             if on {
-                AnimColor::new(colors::component_bg(), colors::brand())
+                AnimColor::new(colors::control_off(), colors::brand())
             } else {
-                AnimColor::new(colors::brand(), colors::component_bg())
+                AnimColor::new(colors::brand(), colors::control_off())
             }
             .time(TIME)
             .function(Function::Expo)
@@ -126,7 +126,7 @@ impl Component for Switch {
                 label()
                     .text(text)
                     .font_size(12.)
-                    .color(Color::from_rgb(167, 176, 190)),
+                    .color(colors::fg_secondary()),
             )
             .child(
                 rect()
@@ -149,6 +149,8 @@ impl Component for Switch {
                             .corner_radius(CornerRadius::new_all(8.))
                             .background(if disabled {
                                 colors::fg_secondary()
+                            } else if on {
+                                colors::on_brand_strong()
                             } else {
                                 Color::WHITE
                             })

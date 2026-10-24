@@ -10,7 +10,6 @@ use crate::hooks::{
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const BODY_MAX_H: f32 = 400.;
 
 #[derive(PartialEq)]
@@ -48,7 +47,7 @@ impl Component for EssentialConfirmOverlay {
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
                             .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 rect()
@@ -138,11 +137,11 @@ impl Component for WarningBody {
                             .border(border_all_color(1., colors::component_border()))
                             .child(Markdown::new(self.body.clone()).width(Size::fill()).style(
                                 MarkdownStyle {
-                                    color: Color::WHITE,
+                                    color: colors::fg_primary(),
                                     color_link: colors::code_info(),
-                                    color_code: Color::WHITE,
-                                    background_code: CARD_BG,
-                                    background_blockquote: CARD_BG,
+                                    color_code: colors::fg_primary(),
+                                    background_code: colors::card(),
+                                    background_blockquote: colors::card(),
                                     border_blockquote: colors::component_border(),
                                     background_divider: colors::component_border(),
                                     headings: [16., 14., 13., 12., 12., 12.],

@@ -19,8 +19,6 @@ mod mods;
 use markup::{SegmentStyle, display_line, host_of, links_in, resolve_placeholders, segments};
 use mods::{mods_card, mods_height};
 
-const DIALOG_BG: Color = Color::from_rgb(21, 28, 34);
-const CODE_BG: Color = Color::from_rgb(13, 18, 22);
 const DISCORD_BG: Color = Color::from_argb(46, 43, 75, 255);
 const DISCORD_BORDER: Color = Color::from_argb(120, 43, 75, 255);
 
@@ -88,7 +86,7 @@ impl Component for CrashDialog {
                             .max_height(Size::window_percent(92.))
                             .content(Content::Flex)
                             .overflow(Overflow::Clip)
-                            .background(DIALOG_BG)
+                            .background(colors::page_elevated())
                             .corner_radius(CornerRadius::new_all(16.))
                             .padding(Gaps::new_all(DIALOG_PADDING))
                             .spacing(DIALOG_SPACING)
@@ -526,7 +524,7 @@ fn excerpt_box(crash: &GameCrash) -> Element {
         .collect();
 
     clip_box(height)
-        .background(CODE_BG)
+        .background(colors::page())
         .corner_radius(CornerRadius::new_all(8.))
         .padding(Gaps::new_all(CARD_PADDING))
         .child(

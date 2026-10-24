@@ -3,7 +3,7 @@ use freya::router::RouterContext;
 use oneclient_common::domain::ContentType;
 use oneclient_core::{BisectExit, BisectRole, BisectStatus};
 
-use crate::components::{Button, CARD_BG, Icon, IconType, OverlayPopup, progress_track};
+use crate::components::{Button, Icon, IconType, OverlayPopup, progress_track};
 use freya::query::UseMutation;
 
 use crate::Route;
@@ -596,7 +596,7 @@ impl Component for BisectQuestion {
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
                             .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 rect()
@@ -706,7 +706,7 @@ fn confirm_question(
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
                         .corner_radius(CornerRadius::new_all(14.))
-                        .background(CARD_BG)
+                        .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             rect()

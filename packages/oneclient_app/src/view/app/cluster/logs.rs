@@ -23,7 +23,6 @@ use crate::utils::format_size;
 
 use super::cluster_not_found;
 use crate::hooks::use_cluster;
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const PICKER_ROW_H: f32 = 44.;
 const PICKER_ROW_SPACING: f32 = 2.;
 const PICKER_LIST_MAX_H: f32 = 300.;
@@ -345,12 +344,15 @@ pub fn viewer_header(
     };
 
     let search_input = {
-        let base = TextInput::new(search).a11y_id(search_id).enabled(has_log).leading(
-            Icon::new(IconType::SearchMd)
-                .size(15.)
-                .color(colors::fg_secondary())
-                .into_element(),
-        );
+        let base = TextInput::new(search)
+            .a11y_id(search_id)
+            .enabled(has_log)
+            .leading(
+                Icon::new(IconType::SearchMd)
+                    .size(15.)
+                    .color(colors::fg_secondary())
+                    .into_element(),
+            );
         if has_log {
             base.placeholder("Search this log...")
         } else {
@@ -681,7 +683,7 @@ pub fn confirm_overlay(
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
                         .corner_radius(CornerRadius::new_all(14.))
-                        .background(CARD_BG)
+                        .background(colors::card())
                         .border(ui::border_all_color(1., colors::component_border()))
                         .child(
                             rect()

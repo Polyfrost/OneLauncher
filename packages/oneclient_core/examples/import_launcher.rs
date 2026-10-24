@@ -5,8 +5,6 @@
 //! `cargo run -p oneclient_core --example import_launcher [launcher folder]`
 //! (`PRISM_DIR` / `MODRINTH_APP_DIR` point detection at a test install)
 
-#![recursion_limit = "256"]
-
 use oneclient_content::packages::PackageStore;
 use oneclient_core::dev;
 

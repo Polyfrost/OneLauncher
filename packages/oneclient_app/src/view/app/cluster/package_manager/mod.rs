@@ -10,12 +10,12 @@ use oneclient_db::models::OverrideType;
 
 use crate::components::{
     CARD_GRID_H, CardLayout, GRID_GAP, GRID_MIN_W, PackageEntry, bundled_delete_action,
-    run_guarded, toggle_action,
+    disable_request, guard_disable, run_guarded, toggle_action,
 };
 use crate::hooks::{
     ClusterAction, EssentialGuardKind, disable_warnings, package_meta_batch, use_cluster_mutation,
-    use_disable_warnings, use_dispatch, use_essential_guard, use_game_snapshot,
-    use_package_meta_batch, use_selection, use_view_state,
+    use_disable_confirm, use_disable_warnings, use_dispatch, use_essential_guard,
+    use_game_snapshot, use_package_meta_batch, use_selection, use_view_state,
 };
 
 use super::folder_list::confirm_dialog;
@@ -341,6 +341,8 @@ fn make_row(
         advanced: false,
         deleted: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),
+        bisect_role: None,
+        locked: false,
         modpack: None,
     }
 }
@@ -503,6 +505,29 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
     tabs
 }
 
+/// Records the dependency lists of anything installed before the launcher kept
+/// them, once per visit to the list.
+///
+/// Disabling a package consults them, and would otherwise pay for the whole
+/// cluster's backfill while the user waits on a toggle. Failures are silent:
+/// the disable path re-runs this and can proceed without it.
+fn warm_dependencies(cluster_id: i64) {
+    use_hook(move || {
+        spawn_forever(async move {
+            let Ok(state) = crate::launcher::state() else {
+                return;
+            };
+
+            if let Err(err) =
+                oneclient_core::ensure_cluster_dependencies(cluster_id, &state.services.content())
+                    .await
+            {
+                tracing::debug!(%err, "could not record the cluster's package dependencies");
+            }
+        });
+    });
+}
+
 #[derive(PartialEq)]
 pub struct PackageManager {
     title: &'static str,
@@ -512,6 +537,7 @@ pub struct PackageManager {
     cluster_id: i64,
     items: Vec<PackageEntry>,
     categories: Vec<String>,
+    bisecting: bool,
 }
 
 impl PackageManager {
@@ -532,7 +558,13 @@ impl PackageManager {
             cluster_id,
             items,
             categories,
+            bisecting: false,
         }
+    }
+
+    pub fn bisecting(mut self, active: bool) -> Self {
+        self.bisecting = active;
+        self
     }
 }
 
@@ -543,6 +575,8 @@ impl Component for PackageManager {
         let package_type = self.package_type;
         let cluster_id = self.cluster_id;
         let content_type = self.content_type;
+
+        warm_dependencies(cluster_id);
 
         // Cleared once on mount so the rows already rendered keep their badges for this visit
         use_hook(|| {
@@ -582,6 +616,7 @@ impl Component for PackageManager {
         let dispatch = use_dispatch();
         let guard = use_essential_guard();
         let warnings_query = use_disable_warnings();
+        let pending_disable = use_disable_confirm();
         let mut confirm_delete = use_state(|| false);
         let view = use_view_state("cluster.packages");
         let sort = view.sort;
@@ -625,8 +660,10 @@ impl Component for PackageManager {
             .unwrap_or(HiddenFilter::Hide);
         let card_layout = CardLayout::from(*layout.read());
 
+        let bisecting = self.bisecting;
         let disabled_essentials: Vec<&'static str> = items
             .iter()
+            .filter(|_| !bisecting)
             .filter(|package| !package.enabled)
             .filter_map(|package| package.essential.map(|essential| essential.name))
             .collect();
@@ -674,6 +711,9 @@ impl Component for PackageManager {
         if !disabled_essentials.is_empty() {
             notices.push(views::essential_notice(&disabled_essentials));
         }
+        if bisecting {
+            notices.push(views::bisect_notice(noun_plural));
+        }
 
         let (advanced, filtered): (Vec<_>, Vec<_>) = filtered.into_iter().partition(|p| p.advanced);
 
@@ -707,6 +747,9 @@ impl Component for PackageManager {
             let chosen = chosen.clone();
             let warnings = disable_warnings(&warnings_query);
             (move |enabled: bool| {
+                if bisecting {
+                    return;
+                }
                 let targets: Vec<&PackageEntry> =
                     chosen.iter().filter(|p| p.enabled != enabled).collect();
                 let actions: Vec<ClusterAction> = targets
@@ -716,17 +759,24 @@ impl Component for PackageManager {
                 if actions.is_empty() {
                     return;
                 }
-                run_guarded(
-                    ClusterAction::Batch(actions),
-                    if enabled { &[] } else { &targets[..] },
-                    match targets.as_slice() {
-                        [only] => only.name.clone(),
-                        _ => format!("{} {noun_plural}", targets.len()),
-                    },
-                    EssentialGuardKind::Disable,
+                let name = match targets.as_slice() {
+                    [only] => only.name.clone(),
+                    _ => format!("{} {noun_plural}", targets.len()),
+                };
+                if enabled {
+                    mutation.mutate(ClusterAction::Batch(actions));
+                    return;
+                }
+                let targets: Vec<&PackageEntry> = targets
+                    .into_iter()
+                    .filter(|p| toggle_action(p, cluster_id, false).is_some())
+                    .collect();
+                guard_disable(
+                    disable_request(&targets, cluster_id, name),
+                    &targets,
                     warnings.clone(),
-                    mutation,
                     guard,
+                    pending_disable,
                 );
             })
             .into()

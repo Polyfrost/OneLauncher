@@ -2,6 +2,7 @@ pub mod activity;
 pub mod bad_modpacks;
 pub mod bad_mods;
 pub mod dependencies;
+pub mod dependents;
 pub mod error;
 pub mod fabric_version;
 pub mod local_manifest;
@@ -31,11 +32,15 @@ pub use dependencies::{
 pub use error::{PackageError, PackageResult};
 pub use file_identity::{FileIdentity, curseforge_fingerprint};
 pub use local_manifest::{
-    JarManifest, read_jar_bundled_mod_ids, read_jar_icon, read_jar_loader, read_jar_manifest,
+    JarDependencies, JarManifest, read_jar_bundled_mod_ids, read_jar_dependencies, read_jar_icon,
+    read_jar_loader, read_jar_manifest,
 };
 pub use metadata_cache::{
     CachedPackageMeta, cached_project_detail, fetch_package_meta, get_version_cached,
     read_cached_package_meta,
+};
+pub use dependents::{
+    DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
 };
 pub use oneclient_common::domain::{ContentType, GameLoader, HashAlgorithm, ProviderId};
 pub use provider::{PackageProvider, PackageProviderRegistry};

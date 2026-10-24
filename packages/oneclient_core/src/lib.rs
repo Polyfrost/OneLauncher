@@ -3,6 +3,7 @@
 #[cfg(debug_assertions)]
 pub mod dev;
 
+pub mod bisect;
 pub mod changelog;
 pub mod clusters;
 pub mod disable_warnings;
@@ -23,6 +24,12 @@ pub mod tos;
 pub mod verify;
 pub mod versions;
 
+pub use bisect::{
+    BisectAnswer, BisectError, BisectExit, BisectMod, BisectRole, BisectStatus, BisectSuggestion,
+    accept_bisect_suggestion, answer_bisect, bisect_status, confirm_bisect,
+    decline_bisect_suggestion, finish_bisect, keep_bisect_mods_on, restart_bisect,
+    skip_bisect_answer, start_bisect, undo_bisect_answer,
+};
 pub use changelog::{ChangelogEntry, fetch_changelog};
 pub use clusters::{
     Cluster, ClusterError, ClusterManager, ClusterStage, ClusterUpdate, CreateClusterOptions,
@@ -73,6 +80,9 @@ pub use oneclient_content::bundles::{
     set_bundle_package_override, set_bundle_package_overrides, skip_optional_mods,
 };
 pub use oneclient_content::packages::LinkedArtifactInfo;
+pub use oneclient_content::packages::dependents::{
+    DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
+};
 pub use oneclient_content::packages::updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
     cached_browser_package_updates, check_browser_package_updates, refresh_browser_package_updates,

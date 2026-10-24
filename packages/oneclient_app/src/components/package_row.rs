@@ -1,16 +1,17 @@
 use freya::prelude::*;
 use freya::router::RouterContext;
 use oneclient_content::packages::ProviderId;
-use oneclient_core::SeenStatus;
+use oneclient_core::{BisectRole, SeenStatus};
 
 use crate::components::{ContextMenu, Icon, IconType, toggle_controlled};
+use crate::disable::{self, BundlePackage, DisableRequest, DisableRoot};
 use crate::essential::EssentialPackage;
 use freya::query::UseMutation;
 
 use crate::hooks::{
-    ClusterAction, ClusterMutation, EssentialGuardKind, PendingEssential, disable_warnings,
-    loaded_image, use_cached_image, use_cluster_mutation, use_disable_warnings,
-    use_essential_guard,
+    ClusterAction, ClusterMutation, EssentialGuardKind, Guarded, PendingEssential,
+    disable_warnings, loaded_image, use_cached_image, use_cluster_mutation, use_disable_confirm,
+    use_disable_warnings, use_essential_guard,
 };
 use crate::routes::Route;
 use crate::theme::colors;
@@ -76,6 +77,8 @@ pub struct PackageEntry {
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
     pub essential: Option<&'static EssentialPackage>,
+    pub bisect_role: Option<BisectRole>,
+    pub locked: bool,
     pub modpack: Option<String>,
 }
 
@@ -99,6 +102,17 @@ impl PackageEntry {
             SeenStatus::Updated => Some(updated_badge()),
             SeenStatus::Seen => None,
         }
+    }
+
+    pub fn bisect_badge(&self) -> Option<Element> {
+        let role = self.bisect_role?;
+        let accent = match role {
+            BisectRole::Testing | BisectRole::Helper => colors::brand(),
+            BisectRole::Waiting => colors::fg_secondary(),
+            BisectRole::Cleared => colors::success(),
+            BisectRole::Found => colors::danger(),
+        };
+        Some(status_tag(role.label(), accent))
     }
 }
 
@@ -178,23 +192,28 @@ impl Component for PackageRow {
         let icon = package_icon(&item, &icon_query, icon_size);
 
         let on_toggle: EventHandler<()> = {
-            let action = toggle_action(&item, cluster_id, !item.enabled);
+            let action = toggle_action(&item, cluster_id, !item.enabled).filter(|_| !item.locked);
             let item = item.clone();
             let warnings = disable_warnings(&warnings_query);
+            let pending_disable = use_disable_confirm();
             (move |()| {
                 let Some(action) = action.clone() else {
                     return;
                 };
-                let only = [&item];
-                run_guarded(
-                    action,
-                    if item.enabled { &only[..] } else { &[] },
-                    item.name.clone(),
-                    EssentialGuardKind::Disable,
-                    warnings.clone(),
-                    cluster,
-                    guard,
-                );
+                // Switching one off can take other packages with it, so it goes
+                // through the impact check rather than straight to the flag.
+                // Switching one on never does.
+                if item.enabled {
+                    guard_disable(
+                        disable_request(&[&item], cluster_id, item.name.clone()),
+                        &[&item],
+                        warnings.clone(),
+                        guard,
+                        pending_disable,
+                    );
+                    return;
+                }
+                cluster.mutate(action);
             })
             .into()
         };
@@ -270,6 +289,37 @@ pub(crate) fn toggle_action(
     )
 }
 
+pub(crate) fn disable_request(
+    items: &[&PackageEntry],
+    cluster_id: i64,
+    name: String,
+) -> DisableRequest {
+    let roots = items
+        .iter()
+        .map(|item| match &item.hash {
+            Some(hash) => DisableRoot::Artifact(hash.clone()),
+            None => DisableRoot::Package(item.provider, item.package_id.clone()),
+        })
+        .collect();
+    let bundles = items
+        .iter()
+        .filter(|item| item.hash.is_none())
+        .filter_map(|item| {
+            Some(BundlePackage {
+                bundle_name: item.bundle_name.clone()?,
+                package_id: item.package_id.clone(),
+            })
+        })
+        .collect();
+
+    DisableRequest {
+        cluster_id,
+        name,
+        roots,
+        bundles,
+    }
+}
+
 pub(crate) fn set_enabled_action(
     cluster_id: i64,
     hash: Option<&str>,
@@ -331,28 +381,57 @@ pub(crate) fn run_guarded(
     cluster: UseMutation<ClusterMutation>,
     mut guard: State<Option<PendingEssential>>,
 ) {
-    let warned: Vec<(&PackageEntry, String)> = targets
-        .iter()
-        .filter_map(|p| Some((*p, disable_warning_body(p, warnings.clone())?)))
-        .collect();
-    let body = match warned.as_slice() {
-        [] => {
-            cluster.mutate(action);
-            return;
-        }
-        [(p, body)] if p.name == name => body.clone(),
-        _ => warned
-            .iter()
-            .map(|(p, body)| format!("**{}**\n\n{body}", p.name))
-            .collect::<Vec<_>>()
-            .join("\n\n"),
+    let Some(body) = guard_body(targets, &name, warnings) else {
+        cluster.mutate(action);
+        return;
     };
     guard.set(Some(PendingEssential {
         name,
         body,
         kind,
-        action,
+        then: Guarded::Mutate(action),
     }));
+}
+
+pub(crate) fn guard_disable(
+    request: DisableRequest,
+    targets: &[&PackageEntry],
+    warnings: Option<oneclient_core::DisableWarnings>,
+    mut guard: State<Option<PendingEssential>>,
+    pending_disable: State<Option<disable::PendingDisable>>,
+) {
+    let Some(body) = guard_body(targets, &request.name, warnings) else {
+        disable::request(request, pending_disable);
+        return;
+    };
+    guard.set(Some(PendingEssential {
+        name: request.name.clone(),
+        body,
+        kind: EssentialGuardKind::Disable,
+        then: Guarded::Disable(request),
+    }));
+}
+
+fn guard_body(
+    targets: &[&PackageEntry],
+    name: &str,
+    warnings: Option<oneclient_core::DisableWarnings>,
+) -> Option<String> {
+    let warned: Vec<(&PackageEntry, String)> = targets
+        .iter()
+        .filter_map(|p| Some((*p, disable_warning_body(p, warnings.clone())?)))
+        .collect();
+    match warned.as_slice() {
+        [] => None,
+        [(p, body)] if p.name == name => Some(body.clone()),
+        _ => Some(
+            warned
+                .iter()
+                .map(|(p, body)| format!("**{}**\n\n{body}", p.name))
+                .collect::<Vec<_>>()
+                .join("\n\n"),
+        ),
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -457,7 +536,7 @@ fn list_card(
         .on_secondary_down(on_secondary(on_context.clone()))
         .child(package_info(item, package_type, cluster_id, icon))
         .child(meta_size(item.size))
-        .child(toggle_controlled(item.enabled, on_toggle))
+        .child(toggle_controlled(item.enabled, on_toggle).disabled(item.locked))
         .maybe_child(on_context.map(kebab_button))
         .into_element()
 }
@@ -537,6 +616,7 @@ pub(crate) fn grid_card(
     let badged = item.is_outdated()
         || item.shadowed
         || item.outranked
+        || item.bisect_role.is_some()
         || item.modpack.is_some()
         || item.recency_badge().is_some();
     let floating = badged.then(|| {
@@ -555,6 +635,7 @@ pub(crate) fn grid_card(
             .maybe_child(item.is_outdated().then(outdated_badge))
             .maybe_child(item.shadowed.then(shadowed_badge))
             .maybe_child(item.outranked.then(outranked_badge))
+            .maybe_child(item.bisect_badge())
             .maybe_child(item.recency_badge())
             .into_element()
     });
@@ -845,6 +926,7 @@ fn package_info(
                         .maybe_child(item.is_outdated().then(outdated_badge))
                         .maybe_child(item.shadowed.then(shadowed_badge))
                         .maybe_child(item.outranked.then(outranked_badge))
+                        .maybe_child(item.bisect_badge())
                         .maybe_child(item.recency_badge()),
                 )
                 .maybe(!item.author.is_empty(), |el| {

@@ -726,6 +726,23 @@ pub(crate) async fn finalize_session(
     let reported = end.watch.as_ref().is_some_and(CrashWatch::reported_crash);
     let crashed = counts_as_crash(&end.outcome, end.diagnosis.as_ref(), reported);
 
+    crate::bisect::record_bisect_exit(
+        state,
+        cluster_id,
+        match end.outcome {
+            Exit::Failed(_) | Exit::Inferred => crate::bisect::GameExit::Unknown,
+            _ if crashed => crate::bisect::GameExit::Crashed,
+            Exit::Observed { .. } | Exit::Killed => crate::bisect::GameExit::Clean,
+        },
+        end.watch
+            .as_ref()
+            .map(CrashWatch::take_missing)
+            .unwrap_or_default(),
+        cwd,
+        std::time::SystemTime::from(end.started_at),
+    )
+    .await;
+
     let display = match &end.outcome {
         Exit::Observed {
             success: false,

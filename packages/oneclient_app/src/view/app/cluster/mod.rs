@@ -2,6 +2,7 @@ pub mod logs;
 mod overview;
 pub(crate) mod package_manager;
 
+mod bisect;
 mod cluster_settings;
 mod datapacks;
 mod folder_list;
@@ -14,9 +15,10 @@ mod shaders;
 mod textures;
 mod worlds;
 
-pub use logs::ClusterLogs;
+pub use logs::{ClusterLogs, OpenGameOutput};
 pub use overview::ClusterOverview;
 
+pub(crate) use bisect::{BisectBanner, BisectQuestion, FindProblemModRow};
 pub use cluster_settings::ClusterSettings;
 pub use datapacks::ClusterDataPacks;
 pub(crate) use folder_list::{dialog, supports_datapacks};

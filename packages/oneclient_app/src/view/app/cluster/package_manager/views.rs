@@ -380,6 +380,19 @@ pub(super) fn toolbar_bar(
             move || package_list_text(&export, content_type),
         ));
     }
+    let selection = bulk.selection;
+    controls.push(
+        Button::new()
+            .secondary()
+            .height(Size::px(34.))
+            .font_size(12.)
+            .enabled(!bulk.order.is_empty())
+            .tooltip("Select several to enable, disable or delete at once")
+            .on_press(move |_| selection.enter())
+            .child(Icon::new(IconType::Check).size(15.))
+            .text("Select")
+            .into_element(),
+    );
     controls.push(
         Button::new()
             .primary()
@@ -578,6 +591,12 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
             "Minecraft is running. Changes to your {noun_plural} are saved, and take effect the next time you launch this version."
         ),
     }
+}
+
+pub(super) fn bisect_notice(noun_plural: &'static str) -> String {
+    format!(
+        "A problem mod search is running, so {noun_plural} can't be switched on or off here. Use the panel above to stop it."
+    )
 }
 
 pub(super) fn global_notice(noun_plural: &'static str) -> String {

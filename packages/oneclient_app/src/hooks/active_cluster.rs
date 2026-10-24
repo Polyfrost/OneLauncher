@@ -94,6 +94,22 @@ pub fn use_link_confirm() -> State<Option<String>> {
     consume_root_context::<LinkConfirmState>().0
 }
 
+/// The disable the user is being asked about, if any.
+///
+/// Root-owned like the link confirmation, and for the same reason: the question
+/// is raised from a package row that is free to scroll out of the list — or be
+/// filtered away by the answer — while it is still on screen.
+#[derive(Clone)]
+pub struct DisableConfirmState(pub State<Option<crate::disable::PendingDisable>>);
+
+pub fn use_provide_disable_confirm(state: DisableConfirmState) {
+    use_provide_root_context(move || state.clone());
+}
+
+pub fn use_disable_confirm() -> State<Option<crate::disable::PendingDisable>> {
+    consume_root_context::<DisableConfirmState>().0
+}
+
 #[derive(Clone, Copy, PartialEq)]
 pub enum EssentialGuardKind {
     Disable,
@@ -105,7 +121,13 @@ pub struct PendingEssential {
     pub name: String,
     pub body: String,
     pub kind: EssentialGuardKind,
-    pub action: ClusterAction,
+    pub then: Guarded,
+}
+
+#[derive(Clone, PartialEq)]
+pub enum Guarded {
+    Mutate(ClusterAction),
+    Disable(crate::disable::DisableRequest),
 }
 
 #[derive(Clone)]

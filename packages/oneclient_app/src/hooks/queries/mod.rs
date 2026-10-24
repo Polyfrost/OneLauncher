@@ -11,6 +11,7 @@ fn use_meta_url_key() -> String {
 
 mod analytics;
 mod auth;
+mod bisect;
 mod bundles;
 mod changelog;
 mod cluster_content;
@@ -52,6 +53,7 @@ pub use auth::{
     use_default_account, use_finish_microsoft_login, use_refresh_account, use_refresh_all_accounts,
     use_remove_account, use_set_default_account,
 };
+pub use bisect::{BisectAction, BisectMutation, use_bisect, use_bisect_mutation};
 pub use bundles::{
     AvailableBundlesQuery, ClusterBundles, OnboardingBundlesQuery, available_bundles,
     bundle_overrides_map, bundles_with_status_items, imported_modpacks_list, modpack_sources_map,

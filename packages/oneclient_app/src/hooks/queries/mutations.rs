@@ -70,6 +70,7 @@ pub async fn invalidate_cluster_queries() {
         QueriesStorage::<PackageUpdatesQuery>::invalidate_all(),
     )
     .await;
+    timed("bisect", super::bisect::invalidate_bisect_queries()).await;
     timed(
         "modpack_sources",
         QueriesStorage::<ModpackSourcesQuery>::invalidate_all(),

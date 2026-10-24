@@ -135,11 +135,13 @@ pub(super) async fn read_file_string(path: &Path) -> ClusterResult<String> {
         .and_then(|e| e.to_str())
         .is_some_and(|e| e.eq_ignore_ascii_case("gz"));
 
-    if is_gz {
-        Ok(polyio::read_gz_to_string(path).await?)
+    let bytes = if is_gz {
+        polyio::read_gz(path).await?
     } else {
-        Ok(polyio::read_to_string(path).await?)
-    }
+        polyio::read(path).await?
+    };
+    Ok(String::from_utf8(bytes)
+        .unwrap_or_else(|err| String::from_utf8_lossy(err.as_bytes()).into_owned()))
 }
 
 #[tracing::instrument(level = "debug", skip(opts))]

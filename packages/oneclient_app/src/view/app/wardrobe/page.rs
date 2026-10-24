@@ -1606,13 +1606,11 @@ impl GridCtx<'_> {
         })
     }
 
-    fn select_and(&self, picked: Selection, then: EventHandler<()>) -> EventHandler<()> {
-        let select = self.select(picked);
+    fn equip(&self, toggle: EventHandler<()>) -> EventHandler<()> {
         let mut trying_on = self.shared.trying_on;
         EventHandler::new(move |()| {
-            select.call(());
             trying_on.set(false);
-            then.call(());
+            toggle.call(());
         })
     }
 
@@ -1946,7 +1944,7 @@ fn mojang_card(ctx: &GridCtx, cape: &MojangCape) -> Element {
         }
         .into_element(),
         menu: vec![{
-            let toggle = ctx.select_and(picked.clone(), toggle.clone());
+            let toggle = ctx.equip(toggle.clone());
             MenuAction::new(
                 if active {
                     IconType::XClose
@@ -1963,7 +1961,7 @@ fn mojang_card(ctx: &GridCtx, cape: &MojangCape) -> Element {
         swatches: Vec::new(),
         on_pick: None,
         on_select: ctx.select(picked.clone()),
-        on_action: ctx.select_and(picked, toggle),
+        on_action: ctx.equip(toggle),
     }
     .into_element()
 }
@@ -1980,7 +1978,7 @@ fn owned_card(ctx: &GridCtx, group: &CosmeticGroup) -> Element {
         Ok(keys) => ctx.run(keys),
         Err(message) => EventHandler::new(move |()| status.set(Some(message.clone()))),
     };
-    let on_equip = ctx.select_and(picked.clone(), toggle);
+    let on_equip = ctx.equip(toggle);
 
     let thumbnail = match variant {
         Some(variant) if group.kind == CosmeticType::Cape => LookThumb {

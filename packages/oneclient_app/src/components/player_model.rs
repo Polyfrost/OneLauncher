@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::rc::Rc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use bytes::Bytes;
 use freya::engine::prelude::{SkData, SkImage, SkRect};
@@ -24,6 +24,8 @@ const CAM_DIST: f32 = 52.;
 const MODEL_CENTER_Y: f32 = 16.;
 const DRAG_SENSITIVITY: f32 = 0.01;
 const PITCH_LIMIT: f32 = 1.3;
+// Every animated frame repaints the whole window, so cosmetics animate slower than the display.
+const ANIMATION_FRAME: Duration = Duration::from_millis(33);
 
 #[derive(PartialEq, Clone)]
 pub struct PlayerModel {
@@ -142,7 +144,6 @@ struct Player {
     scene: Scene,
     textures: Vec<Option<SkImage>>,
     start: Option<Instant>,
-    animate: bool,
     surface: Option<Surface>,
     frame: Option<(Frame, SkImage)>,
 }
@@ -288,7 +289,6 @@ impl Component for PlayerModel {
         };
         {
             let mut player = player.borrow_mut();
-            player.animate = self.draggable;
             if player.look.as_ref() != Some(&look) {
                 player.load(look);
             }
@@ -296,13 +296,16 @@ impl Component for PlayerModel {
 
         use_hook({
             let player = player.clone();
+            let animate = self.draggable;
             move || {
-                let ticker = RenderingTicker::get();
+                if !animate {
+                    return;
+                }
                 spawn(async move {
                     loop {
-                        ticker.tick().await;
+                        tokio::time::sleep(ANIMATION_FRAME).await;
                         let player = player.borrow();
-                        if player.animate && player.scene.is_animating() {
+                        if player.scene.is_animating() {
                             seconds.set(player.seconds());
                         }
                     }

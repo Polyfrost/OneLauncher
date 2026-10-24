@@ -449,12 +449,14 @@ impl Component for PreviewPanel {
             _ => None,
         }
         .unwrap_or_else(|| data.equipped());
-        let try_on = owned.filter(|_| *shared.trying_on.read()).and_then(|group| {
-            let variant = data.selected_variant(group)?;
-            let slot = equip_slot(group, variant)?;
-            let resolved = group.variant_for_skin(variant.id, data.slim);
-            Some((slot, data.variant(resolved)?.1.url.clone()?))
-        });
+        let try_on = owned
+            .filter(|_| *shared.trying_on.read())
+            .and_then(|group| {
+                let variant = data.selected_variant(group)?;
+                let slot = equip_slot(group, variant)?;
+                let resolved = group.variant_for_skin(variant.id, data.slim);
+                Some((slot, data.variant(resolved)?.1.url.clone()?))
+            });
         let cosmetics = data.look_cosmetics(&equipped, try_on);
         let emote = match &picked {
             Some(Selection::Emote(id)) => data

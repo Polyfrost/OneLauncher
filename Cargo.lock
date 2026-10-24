@@ -5533,7 +5533,7 @@ checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 [[package]]
 name = "plusrenderer"
 version = "0.1.0"
-source = "git+https://github.com/Polyfrost/plusrenderer?rev=a63824a44969673b5a721f3c0cea4c8e5e425d7f#a63824a44969673b5a721f3c0cea4c8e5e425d7f"
+source = "git+https://github.com/Polyfrost/plusrenderer?rev=914ddf8cae388126407d86925a05fa3db085ebbc#914ddf8cae388126407d86925a05fa3db085ebbc"
 dependencies = [
  "serde",
  "serde_json",

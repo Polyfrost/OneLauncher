@@ -100,7 +100,9 @@ pub async fn materialize_content(
         adopt_into_global(game_dir, &global_root).await;
         ensure_global_links(game_dir, &global_root).await;
     } else if !isolated {
-        leave_global_folders(services, cluster, game_dir, false).await;
+        leave_global_folders(services, cluster, game_dir, false)
+            .await
+            .ok();
     }
 
     let mods_swapped = !dedicated && !mods_in_cluster;
@@ -503,9 +505,13 @@ async fn ensure_global_links(game_dir: &Path, global_root: &Path) {
     }
 }
 
-pub async fn leave_shared_folder(services: &LauncherServices, cluster: &Cluster, game_dir: &Path) {
+pub async fn leave_shared_folder(
+    services: &LauncherServices,
+    cluster: &Cluster,
+    game_dir: &Path,
+) -> LauncherResult<()> {
     let _mods_sync = lock_mods_sync(cluster.id).await;
-    leave_global_folders(services, cluster, game_dir, true).await;
+    leave_global_folders(services, cluster, game_dir, true).await
 }
 
 async fn leave_global_folders(
@@ -513,15 +519,16 @@ async fn leave_global_folders(
     cluster: &Cluster,
     game_dir: &Path,
     every_type: bool,
-) {
+) -> LauncherResult<()> {
     let sharing = match oneclient_content::packages::store::sharing_cluster_ids(&services.db).await
     {
         Ok(ids) => ids,
         Err(err) => {
             tracing::warn!(error = %err, "cannot list the shared clusters; keeping the pack links");
-            return;
+            return Err(err.into());
         }
     };
+    let mut outcome = Ok(());
 
     for content_type in GLOBAL_TYPES {
         let link = game_dir.join(content_type.folder_name());
@@ -534,6 +541,7 @@ async fn leave_global_folders(
 
         if let Err(err) = split_packs(services, cluster.id, content_type as i64, &sharing).await {
             tracing::warn!(error = %err, ?content_type, "cannot split the shared packs; keeping the link");
+            outcome = Err(err);
             continue;
         }
         if !is_link {
@@ -546,6 +554,8 @@ async fn leave_global_folders(
         }
         polyio::create_dir_all(&link).await.ok();
     }
+
+    outcome
 }
 
 pub async fn join_shared_folder(services: &LauncherServices, cluster: &Cluster) {
@@ -628,7 +638,9 @@ pub async fn split_dedicated_packs(state: &LauncherState) {
             continue;
         };
         let _mods_sync = lock_mods_sync(cluster.id).await;
-        leave_global_folders(&state.services, &cluster, &dir, false).await;
+        leave_global_folders(&state.services, &cluster, &dir, false)
+            .await
+            .ok();
     }
 }
 

@@ -329,14 +329,15 @@ impl MutationCapability for ClusterMutation {
                         .get(*cluster_id)
                         .await
                         .is_ok_and(|cluster| cluster.uses_dedicated_dir() != *dedicated);
-                    let result = state
+                    let mut result = state
                         .clusters
                         .set_dedicated_dir(
                             *cluster_id,
                             *dedicated,
                             state.games.is_active(*cluster_id),
                         )
-                        .await;
+                        .await
+                        .map_err(|err| err.to_string());
                     if result.is_ok()
                         && switching
                         && let Ok(cluster) = state.clusters.get(*cluster_id).await
@@ -344,18 +345,23 @@ impl MutationCapability for ClusterMutation {
                         if !*dedicated {
                             oneclient_core::game::join_shared_folder(&state.services, &cluster)
                                 .await;
-                        } else if let Ok(dir) = cluster.dir() {
-                            oneclient_core::game::leave_shared_folder(
+                        } else if let Ok(dir) = cluster.dir()
+                            && let Err(err) = oneclient_core::game::leave_shared_folder(
                                 &state.services,
                                 &cluster,
                                 &dir,
                             )
-                            .await;
+                            .await
+                        {
+                            state
+                                .clusters
+                                .set_dedicated_dir(*cluster_id, false, false)
+                                .await
+                                .ok();
+                            result = Err(err.to_string());
                         }
                     }
-                    result.map_err(|err| oneclient_content::ContentError::InvalidData {
-                        reason: err.to_string(),
-                    })
+                    result.map_err(|reason| oneclient_content::ContentError::InvalidData { reason })
                 }
             }
             ClusterAction::VerifyFiles { cluster_id } => {

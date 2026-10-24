@@ -359,6 +359,36 @@ pub async fn read_zip_bytes_entry<K: Ord>(
     Ok(None)
 }
 
+/// Entries over [`MAX_ZIP_ENTRY_BYTES`] are skipped
+pub async fn read_zip_bytes_entries(data: Vec<u8>) -> PolyIOResult<Vec<(String, Vec<u8>)>> {
+    let mut reader = open_zip(futures_lite::io::Cursor::new(data)).await?;
+    let mut entries: Vec<(String, usize)> = Vec::new();
+    for (index, cdr) in reader.cdrs().iter().enumerate() {
+        let Some(name) = cdr.insecure_file_name.as_str() else {
+            continue;
+        };
+        if !name.ends_with('/') && cdr.uncompressed_size()? <= MAX_ZIP_ENTRY_BYTES {
+            entries.push((name.to_string(), index));
+        }
+    }
+
+    let mut out = Vec::with_capacity(entries.len());
+    for (name, index) in entries {
+        let entry_reader = reader.file(index).await?;
+        let mut data = Vec::new();
+        futures_lite::AsyncReadExt::read_to_end(
+            &mut futures_lite::AsyncReadExt::take(entry_reader, MAX_ZIP_ENTRY_BYTES + 1),
+            &mut data,
+        )
+        .await?;
+        if data.len() as u64 <= MAX_ZIP_ENTRY_BYTES {
+            out.push((name, data));
+        }
+    }
+
+    Ok(out)
+}
+
 pub const MAX_STREAMED_ENTRY_BYTES: u64 = 1024 * 1024 * 1024;
 
 pub const MAX_METADATA_ENTRY_BYTES: u64 = 64 * 1024 * 1024;

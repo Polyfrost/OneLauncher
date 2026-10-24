@@ -4948,6 +4948,7 @@ dependencies = [
  "oneclient_polyplus",
  "open",
  "percent-encoding",
+ "plusrenderer",
  "polyio",
  "pulldown-cmark",
  "regex",
@@ -5528,6 +5529,15 @@ name = "plain"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
+
+[[package]]
+name = "plusrenderer"
+version = "0.1.0"
+source = "git+https://github.com/Polyfrost/plusrenderer?rev=a63824a44969673b5a721f3c0cea4c8e5e425d7f#a63824a44969673b5a721f3c0cea4c8e5e425d7f"
+dependencies = [
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "png"
@@ -6737,6 +6747,7 @@ version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
+ "indexmap",
  "itoa",
  "memchr",
  "serde",

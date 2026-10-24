@@ -4960,6 +4960,7 @@ dependencies = [
  "uuid 1.26.1",
  "windows",
  "winresource",
+ "zbus",
 ]
 
 [[package]]

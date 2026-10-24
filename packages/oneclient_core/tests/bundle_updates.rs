@@ -1854,6 +1854,7 @@ async fn a_failed_download_applies_nothing() {
         0,
         "nothing was applied so there is nothing to block a launch over"
     );
+    assert_eq!(result.downloads_failed.len(), 1);
     assert!(result.removals_applied.is_empty());
     assert!(
         artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, HASH)

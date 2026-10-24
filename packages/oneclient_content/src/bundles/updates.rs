@@ -576,9 +576,17 @@ pub async fn apply_bundle_updates_with(
                     error = %format!("{err:#}"),
                     "bundle download failed"
                 );
+                result
+                    .downloads_failed
+                    .push(format!("{}: {err:#}", file.display_name()));
                 result.stopped_early = true;
             }
-            None => result.stopped_early = true,
+            None => {
+                result
+                    .downloads_failed
+                    .push(format!("{}: ran out of time", file.display_name()));
+                result.stopped_early = true;
+            }
         }
     }
 

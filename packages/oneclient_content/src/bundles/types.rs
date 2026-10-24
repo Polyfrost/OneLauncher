@@ -240,6 +240,7 @@ pub struct ApplyBundleUpdatesResult {
     pub updates_failed: Vec<String>,
     pub removals_failed: Vec<String>,
     pub additions_failed: Vec<String>,
+    pub downloads_failed: Vec<String>,
     pub stopped_early: bool,
 }
 

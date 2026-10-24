@@ -7,12 +7,11 @@ use oneclient_common::domain::ContentType;
 use oneclient_common::patch::Patch;
 use oneclient_common::paths;
 use oneclient_content::packages::store::manifest::{self, MaterializedManifest};
-use oneclient_db::dao::cluster_flag as flag_dao;
 use oneclient_db::dao::cluster as cluster_dao;
+use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
 use oneclient_events::GroupedProgressSession;
 
 use crate::LauncherResult;
-use crate::clusters::java_override::BUNDLE_JAVA_OVERRIDE;
 use crate::clusters::modpack::{linked_modpack_archive, repair_modpack_cluster};
 use crate::state::LauncherState;
 
@@ -21,10 +20,6 @@ const KEPT_DIRS: [&str; 4] = ["saves", "screenshots", "logs", "crash-reports"];
 const GLOBAL_TYPES: [ContentType; 2] = [ContentType::ResourcePack, ContentType::Shader];
 
 const OVERRIDE_LOCK: &str = ".oneclient/bundle_overrides.json";
-
-/// Set from the first destructive step until the content is back, so a reset that
-/// failed or was cut short by a crash still keeps the half-emptied cluster from launching
-const RESET_UNFINISHED: &str = "reset-unfinished";
 
 static RESETTING: Mutex<BTreeSet<i64>> = Mutex::new(BTreeSet::new());
 
@@ -70,7 +65,7 @@ pub fn is_resetting(cluster_id: i64) -> bool {
 }
 
 pub async fn reset_unfinished(state: &LauncherState, cluster_id: i64) -> LauncherResult<bool> {
-    Ok(flag_dao::is_set(&state.services.db, cluster_id, RESET_UNFINISHED).await?)
+    Ok(flag_dao::is_set(&state.services.db, cluster_id, ClusterFlag::ResetUnfinished).await?)
 }
 
 /// `claim` is held for the whole reset. It has to be taken before the activity check below,
@@ -107,14 +102,25 @@ pub async fn reset_cluster(
     {
         let _mods_sync = crate::game::lock_mods_sync(cluster_id).await;
 
-        flag_dao::set(&state.services.db, cluster_id, RESET_UNFINISHED, None).await?;
+        flag_dao::set(
+            &state.services.db,
+            cluster_id,
+            ClusterFlag::ResetUnfinished,
+            None,
+        )
+        .await?;
         let kept_types: Vec<i64> = if cluster.is_isolated() {
             Vec::new()
         } else {
             GLOBAL_TYPES.iter().map(|kind| *kind as i64).collect()
         };
         cluster_dao::reset_content_state(&state.services.db, cluster_id, &kept_types).await?;
-        flag_dao::clear(&state.services.db, cluster_id, BUNDLE_JAVA_OVERRIDE).await?;
+        flag_dao::clear(
+            &state.services.db,
+            cluster_id,
+            ClusterFlag::BundleJavaOverride,
+        )
+        .await?;
 
         let global = state.settings.read().global_game_settings.clone();
         state
@@ -151,7 +157,7 @@ pub async fn reset_cluster(
         return Ok(report);
     }
 
-    flag_dao::clear(&state.services.db, cluster_id, RESET_UNFINISHED).await?;
+    flag_dao::clear(&state.services.db, cluster_id, ClusterFlag::ResetUnfinished).await?;
     Ok(report)
 }
 

@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
-use oneclient_common::domain::GameLoader;
+use oneclient_common::domain::{GameLoader, PackageUpdateMode};
 use oneclient_content::modpacks::is_newer_version;
-use oneclient_db::dao::cluster_flag as flag_dao;
+use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
 use oneclient_events::Signal;
 
 use crate::LauncherResult;
@@ -10,47 +10,34 @@ use crate::clusters::{Cluster, ClusterUpdate};
 use crate::game::get_loader_versions;
 use crate::state::LauncherState;
 
-const LOADER_UPDATE: &str = "loader-update";
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LoaderUpdatePolicy {
-    Ask,
-    Always,
-    Never,
-}
-
 pub async fn loader_update_policy(
     state: &Arc<LauncherState>,
     cluster: &Cluster,
-) -> LauncherResult<LoaderUpdatePolicy> {
+) -> LauncherResult<PackageUpdateMode> {
     if cluster.uses_bundles() {
-        return Ok(LoaderUpdatePolicy::Always);
+        return Ok(PackageUpdateMode::Automatic);
     }
 
-    let policy = flag_dao::get(&state.services.db, cluster.id, LOADER_UPDATE).await?;
-    Ok(match policy.as_deref() {
-        Some("always") => LoaderUpdatePolicy::Always,
-        Some("never") => LoaderUpdatePolicy::Never,
-        _ => LoaderUpdatePolicy::Ask,
-    })
+    let mode = flag_dao::get(&state.services.db, cluster.id, ClusterFlag::LoaderUpdate).await?;
+    Ok(mode
+        .as_deref()
+        .and_then(PackageUpdateMode::parse)
+        .unwrap_or_default())
 }
 
 pub async fn set_loader_update_policy(
     state: &Arc<LauncherState>,
     cluster_id: i64,
-    policy: LoaderUpdatePolicy,
+    mode: PackageUpdateMode,
 ) -> LauncherResult<()> {
-    let db = &state.services.db;
-    match policy {
-        LoaderUpdatePolicy::Ask => flag_dao::clear(db, cluster_id, LOADER_UPDATE).await?,
-        LoaderUpdatePolicy::Always => {
-            flag_dao::set(db, cluster_id, LOADER_UPDATE, Some("always")).await?;
-        }
-        LoaderUpdatePolicy::Never => {
-            flag_dao::set(db, cluster_id, LOADER_UPDATE, Some("never")).await?;
-        }
-    }
-    Ok(())
+    let value = Some(mode.as_str());
+    Ok(flag_dao::set(
+        &state.services.db,
+        cluster_id,
+        ClusterFlag::LoaderUpdate,
+        value,
+    )
+    .await?)
 }
 
 pub async fn available_loader_update(
@@ -99,7 +86,7 @@ pub async fn auto_update_loader(
     state: &Arc<LauncherState>,
     cluster: &Cluster,
 ) -> LauncherResult<Option<Cluster>> {
-    if loader_update_policy(state, cluster).await? != LoaderUpdatePolicy::Always {
+    if loader_update_policy(state, cluster).await? != PackageUpdateMode::Automatic {
         return Ok(None);
     }
     let Some(version) = available_loader_update(state, cluster).await? else {

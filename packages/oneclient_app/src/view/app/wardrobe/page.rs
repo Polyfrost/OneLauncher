@@ -1885,7 +1885,7 @@ fn mojang_card(ctx: &GridCtx, cape: &MojangCape) -> Element {
         enabled: !data.busy,
         swatches: Vec::new(),
         on_pick: None,
-        on_select: ctx.select_and(picked.clone(), toggle.clone()),
+        on_select: ctx.select(picked.clone()),
         on_action: ctx.select_and(picked, toggle),
     }
     .into_element()
@@ -1980,7 +1980,7 @@ fn owned_card(ctx: &GridCtx, group: &CosmeticGroup) -> Element {
         enabled: true,
         swatches,
         on_pick: Some(on_pick),
-        on_select: on_equip.clone(),
+        on_select: ctx.select(picked),
         on_action: on_equip,
     }
     .into_element()

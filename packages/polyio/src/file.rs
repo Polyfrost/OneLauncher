@@ -130,14 +130,14 @@ pub async fn try_exists(path: impl AsRef<std::path::Path>) -> PolyIOResult<bool>
     skip(path),
     fields(path = %path.as_ref().display())
 )]
-pub async fn read_gz_to_string(path: impl AsRef<std::path::Path>) -> PolyIOResult<String> {
+pub async fn read_gz(path: impl AsRef<std::path::Path>) -> PolyIOResult<Vec<u8>> {
     let mut f = tokio::fs::File::open(path).await?;
     let mut buf = vec![];
     tokio::io::AsyncReadExt::read_to_end(&mut f, &mut buf).await?;
 
     let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(buf.as_slice());
-    let mut dst = String::new();
-    tokio::io::AsyncReadExt::read_to_string(&mut decoder, &mut dst).await?;
+    let mut dst = vec![];
+    tokio::io::AsyncReadExt::read_to_end(&mut decoder, &mut dst).await?;
 
     Ok(dst)
 }

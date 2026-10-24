@@ -33,6 +33,7 @@ use crate::hooks::{
 };
 use crate::theme::colors;
 use crate::ui::centered_note;
+use crate::view::app::cluster::confirm_dialog;
 
 const MAX_WIDTH: f32 = 1480.;
 const RIGHT_COLUMN_WIDTH: f32 = 320.;
@@ -724,6 +725,7 @@ pub(super) struct Shared {
     pub variant_picks: State<HashMap<i32, i32>>,
     pub store_picks: State<HashMap<i32, i32>>,
     pub status: State<Option<String>>,
+    pub deleting: State<Option<(Selection, String, WardrobeAction)>>,
     pub action: UseWardrobeAction,
 }
 
@@ -736,6 +738,7 @@ impl PartialEq for Shared {
             && self.variant_picks == other.variant_picks
             && self.store_picks == other.store_picks
             && self.status == other.status
+            && self.deleting == other.deleting
     }
 }
 
@@ -812,6 +815,7 @@ impl Component for WardrobeBody {
             variant_picks: use_state(HashMap::<i32, i32>::new),
             store_picks: use_state(HashMap::<i32, i32>::new),
             status: use_state(|| None::<String>),
+            deleting: use_state(|| None::<(Selection, String, WardrobeAction)>),
             action,
         };
 
@@ -971,6 +975,23 @@ impl Component for WardrobeBody {
             },
         };
 
+        let mut deleting = shared.deleting;
+        let mut selection = shared.selection;
+        let confirm_overlay = deleting.read().clone().map(|(picked, name, keys)| {
+            confirm_dialog(
+                format!("Delete \"{name}\"?"),
+                "This can't be undone.".to_string(),
+                move || deleting.set(None),
+                move || {
+                    deleting.set(None);
+                    if *selection.peek() == Some(picked.clone()) {
+                        selection.set(None);
+                    }
+                    perform(shared.action, shared.status, keys.clone());
+                },
+            )
+        });
+
         rect()
             .width(Size::fill())
             .height(Size::fill())
@@ -1041,6 +1062,7 @@ impl Component for WardrobeBody {
                             ),
                     ),
             )
+            .maybe_child(confirm_overlay)
     }
 
     fn render_key(&self) -> DiffKey {
@@ -2245,7 +2267,7 @@ fn outfit_card(ctx: &GridCtx, outfit: &OutfitInfo) -> Element {
     let (skin, cape) = data.outfit_look(outfit);
     let id = outfit.id;
     let account = data.account;
-    let mut selection = ctx.shared.selection;
+    let mut deleting = ctx.shared.deleting;
     let detail = if active {
         "Active".to_string()
     } else {
@@ -2262,11 +2284,11 @@ fn outfit_card(ctx: &GridCtx, outfit: &OutfitInfo) -> Element {
         name: outfit.name.clone(),
         favorite: !outfit.favorite,
     });
-    let delete = ctx.run(WardrobeAction::DeleteOutfit {
+    let delete = WardrobeAction::DeleteOutfit {
         account,
         id,
         name: outfit.name.clone(),
-    });
+    };
     let rename = {
         let action = ctx.shared.action;
         let status = ctx.shared.status;
@@ -2326,12 +2348,12 @@ fn outfit_card(ctx: &GridCtx, outfit: &OutfitInfo) -> Element {
                 true,
                 move |()| favorite.call(()),
             ),
-            MenuAction::danger(IconType::Trash01, "Delete", true, move |()| {
-                if *selection.peek() == Some(Selection::Outfit(id)) {
-                    selection.set(None);
-                }
-                delete.call(());
-            }),
+            {
+                let name = outfit.name.clone();
+                MenuAction::danger(IconType::Trash01, "Delete", true, move |()| {
+                    deleting.set(Some((Selection::Outfit(id), name.clone(), delete.clone())));
+                })
+            },
         ],
         rename: Some(Rename {
             current: outfit.name.clone(),
@@ -2407,7 +2429,7 @@ fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
     let slim = skin.model == SkinModel::Slim;
     let wearing =
         data.current_skin_hash().as_deref() == Some(skin.hash.as_str()) && data.slim == slim;
-    let mut selection = ctx.shared.selection;
+    let mut deleting = ctx.shared.deleting;
     let wear = ctx.run(WardrobeAction::WearSkin {
         account,
         url: skin.url.clone(),
@@ -2427,11 +2449,11 @@ fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
         name: skin.name.clone(),
         slim: !slim,
     });
-    let delete = ctx.run(WardrobeAction::DeleteSkin {
+    let delete = WardrobeAction::DeleteSkin {
         account,
         id,
         name: skin.name.clone(),
-    });
+    };
     let rename = {
         let action = ctx.shared.action;
         let status = ctx.shared.status;
@@ -2501,12 +2523,12 @@ fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
                 true,
                 move |()| arms.call(()),
             ),
-            MenuAction::danger(IconType::Trash01, "Delete", true, move |()| {
-                if *selection.peek() == Some(Selection::Skin(id)) {
-                    selection.set(None);
-                }
-                delete.call(());
-            }),
+            {
+                let name = skin.name.clone();
+                MenuAction::danger(IconType::Trash01, "Delete", true, move |()| {
+                    deleting.set(Some((Selection::Skin(id), name.clone(), delete.clone())));
+                })
+            },
         ],
         rename: Some(Rename {
             current: skin.name.clone(),

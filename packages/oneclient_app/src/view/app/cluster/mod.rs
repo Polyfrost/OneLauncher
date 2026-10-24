@@ -21,7 +21,7 @@ pub use overview::ClusterOverview;
 pub(crate) use bisect::{BisectBanner, BisectQuestion, FindProblemModRow};
 pub use cluster_settings::ClusterSettings;
 pub use datapacks::ClusterDataPacks;
-pub(crate) use folder_list::{dialog, supports_datapacks};
+pub(crate) use folder_list::{confirm_dialog, dialog, supports_datapacks};
 pub use mods::ClusterMods;
 pub use process_logs::ProcessLogs;
 pub use screenshots::ClusterScreenshots;

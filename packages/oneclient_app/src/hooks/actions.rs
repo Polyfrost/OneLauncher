@@ -876,7 +876,8 @@ impl Actions {
                     {
                         Ok(result) => {
                             installed += result.additions_applied.len();
-                            failed += result.additions_failed.len();
+                            failed +=
+                                result.additions_failed.len() + result.downloads_failed.len();
                             applied.push(*cluster_id);
                         }
                         Err(err) => {
@@ -1553,6 +1554,21 @@ impl Actions {
                 actions.record_bundle_checks([cluster_id]);
             }
 
+            let failures: Vec<String> = result
+                .failures()
+                .chain(&result.downloads_failed)
+                .cloned()
+                .collect();
+            if !failures.is_empty() {
+                state
+                    .services
+                    .events
+                    .notify("Some mods failed to update")
+                    .body(failures.join("\n"))
+                    .error()
+                    .send();
+            }
+
             super::invalidate_cluster_queries().await;
             if let Some(spec) =
                 crate::install::cluster_update_notification(cluster_id, &result, &state.services)
@@ -1774,13 +1790,6 @@ impl Actions {
             .await
             {
                 Ok(result) => {
-                    if result.stopped_early {
-                        tracing::warn!(
-                            cluster_id,
-                            "bundle updates could not be downloaded in full; launching on the current content, they go at the next launch"
-                        );
-                    }
-
                     if synced && result.settled() {
                         self.record_bundle_checks([cluster_id]);
                     }
@@ -1789,7 +1798,26 @@ impl Actions {
                         || !result.additions_applied.is_empty()
                         || !result.removals_applied.is_empty();
 
-                    result.failures().cloned().collect()
+                    if !result.stopped_early {
+                        result.failures().cloned().collect()
+                    } else if attempt == 1 {
+                        tracing::warn!(
+                            cluster_id,
+                            failed = result.downloads_failed.len(),
+                            "bundle updates could not be downloaded in full; launching on the current content, they go at the next launch"
+                        );
+                        Vec::new()
+                    } else {
+                        result.downloads_failed
+                    }
+                }
+                Err(err) if attempt == 1 => {
+                    tracing::warn!(
+                        cluster_id,
+                        error = %err,
+                        "bundle update failed, launching anyway"
+                    );
+                    return true;
                 }
                 Err(err) => vec![format!("{err:#}")],
             };

@@ -396,6 +396,30 @@ impl WardrobeData {
         (skin, cape)
     }
 
+    pub fn look_cosmetics(
+        &self,
+        equipped: &HashMap<BodySlot, i32>,
+        try_on: Option<(BodySlot, String)>,
+    ) -> Vec<(BodySlot, String)> {
+        let tried = try_on.as_ref().map(|(slot, _)| *slot);
+        let mut cosmetics: Vec<(BodySlot, String)> = equipped
+            .iter()
+            .filter(|(slot, _)| Some(**slot) != tried)
+            .filter_map(|(slot, id)| Some((*slot, self.variant(*id)?.1.url.clone()?)))
+            .chain(try_on)
+            .filter(|(slot, _)| *slot != BodySlot::Cape)
+            .collect();
+        cosmetics.sort();
+        cosmetics
+    }
+
+    pub fn equipped(&self) -> HashMap<BodySlot, i32> {
+        self.plus
+            .as_ref()
+            .map(|plus| plus.equipped.clone())
+            .unwrap_or_default()
+    }
+
     pub fn outfits_in_order(&self) -> Vec<OutfitInfo> {
         favorites_first(
             self.outfits
@@ -464,8 +488,30 @@ pub(super) fn shop_thumbnail(
             uuid: data.uuid.clone(),
             skin: None,
             cape: Some(CapeSource::Plus(api::asset_url(asset))),
+            cosmetics: Vec::new(),
+            emote: None,
             yaw: BACK_YAW,
             zoom: if interactive { 1.0 } else { CAPE_ZOOM },
+            interactive,
+        }
+        .into_element();
+    }
+    if interactive && let Some(asset) = variant.asset_id.or(item.asset_id) {
+        let url = api::asset_url(asset);
+        let emote = item.kind == CosmeticType::Emote;
+        let try_on = item.kind.default_slot().map(|slot| (slot, url.clone()));
+        return LookThumb {
+            uuid: data.uuid.clone(),
+            skin: None,
+            cape: data.current_cape(),
+            cosmetics: data.look_cosmetics(&data.equipped(), try_on),
+            emote: emote.then_some(url),
+            yaw: if BACK_VIEW_TYPES.contains(&item.kind) {
+                BACK_YAW
+            } else {
+                FRONT_YAW
+            },
+            zoom: 1.0,
             interactive,
         }
         .into_element();
@@ -479,7 +525,7 @@ pub(super) fn shop_thumbnail(
     .into_element()
 }
 
-fn equip_slot(group: &CosmeticGroup, variant: &CosmeticVariant) -> Option<BodySlot> {
+pub(super) fn equip_slot(group: &CosmeticGroup, variant: &CosmeticVariant) -> Option<BodySlot> {
     let allowed = |slot: BodySlot| {
         (variant.allowed_slots.is_empty() && group.allowed_slots.is_empty())
             || variant.allowed_slots.contains(&slot)
@@ -1885,6 +1931,8 @@ fn mojang_card(ctx: &GridCtx, cape: &MojangCape) -> Element {
             uuid: data.uuid.clone(),
             skin: None,
             cape: Some(CapeSource::Mojang(cape.url.clone())),
+            cosmetics: Vec::new(),
+            emote: None,
             yaw: BACK_YAW,
             zoom: CAPE_ZOOM,
             interactive: false,
@@ -1932,6 +1980,8 @@ fn owned_card(ctx: &GridCtx, group: &CosmeticGroup) -> Element {
             uuid: data.uuid.clone(),
             skin: None,
             cape: variant.url.clone().map(CapeSource::Plus),
+            cosmetics: Vec::new(),
+            emote: None,
             yaw: BACK_YAW,
             zoom: CAPE_ZOOM,
             interactive: false,
@@ -2322,6 +2372,8 @@ fn outfit_card(ctx: &GridCtx, outfit: &OutfitInfo) -> Element {
         badge: outfit.favorite.then(Badge::favorite),
         thumbnail: LookThumb {
             uuid: data.uuid.clone(),
+            cosmetics: data.look_cosmetics(&outfit.equipped, None),
+            emote: None,
             skin,
             cape,
             yaw: FRONT_YAW,
@@ -2489,6 +2541,8 @@ fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
             uuid: data.uuid.clone(),
             skin: Some((skin.url.clone(), slim)),
             cape: None,
+            cosmetics: Vec::new(),
+            emote: None,
             yaw: FRONT_YAW,
             zoom: 1.0,
             interactive: false,

@@ -765,6 +765,7 @@ struct Anchors {
 #[derive(Clone, Copy)]
 pub(super) struct Shared {
     pub selection: State<Option<Selection>>,
+    pub trying_on: State<bool>,
     pub adding_skin: State<bool>,
     pub show_cart: State<bool>,
     pub cart: State<Vec<CartEntry>>,
@@ -778,6 +779,7 @@ pub(super) struct Shared {
 impl PartialEq for Shared {
     fn eq(&self, other: &Self) -> bool {
         self.selection == other.selection
+            && self.trying_on == other.trying_on
             && self.adding_skin == other.adding_skin
             && self.show_cart == other.show_cart
             && self.cart == other.cart
@@ -855,6 +857,7 @@ impl Component for WardrobeBody {
         let scroll = use_scroll_controller(ScrollConfig::default);
         let shared = Shared {
             selection: use_state(|| None::<Selection>),
+            trying_on: use_state(|| false),
             adding_skin: use_state(|| false),
             show_cart: use_state(|| false),
             cart: use_state(Vec::<CartEntry>::new),
@@ -1592,19 +1595,23 @@ impl GridCtx<'_> {
 
     fn select(&self, picked: Selection) -> EventHandler<()> {
         let mut selection = self.shared.selection;
+        let mut trying_on = self.shared.trying_on;
         let mut show_cart = self.shared.show_cart;
         let mut adding_skin = self.shared.adding_skin;
         EventHandler::new(move |()| {
             show_cart.set(false);
             adding_skin.set(false);
+            trying_on.set(true);
             selection.set(Some(picked.clone()));
         })
     }
 
     fn select_and(&self, picked: Selection, then: EventHandler<()>) -> EventHandler<()> {
         let select = self.select(picked);
+        let mut trying_on = self.shared.trying_on;
         EventHandler::new(move |()| {
             select.call(());
+            trying_on.set(false);
             then.call(());
         })
     }

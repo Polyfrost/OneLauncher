@@ -109,24 +109,99 @@ fn has_allowed_scheme(url: &str) -> bool {
 }
 
 #[cfg(target_os = "linux")]
+const APPIMAGE_ENV: [&str; 10] = [
+    "LD_LIBRARY_PATH",
+    "PATH",
+    "XDG_DATA_DIRS",
+    "GSETTINGS_SCHEMA_DIR",
+    "PYTHONHOME",
+    "PYTHONPATH",
+    "PERLLIB",
+    "QT_PLUGIN_PATH",
+    "GST_PLUGIN_SYSTEM_PATH",
+    "GST_PLUGIN_SYSTEM_PATH_1_0",
+];
+
+#[cfg(target_os = "linux")]
+fn portal_open(target: &str) -> zbus::Result<()> {
+    use std::collections::HashMap;
+    use zbus::zvariant::{Fd, Value};
+
+    const DESTINATION: &str = "org.freedesktop.portal.Desktop";
+    const PATH: &str = "/org/freedesktop/portal/desktop";
+    const INTERFACE: &str = "org.freedesktop.portal.OpenURI";
+
+    let connection = zbus::blocking::Connection::session()?;
+    let options = HashMap::<&str, Value>::new();
+    if has_allowed_scheme(target) {
+        connection.call_method(
+            Some(DESTINATION),
+            PATH,
+            Some(INTERFACE),
+            "OpenURI",
+            &("", target, options),
+        )?;
+    } else {
+        let file = std::fs::File::open(target)?;
+        connection.call_method(
+            Some(DESTINATION),
+            PATH,
+            Some(INTERFACE),
+            "OpenFile",
+            &("", Fd::from(&file), options),
+        )?;
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+fn strip_appimage_env(command: &mut std::process::Command) {
+    let Some(appdir) = std::env::var_os("APPDIR") else {
+        return;
+    };
+    let appdir = appdir.to_string_lossy();
+
+    for key in APPIMAGE_ENV {
+        let Ok(value) = std::env::var(key) else {
+            continue;
+        };
+        let kept = value
+            .split(':')
+            .filter(|entry| !entry.is_empty() && !entry.starts_with(&*appdir))
+            .collect::<Vec<_>>();
+        if kept.is_empty() {
+            command.env_remove(key);
+        } else {
+            command.env(key, kept.join(":"));
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
 fn open_target(target: &str) {
     use std::process::Stdio;
 
-    let spawned = open::commands(target).into_iter().find_map(|mut command| {
-        command
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-            .ok()
-    });
+    let target = target.to_owned();
+    std::thread::spawn(move || {
+        let Err(err) = portal_open(&target) else {
+            return;
+        };
+        tracing::debug!(%err, "portal failed to open {target}, falling back");
 
-    match spawned {
-        Some(mut child) => {
-            std::thread::spawn(move || child.wait());
+        let opened = open::commands(&target).into_iter().any(|mut command| {
+            strip_appimage_env(&mut command);
+            command
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status()
+                .is_ok_and(|status| status.success())
+        });
+
+        if !opened {
+            tracing::warn!("failed to open {target}");
         }
-        None => tracing::warn!("failed to open {target}"),
-    }
+    });
 }
 
 #[cfg(not(target_os = "linux"))]

@@ -30,6 +30,7 @@ oneclient_macro = { workspace = true, features = ["freya"] }
 
 polyio.workspace = true
 rust-embed.workspace = true
+serde_json.workspace = true
 
 tracing.workspace = true
 tracing-subscriber.workspace = true
@@ -74,6 +75,7 @@ mimalloc = "=0.1.52"
 [target.'cfg(target_os = "linux")'.dependencies]
 libloading = "=0.8.9"
 gtk-sys = "=0.18.2"
+zbus = { version = "=5.19.0", default-features = false, features = ["async-io", "blocking-api"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "=0.62.2", features = [

@@ -420,7 +420,7 @@ pub(super) fn card_icon(icon: &CardIcon, size: f32) -> Element {
     }
 }
 
-pub(super) fn confirm_dialog(
+pub(crate) fn confirm_dialog(
     title: String,
     body: String,
     on_cancel: impl FnMut() + Clone + 'static,

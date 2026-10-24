@@ -15,7 +15,16 @@ use super::paths::artifact_absolute_path;
 const STAGING_SUFFIX: &str = ".oneclient-tmp";
 
 pub(crate) fn shares_content(cluster: &ClusterRow, content_type: ContentType) -> bool {
-    content_type.is_global() && !cluster.is_isolated()
+    content_type.is_global() && crate::modpacks::shares_game_dir(cluster)
+}
+
+pub async fn sharing_cluster_ids(db: &DbPool) -> Result<Vec<i64>, sqlx::Error> {
+    Ok(oneclient_db::dao::cluster::list_all(db)
+        .await?
+        .into_iter()
+        .filter(crate::modpacks::shares_game_dir)
+        .map(|cluster| cluster.id)
+        .collect())
 }
 
 /// What a live add actually did, so a caller can say so instead of promising

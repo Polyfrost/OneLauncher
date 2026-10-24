@@ -428,6 +428,14 @@ pub(super) async fn install_shared_instance(
         .collect();
     bundle_dao::save_overrides(&state.services.db, cluster_id, &overrides).await?;
 
+    if share.dedicated_dir && !state.clusters.get(cluster_id).await?.is_isolated() {
+        state
+            .clusters
+            .set_dedicated_dir(cluster_id, true, false)
+            .await
+            .ok();
+    }
+
     let mut report = ModpackInstallReport::default();
     if share.modpack.is_some() {
         report = modpacks::install_modpack(

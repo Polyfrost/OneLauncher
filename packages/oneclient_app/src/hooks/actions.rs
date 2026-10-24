@@ -876,7 +876,8 @@ impl Actions {
                     {
                         Ok(result) => {
                             installed += result.additions_applied.len();
-                            failed += result.additions_failed.len();
+                            failed +=
+                                result.additions_failed.len() + result.downloads_failed.len();
                             applied.push(*cluster_id);
                         }
                         Err(err) => {
@@ -1553,6 +1554,21 @@ impl Actions {
                 actions.record_bundle_checks([cluster_id]);
             }
 
+            let failures: Vec<String> = result
+                .failures()
+                .chain(&result.downloads_failed)
+                .cloned()
+                .collect();
+            if !failures.is_empty() {
+                state
+                    .services
+                    .events
+                    .notify("Some mods failed to update")
+                    .body(failures.join("\n"))
+                    .error()
+                    .send();
+            }
+
             super::invalidate_cluster_queries().await;
             if let Some(spec) =
                 crate::install::cluster_update_notification(cluster_id, &result, &state.services)
@@ -1702,17 +1718,17 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
-    ) {
+    ) -> bool {
         if !self.bundle_check_due(cluster_id) {
             tracing::debug!(cluster_id, "bundle update check skipped, checked recently");
-            return;
+            return true;
         }
 
         let content = state.services.content();
 
         if let Ok(false) = oneclient_core::cluster_has_bundle_content(cluster_id, &content).await {
             tracing::debug!(cluster_id, "bundle update check skipped, no bundle content");
-            return;
+            return true;
         }
 
         self.station
@@ -1752,51 +1768,91 @@ impl Actions {
 
         // Bundle content is forced, so the update mode never gates it and the
         // modal never lists it
-        let deadline = Instant::now() + BUNDLE_APPLY_BUDGET;
-        let result = match off_ui({
-            let state = state.clone();
-            async move {
-                oneclient_core::apply_bundle_updates(
-                    cluster_id,
-                    state.bundles.as_ref(),
-                    &state.services.content(),
-                    Some(deadline),
-                )
-                .await
-            }
-        })
-        .await
-        {
-            Ok(result) => result,
-            Err(err) => {
-                tracing::warn!(
-                    cluster_id,
-                    error = %err,
-                    "bundle update failed, launching anyway"
-                );
-                return;
-            }
-        };
+        // A failed update leaves the cluster half updated, e.g. a mod that
+        // needs a newer library next to the old library, so one retry then
+        // refuse to launch rather than hand Fabric a set that cannot load
+        let mut changed = false;
+        let mut failures = Vec::new();
+        for attempt in 1..=2 {
+            let deadline = Instant::now() + BUNDLE_APPLY_BUDGET;
+            failures = match off_ui({
+                let state = state.clone();
+                async move {
+                    oneclient_core::apply_bundle_updates(
+                        cluster_id,
+                        state.bundles.as_ref(),
+                        &state.services.content(),
+                        Some(deadline),
+                    )
+                    .await
+                }
+            })
+            .await
+            {
+                Ok(result) => {
+                    if synced && result.settled() {
+                        self.record_bundle_checks([cluster_id]);
+                    }
 
-        if result.stopped_early {
+                    changed |= !result.updates_applied.is_empty()
+                        || !result.additions_applied.is_empty()
+                        || !result.removals_applied.is_empty();
+
+                    if !result.stopped_early {
+                        result.failures().cloned().collect()
+                    } else if attempt == 1 {
+                        tracing::warn!(
+                            cluster_id,
+                            failed = result.downloads_failed.len(),
+                            "bundle updates could not be downloaded in full; launching on the current content, they go at the next launch"
+                        );
+                        Vec::new()
+                    } else {
+                        result.downloads_failed
+                    }
+                }
+                Err(err) if attempt == 1 => {
+                    tracing::warn!(
+                        cluster_id,
+                        error = %err,
+                        "bundle update failed, launching anyway"
+                    );
+                    return true;
+                }
+                Err(err) => vec![format!("{err:#}")],
+            };
+
+            if failures.is_empty() {
+                break;
+            }
             tracing::warn!(
                 cluster_id,
-                "bundle updates ran out of their launch budget; the rest go at the next launch"
+                attempt,
+                failed = failures.len(),
+                "bundle updates failed before launch"
             );
         }
 
-        if synced && result.settled() {
-            self.record_bundle_checks([cluster_id]);
+        if changed {
+            super::invalidate_cluster_queries().await;
         }
 
-        if result.updates_applied.is_empty()
-            && result.additions_applied.is_empty()
-            && result.removals_applied.is_empty()
-        {
-            return;
+        if failures.is_empty() {
+            return true;
         }
 
-        super::invalidate_cluster_queries().await;
+        state
+            .services
+            .events
+            .notify("Launch stopped: mods failed to update")
+            .body(format!(
+                "OneClient could not update {} of this instance's mods, so the game was not started. Try launching again.\n{}",
+                failures.len(),
+                failures.join("\n")
+            ))
+            .error()
+            .send();
+        false
     }
 
     /// The check runs and the cache is written whatever the mode says keeping
@@ -2256,9 +2312,13 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     actions
         .resolve_bundle_choices_before_launch(&state, cluster_id)
         .await;
-    actions
+    if !actions
         .resolve_bundle_updates_before_launch(&state, cluster_id)
-        .await;
+        .await
+    {
+        events.game_stage(cluster_id, oneclient_events::LaunchStage::Exited);
+        return;
+    }
     actions
         .resolve_package_updates_before_launch(&state, cluster_id)
         .await;

@@ -41,6 +41,7 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Prepare manifest
+        shell: bash
         run: |
           URL="https://github.com/${{ github.repository }}/releases/download/oneclient-${VERSION}/OneClient_${VERSION}_linux_x86_64.deb"
           SHA=$(curl -sfL "$URL" | sha256sum | cut -d' ' -f1)

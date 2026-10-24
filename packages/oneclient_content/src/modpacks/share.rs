@@ -1036,7 +1036,7 @@ async fn keeps_disabled_locally(
     if !artifact_dao::is_cluster_linked(&ctx.db, cluster.id, hash).await? {
         return Ok(false);
     }
-    if cluster.is_isolated() {
+    if !super::shares_game_dir(cluster) {
         return Ok(true);
     }
     let global = artifact_dao::get_artifact_by_hash(&ctx.db, hash)

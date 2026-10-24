@@ -12,7 +12,7 @@ finish-args:
   - --device=dri
   - --filesystem=xdg-download:ro
   - --filesystem=xdg-run/discord-ipc-0
-  - --filesystem=xdg-run/.flatpak/com.discordapp.Discord:create
+  - --filesystem=xdg-run/app/com.discordapp.Discord:create
 
 modules:
   - name: xrandr

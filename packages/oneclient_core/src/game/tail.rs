@@ -74,12 +74,12 @@ async fn tail(
     };
 
     let mut reader = BufReader::new(file);
-    let mut line = String::new();
+    let mut raw = Vec::new();
     let mut offset = 0u64;
 
     loop {
-        line.clear();
-        let read = reader.read_line(&mut line).await?;
+        raw.clear();
+        let read = reader.read_until(b'\n', &mut raw).await?;
 
         if read == 0 {
             // The read above returned EOF on a drained file so the final pass
@@ -99,6 +99,7 @@ async fn tail(
         }
 
         offset += read as u64;
+        let line = String::from_utf8_lossy(&raw);
 
         // A partial line means the game is mid-write wait for the newline
         // rather than emitting half a line and re-emitting the rest later
@@ -299,5 +300,19 @@ mod tests {
         tail.stop().await;
 
         assert_eq!(h.drain(), vec!["[12:00:00] Stopping!"]);
+    }
+
+    #[tokio::test]
+    async fn keeps_reading_past_a_line_that_is_not_utf8() {
+        let mut h = Harness::new().await;
+        let path = h.path();
+        polyio::write(&path, b"[12:00:00] \xa3ukasz\n[12:00:01] after\n")
+            .await
+            .unwrap();
+
+        let tail = spawn_log_tail(7, path.clone(), h.events.clone(), None, CrashWatch::new());
+        tail.stop().await;
+
+        assert_eq!(h.drain().last().map(String::as_str), Some("[12:00:01] after"));
     }
 }

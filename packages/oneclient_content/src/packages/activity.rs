@@ -114,6 +114,7 @@ mod tests {
             enabled,
             content_type: ContentType::Mod,
             file_name: format!("{hash}.jar"),
+            size_bytes: None,
             project_id: project_id.map(Into::into),
             version_id: Some(format!("v-{hash}")),
             display_name: None,

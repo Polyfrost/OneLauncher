@@ -1,13 +1,16 @@
+use std::collections::BTreeMap;
+
 use super::*;
 
 use freya::router::RouterContext;
+use freya::text_edit::Clipboard;
 use oneclient_content::packages::ContentType;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, CardLayout, ChevronToggle, ContextMenu, FilterMenu, FilterOption, Icon, IconType,
     LazySection, PackageEntry, PackageRow, ScrollArea, Segment, SegmentedControl, TextInput,
-    package_context_menu, use_shared_delete,
+    bundled_delete_action, package_context_menu, run_guarded, use_shared_delete,
 };
 use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::routes::Route;
@@ -72,11 +75,25 @@ pub(super) enum EnabledFilter {
 }
 
 impl EnabledFilter {
+    pub(super) const STORAGE_KEY: &'static str = "show";
+
     const ALL: [EnabledFilter; 3] = [
         EnabledFilter::All,
         EnabledFilter::Enabled,
         EnabledFilter::Disabled,
     ];
+
+    fn key(self) -> &'static str {
+        match self {
+            EnabledFilter::All => "all",
+            EnabledFilter::Enabled => "enabled",
+            EnabledFilter::Disabled => "disabled",
+        }
+    }
+
+    pub(super) fn from_key(key: &str) -> Option<Self> {
+        EnabledFilter::ALL.into_iter().find(|f| f.key() == key)
+    }
 
     fn label(self) -> &'static str {
         match self {
@@ -103,7 +120,20 @@ pub(super) enum HiddenFilter {
 }
 
 impl HiddenFilter {
+    pub(super) const STORAGE_KEY: &'static str = "hidden";
+
     const ALL: [HiddenFilter; 2] = [HiddenFilter::Hide, HiddenFilter::Show];
+
+    pub(super) fn key(self) -> &'static str {
+        match self {
+            HiddenFilter::Hide => "hide",
+            HiddenFilter::Show => "show",
+        }
+    }
+
+    pub(super) fn from_key(key: &str) -> Option<Self> {
+        HiddenFilter::ALL.into_iter().find(|f| f.key() == key)
+    }
 
     fn label(self) -> &'static str {
         match self {
@@ -265,15 +295,21 @@ pub(super) fn toolbar_bar(
     search: State<String>,
     sort: State<Option<String>>,
     current_sort: SortMode,
-    enabled_filter: State<EnabledFilter>,
-    hidden_filter: State<HiddenFilter>,
-    uses_bundles: bool,
+    filters: State<BTreeMap<String, String>>,
+    show: EnabledFilter,
+    hidden: HiddenFilter,
     layout: State<ViewLayout>,
     cluster_id: i64,
     package_type: &'static str,
+    content_type: ContentType,
+    dispatch: Actions,
     mut toolbar_width: State<f32>,
     bulk: &Bulk,
+    noun_plural: &'static str,
+    export: Vec<PackageEntry>,
 ) -> impl IntoElement {
+    let local_tab = matches!(tabs.get(active_idx), Some(Tab::Local));
+
     let chips = tabs.iter().enumerate().map(|(i, tab)| {
         let mut active = active;
         CategoryChip {
@@ -323,14 +359,7 @@ pub(super) fn toolbar_bar(
                     .into_element(),
             )
             .into_element(),
-        filter_button(
-            sort,
-            current_sort,
-            enabled_filter,
-            hidden_filter,
-            uses_bundles,
-        )
-        .into_element(),
+        filter_button(sort, current_sort, filters, show, hidden).into_element(),
     ];
 
     controls.push(
@@ -342,14 +371,53 @@ pub(super) fn toolbar_bar(
             .segment(Segment::new(ViewLayout::Grid).icon(IconType::DotsGrid))
             .into_element(),
     );
+    if !export.is_empty() {
+        controls.push(copy_list_button(
+            dispatch.clone(),
+            export.len(),
+            package_type,
+            noun_plural,
+            move || package_list_text(&export, content_type),
+        ));
+    }
+    let selection = bulk.selection;
+    controls.push(
+        Button::new()
+            .secondary()
+            .height(Size::px(34.))
+            .font_size(12.)
+            .enabled(!bulk.order.is_empty())
+            .tooltip("Select several to enable, disable or delete at once")
+            .on_press(move |_| selection.enter())
+            .child(Icon::new(IconType::Check).size(15.))
+            .text("Select")
+            .into_element(),
+    );
     controls.push(
         Button::new()
             .primary()
             .height(Size::px(34.))
             .font_size(12.)
-            .on_press(move |_| open_browser(cluster_id, package_type))
-            .child(Icon::new(IconType::Plus).size(15.))
-            .text("Add Content")
+            .on_press(move |_| {
+                if local_tab {
+                    import_from_file(cluster_id, content_type, dispatch.clone());
+                } else {
+                    open_browser(cluster_id, package_type);
+                }
+            })
+            .child(
+                Icon::new(if local_tab {
+                    IconType::FilePlus02
+                } else {
+                    IconType::Plus
+                })
+                .size(15.),
+            )
+            .text(if local_tab {
+                "Add from file"
+            } else {
+                "Add Content"
+            })
             .into_element(),
     );
     let controls = if bulk.active() {
@@ -407,6 +475,46 @@ pub(super) fn toolbar_bar(
             }
         })
         .child(inner)
+        .into_element()
+}
+
+pub(crate) fn copy_list_button(
+    dispatch: Actions,
+    count: usize,
+    noun: &'static str,
+    noun_plural: &'static str,
+    text: impl Fn() -> String + 'static,
+) -> Element {
+    let noun = if count == 1 { noun } else { noun_plural };
+    Button::new()
+        .secondary()
+        .icon()
+        .width(Size::px(34.))
+        .height(Size::px(34.))
+        .on_press(move |_| {
+            if let Err(err) = Clipboard::set(text()) {
+                tracing::warn!("clipboard copy failed: {err:?}");
+                dispatch
+                    .notify("Copy failed")
+                    .body(format!(
+                        "Could not copy your {noun_plural} to the clipboard."
+                    ))
+                    .error()
+                    .send();
+            } else {
+                dispatch
+                    .notify("Copied to clipboard")
+                    .body(format!("{count} {noun} copied to your clipboard."))
+                    .info()
+                    .icon(IconType::ClipboardCheck)
+                    .send();
+            }
+        })
+        .child(
+            Icon::new(IconType::Copy01)
+                .size(16.)
+                .color(colors::fg_secondary()),
+        )
         .into_element()
 }
 
@@ -485,6 +593,12 @@ pub(super) fn running_notice(noun_plural: &'static str, content_type: ContentTyp
     }
 }
 
+pub(super) fn bisect_notice(noun_plural: &'static str) -> String {
+    format!(
+        "A problem mod search is running, so {noun_plural} can't be switched on or off here. Use the panel above to stop it."
+    )
+}
+
 pub(super) fn global_notice(noun_plural: &'static str) -> String {
     format!(
         "These {noun_plural} are shared across all your OneClient clusters. Adding one here makes it available in all of them, and turning one off removes it from all of them."
@@ -537,19 +651,16 @@ pub(crate) fn notice_bar(text: String) -> Element {
 fn filter_button(
     mut sort: State<Option<String>>,
     current_sort: SortMode,
-    mut enabled_filter: State<EnabledFilter>,
-    mut hidden_filter: State<HiddenFilter>,
-    uses_bundles: bool,
+    mut filters: State<BTreeMap<String, String>>,
+    show: EnabledFilter,
+    hidden: HiddenFilter,
 ) -> FilterMenu {
-    let show = *enabled_filter.read();
-    let hidden = *hidden_filter.read();
-
     // Hiding hidden packages is the default so it does not count as the filters being touched
     let active = current_sort != SortMode::NameAsc
         || show != EnabledFilter::All
         || hidden != HiddenFilter::Hide;
 
-    let menu = FilterMenu::new(active)
+    FilterMenu::new(active)
         .section(
             "Sort by",
             SortMode::ALL.map(|mode| {
@@ -562,22 +673,40 @@ fn filter_button(
             "Show",
             EnabledFilter::ALL.map(|filter| {
                 FilterOption::new(filter.label(), filter == show, move |()| {
-                    enabled_filter.set(filter);
+                    filters
+                        .write()
+                        .insert(EnabledFilter::STORAGE_KEY.into(), filter.key().into());
                 })
             }),
-        );
+        )
+        .section(
+            "Hidden packages",
+            HiddenFilter::ALL.map(|filter| {
+                FilterOption::new(filter.label(), filter == hidden, move |()| {
+                    filters
+                        .write()
+                        .insert(HiddenFilter::STORAGE_KEY.into(), filter.key().into());
+                })
+            }),
+        )
+}
 
-    if !uses_bundles {
-        return menu;
-    }
-    menu.section(
-        "Hidden packages",
-        HiddenFilter::ALL.map(|filter| {
-            FilterOption::new(filter.label(), filter == hidden, move |()| {
-                hidden_filter.set(filter);
-            })
-        }),
-    )
+fn import_from_file(cluster_id: i64, content_type: ContentType, dispatch: Actions) {
+    spawn(async move {
+        if let Some(handles) = rfd::AsyncFileDialog::new()
+            .set_title("Select files to import")
+            .pick_files()
+            .await
+        {
+            dispatch.import_local_files(
+                cluster_id,
+                handles
+                    .iter()
+                    .map(|handle| (handle.path().to_path_buf(), content_type))
+                    .collect(),
+            );
+        }
+    });
 }
 
 fn add_from_file_button(
@@ -587,24 +716,7 @@ fn add_from_file_button(
 ) -> impl IntoElement {
     Button::new()
         .primary()
-        .on_press(move |_| {
-            let dispatch = dispatch.clone();
-            spawn(async move {
-                if let Some(handles) = rfd::AsyncFileDialog::new()
-                    .set_title("Select files to import")
-                    .pick_files()
-                    .await
-                {
-                    dispatch.import_local_files(
-                        cluster_id,
-                        handles
-                            .iter()
-                            .map(|handle| (handle.path().to_path_buf(), content_type))
-                            .collect(),
-                    );
-                }
-            });
-        })
+        .on_press(move |_| import_from_file(cluster_id, content_type, dispatch.clone()))
         .child(Icon::new(IconType::FilePlus02).size(14.))
         .text("Add from file")
 }
@@ -770,6 +882,8 @@ impl Component for ContentBox {
 
         let dispatch = use_dispatch();
         let cluster = use_cluster_mutation();
+        let guard = use_essential_guard();
+        let warnings_query = use_disable_warnings();
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
         let (on_delete, delete_dialog) = use_shared_delete(cluster_id, move |(_, hash)| {
             cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
@@ -850,6 +964,27 @@ impl Component for ContentBox {
                 bulk.menu(x, y, item.package_id.clone())
             } else {
                 let key = item.package_id.clone();
+                let on_bundled = (content_type == ContentType::Mod).then(|| {
+                    let item = item.clone();
+                    let warnings = disable_warnings(&warnings_query);
+                    let handler: EventHandler<()> = (move |()| {
+                        let Some(action) = bundled_delete_action(&item, cluster_id) else {
+                            return;
+                        };
+                        let only = [&item];
+                        run_guarded(
+                            action,
+                            if item.deleted { &[] } else { &only[..] },
+                            item.name.clone(),
+                            EssentialGuardKind::Remove,
+                            warnings.clone(),
+                            cluster,
+                            guard,
+                        );
+                    })
+                    .into();
+                    handler
+                });
                 package_context_menu(
                     x,
                     y,
@@ -857,6 +992,7 @@ impl Component for ContentBox {
                     cluster_id,
                     package_type,
                     on_delete,
+                    on_bundled,
                     (move |()| selection.toggle(key.clone())).into(),
                 )
             };
@@ -874,22 +1010,6 @@ impl Component for ContentBox {
             }
         });
 
-        let header = (count > 0)
-            .then(|| match kind {
-                // The toolbar already carries a permanent "Add Content" button
-                ContentKind::Browser => None,
-                ContentKind::Local => Some(
-                    action_header(add_from_file_button(
-                        cluster_id,
-                        content_type,
-                        dispatch.clone(),
-                    ))
-                    .into_element(),
-                ),
-                ContentKind::Other | ContentKind::NoMatches { .. } => None,
-            })
-            .flatten();
-
         let mut bottom_corners = CornerRadius::new_all(0.);
         bottom_corners.fill_bottom(12.);
 
@@ -904,7 +1024,6 @@ impl Component for ContentBox {
             .overflow(Overflow::Clip)
             .content(Content::Flex)
             .children(self.notices.iter().map(|text| notice_bar(text.clone())))
-            .maybe_child(header)
             .maybe_child(scroll)
             .maybe_child(empty.map(|empty| {
                 rect()
@@ -915,16 +1034,6 @@ impl Component for ContentBox {
             .maybe_child(menu_overlay)
             .maybe_child(delete_dialog)
     }
-}
-
-fn action_header(button: impl IntoElement) -> impl IntoElement {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .cross_align(Alignment::Center)
-        .content(Content::Flex)
-        .child(rect().width(Size::flex(1.0)))
-        .child(button)
 }
 
 pub(crate) fn empty_shell(icon: IconType) -> Rect {

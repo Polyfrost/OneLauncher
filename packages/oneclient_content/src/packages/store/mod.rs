@@ -4,6 +4,7 @@ mod link;
 pub mod manifest;
 mod paths;
 
+pub(crate) use download::store_release_dependencies;
 pub use download::{download_external, download_version_file, ensure_artifact_file};
 pub use gc::{
     GcReport, collect_unused_artifacts, evict_if_unused, find_unreferenced_files,
@@ -215,6 +216,9 @@ impl PackageStore {
         cluster_file_name: Option<&str>,
         ctx: &ContentCtx,
     ) -> ContentResult<bool> {
+        let content_type = ContentType::from_repr(artifact.content_type as u8);
+        ensure_mods_unlocked(cluster.id, content_type, ctx).await?;
+
         let name = cluster_file_name.unwrap_or(&artifact.file_name);
 
         let link =
@@ -278,6 +282,7 @@ impl PackageStore {
                 content_type: ContentType::from_repr(row.content_type as u8)
                     .unwrap_or(ContentType::Mod),
                 file_name: row.file_name,
+                size_bytes: row.size_bytes.map(|s| s as u64),
                 project_id: row.project_id,
                 version_id: row.version_id,
                 display_name: row.display_name,
@@ -322,6 +327,64 @@ impl PackageStore {
         ctx: &ContentCtx,
     ) -> ContentResult<(bool, LiveSync)> {
         Self::write_artifact_enabled(cluster_id, hash, Some(enabled), ctx).await
+    }
+
+    /// Switches off several artifacts at once, and nothing if any of it fails.
+    ///
+    /// The all-or-nothing part is the point: this is how a package and the
+    /// packages that require it go down together, and a set that half applied
+    /// would leave mods enabled with their library missing — the state the
+    /// warning in front of it exists to avoid. The database write is one
+    /// transaction; the folder cleanup after it is best-effort, exactly as it
+    /// is for a single toggle.
+    ///
+    /// Unlike [`Self::set_artifact_enabled`] this also records the bundle
+    /// overrides, because it has to be one transaction to be atomic and only
+    /// the storage layer can span two tables. `bundle_overrides` names the
+    /// `(bundle_name, package_id)` pairs with no artifact of their own.
+    #[tracing::instrument(level = "debug", skip(hashes, bundle_overrides, ctx), fields(count = hashes.len()))]
+    pub async fn disable_artifacts(
+        cluster_id: i64,
+        hashes: &[String],
+        bundle_overrides: &[(String, String)],
+        ctx: &ContentCtx,
+    ) -> ContentResult<()> {
+        if hashes.is_empty() && bundle_overrides.is_empty() {
+            return Ok(());
+        }
+
+        let cluster = Self::get_cluster(cluster_id, ctx).await?;
+        let disabled =
+            artifact_dao::disable_cluster_artifacts(&ctx.db, cluster_id, hashes, bundle_overrides)
+                .await?;
+
+        for link in disabled {
+            let Some(artifact) = artifact_dao::get_artifact_by_hash(&ctx.db, &link.hash).await?
+            else {
+                continue;
+            };
+            let Some(content_type) = ContentType::from_repr(artifact.content_type as u8) else {
+                continue;
+            };
+
+            if link::shares_content(&cluster, content_type) {
+                artifact_dao::set_enabled_for_hash(&ctx.db, &link.hash, 0).await?;
+            }
+
+            link::try_unlink_materialized(&cluster, content_type, &link.cluster_file_name, &ctx.db)
+                .await;
+            // The stored name is the clean one; a folder written before the
+            // flag became authoritative may still hold the suffixed copy.
+            link::try_unlink_materialized(
+                &cluster,
+                content_type,
+                &format!("{}.disabled", link.cluster_file_name),
+                &ctx.db,
+            )
+            .await;
+        }
+
+        Ok(())
     }
 
     /// `target` of `None` means "the opposite of whatever it is now"
@@ -431,11 +494,17 @@ impl PackageStore {
         Ok(report)
     }
 
-    #[tracing::instrument(level = "debug", skip(ctx))]
+    #[tracing::instrument(level = "debug", skip(artifacts, ctx), fields(files = artifacts.len()))]
+    pub async fn describe_artifacts(artifacts: &[(ArtifactRow, ContentType)], ctx: &ContentCtx) {
+        describe_imports(artifacts, ctx).await;
+    }
+
+    #[tracing::instrument(level = "debug", skip(ctx, progress))]
     pub async fn resolve_or_download(
         provider_id: ProviderId,
         project_id: &str,
         version_id: &str,
+        progress: Option<&oneclient_events::GroupedProgressSession>,
         ctx: &ContentCtx,
     ) -> ContentResult<ArtifactRow> {
         let provider = ctx.providers.get(provider_id)?;
@@ -444,8 +513,47 @@ impl PackageStore {
 
         let project = provider.get_project(project_id, ctx).await?;
 
-        Self::download_and_cache(provider_id, &project, &version, false, None, ctx).await
+        let Some(session) = progress else {
+            return Self::download_and_cache(provider_id, &project, &version, false, None, ctx)
+                .await;
+        };
+        let size = version.primary_file().map_or(0, |file| file.size).max(1);
+        session.expect(oneclient_events::TaskCategory::Packages, 1, size);
+        session
+            .run_child(
+                format!("{} {}", project.name, version.version_number),
+                size,
+                oneclient_events::TaskCategory::Packages,
+                |child| async move {
+                    child.set_phase(oneclient_events::TaskPhase::Downloading);
+                    Self::download_and_cache(
+                        provider_id,
+                        &project,
+                        &version,
+                        false,
+                        Some(&child),
+                        ctx,
+                    )
+                    .await
+                },
+            )
+            .await
     }
+}
+
+/// A running mod diagnostics session decides which mods are on so adding or
+/// removing one underneath it would make its answer wrong
+pub(crate) async fn ensure_mods_unlocked(
+    cluster_id: i64,
+    content_type: Option<ContentType>,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    if content_type == Some(ContentType::Mod)
+        && oneclient_db::dao::cluster_bisect::is_active(&ctx.db, cluster_id).await?
+    {
+        return Err(PackageError::DiagnosticsRunning.into());
+    }
+    Ok(())
 }
 
 /// Copies the file into the cache unless an identical one is already there and

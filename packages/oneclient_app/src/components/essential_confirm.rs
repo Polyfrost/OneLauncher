@@ -3,7 +3,10 @@ use freya::prelude::*;
 use crate::components::{
     Button, Icon, IconType, Markdown, MarkdownStyle, OverlayPopup, ScrollArea,
 };
-use crate::hooks::{EssentialGuardKind, use_cluster_mutation, use_essential_guard};
+use crate::disable;
+use crate::hooks::{
+    EssentialGuardKind, Guarded, use_cluster_mutation, use_disable_confirm, use_essential_guard,
+};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -17,6 +20,7 @@ impl Component for EssentialConfirmOverlay {
     fn render(&self) -> impl IntoElement {
         let mut pending = use_essential_guard();
         let cluster = use_cluster_mutation();
+        let pending_disable = use_disable_confirm();
 
         let Some(request) = pending.read().clone() else {
             return rect().into_element();
@@ -27,7 +31,7 @@ impl Component for EssentialConfirmOverlay {
             EssentialGuardKind::Remove => (format!("Remove {}?", request.name), "Remove anyway"),
         };
 
-        let action = request.action.clone();
+        let then = request.then.clone();
 
         OverlayPopup::new()
             .on_close(move |_| pending.set(None))
@@ -77,7 +81,14 @@ impl Component for EssentialConfirmOverlay {
                                         Button::new()
                                             .secondary()
                                             .on_press(move |_| {
-                                                cluster.mutate(action.clone());
+                                                match then.clone() {
+                                                    Guarded::Mutate(action) => {
+                                                        cluster.mutate(action)
+                                                    }
+                                                    Guarded::Disable(request) => {
+                                                        disable::request(request, pending_disable)
+                                                    }
+                                                }
                                                 pending.set(None);
                                             })
                                             .text(confirm_label),

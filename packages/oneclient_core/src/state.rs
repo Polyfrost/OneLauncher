@@ -124,9 +124,15 @@ async fn sweep_java_scratch_files() {
 }
 
 pub fn run_startup_tasks(state: &Arc<LauncherState>) {
+    let crash_data = Arc::clone(state);
+    tokio::spawn(async move {
+        crate::game::crashdata::load(&crash_data.services.requester).await;
+    });
+
     let background = Arc::clone(state);
     tokio::spawn(async move {
         sweep_java_scratch_files().await;
+        crate::migration::launchers::sweep_instance_archives().await;
         background.clusters.sweep_trash().await;
 
         let recovery = match crate::recovery::reconstruct_from_disk(&background).await {
@@ -138,12 +144,14 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
         };
 
         crate::game::recover_sessions(&background).await;
+        crate::bisect::resume_unfinished_bisects(&background).await;
 
         let content = background.services.content();
-        let (versions_res, bundles_res, _) = tokio::join!(
+        let (versions_res, bundles_res, _, _) = tokio::join!(
             background.versions.sync(&background.services),
             background.bundles.sync(&content),
             oneclient_content::packages::load_bad_mods(&content),
+            oneclient_content::packages::load_bad_modpacks(&content),
         );
         if let Err(err) = versions_res {
             tracing::error!("versions manifest sync failed: {err:#}");

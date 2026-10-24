@@ -174,7 +174,7 @@ pub async fn materialize_content(
     } else {
         previous_global.as_ref()
     };
-    adopt_hand_edited(services, cluster, &global_root, materialized_packs).await;
+    let held_edits = adopt_hand_edited(services, cluster, &global_root, materialized_packs).await;
 
     if repair_unlinked {
         clear_unlinked_mods_once(
@@ -214,18 +214,22 @@ pub async fn materialize_content(
     } else {
         &[ContentType::Mod]
     };
-    let (mods, rest): (Vec<Desired>, Vec<Desired>) =
+    let (mods, mut rest): (Vec<Desired>, Vec<Desired>) =
         desired_linked(services, cluster, &mut unrestored, wanted)
             .await?
             .into_iter()
             .partition(|desired| mods_in_cluster && desired.content_type == ContentType::Mod);
 
     // read across every cluster rather than this one so a pack installed anywhere is present here too
-    let packs = if isolated {
+    let mut packs = if isolated {
         Vec::new()
     } else {
         desired_global(services, &mut unrestored).await?
     };
+    let held_edit_paths: HashSet<String> =
+        held_edits.iter().map(|entry| entry.path.clone()).collect();
+    rest.retain(|desired| !held_edit_paths.contains(&desired.relative_path()));
+    packs.retain(|desired| !held_edit_paths.contains(&desired.relative_path()));
 
     if !unrestored.is_empty() {
         let names: Vec<String> = unrestored
@@ -253,10 +257,17 @@ pub async fn materialize_content(
         sweep_staging_files(&global_root.join(content_type.folder_name())).await;
     }
 
-    let (held_mods, held_rest) = if isolated {
+    let (held_mods, mut held_rest) = if isolated {
         held_in_place(&unrestored, &cluster_dir, game_dir, mods_in_cluster).await
     } else {
         (Vec::new(), Vec::new())
+    };
+    let held_packs = if isolated {
+        held_rest.retain(|entry| !held_edit_paths.contains(&entry.path));
+        held_rest.extend(held_edits);
+        Vec::new()
+    } else {
+        held_edits
     };
 
     // While the game is still closed this is what lands a package removed
@@ -271,7 +282,11 @@ pub async fn materialize_content(
         .map(Desired::relative_path)
         .chain(held_rest.iter().map(|entry| entry.path.clone()))
         .collect();
-    let pack_paths: HashSet<String> = packs.iter().map(Desired::relative_path).collect();
+    let pack_paths: HashSet<String> = packs
+        .iter()
+        .map(Desired::relative_path)
+        .chain(held_packs.iter().map(|entry| entry.path.clone()))
+        .collect();
 
     prune_previous(&cluster_dir, previous_mods.as_ref(), &mod_paths).await;
     prune_previous(game_dir, previous.as_ref(), &rest_paths).await;
@@ -314,7 +329,8 @@ pub async fn materialize_content(
     }
 
     if !isolated {
-        let pack_entries = link_desired(&global_root, &packs).await;
+        let mut pack_entries = link_desired(&global_root, &packs).await;
+        pack_entries.extend(held_packs);
         manifest::save(
             &global_root,
             manifest::GLOBAL_MANIFEST_NAME,
@@ -485,9 +501,10 @@ async fn adopt_hand_edited(
     cluster: &Cluster,
     root: &Path,
     previous: Option<&MaterializedManifest>,
-) {
+) -> Vec<ManifestEntry> {
+    let mut held = Vec::new();
     let Some(previous) = previous else {
-        return;
+        return held;
     };
     let ctx = services.content();
 
@@ -502,13 +519,16 @@ async fn adopt_hand_edited(
                 continue;
             }
 
+            let imported =
+                PackageStore::import_local_file(&path, content_type, cluster.id, &ctx).await;
             detach_overwritten_link(services, &path, &entry.hash).await;
 
-            match PackageStore::import_local_file(&path, content_type, cluster.id, &ctx).await {
+            match imported {
                 Ok(row) if row.hash != entry.hash => {}
                 Ok(_) => continue,
                 Err(err) => {
-                    tracing::warn!(file = name, error = %err, "failed to keep a pack edited by hand");
+                    tracing::warn!(file = name, error = %err, "failed to import a pack edited by hand; leaving it in place");
+                    held.push(entry.clone());
                     continue;
                 }
             }
@@ -527,6 +547,8 @@ async fn adopt_hand_edited(
             .await;
         }
     }
+
+    held
 }
 
 async fn edited_by_hand(services: &LauncherServices, path: &Path, hash: &str) -> bool {
@@ -549,6 +571,7 @@ async fn edited_by_hand(services: &LauncherServices, path: &Path, hash: &str) ->
     polyio::sha1_file(path)
         .await
         .is_ok_and(|disk| polyio::normalize_hash(&disk) != hash)
+        && polyio::read_zip_file_entries(path, |_| false).await.is_ok()
 }
 
 const MASS_REMOVAL_FLOOR: usize = 3;

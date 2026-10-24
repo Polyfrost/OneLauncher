@@ -232,6 +232,32 @@ pub enum DependencyKind {
     Embedded,
 }
 
+impl DependencyKind {
+    /// How the kind is stored in `provider_release_dependencies`. Spelled out
+    /// rather than a discriminant so the table stays readable and a reordering
+    /// of the enum cannot silently reinterpret every stored row.
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Required => "required",
+            Self::Optional => "optional",
+            Self::Incompatible => "incompatible",
+            Self::Embedded => "embedded",
+        }
+    }
+
+    #[must_use]
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "required" => Some(Self::Required),
+            "optional" => Some(Self::Optional),
+            "incompatible" => Some(Self::Incompatible),
+            "embedded" => Some(Self::Embedded),
+            _ => None,
+        }
+    }
+}
+
 /// At least one id is set Modrinth may pin a version CurseForge only names the project
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct VersionDependency {

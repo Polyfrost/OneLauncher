@@ -124,6 +124,11 @@ async fn sweep_java_scratch_files() {
 }
 
 pub fn run_startup_tasks(state: &Arc<LauncherState>) {
+    let crash_data = Arc::clone(state);
+    tokio::spawn(async move {
+        crate::game::crashdata::load(&crash_data.services.requester).await;
+    });
+
     let background = Arc::clone(state);
     tokio::spawn(async move {
         sweep_java_scratch_files().await;
@@ -139,6 +144,7 @@ pub fn run_startup_tasks(state: &Arc<LauncherState>) {
         };
 
         crate::game::recover_sessions(&background).await;
+        crate::bisect::resume_unfinished_bisects(&background).await;
 
         let content = background.services.content();
         let (versions_res, bundles_res, _, _) = tokio::join!(

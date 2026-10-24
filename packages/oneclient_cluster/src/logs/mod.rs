@@ -129,4 +129,18 @@ mod tests {
         assert_eq!(lines[1].level, LogLevel::Error);
         assert_eq!(lines[2].level, LogLevel::Error);
     }
+
+    #[tokio::test]
+    async fn reads_a_log_that_is_not_utf8() {
+        let dir = polyio::tempdir().await.expect("temp dir");
+        let path = dir.dir_path().join("cluster-output.log");
+        polyio::write(&path, b"ok\n\x8crodowisko\n".to_vec())
+            .await
+            .unwrap();
+
+        let content = super::manage::read_file_string(&path).await.unwrap();
+
+        assert_eq!(content.lines().count(), 2);
+        assert!(content.ends_with("rodowisko\n"));
+    }
 }

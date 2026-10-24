@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE cluster_bisect_mods SET cleared_round = ?, pinned_round = ?, testing = ?\n            WHERE cluster_id = ? AND hash = ?\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "f93ae4c6805747729bfd0119ea198799d9a20f68c94d6ecf272697232f997dfb"
+}

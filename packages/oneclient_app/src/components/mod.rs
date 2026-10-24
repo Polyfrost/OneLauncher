@@ -14,7 +14,9 @@ mod code_block;
 mod color_picker;
 mod context_menu;
 mod control_center;
+mod crash_dialog;
 mod date_range_picker;
+mod disable_dependents_popup;
 mod dropdown;
 mod dynamic_art;
 mod essential_confirm;
@@ -78,7 +80,9 @@ pub use code_block::CodeBlock;
 pub use color_picker::ColorPicker;
 pub use context_menu::ContextMenu;
 pub use control_center::ControlCenter;
+pub use crash_dialog::CrashDialog;
 pub use date_range_picker::{DateRange, DateRangePicker};
+pub use disable_dependents_popup::DisableDependentsOverlay;
 pub use dropdown::Dropdown;
 pub use dynamic_art::{ART_PREVIEW_EDGE, DynamicArt};
 pub use essential_confirm::EssentialConfirmOverlay;
@@ -93,7 +97,7 @@ pub use java_install_manager::JavaInstallManager;
 pub use java_prompt::JavaPromptOverlay;
 pub use link_confirm::ConfirmLinkOverlay;
 pub use local_image::LocalImage;
-pub use log_viewer::LogViewer;
+pub use log_viewer::{LogViewer, clean_line};
 pub use markdown::{Markdown, MarkdownStyle};
 pub use memory_field::memory_field;
 pub use microsoft_java_prompt::MicrosoftJavaPromptOverlay;
@@ -107,9 +111,9 @@ pub use optional_mods_popup::OptionalModsPopup;
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
-    CARD_GRID_H, CARD_H, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action, grid_card, icon_box,
-    kebab_button, meta_size, meta_text, on_secondary, package_icon, pill, remote_icon, run_guarded,
-    set_enabled_action, toggle_action,
+    CARD_GRID_H, CARD_H, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action, disable_request,
+    grid_card, guard_disable, icon_box, kebab_button, meta_size, meta_text, on_secondary,
+    package_icon, pill, remote_icon, run_guarded, set_enabled_action, toggle_action,
 };
 pub use package_row::{
     CardLayout, PackageEntry, PackageRow, github_badge, package_context_menu, provider_badge,

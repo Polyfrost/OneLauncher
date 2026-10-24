@@ -68,6 +68,9 @@ pub enum LauncherError {
     #[error(transparent)]
     ScreenshotsError(#[from] oneclient_cluster::screenshots::ScreenshotsError),
 
+    #[error(transparent)]
+    BisectError(#[from] crate::bisect::BisectError),
+
     #[error("minecraft: {0}")]
     Minecraft(String),
 }

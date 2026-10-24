@@ -6,7 +6,9 @@ use oneclient_content::bundles::{
 };
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
-use oneclient_db::dao::{artifact as artifact_dao, cluster_bundle as bundle_dao};
+use oneclient_db::dao::{
+    artifact as artifact_dao, cluster_bisect as bisect_dao, cluster_bundle as bundle_dao,
+};
 use oneclient_db::models::OverrideType;
 
 const BUNDLE: &str = "Test Bundle";
@@ -1633,6 +1635,32 @@ async fn heal(state: &LauncherState, cluster_id: i64) {
     oneclient_content::bundles::heal_bundle_activity(cluster_id, &archives, &ctx)
         .await
         .unwrap();
+}
+
+#[tokio::test]
+async fn a_mod_left_out_of_a_running_search_is_not_switched_back_on() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+
+    artifact_dao::update_cluster_artifact(db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bisect_dao::start(
+        db,
+        cluster_id,
+        &[("other".to_string(), "Other".to_string())],
+    )
+    .await
+    .unwrap();
+
+    heal(&state, cluster_id).await;
+
+    assert!(
+        !cluster_mod_enabled(&state, cluster_id).await,
+        "turning it on would add a mod the search never tested"
+    );
 }
 
 #[tokio::test]

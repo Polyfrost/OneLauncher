@@ -2273,6 +2273,14 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
 
     events.game_stage(cluster_id, oneclient_events::LaunchStage::Checking);
 
+    let was_signed_out = state
+        .auth
+        .default_account()
+        .await
+        .ok()
+        .flatten()
+        .is_some_and(|a| a.needs_sign_in());
+
     let account = match state.auth.default_account_for_launch().await {
         Ok(account) => account,
         Err(err) => {
@@ -2289,9 +2297,9 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
         return;
     };
 
-    // The renewal may have just marked the account signed out the accounts
+    // The renewal may have just signed the account out or back in the accounts
     // page and the status bar must pick that up while the game still starts
-    if account.needs_sign_in() {
+    if account.needs_sign_in() != was_signed_out {
         super::invalidate_auth_queries(None).await;
     }
 

@@ -209,7 +209,7 @@ impl Component for ReclaimRow {
             .padding(Gaps::new_symmetric(12., 16.))
             .corner_radius(CornerRadius::new_all(12.))
             .background(colors::page_elevated())
-            .maybe(self.empty, |el| el.opacity(0.55))
+            .maybe(self.empty, |el| el.opacity(colors::disabled_opacity()))
             .child(Icon::new(self.icon))
             .child(
                 rect()

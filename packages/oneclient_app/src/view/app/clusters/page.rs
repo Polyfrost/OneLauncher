@@ -804,7 +804,7 @@ impl Component for Sidebar {
                                             .text(self.title.clone())
                                             .font_size(24.)
                                             .font_weight(FontWeight::SEMI_BOLD)
-                                            .color(Color::WHITE),
+                                            .color(colors::fg_strong()),
                                     )
                                     .child(
                                         label()
@@ -888,7 +888,7 @@ fn sidebar_art(art: DynamicArt, type_label: &str, height: f32) -> Element {
                         .text(type_label.to_string())
                         .font_size(11.)
                         .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
+                        .color(colors::on_media()),
                 ),
         )
         .into_element()
@@ -968,7 +968,7 @@ fn page_header(mut show_create: State<bool>) -> impl IntoElement {
                         .text("Versions")
                         .font_size(32.)
                         .font_weight(FontWeight::SEMI_BOLD)
-                        .color(Color::WHITE),
+                        .color(colors::fg_strong()),
                 )
                 .child(
                     label()

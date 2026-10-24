@@ -1,7 +1,7 @@
 use chrono::Utc;
 use sqlx::SqlitePool;
 
-use crate::models::{ClusterKind, ClusterPatch, ClusterRow, NewCluster};
+use crate::models::{ClusterPatch, ClusterRow, NewCluster};
 
 pub async fn get_by_id(pool: &SqlitePool, id: i64) -> Result<Option<ClusterRow>, sqlx::Error> {
     sqlx::query_as!(
@@ -54,13 +54,6 @@ pub async fn list_all(pool: &SqlitePool) -> Result<Vec<ClusterRow>, sqlx::Error>
     )
     .fetch_all(pool)
     .await
-}
-
-pub async fn list_oneclient_ids(pool: &SqlitePool) -> Result<Vec<i64>, sqlx::Error> {
-    sqlx::query_scalar("SELECT id FROM clusters WHERE kind = ?")
-        .bind(ClusterKind::OneClient.as_i64())
-        .fetch_all(pool)
-        .await
 }
 
 pub async fn find_by_version_loader(

@@ -27,8 +27,6 @@ use crate::utils::format_size;
 const DIALOG_W: f32 = 1020.;
 const DIALOG_H: f32 = 616.;
 const ART_W: f32 = 368.;
-const PANEL_BG: Color = Color::from_rgb(22, 28, 35);
-const FOOTER_BG: Color = Color::from_rgb(19, 25, 31);
 const ROW_ICON: f32 = 32.;
 const CHECK_SIZE: f32 = 24.;
 const SKIPPED_ICON: f32 = 20.;
@@ -226,7 +224,7 @@ fn dialog(
         .max_height(Size::window_percent(92.))
         .overflow(Overflow::Clip)
         .corner_radius(CornerRadius::new_all(18.))
-        .background(PANEL_BG)
+        .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
             0.,
@@ -317,7 +315,7 @@ fn art_panel(
                                 .text(runtime.join(" · "))
                                 .font_size(13.)
                                 .margin(Gaps::new(12., 0., 0., 0.))
-                                .color(colors::fg_primary())
+                                .color(colors::on_art())
                         }))
                         .child(summary_card(plan, excluded)),
                 ),
@@ -367,7 +365,7 @@ fn summary_card(
                 format!("{selected} of {total}")
             },
         );
-        rows = rows.child(summary_row(tab.label(), value, colors::fg_primary()));
+        rows = rows.child(summary_row(tab.label(), value, colors::on_art()));
     }
 
     let wont = plan.map_or_else(
@@ -385,9 +383,13 @@ fn summary_card(
                 .width(Size::fill())
                 .height(Size::px(1.))
                 .margin(Gaps::new(12., 0., 12., 0.))
-                .background(colors::component_border()),
+                .background(colors::on_media().with_a(26)),
         )
-        .child(summary_row("Won't migrate", wont, colors::fg_secondary()))
+        .child(summary_row(
+            "Won't migrate",
+            wont,
+            colors::on_art_secondary(),
+        ))
 }
 
 fn summary_row(name: &str, value: String, name_color: Color) -> impl IntoElement {
@@ -631,7 +633,7 @@ fn tab_pill(text: String, active: bool, mut on_press: impl FnMut() + 'static) ->
                 .font_size(14.)
                 .font_weight(FontWeight::MEDIUM)
                 .color(if active {
-                    Color::WHITE
+                    colors::on_brand()
                 } else {
                     colors::fg_primary()
                 }),
@@ -1182,7 +1184,7 @@ fn footer(
         .cross_align(Alignment::Center)
         .spacing(12.)
         .padding(Gaps::new(16., 24., 16., 24.))
-        .background(FOOTER_BG)
+        .background(colors::page())
         .child(
             label()
                 .text(summary)
@@ -1359,5 +1361,9 @@ fn check_box(checked: bool) -> impl IntoElement {
             )
             .alignment(BorderAlignment::Inner),
         )
-        .maybe_child(checked.then(|| Icon::new(IconType::Check).size(14.).color(Color::WHITE)))
+        .maybe_child(checked.then(|| {
+            Icon::new(IconType::Check)
+                .size(14.)
+                .color(colors::on_brand())
+        }))
 }

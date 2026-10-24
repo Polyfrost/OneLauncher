@@ -24,7 +24,6 @@ use crate::launcher::off_ui;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-const DIALOG_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_W: f32 = 480.;
 const FILE_ROW_H: f32 = 34.;
 const FILE_LIST_MAX_ROWS: usize = 5;
@@ -218,7 +217,7 @@ impl Component for DropVeil {
                     .max_width(Size::px(360.))
                     .offset_y((1. - progress) * 12.)
                     .corner_radius(CornerRadius::new_all(16.))
-                    .background(DIALOG_BG)
+                    .background(colors::card())
                     .border(border_all_color(1., colors::brand().with_a(120)))
                     .shadow(Shadow::from((
                         0.,
@@ -324,7 +323,7 @@ impl Component for DropPrompt {
                             .padding(Gaps::new_all(22.))
                             .spacing(16.)
                             .corner_radius(CornerRadius::new_all(16.))
-                            .background(DIALOG_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .shadow(Shadow::from((
                                 0.,

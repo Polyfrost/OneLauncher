@@ -156,7 +156,7 @@ pub(crate) fn onboarding_page(
 }
 
 pub(crate) fn onboarding_illustration(icon: IconType) -> impl IntoElement {
-    Icon::new(icon).size(240.).color(Color::WHITE)
+    Icon::new(icon).size(240.).color(colors::fg_strong())
 }
 
 pub(crate) fn onboarding_nav(

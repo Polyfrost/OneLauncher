@@ -71,7 +71,7 @@ impl Component for ActiveClusterPanel {
                     label()
                         .text("No versions yet")
                         .font_size(24.)
-                        .color(colors::fg_secondary()),
+                        .color(colors::on_art_secondary()),
                 );
         };
 
@@ -110,14 +110,14 @@ impl Component for ActiveClusterPanel {
                     .font_size(56.)
                     .line_height(1.1)
                     .font_weight(FontWeight::BOLD)
-                    .color(colors::fg_primary()),
+                    .color(colors::on_art()),
             )
             .child(
                 label()
                     .text(subtitle)
                     .font_size(16.)
                     .font_weight(FontWeight::SEMI_BOLD)
-                    .color(colors::fg_secondary()),
+                    .color(colors::on_art_secondary()),
             )
             .child(
                 rect()

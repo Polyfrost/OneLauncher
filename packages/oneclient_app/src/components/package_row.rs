@@ -18,8 +18,6 @@ use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
-pub(crate) const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-pub(crate) const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
 pub(crate) const CARD_H: f32 = 84.;
 pub(crate) const CARD_GRID_H: f32 = 112.;
 pub(crate) const GRID_GAP: f32 = 12.;
@@ -531,7 +529,7 @@ fn list_card(
         .spacing(12.)
         .padding(Gaps::new_all(10.))
         .corner_radius(CornerRadius::new_all(8.))
-        .background(CARD_BG)
+        .background(colors::card())
         .content(Content::Flex)
         .on_secondary_down(on_secondary(on_context.clone()))
         .child(package_info(item, package_type, cluster_id, icon))
@@ -591,9 +589,9 @@ pub(crate) fn grid_card(
                         .text_overflow(TextOverflow::Ellipsis)
                         .width(Size::fill())
                         .color(if enabled {
-                            Color::WHITE
+                            colors::fg_strong()
                         } else {
-                            CARD_NAME.with_a(alpha)
+                            colors::fg_primary().with_a(alpha)
                         }),
                 )
                 .child(grid_meta(item, package_type, cluster_id, navigable, alpha)),
@@ -679,7 +677,7 @@ fn grid_meta(
     navigable: bool,
     alpha: u8,
 ) -> Element {
-    let muted = CARD_NAME.with_a(scale_a(alpha, 0.5));
+    let muted = colors::fg_primary().with_a(scale_a(alpha, 0.5));
 
     let source = if let Some(url) = item.github_url.clone() {
         SourceLink {
@@ -755,7 +753,7 @@ impl Component for SourceLink {
         } else if *hovered.read() {
             colors::fg_primary_hover()
         } else {
-            CARD_NAME.with_a(scale_a(self.alpha, 0.68))
+            colors::fg_primary().with_a(scale_a(self.alpha, 0.68))
         };
 
         let on_press = self.on_press.clone();
@@ -904,7 +902,7 @@ fn package_info(
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
                                 .max_width(Size::percent(60.))
-                                .color(CARD_NAME),
+                                .color(colors::fg_primary()),
                         )
                         .child(if let Some(url) = item.github_url.clone() {
                             rect()

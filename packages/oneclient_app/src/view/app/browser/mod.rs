@@ -42,8 +42,6 @@ use crate::hooks::{
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 
-const BANNER_BG: Color = Color::from_rgb(21, 28, 34);
-
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum InstallSource {
     Manual,
@@ -474,7 +472,7 @@ impl Component for PackageBanner {
             .height(Size::px(h))
             .center()
             .overflow(Overflow::Clip)
-            .background(BANNER_BG);
+            .background(colors::page_elevated());
 
         let icon_placeholder = thumbnail_placeholder(icon, 10., 0.45);
         let backdrop_only = self.backdrop_only;
@@ -503,7 +501,7 @@ impl Component for PackageBanner {
                         .width(Size::fill())
                         .height(Size::fill())
                         .backdrop_blur(12.)
-                        .background(BANNER_BG.with_a(120))
+                        .background(colors::page_elevated().with_a(120))
                         .overflow(Overflow::Clip)
                         .layer(Layer::Relative(3))
                         .into_element()

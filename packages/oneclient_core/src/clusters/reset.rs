@@ -109,7 +109,7 @@ pub async fn reset_cluster(
             None,
         )
         .await?;
-        let kept_types: Vec<i64> = if cluster.is_isolated() {
+        let kept_types: Vec<i64> = if cluster.uses_dedicated_dir() {
             Vec::new()
         } else {
             GLOBAL_TYPES.iter().map(|kind| *kind as i64).collect()
@@ -257,7 +257,8 @@ fn is_kept(cluster: &Cluster, name: &str, cover: Option<&str>) -> bool {
     name.starts_with('.')
         || KEPT_DIRS.contains(&name)
         || cover == Some(name)
-        || (!cluster.is_isolated() && GLOBAL_TYPES.iter().any(|kind| kind.folder_name() == name))
+        || (!cluster.uses_dedicated_dir()
+            && GLOBAL_TYPES.iter().any(|kind| kind.folder_name() == name))
 }
 
 async fn move_into_backup(from: &Path, to: &Path) -> Result<(), polyio::IOError> {

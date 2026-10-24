@@ -11,7 +11,8 @@ pub const EXTENSION: &str = "desktop";
 const ICON: &str = "oneclient_app";
 
 pub fn write(request: &ShortcutRequest, exe: &Path, path: &Path) -> Result<()> {
-    let entry = desktop_entry(&request.cluster_name, exe, &request.folder_name, ICON);
+    let icon = std::env::var("FLATPAK_ID").unwrap_or_else(|_| ICON.to_string());
+    let entry = desktop_entry(&request.cluster_name, exe, &request.folder_name, &icon);
     std::fs::write(path, entry)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;
     trust(path);

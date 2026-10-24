@@ -1,7 +1,6 @@
 use futures_util::StreamExt;
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
-use oneclient_db::dao::cluster as cluster_dao;
 use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterRow;
@@ -17,8 +16,8 @@ use crate::error::ContentResult;
 use crate::packages::store::{
     LiveSync, PackageStore, drop_unmanaged_mod, evict_if_unused, try_unlink_materialized,
 };
-use crate::packages::types::ExternalFile;
-use oneclient_common::domain::{ContentType, GameLoader};
+use crate::packages::types::{ExternalFile, VersionDetail};
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 
 fn is_base62(s: &str) -> bool {
@@ -296,14 +295,8 @@ pub async fn install_package_from_bundle(
                 file.content_type(),
             )
             .await;
-
-            let version = if is_base62(version_id) {
-                crate::packages::get_version_cached(ctx, *provider, project_id, version_id).await?
-            } else if let Ok(Some((_, version))) = ctx.providers.lookup_version(sha1, ctx).await {
-                version
-            } else {
-                crate::packages::get_version_cached(ctx, *provider, project_id, version_id).await?
-            };
+            let version =
+                resolve_bundle_version(*provider, project_id, version_id, sha1, ctx).await?;
 
             let (artifact, _) = PackageStore::install_to_cluster(
                 *provider,
@@ -334,6 +327,56 @@ pub async fn install_package_from_bundle(
     .await?;
 
     Ok(hash)
+}
+
+async fn resolve_bundle_version(
+    provider: ProviderId,
+    project_id: &str,
+    version_id: &str,
+    sha1: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<VersionDetail> {
+    if is_base62(version_id) {
+        return crate::packages::get_version_cached(ctx, provider, project_id, version_id).await;
+    }
+    if let Ok(Some((_, version))) = ctx.providers.lookup_version(sha1, ctx).await {
+        return Ok(version);
+    }
+    crate::packages::get_version_cached(ctx, provider, project_id, version_id).await
+}
+
+/// Puts the file in the package cache without linking it to any cluster
+/// `install_package_from_bundle` then finds it there and needs no network
+#[tracing::instrument(level = "debug", skip_all, fields(package_id = %file.kind.package_id()))]
+pub(crate) async fn prefetch_bundle_file(
+    file: &BundleFile,
+    child: Option<&GroupedProgressChild>,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    match &file.kind {
+        BundleFileKind::Managed {
+            provider,
+            project_id,
+            version_id,
+            sha1,
+        } => {
+            let project = crate::packages::cached_project_detail(
+                ctx,
+                *provider,
+                project_id,
+                file.content_type(),
+            )
+            .await;
+            let version =
+                resolve_bundle_version(*provider, project_id, version_id, sha1, ctx).await?;
+            PackageStore::download_and_cache(*provider, &project, &version, false, child, ctx)
+                .await?;
+        }
+        BundleFileKind::External { file: ext, .. } => {
+            crate::packages::store::download_external(ext, false, child, ctx).await?;
+        }
+    }
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip(ext, cluster, child, ctx), fields(file = %ext.name))]
@@ -1224,7 +1267,7 @@ async fn sharing_scope(
         return Ok(None);
     }
 
-    let sharing = cluster_dao::list_oneclient_ids(&ctx.db).await?;
+    let sharing = crate::packages::store::sharing_cluster_ids(&ctx.db).await?;
 
     Ok(sharing.contains(&cluster_id).then_some(sharing))
 }

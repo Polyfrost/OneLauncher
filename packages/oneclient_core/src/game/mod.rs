@@ -47,7 +47,7 @@ pub use process::{
 pub use reattach::recover_sessions;
 pub(crate) use shared_dir::lock_mods_sync;
 pub use shared_dir::{
-    DuplicateMods, dematerialize_content, import_manual_content, link_cluster_logs,
-    materialize_content, shadowed_bundle_mods, sync_cluster_mods, unlink_cluster_logs,
-    write_allowed_symlinks,
+    DuplicateMods, dematerialize_content, import_manual_content, join_shared_folder,
+    leave_shared_folder, link_cluster_logs, materialize_content, shadowed_bundle_mods,
+    split_dedicated_packs, sync_cluster_mods, unlink_cluster_logs, write_allowed_symlinks,
 };

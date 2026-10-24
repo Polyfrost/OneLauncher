@@ -32,6 +32,8 @@ pub use install::*;
 pub use manifest::MetadataStore;
 pub use profile::{
     MojangCape, MojangFullPlayerProfile, MojangPlayerProfile, MojangSkin, PlayerProfileView,
-    SkinVariant, fetch_logged_in_profile, fetch_player_profile, fetch_player_profile_view,
+    SkinVariant, fetch_logged_in_profile, fetch_logged_in_profile_once, fetch_player_profile,
+    fetch_player_profile_view, hide_cape, resolve_username, select_cape, set_skin_from_url,
+    store_profile_view, upload_skin,
 };
 pub use rules::validate_rules;

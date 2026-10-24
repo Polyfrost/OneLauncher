@@ -1,0 +1,5 @@
+---
+default: minor
+---
+
+# Added themes

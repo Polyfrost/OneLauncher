@@ -6,6 +6,7 @@ use bytes::Bytes;
 use freya::engine::prelude::{SkData, SkImage, SkRect};
 use freya::prelude::*;
 use oneclient_polyplus::api;
+use plusrenderer::animation::Loop;
 use plusrenderer::build::Buffers;
 use plusrenderer::{Arms, BodySlot, Camera, Scene, bundle};
 use skia_safe::vertices::VertexMode;
@@ -26,6 +27,7 @@ const DRAG_SENSITIVITY: f32 = 0.01;
 const PITCH_LIMIT: f32 = 1.3;
 // Every animated frame repaints the whole window, so cosmetics animate slower than the display.
 const ANIMATION_FRAME: Duration = Duration::from_millis(33);
+const EMOTE_PAUSE: f32 = 1.;
 
 #[derive(PartialEq, Clone)]
 pub struct PlayerModel {
@@ -144,6 +146,8 @@ struct Player {
     scene: Scene,
     textures: Vec<Option<SkImage>>,
     start: Option<Instant>,
+    /// When a one-shot emote plays again, and how often.
+    replay: Option<(f32, f32)>,
     surface: Option<Surface>,
     frame: Option<(Frame, SkImage)>,
 }
@@ -198,15 +202,33 @@ impl Player {
         self.start.map_or(0., |start| start.elapsed().as_secs_f32())
     }
 
+    /// Plays a finished one-shot emote again, returning whether it did.
+    fn replay_emote(&mut self, now: f32) -> bool {
+        let Some((at, period)) = self.replay.filter(|(at, _)| now >= *at) else {
+            return false;
+        };
+        self.scene.play(PLAYER, at);
+        self.replay = Some((at + period, period));
+        true
+    }
+
     fn load(&mut self, look: Look) {
         let mut scene = Scene::default();
         let mut textures = vec![decode(&look.skin), None];
 
         scene.load_player(PLAYER, if look.slim { Arms::Slim } else { Arms::Wide });
+        self.replay = None;
         if let Some(json) = look.emote.as_deref().and_then(utf8) {
             match scene.load_animation(PLAYER, json) {
                 Ok(()) => scene.play(PLAYER, 0.),
                 Err(err) => tracing::warn!("emote failed to load: {err}"),
+            }
+            let animation = plusrenderer::animation::parse(json, &mut Default::default())
+                .ok()
+                .and_then(|animations| animations.into_iter().next());
+            if let Some(animation) = animation.filter(|a| a.loop_mode == Loop::Once) {
+                let period = animation.length + EMOTE_PAUSE;
+                self.replay = Some((period, period));
             }
         }
 
@@ -291,6 +313,9 @@ impl Component for PlayerModel {
             let mut player = player.borrow_mut();
             if player.look.as_ref() != Some(&look) {
                 player.load(look);
+                if *seconds.peek() != 0. {
+                    seconds.set(0.);
+                }
             }
         }
 
@@ -304,9 +329,10 @@ impl Component for PlayerModel {
                 spawn(async move {
                     loop {
                         tokio::time::sleep(ANIMATION_FRAME).await;
-                        let player = player.borrow();
-                        if player.scene.is_animating() {
-                            seconds.set(player.seconds());
+                        let mut player = player.borrow_mut();
+                        let now = player.seconds();
+                        if player.replay_emote(now) || player.scene.is_animating() {
+                            seconds.set(now);
                         }
                     }
                 });

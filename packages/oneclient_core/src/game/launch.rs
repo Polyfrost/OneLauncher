@@ -200,6 +200,13 @@ async fn start(
     {
         tracing::warn!(cluster_id, error = %err, "failed to install bundle content");
     }
+    let cluster = match crate::clusters::auto_update_loader(state, &cluster).await {
+        Ok(updated) => updated.unwrap_or(cluster),
+        Err(err) => {
+            tracing::warn!(cluster_id, error = %err, "failed to update the loader");
+            cluster
+        }
+    };
 
     let global = state.settings.read().global_game_settings.clone();
     let profile = state.clusters.resolve_settings(&global, &cluster).await?;

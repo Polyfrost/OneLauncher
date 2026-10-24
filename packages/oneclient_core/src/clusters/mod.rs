@@ -1,4 +1,5 @@
 mod java_override;
+mod loader_update;
 mod migrate;
 pub(crate) mod modpack;
 mod modpack_import;
@@ -10,6 +11,10 @@ mod reset;
 mod unlink_legacy;
 
 pub use java_override::apply_bundle_java_override;
+pub use loader_update::{
+    LoaderUpdatePolicy, apply_loader_update, auto_update_loader, available_loader_update,
+    loader_update_policy, set_loader_update_policy,
+};
 pub use migrate::apply_remote_migrations;
 pub use modpack::{
     FlaggedModpack, ModpackCluster, ModpackSource, PreparedModpack, create_modpack_instance,

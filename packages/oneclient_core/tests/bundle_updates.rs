@@ -1813,3 +1813,53 @@ async fn holding_one_mod_of_an_opt_in_bundle_does_not_bring_the_rest() {
         "an opt-in bundle nobody took should add nothing"
     );
 }
+
+/// Offline, or any other failed download, must leave the cluster exactly as it
+/// was so it still launches: applying the removal while the new mod is missing
+/// is the half-updated set that stops a game loading
+#[tokio::test]
+async fn a_failed_download_applies_nothing() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut unreachable = github_mod_file();
+    if let BundleFileKind::External { file, .. } = &mut unreachable.kind {
+        file.url = "unsupported://example.invalid/github-mod.jar".to_string();
+    }
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![unreachable]))
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &ctx)
+        .await
+        .unwrap();
+    assert_eq!(check.removals_available.len(), 1);
+    assert_eq!(check.additions_available.len(), 1);
+
+    let result = oneclient_content::bundles::apply_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &ctx,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        result.stopped_early,
+        "an unfinished batch must not count as settled"
+    );
+    assert_eq!(
+        result.failures().count(),
+        0,
+        "nothing was applied so there is nothing to block a launch over"
+    );
+    assert!(result.removals_applied.is_empty());
+    assert!(
+        artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, HASH)
+            .await
+            .unwrap()
+            .is_some(),
+        "the mod due for removal stays until the whole batch can be applied"
+    );
+}

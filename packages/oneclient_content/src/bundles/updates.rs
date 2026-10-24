@@ -21,12 +21,12 @@ use crate::bundles::install::{
     BUNDLE_INSTALL_CONCURRENCY, accepted_bundles, bundle_cluster, decline_unasked_skyblock,
     disable_was_deliberate, external_ids_by_sha1, find_override, find_user_suppression,
     heal_bundle_activity, install_package_from_bundle, overrides_outside_declined,
-    remove_artifact_from_cluster, set_artifact_enabled_to, takes_bundle,
+    prefetch_bundle_file, remove_artifact_from_cluster, set_artifact_enabled_to, takes_bundle,
 };
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
 use crate::bundles::types::{
-    ApplyBundleUpdatesResult, BundleArchive, BundleFileKind, BundleOptionalPackage,
+    ApplyBundleUpdatesResult, BundleArchive, BundleFile, BundleFileKind, BundleOptionalPackage,
     BundlePackageAddition, BundlePackageRemoval, BundlePackageUpdate, BundleUpdateCheckResult,
     BundleWithUpdateStatus, FileUpdateStatus, external_bundle_key, managed_bundle_key,
 };
@@ -518,29 +518,6 @@ pub async fn apply_bundle_updates_with(
 
     let mut result = ApplyBundleUpdatesResult::default();
 
-    let wants = match PackageStore::get_cluster(cluster_id, ctx).await {
-        Ok(cluster) => crate::modpacks::imported_wants(&cluster).await,
-        Err(_) => Vec::new(),
-    };
-    for removal in check.removals_available {
-        if past(deadline) {
-            result.stopped_early = true;
-            break;
-        }
-
-        if let Ok(true) =
-            crate::modpacks::hand_to_wanting_pack(cluster_id, &removal.hash, &wants, ctx).await
-        {
-            continue;
-        }
-        match remove_artifact_from_cluster(cluster_id, &removal.hash, false, ctx).await {
-            Ok(()) => result.removals_applied.push(removal),
-            Err(err) => result
-                .removals_failed
-                .push(format!("{}: {err:#}", removal.package_id)),
-        }
-    }
-
     let has_downloads =
         !check.updates_available.is_empty() || !check.additions_available.is_empty();
     if let Some(s) = session.filter(|_| has_downloads) {
@@ -559,105 +536,144 @@ pub async fn apply_bundle_updates_with(
         s.expect(oneclient_events::TaskCategory::Packages, count, bytes);
     }
 
-    let overrides_ref = &suppressing;
-    let fetched_updates = futures_util::stream::iter(check.updates_available.into_iter().map(
-        |update| async move {
-            if past(deadline) {
-                return (update, None);
-            }
+    let to_fetch: Vec<BundleFile> = check
+        .updates_available
+        .iter()
+        .map(|u| u.new_file.clone())
+        .chain(check.additions_available.iter().map(|a| a.new_file.clone()))
+        .collect();
+    let fetched = futures_util::stream::iter(to_fetch.into_iter().map(|file| async move {
+        if past(deadline) {
+            return (file, None);
+        }
 
-            let child = session.map(|s| {
-                let c = s.child(
-                    update.new_file.display_name(),
-                    update.new_file.size.max(1),
-                    oneclient_events::TaskCategory::Packages,
-                );
-                c.set_phase(oneclient_events::TaskPhase::Downloading);
-                c
-            });
-            let installed = install_package_from_bundle(
-                &update.new_file,
-                update.cluster_id,
-                &update.bundle_name,
-                true,
-                child.as_ref(),
-                ctx,
-            )
-            .await;
-            if let Some(child) = &child {
-                child.set_phase(oneclient_events::TaskPhase::Installing);
-            }
-            let applied = match installed {
-                Ok(hash) => reconcile_update(&update, &hash, overrides_ref, ctx).await,
-                Err(err) => Err(err),
-            };
-            if let Some(child) = child {
-                child.finish();
-            }
-            (update, Some(applied))
-        },
-    ))
+        let child = session.map(|s| {
+            let c = s.child(
+                file.display_name(),
+                file.size.max(1),
+                oneclient_events::TaskCategory::Packages,
+            );
+            c.set_phase(oneclient_events::TaskPhase::Downloading);
+            c
+        });
+        let fetched = prefetch_bundle_file(&file, child.as_ref(), ctx).await;
+        if let Some(child) = child {
+            child.finish();
+        }
+        (file, Some(fetched))
+    }))
     .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
     .collect::<Vec<_>>()
     .await;
 
-    for (update, applied) in fetched_updates {
-        match applied {
-            Some(Ok(())) => result.updates_applied.push(update),
-            Some(Err(err)) => result.updates_failed.push(err.to_string()),
+    for (file, fetched) in fetched {
+        match fetched {
+            Some(Ok(())) => {}
+            Some(Err(err)) => {
+                tracing::warn!(
+                    cluster_id,
+                    package_id = %file.kind.package_id(),
+                    error = %format!("{err:#}"),
+                    "bundle download failed"
+                );
+                result.stopped_early = true;
+            }
             None => result.stopped_early = true,
         }
     }
 
-    let fetched_additions = futures_util::stream::iter(check.additions_available.into_iter().map(
-        |addition| async move {
-            if past(deadline) {
-                return (addition, None);
-            }
+    if result.stopped_early {
+        tracing::warn!(
+            cluster_id,
+            "bundle content not fully downloaded, nothing applied; the cluster keeps its current content"
+        );
+        return Ok(result);
+    }
 
-            let child = session.map(|s| {
-                let c = s.child(
-                    addition.new_file.display_name(),
-                    addition.new_file.size.max(1),
-                    oneclient_events::TaskCategory::Packages,
+    let wants = match PackageStore::get_cluster(cluster_id, ctx).await {
+        Ok(cluster) => crate::modpacks::imported_wants(&cluster).await,
+        Err(_) => Vec::new(),
+    };
+    for removal in check.removals_available {
+        if let Ok(true) =
+            crate::modpacks::hand_to_wanting_pack(cluster_id, &removal.hash, &wants, ctx).await
+        {
+            continue;
+        }
+        match remove_artifact_from_cluster(cluster_id, &removal.hash, false, ctx).await {
+            Ok(()) => result.removals_applied.push(removal),
+            Err(err) => {
+                tracing::warn!(
+                    cluster_id,
+                    package_id = %removal.package_id,
+                    error = %format!("{err:#}"),
+                    "bundle removal failed"
                 );
-                c.set_phase(oneclient_events::TaskPhase::Downloading);
-                c
-            });
-            let installed = install_package_from_bundle(
-                &addition.new_file,
-                addition.cluster_id,
-                &addition.bundle_name,
-                true,
-                child.as_ref(),
-                ctx,
-            )
-            .await;
-            if let Some(child) = &child {
-                child.set_phase(oneclient_events::TaskPhase::Installing);
+                result
+                    .removals_failed
+                    .push(format!("{}: {err:#}", removal.package_id));
             }
-            let applied = match installed {
-                Ok(hash) => reconcile_addition(&addition, &hash, overrides_ref, ctx).await,
-                Err(err) => Err(err),
-            };
-            if let Some(child) = child {
-                child.finish();
-            }
-            (addition, Some(applied))
-        },
-    ))
-    .buffer_unordered(BUNDLE_INSTALL_CONCURRENCY)
-    .collect::<Vec<_>>()
-    .await;
+        }
+    }
 
-    for (addition, applied) in fetched_additions {
+    for update in check.updates_available {
+        let applied = match install_package_from_bundle(
+            &update.new_file,
+            update.cluster_id,
+            &update.bundle_name,
+            true,
+            None,
+            ctx,
+        )
+        .await
+        {
+            Ok(hash) => reconcile_update(&update, &hash, &suppressing, ctx).await,
+            Err(err) => Err(err),
+        };
         match applied {
-            Some(Ok(())) => result.additions_applied.push(addition),
-            Some(Err(err)) => {
+            Ok(()) => result.updates_applied.push(update),
+            Err(err) => {
+                tracing::warn!(
+                    cluster_id,
+                    package_id = %update.new_file.kind.package_id(),
+                    from = %update.installed_version_id,
+                    to = %update.new_version_id,
+                    error = %format!("{err:#}"),
+                    "bundle update failed"
+                );
+                result
+                    .updates_failed
+                    .push(format!("{}: {err:#}", update.new_file.display_name()));
+            }
+        }
+    }
+
+    for addition in check.additions_available {
+        let applied = match install_package_from_bundle(
+            &addition.new_file,
+            addition.cluster_id,
+            &addition.bundle_name,
+            true,
+            None,
+            ctx,
+        )
+        .await
+        {
+            Ok(hash) => reconcile_addition(&addition, &hash, &suppressing, ctx).await,
+            Err(err) => Err(err),
+        };
+        match applied {
+            Ok(()) => result.additions_applied.push(addition),
+            Err(err) => {
                 let file_id = addition.new_file.kind.package_id();
+                tracing::warn!(
+                    cluster_id,
+                    package_id = %file_id,
+                    error = %format!("{err:#}"),
+                    "bundle addition failed"
+                );
                 result.additions_failed.push(format!("{file_id}: {err:#}"));
             }
-            None => result.stopped_early = true,
         }
     }
 

@@ -246,10 +246,14 @@ pub struct ApplyBundleUpdatesResult {
 impl ApplyBundleUpdatesResult {
     #[must_use]
     pub fn settled(&self) -> bool {
-        !self.stopped_early
-            && self.updates_failed.is_empty()
-            && self.removals_failed.is_empty()
-            && self.additions_failed.is_empty()
+        !self.stopped_early && self.failures().next().is_none()
+    }
+
+    pub fn failures(&self) -> impl Iterator<Item = &String> {
+        self.updates_failed
+            .iter()
+            .chain(&self.additions_failed)
+            .chain(&self.removals_failed)
     }
 }
 

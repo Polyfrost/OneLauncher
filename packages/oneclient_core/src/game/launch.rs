@@ -649,9 +649,9 @@ fn counts_as_crash(outcome: &Exit, diagnosis: Option<&CrashDiagnosis>, reported:
 
 /// What the game gets to save and shut down in before it is killed outright
 ///
-/// Minecraft's own shutdown watchdog gives up well inside this, so reaching the
-/// kill means the game was never going to close on its own
-const GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(30);
+/// Short on purpose: someone reaching for the launcher's stop button usually
+/// has a game that is already stuck, and should not wait long to find out
+const GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(7);
 
 /// Asks the game to close before killing it
 ///

@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use freya::prelude::*;
+use freya::query::MutationStateData;
 use oneclient_common::Patch;
 use oneclient_common::domain::GameLoader;
 use oneclient_core::settings::{
@@ -675,6 +676,7 @@ impl Component for DedicatedDirRow {
         let cluster_id = self.cluster_id;
         let dedicated = self.dedicated;
         let mutation = use_cluster_mutation();
+        let dispatch = use_dispatch();
 
         if self.locked {
             return settings_row_disabled(
@@ -687,9 +689,24 @@ impl Component for DedicatedDirRow {
         }
 
         let on_toggle: EventHandler<()> = (move |()| {
-            mutation.mutate(ClusterAction::SetDedicatedDir {
+            let action = ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated: !dedicated,
+            };
+            if dedicated {
+                mutation.mutate(action);
+                return;
+            }
+            // The new folder starts empty, so offer to bring the shared worlds and settings along
+            let dispatch = dispatch.clone();
+            spawn_forever(async move {
+                let reader = mutation.mutate_async(action).await;
+                if matches!(
+                    &*reader.state(),
+                    MutationStateData::Settled { res: Ok(_), .. }
+                ) {
+                    dispatch.sync_from_shared_dir(cluster_id);
+                }
             });
         })
         .into();

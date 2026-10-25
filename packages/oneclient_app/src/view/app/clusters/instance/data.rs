@@ -201,7 +201,10 @@ fn use_catalogue(choice: TypeChoice) -> Catalogue {
     oneclient.sort_by_key(|entry| std::cmp::Reverse(version_sort_key(&entry.id)));
 
     let java_query = use_java_majors(if choice == TypeChoice::OneClient {
-        oneclient.iter().map(|entry| entry.id.clone()).collect()
+        oneclient
+            .iter()
+            .map(|entry| (entry.id.clone(), entry.loader))
+            .collect()
     } else {
         Vec::new()
     });

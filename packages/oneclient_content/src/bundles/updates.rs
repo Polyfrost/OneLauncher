@@ -536,12 +536,17 @@ pub async fn apply_bundle_updates_with(
         s.expect(oneclient_events::TaskCategory::Packages, count, bytes);
     }
 
-    let to_fetch: Vec<BundleFile> = check
+    let mut to_fetch: Vec<BundleFile> = check
         .updates_available
         .iter()
         .map(|u| u.new_file.clone())
         .chain(check.additions_available.iter().map(|a| a.new_file.clone()))
         .collect();
+    // Largest first. Six fetches run at once and the phase waits for the last
+    // one, so a large file that starts late becomes a tail the small ones have
+    // already finished in front of. Started first, it overlaps them instead,
+    // and it also gets in before `deadline` stops new fetches from starting.
+    to_fetch.sort_by_key(|file| std::cmp::Reverse(file.size));
     let fetched = futures_util::stream::iter(to_fetch.into_iter().map(|file| async move {
         if past(deadline) {
             return (file, None);

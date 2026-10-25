@@ -289,7 +289,13 @@ async fn start(
             .await?
     };
 
-    match game_files_missing(&version_info, &java.os_arch, updated) {
+    // Stats every library and the asset tree, the same work `plan_downloads`
+    // already keeps off the runtime threads. `block_in_place` because
+    // `VersionInfo` is not `Clone` and the sweep only reads it
+    let missing = tokio::task::block_in_place(|| {
+        game_files_missing(&version_info, &java.os_arch, updated)
+    });
+    match missing {
         Ok(true) => {
             tracing::info!(cluster_id, "missing game files; repairing");
             let _ = state

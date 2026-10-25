@@ -40,6 +40,7 @@ pub struct PlayerModel {
     cape: Option<Bytes>,
     cosmetics: Vec<(api::BodySlot, CosmeticBundle)>,
     emote: Option<Bytes>,
+    particle_color: Option<i32>,
     zoom: f32,
     focus_y: f32,
     draggable: bool,
@@ -57,6 +58,7 @@ impl PlayerModel {
             cape: None,
             cosmetics: Vec::new(),
             emote: None,
+            particle_color: None,
             zoom: 1.0,
             focus_y: 0.0,
             draggable: true,
@@ -95,6 +97,11 @@ impl PlayerModel {
 
     pub fn emote(mut self, emote: Option<Bytes>) -> Self {
         self.emote = emote;
+        self
+    }
+
+    pub fn particle_color(mut self, particle_color: Option<i32>) -> Self {
+        self.particle_color = particle_color;
         self
     }
 
@@ -138,6 +145,7 @@ struct Frame {
     seconds: f32,
     size: (f32, f32),
     scale: f32,
+    tint: Option<u32>,
 }
 
 #[derive(Default)]
@@ -145,6 +153,7 @@ struct Player {
     look: Option<Look>,
     scene: Scene,
     textures: Vec<Option<SkImage>>,
+    aura: Option<usize>,
     start: Option<Instant>,
     /// When a one-shot emote plays again, and how often.
     replay: Option<(f32, f32)>,
@@ -188,7 +197,8 @@ impl Player {
             offscreen.save();
             offscreen.scale((frame.scale, frame.scale));
             offscreen.translate((0., (h - fit) / 2.));
-            draw(offscreen, buffers, &self.textures);
+            let tint = self.aura.zip(frame.tint);
+            draw(offscreen, buffers, &self.textures, tint);
             offscreen.restore();
             self.frame = Some((frame, surface.image_snapshot()));
         }
@@ -218,6 +228,7 @@ impl Player {
 
         scene.load_player(PLAYER, if look.slim { Arms::Slim } else { Arms::Wide });
         self.replay = None;
+        self.aura = None;
         if let Some(json) = look.emote.as_deref().and_then(utf8) {
             match scene.load_animation(PLAYER, json) {
                 Ok(()) => scene.play(PLAYER, 0.),
@@ -273,6 +284,9 @@ impl Player {
                 .map(|image| [image.width() as u32, image.height() as u32]);
             let anchor = pet.as_ref().and_then(|pet| pet["anchor"].as_str());
             scene.load_cosmetic(index, model, body, anchor, size);
+            if body == BodySlot::Aura {
+                self.aura = Some(index);
+            }
             if let Some(scale) = pet.as_ref().and_then(|pet| pet["scale"].as_f64()) {
                 scene.set_scale(index, scale as f32);
             }
@@ -368,6 +382,7 @@ impl Component for PlayerModel {
         let distance = CAM_DIST / self.zoom;
         let target_y = MODEL_CENTER_Y + self.focus_y;
         let (cur_yaw, cur_pitch, now) = (yaw(), pitch(), seconds());
+        let tint = self.particle_color.map(|color| color as u32);
         let draw_player = player.clone();
 
         let render_cb = RenderCallback::new(move |ctx| {
@@ -386,6 +401,7 @@ impl Component for PlayerModel {
                     seconds: now,
                     size: (w, h),
                     scale: ctx.canvas.local_to_device_as_3x3().scale_x(),
+                    tint,
                 },
             );
         });
@@ -459,7 +475,12 @@ fn body_slot(slot: api::BodySlot) -> Option<BodySlot> {
 }
 
 // plusrenderer-skia's `draw`, on the Skia build Freya links (the crate pins a newer one).
-fn draw(canvas: &Canvas, buffers: &Buffers, textures: &[Option<SkImage>]) {
+fn draw(
+    canvas: &Canvas,
+    buffers: &Buffers,
+    textures: &[Option<SkImage>],
+    tint: Option<(usize, u32)>,
+) {
     let points = |v: &[f32]| {
         v.as_chunks::<2>()
             .0
@@ -493,11 +514,31 @@ fn draw(canvas: &Canvas, buffers: &Buffers, textures: &[Option<SkImage>]) {
         };
         let range = first as usize..=last as usize;
         let local: Vec<u16> = indices.iter().map(|&i| i - first).collect();
+        let tinted: Vec<skia_safe::Color>;
+        let run_colors = match tint {
+            Some((index, tint)) if run.texture as usize == index => {
+                let tint = skia_safe::Color::new(tint);
+                let mul = |a: u8, b: u8| (u16::from(a) * u16::from(b) / 255) as u8;
+                tinted = colors[range.clone()]
+                    .iter()
+                    .map(|c| {
+                        skia_safe::Color::from_argb(
+                            mul(c.a(), tint.a()),
+                            mul(c.r(), tint.r()),
+                            mul(c.g(), tint.g()),
+                            mul(c.b(), tint.b()),
+                        )
+                    })
+                    .collect();
+                &tinted[..]
+            }
+            _ => &colors[range.clone()],
+        };
         let vertices = Vertices::new_copy(
             VertexMode::Triangles,
             &positions[range.clone()],
-            &uvs[range.clone()],
-            &colors[range],
+            &uvs[range],
+            run_colors,
             Some(&local),
         );
 

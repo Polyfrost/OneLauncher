@@ -228,6 +228,8 @@ pub struct OutfitUpdate {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mojang_cape_id: Option<Option<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub particle_color: Option<Option<i32>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub blank: Option<bool>,
 }
 

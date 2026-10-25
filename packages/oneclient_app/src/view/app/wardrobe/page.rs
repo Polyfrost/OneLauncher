@@ -368,6 +368,10 @@ impl WardrobeData {
             .find(|skin| skin.id == id)
     }
 
+    pub fn particle_color(&self) -> Option<i32> {
+        self.plus.as_ref().and_then(|plus| plus.particle_color)
+    }
+
     pub fn outfit(&self, id: i32) -> Option<&OutfitInfo> {
         self.outfits
             .iter()
@@ -490,6 +494,7 @@ pub(super) fn shop_thumbnail(
             cape: Some(CapeSource::Plus(api::asset_url(asset))),
             cosmetics: Vec::new(),
             emote: None,
+            particle_color: None,
             yaw: BACK_YAW,
             zoom: if interactive { 1.0 } else { CAPE_ZOOM },
             interactive,
@@ -506,6 +511,7 @@ pub(super) fn shop_thumbnail(
             cape: data.current_cape(),
             cosmetics: data.look_cosmetics(&data.equipped(), try_on),
             emote: emote.then_some(url),
+            particle_color: data.particle_color(),
             yaw: if BACK_VIEW_TYPES.contains(&item.kind) {
                 BACK_YAW
             } else {
@@ -1938,6 +1944,7 @@ fn mojang_card(ctx: &GridCtx, cape: &MojangCape) -> Element {
             cape: Some(CapeSource::Mojang(cape.url.clone())),
             cosmetics: Vec::new(),
             emote: None,
+            particle_color: None,
             yaw: BACK_YAW,
             zoom: CAPE_ZOOM,
             interactive: false,
@@ -1987,6 +1994,7 @@ fn owned_card(ctx: &GridCtx, group: &CosmeticGroup) -> Element {
             cape: variant.url.clone().map(CapeSource::Plus),
             cosmetics: Vec::new(),
             emote: None,
+            particle_color: None,
             yaw: BACK_YAW,
             zoom: CAPE_ZOOM,
             interactive: false,
@@ -2379,6 +2387,7 @@ fn outfit_card(ctx: &GridCtx, outfit: &OutfitInfo) -> Element {
             uuid: data.uuid.clone(),
             cosmetics: data.look_cosmetics(&outfit.equipped, None),
             emote: None,
+            particle_color: outfit.particle_color,
             skin,
             cape,
             yaw: FRONT_YAW,
@@ -2548,6 +2557,7 @@ fn skin_card(ctx: &GridCtx, skin: &SkinInfo) -> Element {
             cape: None,
             cosmetics: Vec::new(),
             emote: None,
+            particle_color: None,
             yaw: FRONT_YAW,
             zoom: 1.0,
             interactive: false,

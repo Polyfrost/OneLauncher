@@ -940,6 +940,7 @@ pub(super) struct LookThumb {
     pub cape: Option<CapeSource>,
     pub cosmetics: Vec<(BodySlot, String)>,
     pub emote: Option<String>,
+    pub particle_color: Option<i32>,
     pub yaw: f32,
     pub zoom: f32,
     pub interactive: bool,
@@ -1013,6 +1014,7 @@ impl Component for LookThumb {
             .cape(cape)
             .cosmetics(cosmetics)
             .emote(emote)
+            .particle_color(self.particle_color)
             .yaw(self.yaw)
             .zoom(self.zoom)
             .draggable(self.interactive)

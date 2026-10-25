@@ -1181,14 +1181,16 @@ mod tests {
     async fn links_modrinth_does_not_allow_go_in_the_oneclient_file() {
         let scratch = polyio::testing::ScratchDir::new("share-index-hosts");
         let dest = scratch.path().join("hosts.mrpack");
+        let jar = scratch.path().join("sodium.jar");
+        polyio::write(&jar, b"hello").await.unwrap();
         let file = |path: &str, url: &str| SharedFile {
             path: path.into(),
-            sha1: format!("{:0>40}", path.len()),
+            sha1: "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d".into(),
             size: 5,
             enabled: true,
             source: SharedFileSource::Download {
                 url: url.into(),
-                local: None,
+                local: Some(jar.clone()),
             },
         };
         let content = ShareContent {

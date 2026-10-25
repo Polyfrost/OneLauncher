@@ -621,7 +621,10 @@ mod tests {
         override_type: OverrideType,
     ) -> HashMap<(String, String), String> {
         HashMap::from([(
-            ("performance".to_string(), project_id.to_string()),
+            (
+                archive("performance", true, Vec::new()).manifest.name,
+                project_id.to_string(),
+            ),
             override_type.as_str().to_string(),
         )])
     }

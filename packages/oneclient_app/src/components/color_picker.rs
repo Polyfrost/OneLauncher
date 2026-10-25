@@ -2,12 +2,11 @@ use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, TextInput};
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{EDGE_MARGIN, border_all_color, clamp_to_window, window_logical_size};
 
 const POPUP_WIDTH: f32 = 280.;
 const POPUP_HEIGHT: f32 = 320.;
 const POPUP_PADDING: f32 = 16.;
-const SCREEN_MARGIN: f32 = 8.;
 const TRIGGER_GAP: f32 = 6.;
 
 const SV_HEIGHT: f32 = 160.;
@@ -49,6 +48,7 @@ fn handle_shadow() -> Shadow {
 pub struct ColorPicker {
     value: Color,
     on_change: EventHandler<Color>,
+    on_close: Option<EventHandler<Color>>,
 }
 
 impl ColorPicker {
@@ -56,7 +56,13 @@ impl ColorPicker {
         Self {
             value,
             on_change: on_change.into(),
+            on_close: None,
         }
+    }
+
+    pub fn on_close(mut self, on_close: impl Into<EventHandler<Color>>) -> Self {
+        self.on_close = Some(on_close.into());
+        self
     }
 }
 
@@ -81,7 +87,18 @@ impl Component for ColorPicker {
         }
         let (h, s, v) = hsv();
         let current = Color::from_hsv(h, s, v);
-        let on_current = colors::on_color(self.value);
+        let on_current = colors::on_color(current);
+
+        let close = {
+            let on_close = self.on_close.clone();
+            move || {
+                open.set(false);
+                if let Some(on_close) = &on_close {
+                    let (h, s, v) = *hsv.peek();
+                    on_close.call(Color::from_hsv(h, s, v));
+                }
+            }
+        };
 
         let mut emit = {
             let on_change = self.on_change.clone();
@@ -120,32 +137,48 @@ impl Component for ColorPicker {
             .spacing(12.)
             .padding(Gaps::new_symmetric(8., 16.))
             .corner_radius(CornerRadius::new_all(8.))
-            .background(self.value)
+            .background(current)
             .border(border_all_color(1., colors::component_border()))
             .cursor(CursorIcon::Pointer)
             .a11y_role(AccessibilityRole::Button)
             .on_sized(move |e: Event<SizedEventData>| trigger_area.set_if_modified(e.area))
-            .on_press(move |_| open.toggle())
+            .on_press({
+                let mut close = close.clone();
+                move |_| {
+                    if open() {
+                        close();
+                    } else {
+                        open.set(true);
+                    }
+                }
+            })
             .child(Icon::new(IconType::Colors).size(18.).color(on_current))
             .child(
                 label()
-                    .text(colors::format_hex(self.value))
+                    .text(colors::format_hex(current))
                     .font_size(12.)
                     .color(on_current),
             );
 
         let popup = open().then(|| {
-            let window = *Platform::get().root_size.peek();
+            let window = window_logical_size();
             let anchor = trigger_area();
-            let left = (anchor.max_x() as f32 - POPUP_WIDTH)
-                .min(window.width - POPUP_WIDTH - SCREEN_MARGIN)
-                .max(SCREEN_MARGIN);
             let below = anchor.max_y() as f32 + TRIGGER_GAP;
-            let top = if below + POPUP_HEIGHT > window.height - SCREEN_MARGIN {
-                (anchor.min_y() as f32 - TRIGGER_GAP - POPUP_HEIGHT).max(SCREEN_MARGIN)
+            let above = anchor.min_y() as f32 - TRIGGER_GAP - POPUP_HEIGHT;
+            let right = anchor.max_x() as f32 + TRIGGER_GAP;
+            let (left, top) = if below + POPUP_HEIGHT <= window.height - EDGE_MARGIN {
+                (anchor.max_x() as f32 - POPUP_WIDTH, below)
+            } else if above >= EDGE_MARGIN {
+                (anchor.max_x() as f32 - POPUP_WIDTH, above)
+            } else if right + POPUP_WIDTH <= window.width - EDGE_MARGIN {
+                (right, anchor.min_y() as f32)
             } else {
-                below
+                (
+                    anchor.min_x() as f32 - TRIGGER_GAP - POPUP_WIDTH,
+                    anchor.min_y() as f32,
+                )
             };
+            let (left, top) = clamp_to_window(left, top, POPUP_WIDTH, POPUP_HEIGHT);
 
             let track_width = POPUP_WIDTH - 2. * POPUP_PADDING;
             let sv_handle_x = s * track_width - SV_HANDLE / 2.;
@@ -168,7 +201,10 @@ impl Component for ColorPicker {
                         .ghost()
                         .icon()
                         .alt("Close")
-                        .on_press(move |_| open.set(false))
+                        .on_press({
+                            let mut close = close.clone();
+                            move |_| close()
+                        })
                         .child(Icon::new(IconType::XClose).size(16.)),
                 );
 
@@ -320,7 +356,10 @@ impl Component for ColorPicker {
             OverlayPopup::new()
                 .backdrop(false)
                 .position(Position::new_global().left(left).top(top))
-                .on_close(move |_| open.set(false))
+                .on_close({
+                    let mut close = close.clone();
+                    move |_| close()
+                })
                 .child(
                     rect()
                         .width(Size::px(POPUP_WIDTH))

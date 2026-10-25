@@ -10,7 +10,9 @@ use super::page::{
     type_label, variant_label,
 };
 use super::parts::{BACK_YAW, CapeSource, CoverThumb, FRONT_YAW, LookThumb, money, price_label};
-use crate::components::{Button, Icon, IconType, ScrollArea, Segment, SegmentedControl, TextInput};
+use crate::components::{
+    Button, ColorPicker, Icon, IconType, ScrollArea, Segment, SegmentedControl, TextInput,
+};
 use crate::hooks::wardrobe::{WardrobeAction, use_transactions};
 use crate::hooks::{query_error, query_is_loading, settled_or_loading};
 use crate::theme::colors;
@@ -384,6 +386,61 @@ impl Component for PreviewPanel {
                     .into_element()
             });
 
+        let particles = owned
+            .filter(|group| group.kind == api::CosmeticType::Aura)
+            .map(|_| {
+                let current = data.particle_color();
+                let account = data.account;
+                let set = move |color: Option<i32>| {
+                    if color != current {
+                        perform(
+                            shared.action,
+                            shared.status,
+                            WardrobeAction::ParticleColor { account, color },
+                        );
+                    }
+                };
+                let alpha = current.map_or(0xFF, |color| (color as u32) >> 24);
+                let shown = current.map_or(Color::WHITE, |color| {
+                    Color::from_rgb((color >> 16) as u8, (color >> 8) as u8, color as u8)
+                });
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .content(Content::Flex)
+                    .padding(Gaps::new_all(10.))
+                    .spacing(8.)
+                    .cross_align(Alignment::Center)
+                    .corner_radius(CornerRadius::new_all(12.))
+                    .background(colors::component_bg())
+                    .border(border_all_color(1., colors::component_border()))
+                    .child(
+                        label()
+                            .text("Particle color")
+                            .width(Size::flex(1.))
+                            .font_size(12.)
+                            .color(colors::fg_secondary()),
+                    )
+                    .maybe_child(current.is_some().then(|| {
+                        Button::new()
+                            .ghost()
+                            .small()
+                            .enabled(!data.busy)
+                            .on_press(move |_| set(None))
+                            .text("Reset")
+                    }))
+                    .child(
+                        ColorPicker::new(shown, |_| {}).on_close(move |picked: Color| {
+                            let rgb = (u32::from(picked.r()) << 16)
+                                | (u32::from(picked.g()) << 8)
+                                | u32::from(picked.b());
+                            set(Some((alpha << 24 | rgb) as i32));
+                        }),
+                    )
+                    .into_element()
+            });
+        let footer: Vec<Element> = variants.into_iter().chain(particles).collect();
+
         let mut overlay = rect()
             .position(Position::new_absolute().top(0.).left(0.))
             .layer(Layer::Relative(1))
@@ -446,11 +503,13 @@ impl Component for PreviewPanel {
             _ => (None, data.current_cape()),
         };
 
-        let equipped = match &picked {
-            Some(Selection::Outfit(id)) => data.outfit(*id).map(|outfit| outfit.equipped.clone()),
+        let outfit = match &picked {
+            Some(Selection::Outfit(id)) => data.outfit(*id),
             _ => None,
-        }
-        .unwrap_or_else(|| data.equipped());
+        };
+        let equipped = outfit.map_or_else(|| data.equipped(), |outfit| outfit.equipped.clone());
+        let particle_color =
+            outfit.map_or_else(|| data.particle_color(), |outfit| outfit.particle_color);
         let try_on = owned.filter(|_| trying_on).and_then(|group| {
             let variant = data.selected_variant(group)?;
             let slot = equip_slot(group, variant)?;
@@ -481,19 +540,22 @@ impl Component for PreviewPanel {
                         cape,
                         cosmetics,
                         emote,
+                        particle_color,
                         yaw: if show_back { BACK_YAW } else { FRONT_YAW },
                         zoom: 1.0,
                         interactive: true,
                     }),
             )
             .child(overlay)
-            .maybe_child(variants.map(|variants| {
+            .maybe_child((!footer.is_empty()).then(|| {
                 rect()
                     .position(Position::new_absolute().bottom(0.).left(0.))
                     .layer(Layer::Relative(1))
+                    .vertical()
                     .width(Size::fill())
                     .padding(Gaps::new_all(12.))
-                    .child(variants)
+                    .spacing(8.)
+                    .children(footer)
             }))
     }
 }

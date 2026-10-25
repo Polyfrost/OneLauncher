@@ -665,7 +665,9 @@ pub fn use_cosmetic_bundle(url: Option<String>) -> UseQuery<CosmeticBundleQuery>
 
 async fn invalidate_after(action: &WardrobeAction) {
     let (look, plus, outfits, skins, transactions) = match action {
-        WardrobeAction::Equip { .. } => (false, true, true, false, false),
+        WardrobeAction::Equip { .. } | WardrobeAction::ParticleColor { .. } => {
+            (false, true, true, false, false)
+        }
         WardrobeAction::MojangCape { .. } => (true, false, true, false, false),
         WardrobeAction::WearSkin { .. }
         | WardrobeAction::AddSkinFile { .. }
@@ -889,6 +891,10 @@ pub enum WardrobeAction {
         id: i32,
         name: String,
     },
+    ParticleColor {
+        account: Uuid,
+        color: Option<i32>,
+    },
 }
 
 impl WardrobeAction {
@@ -922,6 +928,7 @@ impl WardrobeAction {
             }
             Self::ApplyOutfit { name, .. } => Some(format!("Switching to {name}...")),
             Self::CreateOutfit { .. } => Some("Saving your current look...".into()),
+            Self::ParticleColor { .. } => Some("Changing your particle color...".into()),
             Self::RenameSkin { .. }
             | Self::FavoriteSkin { .. }
             | Self::SkinArms { .. }
@@ -948,7 +955,8 @@ impl WardrobeAction {
             | Self::CreateOutfit { account }
             | Self::RenameOutfit { account, .. }
             | Self::FavoriteOutfit { account, .. }
-            | Self::DeleteOutfit { account, .. } => *account,
+            | Self::DeleteOutfit { account, .. }
+            | Self::ParticleColor { account, .. } => *account,
         }
     }
 }
@@ -1351,6 +1359,25 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
                 .await
                 .map_err(plus_message)?;
             Ok(format!("Deleted {name}."))
+        }
+        WardrobeAction::ParticleColor { color, .. } => {
+            let id = api::list_outfits(account)
+                .await
+                .map_err(plus_message)?
+                .active_outfit_id
+                .ok_or_else(|| "Switch to an outfit to change your particle color.".to_string())?;
+            let update = api::OutfitUpdate {
+                particle_color: Some(*color),
+                ..Default::default()
+            };
+            api::update_outfit(account, id, &update)
+                .await
+                .map_err(plus_message)?;
+            Ok(if color.is_some() {
+                "Changed your particle color.".into()
+            } else {
+                "Reset your particle color.".into()
+            })
         }
     }
 }

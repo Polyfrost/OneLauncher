@@ -556,10 +556,7 @@ async fn start(
         let cluster = cluster;
         let (status, stopped) = tokio::select! {
             status = child.wait() => (status, false),
-            _ = kill_rx => {
-                let _ = child.start_kill();
-                (child.wait().await, true)
-            }
+            _ = kill_rx => (stop_child(&mut child).await, true),
         };
 
         tail.stop().await;
@@ -648,6 +645,33 @@ fn counts_as_crash(outcome: &Exit, diagnosis: Option<&CrashDiagnosis>, reported:
         Exit::Inferred => diagnosis.is_some() || reported,
         Exit::Killed => broken,
     }
+}
+
+/// What the game gets to save and shut down in before it is killed outright
+///
+/// Short on purpose: someone reaching for the launcher's stop button usually
+/// has a game that is already stuck, and should not wait long to find out
+const GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(7);
+
+/// Asks the game to close before killing it
+///
+/// `start_kill` is SIGKILL, so the game gets no chance to save. A terminate
+/// runs its shutdown hooks, and the kill is only the fallback for a game that
+/// will not go.
+async fn stop_child(
+    child: &mut tokio::process::Child,
+) -> std::io::Result<std::process::ExitStatus> {
+    if let Some(pid) = child.id()
+        && crate::game::kill_process(pid)
+    {
+        match tokio::time::timeout(GRACEFUL_STOP_TIMEOUT, child.wait()).await {
+            Ok(status) => return status,
+            Err(_elapsed) => tracing::warn!(pid, "game ignored the request to close; killing it"),
+        }
+    }
+
+    let _ = child.start_kill();
+    child.wait().await
 }
 
 pub(crate) enum Exit {

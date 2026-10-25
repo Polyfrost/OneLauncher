@@ -999,7 +999,12 @@ credits="Thanks to everyone"
         )
         .unwrap();
         assert_eq!(parsed.provides, ["sodium-extra", "extras"]);
-        assert_eq!(parsed.requires, ["sodium", "fabric-api"]);
+        // `depends` is a JSON object, so its keys come back in whatever order
+        // serde_json's map keeps, which depends on whether `preserve_order` is
+        // enabled anywhere in the build. The caller sorts them anyway.
+        let mut requires = parsed.requires;
+        requires.sort();
+        assert_eq!(requires, ["fabric-api", "sodium"]);
     }
 
     #[test]

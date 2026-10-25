@@ -1,3 +1,19 @@
+## 2.10.0 (2026-10-25)
+
+### Features
+
+- The wardrobe lets you pick the particle color of your aura, and the 3D preview shows it by [LynithDev](https://github.com/LynithDev)
+
+### Fixes
+
+- Bundle updates download the largest files first so they finish sooner by [tunaseckin](https://github.com/tunaseckin)
+- The create dialog shows the Java version a game version actually launches with by [tunaseckin](https://github.com/tunaseckin)
+- Switching an instance to a dedicated folder offers to bring its shared worlds and settings along by [tunaseckin](https://github.com/tunaseckin)
+- Fixed a test that depended on JSON key order by [tunaseckin](https://github.com/tunaseckin)
+- Stopping a game from the launcher lets it save and close before forcing it to quit on macOS and Linux by [tunaseckin](https://github.com/tunaseckin)
+- Fixed the color picker and dropdowns opening outside the window on high-DPI displays by [LynithDev](https://github.com/LynithDev)
+- Desktop shortcuts for modpack clusters now use the modpack's icon by [LynithDev](https://github.com/LynithDev)
+
 ## 2.9.0 (2026-10-25)
 
 ### Features

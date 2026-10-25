@@ -25,6 +25,9 @@ pub enum CrashDiagnosis {
     ModLinkage,
     GraphicsDriver,
     NativeCrash { frame: Option<String> },
+    /// Minecraft's own shutdown watchdog gave up waiting for the game to close
+    /// and turned a slow shutdown into a crash report
+    ShutdownTimeout,
 }
 
 impl CrashDiagnosis {
@@ -39,6 +42,7 @@ impl CrashDiagnosis {
             Self::GraphicsDriver => "The game could not start graphics".to_string(),
             Self::NativeCrash { frame: Some(frame) } => format!("{frame} crashed the game"),
             Self::NativeCrash { frame: None } => "The game crashed outside Java".to_string(),
+            Self::ShutdownTimeout => "The game took too long to close".to_string(),
         }
     }
 
@@ -85,6 +89,10 @@ impl CrashDiagnosis {
                  almost always a graphics driver, an overlay hooked into the game, or a \
                  rendering mod that does not match the version it was built against."
                 .to_string(),
+            Self::ShutdownTimeout => "Minecraft was still shutting down when its own watchdog \
+                 stopped waiting, so it closed itself and wrote a crash report. Nothing is \
+                 damaged. A large mod set is the usual reason a shutdown runs this long."
+                .to_string(),
         }
     }
 
@@ -97,7 +105,8 @@ impl CrashDiagnosis {
             Self::ModLoadFailure { .. } | Self::ModLinkage | Self::NativeCrash { .. } => {
                 Some(CrashRemedy::OpenMods)
             }
-            Self::GraphicsDriver => None,
+            // Verifying re-downloads the game and fixes nothing here
+            Self::GraphicsDriver | Self::ShutdownTimeout => None,
         }
     }
 
@@ -158,6 +167,12 @@ const NATIVE_CRASH_MARKERS: [&str; 5] = [
 
 const PROBLEMATIC_FRAME_MARKER: &str = "Problematic frame:";
 
+/// The watchdog writes both of these into the report it saves
+const SHUTDOWN_WATCHDOG_MARKERS: [&str; 2] = [
+    "ClientShutdownWatchdog",
+    "Client watchdog shutdown details",
+];
+
 const GRAPHICS_MARKERS: [&str; 3] = [
     "org.lwjgl.LWJGLException: Pixel format not accelerated",
     "Failed to create window",
@@ -170,6 +185,12 @@ pub fn diagnose(line: &str) -> Option<CrashDiagnosis> {
 
     if hit(&CORRUPT_ARCHIVE_MARKERS) {
         return Some(CrashDiagnosis::CorruptArchive { file: jar_in(line) });
+    }
+
+    // After damage: a watchdog report carries a full thread dump, and a damaged
+    // jar named anywhere in it is still the thing to fix
+    if hit(&SHUTDOWN_WATCHDOG_MARKERS) {
+        return Some(CrashDiagnosis::ShutdownTimeout);
     }
 
     if hit(&OUT_OF_MEMORY_MARKERS) {
@@ -834,6 +855,33 @@ impl CrashWatch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_shutdown_watchdog_is_recognised() {
+        // Both lines are copied from a real 26.2 watchdog report
+        let frame = "\tat knot//com.mojang.blaze3d.platform.ClientShutdownWatchdog\
+                     .lambda$startShutdownWatchdog$0(ClientShutdownWatchdog.java:44)";
+        assert_eq!(diagnose(frame), Some(CrashDiagnosis::ShutdownTimeout));
+        assert_eq!(
+            diagnose("-- Client watchdog shutdown details --"),
+            Some(CrashDiagnosis::ShutdownTimeout)
+        );
+    }
+
+    #[test]
+    fn a_slow_shutdown_offers_no_repair() {
+        assert_eq!(CrashDiagnosis::ShutdownTimeout.remedy(), None);
+        assert!(!CrashDiagnosis::ShutdownTimeout.is_fatal());
+    }
+
+    #[test]
+    fn damage_outranks_a_slow_shutdown() {
+        let line = "ClientShutdownWatchdog saw java.util.zip.ZipException: bad.jar";
+        assert!(matches!(
+            diagnose(line),
+            Some(CrashDiagnosis::CorruptArchive { .. })
+        ));
+    }
 
     #[test]
     fn a_zip_exception_is_recognised() {

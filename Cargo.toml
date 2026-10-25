@@ -152,6 +152,14 @@ freya-skia-safe = "=0.103.2" # draws the plusrenderer player model
 plusrenderer = {git = "https://github.com/Polyfrost/plusrenderer", rev = "914ddf8cae388126407d86925a05fa3db085ebbc"}
 image = {version = "=0.25.10", default-features = false, features = ["png", "jpeg", "ico"]}
 
+# Proc macros are dylibs rustc loads during the build, and stripping them with
+# packed debuginfo produces a LINKEDIT section that macOS 27's dyld refuses to
+# open. Build dependencies keep their symbols; the shipped binary is unaffected.
+[profile.release.build-override]
+debug = false
+split-debuginfo = "unpacked"
+strip = false
+
 [profile.release]
 codegen-units = 1
 debug = "line-tables-only"

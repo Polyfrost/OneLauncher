@@ -11,7 +11,13 @@ pub const EXTENSION: &str = "desktop";
 const ICON: &str = "oneclient_app";
 
 pub fn write(request: &ShortcutRequest, exe: &Path, path: &Path) -> Result<()> {
-    let icon = std::env::var("FLATPAK_ID").unwrap_or_else(|_| ICON.to_string());
+    let icon = request
+        .icon
+        .as_deref()
+        .map(|icon| icon.to_string_lossy().into_owned())
+        .filter(|icon| !icon.chars().any(char::is_control))
+        .or_else(|| std::env::var("FLATPAK_ID").ok())
+        .unwrap_or_else(|| ICON.to_string());
     let entry = desktop_entry(&request.cluster_name, exe, &request.folder_name, &icon);
     std::fs::write(path, entry)?;
     std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))?;

@@ -7,33 +7,37 @@ fn main() {
         return;
     }
 
-    let arch = match env::var("CARGO_CFG_TARGET_ARCH").unwrap().as_str() {
-        "aarch64" => "arm64",
-        "x86_64" => "x86_64",
-        arch => panic!("unsupported macOS architecture: {arch}"),
-    };
-    let minimum = env::var("MACOSX_DEPLOYMENT_TARGET")
-        .unwrap_or_else(|_| if arch == "arm64" { "11.0" } else { "10.14" }.into());
+    let minimum = env::var("MACOSX_DEPLOYMENT_TARGET").unwrap_or_else(|_| "11.0".into());
     let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("game-mode-stub");
     let status = Command::new("xcrun")
-        .args(["--sdk", "macosx", "clang", "-arch", arch])
+        .args([
+            "--sdk", "macosx",
+            "clang",
+            "-arch", "arm64",
+            "-arch", "x86_64",
+        ])
         .arg(format!("-mmacosx-version-min={minimum}"))
         .args([
             "-Os",
             "-fobjc-arc",
             "-Wl,-export_dynamic",
-            "-framework",
-            "Foundation",
-            "-framework",
-            "CoreServices",
+            "-framework", "Foundation",
+            "-framework", "CoreServices",
         ])
         .arg("src/game/game_mode_stub.m")
-        .arg("-o")
-        .arg(output)
-        .status()
-        .expect("failed to compile the macOS Game Mode helper");
+        .arg("-o").arg(&output)
+        .status();
     assert!(
-        status.success(),
+        status.is_ok() && status.unwrap().success(),
         "failed to compile the macOS Game Mode helper"
+    );
+
+    let status = Command::new("codesign")
+        .args(["-f", "-s", "-"])
+        .arg(&output)
+        .status();
+    assert!(
+        status.is_ok() && status.unwrap().success(),
+        "failed to ad-hoc sign the macOS Game Mode helper"
     );
 }

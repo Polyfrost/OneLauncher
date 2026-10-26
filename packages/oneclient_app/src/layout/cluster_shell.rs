@@ -15,6 +15,9 @@ use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken
 const HEADER_HEIGHT: f32 = 64.;
 const TABS_HEIGHT: f32 = 38.;
 const BAR_SPACING: f32 = 16.;
+/// Launch button height; the icon buttons beside it are squares of the same size
+const ACTION_HEIGHT: f32 = 40.;
+const ACTION_ICON_SIZE: f32 = 20.;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum ClusterViewShellTab {
@@ -340,21 +343,28 @@ fn cluster_header(
                 .horizontal()
                 .cross_align(Alignment::Center)
                 .spacing(10.)
-                .maybe_child(folder.map(crate::components::open_folder_button))
+                .maybe_child(folder.map(|folder| {
+                    crate::components::sized_open_folder_button(folder, ACTION_ICON_SIZE)
+                        .width(Size::px(ACTION_HEIGHT))
+                        .height(Size::px(ACTION_HEIGHT))
+                }))
                 .maybe(running, |el| {
                     el.child(
                         Button::new()
                             .danger()
                             .icon()
+                            .width(Size::px(ACTION_HEIGHT))
+                            .height(Size::px(ACTION_HEIGHT))
                             .tooltip("Stop game")
                             .on_press(move |_| kill_dispatch.kill_cluster(cluster_id))
-                            .child(Icon::new(IconType::Square).size(16.)),
+                            .child(Icon::new(IconType::Square).size(ACTION_ICON_SIZE)),
                     )
                 })
                 .child(
                     Button::new()
                         .primary()
                         .large()
+                        .height(Size::px(ACTION_HEIGHT))
                         .enabled(launch_enabled)
                         .on_press(move |_| {
                             if launch_enabled {

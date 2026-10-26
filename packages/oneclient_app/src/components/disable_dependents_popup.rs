@@ -12,7 +12,7 @@ use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::disable::{self, PendingDisable};
 use crate::hooks::{invalidate_cluster_queries, use_disable_confirm};
 use crate::launcher;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 480.;
@@ -46,7 +46,7 @@ impl Component for DisableDependentsOverlay {
                             .max_width(Size::window_percent(92.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -177,7 +177,7 @@ fn row(name: &str, icon: IconType, accent: Color) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .spacing(8.)
         .padding(Gaps::new_symmetric(7., 10.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .content(Content::Flex)
         .child(Icon::new(icon).size(13.).color(accent))

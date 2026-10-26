@@ -7,7 +7,7 @@ use crate::disable;
 use crate::hooks::{
     EssentialGuardKind, Guarded, use_cluster_mutation, use_disable_confirm, use_essential_guard,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const BODY_MAX_H: f32 = 400.;
@@ -46,7 +46,7 @@ impl Component for EssentialConfirmOverlay {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -132,7 +132,7 @@ impl Component for WarningBody {
                         rect()
                             .width(Size::fill())
                             .padding(Gaps::new_all(12.))
-                            .corner_radius(CornerRadius::new_all(8.))
+                            .corner_radius(rounded(8.))
                             .background(colors::component_bg())
                             .border(border_all_color(1., colors::component_border()))
                             .child(Markdown::new(self.body.clone()).width(Size::fill()).style(

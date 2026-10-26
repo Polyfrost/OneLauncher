@@ -12,7 +12,7 @@ use crate::components::{
     Button, Icon, IconType, ScrollArea, centered_spinner, explanation_panel, remote_icon,
 };
 use crate::hooks::{retry_import_screening, use_cached_image};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const OPTION_H: f32 = 48.;
@@ -227,7 +227,7 @@ fn flagged_card(
         .width(Size::fill())
         .spacing(12.)
         .padding(Gaps::new_all(14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -366,7 +366,7 @@ impl Component for AlternativeOption {
                 .width(Size::fill())
                 .height(Size::px(OPTION_H))
                 .padding(Gaps::new_symmetric(0., 12.))
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::component_border()))
                 .child(content)

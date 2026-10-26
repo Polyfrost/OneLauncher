@@ -9,7 +9,7 @@ use crate::hooks::{
     terms_document, terms_is_loading, use_launcher, use_notifications_snapshot,
     use_settings_snapshot, use_splash, use_terms,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 
 /// Startup is a sequence of boolean gates, not measurable work, so the bar steps
 /// once per gate the launcher clears instead of tracking bytes
@@ -183,7 +183,7 @@ impl Component for Startup {
                 rect()
                     .width(Size::px(8.))
                     .height(Size::px(8.))
-                    .corner_radius(CornerRadius::new_all(4.))
+                    .corner_radius(rounded(4.))
                     .background(dot_color),
             )
             .child(

@@ -11,7 +11,7 @@ use crate::hooks::{
     BisectAction, BisectMutation, cluster_content_items, invalidate_logs_queries, use_bisect,
     use_bisect_mutation, use_cluster_content, use_game_snapshot,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::view::app::settings::settings_row;
 
@@ -171,7 +171,7 @@ impl Component for BisectBanner {
             .width(Size::fill())
             .spacing(10.)
             .padding(Gaps::new_all(14.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::page_elevated())
             .border(border_all_color(1., accent.with_a(120)))
             .child(
@@ -399,7 +399,7 @@ impl Component for BisectQuestion {
                     .cross_align(Alignment::Center)
                     .spacing(10.)
                     .padding(Gaps::new_symmetric(8., 10.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(if selected {
                         colors::brand().with_a(40)
                     } else {
@@ -595,7 +595,7 @@ impl Component for BisectQuestion {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -705,7 +705,7 @@ fn confirm_question(
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(

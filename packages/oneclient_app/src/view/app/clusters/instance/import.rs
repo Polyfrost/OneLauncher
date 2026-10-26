@@ -10,7 +10,7 @@ use super::cards::{BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, cell_card};
 use crate::components::{Button, GRID_GAP, Icon, IconType, ScrollArea, centered_spinner};
 use crate::hooks::{Actions, external_launchers, use_dispatch, use_external_launchers};
 use crate::launcher::off_ui;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::fixed_grid;
 
 /// Its own component so the disk scan only runs once this step is shown
@@ -132,7 +132,7 @@ fn not_listed_row(
         .cross_align(Alignment::Center)
         .spacing(12.)
         .padding(Gaps::new_symmetric(12., 14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::page_elevated())
         .child(
             label()

@@ -20,7 +20,7 @@ use crate::hooks::{
 };
 use crate::routes::Route;
 use crate::state::{ReleaseMigrationPrompt, ReleasePlanState};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
@@ -223,7 +223,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .max_height(Size::window_percent(92.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(18.))
+        .corner_radius(rounded(18.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -611,7 +611,7 @@ fn tab_pill(text: String, active: bool, mut on_press: impl FnMut() + 'static) ->
         .height(Size::px(34.))
         .padding(Gaps::new_symmetric(0., 13.))
         .center()
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(if active {
             colors::brand()
         } else {
@@ -913,7 +913,7 @@ fn section_header(
         .spacing(10.)
         .margin(Gaps::new(if after_content { 10. } else { 0. }, 0., 6., 0.))
         .padding(Gaps::new_symmetric(0., 12.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::ghost_overlay())
         .border(border_all_color(1., colors::component_border()).alignment(BorderAlignment::Inner))
         .cursor(CursorIcon::Pointer)
@@ -970,7 +970,7 @@ impl Component for DependencyRow {
             Some((url, bytes)) => rect()
                 .width(Size::px(ROW_ICON))
                 .height(Size::px(ROW_ICON))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .overflow(Overflow::Clip)
                 .child(
                     ImageViewer::new((url, bytes))
@@ -1067,7 +1067,7 @@ impl Component for SkippedRow {
             Some((url, bytes)) => rect()
                 .width(Size::px(SKIPPED_ICON))
                 .height(Size::px(SKIPPED_ICON))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .overflow(Overflow::Clip)
                 .child(
                     ImageViewer::new((url, bytes))
@@ -1247,7 +1247,7 @@ impl Component for MigrationRow {
             Some((url, bytes)) => rect()
                 .width(Size::px(ROW_ICON))
                 .height(Size::px(ROW_ICON))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .overflow(Overflow::Clip)
                 .child(
                     ImageViewer::new((url, bytes))
@@ -1270,7 +1270,7 @@ impl Component for MigrationRow {
             .cross_align(Alignment::Center)
             .spacing(14.)
             .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(if *hovered.read() {
                 colors::ghost_overlay()
             } else {
@@ -1330,7 +1330,7 @@ fn placeholder_icon() -> impl IntoElement {
         .width(Size::px(ROW_ICON))
         .height(Size::px(ROW_ICON))
         .center()
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .border(border_all_color(1., colors::component_border()).alignment(BorderAlignment::Inner))
         .child(
             Icon::new(IconType::DotsGrid)
@@ -1344,7 +1344,7 @@ fn check_box(checked: bool) -> impl IntoElement {
         .width(Size::px(CHECK_SIZE))
         .height(Size::px(CHECK_SIZE))
         .center()
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(if checked {
             colors::brand()
         } else {

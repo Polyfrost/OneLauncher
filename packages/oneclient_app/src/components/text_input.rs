@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::clamp_to_window;
 
 const GAP_VERT: f32 = 8.0;
@@ -13,7 +13,7 @@ const EXPANDED_HEIGHT: f32 = 180.;
 fn text_input(value: impl Into<Writable<String>>) -> Input {
     Input::new(value)
         .padding(Gaps::new_symmetric(GAP_VERT, GAP_HORI))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .focus_background(colors::component_bg_pressed())
         .border_fill(colors::component_border())
@@ -243,7 +243,7 @@ impl Component for TextInput {
                 .on_close(move |_| expanded.set(false))
                 .child(
                     rect()
-                        .corner_radius(CornerRadius::new_all(8.))
+                        .corner_radius(rounded(8.))
                         .shadow(Shadow::from((
                             0.,
                             8.,

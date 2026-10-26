@@ -117,8 +117,12 @@ pub fn mono_font() -> &'static str {
     &colors::active_theme().mono_font
 }
 
-pub fn radius(radius: f32) -> CornerRadius {
-    CornerRadius::new_all(radius * colors::active_theme().radius_scale)
+pub fn rounded_px(radius: f32) -> f32 {
+    radius * colors::active_theme().radius_scale
+}
+
+pub fn rounded(radius: f32) -> CornerRadius {
+    CornerRadius::new_all(rounded_px(radius))
 }
 
 pub fn load_fonts() -> Vec<(&'static str, Bytes)> {

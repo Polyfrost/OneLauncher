@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 pub const DIALOG_WIDTH: f32 = 1020.;
@@ -59,7 +59,7 @@ pub fn shell(parts: Shell) -> Element {
                         .max_width(Size::window_percent(94.))
                         .max_height(Size::window_percent(92.))
                         .content(Content::Flex)
-                        .corner_radius(CornerRadius::new_all(16.))
+                        .corner_radius(rounded(16.))
                         .overflow(Overflow::Clip)
                         .background(colors::page_elevated())
                         .border(border_all_color(1., colors::component_border()))

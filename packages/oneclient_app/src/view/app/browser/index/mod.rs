@@ -28,7 +28,7 @@ use crate::hooks::{
     use_versions, use_view_state, versions_metadata,
 };
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::grid_columns_for_width;
 use crate::view::app::cluster::supports_datapacks;
 
@@ -563,7 +563,7 @@ fn target_pill(verb: &'static str, name: &str) -> impl IntoElement {
         .height(Size::px(30.))
         .spacing(6.)
         .padding(Gaps::new_symmetric(0., 10.))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(colors::ghost_overlay())
         .child(
             label()

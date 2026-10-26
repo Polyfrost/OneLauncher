@@ -4,7 +4,7 @@ use freya::prelude::*;
 use oneclient_core::game::{Analytics, DayPlaytime, PlaytimeStats};
 
 use crate::components::{Icon, IconType};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{border_all_color, columns_for};
 
 mod charts;
@@ -55,7 +55,7 @@ pub fn analytics_placeholder(note: &str) -> Element {
             rect()
                 .width(Size::fill())
                 .padding(Gaps::new_symmetric(16., 24.))
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::page_elevated())
                 .border(border_all_color(1., colors::component_border()))
                 .center()
@@ -220,7 +220,7 @@ pub(super) fn nav_button(
         .width(Size::px(30.))
         .height(Size::px(30.))
         .center()
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .maybe(enabled, |el| {
@@ -234,7 +234,7 @@ pub(super) fn card() -> Rect {
     rect()
         .vertical()
         .padding(20.)
-        .corner_radius(CornerRadius::new_all(14.))
+        .corner_radius(rounded(14.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
 }

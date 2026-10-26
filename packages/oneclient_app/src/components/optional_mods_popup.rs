@@ -15,7 +15,7 @@ use crate::hooks::{
 use crate::notifications::{
     ClusterUpdateItem, OptionalModRef, OptionalModsGroup, OptionalModsOutcome,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 720.;
@@ -153,7 +153,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -394,7 +394,7 @@ fn cluster_header(name: &str, first: bool) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .padding(Gaps::new_symmetric(6., 8.))
         .margin(Gaps::new(if first { 0. } else { 8. }, 0., 3., 0.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .child(
             label()

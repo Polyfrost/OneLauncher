@@ -9,7 +9,7 @@ use super::flagged_install_popup::explanation_panel;
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, remote_icon};
 use crate::hooks::{use_cached_image, use_dispatch, use_notifications_snapshot};
 use crate::notifications::{ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::utils::format_size;
 
@@ -330,7 +330,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -387,7 +387,7 @@ fn dialog(
                                         .width(Size::fill())
                                         .spacing(8.)
                                         .padding(Gaps::new_all(12.))
-                                        .corner_radius(CornerRadius::new_all(10.))
+                                        .corner_radius(rounded(10.))
                                         .background(colors::component_bg())
                                         .border(border_all_color(1., colors::component_border()))
                                         .children(facts),
@@ -445,7 +445,7 @@ fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> i
         .width(Size::fill())
         .spacing(8.)
         .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -594,7 +594,7 @@ impl Component for FlaggedCard {
             .width(Size::fill())
             .spacing(8.)
             .padding(Gaps::new_all(12.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .child(
@@ -713,7 +713,7 @@ impl Component for AlternativeChoice {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_symmetric(0., 8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::card())
             .border(border_all_color(1., colors::component_border()))
             .child(icon)

@@ -3,7 +3,7 @@ use freya::prelude::*;
 use crate::components::IconType;
 use crate::hooks::{has_migration_data, use_migration, use_onboarding_selection};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{
     onboarding_illustration, onboarding_nav, onboarding_page, step_heading,
@@ -95,7 +95,7 @@ fn language_row(
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .padding(Gaps::new_symmetric(14., 20.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(background)
         .maybe(active, |el| {
             el.border(border_all_color(1., colors::brand()))

@@ -16,7 +16,7 @@ use crate::hooks::{
     use_add_offline_account, use_current_account, use_refresh_account, use_remove_account,
     use_set_default_account,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 /// The shader scales the model off `res.y` alone so height makes the player bigger width only needs to clear the arms
@@ -157,7 +157,7 @@ fn hero(
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_all(16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(model_frame(account.as_ref().map(|account| account.id)))
         .child(
@@ -252,7 +252,7 @@ fn model_frame(id: Option<Uuid>) -> impl IntoElement {
                 .height(Size::px(MODEL_HEIGHT_PX))
                 .center()
                 .overflow(Overflow::Clip)
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::component_border()))
                 .child(match id {
@@ -312,7 +312,7 @@ fn offline_dialog(
                         .max_width(Size::window_percent(90.))
                         .spacing(16.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(16.))
+                        .corner_radius(rounded(16.))
                         .background(colors::page_elevated())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
@@ -492,7 +492,7 @@ impl Component for AccountRow {
             .content(Content::Flex)
             .spacing(12.)
             .padding(Gaps::new_all(12.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .border(border_all_color(1., border_color))
             .opacity(if is_refreshing {
@@ -670,7 +670,7 @@ fn badge(icon: impl IntoElement, text: String, border: Color, fg: Color) -> impl
         .cross_align(Alignment::Center)
         .spacing(4.)
         .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .border(border_all_color(1., border))
         .background(colors::component_bg())
         .child(icon)
@@ -691,7 +691,7 @@ fn empty_state() -> Element {
         .center()
         .padding(Gaps::new_all(32.))
         .spacing(8.)
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(
             Icon::new(IconType::Users01)

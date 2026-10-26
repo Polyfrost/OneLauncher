@@ -4,7 +4,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, toggle_controlled};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 460.;
@@ -42,7 +42,7 @@ impl Component for BundleChoicesPopup {
                     .content(Content::Flex)
                     .cross_align(Alignment::Center)
                     .padding(Gaps::new_symmetric(8., 10.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(colors::component_bg())
                     .child(
                         label()
@@ -87,7 +87,7 @@ impl Component for BundleChoicesPopup {
                             .max_height(Size::window_percent(85.))
                             .padding(Gaps::new_all(22.))
                             .spacing(14.)
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(

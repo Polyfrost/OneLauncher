@@ -20,7 +20,7 @@ use crate::hooks::{
     use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::centered_note;
 use crate::view::app::clusters::{
     DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts,
@@ -338,7 +338,7 @@ fn reset_button(overridden: bool, on_reset: EventHandler<()>) -> impl IntoElemen
         } else {
             "Already using the global setting"
         })
-        .corner_radius(CornerRadius::new_all(7.))
+        .corner_radius(rounded(7.))
         .maybe(overridden, |el| el.on_press(move |_| on_reset.call(())))
         .enabled(overridden)
         .child(Icon::new(IconType::RefreshCcw02).size(15.).color(color))

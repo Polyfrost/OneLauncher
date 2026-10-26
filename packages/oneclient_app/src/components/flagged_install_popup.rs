@@ -8,7 +8,7 @@ use crate::components::{
 use crate::hooks::{use_cached_image, use_dispatch, use_installs_snapshot};
 use crate::routes::Route;
 use crate::state::FlaggedInstallPrompt;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::view::app::browser::encode_package_id;
 
@@ -69,7 +69,7 @@ fn dialog(prompt: FlaggedInstallPrompt, dispatch: crate::Actions) -> impl IntoEl
         .overflow(Overflow::Clip)
         .spacing(SECTION_GAP)
         .padding(Gaps::new_all(DIALOG_PADDING))
-        .corner_radius(CornerRadius::new_all(14.))
+        .corner_radius(rounded(14.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -212,7 +212,7 @@ fn alternative_row(
         .cross_align(Alignment::Center)
         .spacing(10.)
         .padding(Gaps::new_symmetric(0., 8.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(icon)
@@ -259,7 +259,7 @@ pub(crate) fn explanation_panel(markdown: String) -> impl IntoElement {
     rect()
         .width(Size::fill())
         .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(

@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use freya::prelude::*;
 
 use crate::components::ScrollArea;
-use crate::theme::{self, colors};
+use crate::theme::{self, colors, rounded};
 use crate::ui::border_all_color;
 
 #[derive(PartialEq)]
@@ -83,7 +83,7 @@ impl Component for CodeBlock {
         let block = rect()
             .width(Size::fill())
             .padding(Gaps::new_all(12.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(self.background)
             .border(border_all_color(1., colors::component_border()));
 

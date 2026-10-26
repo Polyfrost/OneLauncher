@@ -17,7 +17,7 @@ use crate::hooks::{
     use_log_content, use_overlay_claim_when, use_upload_log,
 };
 use crate::layout::cluster_content;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui;
 use crate::utils::format_size;
 
@@ -466,7 +466,7 @@ impl Component for LogPicker {
                     .content(Content::Flex)
                     .spacing(8.)
                     .padding(Gaps::new_symmetric(0., 12.))
-                    .corner_radius(CornerRadius::new_all(9.))
+                    .corner_radius(rounded(9.))
                     .background(colors::component_bg())
                     .a11y_id(a11y_id)
                     .a11y_focusable(true)
@@ -522,7 +522,7 @@ impl Component for LogPicker {
                             .vertical()
                             .spacing(4.)
                             .padding(6.)
-                            .corner_radius(CornerRadius::new_all(10.))
+                            .corner_radius(rounded(10.))
                             .border(ui::border_all_color(1., colors::component_border()))
                             .background(colors::page_elevated())
                             .overflow(Overflow::Clip)
@@ -598,7 +598,7 @@ impl Component for PickerRow {
             .content(Content::Flex)
             .spacing(8.)
             .padding(Gaps::new_symmetric(6., 8.))
-            .corner_radius(CornerRadius::new_all(7.))
+            .corner_radius(rounded(7.))
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
@@ -682,7 +682,7 @@ pub fn confirm_overlay(
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(ui::border_all_color(1., colors::component_border()))
                         .child(

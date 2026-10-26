@@ -3,7 +3,7 @@ use oneclient_java::{AvailableJava, JavaVendor};
 
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{provider_versions, use_provider_versions};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 fn providers() -> Vec<(JavaVendor, &'static str)> {
@@ -126,7 +126,7 @@ impl Component for JavaInstallManager {
                             .max_width(Size::window_percent(90.))
                             .spacing(16.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .background(colors::page_elevated())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -222,7 +222,7 @@ impl Component for VersionRow {
             title_row = title_row.child(
                 rect()
                     .padding(Gaps::new_symmetric(2., 8.))
-                    .corner_radius(CornerRadius::new_all(6.))
+                    .corner_radius(rounded(6.))
                     .background(colors::brand())
                     .child(
                         label()
@@ -241,7 +241,7 @@ impl Component for VersionRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_symmetric(10., 12.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::component_bg())
             .maybe(self.suggested, |el| {
                 el.border(border_all_color(1., colors::brand()))

@@ -5,7 +5,7 @@ use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSu
 
 use crate::components::{Button, Icon, IconType};
 use crate::utils::shorten;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const BUTTON_NAME_CHARS: usize = 22;
@@ -48,7 +48,7 @@ pub(super) fn sidebar(
             rect()
                 .vertical()
                 .width(Size::fill())
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .overflow(Overflow::Clip)
                 .background(colors::page_elevated())
                 .border(border_all_color(1., colors::component_border()))
@@ -210,7 +210,7 @@ impl Component for ProviderTag {
                 el.a11y_id(a11y_id)
                     .a11y_focusable(true)
                     .a11y_role(AccessibilityRole::Link)
-                    .corner_radius(CornerRadius::new_all(6.))
+                    .corner_radius(rounded(6.))
                     .maybe(focused, |el| {
                         el.border(border_all_color(1., colors::brand()))
                     })
@@ -231,7 +231,7 @@ fn card_spaced(title: &str, rows: Vec<Element>, spacing: f32) -> impl IntoElemen
         .width(Size::fill())
         .spacing(spacing)
         .padding(Gaps::new_all(16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -301,7 +301,7 @@ impl Component for AuthorRow {
             .width(Size::fill())
             .cross_align(Alignment::Center)
             .spacing(8.)
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .padding(Gaps::new_all(4.))
             .maybe(interactive, |el| {
                 let url = url.clone().unwrap_or_default();
@@ -437,7 +437,7 @@ impl Component for LinkRow {
             .width(Size::fill())
             .cross_align(Alignment::Center)
             .spacing(8.)
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .padding(Gaps::new_symmetric(2., 4.))
             .a11y_id(a11y_id)
             .a11y_focusable(true)

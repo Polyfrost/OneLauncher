@@ -39,7 +39,7 @@ use crate::components::{Button, Icon, IconType, set_enabled_action};
 use crate::hooks::{
     ClusterAction, loaded_image, mutation_is_running, use_cached_image, use_cluster_mutation,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{ImageFallbackExt, border_all_color};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -320,7 +320,7 @@ pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
         .horizontal()
         .cross_align(Alignment::Center)
         .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .background(color.with_a(38))
         .child(label().text(text).font_size(11.).max_lines(1).color(color))
 }
@@ -338,7 +338,7 @@ fn badge(
         .cross_align(Alignment::Center)
         .spacing(4.)
         .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .background(background)
         .map(border, |el, border| el.border(border_all_color(1., border)))
         .child(
@@ -399,7 +399,7 @@ impl Component for Thumbnail {
                 .width(Size::px(size))
                 .height(Size::px(size))
                 .aspect_ratio(AspectRatio::Min)
-                .corner_radius(CornerRadius::new_all(radius))
+                .corner_radius(rounded(radius))
                 .fallback(placeholder)
                 .into_element(),
             None => placeholder,
@@ -412,7 +412,7 @@ fn thumbnail_placeholder(size: f32, radius: f32, icon_ratio: f32) -> Element {
         .center()
         .width(Size::px(size))
         .height(Size::px(size))
-        .corner_radius(CornerRadius::new_all(radius))
+        .corner_radius(rounded(radius))
         .background(colors::component_bg())
         .child(
             Icon::new(IconType::DotsGrid)
@@ -515,7 +515,7 @@ impl Component for PackageBanner {
                                 .width(Size::px(icon))
                                 .height(Size::px(icon))
                                 .aspect_ratio(AspectRatio::Min)
-                                .corner_radius(CornerRadius::new_all(10.))
+                                .corner_radius(rounded(10.))
                                 .fallback(icon_placeholder.clone()),
                         )
                         .layer(Layer::Relative(5))

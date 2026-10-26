@@ -4955,6 +4955,7 @@ dependencies = [
  "regex",
  "rfd",
  "rust-embed",
+ "serde",
  "serde_json",
  "sysinfo",
  "tokio",

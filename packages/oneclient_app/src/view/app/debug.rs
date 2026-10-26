@@ -21,7 +21,7 @@ use crate::notifications::{
     OptionalModsGroup,
 };
 use crate::routes::Route;
-use crate::theme::{self, colors};
+use crate::theme::{self, colors, rounded};
 use crate::ui::border_all_color;
 
 type SqlResult = Option<Result<ConsoleQueryResult, String>>;
@@ -170,7 +170,7 @@ impl Component for ClusterList {
                     .main_align(Alignment::SpaceBetween)
                     .spacing(12.)
                     .padding(Gaps::new_symmetric(10., 14.))
-                    .corner_radius(CornerRadius::new_all(10.))
+                    .corner_radius(rounded(10.))
                     .background(colors::page_elevated())
                     .child(
                         rect()
@@ -1518,7 +1518,7 @@ fn sql_result(state: &SqlResult) -> Element {
         Some(Err(err)) => rect()
             .width(Size::fill())
             .padding(Gaps::new_symmetric(10., 14.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::danger()))
             .child(
@@ -1550,7 +1550,7 @@ fn sql_table(res: &ConsoleQueryResult) -> Element {
     let mut table = rect()
         .vertical()
         .width(Size::fill())
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .border(border_all_color(1., colors::component_border()))
         .child(header);
 
@@ -1621,7 +1621,7 @@ fn split_csv(raw: &str) -> Vec<String> {
 fn divider() -> impl IntoElement {
     crate::ui::divider()
         .margin(Gaps::new_symmetric(8., 0.))
-        .corner_radius(CornerRadius::new_all(1.))
+        .corner_radius(rounded(1.))
         .into_element()
 }
 
@@ -1648,7 +1648,7 @@ fn toggle_row(title: &'static str, on: State<bool>) -> Element {
         .cross_align(Alignment::Center)
         .main_align(Alignment::SpaceBetween)
         .padding(Gaps::new_symmetric(10., 14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::page_elevated())
         .child(
             label()

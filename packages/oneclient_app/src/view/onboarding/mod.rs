@@ -35,7 +35,7 @@ use freya::router::{RouterContext, use_route};
 use crate::Route;
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{has_migration_data, use_migration, use_onboarding_selection};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{border_all_color, entrance_motion_layer};
 
 pub fn onboarding_total(has_migration: bool, picks_location: bool) -> usize {
@@ -237,7 +237,7 @@ pub(crate) fn choice_row_sized(
         .cross_align(Alignment::Center)
         .spacing(10.)
         .padding(Gaps::new_symmetric(8., 12.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .border(border_all_color(1., border_color))
         .a11y_role(AccessibilityRole::Button)
         .cursor(CursorIcon::Pointer)
@@ -291,7 +291,7 @@ pub(crate) fn version_chip(
         .height(Size::px(32.))
         .center()
         .padding(Gaps::new_symmetric(0., 14.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .background(bg)
         .border(border_all_color(1.5, border))
         .a11y_role(AccessibilityRole::Button)

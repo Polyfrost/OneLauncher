@@ -3,7 +3,7 @@ use oneclient_core::clusters::Cluster;
 
 use crate::components::cluster_menu::open_menu_at;
 use crate::components::{ART_PREVIEW_EDGE, ClusterContextMenu, ClusterMenuTarget, DynamicArt};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::utils::{GridSelection, ReleaseLine, line_art_key, line_title};
 
@@ -109,7 +109,7 @@ impl Component for VersionCard {
             .key(self.key)
             .width(Size::fill())
             .height(Size::px(CARD_HEIGHT_PX))
-            .corner_radius(CornerRadius::new_all(16.))
+            .corner_radius(rounded(16.))
             .overflow(Overflow::Clip)
             .background(colors::page_elevated())
             .a11y_id(a11y_id)
@@ -143,7 +143,7 @@ impl Component for VersionCard {
                     .padding(12.)
                     .spacing(5.)
                     .main_align(Alignment::End)
-                    .corner_radius(CornerRadius::new_all(16.))
+                    .corner_radius(rounded(16.))
                     .border(border.alignment(BorderAlignment::Inner))
                     .layer(Layer::Relative(3))
                     .background(
@@ -174,7 +174,7 @@ impl Component for VersionCard {
                     .position(Position::new_absolute().top(8.).right(8.))
                     .layer(Layer::Relative(4))
                     .padding(Gaps::new_symmetric(4., 8.))
-                    .corner_radius(CornerRadius::new_all(6.))
+                    .corner_radius(rounded(6.))
                     .background(Color::from_af32rgb(0.66, 11, 16, 19))
                     .child(
                         label()

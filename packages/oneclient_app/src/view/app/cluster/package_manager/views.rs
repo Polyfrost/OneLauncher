@@ -14,7 +14,7 @@ use crate::components::{
 };
 use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, rounded_px};
 use crate::{Actions, utils};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -321,7 +321,7 @@ pub(super) fn toolbar_bar(
     });
 
     let mut top_corners = CornerRadius::new_all(0.);
-    top_corners.fill_top(12.);
+    top_corners.fill_top(rounded_px(12.));
 
     let measured = *toolbar_width.read();
     let stacked = measured > 0. && measured < TOOLBAR_STACK_W;
@@ -547,7 +547,7 @@ impl Component for CategoryChip {
             .height(Size::px(32.))
             .center()
             .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(background)
             .border(crate::ui::border_all_color(
                 1.,
@@ -630,7 +630,7 @@ pub(crate) fn notice_bar(text: String) -> Element {
         .spacing(10.)
         .margin(Gaps::new(0., 0., 8., 0.))
         .padding(Gaps::new_symmetric(9., 12.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::brand().with_a(30))
         .border(crate::ui::border_all_color(1., colors::brand().with_a(90)))
         .child(
@@ -784,7 +784,7 @@ impl Component for SectionHeader {
             .cross_align(Alignment::Center)
             .spacing(8.)
             .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(if interactive && *hovered.read() {
                 colors::ghost_overlay_hover()
             } else {
@@ -1011,7 +1011,7 @@ impl Component for ContentBox {
         });
 
         let mut bottom_corners = CornerRadius::new_all(0.);
-        bottom_corners.fill_bottom(12.);
+        bottom_corners.fill_bottom(rounded_px(12.));
 
         // File drops are handled window-wide by the app shell so this box does not claim them
         rect()

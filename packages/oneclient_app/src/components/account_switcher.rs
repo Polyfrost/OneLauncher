@@ -12,7 +12,7 @@ use crate::{
         SetDefaultAccountKeys, try_accounts, try_default_account, use_account_switcher_open,
         use_accounts, use_current_account, use_dispatch, use_set_default_account,
     },
-    theme::colors,
+    theme::{colors, rounded},
     ui::divider,
 };
 
@@ -92,7 +92,7 @@ impl Component for AccountPanel {
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
             .backdrop_blur(12.)
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .border(
                 Border::new()
                     .fill(colors::component_border())
@@ -145,7 +145,7 @@ impl Component for BackToControlCenter {
             .width(Size::px(28.))
             .height(Size::px(28.))
             .center()
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(Color::RED.with_a(0))
             .maybe(*hovered.read(), |el| {
                 el.background(colors::ghost_overlay_hover())
@@ -219,7 +219,7 @@ impl Component for AccountRow {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_all(8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .maybe(*hovered.read() && !active, |el| {
                 el.background(colors::ghost_overlay_hover())
             })

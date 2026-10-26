@@ -3,7 +3,7 @@ use oneclient_content::packages::ProviderId;
 
 use crate::components::{Icon, IconType, github_badge, provider_badge};
 use crate::hooks::{loaded_image, use_cached_image};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
@@ -33,7 +33,7 @@ impl Component for OnboardingModCard {
                 .width(Size::px(44.))
                 .height(Size::px(44.))
                 .aspect_ratio(AspectRatio::Min)
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .fallback(icon_box(self.placeholder_icon()))
                 .into_element(),
 
@@ -103,7 +103,7 @@ impl Component for OnboardingModCard {
             .height(Size::fill())
             .spacing(8.)
             .padding(Gaps::new_all(12.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(bg)
             .border(border_all_color(1.5, border))
             .content(Content::Flex)
@@ -149,7 +149,7 @@ fn icon_box(icon: IconType) -> impl IntoElement {
         .center()
         .width(Size::px(44.))
         .height(Size::px(44.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .child(Icon::new(icon).size(20.).color(colors::fg_secondary()))
         .into_element()

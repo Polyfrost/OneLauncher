@@ -15,12 +15,12 @@ use crate::components::{
 };
 use crate::hooks::wardrobe::{WardrobeAction, use_transactions};
 use crate::hooks::{query_error, query_is_loading, settled_or_loading};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 fn panel_box() -> Rect {
     rect()
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .overflow(Overflow::Clip)
@@ -28,7 +28,7 @@ fn panel_box() -> Rect {
 
 fn wardrobe_panel() -> Rect {
     rect()
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
 }
@@ -246,7 +246,7 @@ impl Component for OutfitSwitcher {
                     .height(Size::fill())
                     .center()
                     .padding(Gaps::new_symmetric(0., 10.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(colors::component_bg())
                     .border(border_all_color(1., colors::component_border()))
                     .child(
@@ -373,7 +373,7 @@ impl Component for PreviewPanel {
                     .width(Size::fill())
                     .padding(Gaps::new_all(10.))
                     .spacing(8.)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(colors::component_bg())
                     .border(border_all_color(1., colors::component_border()))
                     .child(
@@ -411,7 +411,7 @@ impl Component for PreviewPanel {
                     .padding(Gaps::new_all(10.))
                     .spacing(8.)
                     .cross_align(Alignment::Center)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(colors::component_bg())
                     .border(border_all_color(1., colors::component_border()))
                     .child(
@@ -576,7 +576,7 @@ impl Component for VariantChip {
             .height(Size::px(28.))
             .padding(Gaps::new_symmetric(0., 10.))
             .main_align(Alignment::Center)
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(if self.selected {
                 colors::brand()
             } else {
@@ -808,7 +808,7 @@ impl Component for CartRow {
                 rect()
                     .width(Size::px(58.))
                     .height(Size::px(58.))
-                    .corner_radius(CornerRadius::new_all(5.))
+                    .corner_radius(rounded(5.))
                     .background(colors::page())
                     .overflow(Overflow::Clip)
                     .child(CoverThumb {
@@ -986,7 +986,7 @@ impl Component for StoreDetailPanel {
                     .children(tags.into_iter().map(|tag| {
                         rect()
                             .padding(Gaps::new_symmetric(3., 8.))
-                            .corner_radius(CornerRadius::new_all(5.))
+                            .corner_radius(rounded(5.))
                             .background(colors::component_bg())
                             .border(border_all_color(1., colors::component_border()))
                             .child(label().text(tag).font_size(11.).color(colors::fg_primary()))
@@ -1022,7 +1022,7 @@ impl Component for StoreDetailPanel {
                             .position(Position::new_absolute().top(12.).left(12.))
                             .layer(Layer::Relative(1))
                             .padding(Gaps::new_symmetric(3., 8.))
-                            .corner_radius(CornerRadius::new_all(5.))
+                            .corner_radius(rounded(5.))
                             .background(color)
                             .child(
                                 label()
@@ -1123,7 +1123,7 @@ impl Component for BundleDetailPanel {
                 rect()
                     .width(Size::fill())
                     .height(Size::px(200.))
-                    .corner_radius(CornerRadius::new_all(5.))
+                    .corner_radius(rounded(5.))
                     .background(colors::page())
                     .overflow(Overflow::Clip)
                     .child(CoverThumb {
@@ -1205,7 +1205,7 @@ impl Component for HistoryList {
                         .cross_align(Alignment::Center)
                         .padding(Gaps::new_symmetric(10., 13.))
                         .spacing(13.)
-                        .corner_radius(CornerRadius::new_all(8.))
+                        .corner_radius(rounded(8.))
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             rect()

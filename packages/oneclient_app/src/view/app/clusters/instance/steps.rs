@@ -21,7 +21,7 @@ use super::rail::version_art;
 use crate::components::{
     Dropdown, GRID_GAP, Icon, IconType, ScrollArea, TextInput, centered_spinner,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{border_all_color, centered_note, fixed_grid, note};
 use crate::utils::bundle_display_name;
 
@@ -367,7 +367,7 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_all(16.))
-        .corner_radius(CornerRadius::new_all(CARD_RADIUS))
+        .corner_radius(rounded(CARD_RADIUS))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(

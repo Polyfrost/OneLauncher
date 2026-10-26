@@ -5,7 +5,7 @@ use freya::prelude::*;
 
 use crate::{
     components::{Icon, IconTint, IconType, TooltipPlacement, tooltip::use_tooltip_anchor},
-    theme::colors,
+    theme::{colors, rounded},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -434,28 +434,28 @@ fn size_layout(size: ButtonSize) -> (Gaps, CornerRadius, f32, Size, Size) {
     match size {
         ButtonSize::Small => (
             Gaps::new_symmetric(4., 8.),
-            CornerRadius::new_all(6.),
+            rounded(6.),
             12.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Medium => (
             Gaps::new_symmetric(6., 12.),
-            CornerRadius::new_all(8.),
+            rounded(8.),
             14.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Large => (
             Gaps::new_symmetric(8., 32.),
-            CornerRadius::new_all(10.),
+            rounded(10.),
             18.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Icon => (
             Gaps::new_all(6.),
-            CornerRadius::new_all(8.),
+            rounded(8.),
             14.,
             Size::px(32.),
             Size::px(32.),

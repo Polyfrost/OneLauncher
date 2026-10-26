@@ -14,7 +14,7 @@ use crate::hooks::{
     use_selection, use_view_state,
 };
 use crate::layout::cluster_content;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{border_all_color, flow_grid, fmt_date, grid_columns_for_width};
 use crate::utils::{format_res, format_size};
 
@@ -356,7 +356,7 @@ fn confirm_panel(
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
@@ -405,7 +405,7 @@ fn res_badge(res: Option<(u32, u32)>) -> Option<Element> {
         rect()
             .position(Position::new_absolute().bottom(6.).right(6.))
             .padding(Gaps::new_symmetric(2., 6.))
-            .corner_radius(CornerRadius::new_all(5.))
+            .corner_radius(rounded(5.))
             .background(Color::from_argb(170, 0, 0, 0))
             .layer(Layer::Relative(3))
             .child(label().text(text).font_size(9.).color(Color::WHITE))
@@ -418,7 +418,7 @@ fn preview_box(path: PathBuf, height: f32, res: Option<(u32, u32)>) -> impl Into
         .width(Size::fill())
         .height(Size::px(height))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::component_bg())
         .child(LocalImage::new(path, THUMB_EDGE, true).skeleton(true))
         .maybe_child(res_badge(res))
@@ -456,7 +456,7 @@ impl Component for ScreenshotTile {
             .vertical()
             .width(Size::flex(1.0))
             .max_width(Size::px(MAX_COL_W))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::card())
             .overflow(Overflow::Clip)
             .border(border_all_color(1., border_color).alignment(BorderAlignment::Inner))
@@ -524,7 +524,7 @@ impl Component for ScreenshotRow {
         let thumb = rect()
             .width(Size::px(64.))
             .height(Size::px(40.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .overflow(Overflow::Clip)
             .background(colors::component_bg())
             .child(LocalImage::new(info.path.clone(), THUMB_EDGE, true).skeleton(true));
@@ -536,7 +536,7 @@ impl Component for ScreenshotRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_symmetric(8., 10.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(if *hovered.read() {
                 colors::component_bg_hover()
             } else {

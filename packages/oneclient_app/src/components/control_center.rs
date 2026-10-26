@@ -12,7 +12,7 @@ use crate::{
         use_accounts, use_control_center_open, use_current_account, use_dispatch,
         use_remove_account, use_settings_snapshot,
     },
-    theme::colors,
+    theme::{colors, rounded},
     ui::{border_all_color, divider},
 };
 
@@ -58,7 +58,7 @@ impl Component for ControlPanel {
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
             .backdrop_blur(12.)
-            .corner_radius(CornerRadius::new_all(14.))
+            .corner_radius(rounded(14.))
             .border(
                 Border::new()
                     .fill(colors::component_border())
@@ -197,7 +197,7 @@ impl Component for AccountHeader {
                     .cross_align(Alignment::Center)
                     .spacing(6.)
                     .padding(Gaps::new_symmetric(6., 8.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(Color::RED.with_a(0))
                     .maybe(*hovered.read(), |el| {
                         el.background(colors::ghost_overlay_hover())
@@ -248,7 +248,7 @@ impl Component for NavRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_symmetric(0., 8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(Color::RED.with_a(0))
             .maybe(*hovered.read(), |el| {
                 el.background(colors::ghost_overlay_hover())
@@ -382,7 +382,7 @@ impl Component for QuickTile {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(background)
             .maybe(!enabled, |el| el.opacity(0.45))
             .maybe(!on || !enabled, |el| {
@@ -504,7 +504,7 @@ impl Component for PanelFooter {
                                         .max_width(Size::window_percent(90.))
                                         .spacing(14.)
                                         .padding(Gaps::new_all(20.))
-                                        .corner_radius(CornerRadius::new_all(14.))
+                                        .corner_radius(rounded(14.))
                                         .background(colors::page_elevated())
                                         .border(border_all_color(
                                             1.,
@@ -606,7 +606,7 @@ impl Component for FooterAction {
             .spacing(8.)
             .height(Size::px(34.))
             .padding(Gaps::new_symmetric(0., 8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(Color::RED.with_a(0))
             .maybe(*hovered.read(), |el| {
                 el.background(colors::ghost_overlay_hover())

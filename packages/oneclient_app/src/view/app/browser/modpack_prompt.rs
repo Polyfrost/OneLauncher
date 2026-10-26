@@ -9,7 +9,7 @@ use oneclient_core::clusters::{Cluster, ModpackSource};
 
 use crate::components::{Button, Icon, IconType, ScrollArea};
 use crate::hooks::{listed, use_dispatch};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::view::app::cluster::dialog;
 
@@ -448,13 +448,13 @@ fn radio_row(
         .width(Size::px(16.))
         .height(Size::px(16.))
         .center()
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .border(border_all_color(1.5, ring))
         .maybe_child(active.then(|| {
             rect()
                 .width(Size::px(8.))
                 .height(Size::px(8.))
-                .corner_radius(CornerRadius::new_all(4.))
+                .corner_radius(rounded(4.))
                 .background(colors::brand())
         }));
 
@@ -466,7 +466,7 @@ fn radio_row(
         .content(Content::Flex)
         .spacing(10.)
         .padding(Gaps::new_symmetric(0., 12.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .border(border_all_color(1., ring))
         .on_press(move |_| on_select())

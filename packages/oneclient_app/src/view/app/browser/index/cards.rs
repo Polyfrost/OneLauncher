@@ -14,7 +14,7 @@ use crate::hooks::{
 };
 use crate::routes::Route;
 use crate::view::app::browser::cluster_version;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 type InstalledMap = HashMap<(ProviderId, String), Installed>;
@@ -150,7 +150,7 @@ impl Component for PackageCard {
             .vertical()
             .width(Size::flex(1.0))
             .height(Size::px(CARD_H))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::component_bg())
             .border(border_all_color(
                 1.,
@@ -290,7 +290,7 @@ impl Component for ListRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_all(16.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::component_bg())
             .border(border_all_color(
                 1.,
@@ -457,7 +457,7 @@ impl Component for InstallButton {
                 .height(Size::px(INSTALL_BUTTON_H))
                 .spacing(6.)
                 .padding(Gaps::new_symmetric(0., 10.))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::component_border()))
                 .child(Icon::new(IconType::CheckCircle).size(12.).color(color))

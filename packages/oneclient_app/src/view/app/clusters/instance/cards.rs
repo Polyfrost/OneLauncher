@@ -3,7 +3,7 @@ use freya::prelude::*;
 use super::model::{LoaderChoice, VersionRow};
 use crate::AppAssets;
 use crate::components::{AssetImage, Icon, IconType, pill};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 pub const CARD_RADIUS: f32 = 12.;
@@ -53,7 +53,7 @@ impl Component for SelectCard {
             .width(Size::fill())
             .height(self.height.map_or_else(Size::auto, Size::px))
             .padding(self.padding)
-            .corner_radius(CornerRadius::new_all(CARD_RADIUS))
+            .corner_radius(rounded(CARD_RADIUS))
             .overflow(Overflow::Clip)
             .background(if hovered || focused {
                 colors::component_bg_hover()
@@ -83,7 +83,7 @@ pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<El
             rect()
                 .width(Size::px(size))
                 .height(Size::px(size))
-                .corner_radius(CornerRadius::new_all(5.))
+                .corner_radius(rounded(5.))
                 .overflow(Overflow::Clip)
                 .opacity(if selected { 1.0 } else { 0.7 })
                 .child(drawn)
@@ -102,7 +102,7 @@ pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<El
             .width(Size::px(size))
             .height(Size::px(size))
             .center()
-            .corner_radius(CornerRadius::new_all(5.))
+            .corner_radius(rounded(5.))
             .border(border_all_color(1., colors::component_border()))
             .child(
                 label()
@@ -123,7 +123,7 @@ pub fn marker(selected: bool, checkbox: bool) -> Element {
         .width(Size::px(MARKER_SIZE))
         .height(Size::px(MARKER_SIZE))
         .center()
-        .corner_radius(CornerRadius::new_all(radius))
+        .corner_radius(rounded(radius))
         .background(if selected {
             colors::brand()
         } else {
@@ -147,7 +147,7 @@ pub fn marker(selected: bool, checkbox: bool) -> Element {
                 rect()
                     .width(Size::px(MARKER_DOT))
                     .height(Size::px(MARKER_DOT))
-                    .corner_radius(CornerRadius::new_all(999.))
+                    .corner_radius(rounded(999.))
                     .background(colors::on_brand())
                     .into_element()
             }

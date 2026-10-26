@@ -10,7 +10,7 @@ use crate::Route;
 use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea};
 use crate::hooks::{use_dispatch, use_link_confirm};
 use crate::theme;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::utils::format_durations;
 
 mod markup;
@@ -87,7 +87,7 @@ impl Component for CrashDialog {
                             .content(Content::Flex)
                             .overflow(Overflow::Clip)
                             .background(colors::page_elevated())
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .padding(Gaps::new_all(DIALOG_PADDING))
                             .spacing(DIALOG_SPACING)
                             .border(crate::ui::border_all_color(1., colors::component_border()))
@@ -281,7 +281,7 @@ fn card() -> Rect {
         .vertical()
         .width(Size::fill())
         .padding(Gaps::new_all(CARD_PADDING))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .border(crate::ui::border_all_color(1., colors::component_border()))
 }
@@ -460,7 +460,7 @@ fn discord_card(mut confirm: State<Option<String>>) -> impl IntoElement {
         .spacing(12.)
         .content(Content::Flex)
         .padding(Gaps::new_all(14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(DISCORD_BG)
         .border(crate::ui::border_all_color(1., DISCORD_BORDER))
         .child(
@@ -525,7 +525,7 @@ fn excerpt_box(crash: &GameCrash) -> Element {
 
     clip_box(height)
         .background(colors::page())
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .padding(Gaps::new_all(CARD_PADDING))
         .child(
             ScrollArea::new()

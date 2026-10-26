@@ -10,7 +10,7 @@ use crate::components::{
 use crate::hooks::{
     Actions, ScreenshotAction, UseScreenshotAction, use_dispatch, use_screenshot_action,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::fmt_date;
 use crate::utils::{format_res, format_size};
 
@@ -264,7 +264,7 @@ fn chevron_btn(
         .width(Size::px(44.))
         .height(Size::px(44.))
         .center()
-        .corner_radius(CornerRadius::new_all(22.));
+        .corner_radius(rounded(22.));
 
     if !enabled {
         return base

@@ -14,7 +14,7 @@ use crate::hooks::{
     use_disable_warnings, use_essential_guard,
 };
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
@@ -252,7 +252,7 @@ impl Component for PackageRow {
                 .width(Size::percent(100.))
                 .height(Size::percent(100.))
                 .layer(Layer::Relative(16))
-                .corner_radius(CornerRadius::new_all(radius))
+                .corner_radius(rounded(radius))
                 .maybe(self.selected, |el| {
                     el.background(colors::brand().with_a(28)).border(
                         border_all_color(2., colors::brand()).alignment(BorderAlignment::Inner),
@@ -528,7 +528,7 @@ fn list_card(
         .cross_align(Alignment::Center)
         .spacing(12.)
         .padding(Gaps::new_all(10.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::card())
         .content(Content::Flex)
         .on_secondary_down(on_secondary(on_context.clone()))
@@ -644,7 +644,7 @@ pub(crate) fn grid_card(
         .height(Size::fill())
         .spacing(9.)
         .padding(Gaps::new_all(GRID_CARD_PADDING))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(bg.with_a(alpha))
         .border(border_all_color(1., border))
         .content(Content::Flex)
@@ -802,7 +802,7 @@ impl Component for KebabButton {
             .center()
             .width(Size::px(26.))
             .height(Size::px(26.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(if *hovered.read() {
                 colors::ghost_overlay_hover()
             } else {
@@ -973,7 +973,7 @@ pub(crate) fn remote_icon(
             .width(Size::px(size))
             .height(Size::px(size))
             .aspect_ratio(AspectRatio::Min)
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .fallback(icon_box(IconType::DotsGrid, size))
             .into_element(),
 
@@ -987,7 +987,7 @@ pub(crate) fn icon_box(icon: IconType, size: f32) -> Element {
         .center()
         .width(Size::px(size))
         .height(Size::px(size))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .child(
             Icon::new(icon)
@@ -1044,12 +1044,12 @@ fn updated_badge() -> Element {
 
 fn status_tag(text: impl Into<String>, accent: Color) -> Element {
     rect()
-        .corner_radius(CornerRadius::new_all(4.))
+        .corner_radius(rounded(4.))
         .background(colors::component_bg())
         .child(
             rect()
                 .padding(Gaps::new(1., 6., 3., 6. + TAG_LETTER_SPACING))
-                .corner_radius(CornerRadius::new_all(4.))
+                .corner_radius(rounded(4.))
                 .background(accent.with_a(38))
                 .border(border_all_color(1., accent.with_a(96)))
                 .child(
@@ -1098,7 +1098,7 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
         .cross_align(Alignment::Center)
         .spacing(4.)
         .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .border(border_all_color(1., colors::component_border()))
         .background(colors::component_bg())
         .maybe_child(icon)

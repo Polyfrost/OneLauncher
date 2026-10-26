@@ -4,6 +4,7 @@ use oneclient_common::parse_mc_version;
 
 use super::shell::RAIL_WIDTH;
 use crate::components::DynamicArt;
+use crate::theme::rounded;
 
 const HAIRLINE: Color = Color::from_argb(31, 255, 255, 255);
 const CHIP_BG: Color = Color::from_argb(26, 255, 255, 255);
@@ -178,7 +179,7 @@ pub fn rail(parts: Rail) -> Element {
                                         .children(tags.iter().map(|tag| {
                                             rect()
                                                 .padding(Gaps::new_symmetric(3., 8.))
-                                                .corner_radius(CornerRadius::new_all(6.))
+                                                .corner_radius(rounded(6.))
                                                 .background(CHIP_BG)
                                                 .child(
                                                     label()

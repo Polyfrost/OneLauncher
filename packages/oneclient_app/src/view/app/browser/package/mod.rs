@@ -16,7 +16,7 @@ use crate::hooks::{
     use_dispatch, use_installs_snapshot, use_link_confirm, use_package_meta_batch,
     use_package_project, use_package_versions_when, version_list, versions_total,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 use super::{
@@ -136,7 +136,7 @@ fn pill(text: String) -> impl IntoElement {
     rect()
         .center()
         .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(

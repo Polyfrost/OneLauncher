@@ -3,7 +3,7 @@ use oneclient_content::packages::ProviderId;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::use_dispatch;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 #[derive(Clone, PartialEq)]
@@ -61,7 +61,7 @@ impl Component for BundledInstallWarning {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(

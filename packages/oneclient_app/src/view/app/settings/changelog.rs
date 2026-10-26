@@ -9,7 +9,7 @@ use crate::hooks::{
     changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,
     use_changelog, use_dispatch, use_settings_snapshot,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 
 #[derive(PartialEq)]
 pub struct SettingsChangelog;
@@ -115,7 +115,7 @@ impl Component for ReleaseCard {
             .width(Size::fill())
             .spacing(8.)
             .padding(Gaps::new_symmetric(12., 16.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .child(
                 rect()

@@ -12,7 +12,7 @@ use crate::hooks::{
 };
 use crate::platform::open_url;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_page, step_heading};
 
@@ -146,7 +146,7 @@ fn panel(child: impl IntoElement) -> impl IntoElement {
         .width(Size::fill())
         .height(Size::px(220.))
         .content(Content::Flex)
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(child)
@@ -336,7 +336,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(border_all_color(1., colors::danger()))
                         .child(

@@ -25,7 +25,7 @@ use crate::hooks::{
     use_launcher, use_provide_active_cluster, use_provide_browser_compat,
     use_provide_browser_state, use_provide_browser_type, use_provide_datapack_world, use_splash,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::utils::home_cluster;
 use oneclient_events::LaunchStage;
 use std::collections::HashMap;
@@ -138,7 +138,7 @@ impl Component for LaunchErrorDialog {
                             .vertical()
                             .width(Size::px(560.))
                             .background(colors::page_elevated())
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .padding(Gaps::new_all(24.))
                             .spacing(16.)
                             .border(crate::ui::border_all_color(1., colors::component_border()))

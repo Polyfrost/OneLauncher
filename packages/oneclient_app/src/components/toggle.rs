@@ -3,6 +3,7 @@ use freya::{
     prelude::*,
 };
 
+use crate::theme::rounded;
 use crate::{theme::colors, ui};
 
 const WIDTH: f32 = 40.;
@@ -132,7 +133,7 @@ impl Component for Switch {
                 rect()
                     .width(Size::px(WIDTH))
                     .height(Size::px(22.))
-                    .corner_radius(CornerRadius::new_all(11.))
+                    .corner_radius(rounded(11.))
                     .padding(Gaps::new_all(3.))
                     .main_align(knob_align)
                     .cross_align(Alignment::Center)
@@ -146,7 +147,7 @@ impl Component for Switch {
                         rect()
                             .width(Size::px(HANDLE_SIZE))
                             .height(Size::px(HANDLE_SIZE))
-                            .corner_radius(CornerRadius::new_all(8.))
+                            .corner_radius(rounded(8.))
                             .background(if disabled {
                                 colors::fg_secondary()
                             } else if on {

@@ -6,7 +6,7 @@ use oneclient_core::settings::LauncherSettings;
 use super::settings_page;
 use crate::components::{ColorPicker, Icon, IconType, toggle};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
-use crate::theme::{Theme, colors, themes};
+use crate::theme::{Theme, colors, rounded, themes};
 use crate::ui::border_all_color;
 use crate::view::app::settings::{resettable, settings_row, settings_row_disabled};
 
@@ -138,7 +138,7 @@ fn big_preview(theme: ThemePreview) -> impl IntoElement {
     rect()
         .width(Size::px(296.))
         .height(Size::px(183.))
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::page())
         .border(border_all_color(3., Color::from_argb(26, 255, 255, 255)))
         .center()
@@ -147,7 +147,7 @@ fn big_preview(theme: ThemePreview) -> impl IntoElement {
                 .vertical()
                 .width(Size::px(168.))
                 .height(Size::px(123.))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .background(theme.background)
                 .border(border_all_color(1., colors::component_border()))
                 .padding(20.)
@@ -172,7 +172,7 @@ fn theme_card(theme: &'static Theme, is_selected: bool, dispatch: Actions) -> El
         .vertical()
         .width(Size::px(126.))
         .height(Size::px(78.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(preview.background)
         .border(border_all_color(1., border_color))
         .padding(8.)
@@ -190,7 +190,7 @@ fn mock_line(width: f32, color: Color) -> impl IntoElement {
     rect()
         .width(Size::px(width))
         .height(Size::px(10.))
-        .corner_radius(CornerRadius::new_all(4.))
+        .corner_radius(rounded(4.))
         .background(color)
         .into_element()
 }
@@ -200,13 +200,13 @@ fn split_bar(accent: Color, width: f32) -> impl IntoElement {
         .horizontal()
         .width(Size::px(width))
         .height(Size::px(16.))
-        .corner_radius(CornerRadius::new_all(4.))
+        .corner_radius(rounded(4.))
         .background(accent.with_a(128))
         .child(
             rect()
                 .width(Size::px(width / 3.))
                 .height(Size::fill())
-                .corner_radius(CornerRadius::new_all(4.))
+                .corner_radius(rounded(4.))
                 .background(accent),
         )
         .into_element()

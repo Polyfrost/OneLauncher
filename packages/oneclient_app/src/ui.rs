@@ -3,6 +3,7 @@ use std::time::Instant;
 use freya::prelude::*;
 
 use crate::theme;
+use crate::theme::rounded;
 
 pub fn border_all(width: f32) -> Border {
     Border::new()
@@ -32,7 +33,7 @@ pub fn note(message: String, accent: Color) -> Element {
         .content(Content::Flex)
         .spacing(10.)
         .padding(Gaps::new_symmetric(12., 14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(accent.with_a(30))
         .child(
             label()
@@ -61,7 +62,7 @@ pub fn path_block(caption: &'static str, path: &std::path::Path) -> Element {
             rect()
                 .width(Size::fill())
                 .padding(Gaps::new_all(10.))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .background(theme::colors::component_bg())
                 .border(border_all_color(1., theme::colors::component_border()))
                 .child(

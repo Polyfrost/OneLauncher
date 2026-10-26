@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Icon, IconType, ScrollArea};
 use crate::hooks::use_overlay_claim_when;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{border_all_color, window_logical_size};
 
 const OPTION_HEIGHT: f32 = 28.;
@@ -156,7 +156,7 @@ impl Component for Dropdown {
                     .center()
                     .spacing(4.)
                     .padding(Gaps::new_symmetric(0., if outlined { 12. } else { 8. }))
-                    .corner_radius(CornerRadius::new_all(if outlined { 8. } else { 6. }))
+                    .corner_radius(rounded(if outlined { 8. } else { 6. }))
                     .background(trigger_bg)
                     .maybe(outlined, |el| {
                         el.main_align(Alignment::SpaceBetween)
@@ -207,7 +207,7 @@ impl Component for Dropdown {
                             rect()
                                 .width(Size::fill())
                                 .padding(4.)
-                                .corner_radius(CornerRadius::new_all(8.))
+                                .corner_radius(rounded(8.))
                                 .border(border_all_color(1., colors::component_border()))
                                 .background(colors::page_elevated())
                                 .overflow(Overflow::Clip)
@@ -280,7 +280,7 @@ impl Component for DropdownOption {
             .width(Size::fill())
             .height(Size::px(OPTION_HEIGHT))
             .padding(Gaps::new_symmetric(0., 8.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)

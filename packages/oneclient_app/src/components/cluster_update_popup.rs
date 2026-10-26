@@ -9,7 +9,7 @@ use crate::hooks::{
 };
 use crate::notifications::{ClusterUpdateItem, ClusterUpdateSummary};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 420.;
@@ -165,7 +165,7 @@ fn dialog(
         .height(Size::px(DIALOG_H))
         .max_width(Size::window_percent(95.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -372,7 +372,7 @@ fn cluster_header(group: &ClusterGroup, first: bool, dispatch: crate::Actions) -
         .spacing(8.)
         .padding(Gaps::new_symmetric(6., 8.))
         .margin(Gaps::new(if first { 0. } else { 8. }, 0., 3., 0.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .cursor(CursorIcon::Pointer)
         .on_press(move |_| open_cluster(&dispatch, cluster_id))

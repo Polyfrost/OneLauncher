@@ -7,7 +7,7 @@ use crate::components::{
     ValueUnit, slice_color,
 };
 use crate::hooks::{loaded_image, use_cached_image};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::{format_duration, plural};
 
@@ -168,7 +168,7 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueU
                 .cross_align(Alignment::Center)
                 .spacing(8.)
                 .padding(Gaps::new_symmetric(3., 6.))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(if is_active {
                     colors::component_bg()
                 } else {
@@ -178,7 +178,7 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueU
                     rect()
                         .width(Size::px(8.))
                         .height(Size::px(8.))
-                        .corner_radius(CornerRadius::new_all(2.))
+                        .corner_radius(rounded(2.))
                         .background(slice_color(i).with_a(if dim { 120 } else { 255 })),
                 )
                 .child(
@@ -240,7 +240,7 @@ impl Component for ServerDetailsPopup {
             .max_height(Size::window_percent(70.))
             .padding(20.)
             .spacing(14.)
-            .corner_radius(CornerRadius::new_all(14.))
+            .corner_radius(rounded(14.))
             .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .child(
@@ -322,13 +322,13 @@ impl Component for ServerRow {
         let bar = rect()
             .width(Size::fill())
             .height(Size::px(4.))
-            .corner_radius(CornerRadius::new_all(2.))
+            .corner_radius(rounded(2.))
             .background(colors::component_bg())
             .child(
                 rect()
                     .width(Size::percent(frac * 100.))
                     .height(Size::fill())
-                    .corner_radius(CornerRadius::new_all(2.))
+                    .corner_radius(rounded(2.))
                     .background(colors::brand().with_a(if reveal { 255 } else { 150 })),
             );
 
@@ -337,7 +337,7 @@ impl Component for ServerRow {
             .width(Size::fill())
             .spacing(6.)
             .padding(Gaps::new_symmetric(8., 10.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(if is_hovered {
                 colors::component_bg_hover()
             } else {
@@ -412,7 +412,7 @@ impl Component for ServerIcon {
                 .width(Size::px(size))
                 .height(Size::px(size))
                 .aspect_ratio(AspectRatio::Min)
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .fallback(server_icon_placeholder(self.is_ip, size))
                 .into_element(),
             None => server_icon_placeholder(self.is_ip, size),
@@ -430,7 +430,7 @@ fn server_icon_placeholder(is_ip: bool, size: f32) -> Element {
         .center()
         .width(Size::px(size))
         .height(Size::px(size))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(colors::component_bg())
         .child(
             Icon::new(icon)

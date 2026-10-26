@@ -15,7 +15,7 @@ use crate::hooks::{
     Actions, DiscardLeftoversKeys, mutation_error, mutation_is_running, try_leftovers,
     use_discard_leftovers, use_dispatch, use_launcher, use_leftovers, use_settings_snapshot,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{border_all_color, note, path_block};
 
 #[derive(PartialEq)]
@@ -368,7 +368,7 @@ fn confirm_move(
         .max_width(Size::window_percent(90.))
         .spacing(14.)
         .padding(Gaps::new_all(20.))
-        .corner_radius(CornerRadius::new_all(14.))
+        .corner_radius(rounded(14.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(

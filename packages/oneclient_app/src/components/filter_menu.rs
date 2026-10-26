@@ -3,7 +3,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::use_overlay_claim;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 
 const PANEL_W: f32 = 172.;
 const BUTTON_W: f32 = 34.;
@@ -125,7 +125,7 @@ impl Component for FilterPanel {
             .padding(Gaps::new_all(8.))
             .opacity(progress)
             .offset_y((progress - 1.0) * 6.)
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::page_elevated().with_a(230))
             .backdrop_blur(12.)
             .border(crate::ui::border_all_color(1., colors::component_border()))
@@ -217,7 +217,7 @@ impl Component for ChoiceRow {
             .cross_align(Alignment::Center)
             .spacing(8.)
             .padding(Gaps::new_symmetric(5., 8.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(bg)
             .content(Content::Flex)
             .a11y_id(a11y_id)

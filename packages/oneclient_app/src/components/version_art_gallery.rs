@@ -7,7 +7,7 @@ use crate::components::{
     ART_PREVIEW_EDGE, Button, DynamicArt, Icon, IconType, OverlayPopup, ScrollArea,
 };
 use crate::hooks::{refresh_version_art_gallery, use_version_art_gallery};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const DIALOG_WIDTH: f32 = 880.;
@@ -97,7 +97,7 @@ impl Component for VersionArtGallery {
                             .max_width(Size::window_percent(94.))
                             .max_height(Size::window_percent(92.))
                             .content(Content::Flex)
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .overflow(Overflow::Clip)
                             .background(colors::page_elevated())
                             .border(border_all_color(1., colors::component_border()))
@@ -159,7 +159,7 @@ impl Component for GalleryTile {
         rect()
             .width(Size::px(TILE_W))
             .height(Size::px(TILE_H))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .overflow(Overflow::Clip)
             .opacity(opacity)
             .a11y_id(a11y_id)
@@ -184,7 +184,7 @@ impl Component for GalleryTile {
                     .width(Size::fill())
                     .height(Size::fill())
                     .layer(Layer::Relative(3))
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .border(border_all_color(2., border_color).alignment(BorderAlignment::Inner))
                     .center()
                     .maybe_child(self.busy.then(|| Spinner::new(22.).into_element())),

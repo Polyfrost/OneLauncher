@@ -5,7 +5,7 @@ use freya::text_edit::Clipboard;
 use regex::Regex;
 
 use crate::components::{Icon, IconType, ScrollArea, ScrollAreaCtx, corrected_scroll};
-use crate::theme::{self, colors};
+use crate::theme::{self, colors, rounded};
 
 const LINE_H: f32 = 16.;
 const BODY_PAD_TOP: f32 = 10.;
@@ -207,7 +207,7 @@ impl Component for LogViewer {
             .height(Size::fill())
             .overflow(Overflow::Clip)
             .background(colors::page_elevated())
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .maybe_child(
                 (!self.title.is_empty() || streaming)
                     .then(|| toolbar(self.title.clone(), streaming, auto_scroll)),
@@ -274,7 +274,7 @@ fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .spacing(6.)
         .padding(Gaps::new_symmetric(5., 10.))
-        .corner_radius(CornerRadius::new_all(7.))
+        .corner_radius(rounded(7.))
         .background(if on {
             colors::brand().with_a(40)
         } else {
@@ -529,7 +529,7 @@ fn log_line_row(
             )
             .width(Size::px((c1 - c0) as f32 * CHAR_W))
             .height(Size::px(LINE_H))
-            .corner_radius(CornerRadius::new_all(2.))
+            .corner_radius(rounded(2.))
             .background(colors::selection_bg())
             .into_element()
     });

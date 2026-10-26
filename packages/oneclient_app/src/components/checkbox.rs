@@ -5,7 +5,7 @@ use freya::{
 
 use crate::{
     components::{Icon, IconType},
-    theme::colors,
+    theme::{colors, rounded},
     ui,
 };
 
@@ -98,7 +98,7 @@ impl Component for Check {
                 rect()
                     .width(Size::px(BOX_SIZE))
                     .height(Size::px(BOX_SIZE))
-                    .corner_radius(CornerRadius::new_all(5.))
+                    .corner_radius(rounded(5.))
                     .main_align(Alignment::Center)
                     .cross_align(Alignment::Center)
                     .background(if disabled {

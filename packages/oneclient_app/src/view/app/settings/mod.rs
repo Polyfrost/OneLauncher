@@ -25,7 +25,7 @@ pub use storage::SettingsStorage;
 
 use crate::{
     components::{Button, Icon, IconType},
-    theme::colors,
+    theme::{colors, rounded},
     ui::border_all_color,
 };
 
@@ -98,7 +98,7 @@ fn settings_row_inner(
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(if danger {
             colors::danger().with_a(26)
         } else {

@@ -21,7 +21,7 @@ use crate::hooks::{
     use_dispatch,
 };
 use crate::launcher::off_ui;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 480.;
@@ -216,7 +216,7 @@ impl Component for DropVeil {
                     .padding(Gaps::new_symmetric(22., 28.))
                     .max_width(Size::px(360.))
                     .offset_y((1. - progress) * 12.)
-                    .corner_radius(CornerRadius::new_all(16.))
+                    .corner_radius(rounded(16.))
                     .background(colors::card())
                     .border(border_all_color(1., colors::brand().with_a(120)))
                     .shadow(Shadow::from((
@@ -249,7 +249,7 @@ fn icon_badge(icon: IconType, size: f32, icon_size: f32) -> impl IntoElement {
         .width(Size::px(size))
         .height(Size::px(size))
         .center()
-        .corner_radius(CornerRadius::new_all(size / 2.))
+        .corner_radius(rounded(size / 2.))
         .background(colors::brand().with_a(46))
         .child(Icon::new(icon).size(icon_size).color(colors::brand()))
 }
@@ -322,7 +322,7 @@ impl Component for DropPrompt {
                             .max_width(Size::window_percent(94.))
                             .padding(Gaps::new_all(22.))
                             .spacing(16.)
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .shadow(Shadow::from((
@@ -626,7 +626,7 @@ fn file_field(
         rect()
             .width(Size::fill())
             .padding(Gaps::new_all(6.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::page())
             .border(border_all_color(1., colors::component_border()))
             .child(

@@ -18,7 +18,7 @@ use crate::hooks::{
     use_launcher, use_version_metadata, use_view_state,
 };
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{
     border_all_color, fixed_grid, grid_columns_for_width, last_played_label, window_logical_size,
 };
@@ -767,7 +767,7 @@ impl Component for Sidebar {
             .height(Size::fill())
             .vertical()
             .content(Content::Flex)
-            .corner_radius(CornerRadius::new_all(20.))
+            .corner_radius(rounded(20.))
             .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .overflow(Overflow::Clip)
@@ -881,7 +881,7 @@ fn sidebar_art(art: DynamicArt, type_label: &str, height: f32) -> Element {
                 .position(Position::new_absolute().top(14.).left(14.))
                 .layer(Layer::Relative(4))
                 .padding(Gaps::new_symmetric(5., 10.))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .background(Color::from_af32rgb(0.66, 11, 16, 19))
                 .child(
                     label()
@@ -993,7 +993,7 @@ fn sidebar_error(width: f32) -> Element {
         .vertical()
         .padding(16.)
         .spacing(8.)
-        .corner_radius(CornerRadius::new_all(20.))
+        .corner_radius(rounded(20.))
         .border(border_all_color(1., colors::component_border()))
         .background(colors::component_bg())
         .child(

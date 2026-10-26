@@ -3,7 +3,7 @@ use freya::prelude::*;
 use oneclient_core::game::{Analytics, Persona};
 
 use crate::components::{Icon, IconType};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{border_all_color, columns_for, flow_grid};
 use crate::utils::{format_duration, plural};
 
@@ -199,7 +199,7 @@ fn persona_badge(persona: Persona) -> Element {
         .cross_align(Alignment::Center)
         .spacing(7.)
         .padding(Gaps::new_symmetric(6., 11.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(

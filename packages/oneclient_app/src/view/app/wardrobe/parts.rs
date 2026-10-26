@@ -11,7 +11,7 @@ use oneclient_polyplus::api::{BodySlot, SwatchArt};
 use crate::AppAssets;
 use crate::hooks::wardrobe::{use_cosmetic_bundle, use_swatch};
 use crate::hooks::{loaded_image, settled_or_loading, use_cached_image};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, rounded_px};
 use crate::ui::{border_all_color, clamp_to_window};
 
 pub(super) const CARD_CHROME: f32 = 81.;
@@ -126,7 +126,7 @@ fn badge_tab(badge: &Badge) -> Element {
         .padding(Gaps::new_symmetric(0., 10.))
         .center()
         .spacing(4.)
-        .corner_radius(CornerRadius::new(0., 0., 7., 7.))
+        .corner_radius(CornerRadius::new(0., 0., rounded_px(7.), rounded_px(7.)))
         .background(background)
         .maybe_child(
             badge
@@ -291,7 +291,7 @@ impl Component for VariantSwatch {
             rect()
                 .width(Size::px(14.))
                 .height(Size::px(22.))
-                .corner_radius(CornerRadius::new_all(5.))
+                .corner_radius(rounded(5.))
                 .background(colors::component_bg())
                 .overflow(Overflow::Clip)
                 .cursor(CursorIcon::Pointer)
@@ -308,7 +308,7 @@ impl Component for VariantSwatch {
                         .layer(Layer::Relative(1))
                         .width(Size::fill())
                         .height(Size::fill())
-                        .corner_radius(CornerRadius::new_all(5.))
+                        .corner_radius(rounded(5.))
                         .border(hairline(border))
                         .interactive(false),
                 ),
@@ -337,7 +337,7 @@ fn swatch_column(swatches: &[Swatch], on_pick: EventHandler<i32>) -> Element {
                 .height(Size::px(16.))
                 .padding(Gaps::new_symmetric(0., 2.))
                 .center()
-                .corner_radius(CornerRadius::new_all(5.))
+                .corner_radius(rounded(5.))
                 .background(colors::component_bg())
                 .border(hairline(colors::component_border()))
                 .child(
@@ -416,7 +416,7 @@ impl Component for WardrobeCard {
                 .width(Size::px(22.))
                 .height(Size::px(22.))
                 .center()
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(colors::component_bg())
                 .border(hairline(colors::component_border()))
                 .cursor(CursorIcon::Pointer)
@@ -474,7 +474,7 @@ impl Component for WardrobeCard {
             .width(Size::fill())
             .height(Size::fill())
             .content(Content::Flex)
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .border(hairline(outline))
             .overflow(Overflow::Clip)
@@ -516,7 +516,7 @@ impl Component for WardrobeCard {
                         rect()
                             .width(Size::fill())
                             .height(Size::fill())
-                            .corner_radius(CornerRadius::new_all(5.))
+                            .corner_radius(rounded(5.))
                             .background(colors::page())
                             .border(hairline(colors::component_border()))
                             .overflow(Overflow::Clip)
@@ -669,7 +669,7 @@ impl Component for RenamePopup {
                     .width(Size::px(RENAME_WIDTH))
                     .padding(Gaps::new_all(10.))
                     .spacing(8.)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(colors::page_elevated())
                     .border(hairline(colors::component_border()))
                     .child(
@@ -737,7 +737,7 @@ impl Component for SectionChip {
             .padding(Gaps::new_symmetric(0., 12.))
             .cross_align(Alignment::Center)
             .spacing(8.)
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(if self.selected {
                 colors::brand()
             } else {
@@ -783,7 +783,7 @@ impl Component for AnchorChip {
             .height(Size::px(26.))
             .padding(Gaps::new_symmetric(0., 10.))
             .main_align(Alignment::Center)
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(if self.active {
                 colors::component_bg()
             } else {
@@ -892,7 +892,7 @@ pub(super) fn notice(text: impl Into<String>) -> Element {
         .height(Size::px(57.))
         .padding(Gaps::new_symmetric(0., 16.))
         .main_align(Alignment::Center)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .border(hairline(colors::component_border()))
         .child(
             label()

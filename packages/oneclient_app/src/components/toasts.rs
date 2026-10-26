@@ -14,7 +14,7 @@ use crate::{
     hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
     motion::use_animations_enabled,
     notifications::{InboxEntry, NotificationActionKind},
-    theme::colors,
+    theme::{colors, rounded},
     ui::divider,
 };
 
@@ -255,7 +255,7 @@ fn toast_shell(entry: &InboxEntry) -> Rect {
     rect()
         .width(Size::px(TOAST_W))
         .background(colors::component_bg())
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .overflow(Overflow::Clip)
         .border(
             Border::new()
@@ -270,7 +270,7 @@ fn icon_badge(entry: &InboxEntry) -> impl IntoElement {
     rect()
         .width(Size::px(32.))
         .height(Size::px(32.))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .center()
         .child(Icon::new(entry.icon.unwrap_or(icon)).size(24.).color(color))
 }
@@ -315,7 +315,7 @@ fn ttl_bar(entry: &InboxEntry, pct: f32) -> impl IntoElement {
             rect()
                 .width(Size::percent(pct.clamp(0.0, 100.0)))
                 .height(Size::px(4.))
-                .corner_radius(CornerRadius::new_all(60.))
+                .corner_radius(rounded(60.))
                 .background(color),
         )
 }

@@ -8,7 +8,7 @@ use crate::{
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
     hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
     notifications::{InboxEntry, NotificationActionKind},
-    theme::colors,
+    theme::{colors, rounded},
     transfer::TransferStats,
     ui::{divider, relative_time},
     utils::{format_durations, format_size},
@@ -88,7 +88,7 @@ impl Component for NotificationPanel {
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
             .backdrop_blur(12.)
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .border(
                 Border::new()
                     .fill(colors::component_border())
@@ -159,7 +159,7 @@ impl Component for NotifEntryRow {
             .spacing(13.)
             .cross_align(Alignment::Start)
             .padding(Gaps::new_all(8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .maybe(*hovered.read() && !has_actions, |el| {
                 el.background(colors::ghost_overlay_hover())
             })
@@ -175,7 +175,7 @@ impl Component for NotifEntryRow {
                 rect()
                     .width(Size::px(32.))
                     .height(Size::px(32.))
-                    .corner_radius(CornerRadius::new_all(6.))
+                    .corner_radius(rounded(6.))
                     .center()
                     .child(
                         Icon::new(icon_for(&entry))
@@ -324,7 +324,7 @@ fn phase_badge(phase: &str) -> impl IntoElement {
     rect()
         .center()
         .padding(Gaps::new_symmetric(1., 7.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .background(color.with_a(40))
         .child(
             label()
@@ -375,7 +375,7 @@ fn row_body(
                                 rect()
                                     .width(Size::px(6.))
                                     .height(Size::px(6.))
-                                    .corner_radius(CornerRadius::new_all(3.))
+                                    .corner_radius(rounded(3.))
                                     .background(colors::brand()),
                             )
                         }),

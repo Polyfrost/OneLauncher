@@ -9,7 +9,7 @@ use crate::components::{
     Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl,
 };
 use crate::hooks::{ClusterAction, VERSIONS_PAGE_SIZE};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::utils::format_size;
 
@@ -79,7 +79,7 @@ impl Component for MarkdownPanel {
         rect()
             .width(Size::fill())
             .padding(Gaps::new_all(20.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .child(
@@ -181,7 +181,7 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
             .center()
             .width(Size::px(32.))
             .height(Size::px(32.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .maybe(enabled, |el| {
@@ -262,7 +262,7 @@ fn version_row(
         .spacing(12.)
         .content(Content::Flex)
         .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(release_badge(v.release_type))
@@ -386,7 +386,7 @@ fn release_badge(release_type: ReleaseType) -> impl IntoElement {
         .center()
         .width(Size::px(28.))
         .height(Size::px(28.))
-        .corner_radius(CornerRadius::new_all(7.))
+        .corner_radius(rounded(7.))
         .background(color.with_a(40))
         .child(
             label()

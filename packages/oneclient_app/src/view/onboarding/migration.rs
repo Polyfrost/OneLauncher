@@ -8,7 +8,7 @@ use crate::hooks::{
     use_onboarding_bundles, use_onboarding_selection,
 };
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{
     choice_row, onboarding_illustration, onboarding_slide, step_heading,
@@ -297,7 +297,7 @@ fn version_card(
         .width(Size::fill())
         .spacing(12.)
         .padding(Gaps::new_symmetric(12., 14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(bg)
         .border(border_all_color(1., border_color))
         .child(header);
@@ -364,7 +364,7 @@ fn import_choice_card(
         .cross_align(Alignment::Center)
         .spacing(10.)
         .padding(Gaps::new_symmetric(12., 14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(bg)
         .border(border_all_color(1., border_color))
         .a11y_role(AccessibilityRole::Button)

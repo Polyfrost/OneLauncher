@@ -9,7 +9,7 @@ use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{use_dispatch, use_folder_watch, use_notifications_snapshot};
 use crate::notifications::BlockedDownloads;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 560.;
@@ -212,7 +212,7 @@ fn folder_row(
                 .cross_align(Alignment::Center)
                 .padding(Gaps::new_symmetric(8., 12.))
                 .spacing(10.)
-                .corner_radius(CornerRadius::new_all(10.))
+                .corner_radius(rounded(10.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::component_border()))
                 .child(
@@ -332,7 +332,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -509,7 +509,7 @@ fn file_row(file: &BlockedFile, added: bool) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .padding(Gaps::new_symmetric(0., 12.))
         .spacing(10.)
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(background)
         .border(border_all_color(1., border))
         .child(

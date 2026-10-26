@@ -4,7 +4,7 @@ use freya::router::RouterContext;
 use crate::components::{ART_PREVIEW_EDGE, Button, DynamicArt, Icon, IconType, ScrollArea};
 use crate::hooks::ClusterBundles;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_slide, step_heading};
 
@@ -187,7 +187,7 @@ fn failure_notice(reason: &str) -> Element {
         .width(Size::fill())
         .spacing(4.)
         .padding(Gaps::new_all(14.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::danger().with_a(26))
         .border(border_all_color(1., colors::danger().with_a(128)))
         .child(
@@ -251,7 +251,7 @@ fn summary_section(title: &str, note: Option<&str>, rows: Vec<Element>) -> impl 
                 .vertical()
                 .width(Size::fill())
                 .spacing(2.)
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::page_elevated())
                 .border(border_all_color(1., colors::component_border()))
                 .padding(Gaps::new_symmetric(6., 4.))

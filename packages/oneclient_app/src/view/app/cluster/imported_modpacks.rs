@@ -9,7 +9,7 @@ use crate::hooks::{
     use_installs_snapshot,
 };
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::view::app::settings::{section_header, settings_row};
 
 const MODPACK_EXTENSIONS: [&str; 2] = ["mrpack", "zip"];
@@ -175,7 +175,7 @@ impl Component for PackRow {
             .cross_align(Alignment::Center)
             .spacing(16.)
             .padding(Gaps::new_symmetric(12., 16.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .child(icon)
             .child(

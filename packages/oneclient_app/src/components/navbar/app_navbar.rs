@@ -4,6 +4,7 @@ use freya::{
     router::{RouterContext, use_route},
 };
 
+use crate::theme::rounded;
 use crate::{
     Route,
     components::{Avatar, Icon, IconType},
@@ -242,7 +243,7 @@ impl Component for NavLink {
             .cross_align(Alignment::Center)
             .height(Size::px(36.))
             .width(Size::px(nav_label.len() as f32 * 10. + 34.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(background)
             .maybe(active, |el| {
                 el.border(
@@ -351,7 +352,7 @@ fn avatar_with_gear(uuid: String) -> impl IntoElement {
                 .position(Position::new_absolute().bottom(-7.).right(-7.))
                 .width(Size::px(16.))
                 .height(Size::px(16.))
-                .corner_radius(CornerRadius::from(7.))
+                .corner_radius(rounded(7.))
                 .background(theme::colors::page_elevated())
                 .border(
                     Border::new()
@@ -379,7 +380,7 @@ fn notification_bell(unread: usize) -> impl IntoElement {
                 .position(Position::new_absolute().top(-4.).right(-4.))
                 .width(Size::px(16.))
                 .height(Size::px(16.))
-                .corner_radius(CornerRadius::from(8.))
+                .corner_radius(rounded(8.))
                 .background(theme::colors::danger())
                 .layer(Layer::Relative(3))
                 .center()

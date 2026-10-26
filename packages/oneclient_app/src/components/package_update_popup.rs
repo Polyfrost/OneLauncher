@@ -17,7 +17,7 @@ use crate::hooks::{
     use_notifications_snapshot, use_package_meta_batch, use_project_web_urls,
 };
 use crate::notifications::PackageUpdateGroup;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 520.;
@@ -170,7 +170,7 @@ fn dialog(
         .height(Size::px(DIALOG_H))
         .max_width(Size::window_percent(95.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -373,7 +373,7 @@ fn cluster_header(name: &str, first: bool) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .padding(Gaps::new_symmetric(6., 8.))
         .margin(Gaps::new(if first { 0. } else { 8. }, 0., 3., 0.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .child(
             label()
@@ -465,7 +465,7 @@ impl Component for UpdateRow {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_symmetric(8., 10.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::component_bg())
             .content(Content::Flex)
             .child(

@@ -6,7 +6,7 @@ use oneclient_content::packages::types::GalleryImage;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{loaded_image, query_is_busy, use_cached_image};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{ImageFallbackExt, border_all_color, flow_grid, grid_columns_for_width};
 
 const MAX_COL_W: f32 = 400.;
@@ -105,7 +105,7 @@ impl Component for GalleryTile {
             .vertical()
             .width(Size::flex(1.0))
             .max_width(Size::px(MAX_COL_W))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .overflow(Overflow::Clip)
             .background(colors::page_elevated())
             .border(
@@ -269,7 +269,7 @@ fn chevron_btn(
         .width(Size::px(44.))
         .height(Size::px(44.))
         .center()
-        .corner_radius(CornerRadius::new_all(22.));
+        .corner_radius(rounded(22.));
 
     if !enabled {
         return base

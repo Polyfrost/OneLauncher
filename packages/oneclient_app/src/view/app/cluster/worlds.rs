@@ -14,7 +14,7 @@ use crate::hooks::{
 };
 use crate::layout::cluster_content;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{border_all_color, fmt_date};
 use crate::utils::format_size;
 
@@ -296,7 +296,7 @@ impl Component for WorldCard {
             card.height(Size::px(WORLD_ROWS.grid))
                 .spacing(11.)
                 .padding(Gaps::new_all(GRID_PAD))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(if hovering {
                     colors::component_bg_hover()
                 } else {
@@ -320,7 +320,7 @@ impl Component for WorldCard {
             card.height(Size::px(WORLD_ROWS.list))
                 .spacing(12.)
                 .padding(Gaps::new_all(LIST_PAD))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .background(colors::card())
                 .child(icon)
                 .child(text)

@@ -4,7 +4,7 @@ use oneclient_core::clusters::ExportMode;
 use super::instance::{WideCard, wide_card};
 use crate::components::{Button, IconType, OverlayPopup};
 use crate::hooks::use_dispatch;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const DIALOG_WIDTH: f32 = 520.;
@@ -70,7 +70,7 @@ impl Component for ExportInstanceModal {
                             .max_width(Size::window_percent(92.))
                             .spacing(16.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .background(colors::page_elevated())
                             .border(border_all_color(1., colors::component_border()))
                             .child(

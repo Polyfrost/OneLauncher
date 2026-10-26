@@ -7,7 +7,7 @@ use super::settings_page;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
 use crate::invalidate_java_queries;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 use crate::view::app::settings::section_header;
 
@@ -128,7 +128,7 @@ fn runtimes_table(
         return rect()
             .width(Size::fill())
             .padding(Gaps::new_symmetric(16., 16.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .child(
                 label()
@@ -142,7 +142,7 @@ fn runtimes_table(
     let mut table = rect()
         .vertical()
         .width(Size::fill())
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .overflow(Overflow::Clip)
@@ -330,7 +330,7 @@ fn confirm_remove_modal(
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::page_elevated())
                         .child(
                             label()

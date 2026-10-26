@@ -5,6 +5,7 @@ use super::image::MarkdownImage;
 use super::parse::{Block, Inline, List, TextSpan};
 use crate::components::CodeBlock;
 use crate::hooks::LinkConfirmState;
+use crate::theme::rounded;
 
 pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element {
     match block {
@@ -161,7 +162,7 @@ fn render_table(
     rect()
         .vertical()
         .width(Size::fill())
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .border(
             Border::new()
                 .width(1.)

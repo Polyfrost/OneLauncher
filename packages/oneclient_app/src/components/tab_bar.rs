@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 
 pub struct TabItem {
     label: String,
@@ -131,7 +131,7 @@ fn count_pill(count: &str, font_size: f32) -> impl IntoElement {
     rect()
         .center()
         .padding(Gaps::new_symmetric(1., 6.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::component_bg())
         .child(
             label()
@@ -228,7 +228,7 @@ impl Component for TabButton {
                                 .height(Size::px(2.))
                                 .width(Size::fill_minimum())
                                 .margin(Gaps::new_symmetric(0., 4.0))
-                                .corner_radius(CornerRadius::new_all(2.))
+                                .corner_radius(rounded(2.))
                                 .background(if underline_on {
                                     colors::fg_primary()
                                 } else {

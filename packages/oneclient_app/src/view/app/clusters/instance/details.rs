@@ -7,7 +7,7 @@ use crate::components::{
     ART_PREVIEW_EDGE, Button, DynamicArt, GALLERY_COVER_EDGE, Icon, IconType, LocalImage,
     TextInput, VersionArtGallery,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 const CARD_RADIUS: f32 = 12.;
@@ -273,7 +273,7 @@ impl Component for PresetChip {
             .spacing(6.)
             .height(Size::px(26.))
             .padding(Gaps::new_symmetric(0., 10.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(if hovered {
                 colors::component_bg_hover()
             } else {
@@ -333,7 +333,7 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
                 .spacing(8.)
                 .height(Size::px(TAG_ROW_H))
                 .padding(Gaps::new_symmetric(0., 10.))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .background(colors::brand())
                 .cursor(CursorIcon::Pointer)
                 .on_press(move |_| {
@@ -497,14 +497,14 @@ fn cover_field(
         .cross_align(Alignment::Center)
         .spacing(14.)
         .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(CARD_RADIUS))
+        .corner_radius(rounded(CARD_RADIUS))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
             rect()
                 .width(Size::px(PREVIEW_W))
                 .height(Size::px(PREVIEW_H))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .overflow(Overflow::Clip)
                 .border(border_all_color(1., colors::component_border()))
                 .center()

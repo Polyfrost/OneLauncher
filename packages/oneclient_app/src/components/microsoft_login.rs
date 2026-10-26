@@ -12,7 +12,7 @@ use crate::hooks::{
     use_microsoft_login_status,
 };
 use crate::platform;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 #[derive(Clone)]
@@ -202,7 +202,7 @@ pub(crate) fn login_dialog(
                         .cross_align(Alignment::Center)
                         .spacing(18.)
                         .padding(Gaps::new_all(28.))
-                        .corner_radius(CornerRadius::new_all(16.))
+                        .corner_radius(rounded(16.))
                         .background(colors::page_elevated())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
@@ -345,7 +345,7 @@ fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
         .width(Size::fill())
         .spacing(10.)
         .padding(Gaps::new_all(14.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -398,7 +398,7 @@ fn device_code_dialog_body(code: String, verification_uri: String) -> impl IntoE
                 .width(Size::fill())
                 .center()
                 .padding(Gaps::new_symmetric(20., 16.))
-                .corner_radius(CornerRadius::new_all(14.))
+                .corner_radius(rounded(14.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::brand()))
                 .child(

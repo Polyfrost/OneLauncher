@@ -4,7 +4,7 @@ use crate::components::{
     Button, CodeBlock, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, copy_button,
 };
 use crate::hooks::{use_dispatch, use_link_confirm};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 #[derive(PartialEq)]
@@ -46,7 +46,7 @@ impl Component for ConfirmLinkOverlay {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(

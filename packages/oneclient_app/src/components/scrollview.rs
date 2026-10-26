@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use freya::prelude::*;
 
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 
 const LAZY_OVERSCAN: i64 = 3;
 const SCROLLBAR_GUTTER: f32 = 14.;
@@ -824,7 +824,7 @@ impl Component for ScrollThumb {
                 rect()
                     .width(bar_w)
                     .height(bar_h)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(color.with_a(160)),
             )
     }

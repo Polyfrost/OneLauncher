@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use super::settings_page;
 use crate::components::{Icon, IconType};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::view::app::settings::section_header;
 
 const LANGUAGES: &[(&str, &str)] = &[("English", "English (US)")];
@@ -37,7 +37,7 @@ fn language_row(
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .cursor(CursorIcon::Pointer)
         .on_press(move |_| *selected.write() = index)

@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, TooltipPlacement};
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 fn page_window(current: usize, total: usize, window: usize) -> (usize, usize) {
@@ -80,7 +80,7 @@ impl Component for Pagination {
                     .center()
                     .width(Size::px(32.))
                     .height(Size::px(32.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(colors::component_bg_pressed())
                     .border(border_all_color(1., colors::brand()))
                     .child(

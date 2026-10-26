@@ -16,7 +16,7 @@ use crate::components::{
 };
 use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::use_dispatch;
 
 const SIDEBAR_WIDTH_PX: f32 = 225.;
@@ -520,7 +520,7 @@ fn search_box(mut search: State<String>, width: f32) -> impl IntoElement {
     base.trailing(
         rect()
             .padding(Gaps::new_symmetric(2., 2.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(Color::TRANSPARENT)
             .cursor(CursorIcon::Pointer)
             .on_press(move |_| search.set(String::new()))
@@ -566,7 +566,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
             rect()
                 .width(Size::fill())
                 .padding(Gaps::new_symmetric(10., 14.))
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::page_elevated())
                 .child(
                     label()
@@ -605,7 +605,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                 .cross_align(Alignment::Center)
                 .spacing(12.)
                 .padding(Gaps::new_symmetric(12., 16.))
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::page_elevated())
                 .cursor(CursorIcon::Pointer)
                 .on_press(move |_| {
@@ -832,7 +832,7 @@ impl Component for SidebarItem {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(CornerRadius::new_all(7.))
+            .corner_radius(rounded(7.))
             .background(background)
             .a11y_id(a11y_id)
             .a11y_focusable(true)
@@ -877,6 +877,6 @@ fn notification_dot() -> impl IntoElement {
     rect()
         .width(Size::px(4.))
         .height(Size::px(4.))
-        .corner_radius(CornerRadius::new_all(2.))
+        .corner_radius(rounded(2.))
         .background(colors::brand())
 }

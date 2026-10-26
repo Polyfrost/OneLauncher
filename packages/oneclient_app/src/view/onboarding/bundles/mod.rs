@@ -13,7 +13,7 @@ use crate::hooks::{
 
 type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::{border_all_color, fixed_grid};
 use crate::utils::bundle_display_name;
 use crate::view::onboarding::{
@@ -61,7 +61,7 @@ fn fps_warning_banner() -> impl IntoElement {
 
     rect()
         .width(Size::fill())
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .border(border_all_color(1., colors::code_warn()))
         .padding(Gaps::new_all(8.))
         .child(text)
@@ -295,7 +295,7 @@ impl Component for OnboardingBundles {
                             .width(Size::fill())
                             .height(Size::flex(1.0))
                             .content(Content::Flex)
-                            .corner_radius(CornerRadius::new_all(12.))
+                            .corner_radius(rounded(12.))
                             .background(colors::page_elevated())
                             .border(border_all_color(1., colors::component_border()))
                             .padding(Gaps::new_all(12.))

@@ -4,6 +4,7 @@ use freya::engine::prelude::{Paint, SkData, SkImage, raster_n32_premul};
 use freya::prelude::*;
 
 use crate::hooks::use_player_skin;
+use crate::theme::rounded;
 
 const AVATAR_SIZE: f32 = 32.;
 const FACE: f32 = 8.;
@@ -54,7 +55,7 @@ impl Component for Avatar {
         rect()
             .width(Size::px(AVATAR_SIZE))
             .height(Size::px(AVATAR_SIZE))
-            .corner_radius(CornerRadius::from(8.))
+            .corner_radius(rounded(8.))
             .center()
             .maybe_child(head.map(|holder| {
                 image(holder)
@@ -62,7 +63,7 @@ impl Component for Avatar {
                     .height(Size::fill())
                     .aspect_ratio(AspectRatio::None)
                     .sampling_mode(SamplingMode::Nearest)
-                    .corner_radius(CornerRadius::from(8.))
+                    .corner_radius(rounded(8.))
             }))
     }
 }

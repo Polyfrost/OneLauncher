@@ -8,7 +8,7 @@ use crate::hooks::{
     use_storage_scan_progress,
 };
 use crate::state::StorageScanProgress;
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::utils::plural;
 
 /// Rows narrower than this would render as a sliver so they get a floor
@@ -103,7 +103,7 @@ fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_symmetric(20., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(
             rect()
@@ -169,7 +169,7 @@ fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
         .width(Size::fill())
         .spacing(10.)
         .padding(Gaps::new_symmetric(16., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(header)
         .child(proportion_bar(fraction, colors::brand()))
@@ -207,7 +207,7 @@ impl Component for ReclaimRow {
             .cross_align(Alignment::Center)
             .spacing(16.)
             .padding(Gaps::new_symmetric(12., 16.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .maybe(self.empty, |el| el.opacity(colors::disabled_opacity()))
             .child(Icon::new(self.icon))
@@ -249,7 +249,7 @@ fn usage_row(entry: &StorageEntry, largest: u64, bar: Color) -> impl IntoElement
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(
             rect()
@@ -279,13 +279,13 @@ fn proportion_bar(fraction: f32, fill: Color) -> impl IntoElement {
     rect()
         .width(Size::fill())
         .height(Size::px(4.))
-        .corner_radius(CornerRadius::new_all(2.))
+        .corner_radius(rounded(2.))
         .background(colors::component_bg())
         .child(
             rect()
                 .width(Size::percent(fraction.clamp(0.0, 1.0) * 100.))
                 .height(Size::fill())
-                .corner_radius(CornerRadius::new_all(2.))
+                .corner_radius(rounded(2.))
                 .background(fill),
         )
         .into_element()
@@ -362,7 +362,7 @@ fn empty_note(text: &'static str) -> impl IntoElement {
     rect()
         .width(Size::fill())
         .padding(Gaps::new_symmetric(14., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(
             label()

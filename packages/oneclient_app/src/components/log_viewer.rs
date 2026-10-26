@@ -514,7 +514,7 @@ fn log_line_row(
         .max_lines(1)
         .width(Size::fill())
         .height(Size::px(LINE_H))
-        .font_family(theme::MONO_FONT)
+        .font_family(theme::mono_font())
         .font_size(LINE_FONT_SIZE);
     for (text, color) in &parsed.spans {
         message = message.span(Span::new(text.clone()).color(*color));
@@ -546,7 +546,7 @@ fn log_line_row(
             rect().width(Size::px(num_col_w)).child(
                 label()
                     .text(format!("{}", index + 1))
-                    .font_family(theme::MONO_FONT)
+                    .font_family(theme::mono_font())
                     .font_size(LINE_FONT_SIZE)
                     .text_align(TextAlign::Right)
                     .width(Size::fill())

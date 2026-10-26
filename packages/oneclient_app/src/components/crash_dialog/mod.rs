@@ -429,7 +429,7 @@ fn fix_line(line: &str, content_w: f32) -> Element {
         text = text.span(match segment.style {
             SegmentStyle::Plain => span.color(colors::fg_primary()),
             SegmentStyle::Code => span
-                .font_family(theme::MONO_FONT)
+                .font_family(theme::mono_font())
                 .font_size(12.)
                 .color(colors::code_info()),
             SegmentStyle::Link => span
@@ -514,7 +514,7 @@ fn excerpt_box(crash: &GameCrash) -> Element {
         .map(|line| {
             label()
                 .text(line)
-                .font_family(theme::MONO_FONT)
+                .font_family(theme::mono_font())
                 .font_size(12.)
                 .width(Size::px(content_w))
                 .max_lines(1)

@@ -96,7 +96,7 @@ impl App for OneClientApp {
         let mut palette_revision = use_state(|| 0u32);
         theme::colors::bind_revision(palette_revision);
         let appearance = use_settings_snapshot().settings;
-        theme::colors::apply(appearance.theme, appearance.accent_color.as_deref());
+        theme::colors::apply(&appearance.theme, appearance.accent_color.as_deref());
         use_side_effect_with_deps(&(appearance.theme, appearance.accent_color), move |_| {
             *palette_revision.write() += 1;
         });
@@ -104,6 +104,7 @@ impl App for OneClientApp {
         rect()
             .width(Size::fill())
             .height(Size::fill())
+            .font_family(theme::font())
             .child(ConfirmLinkOverlay)
             .child(DisableDependentsOverlay)
             .child(EssentialConfirmOverlay)
@@ -206,7 +207,7 @@ fn main() {
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
-    theme::colors::apply(settings.theme, settings.accent_color.as_deref());
+    theme::colors::apply(&settings.theme, settings.accent_color.as_deref());
 
     let start_maximized = settings.start_maximized;
     let show_tray_icon = settings.show_tray_icon;

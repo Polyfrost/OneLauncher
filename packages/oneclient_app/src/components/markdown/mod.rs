@@ -40,7 +40,7 @@ impl Default for MarkdownStyle {
             paragraph_size: 16.,
             code_font_size: 14.,
             table_font_size: 14.,
-            code_font_family: Cow::Borrowed(crate::theme::MONO_FONT),
+            code_font_family: Cow::Borrowed(crate::theme::mono_font()),
         }
     }
 }

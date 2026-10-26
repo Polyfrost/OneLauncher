@@ -30,7 +30,7 @@ impl CodeBlock {
             code: code.into(),
             color: colors::fg_primary(),
             background: colors::component_bg(),
-            font_family: Cow::Borrowed(theme::MONO_FONT),
+            font_family: Cow::Borrowed(theme::mono_font()),
             font_size: 12.,
             max_lines: None,
             height: None,

@@ -108,6 +108,10 @@ pub fn auth_file() -> PathsResult<PathBuf> {
     Ok(config_dir()?.join("auth.json"))
 }
 
+pub fn themes_dir() -> PathsResult<PathBuf> {
+    Ok(config_dir()?.join("themes"))
+}
+
 pub fn logs_dir() -> PathsResult<PathBuf> {
     Ok(config_dir()?.join("logs"))
 }

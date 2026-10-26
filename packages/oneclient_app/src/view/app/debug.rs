@@ -1452,7 +1452,7 @@ impl Component for SqlConsole {
                 TextInput::new(query)
                     .multiline(true)
                     .placeholder("SELECT * FROM …")
-                    .font_family(theme::MONO_FONT)
+                    .font_family(theme::mono_font())
                     .width(Size::fill())
                     .height(Size::px(140.))
                     .on_submit(move |_| run_sql(query, result, running)),

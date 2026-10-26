@@ -1,0 +1,16 @@
+{
+  "name": "Light",
+  "colors": {
+    "light": true,
+    "page": "#F4FAFF",
+    "page_elevated": "#E9F1F9",
+    "card": "#FFFFFF",
+    "fg_primary": ["#161E36", "#0C142A", "#040A1E", "#5C647C"],
+    "fg_strong": "#080E24",
+    "fg_secondary": ["#5E6A80", "#4A566C", "#364258"],
+    "component_bg": ["#E0EAF5", "#D6E2EF", "#CAD8E8", "#ECF3FA"],
+    "brand": "#3957FF",
+    "ghost_alpha": [14, 28, 42],
+    "border_alpha": [26, 44, 62]
+  }
+}

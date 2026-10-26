@@ -74,7 +74,7 @@ fn styled_span(span: &TextSpan, text_color: Color, code_color: Color) -> Span<'s
     }
     if span.code {
         styled
-            .font_family(crate::theme::MONO_FONT)
+            .font_family(crate::theme::mono_font())
             .color(code_color)
     } else {
         styled.color(text_color)

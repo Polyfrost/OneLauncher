@@ -1,12 +1,12 @@
 use std::time::Duration;
 
 use freya::prelude::*;
-use oneclient_core::settings::{AppTheme, LauncherSettings};
+use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
 use crate::components::{ColorPicker, Icon, IconType, toggle};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
-use crate::theme::colors;
+use crate::theme::{Theme, colors, themes};
 use crate::ui::border_all_color;
 use crate::view::app::settings::{resettable, settings_row, settings_row_disabled};
 
@@ -17,34 +17,14 @@ struct ThemePreview {
     light: bool,
 }
 
-fn themes() -> [ThemePreview; 5] {
-    [
-        ThemePreview {
-            background: Color::from_rgb(17, 23, 28),
-            accent: Color::from_rgb(43, 75, 255),
-            light: false,
-        },
-        ThemePreview {
-            background: Color::from_rgb(0, 0, 0),
-            accent: Color::from_rgb(111, 143, 255),
-            light: false,
-        },
-        ThemePreview {
-            background: Color::from_rgb(40, 42, 54),
-            accent: Color::from_rgb(121, 112, 169),
-            light: false,
-        },
-        ThemePreview {
-            background: Color::from_rgb(244, 250, 255),
-            accent: Color::from_rgb(57, 87, 255),
-            light: true,
-        },
-        ThemePreview {
-            background: Color::from_rgb(255, 255, 255),
-            accent: Color::from_rgb(192, 195, 210),
-            light: true,
-        },
-    ]
+impl ThemePreview {
+    fn of(theme: &Theme) -> Self {
+        Self {
+            background: theme.colors.page(),
+            accent: theme.colors.brand(),
+            light: theme.colors.is_light(),
+        }
+    }
 }
 
 #[derive(PartialEq)]
@@ -98,7 +78,7 @@ impl Component for SettingsAppearance {
         });
 
         settings_page()
-            .child(theme_section(settings.theme, dispatch.clone()))
+            .child(theme_section(&settings.theme, dispatch.clone()))
             .child(
                 rect()
                     .vertical()
@@ -125,28 +105,31 @@ impl Component for SettingsAppearance {
     }
 }
 
-fn theme_section(selected: AppTheme, dispatch: Actions) -> impl IntoElement {
-    let list = themes();
-    let selected_index = AppTheme::ALL
+fn theme_section(selected: &str, dispatch: Actions) -> impl IntoElement {
+    let themes = themes();
+    let selected_index = themes
         .iter()
-        .position(|theme| *theme == selected)
+        .position(|theme| theme.id == selected)
         .unwrap_or_default();
-    let current = list[selected_index];
 
     rect()
         .horizontal()
         .spacing(16.)
-        .child(big_preview(current))
+        .child(big_preview(ThemePreview::of(&themes[selected_index])))
         .child(
             rect()
                 .vertical()
                 .spacing(16.)
-                .child(rect().horizontal().spacing(16.).children(
-                    (0..3).map(|i| theme_card(list[i], i, selected_index, dispatch.clone())),
-                ))
-                .child(rect().horizontal().spacing(16.).children(
-                    (3..5).map(|i| theme_card(list[i], i, selected_index, dispatch.clone())),
-                )),
+                .children(themes.chunks(3).enumerate().map(|(row, chunk)| {
+                    rect()
+                        .horizontal()
+                        .spacing(16.)
+                        .children(chunk.iter().enumerate().map(|(column, theme)| {
+                            let index = row * 3 + column;
+                            theme_card(theme, index == selected_index, dispatch.clone())
+                        }))
+                        .into_element()
+                })),
         )
         .into_element()
 }
@@ -176,13 +159,9 @@ fn big_preview(theme: ThemePreview) -> impl IntoElement {
         .into_element()
 }
 
-fn theme_card(
-    theme: ThemePreview,
-    index: usize,
-    selected_index: usize,
-    dispatch: Actions,
-) -> Element {
-    let is_selected = selected_index == index;
+fn theme_card(theme: &'static Theme, is_selected: bool, dispatch: Actions) -> Element {
+    let id = theme.id.as_str();
+    let preview = ThemePreview::of(theme);
     let border_color = if is_selected {
         colors::brand()
     } else {
@@ -194,16 +173,16 @@ fn theme_card(
         .width(Size::px(126.))
         .height(Size::px(78.))
         .corner_radius(CornerRadius::new_all(8.))
-        .background(theme.background)
+        .background(preview.background)
         .border(border_all_color(1., border_color))
         .padding(8.)
         .spacing(20.)
         .cursor(CursorIcon::Pointer)
         .on_press(move |_| {
-            dispatch.edit_settings(|settings| settings.theme = AppTheme::ALL[index]);
+            dispatch.edit_settings(|settings| settings.theme = id.to_string());
         })
-        .child(mock_line(108., line_tint(theme)))
-        .child(split_bar(theme.accent, 96.))
+        .child(mock_line(108., line_tint(preview)))
+        .child(split_bar(preview.accent, 96.))
         .into_element()
 }
 

@@ -4,12 +4,12 @@ use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const STUB: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/game-mode-stub"));
+const HELPER: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/gamemode"));
 static NEXT_TEMP: AtomicU64 = AtomicU64::new(0);
 
 pub(super) fn prepare(root: &Path) -> io::Result<PathBuf> {
-    let target = root.join("helpers/game-mode-stub");
-    install(&target, STUB, 0o755)?;
+    let target = root.join("helpers/gamemode");
+    install(&target, HELPER, 0o755)?;
     Ok(target)
 }
 

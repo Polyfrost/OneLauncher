@@ -1,14 +1,14 @@
 use std::{env, path::PathBuf, process::Command};
 
 fn main() {
-    println!("cargo:rerun-if-changed=src/game/game_mode_stub.m");
+    println!("cargo:rerun-if-changed=src/game/game_mode.m");
     println!("cargo:rerun-if-env-changed=MACOSX_DEPLOYMENT_TARGET");
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("macos") {
         return;
     }
 
     let minimum = env::var("MACOSX_DEPLOYMENT_TARGET").unwrap_or_else(|_| "11.0".into());
-    let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("game-mode-stub");
+    let output = PathBuf::from(env::var_os("OUT_DIR").unwrap()).join("gamemode");
     let status = Command::new("xcrun")
         .args([
             "--sdk", "macosx",
@@ -24,7 +24,7 @@ fn main() {
             "-framework", "Foundation",
             "-framework", "CoreServices",
         ])
-        .arg("src/game/game_mode_stub.m")
+        .arg("src/game/game_mode.m")
         .arg("-o").arg(&output)
         .status();
     assert!(

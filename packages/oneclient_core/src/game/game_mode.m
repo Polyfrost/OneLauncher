@@ -2,6 +2,7 @@
 #import <Foundation/Foundation.h>
 #include <dlfcn.h>
 #include <errno.h>
+#include <fcntl.h>
 #include <mach/mach.h>
 #include <spawn.h>
 #include <stdio.h>
@@ -125,7 +126,9 @@ int main(int argc, char** argv)
 
             posix_spawn_file_actions_t actions;
             posix_spawn_file_actions_init(&actions);
+            posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0);
             posix_spawn_file_actions_adddup2(&actions, pipefd[1], STDOUT_FILENO);
+            posix_spawn_file_actions_addopen(&actions, STDERR_FILENO, "/dev/null", O_WRONLY, 0);
 
             posix_spawnattr_t attr;
             posix_spawnattr_init(&attr);

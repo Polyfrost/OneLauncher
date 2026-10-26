@@ -3,13 +3,14 @@ use std::path::Path;
 
 use freya::prelude::*;
 use oneclient_content::packages::ResolvedAlternative;
-use oneclient_core::{FlaggedImportMod, ScreenedInstance};
+use oneclient_core::{FlaggedImportMod, ScreenedInstance, UnpublishedFile};
 
 use super::cards::{SelectCard, marker};
 use super::data::Picks;
 use super::model::{DecisionKey, ModDecision, Wizard, decision_for};
 use crate::components::{
     Button, Icon, IconType, ScrollArea, centered_spinner, explanation_panel, remote_icon,
+    caution_card, unpublished_rows, warning_card, warning_list,
 };
 use crate::hooks::{retry_import_screening, use_cached_image};
 use crate::theme::colors;
@@ -36,7 +37,11 @@ pub fn review_step(wizard: Wizard, picks: &Picks) -> Element {
 
     let flagged: Vec<&ScreenedInstance> = screened
         .iter()
-        .filter(|screened| !screened.flagged.is_empty())
+        .filter(|screened| {
+            !screened.flagged.is_empty()
+                || !screened.unpublished.is_empty()
+                || !screened.mods_checked
+        })
         .collect();
     if flagged.is_empty() {
         return all_clear();
@@ -145,8 +150,21 @@ fn instance_section(
     screened: &ScreenedInstance,
 ) -> Element {
     let count = match screened.flagged.len() {
+        0 => String::new(),
         1 => "1 mod to improve".to_string(),
         n => format!("{n} mods to improve"),
+    };
+    let unpublished = if !screened.mods_checked {
+        Some(
+            caution_card(
+                "Couldn't check the mods",
+                "OneClient could not reach Modrinth or CurseForge, so it could not tell whether these mods are published there. Only import it if you trust where it came from.",
+            )
+            .into_element(),
+        )
+    } else {
+        (!screened.unpublished.is_empty())
+            .then(|| unpublished_card(&screened.unpublished).into_element())
     };
 
     rect()
@@ -177,6 +195,7 @@ fn instance_section(
                         .color(colors::fg_secondary()),
                 ),
         )
+        .maybe_child(unpublished)
         .children(screened.flagged.iter().map(|flagged| {
             let current = decision_for(decisions, &screened.game_dir, flagged);
             flagged_card(
@@ -188,6 +207,23 @@ fn instance_section(
             )
         }))
         .into_element()
+}
+
+fn unpublished_card(mods: &[UnpublishedFile]) -> impl IntoElement {
+    let count = mods.len();
+    let list = warning_list(unpublished_rows(mods));
+    let (mods, them) = if count == 1 {
+        ("1 mod is".to_string(), "it")
+    } else {
+        (format!("{count} mods are"), "them")
+    };
+    warning_card(
+        format!("{mods} not on Modrinth or CurseForge"),
+        format!(
+            "Nobody has checked {them}, and {them} could contain malware. Only import instances from people you trust."
+        ),
+    )
+    .child(list)
 }
 
 fn flagged_card(

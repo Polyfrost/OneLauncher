@@ -59,10 +59,12 @@ mod text_input;
 mod toasts;
 mod toggle;
 mod tooltip;
+mod unpublished_import_popup;
 mod update_prompt;
 pub mod upload_mclogs;
 mod version_art_gallery;
 mod version_card;
+mod warning_card;
 
 pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
 pub use account_switcher::AccountSwitcher;
@@ -108,6 +110,9 @@ pub(crate) use navbar::window_controls;
 pub use navbar::{AppNavbar, OnboardingNavbar};
 pub use notifications::{ChevronToggle, NotificationCenter};
 pub use optional_mods_popup::OptionalModsPopup;
+pub use unpublished_import_popup::UnpublishedImportPopup;
+pub(crate) use unpublished_import_popup::unpublished_rows;
+pub use warning_card::{caution_card, warning_card, warning_list};
 pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost};
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{

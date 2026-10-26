@@ -1,7 +1,7 @@
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::time::{Duration, SystemTime};
 
 use oneclient_cluster::naming::validate_tag;
 use oneclient_cluster::{Cluster, ClusterUpdate, CreateClusterOptions, ProfileUpdate};
@@ -60,6 +60,10 @@ const MODS_SKIP: &[&str] = &[".index", ".connector"];
 const COPY_SKIP_FILES: &[&str] = &["session.lock"];
 
 const DISABLED_SUFFIX: &str = ".disabled";
+
+const MOD_JAR_DEPTH: usize = 4;
+
+const HASH_CACHE_LIMIT: usize = 20_000;
 
 #[derive(Debug, Clone, Default)]
 pub struct ExternalImportReport {
@@ -125,7 +129,6 @@ pub(super) struct LocalContent {
     content_type: ContentType,
     pub(super) enabled: bool,
     pub(super) hash: String,
-    pub(super) cf_fingerprint: Option<u32>,
 }
 
 #[derive(Debug, Default)]
@@ -779,14 +782,10 @@ fn is_archive(content_type: ContentType, name: &str) -> bool {
 /// Never fails: a file that cannot be read is listed in `unreadable` so one
 /// bad jar does not stop the rest of the instance from coming over
 async fn scan_content(game_dir: &Path) -> ScannedContent {
-    scan_folders(game_dir, CONTENT_FOLDERS, false).await
+    scan_folders(game_dir, CONTENT_FOLDERS).await
 }
 
-pub(super) async fn scan_folders(
-    game_dir: &Path,
-    folders: &[ContentType],
-    fingerprint: bool,
-) -> ScannedContent {
+pub(super) async fn scan_folders(game_dir: &Path, folders: &[ContentType]) -> ScannedContent {
     let mut scanned = ScannedContent::default();
 
     for content_type in folders.iter().copied() {
@@ -840,14 +839,13 @@ pub(super) async fn scan_folders(
             };
 
             if metadata.is_file() && is_archive(content_type, &name) {
-                match hash_file(&path, fingerprint).await {
-                    Ok((hash, cf_fingerprint)) => {
+                match hash_file(&path, false).await {
+                    Ok((hash, _)) => {
                         let hash = polyio::normalize_hash(&hash);
                         scanned.present.insert(hash.clone());
                         scanned.files.push(LocalContent {
                             enabled: !name.to_ascii_lowercase().ends_with(DISABLED_SUFFIX),
                             hash,
-                            cf_fingerprint,
                             import_path: path.clone(),
                             path,
                             content_type,
@@ -869,6 +867,86 @@ pub(super) async fn scan_folders(
     scanned
 }
 
+#[derive(Debug, Clone)]
+pub(super) struct ModJar {
+    pub(super) name: String,
+    pub(super) enabled: bool,
+    pub(super) hash: String,
+    pub(super) cf_fingerprint: Option<u32>,
+}
+
+pub(super) async fn scan_mod_jars(game_dir: &Path) -> Vec<ModJar> {
+    let root = game_dir.join(ContentType::Mod.folder_name());
+    let mut pending = vec![(root.clone(), 0usize)];
+    let mut seen = HashSet::new();
+    let mut jars = Vec::new();
+
+    while let Some((dir, depth)) = pending.pop() {
+        let Ok(mut entries) = polyio::read_dir(&dir).await else {
+            tracing::debug!(folder = %dir.display(), "could not list a mods folder");
+            continue;
+        };
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if MODS_SKIP.iter().any(|skip| skip.eq_ignore_ascii_case(&name)) {
+                continue;
+            }
+            let path = entry.path();
+            let Ok(metadata) = tokio::fs::metadata(&path).await else {
+                continue;
+            };
+            if metadata.is_dir() {
+                if depth < MOD_JAR_DEPTH {
+                    pending.push((path, depth + 1));
+                }
+                continue;
+            }
+            let wanted = if depth == 0 {
+                is_archive(ContentType::Mod, &name)
+            } else {
+                strip_disabled(&name).to_ascii_lowercase().ends_with(".jar")
+            };
+            if !metadata.is_file() || !wanted {
+                continue;
+            }
+            match hash_file(&path, true).await {
+                Ok((hash, cf_fingerprint)) => {
+                    let hash = polyio::normalize_hash(&hash);
+                    if !seen.insert(hash.clone()) {
+                        continue;
+                    }
+                    let relative = path
+                        .strip_prefix(&root)
+                        .unwrap_or(&path)
+                        .to_string_lossy()
+                        .replace('\\', "/");
+                    jars.push(ModJar {
+                        enabled: strip_disabled(&name) == name,
+                        name: strip_disabled(&relative).to_string(),
+                        hash,
+                        cf_fingerprint,
+                    });
+                }
+                Err(err) => {
+                    tracing::debug!(path = %path.display(), error = %err, "could not hash a mod");
+                }
+            }
+        }
+    }
+    jars
+}
+
+#[derive(Clone)]
+struct CachedHash {
+    len: u64,
+    modified: Option<SystemTime>,
+    sha1: String,
+    cf_fingerprint: Option<u32>,
+}
+
+static HASHES: LazyLock<Mutex<HashMap<PathBuf, CachedHash>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 /// Gives every disabled file a copy under its real name for the store; one
 /// that cannot be copied is moved to `unreadable` rather than imported under
 /// the wrong name
@@ -876,14 +954,49 @@ async fn hash_file(
     path: &Path,
     fingerprint: bool,
 ) -> Result<(String, Option<u32>), polyio::IOError> {
-    if !fingerprint {
-        return Ok((polyio::sha1_file(path).await?, None));
+    let metadata = tokio::fs::metadata(path).await?;
+    let (len, modified) = (metadata.len(), metadata.modified().ok());
+    let cached = HASHES
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(path)
+        .filter(|hit| hit.len == len && hit.modified == modified && modified.is_some())
+        .filter(|hit| !fingerprint || hit.cf_fingerprint.is_some())
+        .cloned();
+    if let Some(hit) = cached {
+        return Ok((hit.sha1, hit.cf_fingerprint.filter(|_| fingerprint)));
     }
-    let bytes = tokio::fs::read(path).await?;
-    Ok((
-        polyio::sha1_bytes(&bytes),
-        Some(curseforge_fingerprint(&bytes)),
-    ))
+
+    let (sha1, cf_fingerprint) = if fingerprint {
+        let owned = path.to_path_buf();
+        tokio::task::spawn_blocking(move || {
+            std::fs::read(owned).map(|bytes| {
+                (
+                    polyio::sha1_bytes(&bytes),
+                    Some(curseforge_fingerprint(&bytes)),
+                )
+            })
+        })
+        .await
+        .map_err(std::io::Error::other)??
+    } else {
+        (polyio::sha1_file(path).await?, None)
+    };
+
+    let mut cache = HASHES.lock().unwrap_or_else(PoisonError::into_inner);
+    if cache.len() >= HASH_CACHE_LIMIT {
+        cache.clear();
+    }
+    cache.insert(
+        path.to_path_buf(),
+        CachedHash {
+            len,
+            modified,
+            sha1: sha1.clone(),
+            cf_fingerprint,
+        },
+    );
+    Ok((sha1, cf_fingerprint))
 }
 
 async fn stage_disabled(scanned: &mut ScannedContent, staging: &Path) {
@@ -1069,6 +1182,61 @@ mod tests {
         polyio::write(&path, path.to_string_lossy().as_bytes())
             .await
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn mod_jars_are_found_in_version_folders_and_named_by_their_path() {
+        let tmp = polyio::tempdir().await.unwrap();
+        let root = tmp.dir_path();
+        for file in [
+            "mods/sodium.jar",
+            "mods/legacy.zip",
+            "mods/old.jar.disabled",
+            "mods/1.20.1/nested.jar",
+            "mods/1.20.1/bundle.zip",
+            "mods/.index/sodium.jar",
+            "mods/.connector/remapped.jar",
+            "mods/a/b/c/d/deep.jar",
+            "mods/a/b/c/d/e/too-deep.jar",
+            "config/elsewhere.jar",
+        ] {
+            touch(root.join(file)).await;
+        }
+
+        let mut found: Vec<(String, bool)> = scan_mod_jars(root)
+            .await
+            .into_iter()
+            .map(|jar| (jar.name, jar.enabled))
+            .collect();
+        found.sort();
+
+        assert_eq!(
+            found,
+            [
+                ("1.20.1/nested.jar".to_string(), true),
+                ("a/b/c/d/deep.jar".to_string(), true),
+                ("legacy.zip".to_string(), true),
+                ("old.jar".to_string(), false),
+                ("sodium.jar".to_string(), true),
+            ]
+        );
+        assert!(scan_mod_jars(&root.join("missing")).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_cached_hash_is_reused_until_the_file_changes() {
+        let tmp = polyio::tempdir().await.unwrap();
+        let path = tmp.dir_path().join("mod.jar");
+        polyio::write(&path, b"first").await.unwrap();
+
+        let (sha1, fingerprint) = hash_file(&path, true).await.unwrap();
+        assert_eq!(sha1, polyio::sha1_bytes(b"first"));
+        assert_eq!(fingerprint, Some(curseforge_fingerprint(b"first")));
+        assert_eq!(hash_file(&path, false).await.unwrap(), (sha1, None));
+
+        polyio::write(&path, b"second, longer").await.unwrap();
+        let (changed, _) = hash_file(&path, false).await.unwrap();
+        assert_eq!(changed, polyio::sha1_bytes(b"second, longer"));
     }
 
     #[tokio::test]

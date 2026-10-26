@@ -261,7 +261,7 @@ impl PackageProvider for CurseForgeProvider {
         let response: CfData<Response> = fetch_json(
             &ctx.net,
             Method::POST,
-            &api_url(&format!("/mods/fingerprints/{CURSEFORGE_GAME_ID}")),
+            &api_url(&format!("/fingerprints/{CURSEFORGE_GAME_ID}")),
             Some(body),
         )
         .await?;

@@ -49,6 +49,8 @@ pub struct PreparedModpack {
     pub manifest: ModpackManifest,
     pub instance_name: String,
     pub flagged: Option<FlaggedModpack>,
+    pub unlisted: Vec<modpacks::UnlistedMod>,
+    pub mods_unchecked: bool,
     pub share: Option<SharedCluster>,
 }
 
@@ -110,6 +112,10 @@ pub async fn prepare_modpack(
         ModpackSource::Provider { .. } => None,
     };
     let Some(share) = share else {
+        let unlisted = match source {
+            ModpackSource::File(_) => unlisted_mods(&archive_path, &manifest, &content).await,
+            ModpackSource::Provider { .. } => Some(Vec::new()),
+        };
         return Ok(PreparedModpack {
             source: source.clone(),
             artifact_hash: artifact.hash,
@@ -117,6 +123,8 @@ pub async fn prepare_modpack(
             instance_name: unique_name(&instance_name(&manifest.name), &taken),
             manifest,
             flagged,
+            mods_unchecked: unlisted.is_none(),
+            unlisted: unlisted.unwrap_or_default(),
             share: None,
         });
     };
@@ -124,6 +132,7 @@ pub async fn prepare_modpack(
     let instance_name = unique_name(&instance_name(&share.name), &taken);
     let extras = modpacks::read_share_extras(&archive_path, &share).await?;
     let bundled = planned_bundle_content(state, &share).await;
+    let unlisted = unlisted_mods(&archive_path, &manifest, &content).await;
     let mut shared = SharedCluster {
         archive_path: archive_path.clone(),
         manifest: manifest.clone(),
@@ -132,6 +141,7 @@ pub async fn prepare_modpack(
         bundled,
         notices: Vec::new(),
         substituted: false,
+        mods_checked: unlisted.is_some(),
     };
     let (artifact_hash, archive_path, manifest, flagged) = match shared.share.modpack.clone() {
         Some(pack) => {
@@ -162,9 +172,24 @@ pub async fn prepare_modpack(
         archive_path,
         manifest,
         flagged,
+        mods_unchecked: unlisted.is_none(),
+        unlisted: unlisted.unwrap_or_default(),
         instance_name,
         share: Some(shared),
     })
+}
+
+async fn unlisted_mods(
+    archive_path: &std::path::Path,
+    manifest: &ModpackManifest,
+    content: &ContentCtx,
+) -> Option<Vec<modpacks::UnlistedMod>> {
+    modpacks::find_unlisted_mods(archive_path, manifest, content)
+        .await
+        .inspect_err(|err| {
+            tracing::warn!(error = %err, "could not check whether the modpack's mods are published");
+        })
+        .ok()
 }
 
 async fn screen_modpack(

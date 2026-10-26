@@ -150,6 +150,12 @@ pub fn footer_note(picks: &Picks) -> String {
                 "Mods were not checked. Importing brings them over unchanged.".to_string()
             }
             (None, _) => "Checking mods...".to_string(),
+            (Some(_), 0) if picks.mods_unchecked() => {
+                "Some mods could not be checked. Accounts are not imported; sign in here.".to_string()
+            }
+            (Some(_), 0) if picks.unpublished_count() > 0 => {
+                "Some mods are not on Modrinth or CurseForge. Accounts are not imported; sign in here.".to_string()
+            }
             (Some(_), 0) => "Nothing to change. Accounts are not imported; sign in here.".to_string(),
             (Some(_), 1) => "1 mod flagged. Accounts are not imported; sign in here.".to_string(),
             (Some(_), n) => format!("{n} mods flagged. Accounts are not imported; sign in here."),
@@ -202,6 +208,8 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
         Step::ImportReview => match (&picks.import_screening, picks.flagged_count()) {
             (None, _) if picks.import_screening_error.is_some() => "Not checked".to_string(),
             (None, _) => "Checking".to_string(),
+            (Some(_), 0) if picks.mods_unchecked() => "Not checked".to_string(),
+            (Some(_), 0) if picks.unpublished_count() > 0 => "Unpublished mods".to_string(),
             (Some(_), 0) => "Nothing flagged".to_string(),
             (Some(_), 1) => "1 flagged".to_string(),
             (Some(_), n) => format!("{n} flagged"),

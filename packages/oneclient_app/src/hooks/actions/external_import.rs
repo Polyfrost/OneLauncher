@@ -10,13 +10,14 @@ use oneclient_content::packages::PackageError;
 use oneclient_core::clusters::ModpackSource;
 use oneclient_core::{
     ExternalImportReport, ExternalInstance, ImportChoices, InstanceArchive, alternative_version_id,
-    discard_instance_archive, import_external_instance, is_instance_archive, open_instance_archive,
+    UnpublishedFile, discard_instance_archive, find_unpublished_mods, import_external_instance,
+    is_instance_archive, open_instance_archive,
 };
 use oneclient_events::{GroupedProgressSession, TaskCategory, TaskPhase};
 
 use super::Actions;
 use crate::launcher::{self, off_ui};
-use crate::notifications::BlockedDownloads;
+use crate::notifications::{BlockedDownloads, UnpublishedInstance};
 
 const MAX_LISTED: usize = 3;
 
@@ -53,6 +54,12 @@ fn next_batch() -> Option<Vec<ExternalImportJob>> {
         return None;
     }
     Some(std::mem::take(pending))
+}
+
+static CONFIRMING: Mutex<Vec<(ExternalImportJob, bool)>> = Mutex::new(Vec::new());
+
+fn confirming() -> MutexGuard<'static, Vec<(ExternalImportJob, bool)>> {
+    CONFIRMING.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 static WAITING_FOR_INSTALL: Mutex<Vec<ExternalImportJob>> = Mutex::new(Vec::new());
@@ -110,6 +117,7 @@ pub struct ExternalImportJob {
     pub choices: ImportChoices,
     pub alternatives: Vec<AlternativePick>,
     pub workdir: Option<PathBuf>,
+    pub reviewed: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +134,7 @@ impl ExternalImportJob {
             choices: ImportChoices::default(),
             alternatives: Vec::new(),
             workdir: None,
+            reviewed: false,
         }
     }
 
@@ -158,9 +167,85 @@ fn discard_workdir_set(workdirs: HashSet<PathBuf>) {
 }
 
 impl Actions {
+    pub fn import_external_instances(&self, jobs: Vec<ExternalImportJob>) {
+        if jobs.is_empty() {
+            return;
+        }
+        if jobs.iter().all(|job| job.reviewed) {
+            self.start_external_imports(jobs);
+            return;
+        }
+
+        let actions = self.clone();
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else {
+                return;
+            };
+            let unchecked: Vec<ExternalInstance> = jobs
+                .iter()
+                .filter(|job| !job.reviewed)
+                .map(|job| job.instance.clone())
+                .collect();
+            let found = off_ui(async move {
+                let session =
+                    GroupedProgressSession::start(&state.services.events, "Checking mods");
+                let mut found = Vec::new();
+                for instance in unchecked {
+                    let mods = find_unpublished_mods(&state, &instance).await;
+                    if mods.as_ref().is_none_or(|mods| !mods.is_empty()) {
+                        found.push(unpublished_view(&instance, mods));
+                    }
+                }
+                session.finish();
+                found
+            })
+            .await;
+
+            if found.is_empty() {
+                actions.start_external_imports(jobs);
+                return;
+            }
+            let warned: HashSet<PathBuf> =
+                found.iter().map(|(game_dir, _)| game_dir.clone()).collect();
+            let held: Vec<(ExternalImportJob, bool)> = jobs
+                .into_iter()
+                .map(|job| {
+                    let flagged = warned.contains(&job.instance.game_dir);
+                    (job, flagged)
+                })
+                .collect();
+            let others = held.iter().filter(|(_, flagged)| !flagged).count();
+            confirming().extend(held);
+            let views = found.into_iter().map(|(_, view)| view).collect();
+            actions.with_engine(move |app| app.notifications.open_unpublished_import(views, others));
+        });
+    }
+
+    pub fn confirm_unpublished_import(&self, all: bool) {
+        self.with_engine(|app| app.notifications.close_unpublished_import());
+        let held = std::mem::take(&mut *confirming());
+        let (start, skipped): (Vec<_>, Vec<_>) =
+            held.into_iter().partition(|(_, flagged)| all || !flagged);
+        let start: Vec<ExternalImportJob> = start.into_iter().map(|(job, _)| job).collect();
+        let kept: HashSet<&PathBuf> = start.iter().filter_map(|job| job.workdir.as_ref()).collect();
+        let unused: HashSet<PathBuf> = skipped
+            .into_iter()
+            .filter_map(|(job, _)| job.workdir)
+            .filter(|workdir| !kept.contains(workdir))
+            .collect();
+        discard_workdir_set(unused);
+        self.start_external_imports(start);
+    }
+
+    pub fn cancel_unpublished_import(&self) {
+        self.with_engine(|app| app.notifications.close_unpublished_import());
+        let held = std::mem::take(&mut *confirming());
+        discard_workdir_set(held.into_iter().filter_map(|(job, _)| job.workdir).collect());
+    }
+
     /// Instances go one at a time: each can pull a whole modpack and hash
     /// hundreds of files, and running them side by side only fights over disk
-    pub fn import_external_instances(&self, jobs: Vec<ExternalImportJob>) {
+    pub(super) fn start_external_imports(&self, jobs: Vec<ExternalImportJob>) {
         if jobs.is_empty() {
             return;
         }
@@ -209,6 +294,7 @@ impl Actions {
                         choices,
                         alternatives,
                         workdir: _,
+                        reviewed: _,
                     } = job;
                     let name = instance.name.clone();
                     let total = done + (batch_len - index) + queued_count();
@@ -431,6 +517,23 @@ impl Actions {
         }
         unavailable
     }
+}
+
+fn unpublished_view(
+    instance: &ExternalInstance,
+    mods: Option<Vec<UnpublishedFile>>,
+) -> (PathBuf, UnpublishedInstance) {
+    let loader = match &instance.loader_version {
+        Some(version) => format!("{} {version}", instance.loader),
+        None => instance.loader.to_string(),
+    };
+    let view = UnpublishedInstance {
+        name: instance.name.clone(),
+        game: format!("{} · {loader}", instance.mc_version),
+        checked: mods.is_some(),
+        mods: mods.unwrap_or_default(),
+    };
+    (instance.game_dir.clone(), view)
 }
 
 fn notify_summary(actions: &Actions, imported: &[ExternalImportReport], unavailable: &[String]) {

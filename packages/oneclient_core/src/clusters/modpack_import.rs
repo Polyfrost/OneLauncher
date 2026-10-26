@@ -948,6 +948,8 @@ mod tests {
                 },
                 instance_name: "Pack".to_string(),
                 flagged: None,
+                unlisted: Vec::new(),
+                mods_unchecked: false,
                 share: None,
             },
             cluster_id: 1,

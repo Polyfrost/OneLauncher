@@ -198,6 +198,7 @@ impl Component for LaunchErrorDialog {
 pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
     let alpha = alpha.clamp(0., 1.);
     let scale = |a: u8| (f32::from(a) * alpha).round() as u8;
+    let top = if colors::is_light() { 215 } else { 100 };
 
     rect()
         .width(Size::fill())
@@ -211,7 +212,7 @@ pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
                 .width(Size::fill())
                 .background(
                     LinearGradient::new()
-                        .stop((colors::shade().with_a(scale(100)), 0.))
+                        .stop((colors::shade().with_a(scale(top)), 0.))
                         .stop((colors::page().with_a(scale(255)), 95.0)),
                 ),
         )

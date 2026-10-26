@@ -78,6 +78,10 @@ pub struct PackageEntry {
     pub bisect_role: Option<BisectRole>,
     pub locked: bool,
     pub modpack: Option<String>,
+    /// RFC 3339 so string order matches time order
+    pub added_at: Option<String>,
+    /// When the installed version was released RFC 3339
+    pub published_at: Option<String>,
 }
 
 impl PackageEntry {

@@ -502,6 +502,7 @@ mod tests {
             display_version: None,
             provider,
             published_at: None,
+            added_at: None,
             seen_status: SeenStatus::Seen,
         }
     }

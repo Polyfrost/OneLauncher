@@ -121,6 +121,7 @@ mod tests {
             display_version: None,
             provider: project_id.map(|_| ProviderId::Modrinth),
             published_at: published_at.map(Into::into),
+            added_at: None,
             seen_status: SeenStatus::Seen,
         }
     }

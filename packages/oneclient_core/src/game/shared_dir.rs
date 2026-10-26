@@ -2868,6 +2868,7 @@ mod tests {
             display_version: None,
             provider: None,
             published_at: None,
+            added_at: None,
             seen_status: oneclient_db::models::SeenStatus::Seen,
         }
     }

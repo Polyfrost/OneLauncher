@@ -726,7 +726,8 @@ pub async fn list_cluster_artifacts_detailed(
 			pr.version_id AS "version_id?: String",
 			pr.display_name AS "display_name?: String",
 			pr.display_version AS "display_version?: String",
-			pr.published_at AS "published_at?: String"
+			pr.published_at AS "published_at?: String",
+			ca.added_at AS "added_at?: String"
 		FROM cluster_artifacts ca
 		JOIN artifacts a ON a.hash = ca.hash
 		LEFT JOIN provider_releases pr ON pr.rowid = (

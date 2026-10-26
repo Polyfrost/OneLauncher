@@ -137,6 +137,8 @@ fn entry_from_item(
         bisect_role: None,
         locked: false,
         modpack: None,
+        added_at: None,
+        published_at: None,
     }
 }
 

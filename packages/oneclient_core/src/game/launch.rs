@@ -447,7 +447,24 @@ async fn start(
     );
     tracing::debug!(cluster_id, ?jvm_args, main_class = %version_info.main_class, "jvm arguments");
 
-    let (mut command, wrapper) = base_command(&profile, &java.absolute_path);
+    #[cfg(target_os = "macos")]
+    let game_mode = match tokio::task::spawn_blocking(|| -> LauncherResult<_> {
+        Ok(super::game_mode::prepare(paths::data_dir()?)?)
+    })
+    .await
+    {
+        Ok(Ok(path)) => Some(path),
+        error => {
+            tracing::warn!(
+                ?error,
+                "could not prepare Game Mode helper; launching Java directly"
+            );
+            None
+        }
+    };
+    #[cfg(not(target_os = "macos"))]
+    let game_mode: Option<std::path::PathBuf> = None;
+    let (mut command, wrapper) = base_command(&profile, &java.absolute_path, game_mode.as_deref());
 
     if let Some(gpu) = profile.gpu() {
         crate::game::gpu::select(&mut command, &java.absolute_path, gpu).await;
@@ -958,25 +975,26 @@ pub async fn repair_cluster(state: &Arc<LauncherState>, cluster_id: i64) {
     }
 }
 
-fn base_command(profile: &GameSettingsProfile, java_path: &str) -> (Command, Option<String>) {
-    let Some(wrapper) = profile
-        .hook_wrapper
-        .as_deref()
-        .map(str::trim)
-        .filter(|hook| !hook.is_empty())
-    else {
-        return (Command::new(java_path), None);
-    };
-
-    let mut split = wrapper.split_whitespace();
-    let Some(program) = split.next() else {
-        return (Command::new(java_path), None);
-    };
-
-    let mut command = Command::new(program);
-    command.args(split);
-    command.arg(java_path);
-    (command, Some(program.to_string()))
+fn base_command(
+    profile: &GameSettingsProfile,
+    java_path: &str,
+    game_mode: Option<&Path>,
+) -> (Command, Option<String>) {
+    let executable = game_mode.unwrap_or_else(|| Path::new(java_path));
+    let mut command = Command::new(executable);
+    let mut wrapper = None;
+    if let Some(hook) = profile.hook_wrapper.as_deref() {
+        let mut split = hook.split_whitespace();
+        if let Some(program) = split.next() {
+            command = Command::new(program);
+            command.args(split).arg(executable);
+            wrapper = Some(program.to_string());
+        }
+    }
+    if game_mode.is_some() {
+        command.arg(java_path);
+    }
+    (command, wrapper)
 }
 
 fn command_line(command: &std::process::Command, main_class: &str) -> String {
@@ -1151,7 +1169,7 @@ fn stderr_detail(bytes: &[u8]) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    
     fn clean() -> Exit {
         Exit::Observed {
             code: Some(0),

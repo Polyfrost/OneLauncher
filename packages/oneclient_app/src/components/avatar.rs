@@ -26,7 +26,7 @@ impl Avatar {
 }
 
 impl LayoutExt for Avatar {
-    fn get_layout(&mut self) -> &mut LayoutData {
+    fn layout_mut(&mut self) -> &mut LayoutData {
         &mut self.layout
     }
 }

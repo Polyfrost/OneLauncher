@@ -93,7 +93,7 @@ pub(crate) fn onboarding_slide(content: impl IntoElement) -> impl IntoElement {
 
     use_side_effect_with_deps(&anim_finished, move |&finished| {
         if finished {
-            Platform::get().send(UserEvent::RequestRedraw);
+            Platform::get().current_window().request_redraw();
         }
     });
 

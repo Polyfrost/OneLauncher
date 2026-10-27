@@ -2,7 +2,7 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use oneclient_common::domain::ProviderId;
 use oneclient_content::ContentError;
 use oneclient_content::modpacks::{SHARE_EXTENSION, detect_format};
@@ -147,7 +147,7 @@ fn discard_workdir_set(workdirs: HashSet<PathBuf>) {
     if workdirs.is_empty() {
         return;
     }
-    spawn_forever(async move {
+    spawn_in_window(async move {
         off_ui(async move {
             for workdir in workdirs {
                 discard_instance_archive(&workdir).await;
@@ -185,7 +185,7 @@ impl Actions {
         };
 
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let mut running = RunningImport {
                 actions: actions.clone(),
                 workdirs: HashSet::new(),
@@ -307,7 +307,7 @@ impl Actions {
         }
 
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let probe = path.clone();
             let verdict = off_ui(async move {
                 if is_instance_archive(&probe).await {
@@ -346,7 +346,7 @@ impl Actions {
 
     pub fn import_instance_archive(&self, path: PathBuf) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else {
                 return;
             };

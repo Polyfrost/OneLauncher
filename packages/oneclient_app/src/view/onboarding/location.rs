@@ -62,7 +62,7 @@ impl Component for OnboardingLocation {
             waiting.set(true);
             error.set(None);
 
-            spawn_forever(async move {
+            spawn_in_window(async move {
                 if !answered {
                     if let Err(message) = oneclient_core::settings::data_dir::apply(chosen).await {
                         error.set(Some(message));

@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use freya::prelude::{Platform, WinitPlatformExt, spawn_forever};
+use freya::prelude::{Platform, WinitPlatformExt, spawn_in_window};
 use freya::radio::RadioStation;
 use oneclient_core::settings::LaunchBehaviour;
 
@@ -42,11 +42,11 @@ pub fn close() {
 
 pub fn quit() {
     let platform = Platform::get();
-    spawn_forever(async move {
+    spawn_in_window(async move {
         if let Ok(state) = crate::launcher::state() {
             oneclient_core::shutdown(&state).await;
         }
-        drop(platform.post_callback(|_, ctx| ctx.exit()));
+        drop(platform.post_callback(|ctx| ctx.exit()));
     });
 }
 
@@ -266,26 +266,9 @@ pub mod tray {
         });
     }
 
-    #[cfg(target_os = "linux")]
-    pub fn available() -> bool {
-        let loaded = ["libayatana-appindicator3.so.1", "libappindicator3.so.1"]
-            .into_iter()
-            .any(|name| unsafe { libloading::Library::new(name) }.is_ok());
-        if !loaded {
-            tracing::warn!("tray icon disabled, appindicator failed to load");
-        }
-        loaded
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    pub fn available() -> bool {
-        true
-    }
-
     pub fn build() -> TrayIcon {
-        let live_on_linux = cfg!(target_os = "linux");
-        let stop = MenuItem::with_id(STOP_ID, "Stop game", live_on_linux, None);
-        let logs = MenuItem::with_id(LOGS_ID, "Show logs", live_on_linux, None);
+        let stop = MenuItem::with_id(STOP_ID, "Stop game", false, None);
+        let logs = MenuItem::with_id(LOGS_ID, "Show logs", false, None);
 
         let menu = Menu::with_items(&[
             &MenuItem::with_id(OPEN_ID, "Open OneClient", true, None),
@@ -301,12 +284,16 @@ pub mod tray {
         GAME_ITEMS.with_borrow_mut(|items| *items = vec![stop, logs]);
         ACTIVE.store(true, Ordering::Relaxed);
 
-        TrayIconBuilder::new()
+        let builder = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_tooltip(constants::WINDOW_TITLE)
-            .with_icon(LaunchConfig::tray_icon(ICON))
-            .with_icon_as_template(cfg!(target_os = "macos"))
-            .with_menu_on_left_click(!cfg!(target_os = "windows"))
+            .with_menu_on_left_click(!cfg!(target_os = "windows"));
+        #[cfg(target_os = "macos")]
+        let builder = builder.with_icon_templated(LaunchConfig::tray_icon(ICON));
+        #[cfg(not(target_os = "macos"))]
+        let builder = builder.with_icon(LaunchConfig::tray_icon(ICON));
+
+        builder
             .build()
             .expect("failed to create the tray icon")
     }

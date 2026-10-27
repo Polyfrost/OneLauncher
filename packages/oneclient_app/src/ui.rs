@@ -110,23 +110,15 @@ pub fn last_played_label(ts: Option<chrono::DateTime<chrono::Utc>>) -> String {
 /// Gap the clamped menu keeps from the window edges
 pub const EDGE_MARGIN: f32 = 8.;
 
-/// `root_size` is physical while the press position is logical, so it has to be
-/// scaled down before the two are compared
 pub fn clamp_to_window(x: f32, y: f32, width: f32, height: f32) -> (f32, f32) {
-    let platform = Platform::get();
-    let scale = *platform.scale_factor.peek() as f32;
-    if scale <= 0. {
-        return (x, y);
-    }
-
-    let window = *platform.root_size.peek();
+    let window = window_logical_size();
     let clamp = |pos: f32, len: f32, limit: f32| {
         pos.clamp(EDGE_MARGIN, (limit - len - EDGE_MARGIN).max(EDGE_MARGIN))
     };
 
     (
-        clamp(x, width, window.width / scale),
-        clamp(y, height, window.height / scale),
+        clamp(x, width, window.width),
+        clamp(y, height, window.height),
     )
 }
 
@@ -271,12 +263,5 @@ impl ImageFallbackExt for ImageViewer {
 }
 
 pub fn window_logical_size() -> Size2D {
-    let platform = Platform::get();
-    let scale = *platform.scale_factor.peek() as f32;
-    let size = *platform.root_size.peek();
-    if scale <= 0. {
-        return size;
-    }
-
-    Size2D::new(size.width / scale, size.height / scale)
+    *Platform::get().current_window().root_size.peek()
 }

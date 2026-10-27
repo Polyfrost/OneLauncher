@@ -740,7 +740,7 @@ fn watch_purchases(account: Uuid) {
     if !started {
         return;
     }
-    freya::prelude::spawn_forever(async move {
+    freya::prelude::spawn_in_window(async move {
         let mut minecraft = None;
         let mut baseline = None;
         loop {

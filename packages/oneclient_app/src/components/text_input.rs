@@ -10,7 +10,7 @@ const GAP_HORI: f32 = 12.0;
 const EXPANDED_WIDTH: f32 = 440.;
 const EXPANDED_HEIGHT: f32 = 180.;
 
-fn text_input(value: impl Into<Writable<String>>) -> Input {
+fn text_input(value: impl Into<WritableSetter<String>>) -> Input {
     Input::new(value)
         .padding(Gaps::new_symmetric(GAP_VERT, GAP_HORI))
         .corner_radius(CornerRadius::new_all(8.))
@@ -150,25 +150,25 @@ impl TextInput {
 }
 
 impl ChildrenExt for TextInput {
-    fn get_children(&mut self) -> &mut Vec<Element> {
+    fn children_mut(&mut self) -> &mut Vec<Element> {
         &mut self.elements
     }
 }
 
 impl KeyExt for TextInput {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
 
 impl LayoutExt for TextInput {
-    fn get_layout(&mut self) -> &mut LayoutData {
+    fn layout_mut(&mut self) -> &mut LayoutData {
         &mut self.layout
     }
 }
 
 impl TextStyleExt for TextInput {
-    fn get_text_style_data(&mut self) -> &mut TextStyleData {
+    fn text_style_data_mut(&mut self) -> &mut TextStyleData {
         &mut self.text_style
     }
 }
@@ -177,7 +177,7 @@ impl ContainerExt for TextInput {}
 impl ContainerWithContentExt for TextInput {}
 
 impl StyleExt for TextInput {
-    fn get_style(&mut self) -> &mut StyleState {
+    fn style_mut(&mut self) -> &mut StyleState {
         &mut self.style
     }
 }
@@ -216,7 +216,7 @@ impl Component for TextInput {
                 el.on_sized(move |e: Event<SizedEventData>| area.set_if_modified(e.area))
             });
 
-        card.get_style().clone_from(&self.style);
+        card.style_mut().clone_from(&self.style);
 
         let mut input = self.input.clone();
         if self.multiline

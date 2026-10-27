@@ -380,7 +380,7 @@ impl Thumbnail {
 }
 
 impl KeyExt for Thumbnail {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -455,7 +455,7 @@ impl PackageBanner {
 }
 
 impl KeyExt for PackageBanner {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }

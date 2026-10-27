@@ -244,19 +244,19 @@ impl Button {
 }
 
 impl ChildrenExt for Button {
-    fn get_children(&mut self) -> &mut Vec<Element> {
+    fn children_mut(&mut self) -> &mut Vec<Element> {
         &mut self.elements
     }
 }
 
 impl KeyExt for Button {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
 
 impl LayoutExt for Button {
-    fn get_layout(&mut self) -> &mut LayoutData {
+    fn layout_mut(&mut self) -> &mut LayoutData {
         &mut self.layout
     }
 }
@@ -266,7 +266,7 @@ impl ContainerExt for Button {}
 impl DecorationExt for Button {}
 
 impl StyleExt for Button {
-    fn get_style(&mut self) -> &mut StyleState {
+    fn style_mut(&mut self) -> &mut StyleState {
         &mut self.style
     }
 }
@@ -333,7 +333,7 @@ impl Component for Button {
             .text_style(self.text_style.clone())
             .children(self.elements.clone());
 
-        rect.get_style().clone_from(&self.style);
+        rect.style_mut().clone_from(&self.style);
 
         rect = rect.background(background).color(foreground);
 

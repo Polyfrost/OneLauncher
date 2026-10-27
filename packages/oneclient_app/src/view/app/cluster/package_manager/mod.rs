@@ -513,7 +513,7 @@ fn build_tabs(categories: &[String], items: &[PackageEntry], hidden: HiddenFilte
 /// the disable path re-runs this and can proceed without it.
 fn warm_dependencies(cluster_id: i64) {
     use_hook(move || {
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = crate::launcher::state() else {
                 return;
             };
@@ -580,7 +580,7 @@ impl Component for PackageManager {
 
         // Cleared once on mount so the rows already rendered keep their badges for this visit
         use_hook(|| {
-            spawn_forever(async move {
+            spawn_in_window(async move {
                 let Ok(state) = crate::launcher::state() else {
                     return;
                 };

@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicI64, Ordering};
 
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use oneclient_cluster::ClusterManager;
 use oneclient_content::modpacks::{SHARE_EXTENSION, ShareExportReport};
 use oneclient_core::clusters::{ExportMode, export_cluster};
@@ -76,7 +76,7 @@ impl Actions {
             return;
         };
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let _slot = slot;
             let Ok(state) = launcher::state() else { return };
 

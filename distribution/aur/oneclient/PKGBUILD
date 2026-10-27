@@ -16,8 +16,6 @@ depends=(
   'libxkbcommon'
   'wayland'
   'dbus'
-  'gtk3'
-  'libayatana-appindicator'
 )
 makedepends=(
   'rust'

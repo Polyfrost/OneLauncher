@@ -1,17 +1,20 @@
 use std::cell::Cell;
-use std::sync::atomic::{AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicU32, Ordering};
+use std::sync::{Arc, RwLock};
 
 use freya::prelude::{Color, State};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
-use super::{Theme, themes};
+use super::{Theme, resolve_theme};
 
 pub const MODRINTH_COLOR: Color = Color::from_rgb(27, 217, 106);
 pub const CURSEFORGE_COLOR: Color = Color::from_rgb(241, 100, 54);
 
 const NO_ACCENT: u32 = u32::MAX;
+const GHOST_ALPHA: [u8; 3] = [12, 26, 38];
 
-static ACTIVE_THEME: AtomicUsize = AtomicUsize::new(0);
+static ACTIVE_THEME: RwLock<String> = RwLock::new(String::new());
+static PREVIEW_THEME: RwLock<Option<Arc<Theme>>> = RwLock::new(None);
 static ACTIVE_ACCENT: AtomicU32 = AtomicU32::new(NO_ACCENT);
 
 thread_local! {
@@ -20,48 +23,66 @@ thread_local! {
 
 type Rgb = (u8, u8, u8);
 
-#[derive(Clone, Copy, Deserialize)]
-#[serde(try_from = "String")]
-struct Hex(Rgb);
+#[derive(Clone, Copy, PartialEq, Deserialize, Serialize)]
+#[serde(try_from = "String", into = "String")]
+pub struct Hex(Color);
 
 impl TryFrom<String> for Hex {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
-        parse_hex(&value)
-            .map(Hex)
-            .ok_or_else(|| format!("'{value}' is not a #RRGGBB color"))
+        let digits = value.trim().trim_start_matches('#');
+        let packed = u32::from_str_radix(digits, 16)
+            .ok()
+            .filter(|_| digits.is_ascii());
+        match (digits.len(), packed) {
+            (6, Some(packed)) => Ok(Hex(color(unpack(packed)))),
+            (8, Some(packed)) => {
+                let (r, g, b) = unpack(packed >> 8);
+                Ok(Hex(Color::from_argb(packed as u8, r, g, b)))
+            }
+            _ => Err(format!("'{value}' is not a #RRGGBB or #RRGGBBAA color")),
+        }
     }
 }
 
-#[derive(Deserialize)]
+impl From<Hex> for String {
+    fn from(Hex(color): Hex) -> Self {
+        match color.a() {
+            255 => format_hex(color),
+            alpha => format!("{}{alpha:02X}", format_hex(color)),
+        }
+    }
+}
+
+impl From<Color> for Hex {
+    fn from(color: Color) -> Self {
+        Hex(color)
+    }
+}
+
+impl Hex {
+    pub fn color(self) -> Color {
+        self.0
+    }
+
+    fn rgb(self) -> Rgb {
+        (self.0.r(), self.0.g(), self.0.b())
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Deserialize, Serialize)]
 pub struct Palette {
     #[serde(default)]
-    light: bool,
-    page: Hex,
-    page_elevated: Hex,
-    card: Hex,
-    fg_primary: [Hex; 4],
-    fg_strong: Hex,
-    fg_secondary: [Hex; 3],
-    component_bg: [Hex; 4],
-    brand: Hex,
-    ghost_alpha: [u8; 3],
-    border_alpha: [u8; 3],
-}
-
-impl Palette {
-    pub fn page(&self) -> Color {
-        color(self.page.0)
-    }
-
-    pub fn brand(&self) -> Color {
-        color(self.brand.0)
-    }
-
-    pub fn is_light(&self) -> bool {
-        self.light
-    }
+    pub light: bool,
+    pub page: Hex,
+    pub page_elevated: Hex,
+    pub card: Hex,
+    pub component: Hex,
+    pub border: Hex,
+    pub text: Hex,
+    pub text_secondary: Hex,
+    pub accent: Hex,
 }
 
 pub fn parse_hex(value: &str) -> Option<Rgb> {
@@ -100,80 +121,99 @@ pub fn bind_revision(revision: State<u32>) {
     REVISION.with(|slot| slot.set(Some(revision)));
 }
 
-pub fn apply(theme: &str, accent: Option<&str>) -> bool {
-    let index = themes()
-        .iter()
-        .position(|candidate| candidate.id == theme)
-        .unwrap_or_default();
-    let packed = accent.and_then(parse_hex).map_or(NO_ACCENT, pack);
-    let previous_theme = ACTIVE_THEME.swap(index, Ordering::Relaxed);
-    let previous_accent = ACTIVE_ACCENT.swap(packed, Ordering::Relaxed);
-    previous_theme != index || previous_accent != packed
+fn bump_revision() {
+    REVISION.with(|slot| {
+        if let Some(mut revision) = slot.get() {
+            *revision.write() += 1;
+        }
+    });
 }
 
-pub fn active_theme() -> &'static Theme {
+pub fn apply(theme: &str, accent: Option<&str>) {
+    theme.clone_into(&mut ACTIVE_THEME.write().unwrap());
+    let packed = accent.and_then(parse_hex).map_or(NO_ACCENT, pack);
+    ACTIVE_ACCENT.store(packed, Ordering::Relaxed);
+}
+
+pub fn preview(theme: Option<Theme>) {
+    *PREVIEW_THEME.write().unwrap() = theme.map(Arc::new);
+    bump_revision();
+}
+
+pub fn active_theme() -> Arc<Theme> {
     REVISION.with(|slot| {
         if let Some(revision) = slot.get() {
             let _ = revision.try_read();
         }
     });
-    &themes()[ACTIVE_THEME.load(Ordering::Relaxed)]
+    if let Some(preview) = PREVIEW_THEME.read().unwrap().clone() {
+        return preview;
+    }
+    resolve_theme(&ACTIVE_THEME.read().unwrap())
 }
 
-fn palette() -> &'static Palette {
-    &active_theme().colors
+fn palette() -> Palette {
+    active_theme().colors
+}
+
+fn strong_rgb() -> Rgb {
+    if is_light() {
+        (0, 0, 0)
+    } else {
+        (255, 255, 255)
+    }
 }
 
 fn brand_rgb() -> Rgb {
-    let palette = palette();
     match ACTIVE_ACCENT.load(Ordering::Relaxed) {
-        NO_ACCENT => palette.brand.0,
+        NO_ACCENT => palette().accent.rgb(),
         packed => unpack(packed),
     }
 }
 
 pub fn page() -> Color {
-    color(palette().page.0)
+    palette().page.color()
 }
 
 pub fn page_elevated() -> Color {
-    color(palette().page_elevated.0)
+    palette().page_elevated.color()
 }
 
 pub fn card() -> Color {
-    color(palette().card.0)
+    palette().card.color()
 }
 
 pub fn fg_primary() -> Color {
-    color(palette().fg_primary[0].0)
+    palette().text.color()
 }
 
 pub fn fg_primary_hover() -> Color {
-    color(palette().fg_primary[1].0)
+    color(mix(palette().text.rgb(), strong_rgb(), 0.12))
 }
 
 pub fn fg_primary_pressed() -> Color {
-    color(palette().fg_primary[2].0)
+    color(mix(palette().text.rgb(), strong_rgb(), 0.25))
 }
 
 pub fn fg_primary_disabled() -> Color {
-    color(palette().fg_primary[3].0)
+    let palette = palette();
+    color(mix(palette.text.rgb(), palette.page.rgb(), 0.3))
 }
 
 pub fn fg_secondary() -> Color {
-    color(palette().fg_secondary[0].0)
+    palette().text_secondary.color()
 }
 
 pub fn fg_secondary_hover() -> Color {
-    color(palette().fg_secondary[1].0)
+    color(mix(palette().text_secondary.rgb(), (0, 0, 0), 0.2))
 }
 
 pub fn fg_secondary_pressed() -> Color {
-    color(palette().fg_secondary[2].0)
+    color(mix(palette().text_secondary.rgb(), (0, 0, 0), 0.4))
 }
 
 pub fn fg_strong() -> Color {
-    color(palette().fg_strong.0)
+    color(strong_rgb())
 }
 
 pub fn on_media() -> Color {
@@ -279,7 +319,7 @@ pub fn brand_pressed() -> Color {
 }
 
 fn brand_disabled_rgb() -> Rgb {
-    mix(brand_rgb(), palette().page.0, 0.5)
+    mix(brand_rgb(), palette().page.rgb(), 0.5)
 }
 
 pub fn brand_disabled() -> Color {
@@ -291,48 +331,54 @@ pub fn disabled_opacity() -> f32 {
 }
 
 fn tinted(alpha: u8) -> Color {
-    let tint = if is_light() { 0 } else { 255 };
-    Color::from_argb(alpha, tint, tint, tint)
+    let (r, g, b) = strong_rgb();
+    Color::from_argb(alpha, r, g, b)
 }
 
 pub fn ghost_overlay() -> Color {
-    tinted(palette().ghost_alpha[0])
+    tinted(GHOST_ALPHA[0])
 }
 
 pub fn ghost_overlay_hover() -> Color {
-    tinted(palette().ghost_alpha[1])
+    tinted(GHOST_ALPHA[1])
 }
 
 pub fn ghost_overlay_pressed() -> Color {
-    tinted(palette().ghost_alpha[2])
+    tinted(GHOST_ALPHA[2])
 }
 
 pub fn component_bg() -> Color {
-    color(palette().component_bg[0].0)
+    palette().component.color()
 }
 
 pub fn component_bg_hover() -> Color {
-    color(palette().component_bg[1].0)
+    color(mix(palette().component.rgb(), strong_rgb(), 0.04))
 }
 
 pub fn component_bg_pressed() -> Color {
-    color(palette().component_bg[2].0)
+    color(mix(palette().component.rgb(), strong_rgb(), 0.09))
 }
 
 pub fn component_bg_disabled() -> Color {
-    color(palette().component_bg[3].0)
+    let palette = palette();
+    color(mix(palette.component.rgb(), palette.page.rgb(), 0.5))
+}
+
+fn border_scaled(scale: f32) -> Color {
+    let border = palette().border.color();
+    border.with_a((f32::from(border.a()) * scale).min(255.) as u8)
 }
 
 pub fn component_border() -> Color {
-    tinted(palette().border_alpha[0])
+    border_scaled(1.)
 }
 
 pub fn component_border_hover() -> Color {
-    tinted(palette().border_alpha[1])
+    border_scaled(1.6)
 }
 
 pub fn component_border_pressed() -> Color {
-    tinted(palette().border_alpha[2])
+    border_scaled(2.2)
 }
 
 pub fn control_off() -> Color {

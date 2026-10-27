@@ -1,10 +1,11 @@
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::sync::{Arc, LazyLock, RwLock};
 
 use bytes::Bytes;
 use freya::prelude::CornerRadius;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::AppAssets;
 use colors::Palette;
@@ -17,11 +18,12 @@ pub const DEFAULT_FONT: &str = "Poppins";
 pub const MONO_FONT: &str = "JetBrains Mono";
 const MINECRAFT_FONT: &str = "Minecraft";
 
-const BUILTIN_THEMES: [&str; 6] = ["dark", "amoled", "grey", "light", "white", "minecraft"];
+const BUILTIN_THEMES: [&str; 4] = ["dark", "light", "minecraft-dark", "minecraft-light"];
 
-static THEMES: LazyLock<Vec<Theme>> = LazyLock::new(load_themes);
+static THEMES: LazyLock<RwLock<Vec<Arc<Theme>>>> =
+    LazyLock::new(|| RwLock::new(load_themes().into_iter().map(Arc::new).collect()));
 
-#[derive(Deserialize)]
+#[derive(Clone, PartialEq, Deserialize, Serialize)]
 pub struct Theme {
     #[serde(skip)]
     pub id: String,
@@ -32,7 +34,7 @@ pub struct Theme {
     pub font: String,
     #[serde(default = "default_mono_font")]
     pub mono_font: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub font_files: BTreeMap<String, Vec<PathBuf>>,
     pub colors: Palette,
     #[serde(skip)]
@@ -51,8 +53,83 @@ fn default_mono_font() -> String {
     MONO_FONT.to_string()
 }
 
-pub fn themes() -> &'static [Theme] {
-    &THEMES
+impl Theme {
+    pub fn is_builtin(&self) -> bool {
+        self.dir.is_none()
+    }
+}
+
+pub fn themes() -> Vec<Arc<Theme>> {
+    THEMES.read().unwrap().clone()
+}
+
+pub fn resolve_theme(id: &str) -> Arc<Theme> {
+    let id = match id {
+        "amoled" | "grey" => "dark",
+        "white" => "light",
+        "minecraft" => "minecraft-dark",
+        id => id,
+    };
+    let themes = THEMES.read().unwrap();
+    themes
+        .iter()
+        .find(|theme| theme.id == id)
+        .unwrap_or(&themes[0])
+        .clone()
+}
+
+pub fn save_theme(mut theme: Theme) -> std::io::Result<String> {
+    let dir = oneclient_common::paths::themes_dir().map_err(std::io::Error::other)?;
+    std::fs::create_dir_all(&dir)?;
+
+    if theme.is_builtin() {
+        let slug: String = theme
+            .name
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect();
+        let slug = slug.trim_matches('-');
+        let base = if slug.is_empty() { "custom" } else { slug };
+        let taken = |id: &str| THEMES.read().unwrap().iter().any(|theme| theme.id == id);
+        theme.id = (1..)
+            .map(|n| {
+                if n == 1 {
+                    base.to_string()
+                } else {
+                    format!("{base}-{n}")
+                }
+            })
+            .find(|id| !taken(id))
+            .unwrap_or_default();
+        theme.dir = Some(dir.clone());
+    }
+
+    let json = serde_json::to_vec_pretty(&theme).map_err(std::io::Error::other)?;
+    std::fs::write(dir.join(format!("{}.json", theme.id)), json)?;
+
+    let id = theme.id.clone();
+    let mut themes = THEMES.write().unwrap();
+    match themes.iter_mut().find(|existing| existing.id == id) {
+        Some(existing) => *existing = Arc::new(theme),
+        None => themes.push(Arc::new(theme)),
+    }
+    Ok(id)
+}
+
+pub fn font_families() -> Vec<String> {
+    let mut families: Vec<String> = [DEFAULT_FONT, MONO_FONT, MINECRAFT_FONT]
+        .into_iter()
+        .map(str::to_string)
+        .chain(
+            themes()
+                .iter()
+                .flat_map(|theme| theme.font_files.keys().cloned().collect::<Vec<_>>()),
+        )
+        .collect();
+    families.sort();
+    families.dedup();
+    families
 }
 
 fn parse_theme(id: &str, json: &[u8], dir: Option<&Path>) -> Option<Theme> {
@@ -110,12 +187,12 @@ fn load_themes() -> Vec<Theme> {
     themes
 }
 
-pub fn font() -> &'static str {
-    &colors::active_theme().font
+pub fn font() -> String {
+    colors::active_theme().font.clone()
 }
 
-pub fn mono_font() -> &'static str {
-    &colors::active_theme().mono_font
+pub fn mono_font() -> String {
+    colors::active_theme().mono_font.clone()
 }
 
 pub fn rounded_px(radius: f32) -> f32 {
@@ -126,7 +203,7 @@ pub fn rounded(radius: f32) -> CornerRadius {
     CornerRadius::new_all(rounded_px(radius))
 }
 
-pub fn load_fonts() -> Vec<(&'static str, Bytes)> {
+pub fn load_fonts() -> Vec<(Cow<'static, str>, Bytes)> {
     const FONTS: [(&str, &str); 13] = [
         (DEFAULT_FONT, "fonts/Poppins/Poppins-Bold.ttf"),
         (DEFAULT_FONT, "fonts/Poppins/Poppins-BoldItalic.ttf"),
@@ -152,20 +229,25 @@ pub fn load_fonts() -> Vec<(&'static str, Bytes)> {
         Some((weight, bytes))
     });
 
-    let from_themes = themes().iter().flat_map(|theme| {
-        theme.font_files.iter().flat_map(move |(family, files)| {
-            files.iter().filter_map(move |file| {
-                let path = theme.dir.as_deref()?.join(file);
-                let bytes = std::fs::read(&path)
-                    .inspect_err(|err| {
+    let mut fonts: Vec<(Cow<'static, str>, Bytes)> = embedded
+        .map(|(family, bytes)| (Cow::Borrowed(family), bytes))
+        .collect();
+
+    for theme in themes() {
+        for (family, files) in &theme.font_files {
+            for file in files {
+                let Some(path) = theme.dir.as_deref().map(|dir| dir.join(file)) else {
+                    continue;
+                };
+                match std::fs::read(&path) {
+                    Ok(bytes) => fonts.push((Cow::Owned(family.clone()), Bytes::from(bytes))),
+                    Err(err) => {
                         tracing::error!("Failed to load theme font '{}': {err}", path.display())
-                    })
-                    .ok()?;
+                    }
+                }
+            }
+        }
+    }
 
-                Some((family.as_str(), Bytes::from(bytes)))
-            })
-        })
-    });
-
-    embedded.chain(from_themes).collect()
+    fonts
 }

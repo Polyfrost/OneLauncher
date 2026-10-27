@@ -1,16 +1,14 @@
 {
-  "name": "Dark",
+  "name": "PolyGlass Dark",
   "colors": {
     "light": false,
     "page": "#11171C",
     "page_elevated": "#151C22",
     "card": "#1A2229",
-    "fg_primary": ["#D5DBFF", "#DAE0FF", "#E1E5FF", "#CDD1EB"],
-    "fg_strong": "#FFFFFF",
-    "fg_secondary": ["#78818D", "#5F6874", "#4B5460"],
-    "component_bg": ["#1A2228", "#1D242B", "#222C35", "#10181F"],
-    "brand": "#2B4BFF",
-    "ghost_alpha": [12, 26, 38],
-    "border_alpha": [12, 25, 38]
+    "component": "#1A2229",
+    "border": "#FFFFFF1A",
+    "text": "#D5DBFF",
+    "text_secondary": "#757883",
+    "accent": "#2B4BFF"
   }
 }

@@ -1,0 +1,17 @@
+{
+  "name": "Minecraft Dark",
+  "radius_scale": 0,
+  "font": "Minecraft",
+  "mono_font": "Minecraft",
+  "colors": {
+    "light": false,
+    "page": "#11171C",
+    "page_elevated": "#11171C",
+    "card": "#1A2229",
+    "component": "#1A2229",
+    "border": "#FFFFFF1A",
+    "text": "#D5DBFF",
+    "text_secondary": "#757883",
+    "accent": "#2B4BFF"
+  }
+}

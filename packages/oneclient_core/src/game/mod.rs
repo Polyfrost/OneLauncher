@@ -1,6 +1,8 @@
 mod analytics;
 mod error;
 pub mod fabric;
+#[cfg(target_os = "macos")]
+mod game_mode;
 pub mod gpu;
 mod heal;
 mod launch;

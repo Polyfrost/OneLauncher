@@ -364,9 +364,13 @@ pub fn component_bg_disabled() -> Color {
     color(mix(palette.component.rgb(), palette.page.rgb(), 0.5))
 }
 
+pub fn with_alpha(color: Color, alpha: u8) -> Color {
+    Color::from_argb(alpha, color.r(), color.g(), color.b())
+}
+
 fn border_scaled(scale: f32) -> Color {
     let border = palette().border.color();
-    border.with_a((f32::from(border.a()) * scale).min(255.) as u8)
+    with_alpha(border, (f32::from(border.a()) * scale).min(255.) as u8)
 }
 
 pub fn component_border() -> Color {

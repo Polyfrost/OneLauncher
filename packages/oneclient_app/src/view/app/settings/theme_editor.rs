@@ -218,10 +218,10 @@ fn border_color_row(draft: State<Theme>) -> impl IntoElement {
         IconType::Square,
         "Border color",
         "Outlines around cards, inputs and dialogs.",
-        ColorPicker::new(border.with_a(255), move |picked: Color| {
+        ColorPicker::new(colors::with_alpha(border, 255), move |picked: Color| {
             let mut draft = draft;
             let alpha = draft.peek().colors.border.color().a();
-            draft.write().colors.border = Hex::from(picked.with_a(alpha));
+            draft.write().colors.border = Hex::from(colors::with_alpha(picked, alpha));
         })
         .into_element(),
     )
@@ -247,7 +247,7 @@ fn border_opacity_row(draft: State<Theme>) -> impl IntoElement {
                 let mut draft = draft;
                 let alpha = (u32::from(BORDER_OPACITIES[index]) * 255 / 100) as u8;
                 let border = draft.peek().colors.border.color();
-                draft.write().colors.border = Hex::from(border.with_a(alpha));
+                draft.write().colors.border = Hex::from(colors::with_alpha(border, alpha));
             }),
     )
 }

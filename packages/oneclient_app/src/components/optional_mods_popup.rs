@@ -6,7 +6,7 @@ use oneclient_db::models::SeenStatus;
 
 use crate::components::{
     Button, CARD_GRID_H, GRID_GAP, GRID_MIN_W, Icon, IconType, OverlayPopup, PackageEntry,
-    grid_card, package_icon,
+    ScrollArea, grid_card, package_icon,
 };
 use crate::hooks::{
     package_meta_batch, use_cached_image, use_dispatch, use_notifications_snapshot,
@@ -297,7 +297,7 @@ fn mod_list(
         }
     }
 
-    ScrollView::new()
+    ScrollArea::new()
         .width(Size::fill())
         .height(Size::Inner)
         .max_height(Size::px(LIST_MAX_H))

@@ -90,10 +90,11 @@ pub enum ModpackOrigin {
     File,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum FolderChoice {
     Shared,
     Dedicated,
+    Custom(String),
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]

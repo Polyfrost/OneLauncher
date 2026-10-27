@@ -1267,7 +1267,10 @@ async fn sharing_scope(
         return Ok(None);
     }
 
-    let sharing = crate::packages::store::sharing_cluster_ids(&ctx.db).await?;
+    let Some(cluster) = oneclient_db::dao::cluster::get_by_id(&ctx.db, cluster_id).await? else {
+        return Ok(None);
+    };
+    let sharing = crate::packages::store::sharing_with(&ctx.db, &cluster).await?;
 
     Ok(sharing.contains(&cluster_id).then_some(sharing))
 }

@@ -44,10 +44,9 @@ pub(super) fn use_game_folder_in_use(cluster: Option<&Cluster>) -> bool {
 
     cluster.is_some_and(|cluster| {
         game.is_active(cluster.id)
-            || (!cluster.uses_dedicated_dir()
-                && clusters
-                    .iter()
-                    .any(|c| game.is_active(c.id) && !c.uses_dedicated_dir()))
+            || clusters
+                .iter()
+                .any(|c| game.is_active(c.id) && c.shares_dir_with(cluster))
     })
 }
 

@@ -74,17 +74,13 @@ pub(super) async fn modpack_job_in_shared_dir(cluster_id: ClusterId) -> bool {
     let Ok(state) = launcher::state() else {
         return false;
     };
-    let shares = |id| {
-        let state = state.clone();
-        async move {
-            state
-                .clusters
-                .get(id)
-                .await
-                .is_ok_and(|cluster| !cluster.uses_dedicated_dir())
-        }
-    };
-    shares(cluster_id).await && shares(busy).await
+    match (
+        state.clusters.get(cluster_id).await,
+        state.clusters.get(busy).await,
+    ) {
+        (Ok(cluster), Ok(busy)) => cluster.shares_dir_with(&busy),
+        _ => false,
+    }
 }
 
 fn take_prepared() -> Option<PreparedModpack> {

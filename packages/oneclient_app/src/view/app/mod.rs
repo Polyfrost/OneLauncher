@@ -49,12 +49,13 @@ pub fn shared_dir_taken(game: &GameSnapshot, clusters: &[Cluster], cluster_id: i
         .filter(|c| c.id != cluster_id && (game.is_active(c.id) || game.is_launch_pending(c.id)))
         .peekable();
 
+    let Some(this) = clusters.iter().find(|c| c.id == cluster_id) else {
+        return false;
+    };
+
     (others.peek().is_some() || game.any_shared_sync())
-        && clusters
-            .iter()
-            .find(|c| c.id == cluster_id)
-            .is_some_and(|c| !c.uses_dedicated_dir())
-        && (game.any_shared_sync() || others.any(|c| !c.uses_dedicated_dir()))
+        && !this.uses_dedicated_dir()
+        && (game.any_shared_sync() || others.any(|c| c.shares_dir_with(this)))
 }
 
 pub fn use_shared_dir_taken(cluster_id: i64) -> bool {

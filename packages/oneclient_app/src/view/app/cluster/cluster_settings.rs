@@ -10,14 +10,14 @@ use oneclient_core::settings::{
 use oneclient_java::JavaRuntime;
 
 use crate::components::{
-    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle,
-    toggle_controlled, validate_number,
+    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle, validate_number,
 };
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
     settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
     use_game_profile, use_game_snapshot, use_java_runtimes, use_loader_versions,
     use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
+    use_shared_groups,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
@@ -29,7 +29,7 @@ use crate::view::app::clusters::{
 use crate::view::app::settings::{
     section_header, settings_row, settings_row_danger, settings_row_disabled,
 };
-use oneclient_core::clusters::{can_migrate_manually, rank_migration_sources};
+use oneclient_core::clusters::{DirTarget, can_migrate_manually, rank_migration_sources};
 
 use super::cluster_not_found;
 use super::imported_modpacks::ImportedModpacksSection;
@@ -139,10 +139,16 @@ impl Component for ClusterSettings {
             Vec::new()
         };
 
-        let sync_row: Vec<Element> = if cluster.uses_dedicated_dir() && !cluster.is_isolated() {
-            vec![SyncSharedRow { cluster_id }.into_element()]
-        } else {
+        let sync_row: Vec<Element> = if cluster.is_isolated() {
             Vec::new()
+        } else {
+            vec![
+                SyncSharedRow {
+                    cluster_id,
+                    target: cluster.dir_target(),
+                }
+                .into_element(),
+            ]
         };
 
         let modpack_section: Vec<Element> = if cluster.linked_modpack_hash.is_some() {
@@ -166,9 +172,9 @@ impl Component for ClusterSettings {
                     .child(section_header("INSTANCE"))
                     .child(instance_row)
                     .child(
-                        DedicatedDirRow {
+                        DirTargetRow {
                             cluster_id,
-                            dedicated: cluster.uses_dedicated_dir(),
+                            target: cluster.dir_target(),
                             locked: cluster.is_isolated(),
                         }
                         .into_element(),
@@ -637,6 +643,7 @@ impl Component for ResetInstanceRow {
 #[derive(PartialEq)]
 struct SyncSharedRow {
     cluster_id: i64,
+    target: DirTarget,
 }
 
 impl Component for SyncSharedRow {
@@ -644,13 +651,41 @@ impl Component for SyncSharedRow {
         let cluster_id = self.cluster_id;
         let dispatch = use_dispatch();
         let syncing = use_game_snapshot().is_syncing_shared(cluster_id);
+        let groups = settled_or_loading(&use_shared_groups()).unwrap_or_default();
+        let mut picked = use_state(|| None::<Option<String>>);
 
+        let sources: Vec<Option<String>> = std::iter::once(None)
+            .chain(groups.into_iter().map(Some))
+            .filter(|source| self.target != DirTarget::Shared(source.clone()))
+            .collect();
+        let Some(first) = sources.first().cloned() else {
+            return rect().into_element();
+        };
+        let from = picked
+            .read()
+            .clone()
+            .filter(|source| sources.contains(source))
+            .unwrap_or(first);
+        let label =
+            |source: &Option<String>| source.clone().unwrap_or_else(|| "Shared".to_string());
+
+        let picker = Dropdown::new(label(&from), sources.iter().map(label).collect())
+            .width(Size::px(160.))
+            .height(Size::px(34.))
+            .on_select({
+                let sources = sources.clone();
+                move |idx: usize| {
+                    if let Some(source) = sources.get(idx) {
+                        picked.set(Some(source.clone()));
+                    }
+                }
+            });
         let button = Button::new()
             .small()
             .secondary()
             .enabled(!syncing)
             .maybe(!syncing, |el| {
-                el.on_press(move |_| dispatch.sync_from_shared_dir(cluster_id))
+                el.on_press(move |_| dispatch.sync_from_shared_dir(cluster_id, from.clone()))
             })
             .text(if syncing { "Syncing..." } else { "Sync" });
 
@@ -658,42 +693,61 @@ impl Component for SyncSharedRow {
             IconType::RefreshCcw02,
             "Sync From Shared Folder",
             "Copy settings, keybinds, servers, mod configs and missing worlds \
-             from the shared .minecraft into this instance.",
-            button,
+             from the folder you pick into the one this instance uses.",
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .child(picker)
+                .child(button),
         )
+        .into_element()
     }
 }
 
 #[derive(PartialEq)]
-struct DedicatedDirRow {
+struct DirTargetRow {
     cluster_id: i64,
-    dedicated: bool,
+    target: DirTarget,
     locked: bool,
 }
 
-impl Component for DedicatedDirRow {
+impl Component for DirTargetRow {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
-        let dedicated = self.dedicated;
+        let current = self.target.clone();
         let mutation = use_cluster_mutation();
         let dispatch = use_dispatch();
+        let groups = settled_or_loading(&use_shared_groups()).unwrap_or_default();
+        let mut naming = use_state(|| false);
+        let mut name = use_state(String::new);
 
         if self.locked {
             return settings_row_disabled(
                 IconType::Folder,
-                "Dedicated Directory",
+                "Game Directory",
                 "Vanilla and modded instances always run in their own folder, so their worlds, settings and packs stay separate.",
-                toggle_controlled(true, (|()| {}).into()),
+                Dropdown::new("Dedicated".to_string(), vec!["Dedicated".to_string()])
+                    .width(Size::px(220.))
+                    .height(Size::px(34.)),
             )
             .into_element();
         }
 
-        let on_toggle: EventHandler<()> = (move |()| {
-            let action = ClusterAction::SetDedicatedDir {
+        let switch = move |target: DirTarget, create: bool| {
+            if target == current && !create {
+                return;
+            }
+            let action = ClusterAction::SetDirTarget {
                 cluster_id,
-                dedicated: !dedicated,
+                target: target.clone(),
+                create,
             };
-            if dedicated {
+            let DirTarget::Shared(from) = current.clone() else {
+                mutation.mutate(action);
+                return;
+            };
+            if target != DirTarget::Dedicated {
                 mutation.mutate(action);
                 return;
             }
@@ -705,17 +759,75 @@ impl Component for DedicatedDirRow {
                     &*reader.state(),
                     MutationStateData::Settled { res: Ok(_), .. }
                 ) {
-                    dispatch.sync_from_shared_dir(cluster_id);
+                    dispatch.sync_from_shared_dir(cluster_id, from);
                 }
             });
-        })
-        .into();
+        };
+
+        let control = if *naming.read() {
+            let mut submit = {
+                let switch = switch.clone();
+                move || {
+                    let typed = name.peek().trim().to_string();
+                    if typed.is_empty() {
+                        return;
+                    }
+                    naming.set(false);
+                    name.set(String::new());
+                    switch(DirTarget::Shared(Some(typed)), true);
+                }
+            };
+            rect()
+                .horizontal()
+                .cross_align(Alignment::Center)
+                .spacing(8.)
+                .child(
+                    TextInput::new(name)
+                        .placeholder("Folder name")
+                        .compact()
+                        .auto_focus(true)
+                        .width(Size::px(160.))
+                        .on_submit(move |_: String| submit()),
+                )
+                .child(
+                    Button::new()
+                        .small()
+                        .secondary()
+                        .on_press(move |_| naming.set(false))
+                        .text("Cancel"),
+                )
+                .into_element()
+        } else {
+            let mut options = vec!["Dedicated".to_string(), "Shared".to_string()];
+            options.extend(groups.iter().cloned());
+            options.push("New shared folder...".to_string());
+            let selected = match &self.target {
+                DirTarget::Dedicated => "Dedicated".to_string(),
+                DirTarget::Shared(None) => "Shared".to_string(),
+                DirTarget::Shared(Some(group)) => group.clone(),
+            };
+            let create = options.len() - 1;
+            Dropdown::new(selected, options)
+                .width(Size::px(220.))
+                .height(Size::px(34.))
+                .on_select(move |idx: usize| match idx {
+                    0 => switch(DirTarget::Dedicated, false),
+                    1 => switch(DirTarget::Shared(None), false),
+                    idx if idx == create => naming.set(true),
+                    idx => {
+                        if let Some(group) = groups.get(idx - 2) {
+                            switch(DirTarget::Shared(Some(group.clone())), false);
+                        }
+                    }
+                })
+                .into_element()
+        };
 
         settings_row(
             IconType::Folder,
-            "Dedicated Directory",
-            "Run this cluster in its own .minecraft instead of the shared one.",
-            toggle_controlled(dedicated, on_toggle),
+            "Game Directory",
+            "Run this cluster in its own folder, the default shared .minecraft, or a custom folder shared with the clusters you pick.",
+            control,
         )
         .into_element()
     }

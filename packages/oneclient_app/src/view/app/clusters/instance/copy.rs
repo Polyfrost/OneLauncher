@@ -89,13 +89,16 @@ pub fn footer_note(picks: &Picks) -> String {
                     .to_string()
             }
         },
-        Step::Folder => match picks.folder {
+        Step::Folder => match &picks.folder {
             FolderChoice::Shared => {
                 "Only one instance using the shared folder can run at a time.".to_string()
             }
             FolderChoice::Dedicated => {
                 "Can run alongside your other instances. Switch this later in the instance settings."
                     .to_string()
+            }
+            FolderChoice::Custom(group) => {
+                format!("Only one instance using {group} can run at a time.")
             }
         },
         Step::Loader => match (&picks.versions.chosen, picks.loader.chosen) {
@@ -165,9 +168,10 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
             TypeChoice::Modpack => "Modpack".to_string(),
             TypeChoice::Import => "Import".to_string(),
         },
-        Step::Folder => match picks.folder {
+        Step::Folder => match &picks.folder {
             FolderChoice::Shared => "Shared".to_string(),
             FolderChoice::Dedicated => "Dedicated".to_string(),
+            FolderChoice::Custom(group) => group.clone(),
         },
         Step::Loader => picks.loader_label(),
         Step::Version => picks

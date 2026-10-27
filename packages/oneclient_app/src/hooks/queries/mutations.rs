@@ -11,7 +11,7 @@ use super::bundles::{
     ModpackSourcesQuery,
 };
 use super::cluster_content::{ClusterContentQuery, MigratableRoutesQuery, ShadowedModsQuery};
-use super::clusters::ListClustersQuery;
+use super::clusters::{ListClustersQuery, SharedGroupsQuery};
 use super::package_updates::PackageUpdatesQuery;
 use super::settings_profiles::{
     ClusterProfileQuery, ClusterSettingsQuery, GameProfileQuery, ListNamedProfilesQuery,
@@ -58,6 +58,11 @@ pub async fn invalidate_cluster_queries() {
     timed(
         "clusters",
         QueriesStorage::<ListClustersQuery>::invalidate_all(),
+    )
+    .await;
+    timed(
+        "shared_groups",
+        QueriesStorage::<SharedGroupsQuery>::invalidate_all(),
     )
     .await;
     timed(
@@ -191,9 +196,13 @@ pub enum ClusterAction {
         /// writes `Enabled` / `Disabled`
         manifest_default: bool,
     },
-    SetDedicatedDir {
+    SetDirTarget {
         cluster_id: ClusterId,
-        dedicated: bool,
+        target: oneclient_core::clusters::DirTarget,
+        create: bool,
+    },
+    DeleteSharedGroup {
+        name: String,
     },
     VerifyFiles {
         cluster_id: ClusterId,
@@ -209,6 +218,7 @@ pub enum ClusterAction {
         cover_source: Option<PathBuf>,
         bundles: Option<Vec<String>>,
         dedicated: bool,
+        shared_group: Option<String>,
     },
     UpdateInstance {
         cluster_id: ClusterId,
@@ -301,16 +311,17 @@ impl MutationCapability for ClusterMutation {
                 )
                 .await
             }
-            ClusterAction::SetDedicatedDir { cluster_id, .. }
+            ClusterAction::SetDirTarget { cluster_id, .. }
                 if state.games.is_syncing(*cluster_id) =>
             {
                 Err(oneclient_content::ContentError::InvalidData {
                     reason: "Wait for the sync to finish before changing the folder.".to_string(),
                 })
             }
-            ClusterAction::SetDedicatedDir {
+            ClusterAction::SetDirTarget {
                 cluster_id,
-                dedicated,
+                target,
+                create,
             } => {
                 // Switching moves the instance's files, which a reset is moving too
                 if oneclient_core::clusters::is_resetting(*cluster_id) {
@@ -324,46 +335,83 @@ impl MutationCapability for ClusterMutation {
                             .to_string(),
                     })
                 } else {
-                    let switching = state
+                    use oneclient_core::clusters::DirTarget;
+                    let previous = state
                         .clusters
                         .get(*cluster_id)
                         .await
-                        .is_ok_and(|cluster| cluster.uses_dedicated_dir() != *dedicated);
-                    let mut result = state
-                        .clusters
-                        .set_dedicated_dir(
-                            *cluster_id,
-                            *dedicated,
-                            state.games.is_active(*cluster_id),
-                        )
-                        .await
-                        .map_err(|err| err.to_string());
+                        .ok()
+                        .map(|cluster| cluster.dir_target());
+                    let mut target = target.clone();
+                    let mut result = Ok(());
+                    if let DirTarget::Shared(Some(name)) = &target {
+                        let resolved = if *create {
+                            state.clusters.create_shared_group(name).await.map(Some)
+                        } else {
+                            state.clusters.find_shared_group(name).await
+                        };
+                        match resolved {
+                            Ok(Some(group)) => target = DirTarget::Shared(Some(group)),
+                            Ok(None) => {
+                                result = Err(format!("There is no shared folder named {name}."))
+                            }
+                            Err(err) => result = Err(err.to_string()),
+                        }
+                    }
+                    let switching = previous.as_ref().is_some_and(|from| *from != target);
+                    if result.is_ok() {
+                        result = state
+                            .clusters
+                            .set_dir_target(
+                                *cluster_id,
+                                &target,
+                                state.games.is_active(*cluster_id),
+                            )
+                            .await
+                            .map_err(|err| err.to_string());
+                    }
                     if result.is_ok()
                         && switching
                         && let Ok(cluster) = state.clusters.get(*cluster_id).await
                     {
-                        if !*dedicated {
-                            oneclient_core::game::join_shared_folder(&state.services, &cluster)
-                                .await;
-                        } else if let Ok(dir) = cluster.dir()
+                        if let Some(DirTarget::Shared(from)) = &previous
+                            && let Ok(dir) = cluster.dir()
                             && let Err(err) = oneclient_core::game::leave_shared_folder(
                                 &state.services,
                                 &cluster,
                                 &dir,
+                                from.as_deref(),
                             )
                             .await
                         {
-                            state
-                                .clusters
-                                .set_dedicated_dir(*cluster_id, false, false)
-                                .await
-                                .ok();
+                            if let Some(previous) = &previous {
+                                state
+                                    .clusters
+                                    .set_dir_target(*cluster_id, previous, false)
+                                    .await
+                                    .ok();
+                            }
                             result = Err(err.to_string());
+                        } else if matches!(target, DirTarget::Shared(_)) {
+                            oneclient_core::game::join_shared_folder(&state.services, &cluster)
+                                .await;
                         }
                     }
                     result.map_err(|reason| oneclient_content::ContentError::InvalidData { reason })
                 }
             }
+            ClusterAction::DeleteSharedGroup { .. } if state.games.any_syncing() => {
+                Err(oneclient_content::ContentError::InvalidData {
+                    reason: "Wait for the sync to finish before deleting a folder.".to_string(),
+                })
+            }
+            ClusterAction::DeleteSharedGroup { name } => state
+                .clusters
+                .delete_shared_group(name)
+                .await
+                .map_err(|err| oneclient_content::ContentError::InvalidData {
+                    reason: err.to_string(),
+                }),
             ClusterAction::VerifyFiles { cluster_id } => {
                 // Reports its own outcome not the generic failure toast a
                 // verify that finds nothing wrong is still a useful result
@@ -399,6 +447,7 @@ impl MutationCapability for ClusterMutation {
                 cover_source,
                 bundles,
                 dedicated,
+                shared_group,
             } => {
                 let global = state.settings.read().global_game_settings.clone();
                 let mut options = oneclient_core::clusters::CreateClusterOptions::new(
@@ -423,6 +472,26 @@ impl MutationCapability for ClusterMutation {
                                 .events
                                 .notify("Couldn't give the instance its own folder")
                                 .body(format!("It uses the shared folder for now: {err}"))
+                                .error()
+                                .send();
+                        }
+                        if let Some(group) = shared_group
+                            && let Err(err) = state
+                                .clusters
+                                .set_dir_target(
+                                    cluster.id,
+                                    &oneclient_core::clusters::DirTarget::Shared(Some(
+                                        group.clone(),
+                                    )),
+                                    false,
+                                )
+                                .await
+                        {
+                            tracing::warn!(cluster_id = cluster.id, error = %err, "failed to put the new instance in its shared folder");
+                            services
+                                .events
+                                .notify(format!("Couldn't put the instance in {group}"))
+                                .body(format!("It uses the default shared folder for now: {err}"))
                                 .error()
                                 .send();
                         }

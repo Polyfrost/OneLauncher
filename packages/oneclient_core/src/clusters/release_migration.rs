@@ -228,9 +228,6 @@ pub async fn copy_configs(
     source: &Cluster,
     target: &Cluster,
 ) -> LauncherResult<usize> {
-    if !target.uses_dedicated_dir() {
-        return Ok(0);
-    }
     let from = source.game_dir()?.join("config");
     let to = target.game_dir()?.join("config");
     if from == to || !polyio::try_exists(&from).await? {

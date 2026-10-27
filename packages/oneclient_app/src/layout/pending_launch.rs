@@ -86,7 +86,7 @@ async fn shared_dir_neighbours(state: &LauncherState, cluster: &Cluster) -> Vec<
     match state.clusters.list().await {
         Ok(clusters) => clusters
             .into_iter()
-            .filter(|other| other.id != cluster.id && !other.uses_dedicated_dir())
+            .filter(|other| other.id != cluster.id && other.shares_dir_with(cluster))
             .map(|other| other.id)
             .collect(),
         Err(err) => {

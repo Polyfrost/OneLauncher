@@ -139,6 +139,8 @@ pub fn shared_minecraft_dir() -> PathsResult<PathBuf> {
 /// Presence marks a cluster folder as its own game dir instead of the shared `.minecraft`
 pub const DEDICATED_MARKER: &str = ".dedicated_directory";
 
+pub const SHARED_GROUP_MARKER: &str = ".shared_group";
+
 pub const INSTANCE_FILE: &str = ".instance.json";
 
 pub fn cluster_dir(folder_name: &str) -> PathsResult<PathBuf> {
@@ -149,13 +151,44 @@ pub fn cluster_uses_dedicated_dir(folder_name: &str) -> bool {
     cluster_dir(folder_name).is_ok_and(|dir| dir.join(DEDICATED_MARKER).exists())
 }
 
+pub fn shared_groups_dir() -> PathsResult<PathBuf> {
+    Ok(data_dir()?.join("shared"))
+}
+
+#[must_use]
+pub fn is_shared_group_name(name: &str) -> bool {
+    let mut parts = Path::new(name).components();
+    matches!(parts.next(), Some(std::path::Component::Normal(_)))
+        && parts.next().is_none()
+        && !name.contains(['/', '\\'])
+}
+
+#[must_use]
+pub fn cluster_shared_group(folder_name: &str) -> Option<String> {
+    let marker = cluster_dir(folder_name).ok()?.join(SHARED_GROUP_MARKER);
+    let name = std::fs::read_to_string(marker).ok()?;
+    let name = name.trim();
+    is_shared_group_name(name).then(|| name.to_string())
+}
+
+pub fn shared_group_dir(group: Option<&str>) -> PathsResult<PathBuf> {
+    match group {
+        Some(group) => Ok(shared_groups_dir()?.join(group)),
+        None => shared_minecraft_dir(),
+    }
+}
+
+pub fn cluster_shared_dir(folder_name: &str) -> PathsResult<PathBuf> {
+    shared_group_dir(cluster_shared_group(folder_name).as_deref())
+}
+
 /// Lives here not on `Cluster` so the content layer can resolve it from a bare
 /// `ClusterRow` without duplicating the marker-file rule
 pub fn cluster_game_dir(folder_name: &str, isolated: bool) -> PathsResult<PathBuf> {
     if isolated || cluster_uses_dedicated_dir(folder_name) {
         cluster_dir(folder_name)
     } else {
-        shared_minecraft_dir()
+        cluster_shared_dir(folder_name)
     }
 }
 
@@ -163,8 +196,8 @@ pub fn cluster_mods_dir(folder_name: &str) -> PathsResult<PathBuf> {
     Ok(cluster_dir(folder_name)?.join(ContentType::Mod.folder_name()))
 }
 
-pub fn shared_mods_dir() -> PathsResult<PathBuf> {
-    Ok(shared_minecraft_dir()?.join(ContentType::Mod.folder_name()))
+pub fn shared_mods_dir(group: Option<&str>) -> PathsResult<PathBuf> {
+    Ok(shared_group_dir(group)?.join(ContentType::Mod.folder_name()))
 }
 
 pub fn global_content_dir(content_type: ContentType) -> PathsResult<PathBuf> {
@@ -172,7 +205,7 @@ pub fn global_content_dir(content_type: ContentType) -> PathsResult<PathBuf> {
 }
 
 pub fn shared_mods_link(folder_name: &str) -> PathsResult<PathBuf> {
-    Ok(shared_mods_dir()?.join(folder_name))
+    Ok(shared_mods_dir(cluster_shared_group(folder_name).as_deref())?.join(folder_name))
 }
 
 pub fn packages_cache_dir() -> PathsResult<PathBuf> {
@@ -260,6 +293,15 @@ pub fn package_version_dir(
 mod tests {
     use super::*;
     use std::ffi::OsStr;
+
+    #[test]
+    fn a_shared_group_name_cannot_leave_the_shared_folder() {
+        assert!(is_shared_group_name("Survival"));
+        assert!(is_shared_group_name("My Friends (2)"));
+        for name in ["", ".", "..", "a/b", "a\\b", "../x", "/abs"] {
+            assert!(!is_shared_group_name(name), "{name:?}");
+        }
+    }
 
     #[test]
     fn the_launcher_sits_one_level_under_the_organization_folder() {

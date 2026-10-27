@@ -469,11 +469,7 @@ fn config_owned_names(dir: &Path) -> Vec<OsString> {
 
 async fn drop_materialized_content(state: &LauncherState) {
     let mut dirs = Vec::new();
-
-    if let Ok(shared) = paths::shared_minecraft_dir() {
-        dirs.push((shared.clone(), manifest::MANIFEST_NAME));
-        dirs.push((shared, manifest::GLOBAL_MANIFEST_NAME));
-    }
+    let mut shared_dirs: Vec<_> = paths::shared_minecraft_dir().into_iter().collect();
 
     match state.clusters.list().await {
         Ok(clusters) => {
@@ -486,12 +482,22 @@ async fn drop_materialized_content(state: &LauncherState) {
                     && let Ok(dir) = cluster.game_dir()
                 {
                     dirs.push((dir, manifest::MANIFEST_NAME));
+                } else if cluster.shared_group().is_some()
+                    && let Ok(dir) = cluster.game_dir()
+                    && !shared_dirs.contains(&dir)
+                {
+                    shared_dirs.push(dir);
                 }
             }
         }
         Err(err) => {
             tracing::warn!(%err, "could not list clusters; only clearing the shared folder")
         }
+    }
+
+    for shared in &shared_dirs {
+        dirs.push((shared.clone(), manifest::MANIFEST_NAME));
+        dirs.push((shared.clone(), manifest::GLOBAL_MANIFEST_NAME));
     }
 
     for (dir, manifest_name) in dirs {
@@ -511,8 +517,8 @@ async fn drop_materialized_content(state: &LauncherState) {
         manifest::clear(&dir, manifest_name).await;
     }
 
-    if let Ok(shared) = paths::shared_minecraft_dir() {
-        crate::game::unlink_cluster_logs(&shared).await;
+    for shared in &shared_dirs {
+        crate::game::unlink_cluster_logs(shared).await;
     }
 }
 

@@ -5,6 +5,7 @@ use freya::radio::RadioStation;
 use oneclient_cluster::SyncReport;
 use oneclient_content::packages::fabric_version;
 use oneclient_core::LauncherState;
+use oneclient_core::clusters::DirTarget;
 use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt};
 use uuid::Uuid;
@@ -15,13 +16,15 @@ use crate::launcher::{self, off_ui};
 use crate::state::{AppChannel, AppState};
 
 impl Actions {
-    pub fn sync_from_shared_dir(&self, cluster_id: ClusterId) {
+    pub fn sync_from_shared_dir(&self, cluster_id: ClusterId, from: Option<String>) {
         let actions = self.clone();
         spawn_forever(async move {
             let Ok(state) = launcher::state() else { return };
 
-            let newer = newer_shared_versions(&state, cluster_id).await;
-            let include_worlds = match actions.events().ask(sync_prompt(&newer)).await {
+            let newer = newer_shared_versions(&state, cluster_id, from.as_deref()).await;
+            let neighbours = folder_neighbours(&state, cluster_id).await;
+            let include_worlds = match actions.events().ask(sync_prompt(&newer, &neighbours)).await
+            {
                 Ok(Some(chosen)) => chosen.value,
                 Ok(None) => return,
                 Err(err) => {
@@ -30,8 +33,14 @@ impl Actions {
                 }
             };
 
-            let shared_dir = match oneclient_common::paths::shared_minecraft_dir() {
-                Ok(dir) => dir,
+            let dirs = async {
+                let shared = oneclient_common::paths::shared_group_dir(from.as_deref())?;
+                let dest = state.clusters.get(cluster_id).await?.game_dir()?;
+                Ok::<_, oneclient_cluster::ClusterError>((shared, dest))
+            }
+            .await;
+            let (shared_dir, dest) = match dirs {
+                Ok(dirs) => dirs,
                 Err(err) => {
                     actions
                         .notify("Couldn't sync from the shared folder")
@@ -41,7 +50,7 @@ impl Actions {
                     return;
                 }
             };
-            let _sync = match state.games.begin_sync(cluster_id, &shared_dir) {
+            let _sync = match state.games.begin_sync(cluster_id, &[&shared_dir, &dest]) {
                 Ok(sync) => sync,
                 Err(block) => {
                     actions
@@ -69,9 +78,12 @@ impl Actions {
             let result = off_ui(async move {
                 worker
                     .clusters
-                    .sync_from_shared(cluster_id, include_worlds, |label, done, total| {
-                        progress.progress(progress_id, label, done, total)
-                    })
+                    .sync_from_shared(
+                        cluster_id,
+                        from.as_deref(),
+                        include_worlds,
+                        |label, done, total| progress.progress(progress_id, label, done, total),
+                    )
                     .await
             })
             .await;
@@ -143,7 +155,11 @@ impl Drop for ShownSync {
     }
 }
 
-async fn newer_shared_versions(state: &LauncherState, cluster_id: ClusterId) -> Vec<String> {
+async fn newer_shared_versions(
+    state: &LauncherState,
+    cluster_id: ClusterId,
+    from: Option<&str>,
+) -> Vec<String> {
     let Ok(clusters) = state.clusters.list().await else {
         return Vec::new();
     };
@@ -153,7 +169,7 @@ async fn newer_shared_versions(state: &LauncherState, cluster_id: ClusterId) -> 
 
     let mut newer: Vec<String> = clusters
         .iter()
-        .filter(|other| !other.is_isolated() && !other.uses_dedicated_dir())
+        .filter(|other| other.dir_target() == DirTarget::Shared(from.map(str::to_owned)))
         .filter(|other| {
             fabric_version::compare(&other.mc_version, &this.mc_version) == Ordering::Greater
         })
@@ -164,13 +180,38 @@ async fn newer_shared_versions(state: &LauncherState, cluster_id: ClusterId) -> 
     newer
 }
 
-fn sync_prompt(newer: &[String]) -> Prompt<bool> {
-    const BODY: &str = "Copy settings, keybinds, the server list and mod configs from the shared \
-        .minecraft into this instance, replacing its own. Worlds missing here are copied too; \
-        worlds this instance already has are left untouched.";
+async fn folder_neighbours(state: &LauncherState, cluster_id: ClusterId) -> Vec<String> {
+    let Ok(clusters) = state.clusters.list().await else {
+        return Vec::new();
+    };
+    let Some(this) = clusters.iter().find(|cluster| cluster.id == cluster_id) else {
+        return Vec::new();
+    };
+    clusters
+        .iter()
+        .filter(|other| other.id != cluster_id && other.shares_dir_with(this))
+        .map(|other| other.name.clone())
+        .collect()
+}
+
+fn sync_prompt(newer: &[String], neighbours: &[String]) -> Prompt<bool> {
+    const COPIED: &str = "Copy settings, keybinds, the server list and mod configs from the \
+        shared folder";
+    const WORLDS: &str = "Worlds missing here are copied too; worlds already there are left \
+        untouched.";
+    let body = if neighbours.is_empty() {
+        format!("{COPIED} into this instance, replacing its own. {WORLDS}")
+    } else {
+        format!(
+            "{COPIED} into the folder this instance uses, replacing the ones there. {} also \
+             {} that folder, so their settings change too. {WORLDS}",
+            listed(neighbours.iter().cloned()),
+            if neighbours.len() == 1 { "uses" } else { "use" }
+        )
+    };
 
     if newer.is_empty() {
-        return Prompt::new("Sync from the shared folder", BODY)
+        return Prompt::new("Sync from the shared folder", body)
             .option(Choice::primary("sync_shared.everything", "Sync"), true)
             .dismiss("Cancel");
     }
@@ -178,7 +219,7 @@ fn sync_prompt(newer: &[String]) -> Prompt<bool> {
     Prompt::new(
         "Sync from the shared folder",
         format!(
-            "{BODY} The shared folder is also used by Minecraft {}. Worlds saved there can break \
+            "{body} The shared folder is also used by Minecraft {}. Worlds saved there can break \
              in this older version, and its settings may reset some keybinds.",
             listed(newer.iter().cloned())
         ),

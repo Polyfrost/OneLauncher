@@ -575,7 +575,9 @@ async fn refuse_while_shared_game_runs(
         return Ok(());
     }
     for other in state.clusters.list().await? {
-        if other.id != cluster.id && !other.uses_dedicated_dir() && state.games.is_active(other.id)
+        if other.id != cluster.id
+            && other.shares_dir_with(cluster)
+            && state.games.is_active(other.id)
         {
             return Err(invalid(format!(
                 "Close Minecraft in {} first. It uses the same game folder as {}.",
@@ -674,7 +676,7 @@ async fn shared_elsewhere(
         return Ok(None);
     }
     for other in state.clusters.list().await? {
-        if other.id == cluster.id || other.uses_dedicated_dir() {
+        if other.id == cluster.id || !other.shares_dir_with(cluster) {
             continue;
         }
         if read_imported(&other)

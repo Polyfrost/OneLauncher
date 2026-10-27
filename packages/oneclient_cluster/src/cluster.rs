@@ -16,6 +16,12 @@ use crate::stage::ClusterStage;
 
 pub use oneclient_common::paths::DEDICATED_MARKER;
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum DirTarget {
+    Dedicated,
+    Shared(Option<String>),
+}
+
 // takes a cluster out of the shared `mods` folder
 pub async fn remove_mods_link(folder_name: &str) {
     let Ok(link) = paths::shared_mods_link(folder_name) else {
@@ -119,6 +125,27 @@ impl Cluster {
 
     pub fn uses_dedicated_dir(&self) -> bool {
         self.is_isolated() || paths::cluster_uses_dedicated_dir(&self.folder_name)
+    }
+
+    pub fn shared_group(&self) -> Option<String> {
+        if self.uses_dedicated_dir() {
+            return None;
+        }
+        paths::cluster_shared_group(&self.folder_name)
+    }
+
+    pub fn dir_target(&self) -> DirTarget {
+        if self.uses_dedicated_dir() {
+            DirTarget::Dedicated
+        } else {
+            DirTarget::Shared(self.shared_group())
+        }
+    }
+
+    pub fn shares_dir_with(&self, other: &Self) -> bool {
+        !self.uses_dedicated_dir()
+            && !other.uses_dedicated_dir()
+            && self.shared_group() == other.shared_group()
     }
 
     pub fn is_isolated(&self) -> bool {

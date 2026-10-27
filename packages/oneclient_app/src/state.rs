@@ -75,7 +75,6 @@ pub enum ReleasePlanState {
 pub struct ReleaseMigrationPrompt {
     pub key: String,
     pub target: Cluster,
-    pub target_dedicated: bool,
     pub java_major: Option<u32>,
     pub sources: Vec<Cluster>,
     pub selected: i64,
@@ -89,6 +88,12 @@ impl ReleaseMigrationPrompt {
         self.sources
             .iter()
             .find(|cluster| cluster.id == self.selected)
+    }
+
+    #[must_use]
+    pub fn can_copy_configs(&self) -> bool {
+        self.source()
+            .is_some_and(|source| !source.shares_dir_with(&self.target))
     }
 
     #[must_use]

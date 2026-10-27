@@ -1195,7 +1195,7 @@ fn footer(
         )
         .maybe_child(
             prompt
-                .target_dedicated
+                .can_copy_configs()
                 .then(|| checkbox_labeled(copy_configs, "Copy configs")),
         )
         .child(

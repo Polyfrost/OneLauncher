@@ -40,5 +40,5 @@ pub use unlink_legacy::{SweepReport, unlink_legacy_cluster_content};
 
 pub use oneclient_cluster::{
     Cluster, ClusterError, ClusterKind, ClusterLinkTarget, ClusterManager, ClusterStage,
-    ClusterUpdate, CreateClusterOptions,
+    ClusterUpdate, CreateClusterOptions, DirTarget,
 };

@@ -19,16 +19,28 @@ use super::model::{
 use super::model::{VERSION_KINDS, kind_bit};
 use super::rail::version_art;
 use crate::components::{
-    Dropdown, GRID_GAP, Icon, IconType, ScrollArea, TextInput, centered_spinner,
+    Button, Dropdown, GRID_GAP, Icon, IconType, ScrollArea, TextInput, centered_spinner,
+};
+use crate::hooks::{
+    ClusterAction, settled_or_loading, use_cluster_mutation, use_clusters, use_dispatch,
+    use_shared_groups,
 };
 use crate::theme::colors;
-use crate::ui::{border_all_color, centered_note, fixed_grid, note};
+use crate::ui::{border_all_color, centered_note, divider, fixed_grid, note};
 use crate::utils::bundle_display_name;
+use oneclient_events::{Choice, Prompt};
 
 pub fn body(wizard: Wizard, picks: &Picks) -> Element {
     let (key, inner) = match picks.step {
         Step::Type => ("step-type", type_step(wizard, picks)),
-        Step::Folder => ("step-folder", folder_step(wizard, picks)),
+        Step::Folder => (
+            "step-folder",
+            FolderStep {
+                folder: wizard.folder,
+                selected: picks.folder.clone(),
+            }
+            .into_element(),
+        ),
         Step::Loader => ("step-loader", loader_step(wizard, picks)),
         Step::Version => ("step-version", version_step(wizard, picks)),
         Step::Bundles => ("step-bundles", bundles_step(wizard, picks)),
@@ -63,7 +75,7 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
         .height(
             if matches!(
                 picks.step,
-                Step::Version | Step::Import | Step::ImportReview
+                Step::Folder | Step::Version | Step::Import | Step::ImportReview
             ) {
                 Size::fill()
             } else {
@@ -131,6 +143,7 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
                             wizard.declined.set(None);
                         })
                         .into(),
+                        trailing: None,
                     })
                 }),
         )
@@ -169,6 +182,7 @@ fn modpack_step(wizard: Wizard, picks: &Picks) -> Element {
                 meta: meta.to_string(),
                 selected: picks.modpack_origin == origin,
                 on_press: (move |()| chosen.set(origin)).into(),
+                trailing: None,
             })
         }))
         .into_element()
@@ -206,6 +220,7 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
                 meta: meta.to_string(),
                 selected: picks.import_source == source,
                 on_press: (move |()| chosen.set(source)).into(),
+                trailing: None,
             })
         }))
         .into_element()
@@ -248,53 +263,155 @@ fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
                         meta: meta.to_string(),
                         selected: picks.import_mode == mode,
                         on_press: (move |()| chosen.set(mode)).into(),
+                        trailing: None,
                     })
                 }),
         )
         .into_element()
 }
 
-fn folder_step(wizard: Wizard, picks: &Picks) -> Element {
-    let cards = [
-        (
-            FolderChoice::Shared,
-            IconType::Link03,
-            "Shared",
-            Some("Recommended"),
-            "Uses the same game folder as your other OneClient instances, so worlds, settings and packs carry over.",
-            "Only one shared instance can run at a time.",
-        ),
-        (
-            FolderChoice::Dedicated,
-            IconType::Folder,
-            "Dedicated",
-            None,
-            "Gets its own game folder. Worlds, settings and packs stay separate from everything else.",
-            "Can run alongside your other instances.",
-        ),
-    ];
+#[derive(PartialEq)]
+struct FolderStep {
+    folder: State<FolderChoice>,
+    selected: FolderChoice,
+}
 
-    rect()
-        .vertical()
-        .width(Size::fill())
-        .spacing(10.)
-        .children(
-            cards
-                .into_iter()
-                .map(|(folder, icon, title, badge, blurb, meta)| {
-                    let mut chosen = wizard.folder;
-                    wide_card(WideCard {
-                        icon,
-                        title: title.to_string(),
-                        badge: badge.map(str::to_string),
-                        blurb: blurb.to_string(),
-                        meta: meta.to_string(),
-                        selected: picks.folder == folder,
-                        on_press: (move |()| chosen.set(folder)).into(),
+impl Component for FolderStep {
+    fn render(&self) -> impl IntoElement {
+        let groups = settled_or_loading(&use_shared_groups()).unwrap_or_default();
+        let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
+        let mutation = use_cluster_mutation();
+        let dispatch = use_dispatch();
+        let cards = [
+            (
+                FolderChoice::Shared,
+                IconType::Link03,
+                "Shared".to_string(),
+                Some("Recommended"),
+                "Uses the same game folder as your other OneClient instances, so worlds, settings and packs carry over.".to_string(),
+                "Only one shared instance can run at a time.".to_string(),
+            ),
+            (
+                FolderChoice::Dedicated,
+                IconType::Folder,
+                "Dedicated".to_string(),
+                None,
+                "Gets its own game folder. Worlds, settings and packs stay separate from everything else.".to_string(),
+                "Can run alongside your other instances.".to_string(),
+            ),
+        ];
+        let custom = groups.into_iter().map(|group| {
+            let members = clusters
+                .iter()
+                .filter(|cluster| cluster.shared_group().as_deref() == Some(group.as_str()))
+                .count();
+            let used_by = match members {
+                0 => "No instances use it yet.".to_string(),
+                1 => "Used by 1 instance.".to_string(),
+                n => format!("Used by {n} instances."),
+            };
+            (
+                (
+                    FolderChoice::Custom(group.clone()),
+                    IconType::Link03,
+                    group,
+                    None,
+                    "Shares worlds, settings and packs only with the instances in this folder."
+                        .to_string(),
+                    used_by,
+                ),
+                members == 0,
+            )
+        });
+
+        let folder = self.folder;
+        let selected = self.selected.clone();
+        let row = move |(choice, icon, title, badge, blurb, meta): (
+            FolderChoice,
+            IconType,
+            String,
+            Option<&str>,
+            String,
+            String,
+        ),
+                        trailing: Option<Element>| {
+            let mut chosen = folder;
+            wide_card(WideCard {
+                icon,
+                title,
+                badge: badge.map(str::to_string),
+                blurb,
+                meta,
+                selected: selected == choice,
+                on_press: (move |()| chosen.set(choice.clone())).into(),
+                trailing,
+            })
+        };
+        let custom: Vec<Element> = custom
+            .map(|(card, empty)| {
+                let FolderChoice::Custom(group) = card.0.clone() else {
+                    return row(card, None);
+                };
+                let dispatch = dispatch.clone();
+                let selected = self.selected.clone();
+                let delete = Button::new()
+                    .secondary()
+                    .icon()
+                    .tooltip(if empty {
+                        format!("Delete {group}")
+                    } else {
+                        "Move the instances using this folder elsewhere before deleting it"
+                            .to_string()
                     })
-                }),
-        )
-        .into_element()
+                    .enabled(empty)
+                    .width(Size::px(38.))
+                    .height(Size::px(38.))
+                    .on_press(move |e: Event<PressEventData>| {
+                        e.stop_propagation();
+                        let dispatch = dispatch.clone();
+                        let group = group.clone();
+                        let mut folder = folder;
+                        let picked = selected == FolderChoice::Custom(group.clone());
+                        spawn_forever(async move {
+                            let prompt = Prompt::new(
+                                format!("Delete {group}?"),
+                                "The folder and everything in it, including worlds, settings and \
+                                 screenshots, is deleted. This cannot be undone.",
+                            )
+                            .option(Choice::danger("shared_group.delete", "Delete"), ())
+                            .dismiss("Cancel");
+                            if !matches!(dispatch.events().ask(prompt).await, Ok(Some(_))) {
+                                return;
+                            }
+                            if picked {
+                                folder.set(FolderChoice::Shared);
+                            }
+                            mutation.mutate(ClusterAction::DeleteSharedGroup { name: group });
+                        });
+                    })
+                    .child(Icon::new(IconType::Trash01).size(16.));
+                row(card, Some(delete.into_element()))
+            })
+            .collect();
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .height(Size::fill())
+            .content(Content::Flex)
+            .spacing(10.)
+            .children(cards.into_iter().map(|card| row(card, None)))
+            .maybe_child((!custom.is_empty()).then(divider))
+            .maybe_child((!custom.is_empty()).then(|| {
+                ScrollArea::new()
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .scrollbar_gutter(true)
+                    .spacing(10.)
+                    .children(custom)
+            }))
+            .into_element()
+    }
 }
 
 fn select_loader(mut wizard: Wizard, choice: LoaderChoice) {

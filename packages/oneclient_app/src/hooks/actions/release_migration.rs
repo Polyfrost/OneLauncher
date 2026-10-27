@@ -255,7 +255,6 @@ impl Actions {
         self.write_release_migration(move |prompt| {
             *prompt = Some(ReleaseMigrationPrompt {
                 key: offer.release.key(),
-                target_dedicated: offer.target.uses_dedicated_dir(),
                 target: offer.target,
                 java_major,
                 sources,
@@ -418,7 +417,6 @@ impl Actions {
             actions.write_release_migration(move |prompt| {
                 *prompt = Some(ReleaseMigrationPrompt {
                     key: release.key(),
-                    target_dedicated: target.uses_dedicated_dir(),
                     target,
                     java_major: None,
                     sources: vec![source],

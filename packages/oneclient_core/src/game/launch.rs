@@ -20,7 +20,7 @@ use crate::game::session::SessionRecorder;
 use crate::game::shared_dir::{cluster_mods, jar_bundled_mod_ids, jar_mod_id};
 use crate::game::tail::spawn_log_tail;
 use crate::game::{DirBusy, GameError};
-use crate::settings::GameSettingsProfile
+use crate::settings::GameSettingsProfile;
 use crate::state::{LauncherServices, LauncherState};
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;

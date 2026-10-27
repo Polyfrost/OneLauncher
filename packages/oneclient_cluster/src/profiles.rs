@@ -8,7 +8,7 @@ use oneclient_db::DbPool;
 use crate::error::{ClusterError, ClusterResult};
 use crate::profile::{GameSettingsProfile, SettingsOsExtra};
 use oneclient_common::Resolution;
-use oneclient_common::domain::{GraphicsBackend, PackageUpdateMode};
+use oneclient_common::domain::PackageUpdateMode;
 
 #[tracing::instrument(level = "debug", skip(pool, global))]
 pub async fn get_profile_or_default(
@@ -122,7 +122,6 @@ pub struct ProfileUpdate {
     pub hook_post: Patch<String>,
     pub os_extra: Patch<SettingsOsExtra>,
     pub browser_update_mode: Patch<PackageUpdateMode>,
-    pub graphics_backend: Patch<GraphicsBackend>,
 }
 
 impl ProfileUpdate {
@@ -146,8 +145,6 @@ impl ProfileUpdate {
         self.os_extra.apply_to_option(&mut profile.os_extra);
         self.browser_update_mode
             .apply_to_option(&mut profile.browser_update_mode);
-        self.graphics_backend
-            .apply_to_option(&mut profile.graphics_backend);
     }
 }
 

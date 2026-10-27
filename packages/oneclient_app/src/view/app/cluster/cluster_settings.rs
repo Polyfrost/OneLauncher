@@ -1,12 +1,11 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use freya::prelude::*;
 use freya::query::MutationStateData;
 use oneclient_common::Patch;
-use oneclient_common::domain::GameLoader;
-use oneclient_core::settings::{
-    GameSettingsProfile, GraphicsBackend, PackageUpdateMode, ProfileUpdate, Resolution,
-};
+use oneclient_common::domain::{GameLoader, GraphicsBackend};
+use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
 use oneclient_java::JavaRuntime;
 
 use crate::components::{
@@ -16,8 +15,9 @@ use crate::components::{
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
     settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
-    use_game_profile, use_game_snapshot, use_java_runtimes, use_loader_versions,
-    use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
+    use_game_profile, use_game_snapshot, use_graphics_backend, use_java_runtimes,
+    use_loader_versions, use_migratable_routes, use_release_migration_checking,
+    use_settings_snapshot,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
@@ -114,19 +114,18 @@ impl Component for ClusterSettings {
         } else {
             Vec::new()
         };
-        let graphics_backend_row: Vec<Element> =
-            if GraphicsBackend::supported_on(&cluster.mc_version) {
+        let graphics_backend_row: Vec<Element> = match cluster.game_dir() {
+            Ok(game_dir) if GraphicsBackend::supported_on(&cluster.mc_version) => {
                 vec![
                     GraphicsBackendRow {
                         cluster_id,
-                        value: profile.graphics_backend,
-                        global: global.graphics_backend.unwrap_or_default(),
+                        game_dir,
                     }
                     .into_element(),
                 ]
-            } else {
-                Vec::new()
-            };
+            }
+            _ => Vec::new(),
+        };
 
         let migrate_row: Vec<Element> = if mod_loader {
             vec![MigrateFromRow { cluster_id }.into_element()]
@@ -294,7 +293,6 @@ enum Field {
     MemMax,
     JavaPath,
     BrowserUpdateMode,
-    GraphicsBackend,
 }
 
 fn profile_row(generation: u32, slot: &'static str, row: impl IntoElement) -> Element {
@@ -313,7 +311,6 @@ fn clear_update(field: Field) -> ProfileUpdate {
         Field::MemMax => u.mem_max = Patch::Clear,
         Field::JavaPath => u.java_path = Patch::Clear,
         Field::BrowserUpdateMode => u.browser_update_mode = Patch::Clear,
-        Field::GraphicsBackend => u.graphics_backend = Patch::Clear,
     }
     u
 }
@@ -1140,51 +1137,51 @@ impl Component for BrowserUpdateModeRow {
 #[derive(PartialEq)]
 struct GraphicsBackendRow {
     cluster_id: i64,
-    value: Option<GraphicsBackend>,
-    global: GraphicsBackend,
+    game_dir: PathBuf,
 }
 
 impl Component for GraphicsBackendRow {
     fn render(&self) -> impl IntoElement {
-        let cluster_id = self.cluster_id;
-        let overridden = self.value.is_some();
-        let resolved = self.value.unwrap_or(self.global);
+        let game_dir = self.game_dir.clone();
+        let current = use_graphics_backend(game_dir.clone());
+        let running = use_game_snapshot().is_running(self.cluster_id);
         let dispatch = use_dispatch();
 
         let options: Vec<String> = GraphicsBackend::ALL
             .iter()
-            .map(|backend| backend.label().to_string())
+            .map(ToString::to_string)
             .collect();
+        let control = Dropdown::new(
+            current.unwrap_or(GraphicsBackend::Default).to_string(),
+            options,
+        )
+        .width(Size::px(220.))
+        .height(Size::px(34.))
+        .on_select(move |idx: usize| {
+            if let Some(backend) = GraphicsBackend::ALL.get(idx).copied() {
+                dispatch.set_graphics_backend(game_dir.clone(), backend);
+            }
+        });
 
-        let control = {
-            let dispatch = dispatch.clone();
-            Dropdown::new(resolved.label(), options)
-                .width(Size::px(220.))
-                .height(Size::px(34.))
-                .on_select(move |idx: usize| {
-                    if let Some(backend) = GraphicsBackend::ALL.get(idx).copied() {
-                        dispatch.update_cluster_profile(
-                            cluster_id,
-                            ProfileUpdate {
-                                graphics_backend: Patch::Set(backend),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                })
+        let locked = if running {
+            Some("Close the game to change this, or change it from the game's video settings.")
+        } else if current.is_none() {
+            Some("Start the game once to change this.")
+        } else {
+            None
         };
-
-        let on_reset: EventHandler<()> = (move |()| {
-            dispatch.update_cluster_profile(cluster_id, clear_update(Field::GraphicsBackend));
-        })
-        .into();
+        if let Some(reason) = locked {
+            return settings_row_disabled(IconType::PaintPour, "Graphics Backend", reason, control)
+                .into_element();
+        }
 
         settings_row(
             IconType::PaintPour,
             "Graphics Backend",
-            "Forces the renderer at launch. Default leaves it to the in-game setting.",
-            override_cell(control, overridden, on_reset),
+            "The renderer the game starts with, kept in sync with the game's own video settings.",
+            control,
         )
+        .into_element()
     }
 }
 

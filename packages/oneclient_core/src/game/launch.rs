@@ -20,7 +20,7 @@ use crate::game::session::SessionRecorder;
 use crate::game::shared_dir::{cluster_mods, jar_bundled_mod_ids, jar_mod_id};
 use crate::game::tail::spawn_log_tail;
 use crate::game::{DirBusy, GameError};
-use crate::settings::{GameSettingsProfile, GraphicsBackend};
+use crate::settings::GameSettingsProfile;
 use crate::state::{LauncherServices, LauncherState};
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::paths;
@@ -412,15 +412,6 @@ async fn start(
         profile.resolution.unwrap_or_default(),
         &java.os_arch,
     )?;
-    if let Some(backend) = profile.graphics_backend
-        && backend != GraphicsBackend::Default
-        && GraphicsBackend::supported_on(&mc_version)
-    {
-        mc_args.extend([
-            "--graphicsBackend".to_string(),
-            backend.as_str().to_string(),
-        ]);
-    }
     arguments::append_profile_game_arguments(
         &mut mc_args,
         profile.force_fullscreen,
@@ -1042,6 +1033,8 @@ fn shell_quote(arg: &str) -> String {
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     command.env_remove("_JAVA_OPTIONS");
     oneclient_common::process::strip_appimage_env(command.as_std_mut());
+    #[cfg(all(unix, not(target_os = "macos")))]
+    command.env("LC_ALL", "C.UTF-8");
 
     if let Some(env) = &profile.launch_env {
         for pair in env.split_whitespace() {

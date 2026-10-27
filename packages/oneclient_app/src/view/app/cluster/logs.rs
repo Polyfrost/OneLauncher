@@ -23,7 +23,6 @@ use crate::utils::format_size;
 
 use super::cluster_not_found;
 use crate::hooks::use_cluster;
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const PICKER_ROW_H: f32 = 44.;
 const PICKER_ROW_SPACING: f32 = 2.;
 const PICKER_LIST_MAX_H: f32 = 300.;
@@ -58,6 +57,9 @@ impl LevelFilter {
         }
     }
 }
+
+#[derive(Clone, Copy)]
+pub struct OpenGameOutput(pub State<bool>);
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Confirm {
@@ -123,15 +125,35 @@ impl Component for ClusterLogs {
         let search = use_state(String::new);
         let level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);
-        let category = use_state(|| Category::Logs);
+        let mut category = use_state(|| Category::Logs);
         let mut selected = use_state(PathBuf::new);
         let search_id = use_a11y();
+        let open_game_output = use_hook(try_consume_root_context::<OpenGameOutput>);
 
         use_mclogs_feedback(upload);
 
         // Reads `category` too so switching the picker re-picks a file instead of keeping a stale selection
         use_side_effect(move || {
             let files = visible_files(&logs_query, *category.read());
+            let wants_game_output = open_game_output.filter(|wanted| *wanted.0.read());
+
+            if wants_game_output.is_some() && *category.peek() != Category::Logs {
+                category.set(Category::Logs);
+                return;
+            }
+
+            if let Some(OpenGameOutput(mut wanted)) = wants_game_output
+                && try_cluster_logs(&logs_query).is_some()
+            {
+                wanted.set(false);
+                if let Some(file) = files
+                    .iter()
+                    .find(|f| matches!(f.kind, LogKind::Game { .. }))
+                {
+                    selected.set(file.path.clone());
+                    return;
+                }
+            }
 
             if files.is_empty() {
                 if !selected.peek().as_os_str().is_empty() {
@@ -322,12 +344,15 @@ pub fn viewer_header(
     };
 
     let search_input = {
-        let base = TextInput::new(search).a11y_id(search_id).enabled(has_log).leading(
-            Icon::new(IconType::SearchMd)
-                .size(15.)
-                .color(colors::fg_secondary())
-                .into_element(),
-        );
+        let base = TextInput::new(search)
+            .a11y_id(search_id)
+            .enabled(has_log)
+            .leading(
+                Icon::new(IconType::SearchMd)
+                    .size(15.)
+                    .color(colors::fg_secondary())
+                    .into_element(),
+            );
         if has_log {
             base.placeholder("Search this log...")
         } else {
@@ -658,7 +683,7 @@ pub fn confirm_overlay(
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
                         .corner_radius(CornerRadius::new_all(14.))
-                        .background(CARD_BG)
+                        .background(colors::card())
                         .border(ui::border_all_color(1., colors::component_border()))
                         .child(
                             rect()

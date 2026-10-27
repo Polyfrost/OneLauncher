@@ -12,7 +12,6 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::browser::encode_package_id;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_W: f32 = 460.;
 const ROW_H: f32 = 48.;
 const ICON_SIZE: f32 = 32.;
@@ -71,7 +70,7 @@ fn dialog(prompt: FlaggedInstallPrompt, dispatch: crate::Actions) -> impl IntoEl
         .spacing(SECTION_GAP)
         .padding(Gaps::new_all(DIALOG_PADDING))
         .corner_radius(CornerRadius::new_all(14.))
-        .background(CARD_BG)
+        .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .child(
             rect()
@@ -248,6 +247,7 @@ fn alternative_row(
                         cluster_id,
                         package_type: "mod".to_string(),
                         package_id: encode_package_id(provider, &project_id),
+                        add_to_cluster: false,
                     });
                 })
                 .child(Icon::new(IconType::ArrowRight).size(14.))
@@ -255,7 +255,7 @@ fn alternative_row(
         )
 }
 
-fn explanation_panel(markdown: String) -> impl IntoElement {
+pub(crate) fn explanation_panel(markdown: String) -> impl IntoElement {
     rect()
         .width(Size::fill())
         .padding(Gaps::new_all(12.))
@@ -269,8 +269,8 @@ fn explanation_panel(markdown: String) -> impl IntoElement {
                     color: colors::fg_primary(),
                     color_link: colors::code_info(),
                     color_code: colors::fg_primary(),
-                    background_code: CARD_BG,
-                    background_blockquote: CARD_BG,
+                    background_code: colors::card(),
+                    background_blockquote: colors::card(),
                     border_blockquote: colors::component_border(),
                     background_divider: colors::component_border(),
                     headings: [16., 14., 13., 12., 12., 12.],

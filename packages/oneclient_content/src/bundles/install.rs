@@ -1,7 +1,7 @@
 use futures_util::StreamExt;
 use oneclient_db::dao::applied_migration as migration_dao;
 use oneclient_db::dao::artifact as artifact_dao;
-use oneclient_db::dao::cluster as cluster_dao;
+use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::ClusterRow;
 use oneclient_db::models::OverrideType;
@@ -9,15 +9,15 @@ use oneclient_db::models::OverrideType;
 use crate::bundles::error::BundleError;
 use crate::bundles::manager::BundlesManager;
 use crate::bundles::overrides;
-use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind};
+use crate::bundles::types::{BundleArchive, BundleFile, BundleFileKind, BundleManifest};
 use crate::ctx::ContentCtx;
 use crate::error::ContentError;
 use crate::error::ContentResult;
 use crate::packages::store::{
     LiveSync, PackageStore, drop_unmanaged_mod, evict_if_unused, try_unlink_materialized,
 };
-use crate::packages::types::ExternalFile;
-use oneclient_common::domain::{ContentType, GameLoader};
+use crate::packages::types::{ExternalFile, VersionDetail};
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 
 fn is_base62(s: &str) -> bool {
@@ -28,7 +28,29 @@ pub(crate) fn takes_bundle(
     archive: &BundleArchive,
     accepted: &std::collections::HashSet<String>,
 ) -> bool {
-    archive.manifest.enabled || accepted.contains(&archive.manifest.name)
+    takes_manifest(&archive.manifest, accepted)
+}
+
+fn takes_manifest(manifest: &BundleManifest, accepted: &std::collections::HashSet<String>) -> bool {
+    manifest.enabled || accepted.contains(&manifest.name)
+}
+
+pub fn wanted_bundle_files<'a>(
+    manifests: impl IntoIterator<Item = &'a BundleManifest>,
+    accepted: &std::collections::HashSet<String>,
+    override_for: impl Fn(&str, &str) -> Option<OverrideType>,
+) -> Vec<&'a BundleFile> {
+    manifests
+        .into_iter()
+        .flat_map(|manifest| {
+            let taken = takes_manifest(manifest, accepted);
+            let override_for = &override_for;
+            manifest.files.iter().filter(move |file| {
+                let user_override = override_for(&manifest.name, &file.kind.package_id());
+                wants_file(file, user_override, taken)
+            })
+        })
+        .collect()
 }
 
 fn wants_file(file: &BundleFile, user_override: Option<OverrideType>, taken: bool) -> bool {
@@ -135,13 +157,17 @@ pub async fn set_bundle_choices(
 ) -> ContentResult<()> {
     bundle_dao::save_bundle_choices(&ctx.db, cluster_id, choices).await?;
 
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let wants = crate::modpacks::imported_wants(&cluster).await;
     for row in bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await? {
         let declined = row.bundle_name.as_ref().is_some_and(|name| {
             choices
                 .iter()
                 .any(|(choice, accepted)| choice == name && !accepted)
         });
-        if declined {
+        if declined
+            && !crate::modpacks::hand_to_wanting_pack(cluster_id, &row.hash, &wants, ctx).await?
+        {
             detach_artifact(cluster_id, &row.hash, ctx).await?;
         }
     }
@@ -269,14 +295,8 @@ pub async fn install_package_from_bundle(
                 file.content_type(),
             )
             .await;
-
-            let version = if is_base62(version_id) {
-                crate::packages::get_version_cached(ctx, *provider, project_id, version_id).await?
-            } else if let Ok(Some((_, version))) = ctx.providers.lookup_version(sha1, ctx).await {
-                version
-            } else {
-                crate::packages::get_version_cached(ctx, *provider, project_id, version_id).await?
-            };
+            let version =
+                resolve_bundle_version(*provider, project_id, version_id, sha1, ctx).await?;
 
             let (artifact, _) = PackageStore::install_to_cluster(
                 *provider,
@@ -307,6 +327,56 @@ pub async fn install_package_from_bundle(
     .await?;
 
     Ok(hash)
+}
+
+async fn resolve_bundle_version(
+    provider: ProviderId,
+    project_id: &str,
+    version_id: &str,
+    sha1: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<VersionDetail> {
+    if is_base62(version_id) {
+        return crate::packages::get_version_cached(ctx, provider, project_id, version_id).await;
+    }
+    if let Ok(Some((_, version))) = ctx.providers.lookup_version(sha1, ctx).await {
+        return Ok(version);
+    }
+    crate::packages::get_version_cached(ctx, provider, project_id, version_id).await
+}
+
+/// Puts the file in the package cache without linking it to any cluster
+/// `install_package_from_bundle` then finds it there and needs no network
+#[tracing::instrument(level = "debug", skip_all, fields(package_id = %file.kind.package_id()))]
+pub(crate) async fn prefetch_bundle_file(
+    file: &BundleFile,
+    child: Option<&GroupedProgressChild>,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    match &file.kind {
+        BundleFileKind::Managed {
+            provider,
+            project_id,
+            version_id,
+            sha1,
+        } => {
+            let project = crate::packages::cached_project_detail(
+                ctx,
+                *provider,
+                project_id,
+                file.content_type(),
+            )
+            .await;
+            let version =
+                resolve_bundle_version(*provider, project_id, version_id, sha1, ctx).await?;
+            PackageStore::download_and_cache(*provider, &project, &version, false, child, ctx)
+                .await?;
+        }
+        BundleFileKind::External { file: ext, .. } => {
+            crate::packages::store::download_external(ext, false, child, ctx).await?;
+        }
+    }
+    Ok(())
 }
 
 #[tracing::instrument(level = "debug", skip(ext, cluster, child, ctx), fields(file = %ext.name))]
@@ -541,7 +611,9 @@ pub async fn heal_bundle_activity(
     clear_stale_disables(cluster_id, ctx).await?;
 
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
-    if tracked.iter().all(|row| row.enabled != 0) {
+    if tracked.iter().all(|row| row.enabled != 0)
+        || bisect_dao::is_active(&ctx.db, cluster_id).await?
+    {
         return Ok(());
     }
 
@@ -1142,13 +1214,14 @@ pub async fn remove_artifact_from_cluster(
     Ok(())
 }
 
-async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
+pub(crate) async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
     // Looked up first but never allowed to block removal
     // a package whose artifact row has gone missing must still be removable
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
     let target = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
         .await?
         .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8));
+    crate::packages::store::ensure_mods_unlocked(cluster_id, target, ctx).await?;
 
     let link = artifact_dao::get_cluster_artifact(&ctx.db, cluster_id, hash).await?;
 
@@ -1194,7 +1267,7 @@ async fn sharing_scope(
         return Ok(None);
     }
 
-    let sharing = cluster_dao::list_oneclient_ids(&ctx.db).await?;
+    let sharing = crate::packages::store::sharing_cluster_ids(&ctx.db).await?;
 
     Ok(sharing.contains(&cluster_id).then_some(sharing))
 }
@@ -1271,6 +1344,63 @@ mod tests {
                 meta: None,
             },
         }
+    }
+
+    fn manifest(name: &str, enabled: bool, files: Vec<BundleFile>) -> BundleManifest {
+        BundleManifest {
+            name: name.to_string(),
+            version_id: "1".to_string(),
+            category: String::new(),
+            mc_version: "1.21.1".to_string(),
+            loader: GameLoader::Fabric,
+            loader_version: "0.16.5".to_string(),
+            enabled,
+            java_version_override: None,
+            files,
+        }
+    }
+
+    fn named(name: &str, enabled: bool) -> BundleFile {
+        let mut file = file(enabled);
+        file.path = format!("mods/{name}.jar");
+        if let BundleFileKind::External { file: ext, .. } = &mut file.kind {
+            ext.name = format!("{name}.jar");
+            ext.sha1 = name.to_string();
+        }
+        file
+    }
+
+    #[test]
+    fn the_planned_bundle_files_follow_choices_and_overrides() {
+        let manifests = vec![
+            manifest(
+                "Core",
+                true,
+                vec![named("a", true), named("b", true), named("off", false)],
+            ),
+            manifest("Picked", false, vec![named("c", true)]),
+            manifest(
+                "Declined",
+                false,
+                vec![named("d", true), named("opted", false)],
+            ),
+        ];
+        let accepted: std::collections::HashSet<String> = ["Picked".to_string()].into();
+        let disabled_b = named("b", true).kind.package_id();
+        let opted = named("opted", false).kind.package_id();
+
+        let wanted = wanted_bundle_files(&manifests, &accepted, |bundle, package| {
+            if bundle == "Core" && package == disabled_b {
+                Some(OverrideType::Disabled)
+            } else if bundle == "Declined" && package == opted {
+                Some(OverrideType::Enabled)
+            } else {
+                None
+            }
+        });
+
+        let paths: Vec<&str> = wanted.iter().map(|file| file.path.as_str()).collect();
+        assert_eq!(paths, vec!["mods/a.jar", "mods/c.jar", "mods/opted.jar"]);
     }
 
     #[test]

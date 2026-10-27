@@ -16,7 +16,7 @@ license = "GPL-3.0-only"
 readme = "README.md"
 repository = "https://github.com/Polyfrost/OneLauncher"
 rust-version = "1.97"
-version = "2.8.0"
+version = "2.9.0"
 
 [workspace.dependencies]
 # core
@@ -147,8 +147,18 @@ thiserror = {version = "=2.0.21"}
 freya = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b", features = ["engine", "winit", "router", "remote-asset", "sdk-tokio", "query", "radio", "borderless", "titlebar", "tray", "metrics"]}
 freya-core = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b"}
 freya-testing = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b"}
-freya-skia-safe = "=0.103.2" # required for the SKSL player renderer
-image = {version = "=0.25.10", default-features = false, features = ["png", "jpeg"]}
+freya-winit = {git = "https://github.com/Polyfrost/freya", rev = "12f696f68c4936617b8627c862b39acb3d9cca2b"}
+freya-skia-safe = "=0.103.2" # draws the plusrenderer player model
+plusrenderer = {git = "https://github.com/Polyfrost/plusrenderer", rev = "914ddf8cae388126407d86925a05fa3db085ebbc"}
+image = {version = "=0.25.10", default-features = false, features = ["png", "jpeg", "ico"]}
+
+# Proc macros are dylibs rustc loads during the build, and stripping them with
+# packed debuginfo produces a LINKEDIT section that macOS 27's dyld refuses to
+# open. Build dependencies keep their symbols; the shipped binary is unaffected.
+[profile.release.build-override]
+debug = false
+split-debuginfo = "unpacked"
+strip = false
 
 [profile.release]
 codegen-units = 1

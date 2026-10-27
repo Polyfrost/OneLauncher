@@ -141,7 +141,7 @@ pub enum HashAlgorithm {
     Sha1,
 }
 
-/// Applies only to browser-installed packages bundles have their own update flow
+/// Applies to browser-installed packages and the Fabric loader bundles have their own update flow
 /// The check always runs regardless of variant so "out of date" markers stay populated
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumIter, StrumDisplay,

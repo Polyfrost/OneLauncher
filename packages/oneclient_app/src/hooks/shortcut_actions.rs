@@ -67,6 +67,7 @@ impl Actions {
                 cluster_name: cluster.name.clone(),
                 folder_name: cluster.folder_name.clone(),
                 dir: dir.clone(),
+                icon: cluster.modpack_icon_file().filter(|icon| icon.is_file()),
             };
 
             match tokio::task::spawn_blocking(move || shortcut::create(&request)).await {

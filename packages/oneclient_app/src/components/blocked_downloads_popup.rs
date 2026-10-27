@@ -12,7 +12,6 @@ use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_W: f32 = 560.;
 const DIALOG_PAD: f32 = 22.;
 const LIST_MAX_H: f32 = 300.;
@@ -111,18 +110,24 @@ impl Component for BlockedDownloadsDialog {
             cluster_id,
             self.blocked.remaining(),
             chosen.clone(),
+            self.blocked.bundle_name.clone(),
         );
         {
             let dispatch = dispatch.clone();
             let downloads = downloads.clone();
-            use_side_effect_with_deps(&deps, move |(_, cluster_id, files, chosen)| {
+            use_side_effect_with_deps(&deps, move |(_, cluster_id, files, chosen, bundle_name)| {
                 if files.is_empty() {
                     return;
                 }
                 let locations: Vec<PathBuf> =
                     downloads.iter().chain(chosen.iter()).cloned().collect();
                 if !locations.is_empty() {
-                    dispatch.scan_blocked_downloads(*cluster_id, locations, files.clone());
+                    dispatch.scan_blocked_downloads(
+                        *cluster_id,
+                        bundle_name.clone(),
+                        locations,
+                        files.clone(),
+                    );
                 }
             });
         }
@@ -312,6 +317,7 @@ fn dialog(
     };
 
     let cluster_id = blocked.cluster_id;
+    let bundle_name = blocked.bundle_name.clone();
     let files = blocked.remaining();
     let browse = dispatch.clone();
     let close = dispatch.clone();
@@ -327,7 +333,7 @@ fn dialog(
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
         .corner_radius(CornerRadius::new_all(16.))
-        .background(CARD_BG)
+        .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
             0.,
@@ -383,13 +389,15 @@ fn dialog(
                         )
                         .into_element()
                 } else {
-                    footer(cluster_id, files, browse_start, browse, close).into_element()
+                    footer(cluster_id, bundle_name, files, browse_start, browse, close)
+                        .into_element()
                 }),
         )
 }
 
 fn footer(
     cluster_id: i64,
+    bundle_name: String,
     files: Vec<BlockedFile>,
     browse_start: Option<PathBuf>,
     browse: crate::Actions,
@@ -412,6 +420,7 @@ fn footer(
                 .primary()
                 .on_press(move |_| {
                     let dispatch = browse.clone();
+                    let bundle_name = bundle_name.clone();
                     let files = files.clone();
                     let start = browse_start.clone();
                     spawn(async move {
@@ -425,7 +434,7 @@ fn footer(
                                 .iter()
                                 .map(|handle| handle.path().to_path_buf())
                                 .collect();
-                            dispatch.scan_blocked_downloads(cluster_id, picked, files);
+                            dispatch.scan_blocked_downloads(cluster_id, bundle_name, picked, files);
                         }
                     });
                 })

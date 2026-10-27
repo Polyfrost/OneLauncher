@@ -11,7 +11,11 @@ use super::cards::{
 };
 use super::data::Picks;
 use super::details::details_body;
-use super::model::{FolderChoice, LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard};
+use super::import::ImportStep;
+use super::import_review::review_step;
+use super::model::{
+    FolderChoice, ImportMode, ImportSource, LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard,
+};
 use super::model::{VERSION_KINDS, kind_bit};
 use super::rail::version_art;
 use crate::components::{
@@ -29,6 +33,17 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
         Step::Version => ("step-version", version_step(wizard, picks)),
         Step::Bundles => ("step-bundles", bundles_step(wizard, picks)),
         Step::Modpack => ("step-modpack", modpack_step(wizard, picks)),
+        Step::ImportSource => ("step-import-source", import_source_step(wizard, picks)),
+        Step::ImportMode => ("step-import-mode", import_mode_step(wizard, picks)),
+        Step::ImportReview => ("step-import-review", review_step(wizard, picks)),
+        Step::Import => (
+            "step-import",
+            ImportStep {
+                chosen: wizard.import_chosen,
+                extra: wizard.import_extra,
+            }
+            .into_element(),
+        ),
         Step::Customize => (
             "step-details",
             details_body(
@@ -45,11 +60,16 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
     rect()
         .key(key)
         .width(Size::fill())
-        .height(if picks.step == Step::Version {
-            Size::fill()
-        } else {
-            Size::auto()
-        })
+        .height(
+            if matches!(
+                picks.step,
+                Step::Version | Step::Import | Step::ImportReview
+            ) {
+                Size::fill()
+            } else {
+                Size::auto()
+            },
+        )
         .child(inner)
         .into_element()
 }
@@ -78,6 +98,14 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
             "Modpack",
             None,
             "Install a pack from Modrinth or CurseForge, or a file you downloaded.",
+            "Has its own game folder.",
+        ),
+        (
+            TypeChoice::Import,
+            IconType::FolderDownload,
+            "Import",
+            None,
+            "Open an instance someone exported from OneClient, or bring one over from another launcher.",
             "Has its own game folder.",
         ),
     ];
@@ -143,6 +171,86 @@ fn modpack_step(wizard: Wizard, picks: &Picks) -> Element {
                 on_press: (move |()| chosen.set(origin)).into(),
             })
         }))
+        .into_element()
+}
+
+fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
+    let cards = [
+        (
+            ImportSource::File,
+            IconType::File02,
+            "Import from a file",
+            "Open an instance someone exported from OneClient, Prism Launcher or MultiMC.",
+            "A OneClient .mrpack, or a Prism Launcher or MultiMC export .zip.",
+        ),
+        (
+            ImportSource::Launcher,
+            IconType::FolderDownload,
+            "Import from launcher",
+            "Bring over instances from Prism Launcher, MultiMC or the Modrinth App.",
+            "Each keeps its own game folder.",
+        ),
+    ];
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .children(cards.into_iter().map(|(source, icon, title, blurb, meta)| {
+            let mut chosen = wizard.import_source;
+            wide_card(WideCard {
+                icon,
+                title: title.to_string(),
+                badge: None,
+                blurb: blurb.to_string(),
+                meta: meta.to_string(),
+                selected: picks.import_source == source,
+                on_press: (move |()| chosen.set(source)).into(),
+            })
+        }))
+        .into_element()
+}
+
+fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
+    let cards = [
+        (
+            ImportMode::Improve,
+            IconType::IconLogo,
+            "Improve with OneClient",
+            Some("Recommended"),
+            "Checks the mods against OneClient's list of suggested improvements.",
+            "You choose what happens to each one before importing.",
+        ),
+        (
+            ImportMode::AsIs,
+            IconType::FolderDownload,
+            "Import as it is",
+            None,
+            "Every mod, world and setting comes over exactly as it was.",
+            "Nothing is checked or changed.",
+        ),
+    ];
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .children(
+            cards
+                .into_iter()
+                .map(|(mode, icon, title, badge, blurb, meta)| {
+                    let mut chosen = wizard.import_mode;
+                    wide_card(WideCard {
+                        icon,
+                        title: title.to_string(),
+                        badge: badge.map(str::to_string),
+                        blurb: blurb.to_string(),
+                        meta: meta.to_string(),
+                        selected: picks.import_mode == mode,
+                        on_press: (move |()| chosen.set(mode)).into(),
+                    })
+                }),
+        )
         .into_element()
 }
 

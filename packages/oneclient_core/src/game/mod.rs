@@ -22,14 +22,18 @@ pub use oneclient_mc::{
     get_classpath_library, get_library, java_arguments, main_class, minecraft_arguments,
     processor_arguments,
 };
+pub mod crashdata;
 pub mod diagnosis;
+pub mod mod_problems;
 
-pub use diagnosis::{CrashDiagnosis, diagnose};
+pub use crashdata::CrashData;
+pub use diagnosis::{CrashDiagnosis, diagnose, suspected_mods};
 pub use error::GameError;
 pub use fabric::{mods_folder_argument, uses_cluster_mods_folder};
 pub use game_options::{read_graphics_backend, write_graphics_backend};
 pub use heal::clear_zeroed_files;
-pub use launch::{LaunchedGame, is_running, launch_cluster, offer_repair};
+pub use launch::{LaunchedGame, crash_mod_issues, is_running, launch_cluster, repair_cluster};
+pub use mod_problems::{ModProblem, ModProblemKind, ModRef};
 pub use oneclient_mc::{
     DownloadPlan, GameVersionInfo, GameVersionKind, NativesMode, NativesReport, PlannedLibrary,
     check_natives, confirm_incomplete_install, download_minecraft, download_version_info,
@@ -43,8 +47,9 @@ pub use process::{
     process_start_time,
 };
 pub use reattach::recover_sessions;
+pub(crate) use shared_dir::lock_mods_sync;
 pub use shared_dir::{
-    DuplicateMods, dematerialize_content, import_manual_content, link_cluster_logs,
-    materialize_content, shadowed_bundle_mods, sync_cluster_mods, unlink_cluster_logs,
-    write_allowed_symlinks,
+    DuplicateMods, dematerialize_content, import_manual_content, join_shared_folder,
+    leave_shared_folder, link_cluster_logs, materialize_content, shadowed_bundle_mods,
+    split_dedicated_packs, sync_cluster_mods, unlink_cluster_logs, write_allowed_symlinks,
 };

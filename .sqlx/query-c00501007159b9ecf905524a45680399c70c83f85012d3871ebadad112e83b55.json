@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT dependency_project_id, dependency_version_id, kind\n\t\tFROM provider_release_dependencies\n\t\tWHERE provider = ? AND project_id = ? AND version_id = ?\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "dependency_project_id",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_release_dependencies",
+            "name": "dependency_project_id"
+          }
+        }
+      },
+      {
+        "name": "dependency_version_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_release_dependencies",
+            "name": "dependency_version_id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_release_dependencies",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c00501007159b9ecf905524a45680399c70c83f85012d3871ebadad112e83b55"
+}

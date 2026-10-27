@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\t\tSELECT cluster_file_name, bundle_name, package_id\n\t\t\tFROM cluster_artifacts\n\t\t\tWHERE cluster_id = ? AND hash = ?\n\t\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_file_name",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "cluster_file_name"
+          }
+        }
+      },
+      {
+        "name": "bundle_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "bundle_name"
+          }
+        }
+      },
+      {
+        "name": "package_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "package_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "6958540e32c1c6f44e2098ffda769320ee96cd3511f89ea6c1fd753122de7f72"
+}

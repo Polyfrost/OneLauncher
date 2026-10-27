@@ -6,7 +6,9 @@ use oneclient_content::bundles::{
 };
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
-use oneclient_db::dao::{artifact as artifact_dao, cluster_bundle as bundle_dao};
+use oneclient_db::dao::{
+    artifact as artifact_dao, cluster_bisect as bisect_dao, cluster_bundle as bundle_dao,
+};
 use oneclient_db::models::OverrideType;
 
 const BUNDLE: &str = "Test Bundle";
@@ -1636,6 +1638,32 @@ async fn heal(state: &LauncherState, cluster_id: i64) {
 }
 
 #[tokio::test]
+async fn a_mod_left_out_of_a_running_search_is_not_switched_back_on() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    seed_opt_in_bundle(&state, BUNDLE).await;
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let db = &state.services.db;
+
+    artifact_dao::update_cluster_artifact(db, cluster_id, HASH, "sodium.jar", 0)
+        .await
+        .unwrap();
+    bisect_dao::start(
+        db,
+        cluster_id,
+        &[("other".to_string(), "Other".to_string())],
+    )
+    .await
+    .unwrap();
+
+    heal(&state, cluster_id).await;
+
+    assert!(
+        !cluster_mod_enabled(&state, cluster_id).await,
+        "turning it on would add a mod the search never tested"
+    );
+}
+
+#[tokio::test]
 async fn a_mod_held_from_a_declined_bundle_stays_off_once_the_user_switches_it_off() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     seed_opt_in_bundle(&state, BUNDLE).await;
@@ -1783,5 +1811,56 @@ async fn holding_one_mod_of_an_opt_in_bundle_does_not_bring_the_rest() {
     assert!(
         check.additions_available.is_empty(),
         "an opt-in bundle nobody took should add nothing"
+    );
+}
+
+/// Offline, or any other failed download, must leave the cluster exactly as it
+/// was so it still launches: applying the removal while the new mod is missing
+/// is the half-updated set that stops a game loading
+#[tokio::test]
+async fn a_failed_download_applies_nothing() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut unreachable = github_mod_file();
+    if let BundleFileKind::External { file, .. } = &mut unreachable.kind {
+        file.url = "unsupported://example.invalid/github-mod.jar".to_string();
+    }
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![unreachable]))
+        .await
+        .unwrap();
+    let cluster_id = cluster_with_tracked_mod(&state).await;
+    let ctx = state.services.content();
+
+    let check = check_bundle_updates(cluster_id, state.bundles.as_ref(), &ctx)
+        .await
+        .unwrap();
+    assert_eq!(check.removals_available.len(), 1);
+    assert_eq!(check.additions_available.len(), 1);
+
+    let result = oneclient_content::bundles::apply_bundle_updates(
+        cluster_id,
+        state.bundles.as_ref(),
+        &ctx,
+        None,
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        result.stopped_early,
+        "an unfinished batch must not count as settled"
+    );
+    assert_eq!(
+        result.failures().count(),
+        0,
+        "nothing was applied so there is nothing to block a launch over"
+    );
+    assert_eq!(result.downloads_failed.len(), 1);
+    assert!(result.removals_applied.is_empty());
+    assert!(
+        artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, HASH)
+            .await
+            .unwrap()
+            .is_some(),
+        "the mod due for removal stays until the whole batch can be applied"
     );
 }

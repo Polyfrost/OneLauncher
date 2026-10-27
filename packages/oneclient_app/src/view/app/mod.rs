@@ -2,8 +2,8 @@ mod analytics;
 mod clusters;
 mod debug;
 mod home;
-mod skins;
 mod stats;
+mod wardrobe;
 
 pub mod browser;
 pub mod cluster;
@@ -69,7 +69,8 @@ pub fn launch_syncing(launcher: &LauncherInit, uses_bundles: bool) -> bool {
 
 pub(crate) use analytics::{analytics_body, analytics_placeholder};
 pub use clusters::Clusters;
+pub(crate) use clusters::DeleteInstanceModal;
 pub use debug::Debug;
 pub use home::Home;
-pub use skins::AccountSkins;
 pub use stats::Stats;
+pub use wardrobe::Wardrobe;

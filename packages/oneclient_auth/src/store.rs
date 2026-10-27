@@ -118,8 +118,9 @@ impl CredentialsStore {
         Ok(())
     }
 
-    /// Drops the dead tokens but keeps the entry and its default slot so the UI
-    /// can offer a sign-in for this exact account
+    /// Keeps the entry and its default slot so the UI can offer a sign-in for
+    /// this exact account The refresh token is kept too Microsoft sometimes
+    /// rejects a good one and the next renewal retries it
     #[tracing::instrument(level = "debug", skip(self), fields(%id))]
     pub async fn mark_signed_out(&mut self, id: Uuid) -> AuthResult<()> {
         let Some(account) = self.users.get_mut(&id) else {
@@ -128,7 +129,6 @@ impl CredentialsStore {
 
         account.signed_out = true;
         account.access_token.clear();
-        account.refresh_token.clear();
         self.save().await?;
         Ok(())
     }

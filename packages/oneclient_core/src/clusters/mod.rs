@@ -1,16 +1,30 @@
 mod java_override;
+mod loader_update;
 mod migrate;
-mod modpack;
+pub(crate) mod modpack;
+mod modpack_import;
 pub(crate) mod prepare;
 mod provision;
 mod release_migration;
+mod share;
+mod reset;
 mod unlink_legacy;
 
 pub use java_override::apply_bundle_java_override;
+pub use loader_update::{
+    apply_loader_update, auto_update_loader, available_loader_update, loader_update_policy,
+    set_loader_update_policy,
+};
 pub use migrate::apply_remote_migrations;
 pub use modpack::{
-    ModpackCluster, ModpackSource, PreparedModpack, create_modpack_instance,
+    FlaggedModpack, ModpackCluster, ModpackSource, PreparedModpack, create_modpack_instance,
     install_modpack_instance, prepare_modpack, repair_modpack_cluster, update_modpack_cluster,
+};
+pub use modpack_import::{
+    ExistingPack, FlaggedPackMod, ImportedModpack, LoaderPlan, PreparedImport,
+    has_imported_modpacks, import_modpack_into_cluster, list_imported_modpacks,
+    modpack_file_sources, prepare_modpack_import, release_imported_modpacks,
+    remove_imported_modpack,
 };
 pub use prepare::{
     estimate_cluster_download, prepare_cluster, prepare_cluster_locked, required_java_major,
@@ -20,6 +34,8 @@ pub use release_migration::{
     OfferLookup, ReleaseMigrationOffer, can_migrate_manually, copy_configs, manual_migration_offer,
     rank_migration_sources, record_new_versions, release_migration_offer,
 };
+pub use share::{ExportMode, SharedCluster, export_cluster};
+pub use reset::{ResetClaim, ResetReport, is_resetting, reset_cluster, reset_unfinished};
 pub use unlink_legacy::{SweepReport, unlink_legacy_cluster_content};
 
 pub use oneclient_cluster::{

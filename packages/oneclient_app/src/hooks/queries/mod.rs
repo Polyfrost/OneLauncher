@@ -11,11 +11,14 @@ fn use_meta_url_key() -> String {
 
 mod analytics;
 mod auth;
+mod bisect;
 mod bundles;
 mod changelog;
 mod cluster_content;
 mod clusters;
 mod disable_warnings;
+mod external_launchers;
+mod import_screening;
 mod folder_watch;
 mod image;
 mod java;
@@ -33,6 +36,7 @@ mod storage;
 mod tos;
 mod version_metadata;
 mod versions;
+pub mod wardrobe;
 mod worlds;
 
 pub use analytics::{
@@ -50,11 +54,12 @@ pub use auth::{
     use_default_account, use_finish_microsoft_login, use_refresh_account, use_refresh_all_accounts,
     use_remove_account, use_set_default_account,
 };
+pub use bisect::{BisectAction, BisectMutation, use_bisect, use_bisect_mutation};
 pub use bundles::{
     AvailableBundlesQuery, ClusterBundles, OnboardingBundlesQuery, available_bundles,
-    bundle_overrides_map, bundles_with_status_items, onboarding_bundles_items,
-    use_available_bundles, use_bundle_overrides, use_bundle_updates, use_bundles_with_status,
-    use_onboarding_bundles,
+    bundle_overrides_map, bundles_with_status_items, imported_modpacks_list, modpack_sources_map,
+    onboarding_bundles_items, use_available_bundles, use_bundle_overrides, use_bundle_updates,
+    use_bundles_with_status, use_imported_modpacks, use_modpack_sources, use_onboarding_bundles,
 };
 pub use changelog::{
     changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,
@@ -66,6 +71,8 @@ pub use cluster_content::{
 };
 pub use clusters::{GraphicsBackendQuery, use_cluster, use_clusters, use_graphics_backend};
 pub use disable_warnings::{DisableWarningsQuery, disable_warnings, use_disable_warnings};
+pub use external_launchers::{external_launchers, use_external_launchers};
+pub use import_screening::{import_screening, retry_import_screening, use_import_screening};
 pub(crate) use folder_watch::use_folder_watch;
 pub use image::{CachedImageQuery, loaded_image, use_cached_image};
 pub use java::{

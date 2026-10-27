@@ -5,8 +5,7 @@ use freya::router::RouterContext;
 use oneclient_core::WorldInfo;
 
 use crate::components::{
-    CARD_BG, CARD_NAME, CardLayout, ContextMenu, IconType, kebab_button, meta_size, meta_text,
-    on_secondary,
+    CardLayout, ContextMenu, IconType, kebab_button, meta_size, meta_text, on_secondary,
 };
 use crate::hooks::{
     delete_world, query_is_loading, spawn_world_task, try_cluster_worlds, try_world_size,
@@ -244,14 +243,14 @@ impl Component for WorldCard {
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .width(Size::fill())
-                        .color(Color::WHITE),
+                        .color(colors::fg_strong()),
                 )
                 .child(meta_text(
                     match size {
                         Some(size) => format!("{last_played} \u{b7} {}", format_size(size)),
                         None => last_played.clone(),
                     },
-                    CARD_NAME.with_a(127),
+                    colors::fg_primary().with_a(127),
                 ))
         } else {
             rect()
@@ -266,7 +265,7 @@ impl Component for WorldCard {
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .width(Size::fill())
-                        .color(CARD_NAME),
+                        .color(colors::fg_primary()),
                 )
                 .child(
                     label()
@@ -322,7 +321,7 @@ impl Component for WorldCard {
                 .spacing(12.)
                 .padding(Gaps::new_all(LIST_PAD))
                 .corner_radius(CornerRadius::new_all(8.))
-                .background(CARD_BG)
+                .background(colors::card())
                 .child(icon)
                 .child(text)
                 .child(meta_size(size.unwrap_or_default()))

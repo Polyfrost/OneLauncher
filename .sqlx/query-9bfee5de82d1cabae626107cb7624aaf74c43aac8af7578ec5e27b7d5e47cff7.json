@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT from_hash, to_hash FROM cluster_bisect_suggestions\n        WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "from_hash",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_suggestions",
+            "name": "from_hash"
+          }
+        }
+      },
+      {
+        "name": "to_hash",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_suggestions",
+            "name": "to_hash"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "9bfee5de82d1cabae626107cb7624aaf74c43aac8af7578ec5e27b7d5e47cff7"
+}

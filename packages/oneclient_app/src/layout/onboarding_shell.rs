@@ -105,7 +105,7 @@ fn progress_bar(step_index: usize, total: usize) -> impl IntoElement {
     rect()
         .width(Size::fill())
         .height(Size::px(3.))
-        .background(Color::WHITE.with_a(28))
+        .background(colors::ghost_overlay_hover())
         .child(
             rect()
                 .width(Size::percent(filled))

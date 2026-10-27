@@ -10,8 +10,8 @@ use skia_safe::sampling_options::CubicResampler;
 use crate::Route;
 use crate::components::Button;
 use crate::components::{
-    ART_PREVIEW_EDGE, AppNavbar, CodeBlock, DynamicArt, FileDropOverlay, Icon, IconType,
-    OverlayPopup, accept_drop, copy_button,
+    ART_PREVIEW_EDGE, AppNavbar, CodeBlock, CrashDialog, DynamicArt, FileDropOverlay, Icon,
+    IconType, OverlayPopup, accept_drop, copy_button,
 };
 use crate::layout::AnimatedAppOutlet;
 use crate::use_settings_snapshot;
@@ -21,8 +21,8 @@ use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
     ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
-    BrowserTypeState, DataPackWorldState, use_active_cluster_id, use_clusters, use_game_snapshot,
-    use_launcher, use_provide_active_cluster, use_provide_browser_compat,
+    BrowserTypeState, DataPackWorldState, use_active_cluster_id, use_clusters, use_dispatch,
+    use_game_snapshot, use_launcher, use_provide_active_cluster, use_provide_browser_compat,
     use_provide_browser_state, use_provide_browser_type, use_provide_datapack_world, use_splash,
 };
 use crate::theme::colors;
@@ -64,8 +64,13 @@ impl Component for AppShell {
             .find(|(_, s)| **s == LaunchStage::Running)
             .map(|(id, _)| *id);
 
+        // Peeked so turning the setting back on mid-game doesn't yank the view
+        let station = use_dispatch().station();
         use_side_effect_with_deps(&running_cluster, move |running| {
-            if let Some(cluster_id) = *running {
+            let open_log = station.peek().settings.settings.open_game_log_on_launch;
+            if let Some(cluster_id) = *running
+                && open_log
+            {
                 spawn(async move {
                     let _ = RouterContext::get().push(Route::ProcessLogs { cluster_id });
                 });
@@ -102,15 +107,17 @@ impl Component for AppShell {
                     .clone()
                     .map(|message| LaunchErrorDialog { message }.into_element()),
             )
+            .maybe_child(
+                game.current_crash()
+                    .filter(|_| game.error.is_none())
+                    .map(|crash| CrashDialog { crash }.into_element()),
+            )
     }
 }
 
 pub fn hides_overlay(route: &Route) -> bool {
     matches!(route, Route::Home {})
 }
-
-const DIALOG_BG: Color = Color::from_rgb(21, 28, 34);
-const CODE_BG: Color = Color::from_rgb(13, 18, 22);
 
 #[derive(PartialEq)]
 struct LaunchErrorDialog {
@@ -135,7 +142,7 @@ impl Component for LaunchErrorDialog {
                         rect()
                             .vertical()
                             .width(Size::px(560.))
-                            .background(DIALOG_BG)
+                            .background(colors::page_elevated())
                             .corner_radius(CornerRadius::new_all(16.))
                             .padding(Gaps::new_all(24.))
                             .spacing(16.)
@@ -167,7 +174,7 @@ impl Component for LaunchErrorDialog {
                             )
                             .child(
                                 CodeBlock::new(self.message.clone())
-                                    .background(CODE_BG)
+                                    .background(colors::page())
                                     .height(260.),
                             )
                             .child(
@@ -209,7 +216,7 @@ pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
                 .width(Size::fill())
                 .background(
                     LinearGradient::new()
-                        .stop((Color::BLACK.with_a(scale(100)), 0.))
+                        .stop((colors::shade().with_a(scale(100)), 0.))
                         .stop((colors::page().with_a(scale(255)), 95.0)),
                 ),
         )
@@ -444,6 +451,7 @@ impl Component for ParallaxArt {
             .height(Size::fill())
             .overflow(Overflow::Clip)
             .position(Position::new_absolute())
+            .background(colors::art_backdrop())
             .interactive(false)
             .on_sized(move |e: Event<SizedEventData>| {
                 let (sw, sh) = (e.area.width(), e.area.height());
@@ -547,9 +555,7 @@ fn gradient_overlay_radial() -> impl IntoElement {
                 let h = bounds.height();
 
                 #[rustfmt::skip]
-                let uniforms: [f32; 2] = [
-                    w, h,
-                ];
+                let uniforms: [f32; 2] = [w, h];
 
                 let bytes = unsafe {
                     std::slice::from_raw_parts(

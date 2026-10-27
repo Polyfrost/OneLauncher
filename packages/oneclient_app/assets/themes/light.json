@@ -3,8 +3,8 @@
   "colors": {
     "light": true,
     "page": "#D0D7F3",
-    "page_elevated": "#D0D7F3",
-    "card": "#EBF2FF",
+    "page_elevated": "#D9E0F7",
+    "card": "#E3EAFB",
     "component": "#EBF2FF",
     "border": "#A3A3A34D",
     "text": "#000000",

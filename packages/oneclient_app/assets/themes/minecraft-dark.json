@@ -6,9 +6,9 @@
   "colors": {
     "light": false,
     "page": "#11171C",
-    "page_elevated": "#11171C",
+    "page_elevated": "#171F24",
     "card": "#1A2229",
-    "component": "#1A2229",
+    "component": "#1E262B",
     "border": "#FFFFFF1A",
     "text": "#D5DBFF",
     "text_secondary": "#757883",

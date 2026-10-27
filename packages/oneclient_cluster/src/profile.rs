@@ -20,14 +20,12 @@ pub struct GameSettingsProfile {
     pub os_extra: Option<SettingsOsExtra>,
     /// Never applies to bundle content
     pub browser_update_mode: Option<PackageUpdateMode>,
-    /// `None` on the resolved profile leaves the in-game setting in charge
-    pub graphics_backend: Option<GraphicsBackend>,
 }
 
 // `Resolution` lives in oneclient_common the launch-argument builder needs it
 // and cannot depend on the launcher settings
 pub use oneclient_common::Resolution;
-pub use oneclient_common::domain::{GraphicsBackend, PackageUpdateMode};
+pub use oneclient_common::domain::PackageUpdateMode;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default)]
@@ -67,7 +65,6 @@ impl GameSettingsProfile {
             hook_post: None,
             os_extra: Some(SettingsOsExtra::default()),
             browser_update_mode: Some(PackageUpdateMode::default()),
-            graphics_backend: None,
         }
     }
 
@@ -116,9 +113,6 @@ impl GameSettingsProfile {
         if self.browser_update_mode.is_none() {
             self.browser_update_mode = global.browser_update_mode;
         }
-        if self.graphics_backend.is_none() {
-            self.graphics_backend = global.graphics_backend;
-        }
     }
 
     pub fn from_row(row: SettingProfileRow) -> crate::ClusterResult<Self> {
@@ -147,10 +141,6 @@ impl GameSettingsProfile {
                 .browser_update_mode
                 .as_deref()
                 .and_then(PackageUpdateMode::parse),
-            graphics_backend: row
-                .graphics_backend
-                .as_deref()
-                .and_then(GraphicsBackend::parse),
         })
     }
 
@@ -178,9 +168,6 @@ impl GameSettingsProfile {
             browser_update_mode: self
                 .browser_update_mode
                 .map(|mode| mode.as_str().to_string()),
-            graphics_backend: self
-                .graphics_backend
-                .map(|backend| backend.as_str().to_string()),
         })
     }
 }

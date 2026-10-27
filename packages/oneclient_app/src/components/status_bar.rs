@@ -8,7 +8,7 @@ use oneclient_net::status::{self, ServiceStatus};
 use crate::components::{Icon, IconType};
 use crate::hooks::{try_default_account, use_current_account};
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 
 const BAR_HEIGHT: f32 = 34.;
 const AMBER: Color = Color::from_rgb(191, 122, 26);
@@ -220,7 +220,7 @@ impl Component for StatusBanner {
                 .child(
                     label()
                         .text("Sign in")
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(Color::WHITE),
                 )
@@ -237,7 +237,7 @@ impl Component for StatusBanner {
             .child(
                 label()
                     .text(self.text.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(1)
                     .color(Color::WHITE),

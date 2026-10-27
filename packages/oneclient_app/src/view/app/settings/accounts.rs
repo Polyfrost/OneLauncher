@@ -16,7 +16,7 @@ use crate::hooks::{
     use_add_offline_account, use_current_account, use_refresh_account, use_remove_account,
     use_set_default_account,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 /// The shader scales the model off `res.y` alone so height makes the player bigger width only needs to clear the arms
@@ -173,14 +173,14 @@ fn hero(
                         .child(
                             label()
                                 .text("ACTIVE ACCOUNT")
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(colors::fg_secondary()),
                         )
                         .child(
                             label()
                                 .text(name)
-                                .font_size(24.)
+                                .font_size(text_size(24.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .max_lines(1)
                                 .color(colors::fg_primary()),
@@ -188,7 +188,7 @@ fn hero(
                         .child(
                             label()
                                 .text(subtitle)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         ),
                 )
@@ -270,7 +270,7 @@ fn model_frame(id: Option<Uuid>) -> impl IntoElement {
         .maybe_child(id.map(|_| {
             label()
                 .text("Drag to rotate")
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .color(colors::fg_secondary())
                 .into_element()
         }))
@@ -318,7 +318,7 @@ fn offline_dialog(
                         .child(
                             label()
                                 .text("Add offline account")
-                                .font_size(18.)
+                                .font_size(text_size(18.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
@@ -339,7 +339,7 @@ fn offline_dialog(
                                 .child(
                                     label()
                                         .text(uuid_preview.unwrap_or_else(|| "-".to_string()))
-                                        .font_size(12.)
+                                        .font_size(text_size(12.))
                                         .color(colors::fg_secondary()),
                                 ),
                         )
@@ -374,7 +374,7 @@ fn offline_dialog(
 fn field_label(text: &str) -> impl IntoElement {
     label()
         .text(text.to_string())
-        .font_size(11.)
+        .font_size(text_size(11.))
         .font_weight(FontWeight::MEDIUM)
         .color(colors::fg_secondary())
         .into_element()
@@ -392,7 +392,7 @@ fn hint_line(icon: IconType, text: String, color: Color) -> impl IntoElement {
         .child(
             label()
                 .text(text)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .width(Size::flex(1.0))
                 .color(color),
         )
@@ -525,7 +525,7 @@ impl Component for AccountRow {
                             .child(
                                 label()
                                     .text(self.username.clone())
-                                    .font_size(15.)
+                                    .font_size(text_size(15.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .max_lines(1)
                                     .color(colors::fg_primary()),
@@ -542,7 +542,7 @@ impl Component for AccountRow {
                             } else {
                                 format!("{} · {id}", kind_label(self.kind))
                             })
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(1)
                             .color(colors::fg_secondary()),
                     ),
@@ -677,7 +677,7 @@ fn badge(icon: impl IntoElement, text: String, border: Color, fg: Color) -> impl
         .child(
             label()
                 .text(text)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(fg),
         )
@@ -701,7 +701,7 @@ fn empty_state() -> Element {
         .child(
             label()
                 .text("No accounts yet. Add one above.")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

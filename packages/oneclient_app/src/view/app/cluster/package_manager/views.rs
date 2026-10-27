@@ -14,7 +14,7 @@ use crate::components::{
 };
 use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::routes::Route;
-use crate::theme::{colors, rounded, rounded_px};
+use crate::theme::{colors, rounded, rounded_px, text_size};
 use crate::{Actions, utils};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -188,7 +188,7 @@ impl Bulk {
             Button::new()
                 .secondary()
                 .height(Size::px(34.))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .child(Icon::new(icon).size(15.))
                 .text(text)
         };
@@ -196,7 +196,7 @@ impl Bulk {
         vec![
             label()
                 .text(format!("{} selected", self.count))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(1)
                 .color(colors::fg_secondary())
                 .into_element(),
@@ -385,7 +385,7 @@ pub(super) fn toolbar_bar(
         Button::new()
             .secondary()
             .height(Size::px(34.))
-            .font_size(12.)
+            .font_size(text_size(12.))
             .enabled(!bulk.order.is_empty())
             .tooltip("Select several to enable, disable or delete at once")
             .on_press(move |_| selection.enter())
@@ -397,7 +397,7 @@ pub(super) fn toolbar_bar(
         Button::new()
             .primary()
             .height(Size::px(34.))
-            .font_size(12.)
+            .font_size(text_size(12.))
             .on_press(move |_| {
                 if local_tab {
                     import_from_file(cluster_id, content_type, dispatch.clone());
@@ -567,7 +567,7 @@ impl Component for CategoryChip {
             .child(
                 label()
                     .text(self.label.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(1)
                     .color(if selected {
@@ -641,7 +641,7 @@ pub(crate) fn notice_bar(text: String) -> Element {
         .child(
             label()
                 .text(text)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .width(Size::flex(1.0))
                 .color(colors::fg_secondary()),
         )
@@ -800,14 +800,14 @@ impl Component for SectionHeader {
             .child(
                 label()
                     .text(self.label)
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .font_weight(FontWeight::SEMI_BOLD)
                     .color(colors::fg_primary()),
             )
             .child(
                 label()
                     .text(self.count.to_string())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
     }
@@ -1050,14 +1050,14 @@ pub(crate) fn empty_shell(icon: IconType) -> Rect {
 pub(crate) fn empty_title(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
-        .font_size(14.)
+        .font_size(text_size(14.))
         .color(colors::fg_secondary())
 }
 
 pub(crate) fn empty_hint(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
-        .font_size(12.)
+        .font_size(text_size(12.))
         .color(colors::fg_secondary())
 }
 

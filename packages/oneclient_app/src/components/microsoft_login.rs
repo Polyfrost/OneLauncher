@@ -12,7 +12,7 @@ use crate::hooks::{
     use_microsoft_login_status,
 };
 use crate::platform;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(Clone)]
@@ -208,7 +208,7 @@ pub(crate) fn login_dialog(
                         .child(
                             label()
                                 .text("Sign in to Microsoft")
-                                .font_size(18.)
+                                .font_size(text_size(18.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
@@ -258,7 +258,7 @@ fn dialog_divider() -> impl IntoElement {
         .child(
             label()
                 .text("or")
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary()),
         )
         .child(
@@ -281,7 +281,12 @@ fn status_row(status: Option<LoginProgress>, error: Option<String>) -> impl Into
                     .size(13.)
                     .color(colors::danger()),
             )
-            .child(label().text(error).font_size(12.).color(colors::danger()))
+            .child(
+                label()
+                    .text(error)
+                    .font_size(text_size(12.))
+                    .color(colors::danger()),
+            )
             .into_element();
     }
 
@@ -304,7 +309,7 @@ fn status_row(status: Option<LoginProgress>, error: Option<String>) -> impl Into
         .child(
             label()
                 .text(text)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -314,7 +319,7 @@ fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
     let mut steps = rect().vertical().width(Size::fill()).spacing(6.).child(
         label()
             .text("What you can do:")
-            .font_size(12.)
+            .font_size(text_size(12.))
             .font_weight(FontWeight::SEMI_BOLD)
             .color(colors::fg_primary()),
     );
@@ -328,13 +333,13 @@ fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
                 .child(
                     label()
                         .text(format!("{}.", index + 1))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 )
                 .child(
                     label()
                         .text(step)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         );
@@ -351,7 +356,7 @@ fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
         .child(
             label()
                 .text(guidance.what_happened)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_primary()),
         )
         .child(steps)
@@ -367,7 +372,7 @@ fn browser_dialog_body(auth_url: String) -> impl IntoElement {
         .child(
             label()
                 .text("We opened the Microsoft sign-in page in your browser. Finish there and you'll be brought back automatically.")
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .child(
@@ -390,7 +395,7 @@ fn device_code_dialog_body(code: String, verification_uri: String) -> impl IntoE
         .child(
             label()
                 .text("Or enter this code at the Microsoft sign-in page:")
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .child(
@@ -404,7 +409,7 @@ fn device_code_dialog_body(code: String, verification_uri: String) -> impl IntoE
                 .child(
                     label()
                         .text(code)
-                        .font_size(48.)
+                        .font_size(text_size(48.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 ),

@@ -3,7 +3,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::use_overlay_claim;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 
 const PANEL_W: f32 = 172.;
 const BUTTON_W: f32 = 34.;
@@ -178,7 +178,7 @@ impl Component for FilterPanel {
 fn section_label(text: &'static str) -> impl IntoElement {
     label()
         .text(text)
-        .font_size(10.)
+        .font_size(text_size(10.))
         .font_weight(FontWeight::SEMI_BOLD)
         .color(colors::fg_secondary())
 }
@@ -231,7 +231,7 @@ impl Component for ChoiceRow {
             .child(
                 label()
                     .text(self.option.text.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .width(Size::flex(1.0))
                     .color(color),
             )

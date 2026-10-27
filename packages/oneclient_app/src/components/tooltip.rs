@@ -6,7 +6,7 @@ use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
 
 use crate::components::OVERLAY_MAX_LEVEL;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, clamp_to_window, window_logical_size};
 
 const SHOW_DELAY: Duration = Duration::from_millis(400);
@@ -256,7 +256,7 @@ impl Component for TooltipBubble {
             .child(
                 label()
                     .text(self.text.to_string())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(2)
                     .color(colors::fg_primary()),

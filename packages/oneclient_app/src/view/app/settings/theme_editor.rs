@@ -10,7 +10,7 @@ use crate::components::{
 use crate::hooks::{use_debounced, use_dispatch};
 use crate::routes::Route;
 use crate::theme::colors::{self, Hex, Palette};
-use crate::theme::{Theme, font_families, save_theme};
+use crate::theme::{Theme, font_families, pixel_font_size_of, save_theme};
 
 const BORDER_OPACITIES: [u8; 7] = [5, 10, 15, 20, 30, 45, 60];
 const CORNERS: [(&str, f32); 4] = [
@@ -270,7 +270,9 @@ fn font_row(
             .outlined()
             .on_select(move |index: usize| {
                 let mut draft = draft;
-                *field(&mut draft.write()) = families[index].clone();
+                let mut theme = draft.write();
+                *field(&mut theme) = families[index].clone();
+                theme.pixel_font_size = pixel_font_size_of(&theme.font);
             }),
     )
 }

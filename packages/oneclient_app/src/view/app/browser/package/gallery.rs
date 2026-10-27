@@ -6,7 +6,7 @@ use oneclient_content::packages::types::GalleryImage;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{loaded_image, query_is_busy, use_cached_image};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color, flow_grid, grid_columns_for_width};
 
 const MAX_COL_W: f32 = 400.;
@@ -133,7 +133,7 @@ impl Component for GalleryTile {
                         .child(
                             label()
                                 .text(self.image.title.clone().unwrap_or_default())
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .max_lines(2)
                                 .color(colors::fg_secondary()),
                         ),
@@ -190,7 +190,7 @@ impl Component for GalleryViewer {
             .maybe_child(query_is_busy(&query).then(|| {
                 label()
                     .text("Loading image...")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary())
                     .into_element()
             }));
@@ -314,7 +314,7 @@ fn header_row(
                 .child(
                     label()
                         .text(title)
-                        .font_size(15.)
+                        .font_size(text_size(15.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .color(colors::fg_primary()),
@@ -323,7 +323,7 @@ fn header_row(
                     el.child(
                         label()
                             .text(format!("{} of {len}", idx + 1))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(colors::fg_secondary()),
                     )
                 }),

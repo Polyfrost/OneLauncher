@@ -39,7 +39,7 @@ use crate::components::{Button, Icon, IconType, set_enabled_action};
 use crate::hooks::{
     ClusterAction, loaded_image, mutation_is_running, use_cached_image, use_cluster_mutation,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -127,8 +127,7 @@ impl Installed {
     }
 
     pub fn conflicts_with_bundle(&self, version_id: &str) -> bool {
-        self.source == InstallSource::Bundled
-            && self.bundled_version.as_deref() != Some(version_id)
+        self.source == InstallSource::Bundled && self.bundled_version.as_deref() != Some(version_id)
     }
 
     /// Counts linked artifacts only a bundle pin the cluster never downloaded is not a second copy
@@ -291,7 +290,7 @@ impl Component for EnableButton {
                         .child(
                             label()
                                 .text(if running { "Enabling" } else { "Enable" })
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .max_lines(1)
                                 .color(colors::fg_primary()),
@@ -322,7 +321,13 @@ pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
         .padding(Gaps::new_symmetric(2., 8.))
         .corner_radius(rounded(999.))
         .background(color.with_a(38))
-        .child(label().text(text).font_size(11.).max_lines(1).color(color))
+        .child(
+            label()
+                .text(text)
+                .font_size(text_size(11.))
+                .max_lines(1)
+                .color(color),
+        )
 }
 
 fn badge(
@@ -349,7 +354,7 @@ fn badge(
         .child(
             label()
                 .text(installed.label())
-                .font_size(font_size)
+                .font_size(text_size(font_size))
                 .max_lines(1)
                 .color(color),
         )

@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, OverlayPopup};
 use crate::hooks::{use_cluster, use_game_snapshot};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_WIDTH: f32 = 420.;
@@ -83,27 +83,27 @@ impl Component for ResetInstanceModal {
                             .child(
                                 label()
                                     .text("Reset instance")
-                                    .font_size(18.)
+                                    .font_size(text_size(18.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
                                     .text(warning)
-                                    .font_size(13.)
+                                    .font_size(text_size(13.))
                                     .color(colors::fg_secondary()),
                             )
                             .maybe_child(shared.then(|| {
                                 label()
                                     .text("This version uses the shared game folder, so the config files there are kept. Other versions use them too.")
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                                     .into_element()
                             }))
                             .maybe_child(running.then(|| {
                                 label()
                                     .text("Close the game before resetting this instance.")
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                                     .into_element()
                             }))

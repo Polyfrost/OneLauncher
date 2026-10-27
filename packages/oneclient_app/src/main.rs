@@ -96,10 +96,14 @@ impl App for OneClientApp {
         let mut palette_revision = use_state(|| 0u32);
         theme::colors::bind_revision(palette_revision);
         let appearance = use_settings_snapshot().settings;
-        let system_dark = *Platform::get().preferred_theme.read() == PreferredTheme::Dark;
+        let platform = Platform::get();
+        let system_dark = *platform.preferred_theme.read() == PreferredTheme::Dark;
+        let scale_factor = *platform.scale_factor.read() as f32;
         let theme_id = theme::system_aware(&appearance.theme, system_dark).to_string();
         theme::colors::apply(&theme_id, appearance.accent_color.as_deref());
-        use_side_effect_with_deps(&(theme_id, appearance.accent_color), move |_| {
+        theme::set_scale_factor(scale_factor);
+        let deps = (theme_id, appearance.accent_color, scale_factor.to_bits());
+        use_side_effect_with_deps(&deps, move |_| {
             *palette_revision.write() += 1;
         });
 

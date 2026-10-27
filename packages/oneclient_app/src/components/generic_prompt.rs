@@ -9,7 +9,7 @@ use crate::components::{Button, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
 use crate::microsoft_java::MICROSOFT_JAVA_CHOICE_INSTALL;
 use crate::notifications::PendingPromptView;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::updater::UPDATE_CHOICE_INSTALL;
 
@@ -114,14 +114,14 @@ impl Component for GenericPromptOverlay {
                             .child(
                                 label()
                                     .text(prompt.title.clone())
-                                    .font_size(16.)
+                                    .font_size(text_size(16.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
                                     .text(prompt.question.clone())
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(6)
                                     .width(Size::fill())
                                     .color(colors::fg_secondary()),

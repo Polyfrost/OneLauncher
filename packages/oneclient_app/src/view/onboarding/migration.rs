@@ -8,7 +8,7 @@ use crate::hooks::{
     use_onboarding_bundles, use_onboarding_selection,
 };
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{
     choice_row, onboarding_illustration, onboarding_slide, step_heading,
@@ -211,7 +211,7 @@ fn import_body(
         .child(
             label()
                 .text("Detected versions")
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_secondary()),
         )
@@ -264,20 +264,30 @@ fn version_card(
                 .child(
                     label()
                         .text(instance.folder_name.clone())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
-                .child(label().text(subtitle).font_size(11.).color(if selected {
-                    colors::fg_primary()
-                } else {
-                    colors::fg_secondary()
-                }))
-                .child(label().text(categories).font_size(11.).color(if selected {
-                    colors::fg_primary()
-                } else {
-                    colors::fg_secondary()
-                })),
+                .child(
+                    label()
+                        .text(subtitle)
+                        .font_size(text_size(11.))
+                        .color(if selected {
+                            colors::fg_primary()
+                        } else {
+                            colors::fg_secondary()
+                        }),
+                )
+                .child(
+                    label()
+                        .text(categories)
+                        .font_size(text_size(11.))
+                        .color(if selected {
+                            colors::fg_primary()
+                        } else {
+                            colors::fg_secondary()
+                        }),
+                ),
         )
         // Selection affordance only when the instance actually has files
         .maybe_child(importable.then(|| {
@@ -286,7 +296,7 @@ fn version_card(
             } else {
                 label()
                     .text("Import files")
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary())
                     .into_element()
             }
@@ -317,7 +327,7 @@ fn version_card(
             .child(
                 label()
                     .text("Where should these files go?")
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_primary()),
             )
             .child(choice_row(
@@ -378,14 +388,14 @@ fn import_choice_card(
                 .child(
                     label()
                         .text(title.to_string())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle.to_string())
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .color(if active {
                             colors::fg_primary()
                         } else {

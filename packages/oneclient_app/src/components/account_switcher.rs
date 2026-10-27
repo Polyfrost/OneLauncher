@@ -12,7 +12,7 @@ use crate::{
         SetDefaultAccountKeys, try_accounts, try_default_account, use_account_switcher_open,
         use_accounts, use_current_account, use_dispatch, use_set_default_account,
     },
-    theme::{colors, rounded},
+    theme::{colors, rounded, text_size},
     ui::divider,
 };
 
@@ -69,7 +69,7 @@ impl Component for AccountPanel {
             rows = rows.child(
                 label()
                     .text("No accounts yet")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             );
         } else {
@@ -116,7 +116,7 @@ impl Component for AccountPanel {
                     .child(
                         label()
                             .text("Accounts")
-                            .font_size(18.)
+                            .font_size(text_size(18.))
                             .font_weight(FontWeight::MEDIUM)
                             .a11y_role(AccessibilityRole::TitleBar),
                     ),
@@ -239,7 +239,7 @@ impl Component for AccountRow {
                     .child(
                         label()
                             .text(username)
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .color(colors::fg_primary()),
@@ -248,7 +248,7 @@ impl Component for AccountRow {
                         el.child(
                             label()
                                 .text("Active")
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .color(colors::fg_secondary()),
                         )
                     }),

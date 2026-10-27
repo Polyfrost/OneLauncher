@@ -27,7 +27,7 @@ pub use theme_editor::SettingsThemeEditor;
 
 use crate::{
     components::{Button, Icon, IconType},
-    theme::{colors, rounded},
+    theme::{colors, rounded, text_size},
     ui::border_all_color,
 };
 
@@ -41,7 +41,7 @@ pub fn section_header(text: &'static str) -> impl IntoElement {
         .child(
             label()
                 .text(text)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_secondary()),
         )
@@ -118,14 +118,14 @@ fn settings_row_inner(
                 .child(
                     label()
                         .text(title)
-                        .font_size(16.)
+                        .font_size(text_size(16.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(description)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         )

@@ -3,7 +3,7 @@ use freya::prelude::*;
 use crate::components::IconType;
 use crate::hooks::use_onboarding_selection;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::view::onboarding::{
     onboarding_illustration, onboarding_nav, onboarding_page, step_heading,
 };
@@ -30,7 +30,7 @@ impl Component for OnboardingWelcome {
             .child(
                 label()
                     .text("This quick setup will pick your language, sign you in, and prepare your first versions. It only takes a minute.")
-                    .font_size(15.)
+                    .font_size(text_size(15.))
                     .color(colors::fg_secondary()),
             )
             .into_element();

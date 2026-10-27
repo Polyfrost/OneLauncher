@@ -14,7 +14,7 @@ use crate::{
     hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
     motion::use_animations_enabled,
     notifications::{InboxEntry, NotificationActionKind},
-    theme::{colors, rounded},
+    theme::{colors, rounded, text_size},
     ui::divider,
 };
 
@@ -290,14 +290,14 @@ fn header(entry: &InboxEntry) -> impl IntoElement {
         .child(
             label()
                 .text(entry.title.clone())
-                .font_size(16.)
+                .font_size(text_size(16.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(title_color),
         )
         .child(
             label()
                 .text(entry.body.clone())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(body_color),
         )
 }
@@ -459,14 +459,14 @@ fn progress_card(entry: &InboxEntry) -> Rect {
                     .child(
                         label()
                             .text(entry.title.clone())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
                     .child(
                         label()
                             .text(entry.body.clone())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .child(

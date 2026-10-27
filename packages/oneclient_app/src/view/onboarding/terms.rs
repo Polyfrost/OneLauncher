@@ -12,7 +12,7 @@ use crate::hooks::{
 };
 use crate::platform::open_url;
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_page, step_heading};
 
@@ -161,7 +161,7 @@ fn loading_body() -> Element {
             .child(
                 label()
                     .text("Loading the Terms of Service and Privacy Policy...")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             ),
     )
@@ -219,7 +219,7 @@ fn fallback_body(error: Option<&str>, query: UseQuery<TermsQuery>) -> Element {
             .child(
                 label()
                     .text("Couldn't load the Terms of Service or Privacy Policy.")
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -229,14 +229,14 @@ fn fallback_body(error: Option<&str>, query: UseQuery<TermsQuery>) -> Element {
                         "Open them in your browser using the links below, or try again once \
                          you're back online.",
                     )
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .text_align(TextAlign::Center)
                     .color(colors::fg_secondary()),
             )
             .maybe_child(error.map(|err| {
                 label()
                     .text(err.to_string())
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .max_lines(2)
                     .color(colors::fg_secondary().with_a(160))
             }))
@@ -352,7 +352,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                                 .child(
                                     label()
                                         .text("Continue without accepting?")
-                                        .font_size(16.)
+                                        .font_size(text_size(16.))
                                         .font_weight(FontWeight::SEMI_BOLD)
                                         .color(colors::fg_primary()),
                                 ),
@@ -364,7 +364,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                                      all social features, the OneClient nametag indicator, \
                                      and more.",
                                 )
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .width(Size::fill())
                                 .max_lines(4)
                                 .color(colors::fg_secondary()),
@@ -375,7 +375,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                                     "You can accept later under Settings > Launcher. That takes \
                                      effect after a restart.",
                                 )
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .width(Size::fill())
                                 .max_lines(3)
                                 .color(colors::fg_secondary().with_a(180)),

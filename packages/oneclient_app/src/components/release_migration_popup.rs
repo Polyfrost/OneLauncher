@@ -20,7 +20,7 @@ use crate::hooks::{
 };
 use crate::routes::Route;
 use crate::state::{ReleaseMigrationPrompt, ReleasePlanState};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
@@ -305,7 +305,7 @@ fn art_panel(
                         .child(
                             label()
                                 .text(cluster_title(target))
-                                .font_size(32.)
+                                .font_size(text_size(32.))
                                 .font_weight(FontWeight::BOLD)
                                 .max_lines(1)
                                 .color(Color::WHITE),
@@ -313,7 +313,7 @@ fn art_panel(
                         .maybe_child((!runtime.is_empty()).then(|| {
                             label()
                                 .text(runtime.join(" · "))
-                                .font_size(13.)
+                                .font_size(text_size(13.))
                                 .margin(Gaps::new(12., 0., 0., 0.))
                                 .color(colors::on_art())
                         }))
@@ -401,14 +401,14 @@ fn summary_row(name: &str, value: String, name_color: Color) -> impl IntoElement
         .child(
             label()
                 .text(name.to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .width(Size::flex(1.))
                 .color(name_color),
         )
         .child(
             label()
                 .text(value)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(Color::WHITE),
         )
@@ -461,7 +461,7 @@ fn content_panel(
                         .child(
                             label()
                                 .text("Migrate your packages")
-                                .font_size(21.)
+                                .font_size(text_size(21.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .width(Size::flex(1.))
                                 .max_lines(1)
@@ -482,7 +482,7 @@ fn content_panel(
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .max_lines(2)
                         .margin(Gaps::new(4., 0., 0., 0.))
                         .color(colors::fg_secondary()),
@@ -522,7 +522,7 @@ fn source_picker(prompt: &ReleaseMigrationPrompt, dispatch: crate::Actions) -> i
         .child(
             label()
                 .text("Migrate from")
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .child(
@@ -599,7 +599,7 @@ fn tab_row(
                         } else {
                             "Select all"
                         })
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
@@ -630,7 +630,7 @@ fn tab_pill(text: String, active: bool, mut on_press: impl FnMut() + 'static) ->
         .child(
             label()
                 .text(text)
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(if active {
                     colors::on_brand()
@@ -811,7 +811,7 @@ fn package_list(
                         .text(format!(
                             "Added automatically when a {mc_version} build appears (up to {WAITLIST_DAYS} days)"
                         ))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .max_lines(1)
                         .margin(Gaps::new(0., 12., 6., 12.))
                         .color(colors::fg_secondary()),
@@ -922,14 +922,14 @@ fn section_header(
         .child(
             label()
                 .text(title)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
                 .text(subtitle.unwrap_or_default())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .width(Size::flex(1.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
@@ -1001,7 +1001,7 @@ impl Component for DependencyRow {
                     .child(
                         label()
                             .text(self.name.clone())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
@@ -1014,7 +1014,7 @@ impl Component for DependencyRow {
                                 provider_label(self.provider),
                                 self.version_name
                             ))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .width(Size::fill())
                             .color(colors::fg_secondary()),
@@ -1023,13 +1023,13 @@ impl Component for DependencyRow {
             .maybe_child((self.size > 0).then(|| {
                 label()
                     .text(format_size(self.size))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary())
             }))
             .child(
                 label()
                     .text(self.required_by.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .width(Size::px(REQUIRED_BY_W))
                     .max_lines(1)
                     .text_align(TextAlign::End)
@@ -1095,7 +1095,7 @@ impl Component for SkippedRow {
             .child(
                 label()
                     .text(self.name.clone())
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .width(Size::px(SKIPPED_NAME_W))
                     .max_lines(1)
@@ -1104,7 +1104,7 @@ impl Component for SkippedRow {
             .child(
                 label()
                     .text(self.reason.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .width(Size::flex(1.))
                     .max_lines(1)
                     .color(colors::fg_secondary()),
@@ -1120,7 +1120,7 @@ fn list_message(text: String) -> impl IntoElement {
         .child(
             label()
                 .text(text)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
 }
@@ -1188,7 +1188,7 @@ fn footer(
         .child(
             label()
                 .text(summary)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .width(Size::flex(1.))
                 .max_lines(2)
                 .color(colors::fg_secondary()),
@@ -1296,7 +1296,7 @@ impl Component for MigrationRow {
                     .child(
                         label()
                             .text(self.name.clone())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
@@ -1309,7 +1309,7 @@ impl Component for MigrationRow {
                             } else {
                                 format!("{provider} · {} · Disabled", self.package.version_name)
                             })
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .width(Size::fill())
                             .color(colors::fg_secondary()),
@@ -1318,7 +1318,7 @@ impl Component for MigrationRow {
             .maybe_child((self.package.size > 0).then(|| {
                 label()
                     .text(format_size(self.package.size))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary())
             }))
             .child(check_box(selected))

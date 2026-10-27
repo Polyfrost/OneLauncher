@@ -1,7 +1,7 @@
 use super::*;
 
 use crate::components::ScrollArea;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::utils::capitalize;
 
@@ -48,7 +48,7 @@ impl Component for CategorySidebar {
             .child(
                 label()
                     .text("CATEGORIES")
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .font_weight(FontWeight::MEDIUM)
                     .letter_spacing(1.4)
                     .color(colors::fg_secondary()),
@@ -117,7 +117,7 @@ impl Component for CategoryRow {
             .child(
                 label()
                     .text(capitalize(&self.name))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .max_lines(1)
                     .font_weight(if selected {
                         FontWeight::MEDIUM

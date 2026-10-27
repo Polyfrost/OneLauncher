@@ -14,7 +14,7 @@ use crate::hooks::{
 };
 use crate::layout::cluster_content;
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, fmt_date};
 use crate::utils::format_size;
 
@@ -238,7 +238,7 @@ impl Component for WorldCard {
                 .child(
                     label()
                         .text(info.folder_name.clone())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -260,7 +260,7 @@ impl Component for WorldCard {
                 .child(
                     label()
                         .text(info.folder_name.clone())
-                        .font_size(15.)
+                        .font_size(text_size(15.))
                         .font_weight(FontWeight::MEDIUM)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -270,7 +270,7 @@ impl Component for WorldCard {
                 .child(
                     label()
                         .text(last_played)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .width(Size::fill())

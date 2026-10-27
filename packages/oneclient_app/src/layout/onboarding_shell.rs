@@ -9,7 +9,7 @@ use crate::hooks::{
     OnboardingSelectionState, has_migration_data, onboarding_bundles_items, use_launcher,
     use_migration, use_onboarding_bundles, use_provide_onboarding_selection, use_settings_snapshot,
 };
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::view::onboarding::{default_selection, onboarding_step_index, onboarding_total};
 
 #[derive(PartialEq)]
@@ -121,7 +121,7 @@ fn copyright() -> impl IntoElement {
         .child(
             label()
                 .text("Design © 2026 Polyfrost. All rights reserved.")
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary()),
         )
 }

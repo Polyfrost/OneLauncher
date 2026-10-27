@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::theme;
+use crate::theme::text_size;
 
 #[derive(PartialEq, Clone)]
 pub struct NotFound {
@@ -21,14 +22,14 @@ impl Component for NotFound {
             .child(
                 label()
                     .text("404 - Not Found")
-                    .font_size(32.)
+                    .font_size(text_size(32.))
                     .font_weight(FontWeight::BOLD)
                     .color(theme::colors::fg_primary()),
             )
             .child(
                 label()
                     .text("The page you are looking for does not exist.")
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .color(theme::colors::fg_secondary()),
             )
     }

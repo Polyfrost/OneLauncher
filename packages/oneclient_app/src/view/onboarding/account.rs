@@ -4,7 +4,7 @@ use oneclient_auth::MinecraftAccount;
 use crate::components::{Avatar, Button, Icon, IconType, use_microsoft_login};
 use crate::hooks::{try_default_account, use_current_account};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::view::onboarding::{
     onboarding_illustration, onboarding_nav, onboarding_page, step_heading,
 };
@@ -78,14 +78,14 @@ fn account_preview(account: &MinecraftAccount) -> impl IntoElement {
                         .child(
                             label()
                                 .text(account.username.clone())
-                                .font_size(16.)
+                                .font_size(text_size(16.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
                         .child(
                             label()
                                 .text(account.id.to_string())
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         ),
                 ),
@@ -125,7 +125,12 @@ fn sign_in_card(
                         .size(13.)
                         .color(colors::danger()),
                 )
-                .child(label().text(message).font_size(12.).color(colors::danger()))
+                .child(
+                    label()
+                        .text(message)
+                        .font_size(text_size(12.))
+                        .color(colors::danger()),
+                )
                 .into_element()
         }))
         .into_element()

@@ -1,6 +1,7 @@
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, LazyLock, RwLock};
 
 use bytes::Bytes;
@@ -20,6 +21,8 @@ const MINECRAFT_FONT: &str = "Minecraft";
 
 const BUILTIN_THEMES: [&str; 4] = ["dark", "light", "minecraft-dark", "minecraft-light"];
 
+static SCALE_FACTOR: AtomicU32 = AtomicU32::new(0x3F80_0000);
+
 static THEMES: LazyLock<RwLock<Vec<Arc<Theme>>>> =
     LazyLock::new(|| RwLock::new(load_themes().into_iter().map(Arc::new).collect()));
 
@@ -34,6 +37,8 @@ pub struct Theme {
     pub font: String,
     #[serde(default = "default_mono_font")]
     pub mono_font: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pixel_font_size: Option<f32>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub font_files: BTreeMap<String, Vec<PathBuf>>,
     pub colors: Palette,
@@ -127,6 +132,13 @@ pub fn save_theme(mut theme: Theme) -> std::io::Result<String> {
     Ok(id)
 }
 
+pub fn pixel_font_size_of(family: &str) -> Option<f32> {
+    themes()
+        .iter()
+        .find(|theme| theme.font == family && theme.pixel_font_size.is_some())
+        .and_then(|theme| theme.pixel_font_size)
+}
+
 pub fn font_families() -> Vec<String> {
     let mut families: Vec<String> = [DEFAULT_FONT, MONO_FONT, MINECRAFT_FONT]
         .into_iter()
@@ -203,6 +215,21 @@ pub fn font() -> String {
 
 pub fn mono_font() -> String {
     colors::active_theme().mono_font.clone()
+}
+
+pub fn set_scale_factor(scale: f32) {
+    SCALE_FACTOR.store(scale.to_bits(), Ordering::Relaxed);
+}
+
+pub fn text_size(size: f32) -> f32 {
+    let Some(step) = colors::active_theme()
+        .pixel_font_size
+        .filter(|step| *step > 0.)
+    else {
+        return size;
+    };
+    let scale = f32::from_bits(SCALE_FACTOR.load(Ordering::Relaxed)).max(1.);
+    (size * scale / step).round().max(1.) * step / scale
 }
 
 pub fn rounded_px(radius: f32) -> f32 {

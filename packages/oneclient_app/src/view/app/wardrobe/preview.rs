@@ -15,7 +15,7 @@ use crate::components::{
 };
 use crate::hooks::wardrobe::{WardrobeAction, use_transactions};
 use crate::hooks::{query_error, query_is_loading, settled_or_loading};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 fn panel_box() -> Rect {
@@ -44,7 +44,7 @@ fn centered(text: &str) -> Element {
                 .text(text.to_string())
                 .width(Size::fill())
                 .text_align(TextAlign::Center)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -60,7 +60,7 @@ fn centered_block(text: &str) -> Element {
                 .text(text.to_string())
                 .width(Size::fill())
                 .text_align(TextAlign::Center)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -71,7 +71,7 @@ fn status_text(status: &Option<String>) -> Option<Element> {
         label()
             .text(text.clone())
             .width(Size::fill())
-            .font_size(12.)
+            .font_size(text_size(12.))
             .color(colors::fg_secondary())
             .into_element()
     })
@@ -254,7 +254,7 @@ impl Component for OutfitSwitcher {
                             .text(text)
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(if active.is_some() {
                                 colors::fg_primary()
@@ -379,7 +379,7 @@ impl Component for PreviewPanel {
                     .child(
                         label()
                             .text("Variants")
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .child(chip_rows(chips))
@@ -418,7 +418,7 @@ impl Component for PreviewPanel {
                         label()
                             .text("Particle color")
                             .width(Size::flex(1.))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .maybe_child(current.is_some().then(|| {
@@ -457,7 +457,7 @@ impl Component for PreviewPanel {
                         label()
                             .text(title)
                             .max_lines(1)
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -465,7 +465,7 @@ impl Component for PreviewPanel {
                         label()
                             .text(subtitle)
                             .max_lines(1)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     ),
             );
@@ -598,7 +598,7 @@ impl Component for VariantChip {
                 label()
                     .text(self.text.clone())
                     .max_lines(1)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(if self.selected {
                         colors::fg_primary()
@@ -736,7 +736,7 @@ impl Component for CartPane {
                         label()
                             .text("Cart")
                             .width(Size::flex(1.0))
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -768,13 +768,13 @@ fn totals_row(text: &str, value: String, color: Color, large: bool) -> Element {
             label()
                 .text(text.to_string())
                 .width(Size::flex(1.0))
-                .font_size(if large { 18. } else { 12. })
+                .font_size(text_size(if large { 18. } else { 12. }))
                 .color(colors::fg_primary()),
         )
         .child(
             label()
                 .text(value)
-                .font_size(if large { 22. } else { 12. })
+                .font_size(text_size(if large { 22. } else { 12. }))
                 .font_weight(if large {
                     FontWeight::MEDIUM
                 } else {
@@ -826,7 +826,7 @@ impl Component for CartRow {
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -840,7 +840,7 @@ impl Component for CartRow {
                                     .max_lines(2)
                                     .text_overflow(TextOverflow::Ellipsis)
                                     .width(Size::fill())
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                             }),
                     ),
@@ -858,7 +858,7 @@ impl Component for CartRow {
                     .maybe_child(item.discounted().then(|| {
                         label()
                             .text(format!("SAVE {}%", item.discount_percent.unwrap_or(0)))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::success())
                     }))
                     .child(
@@ -962,14 +962,14 @@ impl Component for StoreDetailPanel {
             .child(
                 label()
                     .text(type_label(item.kind))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(item.name.clone())
                     .width(Size::fill())
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -989,7 +989,12 @@ impl Component for StoreDetailPanel {
                             .corner_radius(rounded(5.))
                             .background(colors::component_bg())
                             .border(border_all_color(1., colors::component_border()))
-                            .child(label().text(tag).font_size(11.).color(colors::fg_primary()))
+                            .child(
+                                label()
+                                    .text(tag)
+                                    .font_size(text_size(11.))
+                                    .color(colors::fg_primary()),
+                            )
                             .into_element()
                     }))
             }))
@@ -1001,7 +1006,7 @@ impl Component for StoreDetailPanel {
                         label()
                             .text(text)
                             .width(Size::fill())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                     }),
             );
@@ -1027,7 +1032,7 @@ impl Component for StoreDetailPanel {
                             .child(
                                 label()
                                     .text(text)
-                                    .font_size(11.)
+                                    .font_size(text_size(11.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::fg_primary()),
                             )
@@ -1051,7 +1056,7 @@ impl Component for StoreDetailPanel {
                     .child(if owned {
                         label()
                             .text("You already own this cosmetic.")
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                             .into_element()
                     } else {
@@ -1133,14 +1138,14 @@ impl Component for BundleDetailPanel {
             .child(
                 label()
                     .text("Bundle")
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(bundle.name.clone())
                     .width(Size::fill())
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -1158,7 +1163,7 @@ impl Component for BundleDetailPanel {
                         label()
                             .text(text)
                             .width(Size::fill())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                     }),
             )
@@ -1214,14 +1219,14 @@ impl Component for HistoryList {
                                 .child(
                                     label()
                                         .text(format!("Order #{}", tx.id))
-                                        .font_size(14.)
+                                        .font_size(text_size(14.))
                                         .font_weight(FontWeight::MEDIUM)
                                         .color(colors::fg_primary()),
                                 )
                                 .child(
                                     label()
                                         .text(provider_name(&tx.provider))
-                                        .font_size(12.)
+                                        .font_size(text_size(12.))
                                         .color(colors::fg_secondary()),
                                 ),
                         )
@@ -1235,14 +1240,14 @@ impl Component for HistoryList {
                             };
                             label()
                                 .text(text)
-                                .font_size(14.)
+                                .font_size(text_size(14.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(colors::fg_primary())
                         }))
                         .child(
                             label()
                                 .text(status)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(color),
                         )
@@ -1416,7 +1421,7 @@ impl Component for AddSkinPanel {
                                 .width(Size::flex(1.0))
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         ),
                 )
@@ -1459,7 +1464,7 @@ impl Component for AddSkinPanel {
                         label()
                             .text("Add skin")
                             .width(Size::flex(1.0))
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -1495,7 +1500,7 @@ impl Component for AddSkinPanel {
                 label()
                     .text(message.read().clone().unwrap_or_else(|| note.to_string()))
                     .width(Size::fill())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .maybe_child(status_text(&shared.status.read().clone()))

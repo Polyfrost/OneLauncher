@@ -9,7 +9,7 @@ use crate::hooks::{
     changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,
     use_changelog, use_dispatch, use_settings_snapshot,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 
 #[derive(PartialEq)]
 pub struct SettingsChangelog;
@@ -38,7 +38,7 @@ impl Component for SettingsChangelog {
                 .child(
                     label()
                         .text("Loading changelog...")
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .color(colors::fg_secondary()),
                 )
                 .into_element();
@@ -49,7 +49,7 @@ impl Component for SettingsChangelog {
                 .child(
                     label()
                         .text(format!("Couldn't load changelog: {error}"))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .color(colors::fg_secondary()),
                 )
                 .into_element();
@@ -131,7 +131,7 @@ impl Component for ReleaseCard {
                     .child(
                         label()
                             .text(title)
-                            .font_size(18.)
+                            .font_size(text_size(18.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
@@ -145,7 +145,7 @@ impl Component for ReleaseCard {
                 if self.body.trim().is_empty() {
                     label()
                         .text("No changes recorded for this version.")
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary())
                         .into_element()
                 } else {

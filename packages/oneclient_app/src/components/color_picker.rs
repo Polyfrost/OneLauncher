@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, TextInput};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{EDGE_MARGIN, border_all_color, clamp_to_window, window_logical_size};
 
 const POPUP_WIDTH: f32 = 280.;
@@ -156,7 +156,7 @@ impl Component for ColorPicker {
             .child(
                 label()
                     .text(colors::format_hex(current))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(on_current),
             );
 
@@ -193,7 +193,7 @@ impl Component for ColorPicker {
                 .child(
                     label()
                         .text("Color Picker")
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .color(colors::fg_primary()),
                 )
                 .child(
@@ -335,7 +335,7 @@ impl Component for ColorPicker {
                         .leading(
                             label()
                                 .text("#")
-                                .font_size(14.)
+                                .font_size(text_size(14.))
                                 .color(colors::fg_secondary())
                                 .into_element(),
                         )

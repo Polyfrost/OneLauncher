@@ -13,7 +13,7 @@ use crate::hooks::{
 
 type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, fixed_grid};
 use crate::utils::bundle_display_name;
 use crate::view::onboarding::{
@@ -46,7 +46,7 @@ fn fps_warning_banner() -> impl IntoElement {
     let mut text = paragraph();
     for (run, bold, underlined) in FPS_WARNING_RUNS {
         let mut span = Span::new(*run)
-            .font_size(12.)
+            .font_size(text_size(12.))
             .font_weight(if *bold {
                 FontWeight::BOLD
             } else {
@@ -335,7 +335,7 @@ fn opt_in_card(
     let mut card = rect().vertical().width(Size::fill()).spacing(10.).child(
         label()
             .text(format!("Do you want to install {name} mods?"))
-            .font_size(15.)
+            .font_size(text_size(15.))
             .font_weight(FontWeight::SEMI_BOLD)
             .color(colors::fg_primary()),
     );
@@ -412,7 +412,7 @@ fn opt_in_card(
                 .child(
                     label()
                         .text(format!("What versions do you play {name} on?"))
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .color(colors::fg_secondary()),
                 )
                 .child(rect().vertical().spacing(8.).children(rows)),
@@ -471,7 +471,7 @@ fn extras_section(
         .child(
             label()
                 .text("Try out these additional mods:")
-                .font_size(15.)
+                .font_size(text_size(15.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )

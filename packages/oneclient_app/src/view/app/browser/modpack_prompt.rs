@@ -9,7 +9,7 @@ use oneclient_core::clusters::{Cluster, ModpackSource};
 
 use crate::components::{Button, Icon, IconType, ScrollArea};
 use crate::hooks::{listed, use_dispatch};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::app::cluster::dialog;
 
@@ -100,9 +100,7 @@ pub(crate) fn loader_options(versions: &[VersionSummary]) -> Vec<LoaderOption> {
         .map(|loader| {
             let fitting: Vec<VersionSummary> = versions
                 .iter()
-                .filter(|v| {
-                    v.loaders.contains(&loader) || v.loaders.iter().all(|l| !l.is_modded())
-                })
+                .filter(|v| v.loaders.contains(&loader) || v.loaders.iter().all(|l| !l.is_modded()))
                 .cloned()
                 .collect();
             LoaderOption {
@@ -212,7 +210,10 @@ fn fits_cluster(version: &VersionSummary, cluster: &Cluster) -> bool {
     }
 }
 
-pub(crate) fn cluster_versions(versions: &[VersionSummary], cluster: &Cluster) -> Vec<VersionSummary> {
+pub(crate) fn cluster_versions(
+    versions: &[VersionSummary],
+    cluster: &Cluster,
+) -> Vec<VersionSummary> {
     versions
         .iter()
         .filter(|v| fits_cluster(v, cluster))
@@ -272,7 +273,11 @@ impl Component for ModpackInstancePrompt {
         let dispatch = use_dispatch();
         let mut selected = use_state(|| None::<i64>);
         let current = (*selected.read())
-            .and_then(|id| self.choices.iter().position(|choice| choice.cluster_id == id))
+            .and_then(|id| {
+                self.choices
+                    .iter()
+                    .position(|choice| choice.cluster_id == id)
+            })
             .unwrap_or(0);
 
         let rows: Vec<Element> = self
@@ -479,7 +484,7 @@ fn radio_row(
                 .child(
                     label()
                         .text(title)
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .color(colors::fg_primary()),
@@ -487,7 +492,7 @@ fn radio_row(
                 .child(
                     label()
                         .text(detail)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .color(colors::fg_secondary()),
                 ),
@@ -551,12 +556,20 @@ mod tests {
         let options = loader_options(&versions);
         let summary: Vec<(GameLoader, Vec<String>)> = options
             .iter()
-            .map(|o| (o.loader, o.choices.iter().map(|c| c.version_id.clone()).collect()))
+            .map(|o| {
+                (
+                    o.loader,
+                    o.choices.iter().map(|c| c.version_id.clone()).collect(),
+                )
+            })
             .collect();
         assert_eq!(
             summary,
             [
-                (GameLoader::Fabric, vec!["fabric-26".to_string(), "fabric-21".to_string()]),
+                (
+                    GameLoader::Fabric,
+                    vec!["fabric-26".to_string(), "fabric-21".to_string()]
+                ),
                 (GameLoader::NeoForge, vec!["neo-26".to_string()]),
             ]
         );
@@ -611,10 +624,30 @@ mod tests {
             ..version(id, mc, release_type)
         };
         let versions = [
-            with("fabric-beta", &["1.21.1"], vec![GameLoader::Fabric], ReleaseType::Beta),
-            with("forge", &["1.21.1"], vec![GameLoader::Forge], ReleaseType::Release),
-            with("fabric-other-mc", &["1.20.1"], vec![GameLoader::Fabric], ReleaseType::Release),
-            with("fabric", &["1.21.1"], vec![GameLoader::Fabric], ReleaseType::Release),
+            with(
+                "fabric-beta",
+                &["1.21.1"],
+                vec![GameLoader::Fabric],
+                ReleaseType::Beta,
+            ),
+            with(
+                "forge",
+                &["1.21.1"],
+                vec![GameLoader::Forge],
+                ReleaseType::Release,
+            ),
+            with(
+                "fabric-other-mc",
+                &["1.20.1"],
+                vec![GameLoader::Fabric],
+                ReleaseType::Release,
+            ),
+            with(
+                "fabric",
+                &["1.21.1"],
+                vec![GameLoader::Fabric],
+                ReleaseType::Release,
+            ),
             with("vanilla", &["1.21.1"], Vec::new(), ReleaseType::Release),
         ];
 
@@ -633,7 +666,12 @@ mod tests {
             Some("vanilla")
         );
 
-        let beta_only = [with("beta", &["1.21.1"], vec![GameLoader::Fabric], ReleaseType::Beta)];
+        let beta_only = [with(
+            "beta",
+            &["1.21.1"],
+            vec![GameLoader::Fabric],
+            ReleaseType::Beta,
+        )];
         assert_eq!(
             cluster_version(&beta_only, &fabric).map(|v| v.version_id.as_str()),
             Some("beta")

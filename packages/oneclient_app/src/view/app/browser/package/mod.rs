@@ -8,7 +8,6 @@ use oneclient_core::clusters::ModpackSource;
 use crate::components::{
     BundledInstallWarning, PendingBundledInstall, ScrollArea, use_shared_delete,
 };
-use crate::hooks::{settled_or_loading, use_cluster, use_clusters};
 use crate::hooks::{
     ALL_VERSIONS, VERSIONS_PAGE_SIZE, bundle_overrides_map, bundles_with_status_items,
     cluster_content_items, content_type_for_slug, package_meta_batch, project_detail,
@@ -16,7 +15,8 @@ use crate::hooks::{
     use_dispatch, use_installs_snapshot, use_link_confirm, use_package_meta_batch,
     use_package_project, use_package_versions_when, version_list, versions_total,
 };
-use crate::theme::{colors, rounded};
+use crate::hooks::{settled_or_loading, use_cluster, use_clusters};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 use super::{
@@ -142,7 +142,7 @@ fn pill(text: String) -> impl IntoElement {
         .child(
             label()
                 .text(text)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
         )
@@ -174,7 +174,7 @@ fn pill_detail(key: &str, items: &[String]) -> Element {
         .child(
             label()
                 .text(key.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .child(pill_flow(items, 18))

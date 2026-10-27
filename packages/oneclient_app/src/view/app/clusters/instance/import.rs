@@ -10,7 +10,7 @@ use super::cards::{BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, cell_card};
 use crate::components::{Button, GRID_GAP, Icon, IconType, ScrollArea, centered_spinner};
 use crate::hooks::{Actions, external_launchers, use_dispatch, use_external_launchers};
 use crate::launcher::off_ui;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::fixed_grid;
 
 /// Its own component so the disk scan only runs once this step is shown
@@ -90,7 +90,7 @@ fn nothing_found(
         .child(
             label()
                 .text("No other launchers found")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
@@ -100,7 +100,7 @@ fn nothing_found(
                     "Prism Launcher, MultiMC, PolyMC and the Modrinth App were checked in their usual folders.",
                 )
                 .width(Size::fill())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .text_align(TextAlign::Center)
                 .color(colors::fg_secondary()),
         )
@@ -108,7 +108,7 @@ fn nothing_found(
             label()
                 .text("Using a portable or moved install? Choose its folder instead.")
                 .width(Size::fill())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .text_align(TextAlign::Center)
                 .color(colors::fg_secondary()),
         )
@@ -138,7 +138,7 @@ fn not_listed_row(
             label()
                 .width(Size::flex(1.0))
                 .text("Launcher missing? Portable and moved installs can be added by folder.")
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .child(choose_folder_button(dispatch, extra, listed))
@@ -277,7 +277,7 @@ fn launcher_section(
     let toggle_all = (!section_instances.is_empty()).then(|| {
         label()
             .text(if all_picked { "Clear" } else { "Select all" })
-            .font_size(12.)
+            .font_size(text_size(12.))
             .color(colors::fg_secondary())
             .a11y_role(AccessibilityRole::Button)
             .cursor(CursorIcon::Pointer)
@@ -298,7 +298,7 @@ fn launcher_section(
         Some(problem) => label()
             .width(Size::fill())
             .text(format!("Couldn't read this install: {problem}"))
-            .font_size(12.)
+            .font_size(text_size(12.))
             .color(colors::fg_secondary())
             .into_element(),
         None => fixed_grid(cards, BUNDLE_COLUMNS, BUNDLE_CARD_H, GRID_GAP),
@@ -318,7 +318,7 @@ fn launcher_section(
                 .child(
                     label()
                         .text(detection.launcher.display_name())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -326,7 +326,7 @@ fn launcher_section(
                     label()
                         .width(Size::flex(1.0))
                         .text(detection.root.display().to_string())
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .color(colors::fg_secondary()),

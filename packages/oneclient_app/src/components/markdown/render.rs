@@ -5,7 +5,7 @@ use super::image::MarkdownImage;
 use super::parse::{Block, Inline, List, TextSpan};
 use crate::components::CodeBlock;
 use crate::hooks::LinkConfirmState;
-use crate::theme::rounded;
+use crate::theme::{rounded, text_size};
 
 pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element {
     match block {
@@ -25,7 +25,7 @@ pub fn render_block(block: &Block, key: usize, style: &MarkdownStyle) -> Element
             .color(style.color_code)
             .background(style.background_code)
             .font_family(style.code_font_family.clone())
-            .font_size(style.code_font_size)
+            .font_size(text_size(style.code_font_size))
             .key(key)
             .into(),
         Block::List(list) => render_list(list, style).key(key).into(),
@@ -88,7 +88,7 @@ fn render_spans(
     text_color: Color,
     code_color: Color,
 ) -> Paragraph {
-    paragraph().font_size(base_font_size).spans_iter(
+    paragraph().font_size(text_size(base_font_size)).spans_iter(
         spans
             .iter()
             .map(|span| styled_span(span, text_color, code_color)),
@@ -96,7 +96,7 @@ fn render_spans(
 }
 
 fn render_content(content: &[Inline], base_font_size: f32, style: &MarkdownStyle) -> Paragraph {
-    let mut result = paragraph().font_size(base_font_size);
+    let mut result = paragraph().font_size(text_size(base_font_size));
 
     for item in content {
         result = match item {
@@ -137,7 +137,7 @@ fn render_list(list: &List, style: &MarkdownStyle) -> Rect {
                             Some(start) => format!("{}.", start + item_idx as u64),
                             None => "•".to_string(),
                         })
-                        .font_size(style.paragraph_size)
+                        .font_size(text_size(style.paragraph_size))
                         .color(style.color),
                 )
                 .child(
@@ -236,7 +236,7 @@ impl Component for MarkdownLink {
         let url = self.url.clone();
         let alt = self.title.clone().filter(|title| !title.is_empty());
 
-        let mut text = paragraph().font_size(self.style.paragraph_size);
+        let mut text = paragraph().font_size(text_size(self.style.paragraph_size));
         for item in &self.content {
             text = match item {
                 Inline::Span(span) => text.span(styled_span(

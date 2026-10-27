@@ -3,7 +3,7 @@ use oneclient_java::{AvailableJava, JavaVendor};
 
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{provider_versions, use_provider_versions};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 fn providers() -> Vec<(JavaVendor, &'static str)> {
@@ -132,7 +132,7 @@ impl Component for JavaInstallManager {
                             .child(
                                 label()
                                     .text("Install Java")
-                                    .font_size(18.)
+                                    .font_size(text_size(18.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
@@ -144,7 +144,7 @@ impl Component for JavaInstallManager {
                                     .child(
                                         label()
                                             .text("Provider")
-                                            .font_size(11.)
+                                            .font_size(text_size(11.))
                                             .font_weight(FontWeight::MEDIUM)
                                             .color(colors::fg_secondary()),
                                     )
@@ -185,7 +185,7 @@ fn status_text(text: &'static str) -> Element {
         .child(
             label()
                 .text(text)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -213,7 +213,7 @@ impl Component for VersionRow {
             .child(
                 label()
                     .text(format!("Java {major}"))
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             );
@@ -227,7 +227,7 @@ impl Component for VersionRow {
                     .child(
                         label()
                             .text("Suggested")
-                            .font_size(10.)
+                            .font_size(text_size(10.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     ),
@@ -255,7 +255,7 @@ impl Component for VersionRow {
                     .child(
                         label()
                             .text(version)
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(1)
                             .color(colors::fg_secondary()),
                     ),

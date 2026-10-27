@@ -9,7 +9,7 @@ use crate::hooks::{
     terms_document, terms_is_loading, use_launcher, use_notifications_snapshot,
     use_settings_snapshot, use_splash, use_terms,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 
 /// Startup is a sequence of boolean gates, not measurable work, so the bar steps
 /// once per gate the launcher clears instead of tracking bytes
@@ -189,7 +189,7 @@ impl Component for Startup {
             .child(
                 label()
                     .text(message)
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .color(colors::fg_primary().with_a(180)),
             );
 
@@ -207,7 +207,7 @@ impl Component for Startup {
             .child(
                 label()
                     .text("The only Minecraft launcher you'll need.")
-                    .font_size(15.)
+                    .font_size(text_size(15.))
                     .color(colors::fg_primary().with_a(140)),
             )
             .child(rect().height(Size::px(14.)))
@@ -218,7 +218,7 @@ impl Component for Startup {
             content = content.child(
                 label()
                     .text(detail)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .max_lines(if is_error { 4 } else { 1 })
                     .color(colors::fg_secondary().with_a(180)),
             );
@@ -236,7 +236,7 @@ impl Component for Startup {
                             "Your data stays in {}. Nothing here deletes it.",
                             launcher.data_dir
                         ))
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(2)
                         .color(colors::fg_secondary().with_a(130)),
                 );

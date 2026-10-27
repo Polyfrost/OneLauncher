@@ -7,7 +7,7 @@ use crate::components::{
     ValueUnit, slice_color,
 };
 use crate::hooks::{loaded_image, use_cached_image};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::{format_duration, plural};
 
@@ -184,7 +184,7 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueU
                 .child(
                     label()
                         .text(name.clone())
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .width(Size::flex(1.0))
                         .color(colors::fg_primary()),
@@ -192,13 +192,13 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueU
                 .child(
                     label()
                         .text(format!("{pct:.0}%"))
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 )
                 .child(
                     label()
                         .text(unit.format(*value))
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),
@@ -258,7 +258,7 @@ impl Component for ServerDetailsPopup {
                             .child(
                                 label()
                                     .text("All servers")
-                                    .font_size(16.)
+                                    .font_size(text_size(16.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
@@ -269,7 +269,7 @@ impl Component for ServerDetailsPopup {
                                         servers.len(),
                                         plural(servers.len() as i64)
                                     ))
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary()),
                             ),
                     )
@@ -361,7 +361,7 @@ impl Component for ServerRow {
                     .child(
                         label()
                             .text(address)
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary())
                             .width(Size::flex(1.0)),
@@ -369,13 +369,13 @@ impl Component for ServerRow {
                     .child(
                         label()
                             .text(format!("{}×", s.joins))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .child(
                         label()
                             .text(format_duration(s.total_secs))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     ),

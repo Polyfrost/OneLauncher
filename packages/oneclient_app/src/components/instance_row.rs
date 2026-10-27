@@ -3,7 +3,7 @@ use oneclient_core::clusters::Cluster;
 
 use crate::components::cluster_menu::open_menu_at;
 use crate::components::{ART_PREVIEW_EDGE, ClusterContextMenu, ClusterMenuTarget, DynamicArt};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, last_played_label};
 use crate::utils::{GridSelection, ReleaseLine, line_art_key, line_title};
 
@@ -148,7 +148,7 @@ impl Component for InstanceRow {
                     .child(
                         label()
                             .text(self.title.clone())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
@@ -157,7 +157,7 @@ impl Component for InstanceRow {
                     .child(
                         label()
                             .text(self.subtitle.clone())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
                             .color(colors::fg_secondary()),
@@ -166,7 +166,7 @@ impl Component for InstanceRow {
             .child(
                 label()
                     .text(self.played.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .max_lines(1)
                     .color(colors::fg_secondary()),
             )

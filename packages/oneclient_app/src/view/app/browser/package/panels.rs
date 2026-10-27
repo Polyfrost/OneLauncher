@@ -9,7 +9,7 @@ use crate::components::{
     Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl,
 };
 use crate::hooks::{ClusterAction, VERSIONS_PAGE_SIZE};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::utils::format_size;
 
@@ -21,7 +21,7 @@ pub(super) fn loading_body() -> impl IntoElement {
         .child(
             label()
                 .text("Loading package...")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -125,7 +125,7 @@ pub(super) fn versions_panel(
             .child(
                 label()
                     .text("No matching versions.")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .into_element()
@@ -210,7 +210,7 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
         .child(
             label()
                 .text(format!("Page {} / {}", current + 1, total_pages))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .child(nav(
@@ -274,7 +274,7 @@ fn version_row(
                 .child(
                     label()
                         .text(v.name.clone())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .max_lines(1)
                         .color(colors::fg_primary()),
@@ -284,7 +284,7 @@ fn version_row(
                     el.child(
                         label()
                             .text(format!("Requires {}", requires.join(", ")))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(2)
                             .color(colors::fg_secondary()),
                     )
@@ -292,7 +292,7 @@ fn version_row(
                 .child(
                     label()
                         .text(stats)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .color(colors::fg_secondary()),
                 ),
@@ -391,7 +391,7 @@ fn release_badge(release_type: ReleaseType) -> impl IntoElement {
         .child(
             label()
                 .text(text)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::BOLD)
                 .color(color),
         )

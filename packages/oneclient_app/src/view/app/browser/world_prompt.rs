@@ -5,7 +5,7 @@ use crate::components::{Button, Dropdown, Icon, IconType};
 use crate::hooks::{
     query_is_loading, try_cluster_worlds, use_cluster_worlds, use_datapack_world, use_dispatch,
 };
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::view::app::cluster::dialog;
 
 #[derive(PartialEq)]
@@ -63,7 +63,7 @@ impl Component for WorldInstallPrompt {
                 } else {
                     "This version has no worlds yet. Create one in game first."
                 })
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element(),
         };

@@ -15,7 +15,7 @@ use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
 use crate::motion::use_animations_enabled;
 use crate::routes::Route;
 use crate::theme;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all, border_all_color};
 use crate::utils::sort_clusters_for_home;
 
@@ -332,7 +332,7 @@ impl Component for ClusterCard {
 fn title_label(text: String) -> Label {
     label()
         .text(text)
-        .font_size(32.)
+        .font_size(text_size(32.))
         .font_weight(FontWeight::SEMI_BOLD)
         .max_lines(1)
         .color(colors::on_media())

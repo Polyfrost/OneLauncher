@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 pub const DIALOG_WIDTH: f32 = 1020.;
@@ -122,7 +122,7 @@ fn header(
                 .maybe_child(eyebrow.map(|eyebrow| {
                     label()
                         .text(eyebrow)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .font_weight(FontWeight::MEDIUM)
                         .letter_spacing(1.6)
                         .color(colors::fg_secondary())
@@ -130,14 +130,14 @@ fn header(
                 .child(
                     label()
                         .text(title)
-                        .font_size(20.)
+                        .font_size(text_size(20.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .line_height(1.35)
                         .color(colors::fg_secondary()),
                 ),
@@ -182,7 +182,7 @@ fn footer(
             label()
                 .text(note)
                 .width(Size::flex(1.0))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .line_height(1.35)
                 .max_lines(2)
                 .color(colors::fg_secondary()),

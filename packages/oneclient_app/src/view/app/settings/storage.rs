@@ -8,7 +8,7 @@ use crate::hooks::{
     use_storage_scan_progress,
 };
 use crate::state::StorageScanProgress;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::utils::plural;
 
 /// Rows narrower than this would render as a sliver so they get a floor
@@ -113,20 +113,17 @@ fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
                 .child(
                     label()
                         .text(format_bytes(report.total_bytes))
-                        .font_size(28.)
+                        .font_size(text_size(28.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 )
-                .child(
-                    label()
-                        .text(subtitle)
-                        .font_size(12.)
-                        .color(if reclaimable > 0 {
-                            colors::brand()
-                        } else {
-                            colors::fg_secondary()
-                        }),
-                ),
+                .child(label().text(subtitle).font_size(text_size(12.)).color(
+                    if reclaimable > 0 {
+                        colors::brand()
+                    } else {
+                        colors::fg_secondary()
+                    },
+                )),
         )
         .child(refresh)
         .into_element()
@@ -150,7 +147,7 @@ fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
                         || "Measuring disk usage…".to_string(),
                         |scan| format!("{}…", scan.label),
                     ))
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .color(colors::fg_secondary()),
             ),
         );
@@ -159,7 +156,7 @@ fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
         header = header.child(
             label()
                 .text(format!("{} / {}", scan.current, scan.total))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         );
     }
@@ -219,14 +216,14 @@ impl Component for ReclaimRow {
                     .child(
                         label()
                             .text(self.title)
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
                     .child(
                         label()
                             .text(self.description.clone())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -259,7 +256,7 @@ fn usage_row(entry: &StorageEntry, largest: u64, bar: Color) -> impl IntoElement
                 .child(
                     label()
                         .text(entry.label.clone())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -268,7 +265,7 @@ fn usage_row(entry: &StorageEntry, largest: u64, bar: Color) -> impl IntoElement
         .child(
             label()
                 .text(format_bytes(entry.bytes))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .child(open_folder_button(entry.path.clone()))
@@ -367,7 +364,7 @@ fn empty_note(text: &'static str) -> impl IntoElement {
         .child(
             label()
                 .text(text)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -382,7 +379,7 @@ fn footnote() -> impl IntoElement {
                     "Packages live in a shared cache and are copied into the game folder only \
                      while you play. Removing a package frees its cache entry automatically.",
                 )
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

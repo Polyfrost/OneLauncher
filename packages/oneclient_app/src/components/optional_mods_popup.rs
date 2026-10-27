@@ -15,7 +15,7 @@ use crate::hooks::{
 use crate::notifications::{
     ClusterUpdateItem, OptionalModRef, OptionalModsGroup, OptionalModsOutcome,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 720.;
@@ -220,14 +220,14 @@ fn content(
                 .child(
                     label()
                         .text("Optional mods available")
-                        .font_size(17.)
+                        .font_size(text_size(17.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.5)
+                        .font_size(text_size(12.5))
                         .max_lines(4)
                         .color(colors::fg_secondary()),
                 ),
@@ -399,7 +399,7 @@ fn cluster_header(name: &str, first: bool) -> impl IntoElement {
         .child(
             label()
                 .text(name.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .max_lines(1)
                 .width(Size::fill())

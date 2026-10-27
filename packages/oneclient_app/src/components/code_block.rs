@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use freya::prelude::*;
 
 use crate::components::ScrollArea;
-use crate::theme::{self, colors, rounded};
+use crate::theme::{self, colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(PartialEq)]
@@ -75,7 +75,7 @@ impl Component for CodeBlock {
         let text = SelectableText::new()
             .span(self.code.clone())
             .font_family(self.font_family.clone())
-            .font_size(self.font_size)
+            .font_size(text_size(self.font_size))
             .max_lines(self.max_lines)
             .width(Size::fill())
             .color(self.color);

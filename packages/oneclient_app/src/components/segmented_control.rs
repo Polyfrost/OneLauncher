@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::tooltip::use_tooltip_anchor;
 use crate::components::{Icon, IconType, TooltipPlacement};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(PartialEq, Clone)]
@@ -218,7 +218,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
             .maybe_child(self.label.clone().map(|text| {
                 label()
                     .text(text)
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .font_weight(if is_selected {
                         FontWeight::MEDIUM
                     } else {

@@ -14,7 +14,7 @@ use crate::hooks::{
     use_selection, use_view_state,
 };
 use crate::layout::cluster_content;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, flow_grid, fmt_date, grid_columns_for_width};
 use crate::utils::{format_res, format_size};
 
@@ -245,7 +245,7 @@ fn toolbar_row(
             .child(
                 label()
                     .text(format!("{count} selected"))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -308,7 +308,7 @@ fn toolbar_row(
             rect().width(Size::flex(1.0)).child(
                 label()
                     .text("Screenshots")
-                    .font_size(20.)
+                    .font_size(text_size(20.))
                     .font_weight(FontWeight::SEMI_BOLD)
                     .color(colors::fg_primary()),
             ),
@@ -329,7 +329,7 @@ fn empty_state(loading: bool) -> impl IntoElement {
                 } else {
                     "No screenshots yet. Press F2 in-game to capture one."
                 })
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -365,14 +365,14 @@ fn confirm_panel(
                                     "Move {count} screenshot{} to trash?",
                                     if count == 1 { "" } else { "s" }
                                 ))
-                                .font_size(16.)
+                                .font_size(text_size(16.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
                         .child(
                             label()
                                 .text("They can be restored from your system trash.")
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         )
                         .child(
@@ -408,7 +408,12 @@ fn res_badge(res: Option<(u32, u32)>) -> Option<Element> {
             .corner_radius(rounded(5.))
             .background(Color::from_argb(170, 0, 0, 0))
             .layer(Layer::Relative(3))
-            .child(label().text(text).font_size(9.).color(Color::WHITE))
+            .child(
+                label()
+                    .text(text)
+                    .font_size(text_size(9.))
+                    .color(Color::WHITE),
+            )
             .into_element()
     })
 }
@@ -483,7 +488,7 @@ impl Component for ScreenshotTile {
                     .child(
                         label()
                             .text(info.name.clone())
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
@@ -496,7 +501,7 @@ impl Component for ScreenshotTile {
                                 format_size(info.size_bytes),
                                 fmt_date(info.created)
                             ))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -564,7 +569,7 @@ impl Component for ScreenshotRow {
                 rect().width(Size::flex(1.0)).child(
                     label()
                         .text(info.name.clone())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .max_lines(1)
                         .width(Size::fill())
                         .color(colors::fg_primary()),
@@ -573,20 +578,20 @@ impl Component for ScreenshotRow {
             .maybe_child(info.resolution.map(|res| {
                 label()
                     .text(format_res(res))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary())
                     .into_element()
             }))
             .child(
                 label()
                     .text(format_size(info.size_bytes))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(fmt_date(info.created))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary()),
             )
     }

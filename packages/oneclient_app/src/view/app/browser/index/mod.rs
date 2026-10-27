@@ -28,7 +28,7 @@ use crate::hooks::{
     use_versions, use_view_state, versions_metadata,
 };
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::grid_columns_for_width;
 use crate::view::app::cluster::supports_datapacks;
 
@@ -513,7 +513,7 @@ fn header(
                 .child(
                     label()
                         .text(format!("Browse {}", type_title(package_type)))
-                        .font_size(32.)
+                        .font_size(text_size(32.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 )
@@ -568,13 +568,13 @@ fn target_pill(verb: &'static str, name: &str) -> impl IntoElement {
         .child(
             label()
                 .text(verb)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .child(
             label()
                 .text(name.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(1)
                 .color(colors::fg_primary()),
         )
@@ -609,7 +609,7 @@ fn results_toolbar(
         .child(
             label()
                 .text(summary)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_primary().with_a(140)),
         )
         .child(rect().width(Size::flex(1.0)))

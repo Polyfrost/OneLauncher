@@ -6,7 +6,7 @@ use oneclient_core::storage::format_bytes;
 use crate::Route;
 use crate::components::{Button, Icon, IconType, progress_track};
 use crate::hooks::{Actions, use_dispatch, use_relocation};
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::ui::{note, path_block};
 use crate::utils::plural;
 
@@ -66,7 +66,7 @@ fn copying(plan: &RelocationPlan, copied: u64, total: u64) -> Element {
                     format_bytes(copied),
                     format_bytes(total)
                 ))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .child(note(
@@ -106,7 +106,7 @@ fn moved(outcome: &RelocationOutcome, actions: Actions) -> Element {
                     "The old copy is still there. Once you have restarted, Launcher Settings can \
                      remove it.",
                 )
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(3)
                 .color(colors::fg_secondary()),
         )
@@ -132,7 +132,7 @@ fn failed(message: String, actions: Actions) -> Element {
         .child(
             label()
                 .text("Nothing was changed. OneClient is still running from its current folder.")
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(2)
                 .color(colors::fg_secondary()),
         )
@@ -167,7 +167,7 @@ fn heading(icon: IconType, title: &'static str, tint: Color) -> impl IntoElement
         .child(
             label()
                 .text(title)
-                .font_size(18.)
+                .font_size(text_size(18.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )

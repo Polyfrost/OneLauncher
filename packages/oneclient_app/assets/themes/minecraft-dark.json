@@ -3,6 +3,7 @@
   "radius_scale": 0,
   "font": "Minecraft",
   "mono_font": "Minecraft",
+  "pixel_font_size": 10,
   "colors": {
     "light": false,
     "page": "#11171C",

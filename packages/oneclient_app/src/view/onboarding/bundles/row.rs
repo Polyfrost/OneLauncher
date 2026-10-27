@@ -3,7 +3,7 @@ use oneclient_content::packages::ProviderId;
 
 use crate::components::{Icon, IconType, github_badge, provider_badge};
 use crate::hooks::{loaded_image, use_cached_image};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
@@ -64,7 +64,7 @@ impl Component for OnboardingModCard {
                     .child(
                         label()
                             .text(self.name.clone())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
@@ -74,7 +74,7 @@ impl Component for OnboardingModCard {
                         el.child(
                             label()
                                 .text(format!("by {}", self.author))
-                                .font_size(10.)
+                                .font_size(text_size(10.))
                                 .max_lines(1)
                                 .width(Size::fill())
                                 .color(colors::fg_secondary().with_a(alpha)),
@@ -90,7 +90,7 @@ impl Component for OnboardingModCard {
         let description = (!self.description.is_empty()).then(|| {
             label()
                 .text(self.description.clone())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(3)
                 .width(Size::fill())
                 .color(colors::fg_secondary().with_a(alpha))
@@ -126,7 +126,7 @@ impl Component for OnboardingModCard {
                     .maybe_child((size > 0).then(|| {
                         label()
                             .text(format_size(size))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(colors::fg_secondary().with_a(alpha))
                             .into_element()
                     })),
@@ -163,7 +163,7 @@ pub(super) fn empty_hint(text: &str) -> impl IntoElement {
         .child(
             label()
                 .text(text.to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

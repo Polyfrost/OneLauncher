@@ -3,7 +3,7 @@ use std::time::Instant;
 use freya::prelude::*;
 
 use crate::theme;
-use crate::theme::rounded;
+use crate::theme::{rounded, text_size};
 
 pub fn border_all(width: f32) -> Border {
     Border::new()
@@ -38,7 +38,7 @@ pub fn note(message: String, accent: Color) -> Element {
         .child(
             label()
                 .text(message)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(5)
                 .width(Size::flex(1.0))
                 .color(theme::colors::fg_primary()),
@@ -55,7 +55,7 @@ pub fn path_block(caption: &'static str, path: &std::path::Path) -> Element {
         .child(
             label()
                 .text(caption)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(theme::colors::fg_secondary()),
         )
         .child(
@@ -68,7 +68,7 @@ pub fn path_block(caption: &'static str, path: &std::path::Path) -> Element {
                 .child(
                     label()
                         .text(path.display().to_string())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .max_lines(3)
                         .width(Size::fill())
                         .color(theme::colors::fg_primary()),
@@ -147,7 +147,7 @@ pub fn centered_note(text: &str) -> Element {
         .child(
             label()
                 .text(text.to_string())
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(theme::colors::fg_secondary()),
         )
         .into_element()

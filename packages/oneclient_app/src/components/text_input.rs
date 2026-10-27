@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::clamp_to_window;
 
 const GAP_VERT: f32 = 8.0;
@@ -72,7 +72,7 @@ impl TextInput {
             elements: Vec::new(),
             key: DiffKey::None,
         }
-        .font_size(14.)
+        .font_size(text_size(14.))
     }
 
     pub fn enabled(mut self, enabled: impl Into<bool>) -> Self {
@@ -101,7 +101,7 @@ impl TextInput {
         self.input = self
             .input
             .padding(Gaps::new_symmetric(GAP_VERT / 2., GAP_HORI / 1.5));
-        self.font_size(12.)
+        self.font_size(text_size(12.))
     }
 
     pub fn multiline(mut self, multiline: bool) -> Self {

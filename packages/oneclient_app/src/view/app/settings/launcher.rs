@@ -15,7 +15,7 @@ use crate::hooks::{
     Actions, DiscardLeftoversKeys, mutation_error, mutation_is_running, try_leftovers,
     use_discard_leftovers, use_dispatch, use_launcher, use_leftovers, use_settings_snapshot,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, note, path_block};
 
 #[derive(PartialEq)]
@@ -380,7 +380,7 @@ fn confirm_move(
                 .child(
                     label()
                         .text("Move game data?")
-                        .font_size(16.)
+                        .font_size(text_size(16.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),
@@ -397,7 +397,7 @@ fn confirm_move(
                     ),
                     None => format!("{} to copy.", format_bytes(planned.bytes)),
                 })
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         );
 
@@ -413,7 +413,7 @@ fn confirm_move(
                      you remove it, and OneClient has to restart before it uses the new folder. \
                      The launcher shows the move on its own screen until it is done.",
                 )
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(4)
                 .color(colors::fg_secondary()),
         )

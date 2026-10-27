@@ -17,7 +17,7 @@ use crate::hooks::{
     use_notifications_snapshot, use_package_meta_batch, use_project_web_urls,
 };
 use crate::notifications::PackageUpdateGroup;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 520.;
@@ -237,14 +237,14 @@ fn content(
                 .child(
                     label()
                         .text("Updates available")
-                        .font_size(17.)
+                        .font_size(text_size(17.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.5)
+                        .font_size(text_size(12.5))
                         .max_lines(3)
                         .color(colors::fg_secondary()),
                 ),
@@ -378,7 +378,7 @@ fn cluster_header(name: &str, first: bool) -> impl IntoElement {
         .child(
             label()
                 .text(name.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .max_lines(1)
                 .width(Size::fill())
@@ -481,7 +481,7 @@ impl Component for UpdateRow {
                     .child(
                         label()
                             .text(self.name.clone())
-                            .font_size(12.5)
+                            .font_size(text_size(12.5))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
@@ -581,7 +581,7 @@ impl Component for VersionsLabel {
 fn versions_text(text: String) -> impl IntoElement {
     label()
         .text(text)
-        .font_size(11.)
+        .font_size(text_size(11.))
         .max_lines(1)
         .color(colors::fg_secondary())
 }

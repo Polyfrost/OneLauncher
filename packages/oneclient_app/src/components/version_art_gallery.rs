@@ -7,7 +7,7 @@ use crate::components::{
     ART_PREVIEW_EDGE, Button, DynamicArt, Icon, IconType, OverlayPopup, ScrollArea,
 };
 use crate::hooks::{refresh_version_art_gallery, use_version_art_gallery};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_WIDTH: f32 = 880.;
@@ -204,7 +204,7 @@ fn empty_state() -> Element {
         .child(
             label()
                 .text("The art gallery could not be loaded. Check your connection.")
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .child(
@@ -237,14 +237,14 @@ fn header(on_close: impl FnMut(Event<PressEventData>) + 'static) -> Element {
                 .child(
                     label()
                         .text("Art gallery")
-                        .font_size(20.)
+                        .font_size(text_size(20.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text("Pick any of the official version artworks as the background for this instance.")
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .line_height(1.35)
                         .color(colors::fg_secondary()),
                 ),
@@ -294,7 +294,7 @@ fn footer(
             label()
                 .text(note)
                 .width(Size::flex(1.0))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .line_height(1.35)
                 .max_lines(2)
                 .color(note_color),

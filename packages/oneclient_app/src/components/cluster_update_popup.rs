@@ -9,7 +9,7 @@ use crate::hooks::{
 };
 use crate::notifications::{ClusterUpdateItem, ClusterUpdateSummary};
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 420.;
@@ -251,14 +251,14 @@ fn content(
                 .child(
                     label()
                         .text("Changes applied")
-                        .font_size(17.)
+                        .font_size(text_size(17.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.5)
+                        .font_size(text_size(12.5))
                         .max_lines(2)
                         .color(colors::fg_secondary()),
                 ),
@@ -323,7 +323,7 @@ fn change_list(
                     .child(
                         label()
                             .text(tab.empty_text())
-                            .font_size(12.5)
+                            .font_size(text_size(12.5))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -347,7 +347,7 @@ fn change_list(
                     .child(
                         label()
                             .text(name.clone())
-                            .font_size(12.5)
+                            .font_size(text_size(12.5))
                             .max_lines(1)
                             .width(Size::flex(1.0))
                             .color(colors::fg_primary()),
@@ -379,7 +379,7 @@ fn cluster_header(group: &ClusterGroup, first: bool, dispatch: crate::Actions) -
         .child(
             label()
                 .text(group.cluster_name.clone())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .max_lines(1)
                 .width(Size::flex(1.0))
@@ -388,7 +388,7 @@ fn cluster_header(group: &ClusterGroup, first: bool, dispatch: crate::Actions) -
         .child(
             label()
                 .text(count.to_string())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary()),
         )
         .child(

@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Icon, IconType, ScrollArea};
 use crate::hooks::use_overlay_claim_when;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, window_logical_size};
 
 const OPTION_HEIGHT: f32 = 28.;
@@ -183,7 +183,7 @@ impl Component for Dropdown {
                     .child(
                         label()
                             .text(selected)
-                            .font_size(if outlined { 13. } else { 12. })
+                            .font_size(text_size(if outlined { 13. } else { 12. }))
                             .color(colors::fg_primary()),
                     )
                     .child(
@@ -299,7 +299,7 @@ impl Component for DropdownOption {
                 label()
                     .text(self.text.clone())
                     .width(Size::flex(1.))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_primary()),
             )
             .maybe_child(self.checked.map(|checked| {

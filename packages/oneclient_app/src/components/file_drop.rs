@@ -21,7 +21,7 @@ use crate::hooks::{
     use_dispatch,
 };
 use crate::launcher::off_ui;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 480.;
@@ -230,14 +230,14 @@ impl Component for DropVeil {
                     .child(
                         label()
                             .text("Drop files to add them")
-                            .font_size(15.)
+                            .font_size(text_size(15.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
                     .child(
                         label()
                             .text("You'll pick where they go next.")
-                            .font_size(12.5)
+                            .font_size(text_size(12.5))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -357,14 +357,14 @@ fn dialog_header(title: String, subtitle: String) -> impl IntoElement {
                 .child(
                     label()
                         .text(title)
-                        .font_size(17.)
+                        .font_size(text_size(17.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.5)
+                        .font_size(text_size(12.5))
                         .max_lines(2)
                         .color(colors::fg_secondary()),
                 ),
@@ -538,7 +538,7 @@ fn field(title: &'static str, control: impl IntoElement) -> impl IntoElement {
         .child(
             label()
                 .text(title)
-                .font_size(11.5)
+                .font_size(text_size(11.5))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_secondary()),
         )
@@ -581,7 +581,7 @@ fn world_field(
             "Destination world",
             label()
                 .text("This cluster has no worlds yet. Create one in game, then drop the data packs again.")
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element();
@@ -662,7 +662,7 @@ fn file_row(
             .into_element(),
         None => label()
             .text("Needs a mod loader")
-            .font_size(12.)
+            .font_size(text_size(12.))
             .max_lines(1)
             .color(colors::fg_secondary())
             .into_element(),
@@ -684,7 +684,7 @@ fn file_row(
         .child(
             label()
                 .text(file_name(path))
-                .font_size(12.5)
+                .font_size(text_size(12.5))
                 .max_lines(1)
                 .text_overflow(TextOverflow::Ellipsis)
                 .width(Size::flex(1.0))

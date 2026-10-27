@@ -4,7 +4,7 @@ use freya::{
     router::{RouterContext, use_route},
 };
 
-use crate::theme::rounded;
+use crate::theme::{rounded, text_size};
 use crate::{
     Route,
     components::{Avatar, Icon, IconType},
@@ -271,7 +271,7 @@ impl Component for NavLink {
             .child(
                 label()
                     .text(nav_label)
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(if active {
                         FontWeight::MEDIUM
                     } else {
@@ -391,7 +391,7 @@ fn notification_bell(unread: usize) -> impl IntoElement {
                         } else {
                             unread.to_string()
                         })
-                        .font_size(10.)
+                        .font_size(text_size(10.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(theme::colors::fg_primary()),
                 )

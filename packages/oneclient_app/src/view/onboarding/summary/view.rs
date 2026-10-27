@@ -4,7 +4,7 @@ use freya::router::RouterContext;
 use crate::components::{ART_PREVIEW_EDGE, Button, DynamicArt, Icon, IconType, ScrollArea};
 use crate::hooks::ClusterBundles;
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_slide, step_heading};
 
@@ -193,7 +193,7 @@ fn failure_notice(reason: &str) -> Element {
         .child(
             label()
                 .text("Your package choices could not be saved.")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
@@ -203,7 +203,7 @@ fn failure_notice(reason: &str) -> Element {
                     "{}. Continuing anyway keeps the bundle defaults for any version whose choices were not saved.",
                     reason.trim_end_matches('.')
                 ))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -235,14 +235,14 @@ fn summary_section(title: &str, note: Option<&str>, rows: Vec<Element>) -> impl 
         .child(
             label()
                 .text(title.to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_secondary()),
         )
         .maybe_child(note.map(|text| {
             label()
                 .text(text.to_string())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary())
                 .into_element()
         }))
@@ -271,14 +271,14 @@ fn summary_line(label_text: &str, value: &str) -> Element {
             rect().width(Size::flex(1.0)).child(
                 label()
                     .text(label_text.to_string())
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .color(colors::fg_primary()),
             ),
         )
         .child(
             label()
                 .text(value.to_string())
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )

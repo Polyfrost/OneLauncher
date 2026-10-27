@@ -20,11 +20,10 @@ use crate::hooks::{
     use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::centered_note;
 use crate::view::app::clusters::{
-    DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts,
-    ResetInstanceModal,
+    DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts, ResetInstanceModal,
 };
 use crate::view::app::settings::{
     section_header, settings_row, settings_row_danger, settings_row_disabled,
@@ -1037,7 +1036,7 @@ impl Component for JavaRow {
         let control: Element = if runtimes.is_empty() {
             label()
                 .text("No runtimes installed")
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
@@ -1261,7 +1260,7 @@ impl Component for MigrateFromRow {
                 } else {
                     "No other clusters with this loader"
                 })
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
@@ -1313,7 +1312,7 @@ impl Component for LoaderRow {
         let control: Element = if versions.is_empty() {
             label()
                 .text("No versions available")
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {

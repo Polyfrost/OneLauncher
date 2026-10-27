@@ -8,7 +8,7 @@ use crate::components::{
 use crate::hooks::{use_cached_image, use_dispatch, use_installs_snapshot};
 use crate::routes::Route;
 use crate::state::FlaggedInstallPrompt;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::app::browser::encode_package_id;
 
@@ -90,7 +90,7 @@ fn dialog(prompt: FlaggedInstallPrompt, dispatch: crate::Actions) -> impl IntoEl
                         .child(
                             label()
                                 .text("Flagged mod")
-                                .font_size(16.)
+                                .font_size(text_size(16.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         ),
@@ -98,7 +98,7 @@ fn dialog(prompt: FlaggedInstallPrompt, dispatch: crate::Actions) -> impl IntoEl
                 .child(
                     label()
                         .text(description)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .width(Size::fill())
                         .color(colors::fg_secondary()),
                 ),
@@ -224,7 +224,7 @@ fn alternative_row(
                 .child(
                     label()
                         .text(name)
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .color(colors::fg_primary()),
@@ -232,7 +232,7 @@ fn alternative_row(
                 .child(
                     label()
                         .text(version)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .color(colors::fg_secondary()),
                 ),

@@ -3,7 +3,7 @@ use oneclient_content::packages::ProviderId;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::use_dispatch;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(Clone, PartialEq)]
@@ -77,7 +77,7 @@ impl Component for BundledInstallWarning {
                                     .child(
                                         label()
                                             .text("Not the bundled version")
-                                            .font_size(16.)
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),
@@ -85,7 +85,7 @@ impl Component for BundledInstallWarning {
                             .child(
                                 label()
                                     .text(body)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(8)
                                     .width(Size::fill())
                                     .color(colors::fg_secondary()),

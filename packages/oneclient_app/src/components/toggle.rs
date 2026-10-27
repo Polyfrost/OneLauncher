@@ -3,7 +3,7 @@ use freya::{
     prelude::*,
 };
 
-use crate::theme::rounded;
+use crate::theme::{rounded, text_size};
 use crate::{theme::colors, ui};
 
 const WIDTH: f32 = 40.;
@@ -126,7 +126,7 @@ impl Component for Switch {
             .child(
                 label()
                     .text(text)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(

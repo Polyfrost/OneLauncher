@@ -17,7 +17,7 @@ use crate::hooks::{
     use_log_content, use_overlay_claim_when, use_upload_log,
 };
 use crate::layout::cluster_content;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui;
 use crate::utils::format_size;
 
@@ -299,7 +299,7 @@ fn top_bar(
         .child(
             label()
                 .text(size_text)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
         )
@@ -488,7 +488,7 @@ impl Component for LogPicker {
                         rect().width(Size::flex(1.0)).child(
                             label()
                                 .text(label_text)
-                                .font_size(13.)
+                                .font_size(text_size(13.))
                                 .max_lines(1)
                                 .color(colors::fg_primary()),
                         ),
@@ -554,7 +554,7 @@ impl Component for LogPicker {
                                     } else {
                                         "No matches"
                                     })
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .width(Size::fill())
                                     .text_align(TextAlign::Center)
                                     .padding(Gaps::new_symmetric(12., 0.))
@@ -619,7 +619,7 @@ impl Component for PickerRow {
                     .child(
                         label()
                             .text(file.name.clone())
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .max_lines(1)
                             .color(colors::fg_primary()),
                     )
@@ -630,7 +630,7 @@ impl Component for PickerRow {
                                 kind_badge(file.kind),
                                 format_size(file.size_bytes)
                             ))
-                            .font_size(10.)
+                            .font_size(text_size(10.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -700,7 +700,7 @@ pub fn confirm_overlay(
                                 .child(
                                     label()
                                         .text(title)
-                                        .font_size(16.)
+                                        .font_size(text_size(16.))
                                         .font_weight(FontWeight::SEMI_BOLD)
                                         .color(colors::fg_primary()),
                                 ),
@@ -708,7 +708,7 @@ pub fn confirm_overlay(
                         .child(
                             label()
                                 .text(body)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .max_lines(6)
                                 .width(Size::fill())
                                 .color(colors::fg_secondary()),

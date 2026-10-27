@@ -8,7 +8,9 @@ use super::settings_page;
 use crate::components::{ColorPicker, IconType, link_button, toggle};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
 use crate::routes::Route;
-use crate::theme::{SYSTEM_THEME, Theme, colors, resolve_theme, rounded, system_aware, themes};
+use crate::theme::{
+    SYSTEM_THEME, Theme, colors, resolve_theme, rounded, system_aware, text_size, themes,
+};
 use crate::ui::border_all_color;
 use crate::view::app::settings::{resettable, settings_row};
 
@@ -99,7 +101,7 @@ impl Component for SettingsAppearance {
                 rect().padding(Gaps::new(8., 0., 0., 0.)).child(
                     label()
                         .text("Looking to change your language?")
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_primary()),
                 ),
             )

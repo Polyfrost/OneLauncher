@@ -21,7 +21,7 @@ use super::rail::version_art;
 use crate::components::{
     Dropdown, GRID_GAP, Icon, IconType, ScrollArea, TextInput, centered_spinner,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note, fixed_grid, note};
 use crate::utils::bundle_display_name;
 
@@ -378,14 +378,14 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
                 .child(
                     label()
                         .text(format!("{} version", chosen.name()))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text("The newest build is picked for you. Change it if a package needs an older one.")
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .line_height(1.4)
                         .color(colors::fg_secondary()),
                 ),
@@ -451,7 +451,7 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                 .child(
                     label()
                         .text("Show")
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 )
                 .child(

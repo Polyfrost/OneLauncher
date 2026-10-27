@@ -13,7 +13,7 @@ use crate::components::{
 use crate::hooks::{
     loaded_image, settled_or_loading, use_cached_image, use_clusters, use_game_snapshot,
 };
-use crate::theme::{colors, rounded, rounded_px};
+use crate::theme::{colors, rounded, rounded_px, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 
 use super::package_manager::{CARD_SPACING, GRID_MAX_COLS, notice_bar};
@@ -130,7 +130,7 @@ pub(super) fn toolbar_action(icon: IconType, text: &str) -> Button {
     Button::new()
         .primary()
         .height(Size::px(CONTROL_H))
-        .font_size(12.)
+        .font_size(text_size(12.))
         .child(Icon::new(icon).size(15.))
         .text(text.to_string())
 }
@@ -277,7 +277,7 @@ impl Component for FolderCard {
                             .child(
                                 label()
                                     .text(self.title.clone())
-                                    .font_size(14.)
+                                    .font_size(text_size(14.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
@@ -291,7 +291,7 @@ impl Component for FolderCard {
                 let description = self.description.clone().map(|text| {
                     label()
                         .text(text)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .line_height(1.45)
                         .max_lines(2)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -370,7 +370,7 @@ impl FolderCard {
                             .child(
                                 label()
                                     .text(self.title.clone())
-                                    .font_size(15.)
+                                    .font_size(text_size(15.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
@@ -388,7 +388,7 @@ impl FolderCard {
                     .maybe_child(self.description.clone().map(|text| {
                         label()
                             .text(text)
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(2)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
@@ -476,14 +476,14 @@ pub(crate) fn dialog(
                         .child(
                             label()
                                 .text(title)
-                                .font_size(16.)
+                                .font_size(text_size(16.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
                         .child(
                             label()
                                 .text(body)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         )
                         .maybe_child(control)

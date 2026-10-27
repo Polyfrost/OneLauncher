@@ -4,7 +4,7 @@ use oneclient_common::parse_mc_version;
 
 use super::shell::RAIL_WIDTH;
 use crate::components::DynamicArt;
-use crate::theme::rounded;
+use crate::theme::{rounded, text_size};
 
 const HAIRLINE: Color = Color::from_argb(31, 255, 255, 255);
 const CHIP_BG: Color = Color::from_argb(26, 255, 255, 255);
@@ -76,7 +76,7 @@ fn row(name: &'static str, value: &str, name_color: Color) -> Element {
             label()
                 .text(name)
                 .width(Size::px(76.))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .max_lines(1)
                 .color(name_color),
         )
@@ -84,7 +84,7 @@ fn row(name: &'static str, value: &str, name_color: Color) -> Element {
             label()
                 .text(value.to_string())
                 .width(Size::flex(1.0))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::MEDIUM)
                 .max_lines(1)
                 .text_align(TextAlign::Right)
@@ -138,7 +138,7 @@ pub fn rail(parts: Rail) -> Element {
                         .child(
                             label()
                                 .text(title)
-                                .font_size(30.)
+                                .font_size(text_size(30.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .line_height(1.06)
                                 .max_lines(2)
@@ -147,7 +147,7 @@ pub fn rail(parts: Rail) -> Element {
                         .child(
                             label()
                                 .text(subtitle)
-                                .font_size(13.)
+                                .font_size(text_size(13.))
                                 .line_height(1.45)
                                 .max_lines(3)
                                 .color(SUB),
@@ -184,7 +184,7 @@ pub fn rail(parts: Rail) -> Element {
                                                 .child(
                                                     label()
                                                         .text(tag.clone())
-                                                        .font_size(11.)
+                                                        .font_size(text_size(11.))
                                                         .font_weight(FontWeight::MEDIUM)
                                                         .color(Color::WHITE),
                                                 )

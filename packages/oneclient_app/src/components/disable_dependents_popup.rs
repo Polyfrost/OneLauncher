@@ -12,7 +12,7 @@ use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::disable::{self, PendingDisable};
 use crate::hooks::{invalidate_cluster_queries, use_disable_confirm};
 use crate::launcher;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 480.;
@@ -62,7 +62,7 @@ impl Component for DisableDependentsOverlay {
                                     .child(
                                         label()
                                             .text(disable::title(&current))
-                                            .font_size(16.)
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .max_lines(2)
                                             .width(Size::fill())
@@ -72,7 +72,7 @@ impl Component for DisableDependentsOverlay {
                             .child(
                                 label()
                                     .text(disable::summary(&current))
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(6)
                                     .width(Size::fill())
                                     .color(colors::fg_secondary()),
@@ -162,7 +162,7 @@ fn lists(pending: &PendingDisable) -> impl IntoElement {
 fn heading(text: String) -> impl IntoElement {
     label()
         .text(text)
-        .font_size(10.)
+        .font_size(text_size(10.))
         .font_weight(FontWeight::SEMI_BOLD)
         .max_lines(2)
         .width(Size::fill())
@@ -184,7 +184,7 @@ fn row(name: &str, icon: IconType, accent: Color) -> impl IntoElement {
         .child(
             label()
                 .text(name.to_string())
-                .font_size(12.5)
+                .font_size(text_size(12.5))
                 .max_lines(1)
                 .width(Size::flex(1.0))
                 .color(colors::fg_primary()),

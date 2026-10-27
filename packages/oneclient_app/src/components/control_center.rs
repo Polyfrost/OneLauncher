@@ -12,7 +12,7 @@ use crate::{
         use_accounts, use_control_center_open, use_current_account, use_dispatch,
         use_remove_account, use_settings_snapshot,
     },
-    theme::{colors, rounded},
+    theme::{colors, rounded, text_size},
     ui::{border_all_color, divider},
 };
 
@@ -100,7 +100,7 @@ impl Component for ControlPanel {
 fn section_label(text: &'static str) -> impl IntoElement {
     label()
         .text(text)
-        .font_size(11.)
+        .font_size(text_size(11.))
         .letter_spacing(0.8)
         .font_weight(FontWeight::SEMI_BOLD)
         .color(colors::fg_secondary())
@@ -178,7 +178,7 @@ impl Component for AccountHeader {
                     .child(
                         label()
                             .text(username)
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .color(colors::fg_primary()),
@@ -186,7 +186,7 @@ impl Component for AccountHeader {
                     .child(
                         label()
                             .text(subtitle)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .color(subtitle_color),
                     ),
@@ -210,7 +210,7 @@ impl Component for AccountHeader {
                     .child(
                         label()
                             .text(action_label)
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .color(colors::fg_secondary()),
                     )
                     .child(
@@ -262,7 +262,7 @@ impl Component for NavRow {
             .child(
                 label()
                     .text(self.row_label)
-                    .font_size(15.)
+                    .font_size(text_size(15.))
                     .width(Size::flex(1.0))
                     .color(colors::fg_primary()),
             )
@@ -408,7 +408,7 @@ impl Component for QuickTile {
                     .child(
                         label()
                             .text(self.title)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .color(title_color),
@@ -416,7 +416,7 @@ impl Component for QuickTile {
                     .child(
                         label()
                             .text(if on { "On" } else { "Off" })
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(sub_color),
                     ),
             )
@@ -523,7 +523,7 @@ impl Component for PanelFooter {
                                                 .child(
                                                     label()
                                                         .text("Sign out?")
-                                                        .font_size(16.)
+                                                        .font_size(text_size(16.))
                                                         .font_weight(FontWeight::SEMI_BOLD)
                                                         .color(colors::fg_primary()),
                                                 ),
@@ -533,7 +533,7 @@ impl Component for PanelFooter {
                                                 .text(format!(
                                                     "{username} will be removed from OneClient. You will need to sign in again to use this account."
                                                 ))
-                                                .font_size(12.)
+                                                .font_size(text_size(12.))
                                                 .max_lines(4)
                                                 .width(Size::fill())
                                                 .color(colors::fg_secondary()),
@@ -620,7 +620,7 @@ impl Component for FooterAction {
             .child(
                 label()
                     .text(self.text)
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .max_lines(1)
                     .color(self.color),
             )

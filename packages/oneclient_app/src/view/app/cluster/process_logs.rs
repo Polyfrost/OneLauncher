@@ -11,7 +11,7 @@ use crate::hooks::{
     use_upload_log,
 };
 use crate::layout::cluster_content;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::view::app::cluster::logs::{Confirm, LevelFilter, confirm_overlay, viewer_header};
 
 use super::cluster_not_found;
@@ -113,7 +113,7 @@ fn not_running() -> Element {
         .child(
             label()
                 .text("This cluster is not running.")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

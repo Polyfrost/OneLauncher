@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use super::settings_page;
 use crate::components::{Icon, IconType};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::view::app::settings::section_header;
 
 const LANGUAGES: &[(&str, &str)] = &[("English", "English (US)")];
@@ -49,14 +49,14 @@ fn language_row(
                 .child(
                     label()
                         .text(native)
-                        .font_size(16.)
+                        .font_size(text_size(16.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(english)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         )

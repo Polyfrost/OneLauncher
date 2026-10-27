@@ -18,7 +18,7 @@ use crate::hooks::{
     use_launcher, use_version_metadata, use_view_state,
 };
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{
     border_all_color, fixed_grid, grid_columns_for_width, last_played_label, window_logical_size,
 };
@@ -127,7 +127,7 @@ impl Component for Clusters {
                         .child(
                             label()
                                 .text("No versions available yet. Bundles are still syncing.")
-                                .font_size(16.)
+                                .font_size(text_size(16.))
                                 .color(colors::fg_secondary()),
                         ),
                 )
@@ -434,7 +434,7 @@ impl Component for Clusters {
                                     .append_children(nothing_shown.then(|| {
                                         label()
                                             .text("No instances match your search or filters.")
-                                            .font_size(13.)
+                                            .font_size(text_size(13.))
                                             .color(colors::fg_secondary())
                                             .into_element()
                                     })),
@@ -518,14 +518,14 @@ fn section(title: &str, caption: &str, grid: Element) -> Element {
                 .child(
                     label()
                         .text(title.to_string())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(caption.to_string())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         )
@@ -550,7 +550,7 @@ fn toolbar(
                 .width(Size::auto())
                 .height(Size::fill())
                 .spacing(24.)
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .tabs(tabs),
         )
         .child(rect().width(Size::flex(1.0)))
@@ -652,7 +652,7 @@ fn line_picker(
                         siblings.len(),
                         line_title(line, siblings)
                     ))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_secondary()),
             )
@@ -802,14 +802,14 @@ impl Component for Sidebar {
                                     .child(
                                         label()
                                             .text(self.title.clone())
-                                            .font_size(24.)
+                                            .font_size(text_size(24.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_strong()),
                                     )
                                     .child(
                                         label()
                                             .text(self.subtitle.clone())
-                                            .font_size(13.)
+                                            .font_size(text_size(13.))
                                             .color(colors::fg_secondary()),
                                     ),
                             )
@@ -818,7 +818,7 @@ impl Component for Sidebar {
                             .append_children(self.description.clone().map(|text| {
                                 label()
                                     .text(text)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                                     .into_element()
                             })),
@@ -886,7 +886,7 @@ fn sidebar_art(art: DynamicArt, type_label: &str, height: f32) -> Element {
                 .child(
                     label()
                         .text(type_label.to_string())
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::on_media()),
                 ),
@@ -908,13 +908,13 @@ fn meta_list(meta: &[(&'static str, String)]) -> Element {
                 .child(
                     label()
                         .text(key.to_string())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .color(colors::fg_secondary()),
                 )
                 .child(
                     label()
                         .text(value.clone())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -966,14 +966,14 @@ fn page_header(mut show_create: State<bool>) -> impl IntoElement {
                 .child(
                     label()
                         .text("Versions")
-                        .font_size(32.)
+                        .font_size(text_size(32.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_strong()),
                 )
                 .child(
                     label()
                         .text("Pick a OneClient version, or launch one of your own instances.")
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .color(colors::fg_secondary()),
                 ),
         )
@@ -999,13 +999,13 @@ fn sidebar_error(width: f32) -> Element {
         .child(
             label()
                 .text("Could not resolve a cluster for this version.")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .child(
             label()
                 .text("Try selecting a different version or mod loader.")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

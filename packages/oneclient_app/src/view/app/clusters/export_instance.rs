@@ -4,7 +4,7 @@ use oneclient_core::clusters::ExportMode;
 use super::instance::{WideCard, wide_card};
 use crate::components::{Button, IconType, OverlayPopup};
 use crate::hooks::use_dispatch;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_WIDTH: f32 = 520.;
@@ -76,14 +76,14 @@ impl Component for ExportInstanceModal {
                             .child(
                                 label()
                                     .text(format!("Export {}", self.name))
-                                    .font_size(18.)
+                                    .font_size(text_size(18.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
                                     .text("Choose who the file is for. Worlds and configs are never included.")
-                                    .font_size(13.)
+                                    .font_size(text_size(13.))
                                     .color(colors::fg_secondary()),
                             )
                             .child(

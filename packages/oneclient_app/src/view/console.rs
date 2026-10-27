@@ -11,7 +11,7 @@ use tokio::sync::broadcast::error::RecvError;
 use tracing::Level;
 
 use crate::components::{Button, Icon, IconType, LogViewer, Segment, SegmentedControl, TextInput};
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 
 const WINDOW_TITLE: &str = "OneClient - Log Console";
 
@@ -246,7 +246,7 @@ fn view_row(
         .child(
             label()
                 .text(format!("{shown} lines"))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
         )
@@ -294,7 +294,7 @@ fn filter_row(directives: State<String>, mut error: State<Option<String>>) -> im
         .child(
             label()
                 .text("Capture")
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
         )
@@ -318,7 +318,7 @@ fn filter_row(directives: State<String>, mut error: State<Option<String>>) -> im
         .maybe_child(error.read().clone().map(|message| {
             label()
                 .text(message)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(2)
                 .width(Size::fill())
                 .padding(Gaps::new(0., 14., 10., 14.))

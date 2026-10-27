@@ -6,7 +6,7 @@ use crate::hooks::{
     ClusterAction, use_active_cluster_id, use_cluster, use_cluster_mutation, use_game_snapshot,
 };
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_WIDTH: f32 = 420.;
@@ -82,27 +82,27 @@ impl Component for DeleteInstanceModal {
                             .child(
                                 label()
                                     .text("Delete instance")
-                                    .font_size(18.)
+                                    .font_size(text_size(18.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
                                     .text(warning)
-                                    .font_size(13.)
+                                    .font_size(text_size(13.))
                                     .color(colors::fg_secondary()),
                             )
                             .maybe_child(provisioned.then(|| {
                                 label()
                                     .text("It won't be added back automatically. To play this version again, create a OneClient instance for it.")
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                                     .into_element()
                             }))
                             .maybe_child(running.then(|| {
                                 label()
                                     .text("Close the game before deleting this instance.")
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                                     .into_element()
                             }))

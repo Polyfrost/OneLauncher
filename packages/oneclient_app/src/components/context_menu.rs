@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::clamp_to_window;
 
 /// Panel padding and border on both axes, which the measured list sits inside of
@@ -132,7 +132,7 @@ impl Component for ContextMenu {
                     rect().padding(Gaps::new(6., 8., 4., 8.)).child(
                         label()
                             .text(title.clone())
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .max_lines(1)
                             .color(colors::fg_secondary()),
@@ -266,7 +266,7 @@ impl Component for ContextMenuRow {
             .child(
                 label()
                     .text(self.label.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(1)
                     .color(color),

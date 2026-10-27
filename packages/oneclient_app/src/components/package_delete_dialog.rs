@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 pub fn use_shared_delete(
@@ -101,7 +101,7 @@ impl Component for SharedPackageDeleteDialog {
                                 .child(
                                     label()
                                         .text(title)
-                                        .font_size(16.)
+                                        .font_size(text_size(16.))
                                         .font_weight(FontWeight::SEMI_BOLD)
                                         .color(colors::fg_primary()),
                                 ),
@@ -109,7 +109,7 @@ impl Component for SharedPackageDeleteDialog {
                         .child(
                             label()
                                 .text(body)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .width(Size::fill())
                                 .color(colors::fg_secondary()),
                         )

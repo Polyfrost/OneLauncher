@@ -10,7 +10,7 @@ use crate::components::{
 use crate::hooks::{
     Actions, ScreenshotAction, UseScreenshotAction, use_dispatch, use_screenshot_action,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::fmt_date;
 use crate::utils::{format_res, format_size};
 
@@ -318,14 +318,14 @@ fn header_row(
                 .child(
                     label()
                         .text(info.name.clone())
-                        .font_size(15.)
+                        .font_size(text_size(15.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(meta)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 ),
         )

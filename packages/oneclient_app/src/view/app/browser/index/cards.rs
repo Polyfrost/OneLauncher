@@ -13,9 +13,9 @@ use crate::hooks::{
     use_cluster, use_dispatch, use_installs_snapshot, use_package_versions_when, version_list,
 };
 use crate::routes::Route;
-use crate::view::app::browser::cluster_version;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
+use crate::view::app::browser::cluster_version;
 
 type InstalledMap = HashMap<(ProviderId, String), Installed>;
 
@@ -201,7 +201,7 @@ impl Component for PackageCard {
                             .child(
                                 label()
                                     .text(self.item.name.clone())
-                                    .font_size(14.)
+                                    .font_size(text_size(14.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .max_lines(1)
                                     .color(colors::fg_primary()),
@@ -218,7 +218,7 @@ impl Component for PackageCard {
                                                 self.item.author,
                                                 abbreviate_number(self.item.downloads)
                                             ))
-                                            .font_size(10.)
+                                            .font_size(text_size(10.))
                                             .max_lines(1)
                                             .color(colors::fg_primary().with_a(140)),
                                     )
@@ -227,7 +227,7 @@ impl Component for PackageCard {
                             .child(
                                 label()
                                     .text(self.item.summary.clone())
-                                    .font_size(11.)
+                                    .font_size(text_size(11.))
                                     .line_height(1.45)
                                     .max_lines(2)
                                     .width(Size::fill())
@@ -323,7 +323,7 @@ impl Component for ListRow {
                             .child(
                                 label()
                                     .text(item.name.clone())
-                                    .font_size(15.)
+                                    .font_size(text_size(15.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .max_lines(1)
                                     .color(colors::fg_primary()),
@@ -331,7 +331,7 @@ impl Component for ListRow {
                             .child(
                                 label()
                                     .text(format!("by {}", item.author))
-                                    .font_size(10.)
+                                    .font_size(text_size(10.))
                                     .max_lines(1)
                                     .color(colors::fg_primary().with_a(140)),
                             )
@@ -340,7 +340,7 @@ impl Component for ListRow {
                     .child(
                         label()
                             .text(item.summary.clone())
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(2)
                             .width(Size::fill())
                             .color(colors::fg_primary().with_a(184)),
@@ -423,9 +423,7 @@ impl Component for InstallButton {
         ));
         let add_to_cluster = self.add_to_cluster;
         let latest = if add_to_cluster {
-            cluster
-                .as_ref()
-                .and_then(|c| cluster_version(&versions, c))
+            cluster.as_ref().and_then(|c| cluster_version(&versions, c))
         } else {
             preferred_version(&versions, self.content_type)
         }
@@ -464,7 +462,7 @@ impl Component for InstallButton {
                 .child(
                     label()
                         .text(installed.label())
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .font_weight(FontWeight::NORMAL)
                         .max_lines(1)
                         .color(colors::fg_secondary()),
@@ -542,7 +540,7 @@ impl Component for InstallButton {
                                 (false, true) => "Add",
                                 (false, false) => "Install",
                             })
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .max_lines(1)
                             .color(colors::fg_primary()),
@@ -577,7 +575,7 @@ fn downloads_row(downloads: u64) -> impl IntoElement {
         .child(
             label()
                 .text(abbreviate_number(downloads))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_primary().with_a(140)),
         )
 }
@@ -590,7 +588,7 @@ pub(super) fn empty_state() -> impl IntoElement {
         .child(
             label()
                 .text("No results. Try a different search, category or provider.")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
 }

@@ -4,7 +4,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, toggle_controlled};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 460.;
@@ -47,7 +47,7 @@ impl Component for BundleChoicesPopup {
                     .child(
                         label()
                             .text(title.clone())
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .max_lines(1)
                             .width(Size::flex(1.0))
                             .color(colors::fg_primary()),
@@ -93,7 +93,7 @@ impl Component for BundleChoicesPopup {
                             .child(
                                 label()
                                     .text("Choose your bundles")
-                                    .font_size(17.)
+                                    .font_size(text_size(17.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
@@ -103,7 +103,7 @@ impl Component for BundleChoicesPopup {
                                         "{} has optional bundles you have not chosen yet. Turn on the ones you want, turning one off removes its mods.",
                                         choices.cluster_name
                                     ))
-                                    .font_size(12.5)
+                                    .font_size(text_size(12.5))
                                     .max_lines(4)
                                     .color(colors::fg_secondary()),
                             )

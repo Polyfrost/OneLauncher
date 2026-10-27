@@ -11,7 +11,7 @@ use crate::hooks::{
     use_launcher, use_version_metadata,
 };
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::utils::sort_clusters_for_home;
 use crate::view::app::{launch_button_state, launch_syncing, shared_dir_taken};
 
@@ -70,7 +70,7 @@ impl Component for ActiveClusterPanel {
                 .child(
                     label()
                         .text("No versions yet")
-                        .font_size(24.)
+                        .font_size(text_size(24.))
                         .color(colors::on_art_secondary()),
                 );
         };
@@ -107,7 +107,7 @@ impl Component for ActiveClusterPanel {
                     .width(Size::fill())
                     .max_lines(1)
                     .text_overflow(TextOverflow::Ellipsis)
-                    .font_size(56.)
+                    .font_size(text_size(56.))
                     .line_height(1.1)
                     .font_weight(FontWeight::BOLD)
                     .color(colors::on_art()),
@@ -115,7 +115,7 @@ impl Component for ActiveClusterPanel {
             .child(
                 label()
                     .text(subtitle)
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(FontWeight::SEMI_BOLD)
                     .color(colors::on_art_secondary()),
             )
@@ -144,7 +144,7 @@ fn launch_button(
     Button::new()
         .primary()
         .medium()
-        .font_size(16.)
+        .font_size(text_size(16.))
         .font_weight(FontWeight::from(450))
         .enabled(enabled)
         .padding(Gaps::new_symmetric(8., 24.))

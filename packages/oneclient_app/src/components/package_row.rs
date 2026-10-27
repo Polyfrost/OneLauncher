@@ -14,7 +14,7 @@ use crate::hooks::{
     use_disable_warnings, use_essential_guard,
 };
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
@@ -583,7 +583,7 @@ pub(crate) fn grid_card(
                 .child(
                     label()
                         .text(title)
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -602,7 +602,7 @@ pub(crate) fn grid_card(
     let description = (!item.description.is_empty()).then(|| {
         label()
             .text(item.description.clone())
-            .font_size(11.)
+            .font_size(text_size(11.))
             .line_height(1.45)
             .max_lines(2)
             .text_overflow(TextOverflow::Ellipsis)
@@ -778,7 +778,7 @@ impl Component for SourceLink {
 pub(crate) fn meta_text(text: String, color: Color) -> Element {
     label()
         .text(text)
-        .font_size(11.)
+        .font_size(text_size(11.))
         .max_lines(1)
         .color(color)
         .into_element()
@@ -897,7 +897,7 @@ fn package_info(
                         .child(
                             label()
                                 .text(title)
-                                .font_size(15.)
+                                .font_size(text_size(15.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
@@ -931,7 +931,7 @@ fn package_info(
                     el.child(
                         label()
                             .text(format!("by {}", item.author))
-                            .font_size(10.)
+                            .font_size(text_size(10.))
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
@@ -942,7 +942,7 @@ fn package_info(
                     el.child(
                         label()
                             .text(item.description.clone())
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(2)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
@@ -1002,7 +1002,7 @@ pub(crate) fn meta_size(size: u64) -> impl IntoElement {
         .maybe_child((size > 0).then(|| {
             label()
                 .text(format_size(size))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary())
         }))
         .into_element()
@@ -1055,7 +1055,7 @@ fn status_tag(text: impl Into<String>, accent: Color) -> Element {
                 .child(
                     label()
                         .text(text.into().to_uppercase())
-                        .font_size(9.)
+                        .font_size(text_size(9.))
                         .font_weight(FontWeight::BOLD)
                         .letter_spacing(TAG_LETTER_SPACING)
                         .color(accent),
@@ -1105,7 +1105,7 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
         .child(
             label()
                 .text(text)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(accent),
         )

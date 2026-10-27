@@ -7,7 +7,7 @@ use crate::components::{
     ART_PREVIEW_EDGE, Button, DynamicArt, GALLERY_COVER_EDGE, Icon, IconType, LocalImage,
     TextInput, VersionArtGallery,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const CARD_RADIUS: f32 = 12.;
@@ -142,7 +142,7 @@ pub fn details_body(
                 .maybe_child(name_problem.map(|problem| {
                     label()
                         .text(problem.message())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::danger())
                         .into_element()
                 }))
@@ -231,7 +231,7 @@ fn preset_tags(state: DetailsState, tags: &[String]) -> Option<Element> {
             .child(
                 label()
                     .text("Suggested")
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -306,7 +306,7 @@ impl Component for PresetChip {
                 label()
                     .text(preset)
                     .max_lines(1)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_secondary()),
             )
@@ -349,7 +349,7 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
                     label()
                         .text(tag.clone())
                         .max_lines(1)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(Color::WHITE),
                 )
@@ -524,7 +524,7 @@ fn cover_field(
                 .child(
                     label()
                         .text("Shown behind the instance on the home page and on its card. PNG or JPG, 1280x720 or larger.")
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .line_height(1.4)
                         .color(colors::fg_secondary()),
                 )
@@ -572,7 +572,7 @@ pub fn field(title: &'static str, control: Element) -> Element {
         .child(
             label()
                 .text(title)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )

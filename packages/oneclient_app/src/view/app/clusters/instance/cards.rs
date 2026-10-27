@@ -3,7 +3,7 @@ use freya::prelude::*;
 use super::model::{LoaderChoice, VersionRow};
 use crate::AppAssets;
 use crate::components::{AssetImage, Icon, IconType, pill};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 pub const CARD_RADIUS: f32 = 12.;
@@ -107,7 +107,7 @@ pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<El
             .child(
                 label()
                     .text(choice.short())
-                    .font_size(9.)
+                    .font_size(text_size(9.))
                     .font_weight(FontWeight::SEMI_BOLD)
                     .letter_spacing(0.4)
                     .color(color),
@@ -202,21 +202,21 @@ pub fn wide_card(card: WideCard) -> Element {
                         .child(
                             label()
                                 .text(title)
-                                .font_size(15.)
+                                .font_size(text_size(15.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(colors::fg_primary()),
                         )
                         .maybe_child(badge.map(|badge| {
                             label()
                                 .text(badge)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary())
                         })),
                 )
                 .child(
                     label()
                         .text(format!("{blurb} {meta}"))
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .line_height(1.45)
                         .color(colors::fg_secondary()),
                 ),
@@ -280,7 +280,7 @@ pub fn cell_card(card: CellCard) -> Element {
                             label()
                                 .text(title)
                                 .width(Size::flex(1.0))
-                                .font_size(14.)
+                                .font_size(text_size(14.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .max_lines(1)
                                 .color(colors::fg_primary()),
@@ -291,7 +291,7 @@ pub fn cell_card(card: CellCard) -> Element {
                     label()
                         .text(blurb)
                         .width(Size::fill())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .line_height(1.4)
                         .max_lines(3)
                         .color(colors::fg_secondary()),
@@ -300,7 +300,7 @@ pub fn cell_card(card: CellCard) -> Element {
         .maybe_child(meta.map(|meta| {
             label()
                 .text(meta)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary())
                 .into_element()
@@ -331,7 +331,7 @@ pub fn version_row(row: &VersionRow, selected: bool, on_press: EventHandler<()>)
             label()
                 .text(row.id.clone())
                 .width(Size::px(110.))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .max_lines(1)
                 .color(colors::fg_primary()),
@@ -340,7 +340,7 @@ pub fn version_row(row: &VersionRow, selected: bool, on_press: EventHandler<()>)
             label()
                 .text(row.meta.clone())
                 .width(Size::flex(1.0))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(1)
                 .text_align(TextAlign::Right)
                 .color(colors::fg_secondary()),
@@ -354,7 +354,7 @@ pub fn version_row(row: &VersionRow, selected: bool, on_press: EventHandler<()>)
             label()
                 .text(row.date.clone())
                 .width(Size::px(84.))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(1)
                 .text_align(TextAlign::Right)
                 .color(colors::fg_secondary())

@@ -3,7 +3,7 @@ use freya::prelude::*;
 use crate::components::IconType;
 use crate::hooks::{has_migration_data, use_migration, use_onboarding_selection};
 use crate::routes::Route;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{
     onboarding_illustration, onboarding_nav, onboarding_page, step_heading,
@@ -50,7 +50,7 @@ impl Component for OnboardingLanguage {
             .child(
                 label()
                     .text("Choose your preferred language")
-                    .font_size(18.)
+                    .font_size(text_size(18.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -110,7 +110,7 @@ fn language_row(
             rect().width(Size::flex(1.0)).child(
                 label()
                     .text(language.name)
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             ),
@@ -118,7 +118,7 @@ fn language_row(
         .child(
             label()
                 .text(format!("{}% localized", language.percentage))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(if active {
                     colors::fg_primary()
                 } else {

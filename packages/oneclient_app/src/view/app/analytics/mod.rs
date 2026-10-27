@@ -4,7 +4,7 @@ use freya::prelude::*;
 use oneclient_core::game::{Analytics, DayPlaytime, PlaytimeStats};
 
 use crate::components::{Icon, IconType};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, columns_for};
 
 mod charts;
@@ -63,7 +63,7 @@ pub fn analytics_placeholder(note: &str) -> Element {
                     label()
                         .text(note.to_string())
                         .width(Size::fill())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .text_align(TextAlign::Center)
                         .color(colors::fg_secondary()),
                 ),
@@ -187,7 +187,7 @@ pub(super) fn card_header(title: &str, subtitle: String, trailing: Option<Elemen
                 .child(
                     label()
                         .text(title.to_string())
-                        .font_size(16.)
+                        .font_size(text_size(16.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .width(Size::fill())
@@ -196,7 +196,7 @@ pub(super) fn card_header(title: &str, subtitle: String, trailing: Option<Elemen
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .max_lines(1)
                         .width(Size::fill())
                         .color(colors::fg_secondary()),

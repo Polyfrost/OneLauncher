@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::ScrollArea;
 use crate::hooks::{try_global_analytics, use_global_analytics};
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::ui::centered_note;
 use crate::view::app::{analytics_body, analytics_placeholder};
 
@@ -51,14 +51,14 @@ fn header() -> Element {
         .child(
             label()
                 .text("Statistics")
-                .font_size(32.)
+                .font_size(text_size(32.))
                 .font_weight(FontWeight::BOLD)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
                 .text("How, when, and how much you play.")
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

@@ -4,9 +4,9 @@ use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSummary};
 
 use crate::components::{Button, Icon, IconType};
-use crate::utils::shorten;
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
+use crate::utils::shorten;
 
 const BUTTON_NAME_CHARS: usize = 22;
 
@@ -67,7 +67,7 @@ pub(super) fn sidebar(
                         .child(
                             label()
                                 .text(project.name.clone())
-                                .font_size(18.)
+                                .font_size(text_size(18.))
                                 .font_weight(FontWeight::BOLD)
                                 .max_lines(2)
                                 .color(colors::fg_primary()),
@@ -82,7 +82,7 @@ pub(super) fn sidebar(
                             el.child(
                                 label()
                                     .text(project.summary.clone())
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(4)
                                     .color(colors::fg_secondary()),
                             )
@@ -103,7 +103,7 @@ pub(super) fn sidebar(
                                             "{} downloads",
                                             abbreviate_number(project.downloads)
                                         ))
-                                        .font_size(11.)
+                                        .font_size(text_size(11.))
                                         .color(colors::fg_secondary()),
                                 ),
                         ),
@@ -138,7 +138,9 @@ pub(super) fn sidebar(
                     "Installing...".to_string()
                 } else if installer.add_to_cluster {
                     match &installer.cluster_name {
-                        Some(name) => format!("Add to {}", shorten(name, BUTTON_NAME_CHARS, "\u{2026}")),
+                        Some(name) => {
+                            format!("Add to {}", shorten(name, BUTTON_NAME_CHARS, "\u{2026}"))
+                        }
                         None => "Add to this instance".to_string(),
                     }
                 } else if installer.modpack {
@@ -198,7 +200,7 @@ impl Component for ProviderTag {
             .child(
                 label()
                     .text(self.text.clone())
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(if interactive {
                         colors::code_info()
                     } else {
@@ -237,7 +239,7 @@ fn card_spaced(title: &str, rows: Vec<Element>, spacing: f32) -> impl IntoElemen
         .child(
             label()
                 .text(title.to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::BOLD)
                 .color(colors::fg_primary()),
         )
@@ -322,7 +324,7 @@ impl Component for AuthorRow {
                     .child(
                         label()
                             .text(self.name.clone())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .color(colors::fg_primary()),
                     )
@@ -330,7 +332,7 @@ impl Component for AuthorRow {
                         el.child(
                             label()
                                 .text(self.role.clone())
-                                .font_size(10.)
+                                .font_size(text_size(10.))
                                 .max_lines(1)
                                 .color(colors::fg_secondary()),
                         )
@@ -379,7 +381,7 @@ fn detail_row(icon: IconType, key: &str, value: &str) -> Element {
                 .child(
                     label()
                         .text(key.to_string())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         )
@@ -390,7 +392,7 @@ fn detail_row(icon: IconType, key: &str, value: &str) -> Element {
                 .child(
                     label()
                         .text(value.to_string())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .max_lines(3)
                         .width(Size::fill())
                         .color(colors::fg_primary()),
@@ -455,7 +457,7 @@ impl Component for LinkRow {
             .child(
                 label()
                     .text(self.label_text.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::code_info()),
             )
     }

@@ -7,7 +7,7 @@ use crate::disable;
 use crate::hooks::{
     EssentialGuardKind, Guarded, use_cluster_mutation, use_disable_confirm, use_essential_guard,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const BODY_MAX_H: f32 = 400.;
@@ -62,7 +62,7 @@ impl Component for EssentialConfirmOverlay {
                                     .child(
                                         label()
                                             .text(title)
-                                            .font_size(16.)
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),

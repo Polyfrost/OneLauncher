@@ -7,7 +7,7 @@ use crate::components::IconType;
 use crate::hooks::{use_dispatch, use_launcher, use_onboarding_selection};
 use crate::routes::Route;
 use crate::state::AppChannel;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::ui::note;
 use crate::view::onboarding::{
     choice_row, onboarding_illustration, onboarding_nav_action, onboarding_page, step_heading,
@@ -115,7 +115,7 @@ impl Component for OnboardingLocation {
                             "This is where OneClient is set up. Settings can move it once you are \
                              through setup.",
                         )
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .max_lines(2)
                         .color(colors::fg_secondary()),
                 )

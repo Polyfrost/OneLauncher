@@ -5,7 +5,7 @@ use freya::text_edit::Clipboard;
 use regex::Regex;
 
 use crate::components::{Icon, IconType, ScrollArea, ScrollAreaCtx, corrected_scroll};
-use crate::theme::{self, colors, rounded};
+use crate::theme::{self, colors, rounded, text_size};
 
 const LINE_H: f32 = 16.;
 const BODY_PAD_TOP: f32 = 10.;
@@ -252,7 +252,7 @@ fn toolbar(title: String, streaming: bool, auto_scroll: State<bool>) -> impl Int
         .child(
             label()
                 .text(title)
-                .font_size(18.)
+                .font_size(text_size(18.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
@@ -287,11 +287,16 @@ fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
         } else {
             colors::fg_secondary()
         }))
-        .child(label().text("Auto-scroll").font_size(11.).color(if on {
-            colors::brand()
-        } else {
-            colors::fg_secondary()
-        }))
+        .child(
+            label()
+                .text("Auto-scroll")
+                .font_size(text_size(11.))
+                .color(if on {
+                    colors::brand()
+                } else {
+                    colors::fg_secondary()
+                }),
+        )
         .into_element()
 }
 
@@ -515,7 +520,7 @@ fn log_line_row(
         .width(Size::fill())
         .height(Size::px(LINE_H))
         .font_family(theme::mono_font())
-        .font_size(LINE_FONT_SIZE);
+        .font_size(text_size(LINE_FONT_SIZE));
     for (text, color) in &parsed.spans {
         message = message.span(Span::new(text.clone()).color(*color));
     }
@@ -547,7 +552,7 @@ fn log_line_row(
                 label()
                     .text(format!("{}", index + 1))
                     .font_family(theme::mono_font())
-                    .font_size(LINE_FONT_SIZE)
+                    .font_size(text_size(LINE_FONT_SIZE))
                     .text_align(TextAlign::Right)
                     .width(Size::fill())
                     .color(colors::code_muted()),

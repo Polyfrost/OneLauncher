@@ -25,7 +25,7 @@ use crate::hooks::{
     use_launcher, use_provide_active_cluster, use_provide_browser_compat,
     use_provide_browser_state, use_provide_browser_type, use_provide_datapack_world, use_splash,
 };
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::utils::home_cluster;
 use oneclient_events::LaunchStage;
 use std::collections::HashMap;
@@ -156,7 +156,7 @@ impl Component for LaunchErrorDialog {
                                     .child(
                                         label()
                                             .text("Game failed to launch")
-                                            .font_size(18.)
+                                            .font_size(text_size(18.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),
@@ -164,7 +164,7 @@ impl Component for LaunchErrorDialog {
                             .child(
                                 label()
                                     .text("Minecraft could not be launched. Error details:")
-                                    .font_size(13.)
+                                    .font_size(text_size(13.))
                                     .color(colors::fg_secondary()),
                             )
                             .child(

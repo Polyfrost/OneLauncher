@@ -11,7 +11,7 @@ use oneclient_polyplus::api::{BodySlot, SwatchArt};
 use crate::AppAssets;
 use crate::hooks::wardrobe::{use_cosmetic_bundle, use_swatch};
 use crate::hooks::{loaded_image, settled_or_loading, use_cached_image};
-use crate::theme::{colors, rounded, rounded_px};
+use crate::theme::{colors, rounded, rounded_px, text_size};
 use crate::ui::{border_all_color, clamp_to_window};
 
 pub(super) const CARD_CHROME: f32 = 81.;
@@ -137,7 +137,7 @@ fn badge_tab(badge: &Badge) -> Element {
             label()
                 .text(badge.label.clone())
                 .max_lines(1)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(color)
         }))
@@ -150,7 +150,7 @@ pub(super) fn detail_text(text: impl Into<String>) -> Element {
         .width(Size::fill())
         .max_lines(1)
         .text_overflow(TextOverflow::Ellipsis)
-        .font_size(12.)
+        .font_size(text_size(12.))
         .color(colors::fg_secondary())
         .into_element()
 }
@@ -172,13 +172,13 @@ pub(super) fn price_label(
         None => row.child(
             label()
                 .text("—")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         ),
         Some(price) if price <= 0. => row.child(
             label()
                 .text("FREE")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::success()),
         ),
@@ -186,21 +186,21 @@ pub(super) fn price_label(
             .child(
                 label()
                     .text(money(base.unwrap_or_default()))
-                    .font_size(10.)
+                    .font_size(text_size(10.))
                     .text_decoration(TextDecoration::LineThrough)
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(money(price))
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::success()),
             ),
         Some(price) => row.child(
             label()
                 .text(money(price))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         ),
@@ -343,7 +343,7 @@ fn swatch_column(swatches: &[Swatch], on_pick: EventHandler<i32>) -> Element {
                 .child(
                     label()
                         .text(format!("+{hidden}"))
-                        .font_size(10.)
+                        .font_size(text_size(10.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -544,7 +544,7 @@ impl Component for WardrobeCard {
                                     .width(Size::flex(1.0))
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
-                                    .font_size(14.)
+                                    .font_size(text_size(14.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::fg_primary()),
                             )
@@ -597,7 +597,7 @@ impl Component for WardrobeCard {
                     .child(
                         label()
                             .text(self.action_label)
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(strip_color),
                     ),
@@ -675,7 +675,7 @@ impl Component for RenamePopup {
                     .child(
                         label()
                             .text("Rename")
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -756,7 +756,7 @@ impl Component for SectionChip {
             .child(
                 label()
                     .text(self.text)
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(if self.selected {
                         FontWeight::MEDIUM
                     } else {
@@ -797,7 +797,7 @@ impl Component for AnchorChip {
                 label()
                     .text(self.text.clone())
                     .max_lines(1)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(if self.active {
                         FontWeight::MEDIUM
                     } else {
@@ -836,7 +836,7 @@ impl Component for InfoHeading {
             .child(
                 label()
                     .text(self.title.clone())
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -878,7 +878,7 @@ pub(super) fn divider(text: &str) -> Element {
         .child(
             label()
                 .text(text.to_uppercase())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_secondary()),
         )
@@ -900,7 +900,7 @@ pub(super) fn notice(text: impl Into<String>) -> Element {
                 .width(Size::fill())
                 .max_lines(2)
                 .text_overflow(TextOverflow::Ellipsis)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -918,7 +918,7 @@ pub(super) fn library_intro(text: String, button: Option<Element>) -> Element {
             label()
                 .text(text)
                 .width(Size::flex(1.0))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .maybe_child(button)

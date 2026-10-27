@@ -12,7 +12,7 @@ use crate::components::{
     Button, Icon, IconType, ScrollArea, centered_spinner, explanation_panel, remote_icon,
 };
 use crate::hooks::{retry_import_screening, use_cached_image};
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const OPTION_H: f32 = 48.;
@@ -70,7 +70,7 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
         .child(
             label()
                 .text("Couldn't check the mods")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
@@ -78,7 +78,7 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
             label()
                 .text("OneClient's list of suggested improvements could not be loaded. Try again, or import without checking.")
                 .width(Size::fill())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .text_align(TextAlign::Center)
                 .color(colors::fg_secondary()),
         )
@@ -86,7 +86,7 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
             label()
                 .text(error)
                 .width(Size::fill())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(2)
                 .text_overflow(TextOverflow::Ellipsis)
                 .text_align(TextAlign::Center)
@@ -124,7 +124,7 @@ fn all_clear() -> Element {
         .child(
             label()
                 .text("Nothing to improve")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
@@ -132,7 +132,7 @@ fn all_clear() -> Element {
             label()
                 .text("None of the mods in the selected instances have a suggested OneClient improvement.")
                 .width(Size::fill())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .text_align(TextAlign::Center)
                 .color(colors::fg_secondary()),
         )
@@ -164,7 +164,7 @@ fn instance_section(
                     label()
                         .width(Size::flex(1.0))
                         .text(screened.name.clone())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::MEDIUM)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -173,7 +173,7 @@ fn instance_section(
                 .child(
                     label()
                         .text(count)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         )
@@ -250,7 +250,7 @@ fn flagged_card(
                         .child(
                             label()
                                 .text(flagged.name.clone())
-                                .font_size(13.)
+                                .font_size(text_size(13.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
@@ -259,7 +259,7 @@ fn flagged_card(
                         .child(
                             label()
                                 .text(file_line)
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
                                 .color(colors::fg_secondary()),
@@ -423,7 +423,7 @@ fn option_content(
                 .child(
                     label()
                         .text(title)
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -436,7 +436,7 @@ fn option_content(
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .color(colors::fg_secondary()),

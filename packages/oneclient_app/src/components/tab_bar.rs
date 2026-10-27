@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use crate::theme::{colors, rounded};
+use crate::theme::{colors, rounded, text_size};
 
 pub struct TabItem {
     label: String,
@@ -91,7 +91,7 @@ fn tab_label(text: &str, font_size: f32, active: bool) -> impl IntoElement {
         .child(
             label()
                 .text(text.to_string())
-                .font_size(font_size)
+                .font_size(text_size(font_size))
                 .font_weight(ACTIVE_WEIGHT)
                 .max_lines(1)
                 .color(Color::TRANSPARENT)
@@ -110,7 +110,7 @@ fn tab_label(text: &str, font_size: f32, active: bool) -> impl IntoElement {
                 .child(
                     label()
                         .text(text.to_string())
-                        .font_size(font_size)
+                        .font_size(text_size(font_size))
                         .font_weight(if active {
                             ACTIVE_WEIGHT
                         } else {
@@ -136,7 +136,7 @@ fn count_pill(count: &str, font_size: f32) -> impl IntoElement {
         .child(
             label()
                 .text(count.to_string())
-                .font_size((font_size - 3.).max(8.))
+                .font_size(text_size((font_size - 3.).max(8.)))
                 .color(colors::fg_secondary()),
         )
 }

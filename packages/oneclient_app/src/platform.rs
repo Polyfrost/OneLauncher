@@ -293,9 +293,7 @@ pub mod tray {
         #[cfg(not(target_os = "macos"))]
         let builder = builder.with_icon(LaunchConfig::tray_icon(ICON));
 
-        builder
-            .build()
-            .expect("failed to create the tray icon")
+        builder.build().expect("failed to create the tray icon")
     }
 
     pub fn handle(event: TrayEvent, _ctx: RendererContext<'_>) {

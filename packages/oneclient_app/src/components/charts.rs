@@ -117,8 +117,7 @@ impl Component for PieChart {
                 paint.set_color(SkColor::from(colors::component_bg_hover()));
                 canvas.draw_circle((cx, cy), radius - 5.0, &paint);
                 paint.set_color(SkColor::from(colors::page_elevated()));
-                canvas
-                    .draw_circle((cx, cy), (radius - 5.0) * PIE_HOLE, &paint);
+                canvas.draw_circle((cx, cy), (radius - 5.0) * PIE_HOLE, &paint);
                 return;
             }
 
@@ -149,8 +148,7 @@ impl Component for PieChart {
             }
 
             paint.set_color(SkColor::from(colors::page_elevated()));
-            canvas
-                .draw_circle((cx, cy), (radius - 5.0) * PIE_HOLE, &paint);
+            canvas.draw_circle((cx, cy), (radius - 5.0) * PIE_HOLE, &paint);
         });
 
         let (center_name, center_value) = match active {

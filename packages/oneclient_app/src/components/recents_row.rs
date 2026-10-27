@@ -52,7 +52,8 @@ impl Component for RecentsRow {
 
         let sorted: Vec<Cluster> = sort_clusters_for_home(clusters);
 
-        let slots = recent_card_slots_for_window(root_size.read().width);
+        let slots =
+            recent_card_slots_for_width(root_size.read().width - theme::HOME_PADDING_PX * 2.);
 
         // Budget off cluster count not slot count an offset-only change makes the layout
         // engine reuse a card's cached area freezing survivors at pre-resize widths
@@ -565,10 +566,6 @@ impl Component for OtherVersionsTile {
                     ),
             )
     }
-}
-
-fn recent_card_slots_for_window(window_width_px: f32) -> usize {
-    recent_card_slots_for_width(window_width_px - theme::HOME_PADDING_PX * 2.)
 }
 
 /// `n` cards occupy `n` gaps (n-1 between cards one before the tile) so `n * (MIN + GAP) + MORE`

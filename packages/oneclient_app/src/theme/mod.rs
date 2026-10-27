@@ -2,10 +2,11 @@ use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{Arc, LazyLock};
 
 use bytes::Bytes;
 use freya::prelude::CornerRadius;
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use crate::AppAssets;
@@ -65,7 +66,7 @@ impl Theme {
 }
 
 pub fn themes() -> Vec<Arc<Theme>> {
-    THEMES.read().unwrap().clone()
+    THEMES.read().clone()
 }
 
 pub const SYSTEM_THEME: &str = "system";
@@ -82,10 +83,9 @@ pub fn resolve_theme(id: &str) -> Arc<Theme> {
     let id = match id {
         "amoled" | "grey" => "dark",
         "white" => "light",
-        "minecraft" => "minecraft-dark",
         id => id,
     };
-    let themes = THEMES.read().unwrap();
+    let themes = THEMES.read();
     themes
         .iter()
         .find(|theme| theme.id == id)
@@ -106,7 +106,7 @@ pub fn save_theme(mut theme: Theme) -> std::io::Result<String> {
             .collect();
         let slug = slug.trim_matches('-');
         let base = if slug.is_empty() { "custom" } else { slug };
-        let taken = |id: &str| THEMES.read().unwrap().iter().any(|theme| theme.id == id);
+        let taken = |id: &str| THEMES.read().iter().any(|theme| theme.id == id);
         theme.id = (1..)
             .map(|n| {
                 if n == 1 {
@@ -124,7 +124,7 @@ pub fn save_theme(mut theme: Theme) -> std::io::Result<String> {
     std::fs::write(dir.join(format!("{}.json", theme.id)), json)?;
 
     let id = theme.id.clone();
-    let mut themes = THEMES.write().unwrap();
+    let mut themes = THEMES.write();
     match themes.iter_mut().find(|existing| existing.id == id) {
         Some(existing) => *existing = Arc::new(theme),
         None => themes.push(Arc::new(theme)),
@@ -135,8 +135,8 @@ pub fn save_theme(mut theme: Theme) -> std::io::Result<String> {
 pub fn pixel_font_size_of(family: &str) -> Option<f32> {
     themes()
         .iter()
-        .find(|theme| theme.font == family && theme.pixel_font_size.is_some())
-        .and_then(|theme| theme.pixel_font_size)
+        .filter(|theme| theme.font == family)
+        .find_map(|theme| theme.pixel_font_size)
 }
 
 pub fn font_families() -> Vec<String> {
@@ -155,17 +155,12 @@ pub fn font_families() -> Vec<String> {
 }
 
 fn parse_theme(id: &str, json: &[u8], dir: Option<&Path>) -> Option<Theme> {
-    match serde_json::from_slice::<Theme>(json) {
-        Ok(mut theme) => {
-            theme.id = id.to_string();
-            theme.dir = dir.map(Path::to_path_buf);
-            Some(theme)
-        }
-        Err(err) => {
-            tracing::error!("Failed to load theme '{id}': {err}");
-            None
-        }
-    }
+    let mut theme = serde_json::from_slice::<Theme>(json)
+        .inspect_err(|err| tracing::error!("Failed to load theme '{id}': {err}"))
+        .ok()?;
+    theme.id = id.to_string();
+    theme.dir = dir.map(Path::to_path_buf);
+    Some(theme)
 }
 
 fn load_themes() -> Vec<Theme> {
@@ -257,17 +252,16 @@ pub fn load_fonts() -> Vec<(Cow<'static, str>, Bytes)> {
         (MINECRAFT_FONT, "fonts/Minecraft/Minecraft-Bold.otf"),
     ];
 
-    let embedded = FONTS.iter().filter_map(|&(weight, file)| {
-        let bytes = AppAssets::get_bytes(file).or_else(|| {
-            tracing::error!("Failed to load embedded font '{file}'");
-            None
-        })?;
+    let mut fonts: Vec<(Cow<'static, str>, Bytes)> = FONTS
+        .iter()
+        .filter_map(|&(family, file)| {
+            let bytes = AppAssets::get_bytes(file).or_else(|| {
+                tracing::error!("Failed to load embedded font '{file}'");
+                None
+            })?;
 
-        Some((weight, bytes))
-    });
-
-    let mut fonts: Vec<(Cow<'static, str>, Bytes)> = embedded
-        .map(|(family, bytes)| (Cow::Borrowed(family), bytes))
+            Some((Cow::Borrowed(family), bytes))
+        })
         .collect();
 
     for theme in themes() {

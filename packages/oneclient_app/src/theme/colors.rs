@@ -1,8 +1,9 @@
 use std::cell::Cell;
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, RwLock};
 
 use freya::prelude::{Color, State};
+use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use super::{Theme, resolve_theme};
@@ -25,19 +26,18 @@ type Rgb = (u8, u8, u8);
 
 #[derive(Clone, Copy, PartialEq, Deserialize, Serialize)]
 #[serde(try_from = "String", into = "String")]
-pub struct Hex(Color);
+pub struct Hex(pub Color);
 
 impl TryFrom<String> for Hex {
     type Error = String;
 
     fn try_from(value: String) -> Result<Self, Self::Error> {
+        if let Some(rgb) = parse_hex(&value) {
+            return Ok(Hex(color(rgb)));
+        }
         let digits = value.trim().trim_start_matches('#');
-        let packed = u32::from_str_radix(digits, 16)
-            .ok()
-            .filter(|_| digits.is_ascii());
-        match (digits.len(), packed) {
-            (6, Some(packed)) => Ok(Hex(color(unpack(packed)))),
-            (8, Some(packed)) => {
+        match u32::from_str_radix(digits, 16) {
+            Ok(packed) if digits.len() == 8 && digits.is_ascii() => {
                 let (r, g, b) = unpack(packed >> 8);
                 Ok(Hex(Color::from_argb(packed as u8, r, g, b)))
             }
@@ -55,17 +55,7 @@ impl From<Hex> for String {
     }
 }
 
-impl From<Color> for Hex {
-    fn from(color: Color) -> Self {
-        Hex(color)
-    }
-}
-
 impl Hex {
-    pub fn color(self) -> Color {
-        self.0
-    }
-
     fn rgb(self) -> Rgb {
         (self.0.r(), self.0.g(), self.0.b())
     }
@@ -130,13 +120,13 @@ fn bump_revision() {
 }
 
 pub fn apply(theme: &str, accent: Option<&str>) {
-    theme.clone_into(&mut ACTIVE_THEME.write().unwrap());
+    theme.clone_into(&mut ACTIVE_THEME.write());
     let packed = accent.and_then(parse_hex).map_or(NO_ACCENT, pack);
     ACTIVE_ACCENT.store(packed, Ordering::Relaxed);
 }
 
 pub fn preview(theme: Option<Theme>) {
-    *PREVIEW_THEME.write().unwrap() = theme.map(Arc::new);
+    *PREVIEW_THEME.write() = theme.map(Arc::new);
     bump_revision();
 }
 
@@ -146,10 +136,10 @@ pub fn active_theme() -> Arc<Theme> {
             let _ = revision.try_read();
         }
     });
-    if let Some(preview) = PREVIEW_THEME.read().unwrap().clone() {
+    if let Some(preview) = PREVIEW_THEME.read().clone() {
         return preview;
     }
-    resolve_theme(&ACTIVE_THEME.read().unwrap())
+    resolve_theme(&ACTIVE_THEME.read())
 }
 
 fn palette() -> Palette {
@@ -172,19 +162,19 @@ fn brand_rgb() -> Rgb {
 }
 
 pub fn page() -> Color {
-    palette().page.color()
+    palette().page.0
 }
 
 pub fn page_elevated() -> Color {
-    palette().page_elevated.color()
+    palette().page_elevated.0
 }
 
 pub fn card() -> Color {
-    palette().card.color()
+    palette().card.0
 }
 
 pub fn fg_primary() -> Color {
-    palette().text.color()
+    palette().text.0
 }
 
 pub fn fg_primary_hover() -> Color {
@@ -201,7 +191,7 @@ pub fn fg_primary_disabled() -> Color {
 }
 
 pub fn fg_secondary() -> Color {
-    palette().text_secondary.color()
+    palette().text_secondary.0
 }
 
 pub fn fg_secondary_hover() -> Color {
@@ -348,7 +338,7 @@ pub fn ghost_overlay_pressed() -> Color {
 }
 
 pub fn component_bg() -> Color {
-    palette().component.color()
+    palette().component.0
 }
 
 pub fn component_bg_hover() -> Color {
@@ -369,7 +359,7 @@ pub fn with_alpha(color: Color, alpha: u8) -> Color {
 }
 
 fn border_scaled(scale: f32) -> Color {
-    let border = palette().border.color();
+    let border = palette().border.0;
     with_alpha(border, (f32::from(border.a()) * scale).min(255.) as u8)
 }
 

@@ -27,6 +27,7 @@ oneclient_core.workspace = true
 oneclient_db.workspace = true
 chrono.workspace = true
 oneclient_macro = { workspace = true, features = ["freya"] }
+parking_lot.workspace = true
 
 polyio.workspace = true
 rust-embed.workspace = true

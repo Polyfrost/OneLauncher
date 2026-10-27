@@ -9,27 +9,12 @@ use crate::components::{ColorPicker, IconType, link_button, toggle};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
 use crate::routes::Route;
 use crate::theme::{
-    SYSTEM_THEME, Theme, colors, resolve_theme, rounded, system_aware, text_size, themes,
+    SYSTEM_THEME,
+    colors::{self, Palette},
+    resolve_theme, rounded, system_aware, text_size, themes,
 };
 use crate::ui::border_all_color;
 use crate::view::app::settings::{resettable, settings_row};
-
-#[derive(Clone, Copy)]
-struct ThemePreview {
-    background: Color,
-    accent: Color,
-    light: bool,
-}
-
-impl ThemePreview {
-    fn of(theme: &Theme) -> Self {
-        Self {
-            background: theme.colors.page.color(),
-            accent: theme.colors.accent.color(),
-            light: theme.colors.light,
-        }
-    }
-}
 
 #[derive(PartialEq)]
 pub struct SettingsAppearance;
@@ -118,19 +103,19 @@ fn theme_section(selected: &str, dispatch: Actions) -> impl IntoElement {
         id: SYSTEM_THEME.to_string(),
         background: LinearGradient::new()
             .angle(-90.)
-            .stop((dark.colors.page.color(), 0.))
-            .stop((dark.colors.page.color(), 50.))
-            .stop((light.colors.page.color(), 50.))
-            .stop((light.colors.page.color(), 100.))
+            .stop((dark.colors.page.0, 0.))
+            .stop((dark.colors.page.0, 50.))
+            .stop((light.colors.page.0, 50.))
+            .stop((light.colors.page.0, 100.))
             .into(),
-        preview: ThemePreview::of(&dark),
+        preview: dark.colors,
         selected: selected == SYSTEM_THEME,
     };
     let cards: Vec<ThemeCard> = std::iter::once(system)
         .chain(themes().iter().map(|theme| ThemeCard {
             id: theme.id.clone(),
-            background: theme.colors.page.color().into(),
-            preview: ThemePreview::of(theme),
+            background: theme.colors.page.0.into(),
+            preview: theme.colors,
             selected: selected != SYSTEM_THEME && theme.id == active.id,
         }))
         .collect();
@@ -138,7 +123,7 @@ fn theme_section(selected: &str, dispatch: Actions) -> impl IntoElement {
     rect()
         .horizontal()
         .spacing(16.)
-        .child(big_preview(ThemePreview::of(&active)))
+        .child(big_preview(active.colors))
         .child(
             rect()
                 .vertical()
@@ -154,7 +139,7 @@ fn theme_section(selected: &str, dispatch: Actions) -> impl IntoElement {
         .into_element()
 }
 
-fn big_preview(theme: ThemePreview) -> impl IntoElement {
+fn big_preview(theme: Palette) -> impl IntoElement {
     rect()
         .width(Size::px(296.))
         .height(Size::px(183.))
@@ -168,13 +153,13 @@ fn big_preview(theme: ThemePreview) -> impl IntoElement {
                 .width(Size::px(168.))
                 .height(Size::px(123.))
                 .corner_radius(rounded(8.))
-                .background(theme.background)
+                .background(theme.page.0)
                 .border(border_all_color(1., colors::component_border()))
                 .padding(20.)
                 .spacing(20.)
-                .child(mock_line(108., theme.accent))
+                .child(mock_line(108., theme.accent.0))
                 .child(mock_line(84., line_tint(theme)))
-                .child(split_bar(theme.accent, 96.)),
+                .child(split_bar(theme.accent.0, 96.)),
         )
         .into_element()
 }
@@ -182,7 +167,7 @@ fn big_preview(theme: ThemePreview) -> impl IntoElement {
 struct ThemeCard {
     id: String,
     background: Fill,
-    preview: ThemePreview,
+    preview: Palette,
     selected: bool,
 }
 
@@ -208,7 +193,7 @@ fn theme_card(card: &ThemeCard, dispatch: Actions) -> Element {
             dispatch.edit_settings(|settings| settings.theme = id.clone());
         })
         .child(mock_line(108., line_tint(card.preview)))
-        .child(split_bar(card.preview.accent, 96.))
+        .child(split_bar(card.preview.accent.0, 96.))
         .into_element()
 }
 
@@ -238,7 +223,7 @@ fn split_bar(accent: Color, width: f32) -> impl IntoElement {
         .into_element()
 }
 
-fn line_tint(theme: ThemePreview) -> Color {
+fn line_tint(theme: Palette) -> Color {
     if theme.light {
         Color::from_argb(38, 0, 0, 0)
     } else {

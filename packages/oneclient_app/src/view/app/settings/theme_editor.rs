@@ -156,6 +156,7 @@ impl Component for SettingsThemeEditor {
                 IconType::ParagraphWrap,
                 "Font",
                 "Used for all launcher text.",
+                edited.font.clone(),
                 |theme| &mut theme.font,
             ))
             .child(font_row(
@@ -163,6 +164,7 @@ impl Component for SettingsThemeEditor {
                 IconType::CodeSnippet02,
                 "Code font",
                 "Used for logs and code blocks.",
+                edited.mono_font.clone(),
                 |theme| &mut theme.mono_font,
             ))
             .child(
@@ -199,36 +201,37 @@ fn color_row(
     description: &'static str,
     field: fn(&mut Palette) -> &mut Hex,
 ) -> impl IntoElement {
-    let value = field(&mut draft.read().colors.clone()).color();
+    let mut palette = draft.read().colors;
+    let value = field(&mut palette).0;
     settings_row(
         icon,
         title,
         description,
         ColorPicker::new(value, move |picked: Color| {
             let mut draft = draft;
-            *field(&mut draft.write().colors) = Hex::from(picked);
+            *field(&mut draft.write().colors) = Hex(picked);
         })
         .into_element(),
     )
 }
 
 fn border_color_row(draft: State<Theme>) -> impl IntoElement {
-    let border = draft.read().colors.border.color();
+    let border = draft.read().colors.border.0;
     settings_row(
         IconType::Square,
         "Border color",
         "Outlines around cards, inputs and dialogs.",
         ColorPicker::new(colors::with_alpha(border, 255), move |picked: Color| {
             let mut draft = draft;
-            let alpha = draft.peek().colors.border.color().a();
-            draft.write().colors.border = Hex::from(colors::with_alpha(picked, alpha));
+            let alpha = draft.peek().colors.border.0.a();
+            draft.write().colors.border = Hex(colors::with_alpha(picked, alpha));
         })
         .into_element(),
     )
 }
 
 fn border_opacity_row(draft: State<Theme>) -> impl IntoElement {
-    let border = draft.read().colors.border.color();
+    let border = draft.read().colors.border.0;
     let percent = u32::from(border.a()) * 100 / 255;
     let selected = BORDER_OPACITIES
         .iter()
@@ -246,8 +249,8 @@ fn border_opacity_row(draft: State<Theme>) -> impl IntoElement {
             .on_select(move |index: usize| {
                 let mut draft = draft;
                 let alpha = (u32::from(BORDER_OPACITIES[index]) * 255 / 100) as u8;
-                let border = draft.peek().colors.border.color();
-                draft.write().colors.border = Hex::from(colors::with_alpha(border, alpha));
+                let border = draft.peek().colors.border.0;
+                draft.write().colors.border = Hex(colors::with_alpha(border, alpha));
             }),
     )
 }
@@ -257,10 +260,10 @@ fn font_row(
     icon: IconType,
     title: &'static str,
     description: &'static str,
+    selected: String,
     field: fn(&mut Theme) -> &mut String,
 ) -> impl IntoElement {
     let families = font_families();
-    let selected = field(&mut draft.read().clone()).clone();
     settings_row(
         icon,
         title,

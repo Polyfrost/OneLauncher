@@ -86,6 +86,23 @@ async fn each_shared_folder_holds_only_its_own_clusters_packs() {
         state.clusters.create_shared_group("fRIENDS").await.is_err(),
         "a name differing only in case is taken"
     );
+    for reserved in ["Shared", "dedicated"] {
+        assert!(
+            state.clusters.create_shared_group(reserved).await.is_err(),
+            "{reserved} clashes with a built-in option"
+        );
+    }
+    let long = state
+        .clusters
+        .create_shared_group(&format!("{}. tail", "w".repeat(39)))
+        .await
+        .unwrap();
+    assert_eq!(long, "w".repeat(39), "the cut never leaves a trailing dot");
+    assert_eq!(
+        state.clusters.find_shared_group(&long).await.unwrap(),
+        Some(long.clone())
+    );
+    state.clusters.delete_shared_group(&long).await.unwrap();
     state
         .clusters
         .set_dir_target(

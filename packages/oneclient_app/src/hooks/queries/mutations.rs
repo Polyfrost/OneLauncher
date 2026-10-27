@@ -335,7 +335,7 @@ impl MutationCapability for ClusterMutation {
                             .to_string(),
                     })
                 } else {
-                    use oneclient_core::clusters::DirTarget;
+                    use oneclient_core::clusters::{ClusterError, DirTarget};
                     let previous = state
                         .clusters
                         .get(*cluster_id)
@@ -344,7 +344,9 @@ impl MutationCapability for ClusterMutation {
                         .map(|cluster| cluster.dir_target());
                     let mut target = target.clone();
                     let mut result = Ok(());
-                    if let DirTarget::Shared(Some(name)) = &target {
+                    if *create && state.games.is_active(*cluster_id) {
+                        result = Err(ClusterError::AlreadyRunning(*cluster_id).to_string());
+                    } else if let DirTarget::Shared(Some(name)) = &target {
                         let resolved = if *create {
                             state.clusters.create_shared_group(name).await.map(Some)
                         } else {
@@ -353,7 +355,8 @@ impl MutationCapability for ClusterMutation {
                         match resolved {
                             Ok(Some(group)) => target = DirTarget::Shared(Some(group)),
                             Ok(None) => {
-                                result = Err(format!("There is no shared folder named {name}."))
+                                result =
+                                    Err(ClusterError::SharedGroupMissing(name.clone()).to_string())
                             }
                             Err(err) => result = Err(err.to_string()),
                         }

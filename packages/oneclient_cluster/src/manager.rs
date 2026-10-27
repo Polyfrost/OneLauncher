@@ -580,9 +580,12 @@ impl ClusterManager {
 
     #[tracing::instrument(level = "debug", skip(self))]
     pub async fn create_shared_group(&self, name: &str) -> ClusterResult<String> {
-        let name = cap_folder_stem(&Self::sanitize_name(name));
+        let name = Self::sanitize_name(&cap_folder_stem(name));
         if !oneclient_common::paths::is_shared_group_name(&name) {
             return Err(ClusterError::InvalidSharedGroupName);
+        }
+        if ["shared", "dedicated"].contains(&name.to_lowercase().as_str()) {
+            return Err(ClusterError::ReservedSharedGroupName(name));
         }
         if let Some(existing) = self.find_shared_group(&name).await? {
             return Err(ClusterError::SharedGroupExists(existing));

@@ -300,10 +300,12 @@ impl Component for FolderStep {
                 "Can run alongside your other instances.".to_string(),
             ),
         ];
+        let pinned: Vec<Option<String>> =
+            clusters.iter().map(|cluster| cluster.shared_group()).collect();
         let custom = groups.into_iter().map(|group| {
-            let members = clusters
+            let members = pinned
                 .iter()
-                .filter(|cluster| cluster.shared_group().as_deref() == Some(group.as_str()))
+                .filter(|pin| pin.as_deref() == Some(group.as_str()))
                 .count();
             let used_by = match members {
                 0 => "No instances use it yet.".to_string(),

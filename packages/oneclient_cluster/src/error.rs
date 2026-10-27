@@ -99,4 +99,7 @@ pub enum ClusterError {
 
     #[error("Use letters or numbers in the folder name.")]
     InvalidSharedGroupName,
+
+    #[error("{0} is the name of a built-in folder option; pick another name.")]
+    ReservedSharedGroupName(String),
 }

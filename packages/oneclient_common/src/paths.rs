@@ -200,10 +200,6 @@ pub fn shared_mods_dir(group: Option<&str>) -> PathsResult<PathBuf> {
     Ok(shared_group_dir(group)?.join(ContentType::Mod.folder_name()))
 }
 
-pub fn global_content_dir(content_type: ContentType) -> PathsResult<PathBuf> {
-    Ok(shared_minecraft_dir()?.join(content_type.folder_name()))
-}
-
 pub fn shared_mods_link(folder_name: &str) -> PathsResult<PathBuf> {
     Ok(shared_mods_dir(cluster_shared_group(folder_name).as_deref())?.join(folder_name))
 }

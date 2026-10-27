@@ -340,13 +340,13 @@ async fn a_crafted_share_cannot_write_outside_its_folder_or_reach_unknown_hosts(
     let prepared = prepare_modpack(&state, &ModpackSource::File(archive), None)
         .await
         .unwrap();
-    let checked = prepared.share.as_ref().unwrap().mods_checked;
-    if checked {
-        assert_eq!(prepared.summary().unverified, 0);
-        assert!(prepared.unlisted.iter().any(|m| m.name == "fine.jar" && m.bundled));
-    } else {
-        assert_eq!(prepared.summary().unverified, 1);
-    }
+    assert!(prepared.share.as_ref().unwrap().mods_checked);
+    assert_eq!(prepared.summary().unverified, 0);
+    let listed = prepared
+        .unlisted
+        .iter()
+        .any(|m| m.name == "fine.jar" && m.bundled);
+    assert_ne!(listed, prepared.mods_unconfirmed > 0);
     let cluster = create_modpack_instance(&state, &prepared).await.unwrap();
     let installed = install_modpack_instance(&state, cluster.id, &prepared, None)
         .await

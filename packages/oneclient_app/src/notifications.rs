@@ -88,6 +88,7 @@ pub struct ModpackConfirm {
     pub flagged: Option<FlaggedModpack>,
     pub unlisted: Vec<UnlistedMod>,
     pub mods_unchecked: bool,
+    pub mods_unconfirmed: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -101,7 +102,7 @@ pub struct UnpublishedInstance {
     pub name: String,
     pub game: String,
     pub mods: Vec<UnpublishedFile>,
-    pub checked: bool,
+    pub unconfirmed: usize,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

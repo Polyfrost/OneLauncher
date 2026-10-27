@@ -950,6 +950,7 @@ mod tests {
                 flagged: None,
                 unlisted: Vec::new(),
                 mods_unchecked: false,
+                mods_unconfirmed: 0,
                 share: None,
             },
             cluster_id: 1,

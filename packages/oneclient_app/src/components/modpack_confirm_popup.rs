@@ -303,15 +303,27 @@ fn dialog(
         .map(|flagged| flagged_pack_section(&confirm.pack_name, flagged).into_element());
     let unlisted =
         (!confirm.unlisted.is_empty()).then(|| unlisted_section(&confirm.unlisted).into_element());
-    let unverified = (summary.unverified > 0).then(|| unverified_card(summary.unverified).into_element());
-    let unchecked = confirm.mods_unchecked.then(|| {
-        caution_card(
+    let unverified =
+        (summary.unverified > 0).then(|| unverified_card(summary.unverified).into_element());
+    let unchecked = if confirm.mods_unchecked {
+        Some(caution_card(
             "Couldn't check the mods",
             "OneClient could not reach Modrinth or CurseForge, so it could not tell whether this pack's mods are published there. Only continue if you trust where this file came from.",
-        )
-        .into_element()
-    });
-    let warned = flagged_pack.is_some() || unlisted.is_some() || unverified.is_some();
+        ))
+    } else if confirm.mods_unconfirmed > 0 {
+        Some(caution_card(
+            format!(
+                "Couldn't confirm {}",
+                count_label(confirm.mods_unconfirmed, "mod", "mods")
+            ),
+            "OneClient could not reach Modrinth or CurseForge, so it could not confirm these mods are published there. Only continue if you trust where this file came from.",
+        ))
+    } else {
+        None
+    }
+    .map(IntoElement::into_element);
+    let warned =
+        flagged_pack.is_some() || unlisted.is_some() || unverified.is_some() || unchecked.is_some();
     let add_button = Button::new().on_press(move |_| {
         if importing {
             add.confirm_modpack_import(choices.read().clone(), *existing.read());

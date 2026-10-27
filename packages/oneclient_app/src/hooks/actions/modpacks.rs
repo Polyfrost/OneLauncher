@@ -216,6 +216,7 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
         flagged: prepared.flagged.clone(),
         unlisted: prepared.unlisted.clone(),
         mods_unchecked: prepared.mods_unchecked,
+        mods_unconfirmed: prepared.mods_unconfirmed,
     }
 }
 
@@ -1054,6 +1055,7 @@ mod tests {
                 flagged: None,
                 unlisted: Vec::new(),
                 mods_unchecked: false,
+                mods_unconfirmed: 0,
                 share: None,
             },
             cluster_id: 1,

@@ -145,20 +145,18 @@ pub fn footer_note(picks: &Picks) -> String {
             1 => "1 instance selected. Accounts are not imported; sign in here.".to_string(),
             n => format!("{n} instances selected. Accounts are not imported; sign in here."),
         },
-        Step::ImportReview => match (&picks.import_screening, picks.flagged_count()) {
-            (None, _) if picks.import_screening_error.is_some() => {
+        Step::ImportReview => match &picks.import_screening {
+            None if picks.import_screening_error.is_some() => {
                 "Mods were not checked. Importing brings them over unchanged.".to_string()
             }
-            (None, _) => "Checking mods...".to_string(),
-            (Some(_), 0) if picks.mods_unchecked() => {
-                "Some mods could not be checked. Accounts are not imported; sign in here.".to_string()
-            }
-            (Some(_), 0) if picks.unpublished_count() > 0 => {
-                "Some mods are not on Modrinth or CurseForge. Accounts are not imported; sign in here.".to_string()
-            }
-            (Some(_), 0) => "Nothing to change. Accounts are not imported; sign in here.".to_string(),
-            (Some(_), 1) => "1 mod flagged. Accounts are not imported; sign in here.".to_string(),
-            (Some(_), n) => format!("{n} mods flagged. Accounts are not imported; sign in here."),
+            None => "Checking mods...".to_string(),
+            Some(_) => match review_parts(picks).as_slice() {
+                [] => "Nothing to change. Accounts are not imported; sign in here.".to_string(),
+                parts => format!(
+                    "Mods: {}. Accounts are not imported; sign in here.",
+                    parts.join(", ")
+                ),
+            },
         },
     }
 }
@@ -205,14 +203,13 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
             0 => "None selected".to_string(),
             n => format!("{n} selected"),
         },
-        Step::ImportReview => match (&picks.import_screening, picks.flagged_count()) {
-            (None, _) if picks.import_screening_error.is_some() => "Not checked".to_string(),
-            (None, _) => "Checking".to_string(),
-            (Some(_), 0) if picks.mods_unchecked() => "Not checked".to_string(),
-            (Some(_), 0) if picks.unpublished_count() > 0 => "Unpublished mods".to_string(),
-            (Some(_), 0) => "Nothing flagged".to_string(),
-            (Some(_), 1) => "1 flagged".to_string(),
-            (Some(_), n) => format!("{n} flagged"),
+        Step::ImportReview => match &picks.import_screening {
+            None if picks.import_screening_error.is_some() => "Not checked".to_string(),
+            None => "Checking".to_string(),
+            Some(_) => match review_parts(picks).as_slice() {
+                [] => "Nothing flagged".to_string(),
+                parts => parts.join(", "),
+            },
         },
         Step::Customize => match wizard.details.tags.read().len() {
             0 => "Optional".to_string(),
@@ -220,6 +217,18 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
             many => format!("{many} tags"),
         },
     }
+}
+
+fn review_parts(picks: &Picks) -> Vec<String> {
+    [
+        (picks.flagged_count(), "flagged"),
+        (picks.unpublished_count(), "unpublished"),
+        (picks.unconfirmed_count(), "unconfirmed"),
+    ]
+    .into_iter()
+    .filter(|(count, _)| *count > 0)
+    .map(|(count, what)| format!("{count} {what}"))
+    .collect()
 }
 
 pub fn is_ready(picks: &Picks) -> bool {

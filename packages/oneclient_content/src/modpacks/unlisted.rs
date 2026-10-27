@@ -7,7 +7,7 @@ use crate::bundles::overrides::OverrideLayers;
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
 use crate::packages::{FileIdentity, curseforge_fingerprint};
-use oneclient_common::domain::ContentType;
+use oneclient_common::domain::{ContentType, ProviderId};
 
 const CURSEFORGE_HOSTS: [&str; 2] = ["forgecdn.net", "curseforge.com"];
 
@@ -16,6 +16,12 @@ pub struct UnlistedMod {
     pub name: String,
     pub sha1: String,
     pub bundled: bool,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UnlistedReport {
+    pub unlisted: Vec<UnlistedMod>,
+    pub unconfirmed: usize,
 }
 
 struct Candidate {
@@ -29,14 +35,14 @@ pub async fn find_unlisted_mods(
     archive_path: &Path,
     manifest: &ModpackManifest,
     ctx: &ContentCtx,
-) -> ContentResult<Vec<UnlistedMod>> {
+) -> ContentResult<UnlistedReport> {
     let mut candidates = downloaded_jars(manifest);
     candidates.extend(bundled_jars(archive_path, manifest).await?);
 
     let mut seen = HashSet::new();
     candidates.retain(|candidate| seen.insert(candidate.identity.sha1.clone()));
     if candidates.is_empty() {
-        return Ok(Vec::new());
+        return Ok(UnlistedReport::default());
     }
 
     let identities: Vec<FileIdentity> = candidates
@@ -44,31 +50,47 @@ pub async fn find_unlisted_mods(
         .map(|candidate| candidate.identity.clone())
         .collect();
     let mut known = HashSet::new();
+    let mut complete = true;
     for provider in ctx.providers.remote() {
-        known.extend(
-            provider
-                .lookup_versions(&identities, ctx)
-                .await?
-                .into_keys(),
-        );
+        match provider.lookup_versions(&identities, ctx).await {
+            Ok(found) => known.extend(found.into_keys()),
+            Err(err) => {
+                tracing::warn!(provider = ?provider.id(), error = %err, "could not look up the modpack's mods");
+                complete = false;
+            }
+        }
     }
 
-    let unlisted: Vec<UnlistedMod> = candidates
-        .into_iter()
-        .filter(|candidate| !known.contains(&candidate.identity.sha1))
-        .map(|candidate| UnlistedMod {
-            name: candidate.name,
-            sha1: candidate.identity.sha1,
-            bundled: candidate.bundled,
-        })
-        .collect();
-    if !unlisted.is_empty() {
+    let report = report(candidates, &known, complete);
+    if !report.unlisted.is_empty() {
         tracing::warn!(
-            count = unlisted.len(),
+            count = report.unlisted.len(),
             "modpack has mods that are not on modrinth or curseforge"
         );
     }
-    Ok(unlisted)
+    Ok(report)
+}
+
+fn report(candidates: Vec<Candidate>, known: &HashSet<String>, complete: bool) -> UnlistedReport {
+    let unknown = candidates
+        .into_iter()
+        .filter(|candidate| !known.contains(&candidate.identity.sha1));
+    if !complete {
+        return UnlistedReport {
+            unlisted: Vec::new(),
+            unconfirmed: unknown.count(),
+        };
+    }
+    UnlistedReport {
+        unlisted: unknown
+            .map(|candidate| UnlistedMod {
+                name: candidate.name,
+                sha1: candidate.identity.sha1,
+                bundled: candidate.bundled,
+            })
+            .collect(),
+        unconfirmed: 0,
+    }
 }
 
 fn downloaded_jars(manifest: &ModpackManifest) -> Vec<Candidate> {
@@ -87,6 +109,15 @@ fn downloaded_jars(manifest: &ModpackManifest) -> Vec<Candidate> {
                     bundled: false,
                 })
             }
+            BundleFileKind::Managed {
+                provider: ProviderId::Modrinth,
+                sha1,
+                ..
+            } => Some(Candidate {
+                name: file.display_name(),
+                identity: FileIdentity::from_sha1(sha1),
+                bundled: false,
+            }),
             _ => None,
         });
     let elsewhere = contents
@@ -144,7 +175,9 @@ async fn bundled_jars(
 
 fn is_jar(path: &str) -> bool {
     let path = path.to_ascii_lowercase();
-    path.strip_suffix(".disabled").unwrap_or(&path).ends_with(".jar")
+    path.strip_suffix(".disabled")
+        .unwrap_or(&path)
+        .ends_with(".jar")
 }
 
 fn is_curseforge_url(url: &str) -> bool {
@@ -198,7 +231,7 @@ mod tests {
     }
 
     #[test]
-    fn only_jars_from_other_hosts_are_checked() {
+    fn every_mod_not_from_curseforge_is_checked() {
         let manifest = ModpackManifest {
             name: "Pack".to_string(),
             version: "1.0".to_string(),
@@ -215,6 +248,15 @@ mod tests {
                             project_id: "AANobbMI".to_string(),
                             version_id: "v1".to_string(),
                             sha1: "aaa".to_string(),
+                        },
+                    ),
+                    file(
+                        "mods/jei.jar",
+                        BundleFileKind::Managed {
+                            provider: ProviderId::CurseForge,
+                            project_id: "238222".to_string(),
+                            version_id: "1".to_string(),
+                            sha1: "eee".to_string(),
                         },
                     ),
                     external(
@@ -235,8 +277,14 @@ mod tests {
                 ],
                 loose: vec![
                     loose("config/loader/hook.jar", "https://example.invalid/hook.jar"),
-                    loose("config/settings.json", "https://example.invalid/settings.json"),
-                    loose("config/cf.jar", "https://edge.forgecdn.net/files/1/2/cf.jar"),
+                    loose(
+                        "config/settings.json",
+                        "https://example.invalid/settings.json",
+                    ),
+                    loose(
+                        "config/cf.jar",
+                        "https://edge.forgecdn.net/files/1/2/cf.jar",
+                    ),
                 ],
                 ..ModpackContents::default()
             },
@@ -245,9 +293,13 @@ mod tests {
 
         let found = downloaded_jars(&manifest);
         let names: Vec<&str> = found.iter().map(|c| c.name.as_str()).collect();
-        assert_eq!(names, ["github.jar", "config/loader/hook.jar"]);
-        assert_eq!(found[0].identity.sha1, "bbb");
-        assert!(!found[0].bundled);
+        assert_eq!(
+            names,
+            ["sodium.jar", "github.jar", "config/loader/hook.jar"]
+        );
+        assert_eq!(found[0].identity.sha1, "aaa");
+        assert_eq!(found[1].identity.sha1, "bbb");
+        assert!(found.iter().all(|candidate| !candidate.bundled));
     }
 
     fn loose(path: &str, url: &str) -> crate::modpacks::LooseFile {
@@ -257,6 +309,43 @@ mod tests {
             sha1: format!("sha-{path}"),
             size: 0,
         }
+    }
+
+    #[test]
+    fn mods_are_only_called_unlisted_when_every_site_answered() {
+        let candidates = || {
+            ["known", "packed", "linked"]
+                .into_iter()
+                .map(|name| Candidate {
+                    name: format!("{name}.jar"),
+                    identity: FileIdentity::from_sha1(name),
+                    bundled: name == "packed",
+                })
+                .collect::<Vec<_>>()
+        };
+        let known: HashSet<String> = ["known".to_string()].into_iter().collect();
+
+        let complete = report(candidates(), &known, true);
+        assert_eq!(complete.unconfirmed, 0);
+        assert_eq!(
+            complete.unlisted,
+            [
+                UnlistedMod {
+                    name: "packed.jar".to_string(),
+                    sha1: "packed".to_string(),
+                    bundled: true,
+                },
+                UnlistedMod {
+                    name: "linked.jar".to_string(),
+                    sha1: "linked".to_string(),
+                    bundled: false,
+                },
+            ]
+        );
+
+        let partial = report(candidates(), &known, false);
+        assert!(partial.unlisted.is_empty());
+        assert_eq!(partial.unconfirmed, 2);
     }
 
     #[test]

@@ -28,11 +28,7 @@ fn tinted_card(accent: Color, title: String, body: String) -> Rect {
                 .content(Content::Flex)
                 .cross_align(Alignment::Center)
                 .spacing(8.)
-                .child(
-                    Icon::new(IconType::AlertTriangle)
-                        .size(16.)
-                        .color(accent),
-                )
+                .child(Icon::new(IconType::AlertTriangle).size(16.).color(accent))
                 .child(
                     label()
                         .text(title)

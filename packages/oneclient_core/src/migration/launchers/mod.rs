@@ -26,8 +26,8 @@ pub use archive::{
 };
 pub use import::{ExternalImportReport, ImportChoices, alternative_version_id, import_instance};
 pub use screen::{
-    FlaggedImportMod, ImportAlternative, ScreenedInstance, UnpublishedFile, find_unpublished_mods,
-    screen_instances,
+    FlaggedImportMod, ImportAlternative, ScreenedInstance, UnpublishedCheck, UnpublishedFile,
+    find_unpublished_mods, instance_mods_stamp, screen_instances,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]

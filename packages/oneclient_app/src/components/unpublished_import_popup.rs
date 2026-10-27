@@ -1,7 +1,9 @@
 use freya::prelude::*;
 use oneclient_core::UnpublishedFile;
 
-use crate::components::{Button, OverlayPopup, caution_card, warning_card, warning_list};
+use crate::components::{
+    Button, OVERLAY_BASE_LEVEL, OverlayPopup, caution_card, warning_card, warning_list,
+};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
 use crate::notifications::{UnpublishedImport, UnpublishedInstance};
 use crate::theme::colors;
@@ -28,6 +30,7 @@ impl Component for UnpublishedImportPopup {
         let cancel = dispatch.clone();
         let others = dispatch.clone();
         OverlayPopup::new()
+            .overlay_level(OVERLAY_BASE_LEVEL + 1)
             .on_close(move |_| close.cancel_unpublished_import())
             .child(
                 rect()
@@ -53,7 +56,11 @@ pub(crate) fn unpublished_rows(
     mods: &[UnpublishedFile],
 ) -> impl Iterator<Item = (String, Option<String>)> + '_ {
     mods.iter().map(|file| {
-        let note = if file.enabled { "Local file" } else { "Disabled" };
+        let note = if file.enabled {
+            "Local file"
+        } else {
+            "Disabled"
+        };
         (file.name.clone(), Some(note.to_string()))
     })
 }
@@ -72,8 +79,14 @@ fn dialog(
             "their",
         ),
     };
-    let subtitle = if import.instances.iter().any(|instance| !instance.mods.is_empty()) {
-        format!("Some of {whose} mods are not on Modrinth or CurseForge. Check them before you import.")
+    let subtitle = if import
+        .instances
+        .iter()
+        .any(|instance| !instance.mods.is_empty())
+    {
+        format!(
+            "Some of {whose} mods are not on Modrinth or CurseForge. Check them before you import."
+        )
     } else {
         format!("OneClient could not check {whose} mods. Check them before you import.")
     };
@@ -170,11 +183,15 @@ fn dialog(
 }
 
 fn instance_card(instance: &UnpublishedInstance) -> Element {
-    if !instance.checked {
+    if instance.unconfirmed > 0 {
         return caution_card(
-            format!("{}: couldn't check its mods", instance.name),
             format!(
-                "{}. OneClient could not reach Modrinth or CurseForge, so it could not tell whether these mods are published there. Only import it if you trust where it came from.",
+                "{}: couldn't confirm {}",
+                instance.name,
+                count_label(instance.unconfirmed, "mod", "mods")
+            ),
+            format!(
+                "{}. OneClient could not reach Modrinth or CurseForge, so it could not confirm these mods are published there. Only import it if you trust where it came from.",
                 instance.game
             ),
         )

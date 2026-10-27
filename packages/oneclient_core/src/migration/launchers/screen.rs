@@ -15,7 +15,7 @@ use crate::clusters::modpack::kind_for;
 use crate::state::LauncherState;
 
 use super::ExternalInstance;
-use super::import::{LocalContent, ModJar, scan_folders, scan_mod_jars};
+use super::import::{LocalContent, ModJar, mod_files_stamp, scan_folders, scan_mod_jars};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlaggedImportMod {
@@ -46,7 +46,14 @@ pub struct ScreenedInstance {
     pub mc_version: String,
     pub flagged: Vec<FlaggedImportMod>,
     pub unpublished: Vec<UnpublishedFile>,
-    pub mods_checked: bool,
+    pub unconfirmed: usize,
+    pub mods_stamp: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UnpublishedCheck {
+    pub mods: Vec<UnpublishedFile>,
+    pub unconfirmed: usize,
 }
 
 #[tracing::instrument(skip_all, fields(instances = instances.len()))]
@@ -75,7 +82,8 @@ async fn screen_instance(
         mc_version: instance.mc_version.clone(),
         flagged: Vec::new(),
         unpublished: Vec::new(),
-        mods_checked: true,
+        unconfirmed: 0,
+        mods_stamp: mod_files_stamp(&instance.game_dir).await,
     };
     if !instance.loader.is_modded() {
         return screened;
@@ -86,10 +94,9 @@ async fn screen_instance(
         return screened;
     }
     let (found, complete) = identify(&jars, content).await;
-    screened.mods_checked = complete;
-    if complete {
-        screened.unpublished = unpublished(&jars, &found);
-    }
+    let check = check_result(&jars, &found, complete);
+    screened.unpublished = check.mods;
+    screened.unconfirmed = check.unconfirmed;
 
     let mods = instance_mods(instance).await;
     if list.bad_mods.is_empty() || mods.is_empty() {
@@ -132,18 +139,39 @@ async fn screen_instance(
 pub async fn find_unpublished_mods(
     state: &Arc<LauncherState>,
     instance: &ExternalInstance,
-) -> Option<Vec<UnpublishedFile>> {
+) -> UnpublishedCheck {
     if !instance.loader.is_modded() {
-        return Some(Vec::new());
+        return UnpublishedCheck::default();
     }
     let jars = scan_mod_jars(&instance.game_dir).await;
     if jars.is_empty() {
-        return Some(Vec::new());
+        return UnpublishedCheck::default();
     }
     let content = state.services.content();
-    match identify(&jars, &content).await {
-        (found, true) => Some(unpublished(&jars, &found)),
-        (_, false) => None,
+    let (found, complete) = identify(&jars, &content).await;
+    check_result(&jars, &found, complete)
+}
+
+pub async fn instance_mods_stamp(instance: &ExternalInstance) -> u64 {
+    mod_files_stamp(&instance.game_dir).await
+}
+
+fn check_result(
+    jars: &[ModJar],
+    found: &ProviderVersionLookup,
+    complete: bool,
+) -> UnpublishedCheck {
+    let unknown = unpublished(jars, found);
+    if complete {
+        UnpublishedCheck {
+            mods: unknown,
+            unconfirmed: 0,
+        }
+    } else {
+        UnpublishedCheck {
+            mods: Vec::new(),
+            unconfirmed: unknown.len(),
+        }
     }
 }
 
@@ -296,5 +324,45 @@ fn screening_target(instance: &ExternalInstance) -> ClusterRow {
         description: None,
         tags: String::new(),
         cover_path: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn jar(name: &str, enabled: bool) -> ModJar {
+        ModJar {
+            name: name.to_string(),
+            enabled,
+            hash: format!("sha-{name}"),
+            cf_fingerprint: None,
+        }
+    }
+
+    #[test]
+    fn unknown_mods_are_only_called_unpublished_when_every_site_answered() {
+        let jars = [jar("a.jar", true), jar("b.jar", false)];
+        let found = ProviderVersionLookup::new();
+
+        let complete = check_result(&jars, &found, true);
+        assert_eq!(complete.unconfirmed, 0);
+        assert_eq!(
+            complete.mods,
+            [
+                UnpublishedFile {
+                    name: "a.jar".to_string(),
+                    enabled: true
+                },
+                UnpublishedFile {
+                    name: "b.jar".to_string(),
+                    enabled: false
+                },
+            ]
+        );
+
+        let partial = check_result(&jars, &found, false);
+        assert!(partial.mods.is_empty());
+        assert_eq!(partial.unconfirmed, 2);
     }
 }

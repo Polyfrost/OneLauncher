@@ -875,11 +875,18 @@ pub(super) struct ModJar {
     pub(super) cf_fingerprint: Option<u32>,
 }
 
-pub(super) async fn scan_mod_jars(game_dir: &Path) -> Vec<ModJar> {
+struct ModFile {
+    path: PathBuf,
+    name: String,
+    enabled: bool,
+    len: u64,
+    modified: Option<SystemTime>,
+}
+
+async fn list_mod_files(game_dir: &Path) -> Vec<ModFile> {
     let root = game_dir.join(ContentType::Mod.folder_name());
     let mut pending = vec![(root.clone(), 0usize)];
-    let mut seen = HashSet::new();
-    let mut jars = Vec::new();
+    let mut files = Vec::new();
 
     while let Some((dir, depth)) = pending.pop() {
         let Ok(mut entries) = polyio::read_dir(&dir).await else {
@@ -888,7 +895,10 @@ pub(super) async fn scan_mod_jars(game_dir: &Path) -> Vec<ModJar> {
         };
         while let Ok(Some(entry)) = entries.next_entry().await {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if MODS_SKIP.iter().any(|skip| skip.eq_ignore_ascii_case(&name)) {
+            if MODS_SKIP
+                .iter()
+                .any(|skip| skip.eq_ignore_ascii_case(&name))
+            {
                 continue;
             }
             let path = entry.path();
@@ -909,31 +919,60 @@ pub(super) async fn scan_mod_jars(game_dir: &Path) -> Vec<ModJar> {
             if !metadata.is_file() || !wanted {
                 continue;
             }
-            match hash_file(&path, true).await {
-                Ok((hash, cf_fingerprint)) => {
-                    let hash = polyio::normalize_hash(&hash);
-                    if !seen.insert(hash.clone()) {
-                        continue;
-                    }
-                    let relative = path
-                        .strip_prefix(&root)
-                        .unwrap_or(&path)
-                        .to_string_lossy()
-                        .replace('\\', "/");
-                    jars.push(ModJar {
-                        enabled: strip_disabled(&name) == name,
-                        name: strip_disabled(&relative).to_string(),
-                        hash,
-                        cf_fingerprint,
-                    });
+            let relative = path
+                .strip_prefix(&root)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .replace('\\', "/");
+            files.push(ModFile {
+                enabled: strip_disabled(&name) == name,
+                name: strip_disabled(&relative).to_string(),
+                len: metadata.len(),
+                modified: metadata.modified().ok(),
+                path,
+            });
+        }
+    }
+    files
+}
+
+pub(super) async fn scan_mod_jars(game_dir: &Path) -> Vec<ModJar> {
+    let mut seen = HashSet::new();
+    let mut jars = Vec::new();
+    for file in list_mod_files(game_dir).await {
+        match hash_file(&file.path, true).await {
+            Ok((hash, cf_fingerprint)) => {
+                let hash = polyio::normalize_hash(&hash);
+                if !seen.insert(hash.clone()) {
+                    continue;
                 }
-                Err(err) => {
-                    tracing::debug!(path = %path.display(), error = %err, "could not hash a mod");
-                }
+                jars.push(ModJar {
+                    name: file.name,
+                    enabled: file.enabled,
+                    hash,
+                    cf_fingerprint,
+                });
+            }
+            Err(err) => {
+                tracing::debug!(path = %file.path.display(), error = %err, "could not hash a mod");
             }
         }
     }
     jars
+}
+
+pub(super) async fn mod_files_stamp(game_dir: &Path) -> u64 {
+    use std::hash::{Hash, Hasher};
+
+    let mut listed: Vec<(String, bool, u64, Option<SystemTime>)> = list_mod_files(game_dir)
+        .await
+        .into_iter()
+        .map(|file| (file.name, file.enabled, file.len, file.modified))
+        .collect();
+    listed.sort();
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    listed.hash(&mut hasher);
+    hasher.finish()
 }
 
 #[derive(Clone)]
@@ -1221,6 +1260,23 @@ mod tests {
             ]
         );
         assert!(scan_mod_jars(&root.join("missing")).await.is_empty());
+    }
+
+    #[tokio::test]
+    async fn the_mods_stamp_changes_only_when_the_mods_do() {
+        let tmp = polyio::tempdir().await.unwrap();
+        let root = tmp.dir_path();
+        touch(root.join("mods/a.jar")).await;
+        touch(root.join("config/settings.json")).await;
+
+        let first = mod_files_stamp(root).await;
+        assert_eq!(mod_files_stamp(root).await, first);
+
+        touch(root.join("config/other.json")).await;
+        assert_eq!(mod_files_stamp(root).await, first);
+
+        touch(root.join("mods/1.20.1/b.jar")).await;
+        assert_ne!(mod_files_stamp(root).await, first);
     }
 
     #[tokio::test]

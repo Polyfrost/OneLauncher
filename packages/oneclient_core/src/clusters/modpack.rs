@@ -51,6 +51,7 @@ pub struct PreparedModpack {
     pub flagged: Option<FlaggedModpack>,
     pub unlisted: Vec<modpacks::UnlistedMod>,
     pub mods_unchecked: bool,
+    pub mods_unconfirmed: usize,
     pub share: Option<SharedCluster>,
 }
 
@@ -114,7 +115,7 @@ pub async fn prepare_modpack(
     let Some(share) = share else {
         let unlisted = match source {
             ModpackSource::File(_) => unlisted_mods(&archive_path, &manifest, &content).await,
-            ModpackSource::Provider { .. } => Some(Vec::new()),
+            ModpackSource::Provider { .. } => Some(modpacks::UnlistedReport::default()),
         };
         return Ok(PreparedModpack {
             source: source.clone(),
@@ -124,7 +125,8 @@ pub async fn prepare_modpack(
             manifest,
             flagged,
             mods_unchecked: unlisted.is_none(),
-            unlisted: unlisted.unwrap_or_default(),
+            mods_unconfirmed: unlisted.as_ref().map_or(0, |report| report.unconfirmed),
+            unlisted: unlisted.map(|report| report.unlisted).unwrap_or_default(),
             share: None,
         });
     };
@@ -132,7 +134,20 @@ pub async fn prepare_modpack(
     let instance_name = unique_name(&instance_name(&share.name), &taken);
     let extras = modpacks::read_share_extras(&archive_path, &share).await?;
     let bundled = planned_bundle_content(state, &share).await;
-    let unlisted = unlisted_mods(&archive_path, &manifest, &content).await;
+    let mut checked = manifest.clone();
+    checked.contents.loose.extend(
+        share
+            .downloads
+            .iter()
+            .filter(|download| modpacks::trusted_download(&download.url))
+            .map(|download| modpacks::LooseFile {
+                path: download.path.clone(),
+                url: download.url.clone(),
+                sha1: download.sha1.clone(),
+                size: download.size,
+            }),
+    );
+    let unlisted = unlisted_mods(&archive_path, &checked, &content).await;
     let mut shared = SharedCluster {
         archive_path: archive_path.clone(),
         manifest: manifest.clone(),
@@ -173,7 +188,8 @@ pub async fn prepare_modpack(
         manifest,
         flagged,
         mods_unchecked: unlisted.is_none(),
-        unlisted: unlisted.unwrap_or_default(),
+        mods_unconfirmed: unlisted.as_ref().map_or(0, |report| report.unconfirmed),
+        unlisted: unlisted.map(|report| report.unlisted).unwrap_or_default(),
         instance_name,
         share: Some(shared),
     })
@@ -183,7 +199,7 @@ async fn unlisted_mods(
     archive_path: &std::path::Path,
     manifest: &ModpackManifest,
     content: &ContentCtx,
-) -> Option<Vec<modpacks::UnlistedMod>> {
+) -> Option<modpacks::UnlistedReport> {
     modpacks::find_unlisted_mods(archive_path, manifest, content)
         .await
         .inspect_err(|err| {

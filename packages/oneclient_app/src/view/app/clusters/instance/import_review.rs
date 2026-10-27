@@ -9,8 +9,8 @@ use super::cards::{SelectCard, marker};
 use super::data::Picks;
 use super::model::{DecisionKey, ModDecision, Wizard, decision_for};
 use crate::components::{
-    Button, Icon, IconType, ScrollArea, centered_spinner, explanation_panel, remote_icon,
-    caution_card, unpublished_rows, warning_card, warning_list,
+    Button, Icon, IconType, ScrollArea, caution_card, centered_spinner, explanation_panel,
+    remote_icon, unpublished_rows, warning_card, warning_list,
 };
 use crate::hooks::{retry_import_screening, use_cached_image};
 use crate::theme::colors;
@@ -40,7 +40,7 @@ pub fn review_step(wizard: Wizard, picks: &Picks) -> Element {
         .filter(|screened| {
             !screened.flagged.is_empty()
                 || !screened.unpublished.is_empty()
-                || !screened.mods_checked
+                || screened.unconfirmed > 0
         })
         .collect();
     if flagged.is_empty() {
@@ -154,11 +154,16 @@ fn instance_section(
         1 => "1 mod to improve".to_string(),
         n => format!("{n} mods to improve"),
     };
-    let unpublished = if !screened.mods_checked {
+    let unpublished = if screened.unconfirmed > 0 {
+        let mods = if screened.unconfirmed == 1 {
+            "1 mod".to_string()
+        } else {
+            format!("{} mods", screened.unconfirmed)
+        };
         Some(
             caution_card(
-                "Couldn't check the mods",
-                "OneClient could not reach Modrinth or CurseForge, so it could not tell whether these mods are published there. Only import it if you trust where it came from.",
+                format!("Couldn't confirm {mods}"),
+                "OneClient could not reach Modrinth or CurseForge, so it could not confirm these mods are published there. Only import it if you trust where it came from.",
             )
             .into_element(),
         )

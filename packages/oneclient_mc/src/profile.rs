@@ -353,14 +353,18 @@ pub async fn set_skin_from_url(
     skin_url: &str,
     variant: SkinVariant,
 ) -> McResult<MojangFullPlayerProfile> {
-    send_profile_request(
-        client,
-        access_token,
-        Method::POST,
-        SKINS_URL,
-        Some(serde_json::json!({ "variant": variant, "url": skin_url })),
-    )
-    .await
+    let response = client
+        .http()
+        .get(skin_url)
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|err| McError::Minecraft(err.to_string()))?;
+    let png = response
+        .bytes()
+        .await
+        .map_err(|err| McError::Minecraft(err.to_string()))?;
+    upload_skin(client, access_token, png.to_vec(), variant).await
 }
 
 #[tracing::instrument(level = "debug", skip(client, access_token, png))]

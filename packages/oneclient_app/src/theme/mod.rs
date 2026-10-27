@@ -15,8 +15,9 @@ pub const NAVBAR_HEIGHT_PX: f32 = 80.;
 pub const HOME_PADDING_PX: f32 = 48.;
 pub const DEFAULT_FONT: &str = "Poppins";
 pub const MONO_FONT: &str = "JetBrains Mono";
+const MINECRAFT_FONT: &str = "Minecraft";
 
-const BUILTIN_THEMES: [&str; 5] = ["dark", "amoled", "grey", "light", "white"];
+const BUILTIN_THEMES: [&str; 6] = ["dark", "amoled", "grey", "light", "white", "minecraft"];
 
 static THEMES: LazyLock<Vec<Theme>> = LazyLock::new(load_themes);
 
@@ -126,7 +127,7 @@ pub fn rounded(radius: f32) -> CornerRadius {
 }
 
 pub fn load_fonts() -> Vec<(&'static str, Bytes)> {
-    const FONTS: [(&str, &str); 11] = [
+    const FONTS: [(&str, &str); 13] = [
         (DEFAULT_FONT, "fonts/Poppins/Poppins-Bold.ttf"),
         (DEFAULT_FONT, "fonts/Poppins/Poppins-BoldItalic.ttf"),
         (DEFAULT_FONT, "fonts/Poppins/Poppins-SemiBold.ttf"),
@@ -138,6 +139,8 @@ pub fn load_fonts() -> Vec<(&'static str, Bytes)> {
         (DEFAULT_FONT, "fonts/Poppins/Poppins-Light.ttf"),
         (DEFAULT_FONT, "fonts/Poppins/Poppins-LightItalic.ttf"),
         (MONO_FONT, "fonts/JetBrainsMono/JetBrainsMonoVariable.ttf"),
+        (MINECRAFT_FONT, "fonts/Minecraft/Minecraft-Regular.otf"),
+        (MINECRAFT_FONT, "fonts/Minecraft/Minecraft-Bold.otf"),
     ];
 
     let embedded = FONTS.iter().filter_map(|&(weight, file)| {

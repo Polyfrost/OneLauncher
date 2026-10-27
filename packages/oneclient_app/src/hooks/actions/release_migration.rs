@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use std::collections::HashSet;
 
 use oneclient_content::packages::release_migration::{
@@ -268,7 +268,7 @@ impl Actions {
 
     pub fn check_release_migration(&self) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
 
             if let Err(err) = record_new_versions(&state).await {
@@ -360,7 +360,7 @@ impl Actions {
 
         let Some(target_id) = target_id else { return };
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
             let result = plan_release_migrations(
                 &[source_id],
@@ -391,7 +391,7 @@ impl Actions {
     /// reviewed without a cluster that has migratable packages
     pub fn simulate_fake_release_migration(&self, target_cluster_id: i64) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
             let Ok(clusters) = state.clusters.list().await else {
                 return;
@@ -432,7 +432,7 @@ impl Actions {
 
     pub fn simulate_release_migration(&self, target_cluster_id: i64) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
 
             let target = match state.clusters.get(target_cluster_id).await {
@@ -516,7 +516,7 @@ impl Actions {
         self.set_release_migration_checking(target_cluster_id, true);
         self.set_release_migration_checking(source_cluster_id, true);
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             actions
                 .run_manual_migration(target_cluster_id, source_cluster_id)
                 .await;
@@ -579,7 +579,7 @@ impl Actions {
 
     pub fn queue_release_migration(&self, target_cluster_id: i64) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
             let Ok(target) = state.clusters.get(target_cluster_id).await else {
                 return;
@@ -602,7 +602,7 @@ impl Actions {
 
     pub fn process_release_waitlist(&self) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
             let content = state.services.content();
 
@@ -686,7 +686,7 @@ impl Actions {
 
         if let Some(source) = prompt.source() {
             let (source_id, target_id) = (source.id, prompt.target.id);
-            spawn_forever(async move {
+            spawn_in_window(async move {
                 let Ok(state) = launcher::state() else { return };
                 if let Err(err) = oneclient_content::bundles::inherit_bundle_choices(
                     source_id,
@@ -727,7 +727,7 @@ impl Actions {
         let waitlisted = !prompt.is_cross_loader();
 
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
             let content = state.services.content();
             let source = prompt.source().filter(|_| copy_configs_too).cloned();

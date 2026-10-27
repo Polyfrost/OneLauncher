@@ -109,7 +109,7 @@ impl Component for DisableDependentsOverlay {
 /// Applied off the event handler: the write is a database round trip, and the
 /// modal has already closed on the user's answer.
 fn apply(pending: PendingDisable) {
-    spawn_forever(async move {
+    spawn_in_window(async move {
         if let Err(err) = disable::apply(&pending).await {
             tracing::warn!(%err, "failed to disable a package and its dependents");
             if let Ok(state) = launcher::state() {

@@ -94,6 +94,9 @@ impl Component for PieChart {
         let hit_values = self.values.clone();
 
         let render_cb = RenderCallback::new(move |ctx: &mut FillRenderContext| {
+            let RenderTarget::Background { canvas, .. } = &ctx.target else {
+                return;
+            };
             let (w, h) = (ctx.size.width, ctx.size.height);
             if w <= 0.0 || h <= 0.0 {
                 return;
@@ -112,10 +115,9 @@ impl Component for PieChart {
 
             if total <= 0 {
                 paint.set_color(SkColor::from(colors::component_bg_hover()));
-                ctx.canvas.draw_circle((cx, cy), radius - 5.0, &paint);
+                canvas.draw_circle((cx, cy), radius - 5.0, &paint);
                 paint.set_color(SkColor::from(colors::page_elevated()));
-                ctx.canvas
-                    .draw_circle((cx, cy), (radius - 5.0) * PIE_HOLE, &paint);
+                canvas.draw_circle((cx, cy), (radius - 5.0) * PIE_HOLE, &paint);
                 return;
             }
 
@@ -140,14 +142,13 @@ impl Component for PieChart {
                 builder.move_to((cx, cy));
                 builder.arc_to(oval, start, sweep, false);
                 builder.close();
-                ctx.canvas.draw_path(&builder.detach(), &paint);
+                canvas.draw_path(&builder.detach(), &paint);
 
                 start += sweep;
             }
 
             paint.set_color(SkColor::from(colors::page_elevated()));
-            ctx.canvas
-                .draw_circle((cx, cy), (radius - 5.0) * PIE_HOLE, &paint);
+            canvas.draw_circle((cx, cy), (radius - 5.0) * PIE_HOLE, &paint);
         });
 
         let (center_name, center_value) = match active {

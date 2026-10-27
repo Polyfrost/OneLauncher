@@ -1032,6 +1032,7 @@ fn shell_quote(arg: &str) -> String {
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     command.env_remove("_JAVA_OPTIONS");
+    oneclient_common::process::strip_appimage_env(command.as_std_mut());
     #[cfg(all(unix, not(target_os = "macos")))]
     command.env("LC_ALL", "C.UTF-8");
 
@@ -1065,6 +1066,7 @@ async fn run_hook(hook: Option<&str>, cwd: &Path) -> Option<String> {
     command.stderr(Stdio::piped());
     command.stdin(Stdio::null());
     oneclient_common::process::no_window(command.as_std_mut());
+    oneclient_common::process::strip_appimage_env(command.as_std_mut());
 
     let mut child = match command.spawn() {
         Ok(child) => child,

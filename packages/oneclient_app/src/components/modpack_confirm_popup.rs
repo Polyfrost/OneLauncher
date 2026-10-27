@@ -76,9 +76,7 @@ impl Component for ConfirmDialog {
         let footer_h = use_state(|| 0f32);
         let content_h = use_state(|| 0f32);
 
-        let platform = Platform::get();
-        let scale = (*platform.scale_factor.read() as f32).max(1.);
-        let window_h = platform.root_size.read().height / scale;
+        let window_h = Platform::get().current_window().root_size.read().height;
         let room = window_h * WINDOW_SHARE
             - 2. * DIALOG_PAD
             - 2. * SECTION_GAP

@@ -104,7 +104,7 @@ struct ToastCard {
 }
 
 impl KeyExt for ToastCard {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -154,10 +154,10 @@ impl Component for ToastCard {
                 return;
             }
             let handle = spawn(async move {
-                let platform = Platform::get();
+                let window = Platform::get().current_window();
                 loop {
                     wall_pct.set(remaining_pct(*from_pct.peek(), *run_start.peek()));
-                    platform.send(UserEvent::RequestRedraw);
+                    window.request_redraw();
                     tokio::time::sleep(TTL_STEP).await;
                 }
             });

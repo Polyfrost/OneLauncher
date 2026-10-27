@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use freya::prelude::{Platform, WinitPlatformExt, spawn_forever};
+use freya::prelude::{Platform, WinitPlatformExt, spawn_in_window};
 use freya::radio::RadioStation;
 use oneclient_core::settings::LaunchBehaviour;
 
@@ -42,11 +42,11 @@ pub fn close() {
 
 pub fn quit() {
     let platform = Platform::get();
-    spawn_forever(async move {
+    spawn_in_window(async move {
         if let Ok(state) = crate::launcher::state() {
             oneclient_core::shutdown(&state).await;
         }
-        drop(platform.post_callback(|_, ctx| ctx.exit()));
+        drop(platform.post_callback(|ctx| ctx.exit()));
     });
 }
 
@@ -109,20 +109,6 @@ fn has_allowed_scheme(url: &str) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-const APPIMAGE_ENV: [&str; 10] = [
-    "LD_LIBRARY_PATH",
-    "PATH",
-    "XDG_DATA_DIRS",
-    "GSETTINGS_SCHEMA_DIR",
-    "PYTHONHOME",
-    "PYTHONPATH",
-    "PERLLIB",
-    "QT_PLUGIN_PATH",
-    "GST_PLUGIN_SYSTEM_PATH",
-    "GST_PLUGIN_SYSTEM_PATH_1_0",
-];
-
-#[cfg(target_os = "linux")]
 fn portal_open(target: &str) -> zbus::Result<()> {
     use std::collections::HashMap;
     use zbus::zvariant::{Fd, Value};
@@ -155,26 +141,18 @@ fn portal_open(target: &str) -> zbus::Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-fn strip_appimage_env(command: &mut std::process::Command) {
-    let Some(appdir) = std::env::var_os("APPDIR") else {
-        return;
-    };
-    let appdir = appdir.to_string_lossy();
+fn file_manager_show(target: &str) -> zbus::Result<()> {
+    let uri = url::Url::from_directory_path(target)
+        .map_err(|()| zbus::Error::Failure(format!("not an absolute path: {target}")))?;
 
-    for key in APPIMAGE_ENV {
-        let Ok(value) = std::env::var(key) else {
-            continue;
-        };
-        let kept = value
-            .split(':')
-            .filter(|entry| !entry.is_empty() && !entry.starts_with(&*appdir))
-            .collect::<Vec<_>>();
-        if kept.is_empty() {
-            command.env_remove(key);
-        } else {
-            command.env(key, kept.join(":"));
-        }
-    }
+    zbus::blocking::Connection::session()?.call_method(
+        Some("org.freedesktop.FileManager1"),
+        "/org/freedesktop/FileManager1",
+        Some("org.freedesktop.FileManager1"),
+        "ShowFolders",
+        &(vec![uri.as_str()], ""),
+    )?;
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
@@ -183,13 +161,20 @@ fn open_target(target: &str) {
 
     let target = target.to_owned();
     std::thread::spawn(move || {
+        if std::path::Path::new(&target).is_dir() {
+            let Err(err) = file_manager_show(&target) else {
+                return;
+            };
+            tracing::debug!(%err, "file manager failed to show {target}, falling back");
+        }
+
         let Err(err) = portal_open(&target) else {
             return;
         };
         tracing::debug!(%err, "portal failed to open {target}, falling back");
 
         let opened = open::commands(&target).into_iter().any(|mut command| {
-            strip_appimage_env(&mut command);
+            oneclient_common::process::strip_appimage_env(&mut command);
             command
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
@@ -281,26 +266,9 @@ pub mod tray {
         });
     }
 
-    #[cfg(target_os = "linux")]
-    pub fn available() -> bool {
-        let loaded = ["libayatana-appindicator3.so.1", "libappindicator3.so.1"]
-            .into_iter()
-            .any(|name| unsafe { libloading::Library::new(name) }.is_ok());
-        if !loaded {
-            tracing::warn!("tray icon disabled, appindicator failed to load");
-        }
-        loaded
-    }
-
-    #[cfg(not(target_os = "linux"))]
-    pub fn available() -> bool {
-        true
-    }
-
     pub fn build() -> TrayIcon {
-        let live_on_linux = cfg!(target_os = "linux");
-        let stop = MenuItem::with_id(STOP_ID, "Stop game", live_on_linux, None);
-        let logs = MenuItem::with_id(LOGS_ID, "Show logs", live_on_linux, None);
+        let stop = MenuItem::with_id(STOP_ID, "Stop game", false, None);
+        let logs = MenuItem::with_id(LOGS_ID, "Show logs", false, None);
 
         let menu = Menu::with_items(&[
             &MenuItem::with_id(OPEN_ID, "Open OneClient", true, None),
@@ -316,14 +284,16 @@ pub mod tray {
         GAME_ITEMS.with_borrow_mut(|items| *items = vec![stop, logs]);
         ACTIVE.store(true, Ordering::Relaxed);
 
-        TrayIconBuilder::new()
+        let builder = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
             .with_tooltip(constants::WINDOW_TITLE)
-            .with_icon(LaunchConfig::tray_icon(ICON))
-            .with_icon_as_template(cfg!(target_os = "macos"))
-            .with_menu_on_left_click(!cfg!(target_os = "windows"))
-            .build()
-            .expect("failed to create the tray icon")
+            .with_menu_on_left_click(!cfg!(target_os = "windows"));
+        #[cfg(target_os = "macos")]
+        let builder = builder.with_icon_templated(LaunchConfig::tray_icon(ICON));
+        #[cfg(not(target_os = "macos"))]
+        let builder = builder.with_icon(LaunchConfig::tray_icon(ICON));
+
+        builder.build().expect("failed to create the tray icon")
     }
 
     pub fn handle(event: TrayEvent, _ctx: RendererContext<'_>) {

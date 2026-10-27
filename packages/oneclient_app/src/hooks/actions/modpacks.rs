@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use oneclient_content::modpacks::{
     BlockedFile, MODPACK_BUNDLE_NAME, ModpackInstallReport, find_blocked_downloads,
     import_blocked_files,
@@ -399,7 +399,7 @@ impl Actions {
         };
 
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else {
                 actions.release_modpack_job();
                 return;
@@ -470,7 +470,7 @@ impl Actions {
         }
 
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else {
                 actions.release_modpack_job();
                 return;
@@ -547,7 +547,7 @@ impl Actions {
         self.lock_modpack_cluster(cluster_id);
 
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else {
                 actions.release_modpack_job();
                 return;
@@ -652,7 +652,7 @@ impl Actions {
 
     fn run_modpack_job(&self, job: ModpackJob) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else {
                 actions.release_modpack_job();
                 return;
@@ -887,7 +887,7 @@ impl Actions {
         files: Vec<BlockedFile>,
     ) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
 
             let imported = off_ui({

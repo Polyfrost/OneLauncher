@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 
 use crate::hooks::Actions;
 use crate::launcher::off_ui_blocking;
@@ -31,7 +31,7 @@ pub fn restore_latest(actions: &Actions) {
     };
 
     let actions = actions.clone();
-    spawn_forever(async move {
+    spawn_in_window(async move {
         match off_ui_blocking(move || oneclient_db::backup::restore(&path, &snapshot)).await {
             Ok(_) => retry(&actions),
             Err(err) => set_error(&actions, format!("Couldn't restore the snapshot: {err}")),
@@ -43,7 +43,7 @@ pub fn reset(actions: &Actions) {
     let Some(path) = database_path() else { return };
 
     let actions = actions.clone();
-    spawn_forever(async move {
+    spawn_in_window(async move {
         match off_ui_blocking(move || oneclient_db::backup::reset(&path)).await {
             Ok(_) => retry(&actions),
             Err(err) => set_error(&actions, format!("Couldn't reset the database: {err}")),
@@ -63,7 +63,7 @@ fn retry(actions: &Actions) {
         guard.launcher.snapshots = snapshots().len();
     }
 
-    spawn_forever(async move {
+    spawn_in_window(async move {
         if let Err(err) = crate::events::start_launcher(station, events).await {
             crate::events::report_startup_failure(&station, &err);
         }

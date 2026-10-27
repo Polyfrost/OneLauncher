@@ -121,9 +121,9 @@ impl Component for AnimatedAppOutlet {
 
         let back_title = origin_route.read().title();
 
-        let platform = Platform::get();
-        let focused_node = platform.focused_accessibility_node;
-        let focused_id = platform.focused_accessibility_id;
+        let window = Platform::get().current_window();
+        let focused_node = window.focused_accessibility_node;
+        let focused_id = window.focused_accessibility_id;
 
         let key_claims = use_overlay_claims();
         let pointer_claims = key_claims.clone();
@@ -187,7 +187,7 @@ impl Component for AnimatedAppOutlet {
 
         use_side_effect_with_deps(&anim_finished, move |&finished| {
             if finished {
-                Platform::get().send(UserEvent::RequestRedraw);
+                Platform::get().current_window().request_redraw();
             }
         });
 

@@ -30,6 +30,7 @@ pub async fn check_java_runtime(absolute_path: String) -> JavaResult<JavaCheckIn
         .env_remove("JAVA_TOOL_OPTIONS")
         .env_remove("JDK_JAVA_OPTIONS");
     oneclient_common::process::no_window(command.as_std_mut());
+    oneclient_common::process::strip_appimage_env(command.as_std_mut());
 
     let program = command.as_std().get_program().to_string_lossy();
     let args: Vec<String> = command

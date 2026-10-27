@@ -345,7 +345,7 @@ impl Component for ParallaxArt {
         use_side_effect_with_deps(&self.parallax_enabled, move |enabled| {
             if *enabled {
                 let handle = spawn(async move {
-                    let platform = Platform::get();
+                    let window = Platform::get().current_window();
 
                     const FRAME: std::time::Duration = std::time::Duration::from_millis(33);
                     const STEP: f32 = 0.12;
@@ -357,7 +357,7 @@ impl Component for ParallaxArt {
 
                         if (tx - cx).abs() > SETTLE || (ty - cy).abs() > SETTLE {
                             current.set((cx + (tx - cx) * STEP, cy + (ty - cy) * STEP));
-                            platform.send(UserEvent::RequestRedraw);
+                            window.request_redraw();
                         }
 
                         tokio::time::sleep(FRAME).await;
@@ -389,6 +389,9 @@ impl Component for ParallaxArt {
         let fade_opacity = self.fade_opacity;
 
         let render_cb = RenderCallback::new(move |ctx: &mut FillRenderContext| {
+            let RenderTarget::Background { canvas, .. } = &ctx.target else {
+                return;
+            };
             let Some(image) = &image else {
                 return;
             };
@@ -437,7 +440,7 @@ impl Component for ParallaxArt {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
             let sampling = SamplingOptions::from(CubicResampler::mitchell());
-            ctx.canvas.draw_image_rect_with_sampling_options(
+            canvas.draw_image_rect_with_sampling_options(
                 image,
                 Some((&src, SrcRectConstraint::Strict)),
                 dst,

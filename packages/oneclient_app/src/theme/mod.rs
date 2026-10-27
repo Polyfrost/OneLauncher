@@ -63,6 +63,16 @@ pub fn themes() -> Vec<Arc<Theme>> {
     THEMES.read().unwrap().clone()
 }
 
+pub const SYSTEM_THEME: &str = "system";
+
+pub fn system_aware(id: &str, system_dark: bool) -> &str {
+    match id {
+        SYSTEM_THEME if system_dark => "dark",
+        SYSTEM_THEME => "light",
+        id => id,
+    }
+}
+
 pub fn resolve_theme(id: &str) -> Arc<Theme> {
     let id = match id {
         "amoled" | "grey" => "dark",

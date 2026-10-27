@@ -3,14 +3,16 @@ use std::time::Duration;
 use std::sync::Arc;
 
 use freya::prelude::*;
+use freya::router::RouterContext;
 use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
-use crate::components::{ColorPicker, Icon, IconType, toggle};
+use crate::components::{ColorPicker, IconType, link_button, toggle};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
+use crate::routes::Route;
 use crate::theme::{Theme, colors, resolve_theme, rounded, themes};
 use crate::ui::border_all_color;
-use crate::view::app::settings::{resettable, settings_row, settings_row_disabled};
+use crate::view::app::settings::{resettable, settings_row};
 
 #[derive(Clone, Copy)]
 struct ThemePreview {
@@ -247,11 +249,13 @@ fn accent_color_row(accent: State<Option<String>>, default: Option<String>) -> i
 }
 
 fn custom_theme_row() -> impl IntoElement {
-    settings_row_disabled(
+    settings_row(
         IconType::Colors,
         "Custom theme",
-        "Create, edit, and import launcher themes",
-        Icon::new(IconType::ChevronRight).size(18.).into_element(),
+        "Make your own theme from the current one",
+        link_button().on_press(|_| {
+            let _ = RouterContext::get().push(Route::SettingsThemeEditor {});
+        }),
     )
 }
 

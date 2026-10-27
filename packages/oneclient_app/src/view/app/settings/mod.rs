@@ -9,6 +9,7 @@ mod language;
 mod launcher;
 mod minecraft;
 mod storage;
+mod theme_editor;
 
 use freya::prelude::*;
 
@@ -22,6 +23,7 @@ pub use language::SettingsLanguage;
 pub use launcher::SettingsLauncher;
 pub use minecraft::SettingsMinecraft;
 pub use storage::SettingsStorage;
+pub use theme_editor::SettingsThemeEditor;
 
 use crate::{
     components::{Button, Icon, IconType},

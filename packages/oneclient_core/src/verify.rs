@@ -1,5 +1,6 @@
+use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use oneclient_common::paths;
 use oneclient_content::packages::PackageStore;
@@ -14,6 +15,34 @@ use crate::game::{
     download_version_info, get_loader_version, resolve_minecraft_version, verify_game_files,
 };
 use crate::state::LauncherState;
+
+static VERIFYING: Mutex<BTreeMap<i64, usize>> = Mutex::new(BTreeMap::new());
+
+struct VerifyClaim(i64);
+
+impl VerifyClaim {
+    fn take(cluster_id: i64) -> Self {
+        *VERIFYING.lock().unwrap().entry(cluster_id).or_default() += 1;
+        Self(cluster_id)
+    }
+}
+
+impl Drop for VerifyClaim {
+    fn drop(&mut self) {
+        let mut verifying = VERIFYING.lock().unwrap();
+        if let Some(count) = verifying.get_mut(&self.0) {
+            *count -= 1;
+            if *count == 0 {
+                verifying.remove(&self.0);
+            }
+        }
+    }
+}
+
+#[must_use]
+pub fn is_verifying(cluster_id: i64) -> bool {
+    VERIFYING.lock().unwrap().contains_key(&cluster_id)
+}
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ClusterVerifyReport {
@@ -93,6 +122,7 @@ pub async fn verify_cluster_files(
     state: &Arc<LauncherState>,
     cluster_id: i64,
 ) -> LauncherResult<ClusterVerifyReport> {
+    let _claim = VerifyClaim::take(cluster_id);
     let cluster = state.clusters.get(cluster_id).await?;
 
     let progress = GroupedProgressSession::start(

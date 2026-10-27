@@ -306,6 +306,7 @@ pub struct GameState {
     /// hundred ms every click in that window otherwise spawns its own game
     pending: HashSet<i64>,
     shared_syncs: HashSet<i64>,
+    update_checks: HashSet<i64>,
 }
 
 impl GameState {
@@ -348,11 +349,27 @@ impl GameState {
 
     /// Returns false if a launch is already in flight the re-entrancy guard
     pub fn begin_launch(&mut self, cluster_id: i64) -> bool {
-        if self.block_for(cluster_id).is_some() {
+        if self.block_for(cluster_id).is_some() || self.is_checking_updates(cluster_id) {
             return false;
         }
         self.pending.insert(cluster_id);
         true
+    }
+
+    pub fn begin_update_check(&mut self, cluster_id: i64) -> bool {
+        if self.block_for(cluster_id).is_some() {
+            return false;
+        }
+        self.update_checks.insert(cluster_id)
+    }
+
+    pub fn finish_update_check(&mut self, cluster_id: i64) {
+        self.update_checks.remove(&cluster_id);
+    }
+
+    #[must_use]
+    pub fn is_checking_updates(&self, cluster_id: i64) -> bool {
+        self.update_checks.contains(&cluster_id)
     }
 
     fn block_for(&self, cluster_id: i64) -> Option<LaunchBlock> {
@@ -454,6 +471,19 @@ mod tests {
         assert!(game.begin_launch(1));
         game.finish_launch(1);
         assert!(game.begin_launch(1));
+    }
+
+    #[test]
+    fn an_update_check_and_a_launch_hold_each_other_off() {
+        let mut game = GameState::default();
+
+        assert!(game.begin_update_check(1));
+        assert!(!game.begin_update_check(1));
+        assert!(!game.begin_launch(1));
+        assert!(game.begin_launch(2));
+        game.finish_update_check(1);
+        assert!(game.begin_launch(1));
+        assert!(!game.begin_update_check(1));
     }
 
     #[test]

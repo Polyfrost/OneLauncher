@@ -16,7 +16,7 @@ use crate::components::{
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
     settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
-    use_game_profile, use_game_snapshot, use_java_runtimes, use_loader_versions,
+    use_game_profile, use_game_snapshot, use_java_runtimes, use_launcher, use_loader_versions,
     use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
@@ -26,6 +26,7 @@ use crate::view::app::clusters::{
     DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts,
     ResetInstanceModal,
 };
+use crate::view::app::launch_syncing;
 use crate::view::app::settings::{
     section_header, settings_row, settings_row_danger, settings_row_disabled,
 };
@@ -165,6 +166,13 @@ impl Component for ClusterSettings {
                     .spacing(4.)
                     .child(section_header("INSTANCE"))
                     .child(instance_row)
+                    .child(
+                        CheckUpdatesRow {
+                            cluster_id,
+                            uses_bundles: cluster.uses_bundles(),
+                        }
+                        .into_element(),
+                    )
                     .child(
                         DedicatedDirRow {
                             cluster_id,
@@ -470,6 +478,50 @@ impl Component for InstanceRow {
 }
 
 #[derive(PartialEq)]
+struct CheckUpdatesRow {
+    cluster_id: i64,
+    uses_bundles: bool,
+}
+
+impl Component for CheckUpdatesRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+        let game = use_game_snapshot();
+        let checking = game.is_checking_updates(cluster_id);
+        let syncing = launch_syncing(&use_launcher(), self.uses_bundles);
+        let busy = checking
+            || syncing
+            || game.is_active(cluster_id)
+            || game.is_launch_pending(cluster_id);
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .enabled(!busy)
+            .maybe(!busy, |el| {
+                el.on_press(move |_| dispatch.check_cluster_updates(cluster_id))
+            })
+            .maybe(game.is_active(cluster_id), |el| {
+                el.tooltip("Close the game before checking for updates")
+            })
+            .text(if checking {
+                "Checking..."
+            } else {
+                "Check for Updates"
+            });
+
+        settings_row(
+            IconType::RefreshCw01,
+            "Check for Updates",
+            "Run the same update checks as pressing Play: the loader, bundled mods \
+             and content installed from the browser.",
+            button,
+        )
+    }
+}
+
+#[derive(PartialEq)]
 struct ShortcutRow {
     cluster_id: i64,
 }
@@ -541,6 +593,7 @@ impl Component for VerifyFilesRow {
         let cluster_id = self.cluster_id;
         let mutation = use_cluster_mutation();
         let running = mutation_is_running(&mutation);
+        let checking = use_game_snapshot().is_checking_updates(cluster_id);
 
         let on_press = move |_| {
             mutation.mutate(ClusterAction::VerifyFiles { cluster_id });
@@ -550,8 +603,11 @@ impl Component for VerifyFilesRow {
         let button = Button::new()
             .small()
             .secondary()
-            .enabled(!running)
-            .maybe(!running, |el| el.on_press(on_press))
+            .enabled(!running && !checking)
+            .maybe(!running && !checking, |el| el.on_press(on_press))
+            .maybe(checking, |el| {
+                el.tooltip("Wait for the update check to finish")
+            })
             .text(if running {
                 "Verifying..."
             } else {

@@ -28,6 +28,7 @@ pub fn launch_button_state(
         Some(LaunchStage::Running) => ("Running", false),
         // The click's own flag held for a beat after a failure so a burst of clicks starts one game
         _ if game.is_launch_pending(cluster_id) => ("Launching", false),
+        _ if game.is_checking_updates(cluster_id) => ("Checking", false),
         _ if game.is_syncing_shared(cluster_id) => ("Syncing", false),
         // Core refuses it anyway the shared game dir holds one game at a time
         _ if shared_dir_taken => ("Folder in use", false),

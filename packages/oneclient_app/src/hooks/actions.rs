@@ -1003,15 +1003,13 @@ impl Actions {
     }
 
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
-        if modpack_job_running(cluster_id) {
-            self.notify("The modpack is still being set up")
-                .body("Wait for the modpack to finish, or close its dialog, then press Play again.")
-                .send();
+        if let Some((title, body)) = cluster_busy(cluster_id) {
+            self.notify(title).body(body).send();
             return;
         }
-        if oneclient_core::clusters::is_resetting(cluster_id) {
-            self.notify("This instance is being reset")
-                .body("Wait for the reset to finish, then press Play again.")
+        if self.station.peek().game.is_checking_updates(cluster_id) {
+            self.notify("Checking for updates")
+                .body("Wait for the update check to finish, then press Play again.")
                 .send();
             return;
         }
@@ -1030,15 +1028,8 @@ impl Actions {
         let actions = self.clone();
         spawn_forever(async move {
             let started = Instant::now();
-            match super::sync_actions::sync_launch_block(cluster_id).await {
-                Some(reason) => actions
-                    .notify("Wait for the sync to finish")
-                    .body(reason)
-                    .send(),
-                None if modpacks::modpack_job_in_shared_dir(cluster_id).await => actions
-                    .notify("A modpack is still being set up")
-                    .body("It is changing an instance that shares this game folder. Press Play again once it finishes.")
-                    .send(),
+            match cluster_busy_elsewhere(cluster_id).await {
+                Some((title, body)) => actions.notify(title).body(body).send(),
                 None => launch(&actions, cluster_id).await,
             }
 
@@ -1052,6 +1043,55 @@ impl Actions {
                 .write_channel(AppChannel::Game)
                 .game
                 .finish_launch(cluster_id);
+        });
+    }
+
+    pub fn check_cluster_updates(&self, cluster_id: ClusterId) {
+        if let Some((title, body)) = cluster_busy(cluster_id) {
+            self.notify(title).body(body).send();
+            return;
+        }
+
+        let claimed = self
+            .station
+            .clone()
+            .write_channel(AppChannel::Game)
+            .game
+            .begin_update_check(cluster_id);
+        if !claimed {
+            return;
+        }
+
+        let station = self.station;
+        let actions = self.clone();
+        spawn_forever(async move {
+            match cluster_busy_elsewhere(cluster_id).await {
+                Some((title, body)) => actions.notify(title).body(body).send(),
+                None => {
+                    let check = match launcher::state() {
+                        Ok(state) => actions.run_update_checks(&state, cluster_id, true).await,
+                        Err(_) => None,
+                    };
+                    match check {
+                        Some(check) if check.failed => actions
+                            .notify("Couldn't finish checking for updates")
+                            .body("Some update checks failed. Check your connection and try again.")
+                            .error()
+                            .send(),
+                        Some(check) if !check.found => actions
+                            .notify("No updates found")
+                            .body("This instance is up to date.")
+                            .send(),
+                        _ => {}
+                    }
+                }
+            }
+
+            station
+                .clone()
+                .write_channel(AppChannel::Game)
+                .game
+                .finish_update_check(cluster_id);
         });
     }
 
@@ -1718,17 +1758,18 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
-    ) -> bool {
-        if !self.bundle_check_due(cluster_id) {
+        manual: bool,
+    ) -> Option<UpdateCheck> {
+        if !manual && !self.bundle_check_due(cluster_id) {
             tracing::debug!(cluster_id, "bundle update check skipped, checked recently");
-            return true;
+            return Some(UpdateCheck::default());
         }
 
         let content = state.services.content();
 
         if let Ok(false) = oneclient_core::cluster_has_bundle_content(cluster_id, &content).await {
             tracing::debug!(cluster_id, "bundle update check skipped, no bundle content");
-            return true;
+            return Some(UpdateCheck::default());
         }
 
         self.station
@@ -1772,6 +1813,7 @@ impl Actions {
         // needs a newer library next to the old library, so one retry then
         // refuse to launch rather than hand Fabric a set that cannot load
         let mut changed = false;
+        let mut incomplete = !synced;
         let mut failures = Vec::new();
         for attempt in 1..=2 {
             let deadline = Instant::now() + BUNDLE_APPLY_BUDGET;
@@ -1801,6 +1843,7 @@ impl Actions {
                     if !result.stopped_early {
                         result.failures().cloned().collect()
                     } else if attempt == 1 {
+                        incomplete = true;
                         tracing::warn!(
                             cluster_id,
                             failed = result.downloads_failed.len(),
@@ -1817,7 +1860,10 @@ impl Actions {
                         error = %err,
                         "bundle update failed, launching anyway"
                     );
-                    return true;
+                    return Some(UpdateCheck {
+                        found: changed,
+                        failed: true,
+                    });
                 }
                 Err(err) => vec![format!("{err:#}")],
             };
@@ -1838,21 +1884,32 @@ impl Actions {
         }
 
         if failures.is_empty() {
-            return true;
+            return Some(UpdateCheck {
+                found: changed,
+                failed: incomplete,
+            });
         }
 
+        let (title, outcome) = if manual {
+            ("Mods failed to update", "Try checking again.")
+        } else {
+            (
+                "Launch stopped: mods failed to update",
+                "so the game was not started. Try launching again.",
+            )
+        };
         state
             .services
             .events
-            .notify("Launch stopped: mods failed to update")
+            .notify(title)
             .body(format!(
-                "OneClient could not update {} of this instance's mods, so the game was not started. Try launching again.\n{}",
+                "OneClient could not update {} of this instance's mods, {outcome}\n{}",
                 failures.len(),
                 failures.join("\n")
             ))
             .error()
             .send();
-        false
+        None
     }
 
     /// The check runs and the cache is written whatever the mode says keeping
@@ -1864,7 +1921,7 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
-    ) {
+    ) -> Option<bool> {
         let content = state.services.content();
 
         // Bounded a hanging network would otherwise hold the launch for
@@ -1885,14 +1942,14 @@ impl Actions {
                     error = %err,
                     "browser package update check failed, launching anyway"
                 );
-                return;
+                return None;
             }
             Err(_elapsed) => {
                 tracing::debug!(
                     cluster_id,
                     "browser package update check exceeded its launch budget"
                 );
-                return;
+                return None;
             }
         };
 
@@ -1900,23 +1957,43 @@ impl Actions {
         let mode = self.cluster_update_mode(state, cluster_id).await;
 
         match plan_launch_updates(mode, pending) {
-            LaunchUpdatePlan::Nothing => {}
+            LaunchUpdatePlan::Nothing => Some(false),
             LaunchUpdatePlan::Apply(updates) => {
                 self.apply_updates_for_launch(state, &updates).await;
+                Some(true)
             }
             LaunchUpdatePlan::Prompt(updates) => {
-                let Some(group) =
+                let group =
                     crate::install::package_update_group(cluster_id, &updates, &state.services)
-                        .await
-                else {
-                    return;
-                };
+                        .await?;
                 let chosen = self.prompt_package_updates(group).await;
                 if !chosen.is_empty() {
                     self.apply_updates_for_launch(state, &chosen).await;
                 }
+                Some(true)
             }
         }
+    }
+
+    async fn run_update_checks(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        cluster_id: ClusterId,
+        manual: bool,
+    ) -> Option<UpdateCheck> {
+        let loader = crate::loader_update::offer_before_launch(self, cluster_id, manual).await;
+        self.resolve_bundle_choices_before_launch(state, cluster_id)
+            .await;
+        let bundles = self
+            .resolve_bundle_updates_before_launch(state, cluster_id, manual)
+            .await?;
+        let packages = self
+            .resolve_package_updates_before_launch(state, cluster_id)
+            .await;
+        Some(UpdateCheck {
+            found: loader == Some(true) || bundles.found || packages == Some(true),
+            failed: loader.is_none() || bundles.failed || packages.is_none(),
+        })
     }
 
     /// Anything unreadable falls back to the default rather than blocking the
@@ -2267,6 +2344,46 @@ fn group_by_cluster(mods: &[(ClusterId, OptionalModRef)]) -> Vec<(ClusterId, Vec
     grouped
 }
 
+fn cluster_busy(cluster_id: ClusterId) -> Option<(&'static str, &'static str)> {
+    if modpack_job_running(cluster_id) {
+        return Some((
+            "The modpack is still being set up",
+            "Wait for the modpack to finish, or close its dialog, then try again.",
+        ));
+    }
+    if oneclient_core::clusters::is_resetting(cluster_id) {
+        return Some((
+            "This instance is being reset",
+            "Wait for the reset to finish, then try again.",
+        ));
+    }
+    if oneclient_core::verify::is_verifying(cluster_id) {
+        return Some((
+            "This instance's files are being verified",
+            "Wait for the verification to finish, then try again.",
+        ));
+    }
+    None
+}
+
+async fn cluster_busy_elsewhere(cluster_id: ClusterId) -> Option<(&'static str, &'static str)> {
+    if let Some(reason) = super::sync_actions::sync_launch_block(cluster_id).await {
+        return Some(("Wait for the sync to finish", reason));
+    }
+    modpacks::modpack_job_in_shared_dir(cluster_id)
+        .await
+        .then_some((
+            "A modpack is still being set up",
+            "It is changing an instance that shares this game folder. Try again once it finishes.",
+        ))
+}
+
+#[derive(Clone, Copy, Default)]
+struct UpdateCheck {
+    found: bool,
+    failed: bool,
+}
+
 async fn launch(actions: &Actions, cluster_id: ClusterId) {
     let Ok(state) = launcher::state() else { return };
     let events = state.services.events.clone();
@@ -2304,7 +2421,6 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     }
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
-    crate::loader_update::offer_before_launch(actions, cluster_id).await;
 
     let content = state.services.content();
     tokio::spawn(async move {
@@ -2318,19 +2434,14 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
 
     // Before the game process never after Minecraft reads its mods once at
     // startup
-    actions
-        .resolve_bundle_choices_before_launch(&state, cluster_id)
-        .await;
-    if !actions
-        .resolve_bundle_updates_before_launch(&state, cluster_id)
+    if actions
+        .run_update_checks(&state, cluster_id, false)
         .await
+        .is_none()
     {
         events.game_stage(cluster_id, oneclient_events::LaunchStage::Exited);
         return;
     }
-    actions
-        .resolve_package_updates_before_launch(&state, cluster_id)
-        .await;
 
     // After the updates so the player never faces two modals at once
     if actions

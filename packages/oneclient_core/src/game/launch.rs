@@ -1032,6 +1032,8 @@ fn shell_quote(arg: &str) -> String {
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     command.env_remove("_JAVA_OPTIONS");
+    #[cfg(all(unix, not(target_os = "macos")))]
+    command.env("LC_ALL", "C.UTF-8");
 
     if let Some(env) = &profile.launch_env {
         for pair in env.split_whitespace() {

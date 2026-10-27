@@ -5,7 +5,7 @@ use freya::router::RouterContext;
 use notify::{Event, EventKind};
 use oneclient_content::modpacks::BlockedFile;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup};
+use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{use_dispatch, use_folder_watch, use_notifications_snapshot};
 use crate::notifications::BlockedDownloads;
 use crate::routes::Route;
@@ -444,7 +444,7 @@ fn footer(
 }
 
 fn file_list(blocked: &BlockedDownloads) -> impl IntoElement {
-    ScrollView::new()
+    ScrollArea::new()
         .width(Size::fill())
         .height(Size::Inner)
         .max_height(Size::px(LIST_MAX_H))

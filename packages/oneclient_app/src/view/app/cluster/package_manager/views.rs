@@ -278,12 +278,35 @@ impl Bulk {
 const TOOLBAR_STACK_W: f32 = 640.;
 const TABS_ROW_H: f32 = 34.;
 
-fn tabs_scrollbar_theme() -> ScrollBarThemePartial {
-    ScrollBarThemePartial {
-        thumb_background: Some(colors::fg_secondary().with_a(120).into()),
-        hover_thumb_background: Some(colors::fg_secondary().with_a(190).into()),
-        active_thumb_background: Some(colors::fg_primary().into()),
-        ..Default::default()
+#[derive(PartialEq)]
+struct FilterTabs {
+    width: Size,
+    chips: Vec<Element>,
+}
+
+impl Component for FilterTabs {
+    fn render(&self) -> impl IntoElement {
+        let mut chips_w = use_state(|| 0f32);
+
+        ScrollArea::new()
+            .horizontal(*chips_w.read())
+            .width(self.width.clone())
+            .height(Size::px(TABS_ROW_H))
+            .child(
+                rect()
+                    .horizontal()
+                    .width(Size::auto())
+                    .height(Size::px(TABS_ROW_H))
+                    .cross_align(Alignment::Center)
+                    .spacing(6.)
+                    .on_sized(move |e: Event<SizedEventData>| {
+                        let w = e.area.width();
+                        if (*chips_w.peek() - w).abs() > 0.5 {
+                            chips_w.set(w);
+                        }
+                    })
+                    .children(self.chips.clone()),
+            )
     }
 }
 
@@ -326,27 +349,15 @@ pub(super) fn toolbar_bar(
     let measured = *toolbar_width.read();
     let stacked = measured > 0. && measured < TOOLBAR_STACK_W;
 
-    let filter_tabs = ScrollView::new()
-        .direction(Direction::Horizontal)
-        .invert_scroll_wheel(true)
-        .show_scrollbar(true)
-        .scrollbar(|context| ScrollBar::new(context).theme(tabs_scrollbar_theme()).into())
-        .width(if stacked {
+    let filter_tabs = FilterTabs {
+        width: if stacked {
             Size::fill()
         } else {
             Size::flex(1.0)
-        })
-        .height(Size::px(TABS_ROW_H))
-        .child(
-            rect()
-                .horizontal()
-                .width(Size::auto())
-                .height(Size::fill())
-                .cross_align(Alignment::Center)
-                .spacing(6.)
-                .children(chips),
-        )
-        .into_element();
+        },
+        chips: chips.collect(),
+    }
+    .into_element();
 
     let mut controls: Vec<Element> = vec![
         TextInput::new(search)

@@ -196,6 +196,21 @@ async fn each_shared_folder_holds_only_its_own_clusters_packs() {
         "a folder cannot sync from itself"
     );
 
+    let renamed = paths::shared_group_dir(Some("Pals")).unwrap();
+    std::fs::rename(&family, &renamed).unwrap();
+    assert_eq!(gamma.missing_shared_group(), Some("Family".to_owned()));
+    assert!(
+        state
+            .clusters
+            .sync_from_shared(gamma.id, None, false, |_, _, _| {})
+            .await
+            .is_err(),
+        "a sync never recreates a missing folder"
+    );
+    assert!(!family.exists());
+    std::fs::rename(&renamed, &family).unwrap();
+    assert_eq!(gamma.missing_shared_group(), None);
+
     assert!(
         state.clusters.delete_shared_group("Friends").await.is_err(),
         "alpha still uses the folder"
@@ -223,5 +238,13 @@ async fn each_shared_folder_holds_only_its_own_clusters_packs() {
     assert_eq!(
         state.clusters.list_shared_groups().await.unwrap(),
         vec!["Family".to_owned()]
+    );
+    let trash = paths::cluster_trash_dir().unwrap();
+    let leftovers = std::fs::read_dir(&trash)
+        .map(|entries| entries.flatten().count())
+        .unwrap_or(0);
+    assert_eq!(
+        leftovers, 0,
+        "the deleted folder is cleared out of the trash"
     );
 }

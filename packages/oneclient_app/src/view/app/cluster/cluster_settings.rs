@@ -175,6 +175,7 @@ impl Component for ClusterSettings {
                         DirTargetRow {
                             cluster_id,
                             target: cluster.dir_target(),
+                            missing: cluster.missing_shared_group().is_some(),
                             locked: cluster.is_isolated(),
                         }
                         .into_element(),
@@ -709,6 +710,7 @@ impl Component for SyncSharedRow {
 struct DirTargetRow {
     cluster_id: i64,
     target: DirTarget,
+    missing: bool,
     locked: bool,
 }
 
@@ -804,6 +806,9 @@ impl Component for DirTargetRow {
             let selected = match &self.target {
                 DirTarget::Dedicated => "Dedicated".to_string(),
                 DirTarget::Shared(None) => "Shared".to_string(),
+                DirTarget::Shared(Some(group)) if self.missing => {
+                    format!("{group} (missing)")
+                }
                 DirTarget::Shared(Some(group)) => group.clone(),
             };
             let create = options.len() - 1;

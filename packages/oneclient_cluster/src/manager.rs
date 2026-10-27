@@ -510,7 +510,7 @@ impl ClusterManager {
                 polyio::create_dir_all(&dir).await?;
                 polyio::write(&marker, b"").await?;
                 if group_marker.exists() {
-                    polyio::remove_file(&group_marker).await?;
+                    polyio::remove_file(&group_marker).await.ok();
                 }
             }
             DirTarget::Shared(group) => {
@@ -520,7 +520,7 @@ impl ClusterManager {
                         .await?
                         .ok_or_else(|| ClusterError::SharedGroupMissing(group.clone()))?;
                     polyio::create_dir_all(&dir).await?;
-                    polyio::write(&group_marker, group.as_bytes()).await?;
+                    polyio::write_atomic(&group_marker, group.as_bytes()).await?;
                 } else if group_marker.exists() {
                     polyio::remove_file(&group_marker).await?;
                 }
@@ -574,7 +574,21 @@ impl ClusterManager {
             return Err(ClusterError::SharedGroupInUse(name.to_string()));
         }
 
-        polyio::remove_dir_all(oneclient_common::paths::shared_group_dir(Some(name))?).await?;
+        let trash = oneclient_common::paths::cluster_trash_dir()?;
+        polyio::create_dir_all(&trash).await?;
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let trashed = trash.join(format!("shared-{name}-{stamp}"));
+        polyio::rename(
+            oneclient_common::paths::shared_group_dir(Some(name))?,
+            &trashed,
+        )
+        .await?;
+        if let Err(err) = polyio::remove_dir_all(&trashed).await {
+            tracing::warn!(group = name, error = %err, "could not clear a deleted shared folder; it is cleared at the next start");
+        }
         Ok(())
     }
 
@@ -606,6 +620,9 @@ impl ClusterManager {
         let cluster = self.get(cluster_id).await?;
         if cluster.dir_target() == DirTarget::Shared(from.map(str::to_owned)) {
             return Err(ClusterError::SameFolder(cluster.name));
+        }
+        if let Some(group) = cluster.missing_shared_group() {
+            return Err(ClusterError::SharedGroupMissing(group));
         }
 
         copy_from_shared(

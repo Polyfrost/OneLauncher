@@ -49,6 +49,11 @@ pub enum GameError {
     #[error("{0} is syncing from the shared folder; wait for it to finish before launching")]
     SharedDirectorySyncing(String),
 
+    #[error(
+        "the shared folder {0} is missing; pick a folder for this instance in its settings before launching"
+    )]
+    SharedFolderMissing(String),
+
     #[error("failed to spawn the game process: {0}")]
     Spawn(String),
 

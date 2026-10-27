@@ -134,6 +134,11 @@ impl Cluster {
         paths::cluster_shared_group(&self.folder_name)
     }
 
+    pub fn missing_shared_group(&self) -> Option<String> {
+        self.shared_group()
+            .filter(|group| paths::shared_group_dir(Some(group)).is_ok_and(|dir| !dir.is_dir()))
+    }
+
     pub fn dir_target(&self) -> DirTarget {
         if self.uses_dedicated_dir() {
             DirTarget::Dedicated

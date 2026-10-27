@@ -114,6 +114,9 @@ async fn start(
     }
 
     let existing = state.clusters.get(cluster_id).await?;
+    if let Some(group) = existing.missing_shared_group() {
+        return Err(GameError::SharedFolderMissing(group).into());
+    }
 
     let game_dir = existing.game_dir()?;
     let dedicated = existing.uses_dedicated_dir();

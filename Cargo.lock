@@ -4960,6 +4960,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "url",
  "uuid 1.26.1",
  "windows",
  "winresource",

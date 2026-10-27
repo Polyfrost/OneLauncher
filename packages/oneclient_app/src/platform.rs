@@ -109,20 +109,6 @@ fn has_allowed_scheme(url: &str) -> bool {
 }
 
 #[cfg(target_os = "linux")]
-const APPIMAGE_ENV: [&str; 10] = [
-    "LD_LIBRARY_PATH",
-    "PATH",
-    "XDG_DATA_DIRS",
-    "GSETTINGS_SCHEMA_DIR",
-    "PYTHONHOME",
-    "PYTHONPATH",
-    "PERLLIB",
-    "QT_PLUGIN_PATH",
-    "GST_PLUGIN_SYSTEM_PATH",
-    "GST_PLUGIN_SYSTEM_PATH_1_0",
-];
-
-#[cfg(target_os = "linux")]
 fn portal_open(target: &str) -> zbus::Result<()> {
     use std::collections::HashMap;
     use zbus::zvariant::{Fd, Value};
@@ -155,26 +141,18 @@ fn portal_open(target: &str) -> zbus::Result<()> {
 }
 
 #[cfg(target_os = "linux")]
-fn strip_appimage_env(command: &mut std::process::Command) {
-    let Some(appdir) = std::env::var_os("APPDIR") else {
-        return;
-    };
-    let appdir = appdir.to_string_lossy();
+fn file_manager_show(target: &str) -> zbus::Result<()> {
+    let uri = url::Url::from_directory_path(target)
+        .map_err(|()| zbus::Error::Failure(format!("not an absolute path: {target}")))?;
 
-    for key in APPIMAGE_ENV {
-        let Ok(value) = std::env::var(key) else {
-            continue;
-        };
-        let kept = value
-            .split(':')
-            .filter(|entry| !entry.is_empty() && !entry.starts_with(&*appdir))
-            .collect::<Vec<_>>();
-        if kept.is_empty() {
-            command.env_remove(key);
-        } else {
-            command.env(key, kept.join(":"));
-        }
-    }
+    zbus::blocking::Connection::session()?.call_method(
+        Some("org.freedesktop.FileManager1"),
+        "/org/freedesktop/FileManager1",
+        Some("org.freedesktop.FileManager1"),
+        "ShowFolders",
+        &(vec![uri.as_str()], ""),
+    )?;
+    Ok(())
 }
 
 #[cfg(target_os = "linux")]
@@ -183,13 +161,20 @@ fn open_target(target: &str) {
 
     let target = target.to_owned();
     std::thread::spawn(move || {
+        if std::path::Path::new(&target).is_dir() {
+            let Err(err) = file_manager_show(&target) else {
+                return;
+            };
+            tracing::debug!(%err, "file manager failed to show {target}, falling back");
+        }
+
         let Err(err) = portal_open(&target) else {
             return;
         };
         tracing::debug!(%err, "portal failed to open {target}, falling back");
 
         let opened = open::commands(&target).into_iter().any(|mut command| {
-            strip_appimage_env(&mut command);
+            oneclient_common::process::strip_appimage_env(&mut command);
             command
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())

@@ -1041,6 +1041,7 @@ fn shell_quote(arg: &str) -> String {
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     command.env_remove("_JAVA_OPTIONS");
+    oneclient_common::process::strip_appimage_env(command.as_std_mut());
 
     if let Some(env) = &profile.launch_env {
         for pair in env.split_whitespace() {
@@ -1072,6 +1073,7 @@ async fn run_hook(hook: Option<&str>, cwd: &Path) -> Option<String> {
     command.stderr(Stdio::piped());
     command.stdin(Stdio::null());
     oneclient_common::process::no_window(command.as_std_mut());
+    oneclient_common::process::strip_appimage_env(command.as_std_mut());
 
     let mut child = match command.spawn() {
         Ok(child) => child,

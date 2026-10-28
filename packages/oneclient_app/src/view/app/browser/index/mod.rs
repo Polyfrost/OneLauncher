@@ -27,6 +27,7 @@ use crate::hooks::{
     use_cluster_content, use_clusters, use_debounced, use_package_categories, use_package_search,
     use_versions, use_view_state, versions_metadata,
 };
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::grid_columns_for_width;
@@ -62,27 +63,42 @@ const GRID_SPACING: f32 = 16.;
 const LIST_SPACING: f32 = 8.;
 const SEARCH_DEBOUNCE_MS: u64 = 250;
 
-const SORTS: [(SearchSort, &str); 4] = [
-    (SearchSort::Relevance, "Relevance"),
-    (SearchSort::Downloads, "Downloads"),
-    (SearchSort::Newest, "Newest"),
-    (SearchSort::Updated, "Updated"),
-];
+fn sorts() -> [(SearchSort, &'static str); 4] {
+    [
+        (
+            SearchSort::Relevance,
+            t("oneclient.browser.index.sort.relevance"),
+        ),
+        (
+            SearchSort::Downloads,
+            t("oneclient.browser.index.sort.downloads"),
+        ),
+        (SearchSort::Newest, t("oneclient.browser.index.sort.newest")),
+        (
+            SearchSort::Updated,
+            t("oneclient.browser.index.sort.updated"),
+        ),
+    ]
+}
 
-const LOADERS: [(Option<GameLoader>, &str); 4] = [
-    (None, "Any loader"),
-    (Some(GameLoader::Fabric), "Fabric"),
-    (Some(GameLoader::Forge), "Forge"),
-    (Some(GameLoader::NeoForge), "NeoForge"),
-];
+fn loaders() -> [(Option<GameLoader>, &'static str); 4] {
+    [
+        (None, t("oneclient.browser.index.loader.any")),
+        (Some(GameLoader::Fabric), "Fabric"),
+        (Some(GameLoader::Forge), "Forge"),
+        (Some(GameLoader::NeoForge), "NeoForge"),
+    ]
+}
 
-const BROWSE_TYPES: [(&str, &str); 5] = [
-    ("mod", "Mods"),
-    ("texture", "Textures"),
-    ("shader", "Shaders"),
-    ("datapack", "Data packs"),
-    ("modpack", "Modpacks"),
-];
+fn browse_types() -> [(&'static str, &'static str); 5] {
+    [
+        ("mod", t("oneclient.browser.index.type.mods")),
+        ("texture", t("oneclient.browser.index.type.textures")),
+        ("shader", t("oneclient.browser.index.type.shaders")),
+        ("datapack", t("oneclient.browser.index.type.datapacks")),
+        ("modpack", t("oneclient.browser.index.type.modpacks")),
+    ]
+}
 
 const DATAPACK_SLUG: &str = "datapack";
 const TEXTURE_SLUG: &str = "texture";
@@ -100,17 +116,17 @@ pub(crate) fn browsable_type(package_type: &str, cluster: &Cluster) -> String {
         .to_string();
     }
     if package_type == DATAPACK_SLUG && !supports_datapacks(&cluster.mc_version) {
-        BROWSE_TYPES[0].0.to_string()
+        browse_types()[0].0.to_string()
     } else {
         package_type.to_string()
     }
 }
 
 fn type_title(package_type: &str) -> &'static str {
-    BROWSE_TYPES
+    browse_types()
         .iter()
         .find(|(slug, _)| *slug == package_type)
-        .map_or("Mods", |(_, title)| *title)
+        .map_or(t("oneclient.browser.index.type.mods"), |(_, title)| *title)
 }
 
 fn state_key(cluster_id: i64, package_type: &str, pick_cluster: bool) -> String {
@@ -395,9 +411,9 @@ impl Component for BrowserBody {
                     .filter(|_| targets_cluster || cluster_modpacks)
                     .map(|c| {
                         let verb = if cluster_modpacks {
-                            "Adding to"
+                            t("oneclient.browser.index.target.adding")
                         } else {
-                            "Installing to"
+                            t("oneclient.browser.index.target.installing")
                         };
                         (verb, c.name.clone())
                     }),
@@ -512,7 +528,10 @@ fn header(
                 .spacing(10.)
                 .child(
                     label()
-                        .text(format!("Browse {}", type_title(package_type)))
+                        .text(tf(
+                            "oneclient.browser.index.title",
+                            &[&type_title(package_type)],
+                        ))
                         .font_size(32.)
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
@@ -532,7 +551,7 @@ fn header(
                     if curseforge_blocked && *provider == ProviderId::CurseForge {
                         segment = segment
                             .disabled(true)
-                            .tooltip("CurseForge doesn't have any compatible mods");
+                            .tooltip(t("oneclient.browser.index.curseforge_blocked"));
                     }
                     if show_provider_labels {
                         segment.label(provider.to_string())
@@ -545,7 +564,7 @@ fn header(
         .child(
             TextInput::new(query)
                 .width(Size::px(search_width))
-                .placeholder("Search for content")
+                .placeholder(t("oneclient.browser.index.search"))
                 .leading(
                     Icon::new(IconType::SearchMd)
                         .size(14.)
@@ -591,11 +610,13 @@ fn results_toolbar(
 ) -> impl IntoElement {
     // Blank rather than a stale count while a page is in flight
     let summary = match (pending, pages) {
-        (false, Some(pages)) => format!(
-            "{} results · page {} of {}",
-            abbreviate_number(total as u64),
-            current_page + 1,
-            pages
+        (false, Some(pages)) => tf(
+            "oneclient.browser.index.summary",
+            &[
+                &abbreviate_number(total as u64),
+                &(current_page + 1),
+                &pages,
+            ],
         ),
         _ => String::new(),
     };
@@ -634,11 +655,11 @@ impl Component for SortPicker {
         let mut sort = self.sort;
         let current = *sort.read();
 
-        let labels: Vec<String> = SORTS.iter().map(|(_, l)| (*l).to_string()).collect();
-        let selected = SORTS
+        let labels: Vec<String> = sorts().iter().map(|(_, l)| (*l).to_string()).collect();
+        let selected = sorts()
             .iter()
             .find(|(s, _)| *s == current)
-            .map_or("Relevance", |(_, l)| *l);
+            .map_or(t("oneclient.browser.index.sort.relevance"), |(_, l)| *l);
 
         Dropdown::new(selected, labels)
             .width(Size::px(132.))
@@ -649,7 +670,7 @@ impl Component for SortPicker {
                     .color(colors::fg_secondary()),
             )
             .on_select(move |idx: usize| {
-                if let Some((picked, _)) = SORTS.get(idx) {
+                if let Some((picked, _)) = sorts().get(idx) {
                     sort.set(*picked);
                 }
             })
@@ -666,17 +687,17 @@ impl Component for LoaderPicker {
         let mut loader = self.loader;
         let current = *loader.read();
 
-        let labels: Vec<String> = LOADERS.iter().map(|(_, l)| (*l).to_string()).collect();
-        let selected = LOADERS
+        let labels: Vec<String> = loaders().iter().map(|(_, l)| (*l).to_string()).collect();
+        let selected = loaders()
             .iter()
             .find(|(l, _)| *l == current)
-            .map_or("Any loader", |(_, l)| *l);
+            .map_or(t("oneclient.browser.index.loader.any"), |(_, l)| *l);
 
         Dropdown::new(selected, labels)
             .width(Size::px(132.))
             .height(Size::px(30.))
             .on_select(move |idx: usize| {
-                if let Some((picked, _)) = LOADERS.get(idx) {
+                if let Some((picked, _)) = loaders().get(idx) {
                     loader.set(*picked);
                 }
             })
@@ -719,7 +740,7 @@ impl Component for TypePicker {
             .is_none_or(|c| supports_datapacks(&c.mc_version));
         let mod_loader = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
 
-        let types: Vec<(&str, &str)> = BROWSE_TYPES
+        let types: Vec<(&str, &str)> = browse_types()
             .into_iter()
             .filter(|(slug, _)| datapacks || *slug != DATAPACK_SLUG)
             .filter(|(slug, _)| mod_loader || !LOADER_SLUGS.contains(slug))
@@ -769,7 +790,7 @@ impl Component for ClusterPicker {
             .iter()
             .position(|id| *id == self.cluster_id)
             .and_then(|idx| labels.get(idx).cloned())
-            .unwrap_or_else(|| "Select a version".to_string());
+            .unwrap_or_else(|| t("oneclient.browser.index.select_version").to_string());
 
         let package_type = self.package_type.clone();
         let from_key = state_key(self.cluster_id, &package_type, true);

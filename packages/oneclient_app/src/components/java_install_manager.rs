@@ -3,12 +3,16 @@ use oneclient_java::{AvailableJava, JavaVendor};
 
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{provider_versions, use_provider_versions};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
 fn providers() -> Vec<(JavaVendor, &'static str)> {
     vec![
-        (JavaVendor::Microsoft, "Microsoft JDK (Fastest/Recommended)"),
+        (
+            JavaVendor::Microsoft,
+            t("oneclient.components.java_install_manager.microsoft"),
+        ),
         (JavaVendor::Zulu, "Azul Zulu"),
         (JavaVendor::Adoptium, "Eclipse Temurin"),
         (JavaVendor::Corretto, "Amazon Corretto"),
@@ -76,9 +80,9 @@ impl Component for JavaInstallManager {
         let current_label = provider_labels[idx].clone();
 
         let inner: Element = if loading {
-            status_text("Loading available versions...")
+            status_text(t("oneclient.components.java_install_manager.loading"))
         } else if versions.is_empty() {
-            status_text("No versions available from this provider.")
+            status_text(t("oneclient.components.java_install_manager.empty"))
         } else {
             let mut area = ScrollArea::new()
                 .width(Size::fill())
@@ -131,7 +135,7 @@ impl Component for JavaInstallManager {
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 label()
-                                    .text("Install Java")
+                                    .text(t("oneclient.components.java_install_manager.title"))
                                     .font_size(18.)
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
@@ -143,7 +147,9 @@ impl Component for JavaInstallManager {
                                     .spacing(6.)
                                     .child(
                                         label()
-                                            .text("Provider")
+                                            .text(t(
+                                                "oneclient.components.java_install_manager.provider",
+                                            ))
                                             .font_size(11.)
                                             .font_weight(FontWeight::MEDIUM)
                                             .color(colors::fg_secondary()),
@@ -169,7 +175,7 @@ impl Component for JavaInstallManager {
                                                     handler.call(());
                                                 }
                                             })
-                                            .text("Close"),
+                                            .text(t("oneclient.common.close")),
                                     ),
                             ),
                     ),
@@ -212,7 +218,10 @@ impl Component for VersionRow {
             .spacing(8.)
             .child(
                 label()
-                    .text(format!("Java {major}"))
+                    .text(tf(
+                        "oneclient.components.java_install_manager.java_major",
+                        &[&major],
+                    ))
                     .font_size(14.)
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
@@ -226,7 +235,7 @@ impl Component for VersionRow {
                     .background(colors::brand())
                     .child(
                         label()
-                            .text("Suggested")
+                            .text(t("oneclient.components.java_install_manager.suggested"))
                             .font_size(10.)
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
@@ -270,7 +279,7 @@ impl Component for VersionRow {
                         }
                     })
                     .child(Icon::new(IconType::Download01).size(13.))
-                    .text("Install"),
+                    .text(t("oneclient.common.install")),
             )
     }
 }

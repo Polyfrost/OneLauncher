@@ -9,6 +9,7 @@ use crate::hooks::{
     ClusterAction, cluster_content_items, use_cached_image, use_cluster_content,
     use_cluster_mutation, use_dispatch, use_installs_snapshot,
 };
+use crate::i18n::{t, tf};
 use crate::state::MissingModInstall;
 use crate::theme::colors;
 use crate::view::app::cluster::package_manager::use_content_meta;
@@ -136,7 +137,7 @@ impl Component for CrashModRows {
                 name: name.unwrap_or_else(|| line.row.name.clone()),
                 version: line.row.version.clone(),
                 note: if enabled_since {
-                    "Enabled".to_string()
+                    t("oneclient.components.crash_dialog.mods.enabled").to_string()
                 } else {
                     line.row.note.clone()
                 },
@@ -154,7 +155,7 @@ impl Component for CrashModRows {
             .spacing(CARD_SPACING)
             .child(
                 label()
-                    .text("Mods involved")
+                    .text(t("oneclient.components.crash_dialog.mods.title"))
                     .font_size(13.)
                     .max_lines(1)
                     .color(colors::danger()),
@@ -170,7 +171,10 @@ impl Component for CrashModRows {
         if self.hidden > 0 {
             body = body.child(
                 label()
-                    .text(format!("And {} more", self.hidden))
+                    .text(tf(
+                        "oneclient.components.crash_dialog.mods.more",
+                        &[&self.hidden],
+                    ))
                     .font_size(11.)
                     .max_lines(1)
                     .color(colors::fg_secondary()),
@@ -221,7 +225,7 @@ impl Component for CrashModRow {
             );
         let resolved = self.resolved || installed_now;
         let note = if installed_now {
-            "Installed".to_string()
+            t("oneclient.components.crash_dialog.mods.installed").to_string()
         } else {
             self.note.clone()
         };
@@ -250,7 +254,7 @@ impl Component for CrashModRow {
                         enabled: true,
                     });
                 })
-                .text("Enable")
+                .text(t("oneclient.components.crash_dialog.mods.enable"))
                 .into_element(),
             CrashModAction::Install { mod_id, range } => {
                 let name = self.name.clone();
@@ -266,7 +270,11 @@ impl Component for CrashModRow {
                             range.clone(),
                         );
                     })
-                    .text(if installing { "Installing" } else { "Install" })
+                    .text(if installing {
+                        t("oneclient.components.crash_dialog.mods.installing")
+                    } else {
+                        t("oneclient.common.install")
+                    })
                     .into_element()
             }
         });

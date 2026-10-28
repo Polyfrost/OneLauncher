@@ -5,6 +5,7 @@ use freya::prelude::*;
 
 use crate::{
     components::{Icon, IconTint, IconType, TooltipPlacement, tooltip::use_tooltip_anchor},
+    i18n::t,
     theme::colors,
 };
 
@@ -471,14 +472,14 @@ pub fn link_button() -> Button {
                 .size(14.)
                 .color(colors::fg_primary()),
         )
-        .child(label().text("Open"))
+        .child(label().text(t("oneclient.common.open")))
 }
 
 pub fn open_folder_button(folder: std::path::PathBuf) -> Button {
     Button::new()
         .secondary()
         .icon()
-        .tooltip("Open folder")
+        .tooltip(t("oneclient.components.button.open_folder"))
         .on_press(move |_| {
             std::fs::create_dir_all(&folder).ok();
             crate::platform::open_path(&folder.to_string_lossy());
@@ -493,14 +494,14 @@ pub fn copy_button(text: String, copied_body: &'static str, dispatch: crate::Act
             if let Err(err) = freya::text_edit::Clipboard::set(text.clone()) {
                 tracing::warn!("clipboard copy failed: {err:?}");
                 dispatch
-                    .notify("Copy failed")
-                    .body("Could not copy to the clipboard.")
+                    .notify(t("oneclient.components.button.copy_failed.title"))
+                    .body(t("oneclient.components.button.copy_failed.body"))
                     .error()
                     .toast_only()
                     .send();
             } else {
                 dispatch
-                    .notify("Copied to clipboard")
+                    .notify(t("oneclient.components.button.copied"))
                     .body(copied_body)
                     .info()
                     .icon(IconType::ClipboardCheck)
@@ -509,5 +510,5 @@ pub fn copy_button(text: String, copied_body: &'static str, dispatch: crate::Act
             }
         })
         .child(Icon::new(IconType::Copy01).size(14.))
-        .text("Copy")
+        .text(t("oneclient.common.copy"))
 }

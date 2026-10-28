@@ -2,6 +2,7 @@ use freya::prelude::*;
 
 use crate::components::IconType;
 use crate::hooks::{has_migration_data, use_migration, use_onboarding_selection};
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -45,11 +46,11 @@ impl Component for OnboardingLanguage {
             .spacing(16.)
             .child(step_heading(
                 "OneClient",
-                "Let's get you all set-up with the most advanced client.",
+                t("oneclient.onboarding.welcome.subtitle"),
             ))
             .child(
                 label()
-                    .text("Choose your preferred language")
+                    .text(t("oneclient.onboarding.language.choose"))
                     .font_size(18.)
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
@@ -117,7 +118,10 @@ fn language_row(
         )
         .child(
             label()
-                .text(format!("{}% localized", language.percentage))
+                .text(tf(
+                    "oneclient.onboarding.language.localized",
+                    &[&language.percentage],
+                ))
                 .font_size(13.)
                 .color(if active {
                     colors::fg_primary()

@@ -10,6 +10,8 @@ use oneclient_core::clusters::Cluster;
 use oneclient_common::MEMORY_HEADROOM_GB;
 pub use oneclient_common::total_ram_mb;
 
+use crate::i18n::{t, tf};
+
 pub type ClusterGroups = BTreeMap<ReleaseLine, Vec<Cluster>>;
 
 /// The modern scheme puts a full release in the first two components (`26.1`) so each
@@ -299,10 +301,6 @@ pub fn abbreviate_number(n: u64) -> String {
     }
 }
 
-pub fn plural(n: i64) -> &'static str {
-    if n == 1 { "" } else { "s" }
-}
-
 pub fn shorten(text: &str, max_chars: usize, ellipsis: &str) -> String {
     let text = text.trim();
     if text.chars().count() <= max_chars {
@@ -334,10 +332,21 @@ pub fn parse_day(date: &str) -> Option<NaiveDate> {
 
 /// `2026-07-05` -> `Jul 5`
 pub fn format_day(date: NaiveDate) -> String {
-    const MONTHS: [&str; 12] = [
-        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-    ];
-    format!("{} {}", MONTHS[date.month0() as usize], date.day())
+    let month = match date.month0() {
+        0 => t("oneclient.utils.month.jan"),
+        1 => t("oneclient.utils.month.feb"),
+        2 => t("oneclient.utils.month.mar"),
+        3 => t("oneclient.utils.month.apr"),
+        4 => t("oneclient.utils.month.may"),
+        5 => t("oneclient.utils.month.jun"),
+        6 => t("oneclient.utils.month.jul"),
+        7 => t("oneclient.utils.month.aug"),
+        8 => t("oneclient.utils.month.sep"),
+        9 => t("oneclient.utils.month.oct"),
+        10 => t("oneclient.utils.month.nov"),
+        _ => t("oneclient.utils.month.dec"),
+    };
+    tf("oneclient.utils.format_day", &[&month, &date.day()])
 }
 
 pub fn bundle_display_name(archive: &BundleArchive) -> String {

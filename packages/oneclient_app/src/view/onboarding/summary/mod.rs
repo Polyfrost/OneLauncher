@@ -11,6 +11,7 @@ use crate::hooks::{
     onboarding_bundles_items, try_default_account, use_current_account, use_dispatch,
     use_migration, use_onboarding_bundles, use_onboarding_selection, use_settings_snapshot,
 };
+use crate::i18n::t;
 use crate::routes::Route;
 use crate::utils::{home_cluster, sort_clusters_for_home};
 use crate::view::onboarding::{matching_new_cluster_id, pkg_key};
@@ -51,7 +52,7 @@ impl Component for OnboardingSummary {
         let reduce_motion = *selection.reduce_motion.read();
         let account_name = try_default_account(&account_query)
             .map(|account| account.username.clone())
-            .unwrap_or_else(|| "Not signed in".to_string());
+            .unwrap_or_else(|| t("oneclient.onboarding.summary.not_signed_in").to_string());
 
         let import_dispatch = dispatch.clone();
         let import_folder = selection.import_folder;
@@ -72,18 +73,22 @@ impl Component for OnboardingSummary {
                             .and_then(|inst| matching_new_cluster_id(inst, &items))
                             .is_some();
                     let target = if dedicated {
-                        "This version only"
+                        t("oneclient.onboarding.migration.target.dedicated.title")
                     } else {
-                        "Shared game directory"
+                        t("oneclient.onboarding.migration.target.shared.title")
                     };
                     let files = if is_vanilla {
-                        "Your Minecraft folder".to_string()
+                        t("oneclient.onboarding.summary.minecraft_folder").to_string()
                     } else {
                         folder
                     };
                     (source_name, files, target.to_string())
                 }
-                None => (source_name, "No files imported".to_string(), String::new()),
+                None => (
+                    source_name,
+                    t("oneclient.onboarding.summary.no_files").to_string(),
+                    String::new(),
+                ),
             }
         });
 

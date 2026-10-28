@@ -17,6 +17,7 @@ use crate::hooks::{
     settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
     use_launcher, use_version_metadata, use_view_state,
 };
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::{
@@ -78,10 +79,10 @@ impl Sort {
 
     fn label(self) -> &'static str {
         match self {
-            Sort::RecentFirst => "Recently played",
-            Sort::OldestFirst => "Least recently played",
-            Sort::NameAsc => "Name (A-Z)",
-            Sort::NameDesc => "Name (Z-A)",
+            Sort::RecentFirst => t("oneclient.clusters.page.sort.recent"),
+            Sort::OldestFirst => t("oneclient.clusters.page.sort.oldest"),
+            Sort::NameAsc => t("oneclient.clusters.page.sort.name_asc"),
+            Sort::NameDesc => t("oneclient.clusters.page.sort.name_desc"),
         }
     }
 }
@@ -126,7 +127,7 @@ impl Component for Clusters {
                         .main_align(Alignment::Center)
                         .child(
                             label()
-                                .text("No versions available yet. Bundles are still syncing.")
+                                .text(t("oneclient.clusters.page.syncing"))
                                 .font_size(16.)
                                 .color(colors::fg_secondary()),
                         ),
@@ -264,10 +265,13 @@ impl Component for Clusters {
             shown_lines.is_empty() && shown_custom.is_empty() && shown_packs.is_empty();
 
         let tabs = [
-            (Filter::All, "All"),
+            (Filter::All, t("oneclient.clusters.page.filter.all")),
             (Filter::OneClient, "OneClient"),
-            (Filter::Custom, "Custom"),
-            (Filter::Modpacks, "Modpacks"),
+            (Filter::Custom, t("oneclient.clusters.page.filter.custom")),
+            (
+                Filter::Modpacks,
+                t("oneclient.clusters.page.filter.modpacks"),
+            ),
         ]
         .map(|(value, name)| {
             TabItem::new(name, active_filter == value).on_press(move |_| filter.set(value))
@@ -296,7 +300,7 @@ impl Component for Clusters {
                 };
                 let caption = match (is_selected, &cluster, list.as_slice()) {
                     (true, Some(c), _) | (_, _, [c]) => cluster_caption(c),
-                    _ => format!("{} instances", list.len()),
+                    _ => tf("oneclient.clusters.page.instance_count", &[&list.len()]),
                 };
                 let on_press = move |_| {
                     selected.set(Some(item));
@@ -401,18 +405,22 @@ impl Component for Clusters {
                                     .append_children((!shown_lines.is_empty()).then(|| {
                                         section(
                                             "OneClient",
-                                            "Grouped by Minecraft version",
+                                            t("oneclient.clusters.page.section.oneclient"),
                                             fixed_grid(line_cards, columns, item_height, gap),
                                         )
                                     }))
                                     .append_children(
                                         [
                                             (
-                                                "Custom",
-                                                "Your own instances, modded or vanilla",
+                                                t("oneclient.clusters.page.section.custom"),
+                                                t("oneclient.clusters.page.section.custom_caption"),
                                                 &shown_custom,
                                             ),
-                                            ("Modpacks", "Installed from Browse", &shown_packs),
+                                            (
+                                                t("oneclient.clusters.page.section.modpacks"),
+                                                t("oneclient.clusters.page.section.modpacks_caption"),
+                                                &shown_packs,
+                                            ),
                                         ]
                                         .into_iter()
                                         .filter(|(_, _, list)| !list.is_empty())
@@ -433,7 +441,7 @@ impl Component for Clusters {
                                     )
                                     .append_children(nothing_shown.then(|| {
                                         label()
-                                            .text("No instances match your search or filters.")
+                                            .text(t("oneclient.clusters.page.no_matches"))
                                             .font_size(13.)
                                             .color(colors::fg_secondary())
                                             .into_element()
@@ -574,7 +582,7 @@ fn filter_menu(
 
     FilterMenu::new(!picked.is_empty() || sort_by != Sort::RecentFirst)
         .section(
-            "Sort by",
+            t("oneclient.clusters.page.sort_by"),
             Sort::ALL.map(|option| {
                 FilterOption::new(option.label(), sort_by == option, move |()| {
                     sort.set(option)
@@ -582,7 +590,7 @@ fn filter_menu(
             }),
         )
         .section(
-            "Loader",
+            t("oneclient.clusters.page.loader"),
             available.iter().map(|loader| {
                 let name = loader.clone();
                 FilterOption::new(loader.clone(), picked.contains(loader), move |()| {
@@ -613,7 +621,7 @@ fn search_input(query: State<String>, width: Size) -> Element {
     TextInput::new(query)
         .width(width)
         .height(Size::px(34.))
-        .placeholder("Search instances")
+        .placeholder(t("oneclient.clusters.page.search"))
         .leading(
             Icon::new(IconType::SearchMd)
                 .size(14.)
@@ -647,10 +655,9 @@ fn line_picker(
             .spacing(8.)
             .child(
                 label()
-                    .text(format!(
-                        "{} instances on {}",
-                        siblings.len(),
-                        line_title(line, siblings)
+                    .text(tf(
+                        "oneclient.clusters.page.instances_on",
+                        &[&siblings.len(), &line_title(line, siblings)],
                     ))
                     .font_size(12.)
                     .font_weight(FontWeight::MEDIUM)
@@ -699,8 +706,14 @@ impl Sidebar {
             description: None,
             meta: vec![
                 ("Minecraft", cluster.mc_version.clone()),
-                ("Loader", cluster.mc_loader.to_string()),
-                ("Last played", last_played_label(cluster.last_played)),
+                (
+                    t("oneclient.clusters.page.loader"),
+                    cluster.mc_loader.to_string(),
+                ),
+                (
+                    t("oneclient.clusters.page.meta.last_played"),
+                    last_played_label(cluster.last_played),
+                ),
             ],
             folder: cluster.dir().ok(),
             picker: None,
@@ -710,13 +723,13 @@ impl Sidebar {
     fn for_instance(cluster: &Cluster, width: f32) -> Self {
         let mut sidebar = Self::base(cluster, width);
         sidebar.type_label = if cluster.linked_modpack_hash.is_some() {
-            "Modpack"
+            t("oneclient.clusters.page.type.modpack")
         } else {
-            "Custom"
+            t("oneclient.clusters.page.type.custom")
         };
         sidebar.description = cluster.description.clone();
         sidebar.meta.push((
-            "Playtime",
+            t("oneclient.clusters.page.meta.playtime"),
             format_duration(i64::try_from(cluster.overall_played.as_secs()).unwrap_or(i64::MAX)),
         ));
         sidebar
@@ -838,7 +851,7 @@ impl Component for Sidebar {
                                 Button::new()
                                     .secondary()
                                     .icon()
-                                    .tooltip("Instance settings")
+                                    .tooltip(t("oneclient.clusters.page.instance_settings"))
                                     .on_press(move |_| {
                                         *active_id.write() = Some(cluster_id);
                                         let _ = RouterContext::get()
@@ -965,14 +978,14 @@ fn page_header(mut show_create: State<bool>) -> impl IntoElement {
                 .spacing(6.)
                 .child(
                     label()
-                        .text("Versions")
+                        .text(t("oneclient.clusters.page.title"))
                         .font_size(32.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_strong()),
                 )
                 .child(
                     label()
-                        .text("Pick a OneClient version, or launch one of your own instances.")
+                        .text(t("oneclient.clusters.page.description"))
                         .font_size(13.)
                         .color(colors::fg_secondary()),
                 ),
@@ -982,7 +995,7 @@ fn page_header(mut show_create: State<bool>) -> impl IntoElement {
                 .primary()
                 .on_press(move |_| show_create.set(true))
                 .child(Icon::new(IconType::Plus).size(16.))
-                .text("New instance"),
+                .text(t("oneclient.clusters.page.new_instance")),
         )
 }
 
@@ -998,13 +1011,13 @@ fn sidebar_error(width: f32) -> Element {
         .background(colors::component_bg())
         .child(
             label()
-                .text("Could not resolve a cluster for this version.")
+                .text(t("oneclient.clusters.page.error.title"))
                 .font_size(14.)
                 .color(colors::fg_secondary()),
         )
         .child(
             label()
-                .text("Try selecting a different version or mod loader.")
+                .text(t("oneclient.clusters.page.error.hint"))
                 .font_size(14.)
                 .color(colors::fg_secondary()),
         )

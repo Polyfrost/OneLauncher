@@ -20,6 +20,7 @@ use crate::hooks::{
     use_active_cluster_id, use_cluster_worlds, use_clusters, use_datapack_world, use_debounced,
     use_dispatch,
 };
+use crate::i18n::{t, tf};
 use crate::launcher::off_ui;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -49,10 +50,10 @@ fn importable(mod_loader: bool) -> Vec<ContentType> {
 
 fn content_label(content_type: ContentType) -> &'static str {
     match content_type {
-        ContentType::ResourcePack => "Textures",
-        ContentType::Shader => "Shaders",
-        ContentType::DataPack => "Data packs",
-        _ => "Mods",
+        ContentType::ResourcePack => t("oneclient.components.file_drop.content.textures"),
+        ContentType::Shader => t("oneclient.components.file_drop.content.shaders"),
+        ContentType::DataPack => t("oneclient.components.file_drop.content.data_packs"),
+        _ => t("oneclient.components.file_drop.content.mods"),
     }
 }
 
@@ -229,14 +230,14 @@ impl Component for DropVeil {
                     .child(icon_badge(IconType::FolderDownload, 52., 22.))
                     .child(
                         label()
-                            .text("Drop files to add them")
+                            .text(t("oneclient.components.file_drop.drop_title"))
                             .font_size(15.)
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
                     .child(
                         label()
-                            .text("You'll pick where they go next.")
+                            .text(t("oneclient.components.file_drop.drop_subtitle"))
                             .font_size(12.5)
                             .color(colors::fg_secondary()),
                     ),
@@ -377,8 +378,8 @@ fn no_clusters_body(mut pending: State<Vec<PathBuf>>) -> Element {
         .width(Size::fill())
         .spacing(16.)
         .child(dialog_header(
-            "Nowhere to put these".to_string(),
-            "Create a cluster first, then drop the files again.".to_string(),
+            t("oneclient.components.file_drop.no_cluster.title").to_string(),
+            t("oneclient.components.file_drop.no_cluster.body").to_string(),
         ))
         .child(
             rect()
@@ -389,7 +390,7 @@ fn no_clusters_body(mut pending: State<Vec<PathBuf>>) -> Element {
                     Button::new()
                         .primary()
                         .on_press(move |_| pending.set(Vec::new()))
-                        .text("Close"),
+                        .text(t("oneclient.common.close")),
                 ),
         )
         .into_element()
@@ -463,7 +464,7 @@ fn prompt_body(
         {
             spawn_world_task(
                 dispatch.clone(),
-                "Couldn't add data packs",
+                t("oneclient.components.file_drop.datapacks_failed"),
                 add_world_datapacks(
                     cluster_id,
                     world,
@@ -473,12 +474,18 @@ fn prompt_body(
         }
         if skipped > 0 {
             dispatch
-                .notify("Some files weren't added")
-                .body(format!(
-                    "{destination_name} has no mod loader, so {skipped} mod or shader file{} {} skipped.",
-                    if skipped == 1 { "" } else { "s" },
-                    if skipped == 1 { "was" } else { "were" },
-                ))
+                .notify(t("oneclient.components.file_drop.skipped.title"))
+                .body(if skipped == 1 {
+                    tf(
+                        "oneclient.components.file_drop.skipped.body.one",
+                        &[&destination_name],
+                    )
+                } else {
+                    tf(
+                        "oneclient.components.file_drop.skipped.body.other",
+                        &[&destination_name, &skipped],
+                    )
+                })
                 .send();
         }
         pending.set(Vec::new());
@@ -489,12 +496,15 @@ fn prompt_body(
         .width(Size::fill())
         .spacing(16.)
         .child(dialog_header(
-            format!(
-                "Add {} file{}",
-                files.len(),
-                if files.len() == 1 { "" } else { "s" }
-            ),
-            "Pick a cluster, then check what each one gets installed as.".to_string(),
+            if files.len() == 1 {
+                t("oneclient.components.file_drop.add.title.one").to_string()
+            } else {
+                tf(
+                    "oneclient.components.file_drop.add.title.other",
+                    &[&files.len()],
+                )
+            },
+            t("oneclient.components.file_drop.add.subtitle").to_string(),
         ))
         .child(cluster_field(clusters, cluster_idx, selected_cluster))
         .maybe_child(
@@ -513,7 +523,7 @@ fn prompt_body(
                     Button::new()
                         .ghost()
                         .on_press(move |_| pending.set(Vec::new()))
-                        .text("Cancel"),
+                        .text(t("oneclient.common.cancel")),
                 )
                 .child(
                     Button::new()
@@ -522,8 +532,8 @@ fn prompt_body(
                         .on_press(import)
                         .child(Icon::new(IconType::Plus).size(15.))
                         .text(match files.len() {
-                            1 => "Add file".to_string(),
-                            n => format!("Add {n} files"),
+                            1 => t("oneclient.components.file_drop.add.confirm.one").to_string(),
+                            n => tf("oneclient.components.file_drop.add.confirm.other", &[&n]),
                         }),
                 ),
         )
@@ -558,7 +568,7 @@ fn cluster_field(
     let current = labels[selected_idx].clone();
 
     field(
-        "Destination cluster",
+        t("oneclient.components.file_drop.destination_cluster"),
         Dropdown::new(current, labels)
             .width(Size::fill())
             .height(Size::px(32.))
@@ -578,9 +588,9 @@ fn world_field(
 ) -> Element {
     let Some(current) = current else {
         return field(
-            "Destination world",
+            t("oneclient.components.file_drop.destination_world"),
             label()
-                .text("This cluster has no worlds yet. Create one in game, then drop the data packs again.")
+                .text(t("oneclient.components.file_drop.no_worlds"))
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
@@ -589,7 +599,7 @@ fn world_field(
 
     let names = worlds.to_vec();
     field(
-        "Destination world",
+        t("oneclient.components.file_drop.destination_world"),
         Dropdown::new(current.to_string(), worlds.to_vec())
             .width(Size::fill())
             .height(Size::px(32.))
@@ -622,7 +632,7 @@ fn file_field(
         .collect::<Vec<_>>();
 
     field(
-        "Files",
+        t("oneclient.components.file_drop.files"),
         rect()
             .width(Size::fill())
             .padding(Gaps::new_all(6.))
@@ -661,7 +671,7 @@ fn file_row(
             })
             .into_element(),
         None => label()
-            .text("Needs a mod loader")
+            .text(t("oneclient.components.file_drop.needs_loader"))
             .font_size(12.)
             .max_lines(1)
             .color(colors::fg_secondary())

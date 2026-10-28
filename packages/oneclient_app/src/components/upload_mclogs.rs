@@ -4,6 +4,7 @@ use freya::text_edit::Clipboard;
 
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{UseUploadLog, use_dispatch};
+use crate::i18n::{t, tf};
 use crate::view::app::cluster::logs::Confirm;
 
 #[derive(PartialEq)]
@@ -27,14 +28,14 @@ impl Component for UploadToMclogs {
             .enabled(self.has_log)
             .on_press(move |_| confirm.set(Some(Confirm::Upload)))
             .child(Icon::new(IconType::LinkExternal01).size(15.))
-            .text("Upload to mclo.gs")
+            .text(t("oneclient.components.upload_mclogs.upload"))
     }
 }
 
 pub fn notify_log_truncated(dispatch: &crate::Actions) {
     dispatch
-        .notify("Log was shortened")
-        .body("The log was too large for mclo.gs, so only its most recent part was uploaded.")
+        .notify(t("oneclient.components.upload_mclogs.truncated.title"))
+        .body(t("oneclient.components.upload_mclogs.truncated.body"))
         .info()
         .icon(IconType::AlertTriangle)
         .send();
@@ -72,8 +73,11 @@ pub fn use_mclogs_feedback(upload: UseUploadLog) {
                 }
 
                 dispatch
-                    .notify("Uploaded to mclo.gs")
-                    .body(format!("{} (copied to clipboard)", result.url))
+                    .notify(t("oneclient.components.upload_mclogs.uploaded.title"))
+                    .body(tf(
+                        "oneclient.components.upload_mclogs.uploaded.body",
+                        &[&result.url],
+                    ))
                     .info()
                     .icon(IconType::LinkExternal01)
                     .send();
@@ -84,7 +88,7 @@ pub fn use_mclogs_feedback(upload: UseUploadLog) {
             }
             Err(err) => {
                 dispatch
-                    .notify("Upload failed")
+                    .notify(t("oneclient.components.upload_mclogs.failed"))
                     .body(err.to_string())
                     .error()
                     .send();

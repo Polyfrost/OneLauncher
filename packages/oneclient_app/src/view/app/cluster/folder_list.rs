@@ -13,6 +13,7 @@ use crate::components::{
 use crate::hooks::{
     loaded_image, settled_or_loading, use_cached_image, use_clusters, use_game_snapshot,
 };
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 
@@ -51,12 +52,10 @@ pub(super) fn use_game_folder_in_use(cluster: Option<&Cluster>) -> bool {
     })
 }
 
-pub(super) fn notify_in_use(dispatch: &crate::Actions, what: &str) {
+pub(super) fn notify_in_use(dispatch: &crate::Actions, body: &'static str) {
     dispatch
-        .notify("Close Minecraft first")
-        .body(format!(
-            "{what} can't be deleted while a version using this game folder is running."
-        ))
+        .notify(t("oneclient.cluster.folder_list.in_use.title"))
+        .body(body)
         .error()
         .send();
 }
@@ -98,7 +97,7 @@ pub(super) fn toolbar_panel(leading: Option<Element>, controls: Vec<Element>) ->
 
 pub(super) fn search_input(search: State<String>) -> Element {
     TextInput::new(search)
-        .placeholder("Search...")
+        .placeholder(t("oneclient.cluster.package_manager.search"))
         .width(Size::px(SEARCH_W))
         .leading(
             Icon::new(IconType::SearchMd)
@@ -437,13 +436,13 @@ pub(crate) fn confirm_dialog(
             Button::new()
                 .secondary()
                 .on_press(move |_| cancel())
-                .text("Cancel")
+                .text(t("oneclient.common.cancel"))
                 .into_element(),
             Button::new()
                 .danger()
                 .on_press(move |_| on_confirm())
                 .child(Icon::new(IconType::Trash01).size(14.))
-                .text("Delete")
+                .text(t("oneclient.common.delete"))
                 .into_element(),
         ],
     )

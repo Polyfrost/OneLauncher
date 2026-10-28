@@ -11,6 +11,7 @@ use oneclient_polyplus::api::{BodySlot, SwatchArt};
 use crate::AppAssets;
 use crate::hooks::wardrobe::{use_cosmetic_bundle, use_swatch};
 use crate::hooks::{loaded_image, settled_or_loading, use_cached_image};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::{border_all_color, clamp_to_window};
 
@@ -101,7 +102,7 @@ pub(super) struct Badge {
 
 impl Badge {
     pub fn favorite() -> Self {
-        Self::text("FAVOURITE", BadgeStyle::Accent)
+        Self::text(t("oneclient.wardrobe.badge.favourite"), BadgeStyle::Accent)
     }
 
     pub fn text(label: impl Into<String>, style: BadgeStyle) -> Self {
@@ -177,7 +178,7 @@ pub(super) fn price_label(
         ),
         Some(price) if price <= 0. => row.child(
             label()
-                .text("FREE")
+                .text(t("oneclient.wardrobe.price.free"))
                 .font_size(14.)
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::success()),
@@ -440,9 +441,14 @@ impl Component for WardrobeCard {
                 let index = entries.len().min(1);
                 entries.insert(
                     index,
-                    MenuAction::new(IconType::Pencil01, "Rename", true, move |()| {
-                        rename_at.set(Some((x, y)));
-                    }),
+                    MenuAction::new(
+                        IconType::Pencil01,
+                        t("oneclient.wardrobe.rename.title"),
+                        true,
+                        move |()| {
+                            rename_at.set(Some((x, y)));
+                        },
+                    ),
                 );
             }
             entries
@@ -674,7 +680,7 @@ impl Component for RenamePopup {
                     .border(hairline(colors::component_border()))
                     .child(
                         label()
-                            .text("Rename")
+                            .text(t("oneclient.wardrobe.rename.title"))
                             .font_size(12.)
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
@@ -698,14 +704,14 @@ impl Component for RenamePopup {
                                     .secondary()
                                     .small()
                                     .on_press(move |_| cancel.call(()))
-                                    .text("Cancel"),
+                                    .text(t("oneclient.common.cancel")),
                             )
                             .child(
                                 Button::new()
                                     .primary()
                                     .small()
                                     .on_press(move |_| press())
-                                    .text("Save"),
+                                    .text(t("oneclient.common.save")),
                             ),
                     )
                     .into_element(),

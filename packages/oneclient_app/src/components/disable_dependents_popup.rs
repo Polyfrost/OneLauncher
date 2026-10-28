@@ -11,6 +11,7 @@ use freya::prelude::*;
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::disable::{self, PendingDisable};
 use crate::hooks::{invalidate_cluster_queries, use_disable_confirm};
+use crate::i18n::t;
 use crate::launcher;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -88,7 +89,7 @@ impl Component for DisableDependentsOverlay {
                                         Button::new()
                                             .secondary()
                                             .on_press(move |_| pending.set(None))
-                                            .text("Cancel"),
+                                            .text(t("oneclient.common.cancel")),
                                     )
                                     .child(
                                         Button::new()
@@ -116,7 +117,7 @@ fn apply(pending: PendingDisable) {
                 state
                     .services
                     .events
-                    .notify("Could not disable")
+                    .notify(t("oneclient.components.disable_dependents_popup.failed"))
                     .body(err.to_string())
                     .error()
                     .send();

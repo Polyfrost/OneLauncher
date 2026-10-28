@@ -8,16 +8,31 @@ use oneclient_core::{ExternalDetection, ExternalInstance, FlaggedImportMod, Game
 
 use super::details::DetailsState;
 use crate::hooks::GameVersion;
+use crate::i18n::t;
 
-pub const VERSION_KINDS: [(&str, GameVersionKind); 4] = [
-    ("Releases", GameVersionKind::Release),
-    ("Snapshots", GameVersionKind::Snapshot),
-    ("Beta", GameVersionKind::Beta),
-    ("Alpha", GameVersionKind::Alpha),
-];
+pub fn version_kinds() -> [(&'static str, GameVersionKind); 4] {
+    [
+        (
+            t("oneclient.clusters.instance.model.kind.releases"),
+            GameVersionKind::Release,
+        ),
+        (
+            t("oneclient.clusters.instance.model.kind.snapshots"),
+            GameVersionKind::Snapshot,
+        ),
+        (
+            t("oneclient.clusters.instance.model.kind.beta"),
+            GameVersionKind::Beta,
+        ),
+        (
+            t("oneclient.clusters.instance.model.kind.alpha"),
+            GameVersionKind::Alpha,
+        ),
+    ]
+}
 
 pub fn kind_bit(kind: GameVersionKind) -> u8 {
-    let index = VERSION_KINDS
+    let index = version_kinds()
         .iter()
         .position(|(_, k)| *k == kind)
         .unwrap_or(0);
@@ -140,14 +155,10 @@ impl LoaderChoice {
 
     pub fn blurb(self) -> &'static str {
         match self {
-            Self::Fabric => {
-                "Light and quick to start. The widest package selection on modern versions, and the legacy build covers 1.8.9 and older."
-            }
-            Self::Forge => "The oldest loader. Most 1.12.2 and 1.8.9 packages need it.",
-            Self::NeoForge => "Forge's successor, for 1.20.2 and newer.",
-            Self::Vanilla => {
-                "Minecraft exactly as Mojang ships it. Packages cannot be installed without a loader."
-            }
+            Self::Fabric => t("oneclient.clusters.instance.model.loader.fabric"),
+            Self::Forge => t("oneclient.clusters.instance.model.loader.forge"),
+            Self::NeoForge => t("oneclient.clusters.instance.model.loader.neoforge"),
+            Self::Vanilla => t("oneclient.clusters.instance.model.loader.vanilla"),
         }
     }
 
@@ -188,17 +199,17 @@ pub enum Step {
 impl Step {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Type => "Type",
-            Self::Folder => "Folder",
-            Self::Loader => "Loader",
-            Self::Version => "Version",
-            Self::Bundles => "Bundles",
-            Self::Customize => "Details",
-            Self::Modpack => "Source",
-            Self::ImportSource => "Source",
-            Self::ImportMode => "Method",
-            Self::Import => "Instances",
-            Self::ImportReview => "Review",
+            Self::Type => t("oneclient.clusters.instance.model.step.type"),
+            Self::Folder => t("oneclient.clusters.instance.model.step.folder"),
+            Self::Loader => t("oneclient.clusters.instance.model.step.loader"),
+            Self::Version => t("oneclient.clusters.instance.model.step.version"),
+            Self::Bundles => t("oneclient.clusters.instance.model.step.bundles"),
+            Self::Customize => t("oneclient.clusters.instance.model.step.customize"),
+            Self::Modpack => t("oneclient.clusters.instance.model.step.source"),
+            Self::ImportSource => t("oneclient.clusters.instance.model.step.source"),
+            Self::ImportMode => t("oneclient.clusters.instance.model.step.import_mode"),
+            Self::Import => t("oneclient.clusters.instance.model.step.import"),
+            Self::ImportReview => t("oneclient.clusters.instance.model.step.import_review"),
         }
     }
 }

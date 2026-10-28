@@ -12,6 +12,7 @@ use crate::hooks::{
     package_meta_batch, use_cached_image, use_dispatch, use_notifications_snapshot,
     use_package_meta_batch,
 };
+use crate::i18n::{t, tf};
 use crate::notifications::{
     ClusterUpdateItem, OptionalModRef, OptionalModsGroup, OptionalModsOutcome,
 };
@@ -22,8 +23,6 @@ const DIALOG_W: f32 = 720.;
 const DIALOG_PAD: f32 = 22.;
 const LIST_MAX_H: f32 = 306.;
 const ICON_SIZE: f32 = 40.;
-const SKIP_NOTE: &str =
-    "Anything you don't pick won't be offered again, but you can add it later from the Mods tab.";
 
 type MetaMap = HashMap<(ProviderId, String), CachedPackageMeta>;
 
@@ -184,26 +183,35 @@ fn content(
         .cloned()
         .partition(|(cluster_id, (_, package_id))| selected(*cluster_id, package_id));
 
-    let plural = if total == 1 { "" } else { "s" };
+    let skip_note = t("oneclient.components.optional_mods_popup.skip_note");
     let subtitle = match groups {
-        [only] => format!(
-            "{} includes {total} optional mod{plural} that {} off by default. Pick the {} to turn on. {SKIP_NOTE}",
-            only.cluster_name,
-            if total == 1 { "is" } else { "are" },
-            if total == 1 { "one" } else { "ones" }
+        [only] if total == 1 => tf(
+            "oneclient.components.optional_mods_popup.single.one",
+            &[&only.cluster_name, &skip_note],
         ),
-        _ => format!(
-            "Your bundles include {total} optional mod{plural} across {} clusters that are off by default. Pick the ones to turn on. {SKIP_NOTE}",
-            groups.len()
+        [only] => tf(
+            "oneclient.components.optional_mods_popup.single.other",
+            &[&only.cluster_name, &total, &skip_note],
+        ),
+        _ if total == 1 => tf(
+            "oneclient.components.optional_mods_popup.multi.one",
+            &[&groups.len(), &skip_note],
+        ),
+        _ => tf(
+            "oneclient.components.optional_mods_popup.multi.other",
+            &[&total, &groups.len(), &skip_note],
         ),
     };
 
     let cancel = dispatch.clone();
 
     let primary_text = if enable.is_empty() {
-        "Launch".to_string()
+        t("oneclient.components.optional_mods_popup.launch").to_string()
     } else {
-        format!("Install {} & launch", enable.len())
+        tf(
+            "oneclient.components.optional_mods_popup.install_and_launch",
+            &[&enable.len()],
+        )
     };
 
     rect()
@@ -219,7 +227,7 @@ fn content(
                 .spacing(3.)
                 .child(
                     label()
-                        .text("Optional mods available")
+                        .text(t("oneclient.components.optional_mods_popup.title"))
                         .font_size(17.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
@@ -247,7 +255,7 @@ fn content(
                             picked.set(Picked::new());
                             cancel.close_optional_mods(OptionalModsOutcome::Cancel);
                         })
-                        .text("Cancel"),
+                        .text(t("oneclient.common.cancel")),
                 )
                 .child({
                     let apply = dispatch.clone();

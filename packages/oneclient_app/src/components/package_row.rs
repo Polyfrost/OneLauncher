@@ -1064,11 +1064,11 @@ fn copies_button(ignored: usize, on_press: EventHandler<()>) -> Element {
 }
 
 fn shadowed_badge() -> Element {
-    status_tag("Using your copy", colors::brand())
+    pill(None, "Using your copy".to_string(), colors::brand())
 }
 
 fn outranked_badge() -> Element {
-    status_tag("Using bundle's newer copy", colors::brand())
+    pill(None, "Using bundle's newer copy".to_string(), colors::brand())
 }
 
 fn new_badge() -> Element {

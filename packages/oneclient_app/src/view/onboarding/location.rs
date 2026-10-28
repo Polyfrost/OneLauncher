@@ -166,7 +166,7 @@ impl Component for OnboardingLocation {
         };
 
         onboarding_page(
-            onboarding_illustration(IconType::Folder),
+            onboarding_illustration(IconType::OnboardingFolder),
             content.into_element(),
             onboarding_nav_action(
                 Some(Route::OnboardingWelcome {}),

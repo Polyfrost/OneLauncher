@@ -132,7 +132,7 @@ impl Component for OnboardingTerms {
             .width(Size::fill())
             .height(Size::fill())
             .child(onboarding_page(
-                onboarding_illustration(IconType::File02),
+                onboarding_illustration(IconType::OnboardingTerms),
                 content,
                 nav,
             ))

@@ -132,11 +132,7 @@ impl Component for OnboardingMigration {
                             .height(Size::fill())
                             .center()
                             .padding(Gaps::new_all(48.))
-                            .child(onboarding_illustration(if is_vanilla {
-                                IconType::FolderDownload
-                            } else {
-                                IconType::ClockRewind
-                            })),
+                            .child(onboarding_illustration(IconType::OnboardingMigration)),
                     )
                     .child(
                         rect()

@@ -1,0 +1,17 @@
+<svg width="300" height="270" viewBox="0 0 300 270" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="8" y="16" width="160" height="182" rx="30" fill="url(#migrate_old)"/>
+<rect x="32" y="50" width="82" height="12" rx="6" fill="#2B4BFF" fill-opacity="0.35"/>
+<rect x="32" y="74" width="110" height="10" rx="5" fill="#2B4BFF" fill-opacity="0.2"/>
+<rect x="32" y="94" width="92" height="10" rx="5" fill="#2B4BFF" fill-opacity="0.2"/>
+<rect x="126" y="70" width="166" height="190" rx="32" fill="url(#migrate_new)"/>
+<rect x="126.75" y="70.75" width="164.5" height="188.5" rx="31.25" stroke="white" stroke-opacity="0.1" stroke-width="1.5"/>
+<path d="M209 118C212 148 223 159 253 162C223 165 212 176 209 206C206 176 195 165 165 162C195 159 206 148 209 118Z" fill="white" fill-opacity="0.92"/>
+<circle cx="112" cy="200" r="46" fill="url(#migrate_badge)"/>
+<circle cx="112" cy="200" r="45.25" stroke="white" stroke-opacity="0.1" stroke-width="1.5"/>
+<path d="M90 200H134M118 184L134 200L118 216" stroke="white" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<defs>
+<linearGradient id="migrate_old" x1="50" y1="16" x2="120" y2="198" gradientUnits="userSpaceOnUse"><stop stop-color="#EAF6FF"/><stop offset="1" stop-color="#C6E1F5"/></linearGradient>
+<linearGradient id="migrate_new" x1="150" y1="70" x2="280" y2="250" gradientUnits="userSpaceOnUse"><stop stop-color="#7A64FF"/><stop offset="0.637" stop-color="#415EFF"/><stop offset="1" stop-color="#2B4BFF"/></linearGradient>
+<linearGradient id="migrate_badge" x1="70" y1="154" x2="154" y2="246" gradientUnits="userSpaceOnUse"><stop stop-color="#FF94C2"/><stop offset="1" stop-color="#EE5C56"/></linearGradient>
+</defs>
+</svg>

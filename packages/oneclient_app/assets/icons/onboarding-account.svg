@@ -7,7 +7,7 @@
     <rect x="150" y="108" width="155" height="155" rx="42" fill="url(#login_badge)"></rect>
     <rect x="150.5" y="108.5" width="154" height="154" rx="41.5" stroke="white" stroke-opacity="0.5"></rect>
   </g>
-  <g fill="#2B4BFF" fill-opacity="0.82">
+  <g fill="white" fill-opacity="0.95">
     <path d="M188 179 H214 V169 L233 186 L214 203 V193 H188 Z"></path>
     <path d="M239 151 H259 V220 H239 V209 H249 V162 H239 Z"></path>
   </g>
@@ -31,8 +31,8 @@
       <stop offset="1" stop-color="#C6E1F5"></stop>
     </linearGradient>
     <linearGradient id="login_badge" x1="193" y1="105" x2="257" y2="263" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#C8D6F5"></stop>
-      <stop offset="1" stop-color="#B6CCFC"></stop>
+      <stop stop-color="#FF94C2"></stop>
+      <stop offset="1" stop-color="#EE5C56"></stop>
     </linearGradient>
   </defs>
 </svg>

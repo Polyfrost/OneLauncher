@@ -1,0 +1,17 @@
+<svg width="300" height="270" viewBox="0 0 300 270" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M14 72C14 57 26 46 40 46H100C108 46 115 49 120 55L134 70H222C236 70 248 82 248 96V218C248 232 236 244 222 244H40C26 244 14 232 14 218V72Z" fill="url(#folder_back)"/>
+<rect x="44" y="78" width="176" height="120" rx="18" fill="url(#folder_paper)"/>
+<rect x="64" y="100" width="88" height="11" rx="5.5" fill="#2B4BFF" fill-opacity="0.35"/>
+<rect x="64" y="121" width="120" height="9" rx="4.5" fill="#2B4BFF" fill-opacity="0.2"/>
+<path d="M14 128C14 114 26 104 40 104H222C236 104 248 114 248 128V218C248 232 236 244 222 244H40C26 244 14 232 14 218V128Z" fill="url(#folder_front)"/>
+<rect x="38" y="208" width="64" height="12" rx="6" fill="white" fill-opacity="0.45"/>
+<circle cx="238" cy="72" r="52" fill="url(#folder_badge)"/>
+<circle cx="238" cy="72" r="51.25" stroke="white" stroke-opacity="0.1" stroke-width="1.5"/>
+<path d="M238 46V94M218 75L238 95L258 75" stroke="white" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>
+<defs>
+<linearGradient id="folder_back" x1="60" y1="46" x2="200" y2="244" gradientUnits="userSpaceOnUse"><stop stop-color="#C8D6F5"/><stop offset="1" stop-color="#B6CCFC"/></linearGradient>
+<linearGradient id="folder_paper" x1="100" y1="78" x2="140" y2="198" gradientUnits="userSpaceOnUse"><stop stop-color="#EAF6FF"/><stop offset="1" stop-color="#C6E1F5"/></linearGradient>
+<linearGradient id="folder_front" x1="40" y1="104" x2="200" y2="250" gradientUnits="userSpaceOnUse"><stop stop-color="#7A64FF"/><stop offset="0.637" stop-color="#415EFF"/><stop offset="1" stop-color="#2B4BFF"/></linearGradient>
+<linearGradient id="folder_badge" x1="190" y1="20" x2="286" y2="124" gradientUnits="userSpaceOnUse"><stop stop-color="#FF94C2"/><stop offset="1" stop-color="#EE5C56"/></linearGradient>
+</defs>
+</svg>

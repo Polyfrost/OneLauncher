@@ -232,7 +232,7 @@ pub fn text_size(size: f32) -> f32 {
     (size * scale / step).round().max(1.) * step / scale
 }
 
-const PIXEL_ICON_GRID: f32 = 12.;
+const PIXEL_ICON_GRID: f32 = 11.;
 
 pub fn pixel_icon(path: &str) -> Option<String> {
     if !colors::active_theme().pixel_icons {

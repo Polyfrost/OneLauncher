@@ -17,7 +17,8 @@ pub async fn load_settings(notify: Option<&EventBus>) -> LauncherSettings {
             LauncherSettings::default()
         } else {
             let data = polyio::read(&path).await?;
-            let mut settings: LauncherSettings = serde_json::from_slice(&data)?;
+            let mut settings =
+                salvaged_settings(serde_json::from_slice::<serde_json::Value>(&data)?);
             settings.migrate();
             settings
         })
@@ -54,14 +55,8 @@ async fn recover_after_failed_load() -> LauncherSettings {
 
     match serde_json::from_slice::<serde_json::Value>(&data) {
         Ok(value) => {
-            settings.data_dir = salvaged_data_dir(&value);
-
-            if let Some(dir) = &settings.data_dir {
-                tracing::warn!(
-                    data_dir = %dir.display(),
-                    "settings did not parse; kept the data folder they named"
-                );
-            }
+            settings = salvaged_settings(value);
+            settings.migrate();
         }
         Err(err) => {
             tracing::warn!("settings file is not valid JSON: {err}");
@@ -84,12 +79,29 @@ async fn recover_after_failed_load() -> LauncherSettings {
     settings
 }
 
-fn salvaged_data_dir(value: &serde_json::Value) -> Option<std::path::PathBuf> {
-    value
-        .get("data_dir")
-        .and_then(serde_json::Value::as_str)
-        .filter(|raw| !raw.trim().is_empty())
-        .map(std::path::PathBuf::from)
+/// Keeps every field that parses on its own so one bad value only resets itself
+fn salvaged_settings(value: serde_json::Value) -> LauncherSettings {
+    let serde_json::Value::Object(fields) = value else {
+        tracing::warn!("settings file is not a JSON object");
+        return LauncherSettings::default();
+    };
+
+    let kept: serde_json::Map<_, _> = fields
+        .into_iter()
+        .filter(|(key, field)| {
+            let single =
+                serde_json::Value::Object([(key.clone(), field.clone())].into_iter().collect());
+            match serde_json::from_value::<LauncherSettings>(single) {
+                Ok(_) => true,
+                Err(err) => {
+                    tracing::warn!("reset setting `{key}` to its default: {err}");
+                    false
+                }
+            }
+        })
+        .collect();
+
+    serde_json::from_value(serde_json::Value::Object(kept)).unwrap_or_default()
 }
 
 #[tracing::instrument(level = "debug", skip(settings))]
@@ -129,26 +141,29 @@ pub async fn save_global_profile(
 mod tests {
     use super::*;
 
-    fn salvage(raw: &str) -> Option<std::path::PathBuf> {
-        salvaged_data_dir(&serde_json::from_str(raw).expect("valid json"))
+    fn salvage(raw: &str) -> LauncherSettings {
+        salvaged_settings(serde_json::from_str(raw).expect("valid json"))
     }
 
     #[test]
     fn one_bad_field_does_not_cost_the_user_their_library() {
-        let raw = r#"{"max_concurrent_requests":"25","data_dir":"D:\\OneClient"}"#;
+        let raw = r#"{"max_concurrent_requests":"25","theme":"minecraft-dark","log_debug":true,"data_dir":"D:\\OneClient"}"#;
+        let settings = salvage(raw);
 
         assert_eq!(
-            salvage(raw),
+            settings.data_dir,
             Some(std::path::PathBuf::from("D:\\OneClient")),
             "the location has to survive whatever else is wrong with the file"
         );
+        assert!(settings.log_debug);
+        assert_eq!(settings.theme, super::super::launcher::AppTheme::Dark);
+        assert_eq!(settings.max_concurrent_requests, 25);
     }
 
     #[test]
     fn the_default_location_stays_the_default() {
-        assert_eq!(salvage(r#"{"log_debug":true}"#), None);
-        assert_eq!(salvage(r#"{"data_dir":null}"#), None);
-        assert_eq!(salvage(r#"{"data_dir":"   "}"#), None);
-        assert_eq!(salvage(r#"{"data_dir":42}"#), None);
+        assert_eq!(salvage(r#"{"log_debug":true}"#).data_dir, None);
+        assert_eq!(salvage(r#"{"data_dir":null}"#).data_dir, None);
+        assert_eq!(salvage(r#"{"data_dir":42}"#).data_dir, None);
     }
 }

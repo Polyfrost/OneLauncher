@@ -1079,7 +1079,7 @@ impl Component for ContentBox {
             };
             menu_for
                 .on_close(move |_| menu.set(None))
-                .overlay_level(OVERLAY_BASE_LEVEL + if copies_open { 2 } else { 0 })
+                .overlay_level(OVERLAY_BASE_LEVEL + if copies_open { 3 } else { 0 })
                 .into_element()
         });
 

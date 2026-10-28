@@ -278,15 +278,6 @@ impl Bulk {
 const TOOLBAR_STACK_W: f32 = 640.;
 const TABS_ROW_H: f32 = 34.;
 
-fn tabs_scrollbar_theme() -> ScrollBarThemePartial {
-    ScrollBarThemePartial {
-        thumb_background: Some(colors::fg_secondary().with_a(120).into()),
-        hover_thumb_background: Some(colors::fg_secondary().with_a(190).into()),
-        active_thumb_background: Some(colors::fg_primary().into()),
-        ..Default::default()
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 pub(super) fn toolbar_bar(
     tabs: &[Tab],
@@ -329,8 +320,7 @@ pub(super) fn toolbar_bar(
     let filter_tabs = ScrollView::new()
         .direction(Direction::Horizontal)
         .invert_scroll_wheel(true)
-        .show_scrollbar(true)
-        .scrollbar(|context| ScrollBar::new(context).theme(tabs_scrollbar_theme()).into())
+        .show_scrollbar(false)
         .width(if stacked {
             Size::fill()
         } else {
@@ -380,19 +370,6 @@ pub(super) fn toolbar_bar(
             move || package_list_text(&export, content_type),
         ));
     }
-    let selection = bulk.selection;
-    controls.push(
-        Button::new()
-            .secondary()
-            .height(Size::px(34.))
-            .font_size(text_size(12.))
-            .enabled(!bulk.order.is_empty())
-            .tooltip("Select several to enable, disable or delete at once")
-            .on_press(move |_| selection.enter())
-            .child(Icon::new(IconType::Check).size(15.))
-            .text("Select")
-            .into_element(),
-    );
     controls.push(
         Button::new()
             .primary()

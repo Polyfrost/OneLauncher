@@ -16,6 +16,7 @@ use freya::prelude::*;
 pub use accounts::SettingsAccounts;
 pub use apis::SettingsApis;
 pub use appearance::SettingsAppearance;
+pub(crate) use appearance::theme_cards;
 pub use changelog::SettingsChangelog;
 pub use developer::SettingsDeveloper;
 pub use java::SettingsJava;

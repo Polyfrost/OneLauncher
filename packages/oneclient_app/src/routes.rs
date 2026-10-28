@@ -147,7 +147,7 @@ impl Route {
             Route::OnboardingMigration { .. } => "Migration".to_string(),
             Route::OnboardingLanguage { .. } => "Language".to_string(),
             Route::OnboardingAccount { .. } => "Account".to_string(),
-            Route::OnboardingPreferences { .. } => "Accessibility".to_string(),
+            Route::OnboardingPreferences { .. } => "Appearance".to_string(),
             Route::OnboardingBundles { .. } => "Mods".to_string(),
             Route::OnboardingSummary { .. } => "Summary".to_string(),
             Route::Home { .. } => "Home".to_string(),

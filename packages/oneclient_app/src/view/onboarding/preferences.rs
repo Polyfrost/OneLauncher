@@ -3,7 +3,7 @@ use freya::prelude::*;
 use crate::components::{IconType, toggle};
 use crate::hooks::{use_dispatch, use_onboarding_selection, use_settings_snapshot};
 use crate::routes::Route;
-use crate::view::app::settings::settings_row;
+use crate::view::app::settings::{settings_row, theme_cards};
 use crate::view::onboarding::{
     onboarding_illustration, onboarding_nav, onboarding_page, step_heading,
 };
@@ -31,6 +31,7 @@ impl Component for OnboardingPreferences {
         });
 
         let mut first = use_state(|| true);
+        let persist = dispatch.clone();
         use_side_effect(move || {
             let parallax = *parallax_on.read();
             let animations = *animations_on.read();
@@ -38,10 +39,10 @@ impl Component for OnboardingPreferences {
                 first.set(false);
                 return;
             }
-            let mut next = settings.clone();
-            next.dynamic_background_enabled = parallax;
-            next.animations_enabled = animations;
-            dispatch.set_settings(next);
+            persist.edit_settings(|settings| {
+                settings.dynamic_background_enabled = parallax;
+                settings.animations_enabled = animations;
+            });
         });
 
         let content = rect()
@@ -49,9 +50,10 @@ impl Component for OnboardingPreferences {
             .width(Size::fill())
             .spacing(20.)
             .child(step_heading(
-                "Accessibility",
-                "Tune the launcher to your comfort. You can change these later in settings.",
+                "Appearance",
+                "Pick a look you like. You can change it any time in settings.",
             ))
+            .child(theme_cards(&settings.theme, dispatch))
             .child(
                 rect()
                     .vertical()

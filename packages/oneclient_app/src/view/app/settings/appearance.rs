@@ -97,10 +97,23 @@ impl Component for SettingsAppearance {
 fn theme_section(selected: &str, dispatch: Actions) -> impl IntoElement {
     let system_dark = *Platform::get().preferred_theme.read() == PreferredTheme::Dark;
     let active = resolve_theme(system_aware(selected, system_dark));
+
+    rect()
+        .horizontal()
+        .spacing(16.)
+        .child(big_preview(active.colors))
+        .child(theme_cards(selected, dispatch))
+        .into_element()
+}
+
+pub(crate) fn theme_cards(selected: &str, dispatch: Actions) -> impl IntoElement {
+    let system_dark = *Platform::get().preferred_theme.read() == PreferredTheme::Dark;
+    let active = resolve_theme(system_aware(selected, system_dark));
     let (dark, light) = (resolve_theme("dark"), resolve_theme("light"));
 
     let system = ThemeCard {
         id: SYSTEM_THEME.to_string(),
+        name: "System".to_string(),
         background: LinearGradient::new()
             .angle(-90.)
             .stop((dark.colors.page.0, 0.))
@@ -109,33 +122,30 @@ fn theme_section(selected: &str, dispatch: Actions) -> impl IntoElement {
             .stop((light.colors.page.0, 100.))
             .into(),
         preview: dark.colors,
+        radius_scale: dark.radius_scale,
         selected: selected == SYSTEM_THEME,
     };
     let cards: Vec<ThemeCard> = std::iter::once(system)
         .chain(themes().iter().map(|theme| ThemeCard {
             id: theme.id.clone(),
+            name: theme.name.clone(),
             background: theme.colors.page.0.into(),
             preview: theme.colors,
+            radius_scale: theme.radius_scale,
             selected: selected != SYSTEM_THEME && theme.id == active.id,
         }))
         .collect();
 
     rect()
-        .horizontal()
+        .vertical()
         .spacing(16.)
-        .child(big_preview(active.colors))
-        .child(
+        .children(cards.chunks(3).map(|row| {
             rect()
-                .vertical()
+                .horizontal()
                 .spacing(16.)
-                .children(cards.chunks(3).map(|row| {
-                    rect()
-                        .horizontal()
-                        .spacing(16.)
-                        .children(row.iter().map(|card| theme_card(card, dispatch.clone())))
-                        .into_element()
-                })),
-        )
+                .children(row.iter().map(|card| theme_card(card, dispatch.clone())))
+                .into_element()
+        }))
         .into_element()
 }
 
@@ -166,8 +176,10 @@ fn big_preview(theme: Palette) -> impl IntoElement {
 
 struct ThemeCard {
     id: String,
+    name: String,
     background: Fill,
     preview: Palette,
+    radius_scale: f32,
     selected: bool,
 }
 
@@ -181,19 +193,42 @@ fn theme_card(card: &ThemeCard, dispatch: Actions) -> Element {
 
     rect()
         .vertical()
-        .width(Size::px(126.))
-        .height(Size::px(78.))
-        .corner_radius(rounded(8.))
-        .background(card.background.clone())
-        .border(border_all_color(1., border_color))
-        .padding(8.)
-        .spacing(20.)
+        .spacing(6.)
         .cursor(CursorIcon::Pointer)
         .on_press(move |_| {
             dispatch.edit_settings(|settings| settings.theme = id.clone());
         })
-        .child(mock_line(108., line_tint(card.preview)))
-        .child(split_bar(card.preview.accent.0, 96.))
+        .child(
+            rect()
+                .vertical()
+                .width(Size::px(126.))
+                .height(Size::px(78.))
+                .corner_radius(CornerRadius::new_all(8. * card.radius_scale))
+                .background(card.background.clone())
+                .border(border_all_color(1., border_color))
+                .padding(8.)
+                .spacing(20.)
+                .child(mock_line(108., line_tint(card.preview)))
+                .child(split_bar(card.preview.accent.0, 96.)),
+        )
+        .child(
+            label()
+                .text(card.name.clone())
+                .width(Size::px(126.))
+                .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
+                .font_size(text_size(12.))
+                .font_weight(if card.selected {
+                    FontWeight::MEDIUM
+                } else {
+                    FontWeight::NORMAL
+                })
+                .color(if card.selected {
+                    colors::fg_primary()
+                } else {
+                    colors::fg_secondary()
+                }),
+        )
         .into_element()
 }
 

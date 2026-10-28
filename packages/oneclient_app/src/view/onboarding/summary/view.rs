@@ -12,6 +12,7 @@ pub(super) struct SummaryView<'a> {
     pub items: &'a [ClusterBundles],
     pub selected: &'a std::collections::HashSet<String>,
     pub language: &'a str,
+    pub theme: String,
     pub reduce_motion: bool,
     pub parallax: bool,
     pub account_name: String,
@@ -31,6 +32,7 @@ pub(super) fn summary_view(
         items,
         selected,
         language,
+        theme,
         reduce_motion,
         parallax,
         account_name,
@@ -93,9 +95,10 @@ pub(super) fn summary_view(
                 ))
                 .child(migration_section)
                 .child(summary_section(
-                    "Accessibility",
+                    "Appearance",
                     None,
                     vec![
+                        summary_line("Theme", &theme),
                         summary_line("Animations", if reduce_motion { "Off" } else { "On" }),
                         summary_line("Parallax background", if parallax { "On" } else { "Off" }),
                     ],

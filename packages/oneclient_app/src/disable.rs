@@ -113,14 +113,7 @@ pub async fn resolve(request: DisableRequest) -> anyhow::Result<Option<PendingDi
 
     // A `Package` root has nothing installed, so there is no flag to write —
     // only the bundle override the caller carries.
-    let mut hashes: Vec<String> = request
-        .roots
-        .iter()
-        .filter_map(|root| match root {
-            DisableRoot::Artifact(hash) => Some(hash.clone()),
-            DisableRoot::Package(..) => None,
-        })
-        .collect();
+    let mut hashes = root_hashes(&request);
     hashes.extend(impact.required_hashes());
 
     if impact.is_empty() {
@@ -140,6 +133,23 @@ pub async fn resolve(request: DisableRequest) -> anyhow::Result<Option<PendingDi
 pub async fn apply(pending: &PendingDisable) -> anyhow::Result<()> {
     let state = launcher::state()?;
     apply_now(&pending.request, &pending.hashes, &state.services.content()).await
+}
+
+pub async fn apply_alone(pending: &PendingDisable) -> anyhow::Result<()> {
+    let state = launcher::state()?;
+    let hashes = root_hashes(&pending.request);
+    apply_now(&pending.request, &hashes, &state.services.content()).await
+}
+
+fn root_hashes(request: &DisableRequest) -> Vec<String> {
+    request
+        .roots
+        .iter()
+        .filter_map(|root| match root {
+            DisableRoot::Artifact(hash) => Some(hash.clone()),
+            DisableRoot::Package(..) => None,
+        })
+        .collect()
 }
 
 async fn apply_now(

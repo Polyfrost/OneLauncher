@@ -364,7 +364,21 @@ pub async fn set_skin_from_url(
         .bytes()
         .await
         .map_err(|err| McError::Minecraft(err.to_string()))?;
-    upload_skin(client, access_token, png.to_vec(), variant).await
+    let uploaded = upload_skin(client, access_token, png.to_vec(), variant.clone()).await?;
+    let texture = skin_url.rsplit('/').next();
+    let url = uploaded
+        .skins
+        .iter()
+        .find(|skin| skin.url.rsplit('/').next() == texture)
+        .map_or(skin_url, |skin| skin.url.as_str());
+    send_profile_request(
+        client,
+        access_token,
+        Method::POST,
+        SKINS_URL,
+        Some(serde_json::json!({ "variant": variant, "url": url })),
+    )
+    .await
 }
 
 #[tracing::instrument(level = "debug", skip(client, access_token, png))]

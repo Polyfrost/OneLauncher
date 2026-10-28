@@ -14,7 +14,8 @@ pub struct OnboardingWelcome;
 
 impl Component for OnboardingWelcome {
     fn render(&self) -> impl IntoElement {
-        let next = if *use_onboarding_selection().picks_location.read() {
+        let selection = use_onboarding_selection();
+        let next = if *selection.picks_location.read() {
             Route::OnboardingLocation {}
         } else {
             Route::OnboardingTerms {}
@@ -29,7 +30,11 @@ impl Component for OnboardingWelcome {
         });
         let progress = intro.get().value();
         let written = (progress / TITLE_SHARE).min(1.);
-        let subtext = ((progress - TITLE_SHARE) / (1. - TITLE_SHARE)).clamp(0., 1.);
+        let rest = ((progress - TITLE_SHARE) / (1. - TITLE_SHARE)).clamp(0., 1.);
+
+        let mut chrome = selection.chrome_opacity;
+        use_side_effect_with_deps(&rest, move |&rest| chrome.set_if_modified(rest));
+        use_drop(move || chrome.set_if_modified(1.));
 
         rect()
             .vertical()
@@ -55,10 +60,15 @@ impl Component for OnboardingWelcome {
                             .text("Let's get you set up. It only takes a minute.")
                             .font_size(text_size(18.))
                             .color(colors::fg_secondary())
-                            .opacity(subtext),
+                            .opacity(rest),
                     ),
             )
-            .child(onboarding_nav(None, next, true))
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .opacity(rest)
+                    .child(onboarding_nav(None, next, true)),
+            )
     }
 }
 

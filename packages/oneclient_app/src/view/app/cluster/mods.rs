@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 
@@ -9,6 +10,7 @@ use crate::hooks::{
     stale_hashes, use_bisect, use_bundle_overrides, use_bundles_with_status, use_cluster_content,
     use_modpack_sources, use_mods_folder_sync, use_package_updates, use_shadowed_mods,
 };
+use crate::components::PackageEntry;
 use crate::layout::cluster_content;
 
 use super::cluster_not_found;
@@ -59,6 +61,62 @@ impl Component for ClusterMods {
             item.outranked = shadowed.outranked.contains(hash);
             item.bisect_role = bisect.as_ref().and_then(|status| status.role_of(hash));
         }
+        let present: HashSet<&String> =
+            items.iter().filter_map(|item| item.hash.as_ref()).collect();
+        let ignored: HashSet<String> = shadowed
+            .copies
+            .iter()
+            .filter(|(used, _)| present.contains(used))
+            .flat_map(|(_, hashes)| hashes.iter().cloned())
+            .collect();
+        let (copies, mut items): (Vec<_>, Vec<_>) = items.into_iter().partition(|item| {
+            item.hash
+                .as_ref()
+                .is_some_and(|hash| ignored.contains(hash))
+        });
+        for item in &mut items {
+            if let Some(hashes) = item
+                .hash
+                .as_ref()
+                .and_then(|hash| shadowed.copies.get(hash))
+            {
+                item.copies = copies
+                    .iter()
+                    .filter(|copy| copy.hash.as_ref().is_some_and(|hash| hashes.contains(hash)))
+                    .cloned()
+                    .collect();
+            }
+        }
+        let identity = |item: &PackageEntry| {
+            (!item.author.is_empty()).then(|| (item.name.to_lowercase(), item.author.to_lowercase()))
+        };
+        let mut folded = HashSet::new();
+        for i in 0..items.len() {
+            if items[i].in_bundle() {
+                continue;
+            }
+            let Some(own) = identity(&items[i]) else {
+                continue;
+            };
+            let matches: Vec<usize> = (0..items.len())
+                .filter(|&j| {
+                    items[j].in_bundle()
+                        && items[j].copies.is_empty()
+                        && !folded.contains(&j)
+                        && identity(&items[j]).as_ref() == Some(&own)
+                })
+                .collect();
+            for j in matches {
+                folded.insert(j);
+                let copy = items[j].clone();
+                items[i].copies.push(copy);
+            }
+        }
+        let mut index = 0;
+        items.retain(|_| {
+            index += 1;
+            !folded.contains(&(index - 1))
+        });
 
         cluster_content()
             .child(ModsFolderSync {

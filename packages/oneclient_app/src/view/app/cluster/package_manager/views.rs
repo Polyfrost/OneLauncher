@@ -9,12 +9,14 @@ use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
     Button, CardLayout, ChevronToggle, ContextMenu, FilterMenu, FilterOption, Icon, IconType,
-    LazySection, PackageEntry, PackageRow, ScrollArea, Segment, SegmentedControl, TextInput,
-    bundled_delete_action, package_context_menu, run_guarded, use_shared_delete,
+    LazySection, OVERLAY_BASE_LEVEL, OverlayPopup, PackageEntry, PackageRow, ScrollArea, Segment,
+    SegmentedControl, TextInput, bundled_delete_action, package_context_menu, run_guarded,
+    use_shared_delete,
 };
 use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::routes::Route;
 use crate::theme::colors;
+use crate::ui::border_all_color;
 use crate::{Actions, utils};
 
 #[derive(Clone, Copy, PartialEq)]
@@ -896,6 +898,7 @@ impl Component for ContentBox {
         let guard = use_essential_guard();
         let warnings_query = use_disable_warnings();
         let mut menu = use_state(|| None::<(f32, f32, PackageEntry)>);
+        let mut copies_of = use_state(|| None::<String>);
         let (on_delete, delete_dialog) = use_shared_delete(cluster_id, move |(_, hash)| {
             cluster.mutate(ClusterAction::RemoveArtifact { cluster_id, hash });
         });
@@ -919,12 +922,14 @@ impl Component for ContentBox {
                 let is_selected = selected[i];
                 let order = order.clone();
                 let click_key = key.clone();
+                let copies_key = key.clone();
                 PackageRow::new(item, cluster_id, package_type)
                     .layout(layout)
                     .selection(is_selected, selecting, move |()| {
                         selection.click(click_key.clone(), &order)
                     })
                     .on_context(move |(x, y)| menu.set(Some((x, y, for_menu.clone()))))
+                    .on_copies(move |()| copies_of.set(Some(copies_key.clone())))
                     .key(key)
                     .into_element()
             }
@@ -970,6 +975,71 @@ impl Component for ContentBox {
                 .into_element()
         });
 
+        let copies_target = copies_of
+            .read()
+            .as_ref()
+            .and_then(|key| items.iter().find(|item| &item.package_id == key))
+            .filter(|item| !item.copies.is_empty())
+            .cloned();
+        let copies_open = copies_target.is_some();
+        let copies_popup = copies_target.map(|item| {
+            let rows = std::iter::once(item.clone())
+                .chain(item.copies.iter().cloned())
+                .map(|entry| {
+                    let for_menu = entry.clone();
+                    let key = entry.package_id.clone();
+                    rect()
+                        .width(Size::fill())
+                        .height(Size::px(CARD_H))
+                        .child(
+                            PackageRow::new(entry, cluster_id, package_type)
+                                .on_context(move |(x, y)| {
+                                    menu.set(Some((x, y, for_menu.clone())))
+                                })
+                                .key(key),
+                        )
+                        .into_element()
+                });
+            OverlayPopup::new()
+                .on_close(move |_| copies_of.set(None))
+                .child(
+                    rect()
+                        .width(Size::window_percent(100.))
+                        .height(Size::window_percent(100.))
+                        .center()
+                        .child(
+                            rect()
+                                .vertical()
+                                .width(Size::px(720.))
+                                .max_width(Size::window_percent(90.))
+                                .spacing(CARD_SPACING)
+                                .padding(Gaps::new_all(20.))
+                                .corner_radius(CornerRadius::new_all(14.))
+                                .background(colors::page_elevated())
+                                .border(border_all_color(1., colors::component_border()))
+                                .child(
+                                    label()
+                                        .text(format!(
+                                            "{} copies of {}",
+                                            item.copies.len() + 1,
+                                            item.name
+                                        ))
+                                        .font_size(16.)
+                                        .font_weight(FontWeight::SEMI_BOLD)
+                                        .color(colors::fg_strong()),
+                                )
+                                .child(
+                                    label()
+                                        .text("Only the first one is loaded. The others are skipped while it is installed.")
+                                        .font_size(12.)
+                                        .color(colors::fg_secondary()),
+                                )
+                                .children(rows),
+                        ),
+                )
+                .into_element()
+        });
+
         let menu_overlay = menu.read().clone().map(|(x, y, item)| {
             let menu_for = if bulk.active() {
                 bulk.menu(x, y, item.package_id.clone())
@@ -1007,7 +1077,10 @@ impl Component for ContentBox {
                     (move |()| selection.toggle(key.clone())).into(),
                 )
             };
-            menu_for.on_close(move |_| menu.set(None)).into_element()
+            menu_for
+                .on_close(move |_| menu.set(None))
+                .overlay_level(OVERLAY_BASE_LEVEL + if copies_open { 3 } else { 0 })
+                .into_element()
         });
 
         let empty = (count == 0).then(|| match kind {
@@ -1042,6 +1115,7 @@ impl Component for ContentBox {
                     .height(Size::flex(1.0))
                     .child(empty)
             }))
+            .maybe_child(copies_popup)
             .maybe_child(menu_overlay)
             .maybe_child(delete_dialog)
     }

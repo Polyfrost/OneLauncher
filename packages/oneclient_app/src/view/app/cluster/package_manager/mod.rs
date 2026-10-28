@@ -338,6 +338,7 @@ fn make_row(
         opted_in,
         shadowed: false,
         outranked: false,
+        copies: Vec::new(),
         advanced: false,
         deleted: false,
         seen_status: installed_info.map(|i| i.seen_status).unwrap_or_default(),

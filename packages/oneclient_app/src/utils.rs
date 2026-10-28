@@ -299,6 +299,10 @@ pub fn abbreviate_number(n: u64) -> String {
     }
 }
 
+pub fn count_label(count: usize, one: &str, many: &str) -> String {
+    format!("{count} {}", if count == 1 { one } else { many })
+}
+
 pub fn plural(n: i64) -> &'static str {
     if n == 1 { "" } else { "s" }
 }

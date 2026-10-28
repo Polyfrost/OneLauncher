@@ -25,7 +25,10 @@ pub use archive::{
     sweep_instance_archives,
 };
 pub use import::{ExternalImportReport, ImportChoices, alternative_version_id, import_instance};
-pub use screen::{FlaggedImportMod, ImportAlternative, ScreenedInstance, screen_instances};
+pub use screen::{
+    FlaggedImportMod, ImportAlternative, ScreenedInstance, UnpublishedCheck, UnpublishedFile,
+    find_unpublished_mods, instance_mods_stamp, screen_instances,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum ExternalLauncher {

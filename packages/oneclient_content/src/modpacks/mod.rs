@@ -6,6 +6,7 @@ mod mrpack;
 mod remove;
 mod screen;
 mod share;
+mod unlisted;
 mod update;
 
 use std::collections::{HashMap, HashSet};
@@ -41,6 +42,7 @@ pub use remove::{
     remove_modpack_files, remove_tracked_packages, restore_disabled, retrack_file,
 };
 pub use screen::{FlaggedPackFile, bundled_mods, screen_modpack};
+pub use unlisted::{UnlistedMod, UnlistedReport, find_unlisted_mods};
 
 pub const MODPACK_BUNDLE_NAME: &str = "modpack";
 const IMPORTED_PREFIX: &str = "modpack:";

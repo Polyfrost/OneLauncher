@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
-use oneclient_content::modpacks::{BlockedFile, ModpackSummary};
+use oneclient_content::modpacks::{BlockedFile, ModpackSummary, UnlistedMod};
 use oneclient_content::packages::ProviderId;
 use oneclient_core::BrowserPackageUpdate;
+use oneclient_core::UnpublishedFile;
 use oneclient_core::clusters::{FlaggedModpack, FlaggedPackMod};
 use oneclient_db::models::{ClusterId, OptionalModStatus};
 use oneclient_events::{
@@ -85,6 +86,23 @@ pub struct ModpackConfirm {
     pub summary: ModpackSummary,
     pub import: Option<ModpackImportView>,
     pub flagged: Option<FlaggedModpack>,
+    pub unlisted: Vec<UnlistedMod>,
+    pub mods_unchecked: bool,
+    pub mods_unconfirmed: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnpublishedImport {
+    pub instances: Vec<UnpublishedInstance>,
+    pub others: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnpublishedInstance {
+    pub name: String,
+    pub game: String,
+    pub mods: Vec<UnpublishedFile>,
+    pub unconfirmed: usize,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -294,6 +312,7 @@ pub struct NotificationSnapshot {
     pub blocked_downloads: Option<BlockedDownloads>,
     pub open_cluster: Option<ClusterId>,
     pub modpack_confirm: Option<ModpackConfirm>,
+    pub unpublished_import: Option<UnpublishedImport>,
     pub active_toast_entry_ids: Vec<u64>,
 }
 
@@ -319,6 +338,7 @@ pub struct NotificationState {
     blocked_queue: VecDeque<BlockedDownloads>,
     open_cluster: Option<ClusterId>,
     modpack_confirm: Option<ModpackConfirm>,
+    unpublished_import: Option<UnpublishedImport>,
     /// Resumes the launch that opened the update modal
     /// Held here not by the launch task
     /// because every way the modal can end goes through this state
@@ -448,6 +468,7 @@ impl NotificationState {
             blocked_downloads: self.blocked_downloads.clone(),
             open_cluster: self.open_cluster,
             modpack_confirm: self.modpack_confirm.clone(),
+            unpublished_import: self.unpublished_import.clone(),
             active_toast_entry_ids: self.active_toasts.iter().map(|t| t.entry_id).collect(),
         }
     }
@@ -508,6 +529,24 @@ impl NotificationState {
 
     pub fn close_modpack_confirm(&mut self) {
         self.modpack_confirm = None;
+    }
+
+    pub fn open_unpublished_import(
+        &mut self,
+        mut instances: Vec<UnpublishedInstance>,
+        others: usize,
+    ) {
+        match &mut self.unpublished_import {
+            Some(open) => {
+                open.instances.append(&mut instances);
+                open.others += others;
+            }
+            None => self.unpublished_import = Some(UnpublishedImport { instances, others }),
+        }
+    }
+
+    pub fn close_unpublished_import(&mut self) {
+        self.unpublished_import = None;
     }
 
     pub fn request_open_cluster(&mut self, cluster_id: ClusterId) {

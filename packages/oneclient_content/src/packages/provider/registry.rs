@@ -57,12 +57,22 @@ impl PackageProviderRegistry {
         identities: &[FileIdentity],
         ctx: &ContentCtx,
     ) -> ContentResult<ProviderVersionLookup> {
+        Ok(self.lookup_versions_checked(identities, ctx).await?.0)
+    }
+
+    #[tracing::instrument(level = "debug", skip_all)]
+    pub async fn lookup_versions_checked(
+        &self,
+        identities: &[FileIdentity],
+        ctx: &ContentCtx,
+    ) -> ContentResult<(ProviderVersionLookup, bool)> {
         if identities.is_empty() {
-            return Ok(HashMap::new());
+            return Ok((HashMap::new(), true));
         }
 
         let mut enriched: Vec<FileIdentity> = identities.to_vec();
         let mut merged: ProviderVersionLookup = HashMap::new();
+        let mut complete = true;
 
         for id in self.remote_ids() {
             if id == ProviderId::CurseForge {
@@ -81,6 +91,7 @@ impl PackageProviderRegistry {
                 Ok(found) => found,
                 Err(err) => {
                     tracing::debug!(provider = ?id, "batch lookup failed: {err}");
+                    complete = false;
                     continue;
                 }
             };
@@ -89,7 +100,7 @@ impl PackageProviderRegistry {
                 merged.entry(sha1).or_insert((id, version));
             }
         }
-        Ok(merged)
+        Ok((merged, complete))
     }
 
     #[tracing::instrument(level = "debug", skip(self, sha1, ctx))]

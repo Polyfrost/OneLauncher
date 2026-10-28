@@ -214,6 +214,9 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
         summary: prepared.summary(),
         import: None,
         flagged: prepared.flagged.clone(),
+        unlisted: prepared.unlisted.clone(),
+        mods_unchecked: prepared.mods_unchecked,
+        mods_unconfirmed: prepared.mods_unconfirmed,
     }
 }
 
@@ -356,7 +359,7 @@ impl Actions {
         }
         let launcher_jobs = super::external_import::take_waiting();
         if !launcher_jobs.is_empty() {
-            self.import_external_instances(launcher_jobs);
+            self.start_external_imports(launcher_jobs);
             return;
         }
         let next = waiting().pop_front();
@@ -1050,6 +1053,9 @@ mod tests {
                 },
                 instance_name: "Pack".to_string(),
                 flagged: None,
+                unlisted: Vec::new(),
+                mods_unchecked: false,
+                mods_unconfirmed: 0,
                 share: None,
             },
             cluster_id: 1,

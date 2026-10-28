@@ -1,17 +1,20 @@
 use std::collections::HashMap;
 
 use freya::prelude::*;
-use oneclient_content::modpacks::ModpackSummary;
+use oneclient_content::modpacks::{ModpackSummary, UnlistedMod};
 use oneclient_content::packages::ResolvedAlternative;
 use oneclient_core::clusters::{ExistingPack, FlaggedModpack, FlaggedPackMod};
 
 use super::flagged_install_popup::explanation_panel;
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, remote_icon};
+use crate::components::{
+    Button, Icon, IconType, OverlayPopup, ScrollArea, caution_card, remote_icon, warning_card,
+    warning_list,
+};
 use crate::hooks::{use_cached_image, use_dispatch, use_notifications_snapshot};
 use crate::notifications::{ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::utils::format_size;
+use crate::utils::{count_label, format_size};
 
 const DIALOG_W: f32 = 500.;
 const DIALOG_PAD: f32 = 22.;
@@ -118,10 +121,6 @@ fn track_height(mut target: State<f32>) -> impl FnMut(Event<SizedEventData>) {
     }
 }
 
-fn count_label(count: usize, one: &str, many: &str) -> String {
-    format!("{count} {}", if count == 1 { one } else { many })
-}
-
 fn content_line(summary: &ModpackSummary) -> String {
     let parts: Vec<String> = [
         (summary.mods, "mod", "mods"),
@@ -159,15 +158,6 @@ fn notes(summary: &ModpackSummary) -> Vec<(String, Color)> {
                 count_label(summary.manual, "file", "files")
             ),
             colors::code_warn(),
-        ));
-    }
-    if summary.unverified > 0 {
-        notes.push((
-            format!(
-                "{} packed inside this file instead of coming from Modrinth or CurseForge, so nobody has checked them. Only import files from people you trust.",
-                count_label(summary.unverified, "file comes", "files come")
-            ),
-            colors::danger(),
         ));
     }
     if summary.unresolved > 0 {
@@ -307,6 +297,29 @@ fn dialog(
         .flagged
         .as_ref()
         .map(|flagged| flagged_pack_section(&confirm.pack_name, flagged).into_element());
+    let unlisted =
+        (!confirm.unlisted.is_empty()).then(|| unlisted_section(&confirm.unlisted).into_element());
+    let unverified =
+        (summary.unverified > 0).then(|| unverified_card(summary.unverified).into_element());
+    let unchecked = if confirm.mods_unchecked {
+        Some(caution_card(
+            "Couldn't check the mods",
+            "OneClient could not read this pack's mods, so it could not tell whether they are published on Modrinth or CurseForge. Only continue if you trust where this file came from.",
+        ))
+    } else if confirm.mods_unconfirmed > 0 {
+        Some(caution_card(
+            format!(
+                "Couldn't confirm {}",
+                count_label(confirm.mods_unconfirmed, "mod", "mods")
+            ),
+            "OneClient could not reach Modrinth or CurseForge, so it could not confirm these mods are published there. Only continue if you trust where this file came from.",
+        ))
+    } else {
+        None
+    }
+    .map(IntoElement::into_element);
+    let warned =
+        flagged_pack.is_some() || unlisted.is_some() || unverified.is_some() || unchecked.is_some();
     let add_button = Button::new().on_press(move |_| {
         if importing {
             add.confirm_modpack_import(choices.read().clone(), *existing.read());
@@ -314,7 +327,7 @@ fn dialog(
             add.confirm_modpack();
         }
     });
-    let add_button = match (flagged_pack.is_some(), importing) {
+    let add_button = match (warned, importing) {
         (true, true) => add_button.danger().text("Add anyway"),
         (true, false) => add_button.danger().text("Install anyway"),
         (false, _) => add_button
@@ -381,6 +394,9 @@ fn dialog(
                                 .spacing(SECTION_GAP)
                                 .on_sized(track_height(measured.content_h))
                                 .maybe_child(flagged_pack)
+                                .maybe_child(unlisted)
+                                .maybe_child(unverified)
+                                .maybe_child(unchecked)
                                 .child(
                                     rect()
                                         .vertical()
@@ -513,6 +529,39 @@ fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoE
                 .clone()
                 .map(|markdown| explanation_panel(markdown).into_element()),
         )
+}
+
+fn unlisted_section(mods: &[UnlistedMod]) -> impl IntoElement {
+    warning_card(
+        format!(
+            "{} not on Modrinth or CurseForge",
+            count_label(mods.len(), "mod", "mods")
+        ),
+        "Nobody has checked these mods, and they could contain malware. Only install this pack if you trust the person who gave it to you.",
+    )
+    .child(warning_list(mods.iter().map(|unlisted| {
+        let origin = if unlisted.bundled {
+            "Packed in the file"
+        } else {
+            "Downloaded from another site"
+        };
+        (unlisted.name.clone(), Some(origin.to_string()))
+    })))
+}
+
+fn unverified_card(count: usize) -> impl IntoElement {
+    warning_card(
+        format!(
+            "{} not from Modrinth or CurseForge",
+            count_label(count, "file", "files")
+        ),
+        format!(
+            "{} packed inside this file, so nobody has checked {}. {} could contain malware. Only import files from people you trust.",
+            if count == 1 { "It comes" } else { "They come" },
+            if count == 1 { "it" } else { "them" },
+            if count == 1 { "It" } else { "They" },
+        ),
+    )
 }
 
 fn flagged_section(

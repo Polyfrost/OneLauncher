@@ -23,13 +23,13 @@ use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
 use crate::view::app::clusters::{
-    DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts,
-    ResetInstanceModal,
+    ClusterPickerButton, DeleteInstanceModal, EditInstanceModal, ExportInstanceModal,
+    InstanceFacts, ResetInstanceModal,
 };
 use crate::view::app::settings::{
     section_header, settings_row, settings_row_danger, settings_row_disabled,
 };
-use oneclient_core::clusters::{can_migrate_manually, rank_migration_sources};
+use oneclient_core::clusters::{Cluster, rank_migration_sources};
 
 use super::cluster_not_found;
 use super::imported_modpacks::ImportedModpacksSection;
@@ -1197,36 +1197,28 @@ impl Component for MigrateFromRow {
         let checking = use_release_migration_checking(cluster_id);
         let game = use_game_snapshot();
         let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
-        let mut picked = use_state(|| None::<(i64, i64)>);
+        let mut picked = use_state(|| None::<i64>);
 
-        let mut routes: Vec<(String, i64, i64)> = Vec::new();
-        if let Some(this) = clusters.iter().find(|cluster| cluster.id == cluster_id) {
-            routes.extend(
-                rank_migration_sources(this, &clusters)
-                    .into_iter()
-                    .map(|source| (format!("From {}", source.name), cluster_id, source.id)),
-            );
-            routes.extend(
-                clusters
-                    .iter()
-                    .filter(|other| {
-                        other.id != cluster_id
-                            && can_migrate_manually(this.mc_loader, other.mc_loader)
-                    })
-                    .map(|target| (format!("To {}", target.name), target.id, cluster_id)),
-            );
-        }
-        let has_partners = !routes.is_empty();
-        let migratable =
-            use_migratable_routes(routes.iter().map(|route| (route.1, route.2)).collect());
-        routes.retain(|route| migratable.contains(&(route.1, route.2)));
+        let mut sources: Vec<Cluster> = clusters
+            .iter()
+            .find(|cluster| cluster.id == cluster_id)
+            .map(|this| rank_migration_sources(this, &clusters))
+            .unwrap_or_default();
+        let has_partners = !sources.is_empty();
+        let migratable = use_migratable_routes(
+            sources
+                .iter()
+                .map(|source| (cluster_id, source.id))
+                .collect(),
+        );
+        sources.retain(|source| migratable.contains(&(cluster_id, source.id)));
 
         let selected = picked
             .read()
-            .and_then(|pair| routes.iter().find(|route| (route.1, route.2) == pair))
-            .or_else(|| routes.first())
+            .and_then(|id| sources.iter().find(|source| source.id == id))
+            .or_else(|| sources.first())
             .cloned();
-        let selected_pair = selected.as_ref().map(|route| (route.1, route.2));
+        let selected_pair = selected.as_ref().map(|source| (cluster_id, source.id));
         let running = selected_pair
             .is_some_and(|(target, source)| game.is_running(target) || game.is_running(source));
 
@@ -1251,7 +1243,7 @@ impl Component for MigrateFromRow {
             button = button.tooltip("Close the game before migrating");
         }
 
-        let picker: Element = if routes.is_empty() {
+        let picker: Element = if sources.is_empty() {
             label()
                 .text(if has_partners {
                     "Nothing installed from the browser left to copy"
@@ -1262,17 +1254,18 @@ impl Component for MigrateFromRow {
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
-            let pairs: Vec<(i64, i64)> = routes.iter().map(|route| (route.1, route.2)).collect();
-            let names: Vec<String> = routes.iter().map(|route| route.0.clone()).collect();
-            Dropdown::new(selected.map(|route| route.0).unwrap_or_default(), names)
-                .width(Size::px(220.))
-                .height(Size::px(34.))
-                .on_select(move |index: usize| {
-                    if let Some(pair) = pairs.get(index) {
-                        picked.set(Some(*pair));
-                    }
-                })
-                .into_element()
+            ClusterPickerButton {
+                label: selected
+                    .as_ref()
+                    .map(|source| format!("From {}", source.name))
+                    .unwrap_or_default(),
+                selected: selected.as_ref().map(|source| source.id),
+                only: Some(sources.iter().map(|source| source.id).collect()),
+                width: Size::px(220.),
+                height: 34.,
+                on_pick: (move |cluster: Cluster| picked.set(Some(cluster.id))).into(),
+            }
+            .into_element()
         };
 
         settings_row(

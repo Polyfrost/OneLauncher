@@ -1,7 +1,9 @@
 use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
 
-use crate::components::{Button, Icon, IconType};
+use crate::components::{
+    Button, Icon, IconType, OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, use_open_level,
+};
 use crate::hooks::use_overlay_claim;
 use crate::theme::colors;
 
@@ -106,6 +108,7 @@ struct FilterPanel {
 impl Component for FilterPanel {
     fn render(&self) -> impl IntoElement {
         use_overlay_claim();
+        use_open_level(OVERLAY_MAX_LEVEL);
 
         let backdrop_close = self.on_close.clone();
         let key_close = self.on_close.clone();
@@ -159,7 +162,7 @@ impl Component for FilterPanel {
             .layer(Layer::Overlay)
             .child(
                 rect()
-                    .layer(Layer::OverlayLevel(10))
+                    .layer(Layer::OverlayLevel(OVERLAY_BASE_LEVEL + 3))
                     .position(Position::new_global().top(0.).left(0.))
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
@@ -168,7 +171,7 @@ impl Component for FilterPanel {
             .child(
                 rect()
                     .width(Size::fill())
-                    .layer(Layer::OverlayLevel(12))
+                    .layer(Layer::OverlayLevel(OVERLAY_MAX_LEVEL))
                     .margin(Gaps::new(6., 0., 0., -(PANEL_W - BUTTON_W)))
                     .child(panel),
             )

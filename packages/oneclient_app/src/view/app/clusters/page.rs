@@ -23,8 +23,8 @@ use crate::ui::{
     border_all_color, fixed_grid, grid_columns_for_width, last_played_label, window_logical_size,
 };
 use crate::utils::{
-    GridSelection, ReleaseLine, default_line, default_loader, default_version_key, format_duration,
-    line_title, resolve_cluster, sort_clusters_for_home, split_clusters,
+    ClusterGroups, GridSelection, ReleaseLine, default_line, default_loader, default_version_key,
+    format_duration, line_title, resolve_cluster, sort_clusters_for_home, split_clusters,
 };
 use crate::view::app::clusters::CreateInstanceModal;
 use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken};
@@ -47,7 +47,7 @@ const ART_MAX_HEIGHT_PX: f32 = 200.;
 const ART_MIN_SIDEBAR_PX: f32 = 420.;
 
 #[derive(Clone, Copy, PartialEq)]
-enum Filter {
+pub(crate) enum Filter {
     All,
     OneClient,
     Custom,
@@ -55,13 +55,67 @@ enum Filter {
 }
 
 impl Filter {
-    fn shows(self, section: Filter) -> bool {
+    pub(crate) const ALL: [Filter; 4] = [
+        Filter::All,
+        Filter::OneClient,
+        Filter::Custom,
+        Filter::Modpacks,
+    ];
+
+    pub(crate) fn shows(self, section: Filter) -> bool {
         self == Filter::All || self == section
+    }
+
+    pub(crate) fn of(cluster: &Cluster) -> Self {
+        if !cluster.is_isolated() {
+            Filter::OneClient
+        } else if cluster.linked_modpack_hash.is_some() {
+            Filter::Modpacks
+        } else {
+            Filter::Custom
+        }
+    }
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Filter::All => "All",
+            Filter::OneClient => "OneClient",
+            Filter::Custom => "Custom",
+            Filter::Modpacks => "Modpacks",
+        }
     }
 }
 
+pub(crate) fn cluster_matches(cluster: &Cluster, loaders: &[String], needle: &str) -> bool {
+    (loaders.is_empty() || loaders.contains(&cluster.mc_loader.to_string()))
+        && (needle.is_empty()
+            || format!(
+                "{} {} {}",
+                cluster.name, cluster.mc_version, cluster.mc_loader
+            )
+            .to_lowercase()
+            .contains(needle))
+}
+
+pub(crate) fn loader_options(clusters: &[Cluster]) -> Vec<String> {
+    let mut loaders: Vec<String> = clusters.iter().map(|c| c.mc_loader.to_string()).collect();
+    loaders.sort();
+    loaders.dedup();
+    loaders
+}
+
+pub(crate) fn recent_line_heads(groups: &ClusterGroups) -> Vec<Cluster> {
+    sort_clusters_for_home(
+        groups
+            .values()
+            .rev()
+            .filter_map(|g| sort_clusters_for_home(g.clone()).into_iter().next())
+            .collect(),
+    )
+}
+
 #[derive(Clone, Copy, PartialEq)]
-enum Sort {
+pub(crate) enum Sort {
     RecentFirst,
     OldestFirst,
     NameAsc,
@@ -220,21 +274,10 @@ impl Component for Clusters {
         let active_filter = *filter.read();
         let needle = query.read().trim().to_lowercase();
         let picked_loaders = loaders.read().clone();
-        let matches = |c: &Cluster| {
-            (picked_loaders.is_empty() || picked_loaders.contains(&c.mc_loader.to_string()))
-                && (needle.is_empty()
-                    || format!("{} {} {}", c.name, c.mc_version, c.mc_loader)
-                        .to_lowercase()
-                        .contains(&needle))
-        };
+        let matches = |c: &Cluster| cluster_matches(c, &picked_loaders, &needle);
         let sort_by = *sort.read();
 
-        let line_heads = sort_clusters_for_home(
-            lines
-                .iter()
-                .filter_map(|l| sort_clusters_for_home(groups[l].clone()).into_iter().next())
-                .collect(),
-        );
+        let line_heads = recent_line_heads(&groups);
         let shown_lines: Vec<ReleaseLine> =
             shown(&line_heads.iter().collect::<Vec<_>>(), sort_by, |c| {
                 active_filter.shows(Filter::OneClient)
@@ -250,10 +293,7 @@ impl Component for Clusters {
             active_filter.shows(Filter::Modpacks) && matches(c)
         });
 
-        let mut available_loaders: Vec<String> =
-            clusters.iter().map(|c| c.mc_loader.to_string()).collect();
-        available_loaders.sort();
-        available_loaders.dedup();
+        let available_loaders = loader_options(&clusters);
         let filters = rect()
             .horizontal()
             .spacing(8.)
@@ -263,14 +303,8 @@ impl Component for Clusters {
         let nothing_shown =
             shown_lines.is_empty() && shown_custom.is_empty() && shown_packs.is_empty();
 
-        let tabs = [
-            (Filter::All, "All"),
-            (Filter::OneClient, "OneClient"),
-            (Filter::Custom, "Custom"),
-            (Filter::Modpacks, "Modpacks"),
-        ]
-        .map(|(value, name)| {
-            TabItem::new(name, active_filter == value).on_press(move |_| filter.set(value))
+        let tabs = Filter::ALL.map(|value| {
+            TabItem::new(value.label(), active_filter == value).on_press(move |_| filter.set(value))
         });
 
         let active_cluster = clusters
@@ -452,7 +486,7 @@ fn create_modal(mut show_create: State<bool>) -> Option<Element> {
         .then(|| CreateInstanceModal::new(move |()| show_create.set(false)).into_element())
 }
 
-fn shown<'a>(
+pub(crate) fn shown<'a>(
     list: &[&'a Cluster],
     sort: Sort,
     keep: impl Fn(&Cluster) -> bool,
@@ -510,30 +544,33 @@ fn section(title: &str, caption: &str, grid: Element) -> Element {
         .vertical()
         .width(Size::fill())
         .spacing(10.)
-        .child(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::Center)
-                .spacing(10.)
-                .child(
-                    label()
-                        .text(title.to_string())
-                        .font_size(14.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text(caption.to_string())
-                        .font_size(12.)
-                        .color(colors::fg_secondary()),
-                ),
-        )
+        .child(section_header(title, caption))
         .child(grid)
         .into_element()
 }
 
-fn toolbar(
+pub(crate) fn section_header(title: &str, caption: &str) -> Element {
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(10.)
+        .child(
+            label()
+                .text(title.to_string())
+                .font_size(14.)
+                .font_weight(FontWeight::MEDIUM)
+                .color(colors::fg_primary()),
+        )
+        .child(
+            label()
+                .text(caption.to_string())
+                .font_size(12.)
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
+}
+
+pub(crate) fn toolbar(
     tabs: impl IntoIterator<Item = TabItem>,
     query: State<String>,
     inline_filters: Option<Element>,
@@ -564,7 +601,7 @@ fn toolbar(
         }))
 }
 
-fn filter_menu(
+pub(crate) fn filter_menu(
     available: &[String],
     mut loaders: State<Vec<String>>,
     mut sort: State<Sort>,
@@ -609,7 +646,7 @@ fn layout_toggle(layout: State<ViewLayout>) -> Element {
         .into_element()
 }
 
-fn search_input(query: State<String>, width: Size) -> Element {
+pub(crate) fn search_input(query: State<String>, width: Size) -> Element {
     TextInput::new(query)
         .width(width)
         .height(Size::px(34.))

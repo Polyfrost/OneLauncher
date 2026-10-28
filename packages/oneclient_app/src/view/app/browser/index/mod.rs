@@ -31,12 +31,13 @@ use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::grid_columns_for_width;
 use crate::view::app::cluster::supports_datapacks;
+use crate::view::app::clusters::ClusterPickerButton;
 
 use super::{
     EnableButton, EnableVariant, InstallSource, Installed, ModpackVersionPrompt, PackageBanner,
     Thumbnail, WorldInstallPrompt, installed_map, minecraft_choices, preferred_version,
 };
-use crate::utils::{abbreviate_number, sort_clusters_for_home};
+use crate::utils::abbreviate_number;
 
 mod cards;
 mod sidebar;
@@ -755,20 +756,12 @@ struct ClusterPicker {
 
 impl Component for ClusterPicker {
     fn render(&self) -> impl IntoElement {
-        let clusters =
-            sort_clusters_for_home(settled_or_loading(&use_clusters()).unwrap_or_default());
+        let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
         let metadata = versions_metadata(&use_versions()).unwrap_or_default();
-
-        let labels: Vec<String> = clusters
+        let selected = clusters
             .iter()
+            .find(|c| c.id == self.cluster_id)
             .map(|c| format!("{} · {}", c.name, version_name(&metadata, c)))
-            .collect();
-        let ids: Vec<i64> = clusters.iter().map(|c| c.id).collect();
-
-        let selected = ids
-            .iter()
-            .position(|id| *id == self.cluster_id)
-            .and_then(|idx| labels.get(idx).cloned())
             .unwrap_or_else(|| "Select a version".to_string());
 
         let package_type = self.package_type.clone();
@@ -776,35 +769,31 @@ impl Component for ClusterPicker {
         let mut store = use_browser_state_store();
 
         rect()
-            .horizontal()
-            .cross_align(Alignment::Center)
-            .spacing(8.)
             .margin(Gaps::new(4., 0., 0., 0.))
-            .child(
-                Dropdown::new(selected, labels)
-                    .width(Size::px(240.))
-                    .height(Size::px(28.))
-                    .on_select(move |idx: usize| {
-                        if let (Some(cluster_id), Some(cluster)) =
-                            (ids.get(idx).copied(), clusters.get(idx))
-                        {
-                            let to_type = browsable_type(&package_type, cluster);
-                            let carried = (to_type == package_type)
-                                .then(|| store.peek().get(&from_key).cloned())
-                                .flatten();
-                            if let Some(saved) = carried {
-                                store.write().insert(
-                                    state_key(cluster_id, &to_type, true),
-                                    BrowserUiState { page: 0, ..saved },
-                                );
-                            }
-                            let _ = RouterContext::get().replace(Route::Browser {
-                                cluster_id,
-                                package_type: to_type,
-                                pick_cluster: true,
-                            });
-                        }
-                    }),
-            )
+            .child(ClusterPickerButton {
+                label: selected,
+                selected: Some(self.cluster_id),
+                only: None,
+                width: Size::px(240.),
+                height: 28.,
+                on_pick: (move |cluster: Cluster| {
+                    let to_type = browsable_type(&package_type, &cluster);
+                    let carried = (to_type == package_type)
+                        .then(|| store.peek().get(&from_key).cloned())
+                        .flatten();
+                    if let Some(saved) = carried {
+                        store.write().insert(
+                            state_key(cluster.id, &to_type, true),
+                            BrowserUiState { page: 0, ..saved },
+                        );
+                    }
+                    let _ = RouterContext::get().replace(Route::Browser {
+                        cluster_id: cluster.id,
+                        package_type: to_type,
+                        pick_cluster: true,
+                    });
+                })
+                .into(),
+            })
     }
 }

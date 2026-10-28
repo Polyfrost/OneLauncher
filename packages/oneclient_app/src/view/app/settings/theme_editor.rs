@@ -5,7 +5,7 @@ use freya::router::RouterContext;
 
 use super::{section_header, settings_page, settings_row};
 use crate::components::{
-    Button, ColorPicker, Dropdown, IconType, Segment, SegmentedControl, TextInput,
+    Button, ColorPicker, Dropdown, IconType, Segment, SegmentedControl, TextInput, toggle,
 };
 use crate::hooks::{use_debounced, use_dispatch};
 use crate::routes::Route;
@@ -36,12 +36,14 @@ impl Component for SettingsThemeEditor {
         let name = use_state(|| draft.peek().name.clone());
         let light = use_state(|| draft.peek().colors.light);
         let radius = use_state(|| draft.peek().radius_scale);
+        let pixel_icons = use_state(|| draft.peek().pixel_icons);
 
         let edited = {
             let mut theme = draft.read().clone();
             theme.name = name.read().trim().to_string();
             theme.colors.light = *light.read();
             theme.radius_scale = *radius.read();
+            theme.pixel_icons = *pixel_icons.read();
             theme
         };
 
@@ -175,6 +177,12 @@ impl Component for SettingsThemeEditor {
                 "Used for logs and code blocks.",
                 edited.mono_font.clone(),
                 |theme| &mut theme.mono_font,
+            ))
+            .child(settings_row(
+                IconType::DotsGrid,
+                "Pixel icons",
+                "Use blocky pixel-art icons, like the Minecraft themes.",
+                toggle(pixel_icons),
             ))
             .child(
                 rect()

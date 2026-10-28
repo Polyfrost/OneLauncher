@@ -4,6 +4,7 @@
   "font": "Minecraft",
   "mono_font": "Minecraft",
   "pixel_font_size": 10,
+  "pixel_icons": true,
   "colors": {
     "light": true,
     "page": "#E8EDFF",

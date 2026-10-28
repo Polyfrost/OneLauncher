@@ -40,6 +40,8 @@ pub struct Theme {
     pub mono_font: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pixel_font_size: Option<f32>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub pixel_icons: bool,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub font_files: BTreeMap<String, Vec<PathBuf>>,
     pub colors: Palette,
@@ -228,6 +230,21 @@ pub fn text_size(size: f32) -> f32 {
     };
     let scale = SCALE_FACTOR.get().max(1.);
     (size * scale / step).round().max(1.) * step / scale
+}
+
+const PIXEL_ICON_GRID: f32 = 12.;
+
+pub fn pixel_icon(path: &str) -> Option<String> {
+    if !colors::active_theme().pixel_icons {
+        return None;
+    }
+    let pixel = format!("icons/pixel/{}", path.strip_prefix("icons/")?);
+    AppAssets::get(&pixel).map(|_| pixel)
+}
+
+pub fn pixel_icon_size(size: f32) -> f32 {
+    let scale = SCALE_FACTOR.get().max(1.);
+    (size * scale / PIXEL_ICON_GRID).round().max(1.) * PIXEL_ICON_GRID / scale
 }
 
 pub fn rounded_px(radius: f32) -> f32 {

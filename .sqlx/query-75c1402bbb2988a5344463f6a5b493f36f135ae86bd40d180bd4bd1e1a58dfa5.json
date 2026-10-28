@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n\t\tSELECT\n\t\t\tca.hash AS \"hash!: String\",\n\t\t\tca.cluster_file_name AS \"cluster_file_name!: String\",\n\t\t\tca.enabled AS \"enabled!: i64\",\n\t\t\tca.seen_status AS \"seen_status!: i64\",\n\t\t\ta.content_type AS \"content_type!: i64\",\n\t\t\ta.file_name AS \"file_name!: String\",\n\t\t\ta.size_bytes AS \"size_bytes?: i64\",\n\t\t\tpr.provider AS \"provider?: i64\",\n\t\t\tpr.project_id AS \"project_id?: String\",\n\t\t\tpr.version_id AS \"version_id?: String\",\n\t\t\tpr.display_name AS \"display_name?: String\",\n\t\t\tpr.display_version AS \"display_version?: String\",\n\t\t\tpr.published_at AS \"published_at?: String\"\n\t\tFROM cluster_artifacts ca\n\t\tJOIN artifacts a ON a.hash = ca.hash\n\t\tLEFT JOIN provider_releases pr ON pr.rowid = (\n\t\t\tSELECT rowid\n\t\t\tFROM provider_releases\n\t\t\tWHERE hash = ca.hash\n\t\t\tORDER BY published_at DESC, provider, project_id, version_id\n\t\t\tLIMIT 1\n\t\t)\n\t\tWHERE ca.cluster_id = ?\n\t\t",
+  "query": "\n\t\tSELECT\n\t\t\tca.hash AS \"hash!: String\",\n\t\t\tca.cluster_file_name AS \"cluster_file_name!: String\",\n\t\t\tca.enabled AS \"enabled!: i64\",\n\t\t\tca.seen_status AS \"seen_status!: i64\",\n\t\t\ta.content_type AS \"content_type!: i64\",\n\t\t\ta.file_name AS \"file_name!: String\",\n\t\t\ta.size_bytes AS \"size_bytes?: i64\",\n\t\t\tpr.provider AS \"provider?: i64\",\n\t\t\tpr.project_id AS \"project_id?: String\",\n\t\t\tpr.version_id AS \"version_id?: String\",\n\t\t\tpr.display_name AS \"display_name?: String\",\n\t\t\tpr.display_version AS \"display_version?: String\",\n\t\t\tpr.published_at AS \"published_at?: String\",\n\t\t\tca.added_at AS \"added_at?: String\"\n\t\tFROM cluster_artifacts ca\n\t\tJOIN artifacts a ON a.hash = ca.hash\n\t\tLEFT JOIN provider_releases pr ON pr.rowid = (\n\t\t\tSELECT rowid\n\t\t\tFROM provider_releases\n\t\t\tWHERE hash = ca.hash\n\t\t\tORDER BY published_at DESC, provider, project_id, version_id\n\t\t\tLIMIT 1\n\t\t)\n\t\tWHERE ca.cluster_id = ?\n\t\t",
   "describe": {
     "columns": [
       {
@@ -145,6 +145,17 @@
             "name": "published_at"
           }
         }
+      },
+      {
+        "name": "added_at?: String",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "added_at"
+          }
+        }
       }
     ],
     "parameters": {
@@ -163,8 +174,9 @@
       true,
       true,
       true,
+      true,
       true
     ]
   },
-  "hash": "e2d15ed416fe6dd30389a881aa219cb3c9ce6f9268e117ad3eaeddb4af779c5a"
+  "hash": "75c1402bbb2988a5344463f6a5b493f36f135ae86bd40d180bd4bd1e1a58dfa5"
 }

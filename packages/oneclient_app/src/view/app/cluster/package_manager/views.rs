@@ -23,14 +23,18 @@ pub(super) enum SortMode {
     NameDesc,
     SizeAsc,
     SizeDesc,
+    AddedDesc,
+    UpdatedDesc,
 }
 
 impl SortMode {
-    const ALL: [SortMode; 4] = [
+    const ALL: [SortMode; 6] = [
         SortMode::NameAsc,
         SortMode::NameDesc,
         SortMode::SizeAsc,
         SortMode::SizeDesc,
+        SortMode::AddedDesc,
+        SortMode::UpdatedDesc,
     ];
 
     fn key(self) -> &'static str {
@@ -39,6 +43,8 @@ impl SortMode {
             SortMode::NameDesc => "name_desc",
             SortMode::SizeAsc => "size_asc",
             SortMode::SizeDesc => "size_desc",
+            SortMode::AddedDesc => "added_desc",
+            SortMode::UpdatedDesc => "updated_desc",
         }
     }
 
@@ -52,6 +58,8 @@ impl SortMode {
             SortMode::NameDesc => "Name (Z-A)",
             SortMode::SizeAsc => "Size (Smallest)",
             SortMode::SizeDesc => "Size (Largest)",
+            SortMode::AddedDesc => "Recently Added",
+            SortMode::UpdatedDesc => "Recently Updated",
         }
     }
 
@@ -62,6 +70,13 @@ impl SortMode {
             SortMode::NameDesc => rows.sort_by_key(|p| std::cmp::Reverse(title(p))),
             SortMode::SizeAsc => rows.sort_by_key(|p| p.size),
             SortMode::SizeDesc => rows.sort_by_key(|p| std::cmp::Reverse(p.size)),
+            // Undated rows (not installed, or added before dates were kept) sink to the bottom
+            SortMode::AddedDesc => {
+                rows.sort_by_key(|p| (std::cmp::Reverse(p.added_at.clone()), title(p)))
+            }
+            SortMode::UpdatedDesc => {
+                rows.sort_by_key(|p| (std::cmp::Reverse(p.published_at.clone()), title(p)))
+            }
             _ => rows.sort_by_key(title),
         }
     }

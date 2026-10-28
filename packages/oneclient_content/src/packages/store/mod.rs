@@ -289,6 +289,7 @@ impl PackageStore {
                 display_version: row.display_version,
                 provider: row.provider.and_then(|p| ProviderId::from_repr(p as u8)),
                 published_at: row.published_at,
+                added_at: row.added_at,
                 seen_status: SeenStatus::from_repr(row.seen_status).unwrap_or_default(),
             })
             .collect())

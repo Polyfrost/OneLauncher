@@ -344,6 +344,8 @@ fn make_row(
         bisect_role: None,
         locked: false,
         modpack: None,
+        added_at: installed_info.and_then(|i| i.added_at.clone()),
+        published_at: installed_info.and_then(|i| i.published_at.clone()),
     }
 }
 
@@ -981,6 +983,7 @@ mod tests {
             display_version: None,
             provider: None,
             published_at: None,
+            added_at: None,
             seen_status: oneclient_core::SeenStatus::Seen,
             size_bytes: None,
         }
@@ -1061,5 +1064,42 @@ mod tests {
                 kept.bundle_name.clone().unwrap()
             )
         );
+    }
+
+    #[test]
+    fn date_sorts_put_newest_first_and_undated_last() {
+        let row = |name: &str, added: Option<&str>, published: Option<&str>| {
+            let mut row = make_row(
+                name.to_string(),
+                None,
+                ProviderId::Local,
+                0,
+                Vec::new(),
+                true,
+                false,
+                false,
+                None,
+                None,
+                name.to_string(),
+                false,
+                false,
+                true,
+            );
+            row.added_at = added.map(Into::into);
+            row.published_at = published.map(Into::into);
+            row
+        };
+        let (jan, oct) = (Some("2026-01-01T00:00:00Z"), Some("2026-10-01T00:00:00Z"));
+        let mut rows = vec![
+            row("undated", None, None),
+            row("old", jan, oct),
+            row("new", oct, jan),
+        ];
+        let names = |rows: &[PackageEntry]| rows.iter().map(|p| p.name.clone()).collect::<Vec<_>>();
+
+        SortMode::AddedDesc.sort(&mut rows);
+        assert_eq!(names(&rows), ["new", "old", "undated"]);
+        SortMode::UpdatedDesc.sort(&mut rows);
+        assert_eq!(names(&rows), ["old", "new", "undated"]);
     }
 }

@@ -8,6 +8,7 @@ use crate::hooks::{use_dispatch, use_notifications_snapshot};
 use crate::notifications::{UnpublishedImport, UnpublishedInstance};
 use crate::theme::colors;
 use crate::ui::border_all_color;
+use crate::utils::count_label;
 
 const DIALOG_W: f32 = 500.;
 const DIALOG_PAD: f32 = 22.;
@@ -46,10 +47,6 @@ impl Component for UnpublishedImportPopup {
             )
             .into_element()
     }
-}
-
-fn count_label(count: usize, one: &str, many: &str) -> String {
-    format!("{count} {}", if count == 1 { one } else { many })
 }
 
 pub(crate) fn unpublished_rows(

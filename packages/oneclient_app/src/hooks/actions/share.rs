@@ -11,6 +11,7 @@ use oneclient_events::GroupedProgressSession;
 use super::Actions;
 use crate::components::IconType;
 use crate::launcher::{self, off_ui};
+use crate::utils::count_label;
 
 const MAX_LISTED: usize = 3;
 
@@ -186,10 +187,6 @@ async fn pick_export_file(cluster_name: &str) -> Option<PathBuf> {
         path.set_extension(SHARE_EXTENSION);
     }
     Some(path)
-}
-
-fn count_label(count: usize, one: &str, many: &str) -> String {
-    format!("{count} {}", if count == 1 { one } else { many })
 }
 
 fn listed(names: &[String]) -> String {

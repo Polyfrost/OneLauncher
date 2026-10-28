@@ -14,7 +14,7 @@ use crate::hooks::{use_cached_image, use_dispatch, use_notifications_snapshot};
 use crate::notifications::{ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::utils::format_size;
+use crate::utils::{count_label, format_size};
 
 const DIALOG_W: f32 = 500.;
 const DIALOG_PAD: f32 = 22.;
@@ -119,10 +119,6 @@ fn track_height(mut target: State<f32>) -> impl FnMut(Event<SizedEventData>) {
             target.set(h);
         }
     }
-}
-
-fn count_label(count: usize, one: &str, many: &str) -> String {
-    format!("{count} {}", if count == 1 { one } else { many })
 }
 
 fn content_line(summary: &ModpackSummary) -> String {
@@ -308,7 +304,7 @@ fn dialog(
     let unchecked = if confirm.mods_unchecked {
         Some(caution_card(
             "Couldn't check the mods",
-            "OneClient could not reach Modrinth or CurseForge, so it could not tell whether this pack's mods are published there. Only continue if you trust where this file came from.",
+            "OneClient could not read this pack's mods, so it could not tell whether they are published on Modrinth or CurseForge. Only continue if you trust where this file came from.",
         ))
     } else if confirm.mods_unconfirmed > 0 {
         Some(caution_card(

@@ -15,6 +15,7 @@ use crate::components::{
 use crate::hooks::{retry_import_screening, use_cached_image};
 use crate::theme::colors;
 use crate::ui::border_all_color;
+use crate::utils::count_label;
 
 const OPTION_H: f32 = 48.;
 const OPTION_ICON: f32 = 28.;
@@ -151,18 +152,15 @@ fn instance_section(
 ) -> Element {
     let count = match screened.flagged.len() {
         0 => String::new(),
-        1 => "1 mod to improve".to_string(),
-        n => format!("{n} mods to improve"),
+        n => count_label(n, "mod to improve", "mods to improve"),
     };
     let unpublished = if screened.unconfirmed > 0 {
-        let mods = if screened.unconfirmed == 1 {
-            "1 mod".to_string()
-        } else {
-            format!("{} mods", screened.unconfirmed)
-        };
         Some(
             caution_card(
-                format!("Couldn't confirm {mods}"),
+                format!(
+                    "Couldn't confirm {}",
+                    count_label(screened.unconfirmed, "mod", "mods")
+                ),
                 "OneClient could not reach Modrinth or CurseForge, so it could not confirm these mods are published there. Only import it if you trust where it came from.",
             )
             .into_element(),
@@ -215,15 +213,13 @@ fn instance_section(
 }
 
 fn unpublished_card(mods: &[UnpublishedFile]) -> impl IntoElement {
-    let count = mods.len();
     let list = warning_list(unpublished_rows(mods));
-    let (mods, them) = if count == 1 {
-        ("1 mod is".to_string(), "it")
-    } else {
-        (format!("{count} mods are"), "them")
-    };
+    let them = if mods.len() == 1 { "it" } else { "them" };
     warning_card(
-        format!("{mods} not on Modrinth or CurseForge"),
+        format!(
+            "{} not on Modrinth or CurseForge",
+            count_label(mods.len(), "mod is", "mods are")
+        ),
         format!(
             "Nobody has checked {them}, and {them} could contain malware. Only import instances from people you trust."
         ),

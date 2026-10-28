@@ -57,6 +57,11 @@ impl Component for SettingsLauncher {
             move || v
         });
 
+        let open_game_log = use_state({
+            let v = settings.open_game_log_on_launch;
+            move || v
+        });
+
         let mut first = use_state(|| true);
         use_side_effect(move || {
             let discord = *discord_rpc.read();
@@ -65,6 +70,7 @@ impl Component for SettingsLauncher {
             let background = *run_in_background.read();
             let tray = *show_tray_icon.read();
             let behaviour = *launch_behaviour.read();
+            let game_log = *open_game_log.read();
             if *first.peek() {
                 first.set(false);
                 return;
@@ -76,6 +82,7 @@ impl Component for SettingsLauncher {
                 next.run_in_background = background;
                 next.show_tray_icon = tray;
                 next.launch_behaviour = behaviour;
+                next.open_game_log_on_launch = game_log;
             });
         });
 
@@ -136,6 +143,16 @@ impl Component for SettingsLauncher {
                     launch_behaviour_field(launch_behaviour),
                     launch_behaviour,
                     defaults.launch_behaviour,
+                ),
+            ))
+            .child(settings_row(
+                IconType::Terminal,
+                "Open Game Log on Launch",
+                "Switch to the live game log once a cluster starts running.",
+                resettable(
+                    toggle(open_game_log),
+                    open_game_log,
+                    defaults.open_game_log_on_launch,
                 ),
             ))
             .child(settings_row(

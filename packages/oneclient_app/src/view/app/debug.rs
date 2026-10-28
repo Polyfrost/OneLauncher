@@ -11,7 +11,9 @@ use oneclient_core::simulate::Damage;
 use oneclient_net::status::{self, ServiceStatus};
 
 use crate::Actions;
-use crate::components::{Button, Dropdown, Icon, IconType, TextInput, login_dialog, toggle};
+use crate::components::{
+    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, login_dialog, toggle,
+};
 use crate::hooks::{
     invalidate_auth_queries, settled_or_loading, try_default_account, use_active_cluster_id,
     use_clusters, use_current_account, use_dispatch,
@@ -44,7 +46,8 @@ impl Component for Debug {
             .padding(40.)
             .spacing(8.)
             .child(
-                ScrollView::new()
+                ScrollArea::new()
+                    .height(Size::fill())
                     .child(
                         rect()
                             .vertical()

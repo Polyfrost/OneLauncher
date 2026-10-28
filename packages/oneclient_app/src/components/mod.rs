@@ -72,7 +72,7 @@ pub use avatar::Avatar;
 pub use blocked_downloads_popup::BlockedDownloadsPopup;
 pub use bundle_choices_popup::BundleChoicesPopup;
 pub use bundled_install_warning::{BundledInstallWarning, PendingBundledInstall};
-pub use button::{Button, ButtonSize, ButtonVariant, copy_button, link_button, open_folder_button};
+pub use button::{Button, ButtonSize, ButtonVariant, copy_button, link_button, open_folder_button, sized_open_folder_button};
 pub use charts::{BarChart, PieChart, ValueUnit, slice_color};
 pub use checkbox::checkbox_labeled;
 pub use cluster_update_popup::ClusterUpdatePopup;

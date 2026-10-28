@@ -91,6 +91,7 @@ pub async fn invalidate_cluster_queries() {
 /// Split out of [`invalidate_cluster_queries`] so an install can wait for just
 /// this before dropping its busy flag
 pub async fn invalidate_cluster_content_queries() {
+    crate::hooks::cloud_sync_signal(crate::hooks::CloudSignal::Changed(None));
     QueriesStorage::<ClusterContentQuery>::invalidate_all().await;
     QueriesStorage::<MigratableRoutesQuery>::invalidate_all().await;
 }
@@ -580,6 +581,7 @@ impl MutationCapability for ClusterMutation {
                             reason: err.to_string(),
                         });
                     if outcome.is_ok() {
+                        crate::hooks::forget_deleted_cluster(&state, *cluster_id).await;
                         services
                             .events
                             .signal(oneclient_events::Signal::ClustersChanged);

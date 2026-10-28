@@ -3,6 +3,10 @@
 //! Always `spawn_forever` never `spawn` Freya's `spawn` cancels the task when
 //! the calling component unmounts this work is app-scoped not component-scoped
 
+mod cloud_sync;
+pub use cloud_sync::{
+    CloudSignal, cloud_engine, cloud_sync_signal, forget_deleted_cluster, load_sync_left_out,
+};
 mod external_import;
 pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
@@ -11,7 +15,10 @@ pub(crate) use modpacks::listed;
 pub use modpacks::modpack_job_running;
 mod release_migration;
 mod share;
-pub use share::exporting;
+pub use share::{
+    add_collaborator, exporting, load_collaborators, load_is_shared, load_owner_check,
+    load_setting_files, remove_collaborator,
+};
 
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -2323,6 +2330,9 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
 
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
     crate::loader_update::offer_before_launch(actions, cluster_id).await;
+
+    actions.sync_before_launch(&state, cluster_id).await;
+    actions.share_update_before_launch(&state, cluster_id).await;
 
     let content = state.services.content();
     tokio::spawn(async move {

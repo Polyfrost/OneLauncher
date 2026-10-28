@@ -30,6 +30,11 @@ pub use active_cluster::{
 };
 
 pub use actions::{
+    CloudSignal, add_collaborator, cloud_engine, cloud_sync_signal, forget_deleted_cluster,
+    load_collaborators, load_is_shared, load_owner_check, load_setting_files, load_sync_left_out,
+    remove_collaborator,
+};
+pub use actions::{
     Actions, AlternativePick, ExternalImportJob, NotificationBuilder, PumpSignal, exporting,
     modpack_job_running,
 };
@@ -161,6 +166,18 @@ pub fn use_control_center_open() -> bool {
         .control_center_open
 }
 
+pub fn use_cloud_sync() -> crate::state::CloudSyncState {
+    use_radio(AppChannel::CloudSync).read().cloud_sync.clone()
+}
+
+pub fn use_share_progress(cluster_id: i64) -> Option<crate::state::ShareProgress> {
+    use_radio(AppChannel::Share)
+        .read()
+        .shares
+        .get(&cluster_id)
+        .cloned()
+}
+
 pub fn use_game_snapshot() -> GameState {
     use_radio(AppChannel::Game).read().game.clone()
 }
@@ -180,6 +197,13 @@ pub fn use_pending_launch() -> Option<String> {
     use_radio(AppChannel::PendingLaunch)
         .read()
         .pending_launch
+        .clone()
+}
+
+pub fn use_pending_share() -> Option<String> {
+    use_radio(AppChannel::PendingLaunch)
+        .read()
+        .pending_share
         .clone()
 }
 

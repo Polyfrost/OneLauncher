@@ -5252,6 +5252,7 @@ dependencies = [
  "sha1 0.11.0",
  "thiserror 2.0.21",
  "tokio",
+ "tokio-util",
  "tracing",
  "url",
  "uuid 1.26.1",

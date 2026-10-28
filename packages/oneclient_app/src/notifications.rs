@@ -85,6 +85,22 @@ pub struct ModpackConfirm {
     pub summary: ModpackSummary,
     pub import: Option<ModpackImportView>,
     pub flagged: Option<FlaggedModpack>,
+    pub shared: Option<SharedPreview>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SharedPreview {
+    pub code: String,
+    pub files: Vec<SharedPreviewFile>,
+    pub settings: usize,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SharedPreviewFile {
+    pub name: String,
+    pub source: &'static str,
+    pub verified: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

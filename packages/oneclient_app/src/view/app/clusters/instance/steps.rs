@@ -184,6 +184,13 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
             "A OneClient .mrpack, or a Prism Launcher or MultiMC export .zip.",
         ),
         (
+            ImportSource::Code,
+            IconType::Users01,
+            "Import from a share code",
+            "Paste the code or link a friend got from Share in OneClient.",
+            "Codes look like ABCD-EFGH.",
+        ),
+        (
             ImportSource::Launcher,
             IconType::FolderDownload,
             "Import from launcher",
@@ -192,6 +199,7 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
         ),
     ];
 
+    let by_code = picks.import_source == ImportSource::Code;
     rect()
         .vertical()
         .width(Size::fill())
@@ -207,6 +215,13 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
                 selected: picks.import_source == source,
                 on_press: (move |()| chosen.set(source)).into(),
             })
+        }))
+        .maybe_child(by_code.then(|| {
+            TextInput::new(wizard.share_code)
+                .width(Size::fill())
+                .placeholder("ABCD-EFGH or a share link")
+                .auto_focus(true)
+                .into_element()
         }))
         .into_element()
 }

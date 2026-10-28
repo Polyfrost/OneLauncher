@@ -35,6 +35,7 @@ pub enum TypeChoice {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum ImportSource {
     File,
+    Code,
     Launcher,
 }
 
@@ -232,7 +233,7 @@ pub fn step_order(choice: TypeChoice, source: ImportSource, mode: ImportMode) ->
         (TypeChoice::OneClient, _, _) => &ONECLIENT_STEPS,
         (TypeChoice::Scratch, _, _) => &SCRATCH_STEPS,
         (TypeChoice::Modpack, _, _) => &MODPACK_STEPS,
-        (TypeChoice::Import, ImportSource::File, _) => &IMPORT_FILE_STEPS,
+        (TypeChoice::Import, ImportSource::File | ImportSource::Code, _) => &IMPORT_FILE_STEPS,
         (TypeChoice::Import, ImportSource::Launcher, ImportMode::AsIs) => &IMPORT_STEPS,
         (TypeChoice::Import, ImportSource::Launcher, ImportMode::Improve) => &IMPROVE_STEPS,
     }
@@ -295,6 +296,7 @@ pub struct Wizard {
     pub declined: State<Option<HashSet<String>>>,
     pub modpack_origin: State<ModpackOrigin>,
     pub import_source: State<ImportSource>,
+    pub share_code: State<String>,
     /// Instances ticked on the import step, in the order they were ticked
     pub import_chosen: State<Vec<ExternalInstance>>,
     /// Installs the user pointed at by hand (portable launchers)

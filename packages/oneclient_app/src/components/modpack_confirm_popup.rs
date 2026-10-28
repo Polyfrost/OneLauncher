@@ -8,7 +8,9 @@ use oneclient_core::clusters::{ExistingPack, FlaggedModpack, FlaggedPackMod};
 use super::flagged_install_popup::explanation_panel;
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, remote_icon};
 use crate::hooks::{use_cached_image, use_dispatch, use_notifications_snapshot};
-use crate::notifications::{ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView};
+use crate::notifications::{
+    ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView, SharedPreview,
+};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
@@ -307,6 +309,7 @@ fn dialog(
         .flagged
         .as_ref()
         .map(|flagged| flagged_pack_section(&confirm.pack_name, flagged).into_element());
+    let shared_section = confirm.shared.as_ref().map(shared_section);
     let add_button = Button::new().on_press(move |_| {
         if importing {
             add.confirm_modpack_import(choices.read().clone(), *existing.read());
@@ -407,6 +410,7 @@ fn dialog(
                                                 .into_element()
                                         }),
                                 )
+                                .maybe_child(shared_section)
                                 .children(import_notes)
                                 .maybe_child(existing_section)
                                 .maybe_child(flagged_section),
@@ -429,6 +433,113 @@ fn dialog(
                         .child(add_button),
                 ),
         )
+}
+
+fn shared_section(preview: &SharedPreview) -> Element {
+    let unverified = preview.files.iter().filter(|file| !file.verified).count();
+    let mut lines = vec![
+        label()
+            .text(format!(
+                "Stays linked to {}. When the person who shared it updates it, you're asked before you play. Mods you add yourself stay.",
+                preview.code
+            ))
+            .font_size(12.)
+            .max_lines(4)
+            .color(colors::fg_secondary())
+            .into_element(),
+    ];
+    if unverified > 0 {
+        lines.push(
+            label()
+                .text(format!(
+                    "{} not from Modrinth or CurseForge. Only add instances from people you trust.",
+                    count_label(unverified, "file is", "files are")
+                ))
+                .font_size(12.)
+                .max_lines(3)
+                .color(colors::code_warn())
+                .into_element(),
+        );
+    }
+    if preview.settings > 0 {
+        lines.push(
+            label()
+                .text(format!(
+                    "Comes with {}.",
+                    count_label(preview.settings, "settings file", "settings files")
+                ))
+                .font_size(12.)
+                .color(colors::fg_secondary())
+                .into_element(),
+        );
+    }
+
+    let rows: Vec<Element> = preview
+        .files
+        .iter()
+        .map(|file| {
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .content(Content::Flex)
+                .cross_align(Alignment::Center)
+                .spacing(10.)
+                .child(
+                    label()
+                        .text(file.name.clone())
+                        .width(Size::flex(1.))
+                        .font_size(12.5)
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    label()
+                        .text(file.source)
+                        .font_size(11.5)
+                        .color(if file.verified {
+                            colors::fg_secondary()
+                        } else {
+                            colors::code_warn()
+                        }),
+                )
+                .into_element()
+        })
+        .collect();
+
+    let mut section = rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(8.)
+        .children(lines);
+    if !rows.is_empty() {
+        section = section.child(
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(6.)
+                .padding(Gaps::new_all(12.))
+                .corner_radius(CornerRadius::new_all(10.))
+                .background(colors::component_bg())
+                .border(border_all_color(1., colors::component_border()))
+                .child(
+                    label()
+                        .text("What's inside")
+                        .font_size(12.5)
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .color(colors::fg_primary()),
+                )
+                .children(rows)
+                .maybe_child(preview.truncated.then(|| {
+                    label()
+                        .text("And more.")
+                        .font_size(12.)
+                        .color(colors::fg_secondary())
+                        .into_element()
+                })),
+        );
+    }
+    section.into_element()
 }
 
 fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> impl IntoElement {

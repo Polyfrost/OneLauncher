@@ -56,6 +56,15 @@ pub fn parse_launch_url(raw: &str) -> Option<String> {
     (!folder.is_empty()).then(|| folder.to_string())
 }
 
+#[must_use]
+pub fn parse_share_url(raw: &str) -> Option<String> {
+    let (scheme, _) = raw.trim().split_once("://")?;
+    if !scheme.eq_ignore_ascii_case(SCHEME) {
+        return None;
+    }
+    oneclient_core::sharing::ShareCode::parse(raw).map(|code| code.as_str().to_string())
+}
+
 pub fn register(exe: &Path) -> anyhow::Result<()> {
     imp::register(exe)
 }

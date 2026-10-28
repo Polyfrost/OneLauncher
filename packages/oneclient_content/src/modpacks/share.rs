@@ -11,6 +11,7 @@ use oneclient_db::models::{ArtifactRow, ClusterKind, ClusterRow, OverrideType};
 use oneclient_events::{GroupedProgressChild, GroupedProgressSession, TaskCategory, TaskPhase};
 
 use super::install::install_loose_file;
+use super::settings::SettingsScan;
 use super::{
     LooseFile, MODPACK_BUNDLE_NAME, ModpackInstallReport, ModpackManifest, is_safe_relative_path,
     tracked_content_type, zip_entry,
@@ -74,6 +75,10 @@ pub struct ClusterShare {
     pub downloads: Vec<SharedDownload>,
     #[serde(default)]
     pub icon: Option<String>,
+    #[serde(default)]
+    pub settings: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub left_out_settings: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -181,6 +186,7 @@ pub struct ShareContent {
     pub missing: Vec<String>,
     pub scanned_bytes: u64,
     pub carryover: Option<PackCarryover>,
+    pub settings: SettingsScan,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -189,6 +195,8 @@ pub struct ShareExportReport {
     pub embedded: Vec<String>,
     pub missing: Vec<String>,
     pub carried: usize,
+    pub settings: usize,
+    pub skipped_settings: Vec<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -642,9 +650,11 @@ pub async fn write_share_archive(
     share.overrides = content.overrides.clone();
     share.bundles = content.bundles.clone();
     share.downloads = Vec::new();
+    share.settings = Vec::new();
 
     let mut report = ShareExportReport {
         missing: content.missing.clone(),
+        skipped_settings: content.settings.skipped.clone(),
         ..ShareExportReport::default()
     };
     let mut index_files = Vec::new();
@@ -715,6 +725,27 @@ pub async fn write_share_archive(
                 report.embedded.push(file.path.clone());
             }
         }
+    }
+
+    if !content.settings.files.is_empty() {
+        let taken: HashSet<String> = embedded.iter().map(|(entry, _)| entry.clone()).collect();
+        let mut written = HashSet::new();
+        for setting in &content.settings.files {
+            let entry = format!("{OVERRIDES}{}", setting.path);
+            if taken.contains(&entry) || !written.insert(setting.path.clone()) {
+                continue;
+            }
+            embedded.push((entry, setting.source.clone()));
+            share.settings.push(setting.path.clone());
+        }
+        carried_entries.retain(|(rel, _)| !written.contains(rel));
+        report.carried = report.carried.saturating_sub(
+            content
+                .carryover
+                .as_ref()
+                .map_or(0, |carry| carry.files.len() - carried_entries.len()),
+        );
+        report.settings = share.settings.len();
     }
 
     let summary = share
@@ -944,7 +975,9 @@ pub async fn install_shared_content(
     PackageStore::describe_artifacts(&stored, ctx).await;
 
     import_embedded(archive_path, cluster_id, &mut report, ctx).await?;
-    if cluster.is_isolated() {
+    if cluster.is_isolated()
+        || oneclient_common::paths::cluster_uses_dedicated_dir(&cluster.folder_name)
+    {
         apply_shared_files(archive_path, manifest, &cluster, progress, &mut report, ctx).await?;
     }
     report
@@ -1103,6 +1136,139 @@ async fn import_embedded(
     Ok(())
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ShareFingerprints {
+    pub content: String,
+    pub settings: String,
+}
+
+#[tracing::instrument(level = "debug")]
+pub async fn share_fingerprints(path: &Path) -> ContentResult<ShareFingerprints> {
+    let share = read_cluster_share(path)
+        .await?
+        .ok_or_else(|| ContentError::InvalidData {
+            reason: "the file is not a OneClient instance export".to_string(),
+        })?;
+    let settings: HashSet<String> = share
+        .settings
+        .iter()
+        .map(|path| format!("{OVERRIDES}{path}"))
+        .collect();
+
+    let mut names = polyio::zip_entry_names(path).await?;
+    names.retain(|name| !name.ends_with('/'));
+    names.sort();
+    let mut cursor = polyio::ZipEntryCursor::open(path, |_| true).await?;
+    let mut content = Vec::new();
+    let mut chosen = Vec::new();
+    for name in names {
+        let digest = if name == SHARE_ENTRY {
+            let mut value: serde_json::Value = serde_json::from_slice(&cursor.read(&name).await?)?;
+            if let Some(fields) = value.as_object_mut() {
+                fields.remove("settings");
+                fields.remove("dedicated_dir");
+            }
+            polyio::sha1_bytes(&serde_json::to_vec(&value)?)
+        } else {
+            polyio::sha1_bytes(&cursor.read(&name).await?)
+        };
+        let target = if settings.contains(&name) {
+            &mut chosen
+        } else {
+            &mut content
+        };
+        target.extend_from_slice(name.as_bytes());
+        target.push(0);
+        target.extend_from_slice(digest.as_bytes());
+        target.push(b'\n');
+    }
+    Ok(ShareFingerprints {
+        content: polyio::sha1_bytes(&content),
+        settings: polyio::sha1_bytes(&chosen),
+    })
+}
+
+#[tracing::instrument(level = "debug", skip(settings))]
+pub async fn replace_share_settings(
+    src: &Path,
+    dest: &Path,
+    settings: &SettingsScan,
+) -> ContentResult<ShareExportReport> {
+    let mut share = read_cluster_share(src)
+        .await?
+        .ok_or_else(|| ContentError::InvalidData {
+            reason: "the earlier share is not a OneClient instance export".to_string(),
+        })?;
+    let old: HashSet<String> = share
+        .settings
+        .iter()
+        .map(|path| format!("{OVERRIDES}{path}"))
+        .collect();
+    let kept: Vec<String> = polyio::zip_entry_names(src)
+        .await?
+        .into_iter()
+        .filter(|name| !name.ends_with('/') && name != SHARE_ENTRY && !old.contains(name))
+        .collect();
+    let taken: HashSet<&str> = kept.iter().map(String::as_str).collect();
+
+    let mut written = Vec::new();
+    share.settings = Vec::new();
+    for file in &settings.files {
+        let entry = format!("{OVERRIDES}{}", file.path);
+        if taken.contains(entry.as_str()) || share.settings.contains(&file.path) {
+            continue;
+        }
+        share.settings.push(file.path.clone());
+        written.push((entry, file.source.clone()));
+    }
+    share.dedicated_dir |= !share.settings.is_empty();
+
+    let report = ShareExportReport {
+        settings: share.settings.len(),
+        skipped_settings: settings.skipped.clone(),
+        ..ShareExportReport::default()
+    };
+
+    let staging = polyio::temp_sibling(dest);
+    let result = async {
+        if let Some(parent) = staging.parent() {
+            polyio::create_dir_all(parent).await?;
+        }
+        let file = tokio::fs::File::create(&staging).await?;
+        let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
+        let mut cursor = polyio::ZipEntryCursor::open(src, |name| taken.contains(name)).await?;
+        for name in &kept {
+            let bytes = cursor.read(name).await?;
+            let compression = if name.ends_with(".jar") || name.ends_with(".zip") {
+                async_zip::Compression::Stored
+            } else {
+                async_zip::Compression::Deflate
+            };
+            write_entry(&mut writer, name, &bytes, compression).await?;
+        }
+        write_entry(
+            &mut writer,
+            SHARE_ENTRY,
+            &serde_json::to_vec_pretty(&share)?,
+            async_zip::Compression::Deflate,
+        )
+        .await?;
+        let mut meter = ExportMeter::new(None, 0, 0);
+        for (entry, source) in &written {
+            stream_entry(&mut writer, entry, source, &mut meter).await?;
+        }
+        writer.close().await.map_err(zip_error)?;
+        polyio::rename(&staging, dest).await?;
+        ContentResult::Ok(())
+    }
+    .await;
+    if let Err(err) = result {
+        polyio::remove_file(&staging).await.ok();
+        return Err(err);
+    }
+    Ok(report)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1128,6 +1294,8 @@ mod tests {
             disabled: Vec::new(),
             downloads: Vec::new(),
             icon: None,
+            settings: vec!["config/sodium-options.json".into()],
+            left_out_settings: Vec::new(),
         }
     }
 

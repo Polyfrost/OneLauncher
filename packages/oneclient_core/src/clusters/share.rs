@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::Arc;
@@ -10,7 +10,8 @@ use oneclient_common::domain::ContentType;
 use oneclient_common::patch::Patch;
 use oneclient_content::modpacks::{
     self, ClusterShare, ModpackInstallReport, ModpackManifest, ModpackSummary, SHARE_FORMAT,
-    ShareExportReport, ShareExtras, ShareIcon, ShareScope, SharedJava, SharedModpack,
+    SettingFile, SettingsScan, ShareExportReport, ShareExtras, ShareIcon, ShareScope, SharedJava,
+    SharedModpack,
 };
 use oneclient_content::packages::PackageStore;
 use oneclient_content::{ContentCtx, ContentError};
@@ -18,6 +19,7 @@ use oneclient_db::dao::cluster_bundle as bundle_dao;
 use oneclient_db::models::{ArtifactRow, OverrideType};
 use oneclient_events::{GroupedProgressSession, TaskCategory, TaskPhase};
 use oneclient_java::JavaVendor;
+use serde::{Deserialize, Serialize};
 
 use super::modpack::{ModpackCluster, PreparedModpack, kind_for, link_project_details};
 use crate::LauncherResult;
@@ -61,7 +63,7 @@ impl SharedCluster {
             count_content(&mut summary, *content_type);
         }
         summary.unverified = self.extras.embedded.len();
-        if self.share.kind.is_isolated() {
+        if self.share.kind.is_isolated() || self.share.dedicated_dir {
             summary.other_files += self.extras.other_files;
         }
         for (content_type, size) in self.extras.downloads.iter().chain(&self.bundled) {
@@ -184,13 +186,98 @@ pub(super) async fn resolve_base_modpack(
     Ok((artifact, true))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ExportMode {
     OneClient,
     Compatibility,
 }
 
-#[tracing::instrument(skip(state, progress))]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "paths", rename_all = "snake_case")]
+pub enum SettingsChoice {
+    #[default]
+    None,
+    All,
+    Only(BTreeSet<String>),
+    AllExcept(BTreeSet<String>),
+}
+
+impl SettingsChoice {
+    #[must_use]
+    pub fn includes_any(&self) -> bool {
+        match self {
+            Self::None => false,
+            Self::All | Self::AllExcept(_) => true,
+            Self::Only(paths) => !paths.is_empty(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExportOptions {
+    pub mode: ExportMode,
+    #[serde(default)]
+    pub settings: SettingsChoice,
+}
+
+impl ExportOptions {
+    #[must_use]
+    pub fn new(mode: ExportMode) -> Self {
+        Self {
+            mode,
+            settings: SettingsChoice::None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_settings(mut self, include: bool) -> Self {
+        self.settings = if include {
+            SettingsChoice::All
+        } else {
+            SettingsChoice::None
+        };
+        self
+    }
+
+    #[must_use]
+    pub fn with_setting_choice(mut self, settings: SettingsChoice) -> Self {
+        self.settings = settings;
+        self
+    }
+}
+
+pub async fn collect_chosen_settings(
+    game_dir: &Path,
+    choice: &SettingsChoice,
+) -> LauncherResult<SettingsScan> {
+    let mut scan = match choice {
+        SettingsChoice::None => return Ok(SettingsScan::default()),
+        SettingsChoice::All | SettingsChoice::Only(_) | SettingsChoice::AllExcept(_) => {
+            modpacks::collect_settings(game_dir).await?
+        }
+    };
+    let keep = |path: &str| match choice {
+        SettingsChoice::Only(paths) => paths.contains(path),
+        SettingsChoice::AllExcept(paths) => !paths.contains(path),
+        SettingsChoice::None | SettingsChoice::All => true,
+    };
+    scan.files.retain(|file| keep(&file.path));
+    scan.skipped.retain(|path| keep(path));
+    scan.bytes = scan.files.iter().map(|file| file.size).sum();
+    Ok(scan)
+}
+
+pub async fn list_setting_files(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+) -> LauncherResult<Vec<SettingFile>> {
+    let cluster = state.clusters.get(cluster_id).await?;
+    Ok(modpacks::collect_settings(&cluster.game_dir()?)
+        .await?
+        .files)
+}
+
 pub async fn export_cluster(
     state: &Arc<LauncherState>,
     cluster_id: i64,
@@ -198,6 +285,18 @@ pub async fn export_cluster(
     mode: ExportMode,
     progress: Option<&GroupedProgressSession>,
 ) -> LauncherResult<ShareExportReport> {
+    export_cluster_with(state, cluster_id, dest, ExportOptions::new(mode), progress).await
+}
+
+#[tracing::instrument(skip(state, progress))]
+pub async fn export_cluster_with(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    dest: &Path,
+    options: ExportOptions,
+    progress: Option<&GroupedProgressSession>,
+) -> LauncherResult<ShareExportReport> {
+    let mode = options.mode;
     let content = state.services.content();
     let cluster = state.clusters.get(cluster_id).await?;
     let child = progress.map(|session| {
@@ -233,8 +332,10 @@ pub async fn export_cluster(
     } else {
         cluster.kind
     };
-    let shared =
+    let mut shared =
         modpacks::collect_share_content(cluster_id, scope, child.as_ref(), &content).await?;
+    shared.settings = collect_chosen_settings(&cluster.game_dir()?, &options.settings).await?;
+    let with_settings = !shared.settings.files.is_empty();
 
     let share = ClusterShare {
         format: SHARE_FORMAT,
@@ -245,7 +346,7 @@ pub async fn export_cluster(
         mc_version: cluster.mc_version.clone(),
         mc_loader: cluster.mc_loader,
         mc_loader_version: exported_loader_version(state, &cluster).await?,
-        dedicated_dir: cluster.uses_dedicated_dir() || kind.is_isolated(),
+        dedicated_dir: cluster.uses_dedicated_dir() || kind.is_isolated() || with_settings,
         java: exported_java(state, &cluster).await,
         modpack,
         bundles: Vec::new(),
@@ -253,6 +354,11 @@ pub async fn export_cluster(
         disabled: Vec::new(),
         downloads: Vec::new(),
         icon: None,
+        settings: Vec::new(),
+        left_out_settings: match &options.settings {
+            SettingsChoice::AllExcept(paths) => paths.iter().cloned().collect(),
+            _ => Vec::new(),
+        },
     };
     let icon = exported_icon(&cluster).await;
 
@@ -420,6 +526,14 @@ pub(super) async fn install_shared_instance(
 ) -> LauncherResult<ModpackCluster> {
     let content = state.services.content();
     let share = &shared.share;
+
+    let cluster = state.clusters.get(cluster_id).await?;
+    if share.dedicated_dir && !cluster.uses_dedicated_dir() {
+        state
+            .clusters
+            .set_dedicated_dir(cluster_id, true, false)
+            .await?;
+    }
 
     let overrides: Vec<_> = share
         .overrides

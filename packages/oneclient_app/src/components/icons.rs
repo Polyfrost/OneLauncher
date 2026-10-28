@@ -153,6 +153,7 @@ pub enum IconType {
     Settings01,
     Settings02,
     Settings04,
+    Share01,
     Sliders04,
     Square,
     Terminal,

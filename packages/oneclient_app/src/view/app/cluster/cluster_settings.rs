@@ -6,25 +6,25 @@ use freya::query::MutationStateData;
 use oneclient_common::Patch;
 use oneclient_common::domain::{GameLoader, GraphicsBackend};
 use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
+use oneclient_core::sync::SyncStatus;
 use oneclient_java::JavaRuntime;
 
 use crate::components::{
-    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle,
-    toggle_controlled, validate_number,
+    Button, Dropdown, FileChoice, Icon, IconType, OverlayPopup, ScrollArea, TextInput,
+    memory_field, settings_file_picker, toggle, toggle_controlled, validate_number,
 };
 use crate::hooks::{
-    ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
-    settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
-    use_game_profile, use_game_snapshot, use_graphics_backend, use_java_runtimes,
-    use_loader_versions, use_migratable_routes, use_release_migration_checking,
-    use_settings_snapshot,
+    ClusterAction, java_runtimes, load_is_shared, load_setting_files, load_sync_left_out,
+    loader_versions, mutation_is_running, query_error, settled_or_loading, try_game_profile,
+    use_cloud_sync, use_cluster_mutation, use_clusters, use_dispatch, use_game_profile,
+    use_game_snapshot, use_graphics_backend, use_java_runtimes, use_loader_versions,
+    use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
 };
 use crate::layout::cluster_content;
 use crate::theme::colors;
-use crate::ui::centered_note;
+use crate::ui::{border_all_color, centered_note};
 use crate::view::app::clusters::{
-    DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts,
-    ResetInstanceModal,
+    DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts, ResetInstanceModal,
 };
 use crate::view::app::settings::{
     section_header, settings_row, settings_row_danger, settings_row_disabled,
@@ -35,6 +35,8 @@ use super::cluster_not_found;
 use super::imported_modpacks::ImportedModpacksSection;
 use super::modpack_settings::{ModpackRepairRow, ModpackUpdateRow};
 use crate::hooks::use_cluster;
+
+const SYNC_FILES_WIDTH: f32 = 560.;
 
 #[derive(PartialEq)]
 pub struct ClusterSettings {
@@ -173,6 +175,20 @@ impl Component for ClusterSettings {
                         .into_element(),
                     )
                     .append_children(sync_row)
+                    .child(
+                        CloudSyncRow {
+                            cluster_id,
+                            name: cluster.name.clone(),
+                        }
+                        .into_element(),
+                    )
+                    .child(
+                        ExportRow {
+                            cluster_id,
+                            name: cluster.name.clone(),
+                        }
+                        .into_element(),
+                    )
                     .child(section_header("SHORTCUT"))
                     .child(ShortcutRow { cluster_id }.into_element())
                     .child(section_header("CONTENT"))
@@ -222,14 +238,6 @@ impl Component for ClusterSettings {
                     ))
                     .append_children(graphics_backend_row)
                     .append_children(loader_section)
-                    .child(section_header("SHARING"))
-                    .child(
-                        ExportRow {
-                            cluster_id,
-                            name: cluster.name.clone(),
-                        }
-                        .into_element(),
-                    )
                     .child(section_header("JAVA"))
                     .child(profile_row(
                         generation,
@@ -502,21 +510,33 @@ impl Component for ExportRow {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
         let mut choosing = use_state(|| false);
+        let mut shared = use_state(|| false);
+        use_side_effect(move || {
+            if *choosing.read() {
+                return;
+            }
+            spawn(async move { shared.set(load_is_shared(cluster_id).await) });
+        });
 
         let button = Button::new()
             .small()
             .secondary()
             .on_press(move |_| choosing.set(true))
-            .text("Export");
+            .text(if *shared.read() {
+                "Configure..."
+            } else {
+                "Share..."
+            });
 
         rect()
             .vertical()
             .width(Size::fill())
             .child(settings_row(
                 IconType::Users01,
-                "Export Instance",
-                "Save this instance as a .mrpack file friends can import: its mods, resource packs, \
-                 shaders, loader, Java version and cover. Worlds and configs stay here.",
+                "Share Instance",
+                "Get a share code or save a .mrpack file friends can import: its mods, resource \
+                 packs, shaders, loader, Java version, cover and, if you choose, its settings. \
+                 Worlds stay here.",
                 button,
             ))
             .maybe_child(choosing.read().then(|| {
@@ -1336,5 +1356,220 @@ impl Component for LoaderRow {
             control,
         )
         .into_element()
+    }
+}
+
+#[derive(PartialEq)]
+struct CloudSyncRow {
+    cluster_id: i64,
+    name: String,
+}
+
+impl Component for CloudSyncRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let name = self.name.clone();
+        let dispatch = use_dispatch();
+        let cloud = use_cloud_sync();
+        let status = cloud.statuses.get(&cluster_id).cloned();
+
+        if !cloud.signed_in {
+            return settings_row_disabled(
+                IconType::DownloadCloud02,
+                "Sync to Cloud",
+                "Sign in with a Microsoft account to keep this instance the same on all your computers.",
+                toggle_controlled(false, (|()| {}).into()),
+            )
+            .into_element();
+        }
+
+        let on = status.is_some();
+        let busy = matches!(status, Some(SyncStatus::Syncing));
+        let description = match &status {
+            None => {
+                "Keep this instance's mods, loader and settings the same on every computer you \
+                     sign in on. Mods download from Modrinth or CurseForge. Worlds, screenshots \
+                     and logs stay on each computer."
+                    .to_string()
+            }
+            Some(SyncStatus::Synced) => "Synced with your other computers. Turning this off \
+                                         removes it from the cloud; copies elsewhere stay but \
+                                         stop syncing."
+                .to_string(),
+            Some(SyncStatus::Pending) => "Waiting to sync your latest changes.".to_string(),
+            Some(SyncStatus::Syncing) => "Syncing...".to_string(),
+            Some(SyncStatus::Conflict { .. }) => "Conflict: this instance changed here and on \
+                                                  another computer. Pick which copy to keep."
+                .to_string(),
+            Some(SyncStatus::Error { message }) => format!("Sync failed: {message}"),
+        };
+
+        let toggle = {
+            let dispatch = dispatch.clone();
+            toggle_controlled(
+                on,
+                (move |()| {
+                    if !busy {
+                        dispatch.set_cloud_sync(cluster_id, !on);
+                    }
+                })
+                .into(),
+            )
+        };
+
+        let action = match &status {
+            Some(SyncStatus::Conflict { .. }) => {
+                let dispatch = dispatch.clone();
+                Some(
+                    Button::new()
+                        .small()
+                        .secondary()
+                        .on_press(move |_| {
+                            dispatch.resolve_cloud_conflict(cluster_id, name.clone())
+                        })
+                        .text("Resolve")
+                        .into_element(),
+                )
+            }
+            Some(SyncStatus::Error { .. }) => {
+                let dispatch = dispatch.clone();
+                Some(
+                    Button::new()
+                        .small()
+                        .secondary()
+                        .on_press(move |_| dispatch.sync_cluster_now(cluster_id))
+                        .text("Retry")
+                        .into_element(),
+                )
+            }
+            _ => None,
+        };
+
+        let mut choosing = use_state(|| false);
+        let files = (on && !busy).then(|| {
+            Button::new()
+                .small()
+                .ghost()
+                .on_press(move |_| choosing.set(true))
+                .text("Settings files")
+                .into_element()
+        });
+
+        let trailing = rect()
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(10.)
+            .maybe_child(files)
+            .maybe_child(action)
+            .child(toggle);
+
+        rect()
+            .width(Size::fill())
+            .child(settings_row(
+                IconType::DownloadCloud02,
+                "Sync to Cloud",
+                description,
+                trailing,
+            ))
+            .maybe_child(choosing.read().then(|| {
+                SyncFilesModal {
+                    cluster_id,
+                    on_close: (move |()| choosing.set(false)).into(),
+                }
+                .into_element()
+            }))
+            .into_element()
+    }
+}
+
+#[derive(PartialEq)]
+struct SyncFilesModal {
+    cluster_id: i64,
+    on_close: EventHandler<()>,
+}
+
+impl Component for SyncFilesModal {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+        let choice = FileChoice::use_new();
+        use_hook(move || {
+            let mut files = choice.files;
+            spawn(async move {
+                let listed = load_setting_files(cluster_id).await;
+                let left_out = load_sync_left_out(cluster_id).await;
+                files.set(Some(listed));
+                choice.leave_out(&left_out);
+            });
+        });
+
+        let close = self.on_close.clone();
+        let cancel = self.on_close.clone();
+        let save = self.on_close.clone();
+        let loaded = choice.files.read().is_some();
+
+        let mut content = vec![
+            label()
+                .text("Settings files to sync")
+                .font_size(18.)
+                .font_weight(FontWeight::SEMI_BOLD)
+                .color(colors::fg_primary())
+                .into_element(),
+            label()
+                .text(
+                    "Unticked files stay on this computer, and your other computers keep their \
+                     own copy. Use it for things like keybinds or video settings that differ per \
+                     computer. Your choice applies on every computer.",
+                )
+                .font_size(13.)
+                .color(colors::fg_secondary())
+                .into_element(),
+        ];
+        content.extend(settings_file_picker(choice));
+        content.push(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .main_align(Alignment::End)
+                .spacing(8.)
+                .child(
+                    Button::new()
+                        .ghost()
+                        .on_press(move |_| cancel.call(()))
+                        .text("Cancel"),
+                )
+                .child(
+                    Button::new()
+                        .enabled(loaded)
+                        .on_press(move |_| {
+                            dispatch.set_sync_left_out(cluster_id, choice.left_out());
+                            save.call(());
+                        })
+                        .text("Save"),
+                )
+                .into_element(),
+        );
+
+        OverlayPopup::new()
+            .on_close(move |()| close.call(()))
+            .child(
+                rect()
+                    .width(Size::window_percent(100.))
+                    .height(Size::window_percent(100.))
+                    .center()
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::px(SYNC_FILES_WIDTH))
+                            .max_width(Size::window_percent(92.))
+                            .spacing(16.)
+                            .padding(Gaps::new_all(20.))
+                            .corner_radius(CornerRadius::new_all(16.))
+                            .background(colors::page_elevated())
+                            .border(border_all_color(1., colors::component_border()))
+                            .children(content),
+                    ),
+            )
+            .into_element()
     }
 }

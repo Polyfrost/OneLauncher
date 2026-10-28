@@ -143,7 +143,6 @@ pub enum IconType {
     OnboardingMigration,
     OnboardingPreferences,
     OnboardingTerms,
-    OnboardingWelcome,
     PaintPour,
     ParagraphWrap,
     Pencil01,

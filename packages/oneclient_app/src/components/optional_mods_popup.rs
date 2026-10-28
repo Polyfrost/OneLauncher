@@ -129,6 +129,7 @@ fn entry_from_item(
         opted_in: true,
         shadowed: false,
         outranked: false,
+        copies: Vec::new(),
         advanced: false,
         deleted: false,
         update_available: false,
@@ -381,6 +382,7 @@ impl Component for OptionalModCard {
             icon,
             self.on_toggle.clone(),
             false,
+            None,
             None,
             hovered,
         )

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
 
@@ -58,6 +59,32 @@ impl Component for ClusterMods {
             item.shadowed = shadowed.shadowed.contains(hash);
             item.outranked = shadowed.outranked.contains(hash);
             item.bisect_role = bisect.as_ref().and_then(|status| status.role_of(hash));
+        }
+        let present: HashSet<&String> =
+            items.iter().filter_map(|item| item.hash.as_ref()).collect();
+        let ignored: HashSet<String> = shadowed
+            .copies
+            .iter()
+            .filter(|(used, _)| present.contains(used))
+            .flat_map(|(_, hashes)| hashes.iter().cloned())
+            .collect();
+        let (copies, mut items): (Vec<_>, Vec<_>) = items.into_iter().partition(|item| {
+            item.hash
+                .as_ref()
+                .is_some_and(|hash| ignored.contains(hash))
+        });
+        for item in &mut items {
+            if let Some(hashes) = item
+                .hash
+                .as_ref()
+                .and_then(|hash| shadowed.copies.get(hash))
+            {
+                item.copies = copies
+                    .iter()
+                    .filter(|copy| copy.hash.as_ref().is_some_and(|hash| hashes.contains(hash)))
+                    .cloned()
+                    .collect();
+            }
         }
 
         cluster_content()

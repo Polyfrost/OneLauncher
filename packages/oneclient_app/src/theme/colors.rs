@@ -13,7 +13,6 @@ const GHOST_ALPHA: [u8; 3] = [12, 26, 38];
 
 thread_local! {
     static REVISION: Cell<Option<State<u32>>> = const { Cell::new(None) };
-    static ACTIVE_ID: RefCell<String> = const { RefCell::new(String::new()) };
     static ACTIVE: RefCell<Option<Rc<Theme>>> = const { RefCell::new(None) };
     static PREVIEW: RefCell<Option<Rc<Theme>>> = const { RefCell::new(None) };
     static ACCENT: Cell<Option<Rgb>> = const { Cell::new(None) };
@@ -113,13 +112,12 @@ fn bump_revision() {
 }
 
 pub fn apply(theme: &str, accent: Option<&str>) {
-    ACTIVE_ID.with_borrow_mut(|id| theme.clone_into(id));
-    refresh_active();
+    ACTIVE.set(Some(resolve_theme(theme)));
     ACCENT.set(accent.and_then(parse_hex));
 }
 
 pub(super) fn refresh_active() {
-    ACTIVE.set(Some(resolve_theme(&ACTIVE_ID.with_borrow(Clone::clone))));
+    ACTIVE.set(ACTIVE.with_borrow(|theme| theme.as_ref().map(|theme| resolve_theme(&theme.id))));
 }
 
 pub fn preview(theme: Option<Theme>) {

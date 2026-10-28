@@ -247,21 +247,11 @@ pub fn pixel_icon(path: &str) -> Option<(String, f32)> {
     Some((pixel, cells))
 }
 
-pub fn pixel_cell(size: f32) -> f32 {
-    let scale = SCALE_FACTOR.get().max(1.);
-    (size * scale).round().max(1.) / scale
-}
-
 pub fn pixel_icon_size(size: f32, cells: f32) -> f32 {
     let scale = SCALE_FACTOR.get().max(1.);
-    if scale < 1.5 {
-        return (size / cells + 0.95).floor().max(1.) * cells;
-    }
-    pixel_cell(size / cells) * cells
+    let bias = if scale < 1.5 { 0.95 } else { 0.5 };
+    (size * scale / cells + bias).floor().max(1.) * cells / scale
 }
-
-const LOGO_CAP_SHARE: f32 = 0.58;
-const PIXEL_FONT_CAP_SHARE: f32 = 0.7;
 
 pub fn wordmark(width: f32, height: f32, color: Color) -> Element {
     if colors::active_theme().pixel_icons {
@@ -269,7 +259,7 @@ pub fn wordmark(width: f32, height: f32, color: Color) -> Element {
             .text("ONECLIENT")
             .font_family(font())
             .font_weight(FontWeight::BOLD)
-            .font_size(text_size(height * LOGO_CAP_SHARE / PIXEL_FONT_CAP_SHARE))
+            .font_size(text_size(height * 0.83))
             .color(color)
             .into_element();
     }

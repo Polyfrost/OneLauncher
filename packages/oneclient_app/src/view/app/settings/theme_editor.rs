@@ -51,22 +51,31 @@ impl Component for SettingsThemeEditor {
         });
         use_drop(|| colors::preview(None));
 
+        let mut saving = use_state(|| false);
         let save = {
             let edited = edited.clone();
-            move |_| match save_theme(edited.clone()) {
-                Ok(id) => {
-                    dispatch.edit_settings(|settings| settings.theme = id);
-                    let _ = RouterContext::get().push(Route::SettingsAppearance {});
-                }
-                Err(err) => {
-                    tracing::error!("Failed to save theme: {err}");
-                    dispatch
-                        .notify("Couldn't save the theme")
-                        .body(err.to_string())
-                        .error()
-                        .toast_only()
-                        .send();
-                }
+            move |_| {
+                let theme = edited.clone();
+                let dispatch = dispatch.clone();
+                saving.set(true);
+                spawn(async move {
+                    match save_theme(theme).await {
+                        Ok(id) => {
+                            dispatch.edit_settings(|settings| settings.theme = id);
+                            let _ = RouterContext::get().push(Route::SettingsAppearance {});
+                        }
+                        Err(err) => {
+                            saving.set(false);
+                            tracing::error!("Failed to save theme: {err:#}");
+                            dispatch
+                                .notify("Couldn't save the theme")
+                                .body(format!("{err:#}"))
+                                .error()
+                                .toast_only()
+                                .send();
+                        }
+                    }
+                });
             }
         };
 
@@ -185,7 +194,7 @@ impl Component for SettingsThemeEditor {
                     .child(
                         Button::new()
                             .primary()
-                            .enabled(!edited.name.is_empty())
+                            .enabled(!edited.name.is_empty() && !*saving.read())
                             .on_press(save)
                             .text("Save theme"),
                     ),

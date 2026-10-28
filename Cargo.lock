@@ -4948,7 +4948,6 @@ dependencies = [
  "oneclient_net",
  "oneclient_polyplus",
  "open",
- "parking_lot",
  "percent-encoding",
  "plusrenderer",
  "polyio",

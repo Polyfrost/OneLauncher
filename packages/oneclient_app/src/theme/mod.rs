@@ -1,12 +1,11 @@
 use std::borrow::Cow;
+use std::cell::{Cell, RefCell};
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::sync::{Arc, LazyLock};
+use std::rc::Rc;
 
 use bytes::Bytes;
 use freya::prelude::CornerRadius;
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use crate::AppAssets;
@@ -22,10 +21,11 @@ const MINECRAFT_FONT: &str = "Minecraft";
 
 const BUILTIN_THEMES: [&str; 4] = ["dark", "light", "minecraft-dark", "minecraft-light"];
 
-static SCALE_FACTOR: AtomicU32 = AtomicU32::new(0x3F80_0000);
-
-static THEMES: LazyLock<RwLock<Vec<Arc<Theme>>>> =
-    LazyLock::new(|| RwLock::new(load_themes().into_iter().map(Arc::new).collect()));
+thread_local! {
+    static THEMES: RefCell<Vec<Rc<Theme>>> =
+        RefCell::new(load_themes().into_iter().map(Rc::new).collect());
+    static SCALE_FACTOR: Cell<f32> = const { Cell::new(1.) };
+}
 
 #[derive(Clone, PartialEq, Deserialize, Serialize)]
 pub struct Theme {
@@ -65,8 +65,8 @@ impl Theme {
     }
 }
 
-pub fn themes() -> Vec<Arc<Theme>> {
-    THEMES.read().clone()
+pub fn themes() -> Vec<Rc<Theme>> {
+    THEMES.with_borrow(Clone::clone)
 }
 
 pub const SYSTEM_THEME: &str = "system";
@@ -79,23 +79,23 @@ pub fn system_aware(id: &str, system_dark: bool) -> &str {
     }
 }
 
-pub fn resolve_theme(id: &str) -> Arc<Theme> {
+pub fn resolve_theme(id: &str) -> Rc<Theme> {
     let id = match id {
         "amoled" | "grey" => "dark",
         "white" => "light",
         id => id,
     };
-    let themes = THEMES.read();
-    themes
-        .iter()
-        .find(|theme| theme.id == id)
-        .unwrap_or(&themes[0])
-        .clone()
+    THEMES.with_borrow(|themes| {
+        themes
+            .iter()
+            .find(|theme| theme.id == id)
+            .unwrap_or(&themes[0])
+            .clone()
+    })
 }
 
-pub fn save_theme(mut theme: Theme) -> std::io::Result<String> {
-    let dir = oneclient_common::paths::themes_dir().map_err(std::io::Error::other)?;
-    std::fs::create_dir_all(&dir)?;
+pub async fn save_theme(mut theme: Theme) -> anyhow::Result<String> {
+    let dir = oneclient_common::paths::themes_dir()?;
 
     if theme.is_builtin() {
         let slug: String = theme
@@ -106,7 +106,7 @@ pub fn save_theme(mut theme: Theme) -> std::io::Result<String> {
             .collect();
         let slug = slug.trim_matches('-');
         let base = if slug.is_empty() { "custom" } else { slug };
-        let taken = |id: &str| THEMES.read().iter().any(|theme| theme.id == id);
+        let taken = |id: &str| THEMES.with_borrow(|themes| themes.iter().any(|t| t.id == id));
         theme.id = (1..)
             .map(|n| {
                 if n == 1 {
@@ -120,15 +120,18 @@ pub fn save_theme(mut theme: Theme) -> std::io::Result<String> {
         theme.dir = Some(dir.clone());
     }
 
-    let json = serde_json::to_vec_pretty(&theme).map_err(std::io::Error::other)?;
-    std::fs::write(dir.join(format!("{}.json", theme.id)), json)?;
+    let json = serde_json::to_vec_pretty(&theme)?;
+    polyio::create_dir_all(&dir).await?;
+    polyio::write(dir.join(format!("{}.json", theme.id)), json).await?;
 
     let id = theme.id.clone();
-    let mut themes = THEMES.write();
-    match themes.iter_mut().find(|existing| existing.id == id) {
-        Some(existing) => *existing = Arc::new(theme),
-        None => themes.push(Arc::new(theme)),
-    }
+    THEMES.with_borrow_mut(
+        |themes| match themes.iter_mut().find(|existing| existing.id == id) {
+            Some(existing) => *existing = Rc::new(theme),
+            None => themes.push(Rc::new(theme)),
+        },
+    );
+    colors::refresh_active();
     Ok(id)
 }
 
@@ -213,7 +216,7 @@ pub fn mono_font() -> String {
 }
 
 pub fn set_scale_factor(scale: f32) {
-    SCALE_FACTOR.store(scale.to_bits(), Ordering::Relaxed);
+    SCALE_FACTOR.set(scale);
 }
 
 pub fn text_size(size: f32) -> f32 {
@@ -223,7 +226,7 @@ pub fn text_size(size: f32) -> f32 {
     else {
         return size;
     };
-    let scale = f32::from_bits(SCALE_FACTOR.load(Ordering::Relaxed)).max(1.);
+    let scale = SCALE_FACTOR.get().max(1.);
     (size * scale / step).round().max(1.) * step / scale
 }
 

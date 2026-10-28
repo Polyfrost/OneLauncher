@@ -1,9 +1,7 @@
-use std::cell::Cell;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicU32, Ordering};
+use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 use freya::prelude::{Color, State};
-use parking_lot::RwLock;
 use serde::{Deserialize, Serialize};
 
 use super::{Theme, resolve_theme};
@@ -11,15 +9,14 @@ use super::{Theme, resolve_theme};
 pub const MODRINTH_COLOR: Color = Color::from_rgb(27, 217, 106);
 pub const CURSEFORGE_COLOR: Color = Color::from_rgb(241, 100, 54);
 
-const NO_ACCENT: u32 = u32::MAX;
 const GHOST_ALPHA: [u8; 3] = [12, 26, 38];
-
-static ACTIVE_THEME: RwLock<String> = RwLock::new(String::new());
-static PREVIEW_THEME: RwLock<Option<Arc<Theme>>> = RwLock::new(None);
-static ACTIVE_ACCENT: AtomicU32 = AtomicU32::new(NO_ACCENT);
 
 thread_local! {
     static REVISION: Cell<Option<State<u32>>> = const { Cell::new(None) };
+    static ACTIVE_ID: RefCell<String> = const { RefCell::new(String::new()) };
+    static ACTIVE: RefCell<Option<Rc<Theme>>> = const { RefCell::new(None) };
+    static PREVIEW: RefCell<Option<Rc<Theme>>> = const { RefCell::new(None) };
+    static ACCENT: Cell<Option<Rgb>> = const { Cell::new(None) };
 }
 
 type Rgb = (u8, u8, u8);
@@ -92,10 +89,6 @@ fn unpack(packed: u32) -> Rgb {
     ((packed >> 16) as u8, (packed >> 8) as u8, packed as u8)
 }
 
-fn pack((r, g, b): Rgb) -> u32 {
-    (u32::from(r) << 16) | (u32::from(g) << 8) | u32::from(b)
-}
-
 fn color((r, g, b): Rgb) -> Color {
     Color::from_rgb(r, g, b)
 }
@@ -120,26 +113,30 @@ fn bump_revision() {
 }
 
 pub fn apply(theme: &str, accent: Option<&str>) {
-    theme.clone_into(&mut ACTIVE_THEME.write());
-    let packed = accent.and_then(parse_hex).map_or(NO_ACCENT, pack);
-    ACTIVE_ACCENT.store(packed, Ordering::Relaxed);
+    ACTIVE_ID.with_borrow_mut(|id| theme.clone_into(id));
+    refresh_active();
+    ACCENT.set(accent.and_then(parse_hex));
+}
+
+pub(super) fn refresh_active() {
+    ACTIVE.set(Some(resolve_theme(&ACTIVE_ID.with_borrow(Clone::clone))));
 }
 
 pub fn preview(theme: Option<Theme>) {
-    *PREVIEW_THEME.write() = theme.map(Arc::new);
+    PREVIEW.set(theme.map(Rc::new));
     bump_revision();
 }
 
-pub fn active_theme() -> Arc<Theme> {
+pub fn active_theme() -> Rc<Theme> {
     REVISION.with(|slot| {
         if let Some(revision) = slot.get() {
             let _ = revision.try_read();
         }
     });
-    if let Some(preview) = PREVIEW_THEME.read().clone() {
-        return preview;
-    }
-    resolve_theme(&ACTIVE_THEME.read())
+    PREVIEW
+        .with_borrow(Clone::clone)
+        .or_else(|| ACTIVE.with_borrow(Clone::clone))
+        .unwrap_or_else(|| resolve_theme(""))
 }
 
 fn palette() -> Palette {
@@ -155,10 +152,7 @@ fn strong_rgb() -> Rgb {
 }
 
 fn brand_rgb() -> Rgb {
-    match ACTIVE_ACCENT.load(Ordering::Relaxed) {
-        NO_ACCENT => palette().accent.rgb(),
-        packed => unpack(packed),
-    }
+    ACCENT.get().unwrap_or_else(|| palette().accent.rgb())
 }
 
 pub fn page() -> Color {

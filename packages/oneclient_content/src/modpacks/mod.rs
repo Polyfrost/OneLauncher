@@ -5,6 +5,7 @@ mod install;
 mod mrpack;
 mod remove;
 mod screen;
+mod settings;
 mod share;
 mod update;
 
@@ -27,8 +28,14 @@ pub use share::{
     ClusterShare, PackCarryover, SHARE_ENTRY, SHARE_EXTENSION, SHARE_FORMAT, ShareContent,
     ShareExportReport, ShareExtras, ShareIcon, ShareScope, SharedBundleChoice, SharedDownload,
     SharedFile, SharedFileSource, SharedJava, SharedModpack, SharedOverride, collect_share_content,
-    icon_entry, install_shared_content, read_cluster_share, read_share_extras, read_share_icon,
-    trusted_download, write_share_archive,
+    ShareFingerprints, icon_entry, install_shared_content, read_cluster_share, read_share_extras,
+    read_share_icon, replace_share_settings, share_fingerprints, trusted_download,
+    write_share_archive,
+};
+
+pub use settings::{
+    MAX_SETTING_FILE_BYTES, MAX_SETTING_FILES, MAX_SETTINGS_BYTES, SettingFile, SettingsScan,
+    collect_settings, is_setting_path,
 };
 
 pub use install::{

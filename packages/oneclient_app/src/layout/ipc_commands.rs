@@ -23,6 +23,10 @@ pub fn use_ipc_commands() {
                         platform::focus_window();
                         dispatch.request_launch_by_folder(folder);
                     }
+                    IpcCommand::ImportShare(code) => {
+                        platform::focus_window();
+                        dispatch.request_share_import(code);
+                    }
                     IpcCommand::Logs => {
                         platform::focus_window();
                         let running = dispatch.station().peek().game.running_clusters().min();

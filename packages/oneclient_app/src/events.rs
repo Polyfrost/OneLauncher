@@ -142,7 +142,10 @@ impl EventPump {
 
         for event in batch {
             match event {
-                Event::Signal(Signal::ClustersChanged) => folded.clusters = true,
+                Event::Signal(Signal::ClustersChanged) => {
+                    folded.clusters = true;
+                    crate::hooks::cloud_sync_signal(crate::hooks::CloudSignal::Changed(None));
+                }
                 Event::Signal(Signal::JavaChanged) => folded.java = true,
                 Event::Signal(Signal::SyncComplete) => {
                     sync_complete = true;
@@ -150,6 +153,9 @@ impl EventPump {
                 }
                 Event::Game(GameEvent::Stage { cluster_id, stage }) => {
                     folded.saw_stage = true;
+                    if stage == LaunchStage::Exited {
+                        crate::hooks::cloud_sync_signal(crate::hooks::CloudSignal::Exited(cluster_id));
+                    }
                     if stage.is_busy() {
                         folded.launched.push(cluster_id);
                     }

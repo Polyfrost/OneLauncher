@@ -68,7 +68,7 @@ pub fn launch_syncing(launcher: &LauncherInit, uses_bundles: bool) -> bool {
 }
 
 pub(crate) use analytics::{analytics_body, analytics_placeholder};
-pub use clusters::Clusters;
+pub use clusters::{Clusters, ExportInstanceModal};
 pub(crate) use clusters::DeleteInstanceModal;
 pub use debug::Debug;
 pub use home::Home;

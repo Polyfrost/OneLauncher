@@ -29,6 +29,8 @@ pub enum AppChannel {
     Relocation,
     PendingLaunch,
     ReleaseMigration,
+    CloudSync,
+    Share,
 }
 
 impl RadioChannel<AppState> for AppChannel {}
@@ -52,8 +54,54 @@ pub struct AppState {
     pub storage_scan: Option<StorageScanProgress>,
     pub relocation: RelocationState,
     pub pending_launch: Option<String>,
+    pub pending_share: Option<String>,
     pub release_migration: Option<ReleaseMigrationPrompt>,
     pub release_migration_checking: HashSet<i64>,
+    pub cloud_sync: CloudSyncState,
+    pub shares: HashMap<i64, ShareProgress>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ShareProgress {
+    Working,
+    Ready(ShareReady),
+    Stopping(ShareReady),
+    Stopped,
+    Failed(String),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct ShareReady {
+    pub code: String,
+    pub link: String,
+    pub updated: bool,
+    pub expires: Option<String>,
+    pub details: String,
+    pub incomplete: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct OwnerShare {
+    pub ready: ShareReady,
+    pub options: oneclient_core::clusters::ExportOptions,
+    pub content_changed: bool,
+    pub settings_changed: bool,
+    pub behind: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum OwnerCheck {
+    Checking,
+    NotShared,
+    Shared(OwnerShare),
+    Unknown(ShareReady),
+    Collaborator(ShareReady),
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct CloudSyncState {
+    pub signed_in: bool,
+    pub statuses: HashMap<i64, oneclient_core::sync::SyncStatus>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

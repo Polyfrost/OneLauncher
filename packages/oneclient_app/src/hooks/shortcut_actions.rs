@@ -14,6 +14,23 @@ impl Actions {
             .pending_launch = Some(folder);
     }
 
+    pub fn request_share_import(&self, code: String) {
+        self.station()
+            .write_channel(AppChannel::PendingLaunch)
+            .pending_share = Some(code);
+    }
+
+    pub fn take_pending_share(&self) -> Option<String> {
+        let waiting = self.station().peek().pending_share.is_some();
+        if !waiting {
+            return None;
+        }
+        self.station()
+            .write_channel(AppChannel::PendingLaunch)
+            .pending_share
+            .take()
+    }
+
     pub fn take_pending_launch(&self) -> Option<String> {
         let waiting = self.station().peek().pending_launch.is_some();
         if !waiting {

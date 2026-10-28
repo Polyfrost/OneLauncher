@@ -22,6 +22,7 @@ struct OneClientApp {
     needs_location: bool,
     start_maximized: bool,
     boot_launch: Cell<Option<String>>,
+    boot_share: Cell<Option<String>>,
 }
 
 impl App for OneClientApp {
@@ -38,6 +39,7 @@ impl App for OneClientApp {
         });
 
         let boot_launch = self.boot_launch.take();
+        let boot_share = self.boot_share.take();
 
         let actions = use_hook(move || {
             let (signals_tx, signals_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -62,6 +64,7 @@ impl App for OneClientApp {
                         // it early leaves `syncing_bundles` stuck disabling every launch button
                         Ok(()) => {
                             startup.sync_bundles();
+                            startup.start_cloud_sync();
                             Actions::check_sessions();
                             microsoft_java::spawn_auto_install();
                         }
@@ -75,6 +78,9 @@ impl App for OneClientApp {
 
             if let Some(folder) = boot_launch {
                 actions.request_launch_by_folder(folder);
+            }
+            if let Some(code) = boot_share {
+                actions.request_share_import(code);
             }
 
             actions
@@ -214,7 +220,8 @@ fn main() {
     let window_config = WindowConfig::new_app(OneClientApp {
         needs_location,
         start_maximized,
-        boot_launch: Cell::new(cli.launch),
+        boot_launch: Cell::new(cli.launch.clone()),
+        boot_share: Cell::new(cli.share.clone()),
     })
     .with_title(constants::WINDOW_TITLE)
     .with_app_id(constants::WINDOW_APP_ID)

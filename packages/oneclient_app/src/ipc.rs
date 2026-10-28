@@ -13,6 +13,7 @@ const REPLY_OK: &str = "OK";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum IpcCommand {
     Launch(String),
+    ImportShare(String),
     Focus,
     Close,
     Logs,
@@ -30,6 +31,7 @@ impl IpcCommand {
     fn encode(&self) -> String {
         match self {
             Self::Launch(folder) => format!("LAUNCH {folder}"),
+            Self::ImportShare(code) => format!("SHARE {code}"),
             Self::Focus => "FOCUS".to_string(),
             Self::Close => "CLOSE".to_string(),
             Self::Logs => "LOGS".to_string(),
@@ -44,6 +46,10 @@ impl IpcCommand {
             let folder = folder.trim();
             return (!folder.is_empty()).then(|| Self::Launch(folder.to_string()));
         }
+        if let Some(code) = line.strip_prefix("SHARE ") {
+            return oneclient_core::sharing::ShareCode::parse(code)
+                .map(|code| Self::ImportShare(code.as_str().to_string()));
+        }
         match line {
             "FOCUS" => Some(Self::Focus),
             "CLOSE" => Some(Self::Close),
@@ -57,9 +63,10 @@ impl IpcCommand {
 
 #[must_use]
 pub fn request_for(cli: &Cli) -> IpcCommand {
-    match &cli.launch {
-        Some(folder) => IpcCommand::Launch(folder.clone()),
-        None => IpcCommand::Focus,
+    match (&cli.launch, &cli.share) {
+        (Some(folder), _) => IpcCommand::Launch(folder.clone()),
+        (None, Some(code)) => IpcCommand::ImportShare(code.clone()),
+        (None, None) => IpcCommand::Focus,
     }
 }
 
@@ -350,9 +357,21 @@ mod tests {
         assert_eq!(request_for(&Cli::default()), IpcCommand::Focus);
         assert_eq!(
             request_for(&Cli {
-                launch: Some("pack".into())
+                launch: Some("pack".into()),
+                share: None,
             }),
             IpcCommand::Launch("pack".into()),
         );
+    }
+
+    #[test]
+    fn a_share_link_is_forwarded_as_a_code() {
+        let command = request_for(&Cli {
+            launch: None,
+            share: Some("ABCDEFGH".into()),
+        });
+        assert_eq!(command, IpcCommand::ImportShare("ABCDEFGH".into()));
+        assert_eq!(IpcCommand::decode(&command.encode()), Some(command));
+        assert_eq!(IpcCommand::decode("SHARE nope"), None);
     }
 }

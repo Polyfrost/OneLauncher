@@ -71,6 +71,12 @@ pub enum LauncherError {
     #[error(transparent)]
     BisectError(#[from] crate::bisect::BisectError),
 
+    #[error(transparent)]
+    SharingError(#[from] crate::sharing::SharingError),
+
+    #[error(transparent)]
+    SyncError(#[from] crate::sync::SyncError),
+
     #[error("minecraft: {0}")]
     Minecraft(String),
 }

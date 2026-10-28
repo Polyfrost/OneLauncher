@@ -1,6 +1,7 @@
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Cli {
     pub launch: Option<String>,
+    pub share: Option<String>,
 }
 
 impl Cli {
@@ -13,13 +14,23 @@ impl Cli {
                 cli.launch = non_empty(value.to_string());
             } else if arg == "--launch" {
                 cli.launch = args.next().and_then(non_empty);
+            } else if let Some(value) = arg.strip_prefix("--share=") {
+                cli.share = share_code(value);
+            } else if arg == "--share" {
+                cli.share = args.next().as_deref().and_then(share_code);
             } else if let Some(folder) = crate::protocol::parse_launch_url(&arg) {
                 cli.launch = Some(folder);
+            } else if let Some(code) = crate::protocol::parse_share_url(&arg) {
+                cli.share = Some(code);
             }
         }
 
         cli
     }
+}
+
+fn share_code(value: &str) -> Option<String> {
+    oneclient_core::sharing::ShareCode::parse(value).map(|code| code.as_str().to_string())
 }
 
 fn non_empty(value: String) -> Option<String> {
@@ -86,6 +97,22 @@ mod tests {
     fn a_launch_url_is_accepted_as_a_bare_argument() {
         let url = crate::protocol::launch_url("26.1.2 Fabric");
         assert_eq!(parse(&[&url]).launch.as_deref(), Some("26.1.2 Fabric"));
+    }
+
+    #[test]
+    fn a_share_link_or_flag_carries_the_code() {
+        let url = format!("{}://share/abcd-efgh", crate::protocol::SCHEME);
+        assert_eq!(parse(&[&url]).share.as_deref(), Some("ABCDEFGH"));
+        assert_eq!(
+            parse(&["--share", "ABCD-EFGH"]).share.as_deref(),
+            Some("ABCDEFGH")
+        );
+        assert_eq!(
+            parse(&["--share=abcdefgh"]).share.as_deref(),
+            Some("ABCDEFGH")
+        );
+        assert_eq!(parse(&["--share", "nope"]).share, None);
+        assert_eq!(parse(&[&url]).launch, None);
     }
 
     #[test]

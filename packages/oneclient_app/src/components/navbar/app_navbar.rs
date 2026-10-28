@@ -126,7 +126,7 @@ struct NavbarLogo {
 
 impl Component for NavbarLogo {
     fn render(&self) -> impl IntoElement {
-        theme::wordmark(214., 44.).color(primary_color(self.over_art))
+        theme::wordmark(214., 44., primary_color(self.over_art))
     }
 }
 

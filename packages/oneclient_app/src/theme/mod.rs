@@ -261,20 +261,27 @@ pub fn pixel_icon_size(size: f32, cells: f32) -> f32 {
 }
 
 const LOGO_CAP_SHARE: f32 = 0.58;
-const PIXEL_WORDMARK_CELLS: (f32, f32) = (70., 9.);
+const PIXEL_FONT_CAP_SHARE: f32 = 0.7;
 
-pub fn wordmark(width: f32, height: f32) -> SvgViewer {
-    let (asset, width, height) = if colors::active_theme().pixel_icons {
-        let (columns, rows) = PIXEL_WORDMARK_CELLS;
-        let cell = pixel_cell(height * LOGO_CAP_SHARE / rows);
-        ("logo-pixel.svg", cell * columns, cell * rows)
-    } else {
-        ("logo.svg", width, height)
-    };
-    SvgViewer::new((asset, AppAssets::get_bytes(asset).unwrap_or_default()))
-        .show_loader(false)
-        .width(Size::px(width))
-        .height(Size::px(height))
+pub fn wordmark(width: f32, height: f32, color: Color) -> Element {
+    if colors::active_theme().pixel_icons {
+        return label()
+            .text("ONECLIENT")
+            .font_family(font())
+            .font_weight(FontWeight::BOLD)
+            .font_size(text_size(height * LOGO_CAP_SHARE / PIXEL_FONT_CAP_SHARE))
+            .color(color)
+            .into_element();
+    }
+    SvgViewer::new((
+        "logo.svg",
+        AppAssets::get_bytes("logo.svg").unwrap_or_default(),
+    ))
+    .show_loader(false)
+    .width(Size::px(width))
+    .height(Size::px(height))
+    .color(color)
+    .into_element()
 }
 
 pub fn rounded_px(radius: f32) -> f32 {

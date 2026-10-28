@@ -229,7 +229,7 @@ pub fn text_size(size: f32) -> f32 {
         return size;
     };
     let scale = SCALE_FACTOR.get().max(1.);
-    let bias = 0.8;
+    let bias = if scale < 1.5 { 0.9 } else { 0.5 };
     (size * scale / step + bias).floor().max(1.) * step / scale
 }
 

@@ -111,6 +111,7 @@ impl App for OneClientApp {
             .width(Size::fill())
             .height(Size::fill())
             .font_family(theme::font())
+            .font_size(theme::text_size(16.))
             .child(ConfirmLinkOverlay)
             .child(DisableDependentsOverlay)
             .child(EssentialConfirmOverlay)

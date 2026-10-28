@@ -52,13 +52,10 @@ impl Icon {
 
 impl Component for Icon {
     fn render(&self) -> impl IntoElement {
-        let pixel = theme::pixel_icon(self.icon.path());
-        let size = if pixel.is_some() {
-            theme::pixel_icon_size(self.size_px)
-        } else {
-            self.size_px
+        let (path, size): (Cow<'static, str>, f32) = match theme::pixel_icon(self.icon.path()) {
+            Some((pixel, cells)) => (pixel.into(), theme::pixel_icon_size(self.size_px, cells)),
+            None => (self.icon.path().into(), self.size_px),
         };
-        let path: Cow<'static, str> = pixel.map_or(Cow::Borrowed(self.icon.path()), Cow::Owned);
         let load = {
             let path = path.clone();
             move || {

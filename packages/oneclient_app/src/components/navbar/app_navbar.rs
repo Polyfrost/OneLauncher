@@ -126,13 +126,7 @@ struct NavbarLogo {
 
 impl Component for NavbarLogo {
     fn render(&self) -> impl IntoElement {
-        let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
-
-        SvgViewer::new(("logo.svg", bytes.read().cloned()))
-            .show_loader(false)
-            .height(Size::px(44.))
-            .width(Size::px(214.))
-            .color(primary_color(self.over_art))
+        theme::wordmark(214., 44.).color(primary_color(self.over_art))
     }
 }
 

@@ -34,8 +34,6 @@ impl Component for OnboardingNavbar {
 }
 
 fn logo() -> impl IntoElement {
-    let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
-
     rect()
         .horizontal()
         .cross_align(Alignment::Center)
@@ -45,11 +43,5 @@ fn logo() -> impl IntoElement {
                 .size(32.)
                 .color(colors::fg_primary()),
         )
-        .child(
-            SvgViewer::new(("logo.svg", bytes.read().cloned()))
-                .show_loader(false)
-                .height(Size::px(36.))
-                .width(Size::px(170.))
-                .color(colors::fg_primary()),
-        )
+        .child(theme::wordmark(170., 36.).color(colors::fg_primary()))
 }

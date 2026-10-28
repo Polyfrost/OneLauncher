@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use bytes::Bytes;
-use freya::prelude::CornerRadius;
+use freya::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::AppAssets;
@@ -229,22 +229,52 @@ pub fn text_size(size: f32) -> f32 {
         return size;
     };
     let scale = SCALE_FACTOR.get().max(1.);
-    (size * scale / step).round().max(1.) * step / scale
+    let bias = if scale < 1.5 { 0.7 } else { 0.5 };
+    (size * scale / step + bias).floor().max(1.) * step / scale
 }
 
-const PIXEL_ICON_GRID: f32 = 11.;
-
-pub fn pixel_icon(path: &str) -> Option<String> {
+pub fn pixel_icon(path: &str) -> Option<(String, f32)> {
     if !colors::active_theme().pixel_icons {
         return None;
     }
     let pixel = format!("icons/pixel/{}", path.strip_prefix("icons/")?);
-    AppAssets::get(&pixel).map(|_| pixel)
+    let svg = AppAssets::get(&pixel)?;
+    let view_box = std::str::from_utf8(&svg.data)
+        .ok()?
+        .split("viewBox=\"")
+        .nth(1)?;
+    let cells = view_box.split_whitespace().nth(2)?.parse().ok()?;
+    Some((pixel, cells))
 }
 
-pub fn pixel_icon_size(size: f32) -> f32 {
+pub fn pixel_cell(size: f32) -> f32 {
     let scale = SCALE_FACTOR.get().max(1.);
-    (size * scale / PIXEL_ICON_GRID).round().max(1.) * PIXEL_ICON_GRID / scale
+    (size * scale).round().max(1.) / scale
+}
+
+pub fn pixel_icon_size(size: f32, cells: f32) -> f32 {
+    let scale = SCALE_FACTOR.get().max(1.);
+    if scale < 1.5 {
+        return (size / cells + 0.95).floor().max(1.) * cells;
+    }
+    pixel_cell(size / cells) * cells
+}
+
+const LOGO_CAP_SHARE: f32 = 0.58;
+const PIXEL_WORDMARK_CELLS: (f32, f32) = (70., 9.);
+
+pub fn wordmark(width: f32, height: f32) -> SvgViewer {
+    let (asset, width, height) = if colors::active_theme().pixel_icons {
+        let (columns, rows) = PIXEL_WORDMARK_CELLS;
+        let cell = pixel_cell(height * LOGO_CAP_SHARE / rows);
+        ("logo-pixel.svg", cell * columns, cell * rows)
+    } else {
+        ("logo.svg", width, height)
+    };
+    SvgViewer::new((asset, AppAssets::get_bytes(asset).unwrap_or_default()))
+        .show_loader(false)
+        .width(Size::px(width))
+        .height(Size::px(height))
 }
 
 pub fn rounded_px(radius: f32) -> f32 {

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use super::{ModpackManifest, tracked_content_type};
@@ -49,17 +49,15 @@ pub async fn find_unlisted_mods(
         .iter()
         .map(|candidate| candidate.identity.clone())
         .collect();
-    let mut known = HashSet::new();
-    let mut complete = true;
-    for provider in ctx.providers.remote() {
-        match provider.lookup_versions(&identities, ctx).await {
-            Ok(found) => known.extend(found.into_keys()),
-            Err(err) => {
-                tracing::warn!(provider = ?provider.id(), error = %err, "could not look up the modpack's mods");
-                complete = false;
-            }
-        }
-    }
+    let (found, complete) = ctx
+        .providers
+        .lookup_versions_checked(&identities, ctx)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!(error = %err, "could not look up the modpack's mods");
+            (HashMap::new(), false)
+        });
+    let known: HashSet<String> = found.into_keys().collect();
 
     let report = report(candidates, &known, complete);
     if !report.unlisted.is_empty() {

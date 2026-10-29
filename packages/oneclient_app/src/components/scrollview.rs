@@ -834,7 +834,7 @@ impl Component for ScrollThumb {
                 Position::new_absolute().left(self.main_pos).bottom(2.),
                 Size::px(self.length),
                 Size::px(8.),
-                Layer::Relative(2),
+                Layer::Relative(999),
             )
         };
 

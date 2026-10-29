@@ -69,13 +69,13 @@ fn offer_prompt(current: &str, latest: &str) -> Prompt<Option<PackageUpdateMode>
         ),
     )
     .option(
-        Choice::new("loader.update.never", "Never ask again"),
-        Some(PackageUpdateMode::Skip),
-    )
-    .option(
         Choice::new("loader.update.always", "Always update"),
         Some(PackageUpdateMode::Automatic),
     )
     .option(Choice::primary("loader.update.once", "Update"), None)
+    .option(
+        Choice::new("loader.update.never", "Never ask again"),
+        Some(PackageUpdateMode::Skip),
+    )
     .dismiss("Not now")
 }

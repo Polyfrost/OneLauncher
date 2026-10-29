@@ -8,6 +8,7 @@ on:
       - 'packages/oneclient_app/lang/en_us.json'
       - 'crowdin.yml'
       - '.github/crowdin/**'
+      - '.github/workflows/crowdin.yml'
   schedule:
     - cron: '0 5 * * *'
   workflow_dispatch:
@@ -69,7 +70,7 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
       AWS_DEFAULT_REGION: auto
       AWS_ENDPOINT_URL: ${{ vars.R2_ENDPOINT }}
-      R2_TARGET: s3://${{ vars.R2_BUCKET }}/PLACEHOLDER
+      R2_TARGET: s3://${{ vars.R2_BUCKET }}/oneclient/v1
 
     steps:
       - name: Checkout

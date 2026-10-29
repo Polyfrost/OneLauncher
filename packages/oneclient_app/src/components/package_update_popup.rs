@@ -16,6 +16,7 @@ use crate::hooks::{
     package_meta_batch, project_web_urls, query_is_loading, use_dispatch, use_link_confirm,
     use_notifications_snapshot, use_package_meta_batch, use_project_web_urls,
 };
+use crate::i18n::{t, tf};
 use crate::notifications::PackageUpdateGroup;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -45,9 +46,9 @@ impl RowChoice {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Update => "Update",
-            Self::Skip => "Skip for now",
-            Self::SkipVersion => "Skip this version",
+            Self::Update => t("oneclient.components.package_update_popup.choice.update"),
+            Self::Skip => t("oneclient.components.package_update_popup.choice.skip"),
+            Self::SkipVersion => t("oneclient.components.package_update_popup.choice.skip_version"),
         }
     }
 
@@ -205,15 +206,21 @@ fn content(
     let clusters: Vec<ClusterId> = groups.iter().map(|group| group.cluster_id).collect();
 
     let subtitle = match groups {
-        [only] => format!(
-            "{total} package{} in {} can be updated. Pick what happens to each, then Proceed.",
-            if total == 1 { "" } else { "s" },
-            only.cluster_name
+        [only] if total == 1 => tf(
+            "oneclient.components.package_update_popup.single.one",
+            &[&only.cluster_name],
         ),
-        _ => format!(
-            "{total} package{} across {} clusters can be updated. Pick what happens to each, then Proceed.",
-            if total == 1 { "" } else { "s" },
-            groups.len()
+        [only] => tf(
+            "oneclient.components.package_update_popup.single.other",
+            &[&total, &only.cluster_name],
+        ),
+        _ if total == 1 => tf(
+            "oneclient.components.package_update_popup.multi.one",
+            &[&groups.len()],
+        ),
+        _ => tf(
+            "oneclient.components.package_update_popup.multi.other",
+            &[&total, &groups.len()],
         ),
     };
 
@@ -236,7 +243,7 @@ fn content(
                 .spacing(3.)
                 .child(
                     label()
-                        .text("Updates available")
+                        .text(t("oneclient.components.package_update_popup.title"))
                         .font_size(17.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
@@ -263,7 +270,10 @@ fn content(
                         .main_align(Alignment::Start)
                         .cross_align(Alignment::Center)
                         .spacing(6.)
-                        .child(checkbox_labeled(dont_show_again, "Don't show again?")),
+                        .child(checkbox_labeled(
+                            dont_show_again,
+                            t("oneclient.components.package_update_popup.dont_show_again"),
+                        )),
                 )
                 .child(
                     rect()
@@ -276,7 +286,7 @@ fn content(
                             Button::new()
                                 .ghost()
                                 .on_press(move |_| dismiss.close_package_updates())
-                                .text("Cancel"),
+                                .text(t("oneclient.common.cancel")),
                         )
                         .child(
                             Button::new()
@@ -318,7 +328,7 @@ fn content(
                                     proceed_dispatch.proceed_package_updates(chosen);
                                 })
                                 .child(Icon::new(IconType::DownloadCloud02).size(15.))
-                                .text("Proceed"),
+                                .text(t("oneclient.components.package_update_popup.proceed")),
                         ),
                 ),
         )
@@ -451,12 +461,15 @@ impl Component for UpdateRow {
             update.installed_version_name.is_empty(),
             update.latest_version_name.is_empty(),
         ) {
-            (false, false) => format!(
-                "{} to {}",
-                update.installed_version_name, update.latest_version_name
+            (false, false) => tf(
+                "oneclient.components.package_update_popup.version_change",
+                &[&update.installed_version_name, &update.latest_version_name],
             ),
-            (true, false) => format!("New version {}", update.latest_version_name),
-            _ => "A newer version is available".to_string(),
+            (true, false) => tf(
+                "oneclient.components.package_update_popup.new_version",
+                &[&update.latest_version_name],
+            ),
+            _ => t("oneclient.components.package_update_popup.newer_available").to_string(),
         };
 
         rect()
@@ -494,7 +507,9 @@ impl Component for UpdateRow {
                 Button::new()
                     .ghost()
                     .icon()
-                    .tooltip("View changelog")
+                    .tooltip(t(
+                        "oneclient.components.package_update_popup.view_changelog",
+                    ))
                     .enabled(changelog_url.is_some())
                     .on_press(move |_| {
                         if let Some(url) = &changelog_url {

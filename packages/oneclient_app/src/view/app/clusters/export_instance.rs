@@ -4,6 +4,7 @@ use oneclient_core::clusters::ExportMode;
 use super::instance::{WideCard, wide_card};
 use crate::components::{Button, IconType, OverlayPopup};
 use crate::hooks::use_dispatch;
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -42,17 +43,17 @@ impl Component for ExportInstanceModal {
                 ExportMode::OneClient,
                 IconType::IconLogo,
                 "OneClient",
-                Some("Recommended"),
-                "For friends who use OneClient. Bundles and modpacks stay linked, so they keep updating after the import.",
-                "Other launchers won't install the bundle mods.",
+                Some(t("oneclient.clusters.export.oneclient.badge")),
+                t("oneclient.clusters.export.oneclient.blurb"),
+                t("oneclient.clusters.export.oneclient.meta"),
             ),
             (
                 ExportMode::Compatibility,
                 IconType::Globe01,
-                "Compatibility",
+                t("oneclient.clusters.export.compatibility.title"),
                 None,
-                "For the Modrinth App, Prism and other launchers. Mods from bundles and modpacks are saved as plain mods.",
-                "Imports as a regular modded instance without bundles.",
+                t("oneclient.clusters.export.compatibility.blurb"),
+                t("oneclient.clusters.export.compatibility.meta"),
             ),
         ];
 
@@ -75,36 +76,32 @@ impl Component for ExportInstanceModal {
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 label()
-                                    .text(format!("Export {}", self.name))
+                                    .text(tf("oneclient.clusters.export.title", &[&self.name]))
                                     .font_size(18.)
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
-                                    .text("Choose who the file is for. Worlds and configs are never included.")
+                                    .text(t("oneclient.clusters.export.description"))
                                     .font_size(13.)
                                     .color(colors::fg_secondary()),
                             )
-                            .child(
-                                rect()
-                                    .vertical()
-                                    .width(Size::fill())
-                                    .spacing(10.)
-                                    .children(cards.into_iter().map(
-                                        |(option, icon, title, badge, blurb, meta)| {
-                                            wide_card(WideCard {
-                                                icon,
-                                                title: title.to_string(),
-                                                badge: badge.map(str::to_string),
-                                                blurb: blurb.to_string(),
-                                                meta: meta.to_string(),
-                                                selected: chosen == option,
-                                                on_press: (move |()| mode.set(option)).into(),
-                                            })
-                                        },
-                                    )),
-                            )
+                            .child(rect().vertical().width(Size::fill()).spacing(10.).children(
+                                cards.into_iter().map(
+                                    |(option, icon, title, badge, blurb, meta)| {
+                                        wide_card(WideCard {
+                                            icon,
+                                            title: title.to_string(),
+                                            badge: badge.map(str::to_string),
+                                            blurb: blurb.to_string(),
+                                            meta: meta.to_string(),
+                                            selected: chosen == option,
+                                            on_press: (move |()| mode.set(option)).into(),
+                                        })
+                                    },
+                                ),
+                            ))
                             .child(
                                 rect()
                                     .horizontal()
@@ -115,7 +112,7 @@ impl Component for ExportInstanceModal {
                                         Button::new()
                                             .ghost()
                                             .on_press(move |_| close_cancel.call(()))
-                                            .text("Cancel"),
+                                            .text(t("oneclient.common.cancel")),
                                     )
                                     .child(
                                         Button::new()
@@ -123,7 +120,7 @@ impl Component for ExportInstanceModal {
                                                 dispatch.export_cluster(cluster_id, chosen);
                                                 close_export.call(());
                                             })
-                                            .text("Export"),
+                                            .text(t("oneclient.clusters.export.confirm")),
                                     ),
                             ),
                     ),

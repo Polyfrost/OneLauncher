@@ -9,6 +9,7 @@ use oneclient_events::{CrashFix, CrashRemedy, GameCrash};
 use crate::Route;
 use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, ScrollArea};
 use crate::hooks::{use_dispatch, use_link_confirm};
+use crate::i18n::{t, tf};
 use crate::theme;
 use crate::theme::colors;
 use crate::utils::format_durations;
@@ -51,8 +52,6 @@ const CAUSE_CHARS_PER_LINE: f32 = 66.;
 const EXCERPT_LINE_H: f32 = 17.;
 const SUSPECT_HINT_H: f32 = 16.;
 const SUSPECT_MAX_LINES: f32 = 2.;
-
-const SUSPECT_HINT: &str = "Named in the crash report. Try removing or updating them first.";
 
 #[derive(PartialEq)]
 pub struct CrashDialog {
@@ -129,9 +128,9 @@ fn subtitle(crash: &GameCrash) -> impl IntoElement {
         parts.push(crash.exit.clone());
     }
     if crash.played_secs > 0 {
-        parts.push(format!(
-            "after {}",
-            format_durations(crash.played_secs as i64)
+        parts.push(tf(
+            "oneclient.components.crash_dialog.played_for",
+            &[&format_durations(crash.played_secs as i64)],
         ));
     }
 
@@ -320,7 +319,7 @@ fn suspects_card(crash: &GameCrash) -> Element {
         .spacing(CARD_SPACING)
         .child(
             label()
-                .text("SUSPECTED MODS")
+                .text(t("oneclient.components.crash_dialog.suspects.title"))
                 .font_size(10.)
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::danger()),
@@ -335,7 +334,7 @@ fn suspects_card(crash: &GameCrash) -> Element {
         )
         .child(
             label()
-                .text(SUSPECT_HINT)
+                .text(t("oneclient.components.crash_dialog.suspects.hint"))
                 .font_size(11.)
                 .width(Size::fill())
                 .max_lines(1)
@@ -361,7 +360,10 @@ fn fixes_section(crash: &GameCrash, confirm: State<Option<String>>) -> Element {
         .spacing(FIXES_SPACING)
         .child(
             label()
-                .text(format!("{} suggestions", cards.len()))
+                .text(tf(
+                    "oneclient.components.crash_dialog.suggestions",
+                    &[&cards.len()],
+                ))
                 .font_size(11.)
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_secondary()),
@@ -475,7 +477,7 @@ fn discord_card(mut confirm: State<Option<String>>) -> impl IntoElement {
                 .spacing(2.)
                 .child(
                     label()
-                        .text("Still stuck? Ask us on Discord")
+                        .text(t("oneclient.components.crash_dialog.discord.title"))
                         .font_size(14.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
@@ -484,7 +486,7 @@ fn discord_card(mut confirm: State<Option<String>>) -> impl IntoElement {
                 )
                 .child(
                     label()
-                        .text("Copy the crash details and we will help you fix it.")
+                        .text(t("oneclient.components.crash_dialog.discord.body"))
                         .font_size(12.)
                         .max_lines(1)
                         .width(Size::fill())
@@ -496,7 +498,7 @@ fn discord_card(mut confirm: State<Option<String>>) -> impl IntoElement {
                 .primary()
                 .on_press(move |_| confirm.set(Some(DISCORD_URL.to_string())))
                 .child(Icon::new(IconType::LinkExternal01).size(14.))
-                .text("Join Discord"),
+                .text(t("oneclient.components.crash_dialog.discord.join")),
         )
 }
 
@@ -558,7 +560,7 @@ fn actions(crash: &GameCrash, dispatch: crate::Actions) -> impl IntoElement {
         Button::new()
             .ghost()
             .on_press(move |_| close.dismiss_game_crash(cluster_id))
-            .text("Close"),
+            .text(t("oneclient.common.close")),
     )
 }
 
@@ -570,7 +572,7 @@ fn logs_button(cluster_id: i64, dispatch: crate::Actions) -> impl IntoElement {
             let _ = RouterContext::get().push(Route::ClusterLogs { cluster_id });
         })
         .child(Icon::new(IconType::Terminal).size(14.))
-        .text("View logs")
+        .text(t("oneclient.components.crash_dialog.view_logs"))
 }
 
 fn remedy_button(

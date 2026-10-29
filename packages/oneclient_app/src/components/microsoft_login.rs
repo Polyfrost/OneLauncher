@@ -1,3 +1,4 @@
+use crate::i18n::t;
 use crate::state::LoginProgress;
 use freya::prelude::*;
 use freya::query::{MutationCapability, MutationStateData, UseMutation};
@@ -207,7 +208,7 @@ pub(crate) fn login_dialog(
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             label()
-                                .text("Sign in to Microsoft")
+                                .text(t("oneclient.components.microsoft_login.title"))
                                 .font_size(18.)
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
@@ -234,7 +235,7 @@ pub(crate) fn login_dialog(
                             Button::new()
                                 .ghost()
                                 .on_press(move |_| close_cancel())
-                                .text("Cancel")
+                                .text(t("oneclient.common.cancel"))
                                 .into_element()
                         })),
                 ),
@@ -257,7 +258,7 @@ fn dialog_divider() -> impl IntoElement {
         )
         .child(
             label()
-                .text("or")
+                .text(t("oneclient.components.microsoft_login.or"))
                 .font_size(11.)
                 .color(colors::fg_secondary()),
         )
@@ -289,7 +290,7 @@ fn status_row(status: Option<LoginProgress>, error: Option<String>) -> impl Into
         Some(status) if status.total > 0 && status.current > 0 => {
             format!("{} ({}/{})", status.label, status.current, status.total)
         }
-        _ => "Waiting for you to finish signing in...".to_string(),
+        _ => t("oneclient.components.microsoft_login.waiting").to_string(),
     };
 
     rect()
@@ -313,7 +314,7 @@ fn status_row(status: Option<LoginProgress>, error: Option<String>) -> impl Into
 fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
     let mut steps = rect().vertical().width(Size::fill()).spacing(6.).child(
         label()
-            .text("What you can do:")
+            .text(t("oneclient.components.microsoft_login.what_you_can_do"))
             .font_size(12.)
             .font_weight(FontWeight::SEMI_BOLD)
             .color(colors::fg_primary()),
@@ -366,7 +367,7 @@ fn browser_dialog_body(auth_url: String) -> impl IntoElement {
         .spacing(12.)
         .child(
             label()
-                .text("We opened the Microsoft sign-in page in your browser. Finish there and you'll be brought back automatically.")
+                .text(t("oneclient.components.microsoft_login.opened_browser"))
                 .font_size(13.)
                 .color(colors::fg_secondary()),
         )
@@ -375,7 +376,7 @@ fn browser_dialog_body(auth_url: String) -> impl IntoElement {
                 .primary()
                 .on_press(move |_| platform::open_url(&auth_url))
                 .child(Icon::new(IconType::LinkExternal01).size(16.))
-                .text("Open in browser again"),
+                .text(t("oneclient.components.microsoft_login.open_again")),
         )
         .into_element()
 }
@@ -389,7 +390,7 @@ fn device_code_dialog_body(code: String, verification_uri: String) -> impl IntoE
         .spacing(12.)
         .child(
             label()
-                .text("Or enter this code at the Microsoft sign-in page:")
+                .text(t("oneclient.components.microsoft_login.enter_code"))
                 .font_size(13.)
                 .color(colors::fg_secondary()),
         )
@@ -424,14 +425,14 @@ fn device_code_dialog_body(code: String, verification_uri: String) -> impl IntoE
                             }
                         })
                         .child(Icon::new(IconType::Copy01).size(16.))
-                        .text("Copy code"),
+                        .text(t("oneclient.components.microsoft_login.copy_code")),
                 )
                 .child(
                     Button::new()
                         .primary()
                         .on_press(move |_| platform::open_url(&verification_uri))
                         .child(Icon::new(IconType::LinkExternal01).size(16.))
-                        .text("Open in browser"),
+                        .text(t("oneclient.components.microsoft_login.open_browser")),
                 ),
         )
         .into_element()

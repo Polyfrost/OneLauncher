@@ -11,6 +11,7 @@ use oneclient_java::{JavaRuntime, JavaVendor};
 use tokio::sync::mpsc::UnboundedSender;
 
 use crate::hooks::Actions;
+use crate::i18n::{t, tf};
 use crate::launcher;
 use crate::launcher::off_ui;
 
@@ -172,29 +173,30 @@ pub async fn offer_for_pinned_cluster(actions: &Actions, cluster_id: ClusterId) 
 
 fn offer_prompt(installed: bool) -> Prompt<MicrosoftJavaAnswer> {
     let closing = if installed {
-        "You already have it installed, so this cluster will switch over immediately."
+        t("oneclient.microsoft_java.offer.closing.installed")
     } else {
-        "Minecraft will launch with Microsoft OpenJDK next time."
+        t("oneclient.microsoft_java.offer.closing.download")
     };
 
     Prompt::new(
-        "Microsoft Java runtime",
-        format!(
-            "Based on our research, we now recommend Microsoft's OpenJDK \
-             as they have specific optimizations for Minecraft. \
-             Would you like to use Microsoft OpenJDK as your default Java installation? \
-             {closing}"
-        ),
+        t("oneclient.microsoft_java.offer.title"),
+        tf("oneclient.microsoft_java.offer.body", &[&closing]),
     )
     .option(
-        Choice::new(MICROSOFT_JAVA_CHOICE_NEVER, "Don't ask again"),
+        Choice::new(
+            MICROSOFT_JAVA_CHOICE_NEVER,
+            t("oneclient.microsoft_java.offer.never"),
+        ),
         MicrosoftJavaAnswer::Never,
     )
     .option(
-        Choice::primary(MICROSOFT_JAVA_CHOICE_INSTALL, "Proceed"),
+        Choice::primary(
+            MICROSOFT_JAVA_CHOICE_INSTALL,
+            t("oneclient.microsoft_java.offer.proceed"),
+        ),
         MicrosoftJavaAnswer::Install,
     )
-    .dismiss("Cancel")
+    .dismiss(t("oneclient.common.cancel"))
 }
 
 fn install_and_unpin(cluster_id: ClusterId, major: u32, refresh: UnboundedSender<()>) {
@@ -210,7 +212,7 @@ fn install_and_unpin(cluster_id: ClusterId, major: u32, refresh: UnboundedSender
             Ok(runtime) => runtime,
             Err(err) => {
                 events
-                    .notify("Java install failed")
+                    .notify(t("oneclient.microsoft_java.install_failed"))
                     .body(err.to_string())
                     .error()
                     .send();
@@ -248,24 +250,21 @@ async fn unpin_to_automatic(
         Ok(_) => {
             let _ = refresh.send(());
             let body = if immediate {
-                format!(
-                    "This cluster is back on Automatic and will run on the optimized Microsoft \
-                     {major} JDK from now on."
-                )
+                tf("oneclient.microsoft_java.switched.immediate", &[&major])
             } else {
-                format!(
-                    "This cluster is back on Automatic and will pick the optimized Microsoft \
-                     {major} JDK from its next launch."
-                )
+                tf("oneclient.microsoft_java.switched.next_launch", &[&major])
             };
-            events.notify("Java switched").body(body).send();
+            events
+                .notify(t("oneclient.microsoft_java.switched.title"))
+                .body(body)
+                .send();
         }
         // Only when installation was successfull and the cluster is not pointing to the new version
         Err(err) => events
-            .notify("Cluster not switched")
-            .body(format!(
-                "Optimized Microsoft {major} JDK is ready but the cluster still points at its \
-                 old runtime: {err}. Please report to discord.gg/polyfrost"
+            .notify(t("oneclient.microsoft_java.not_switched.title"))
+            .body(tf(
+                "oneclient.microsoft_java.not_switched.body",
+                &[&major, &err],
             ))
             .error()
             .send(),

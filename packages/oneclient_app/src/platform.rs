@@ -249,6 +249,7 @@ pub mod tray {
     use freya::tray::{TrayEvent, TrayIcon, TrayIconBuilder};
 
     use crate::constants;
+    use crate::i18n::t;
     use crate::ipc::{self, IpcCommand};
 
     const OPEN_ID: &str = "oneclient.open";
@@ -299,17 +300,17 @@ pub mod tray {
 
     pub fn build() -> TrayIcon {
         let live_on_linux = cfg!(target_os = "linux");
-        let stop = MenuItem::with_id(STOP_ID, "Stop game", live_on_linux, None);
-        let logs = MenuItem::with_id(LOGS_ID, "Show logs", live_on_linux, None);
+        let stop = MenuItem::with_id(STOP_ID, t("oneclient.tray.stop_game"), live_on_linux, None);
+        let logs = MenuItem::with_id(LOGS_ID, t("oneclient.tray.show_logs"), live_on_linux, None);
 
         let menu = Menu::with_items(&[
-            &MenuItem::with_id(OPEN_ID, "Open OneClient", true, None),
-            &MenuItem::with_id(PLAY_ID, "Play last version", true, None),
+            &MenuItem::with_id(OPEN_ID, t("oneclient.tray.open"), true, None),
+            &MenuItem::with_id(PLAY_ID, t("oneclient.tray.play_last"), true, None),
             &PredefinedMenuItem::separator(),
             &stop,
             &logs,
             &PredefinedMenuItem::separator(),
-            &MenuItem::with_id(QUIT_ID, "Quit OneClient", true, None),
+            &MenuItem::with_id(QUIT_ID, t("oneclient.tray.quit"), true, None),
         ])
         .expect("failed to build the tray menu");
 

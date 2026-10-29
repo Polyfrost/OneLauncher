@@ -13,6 +13,7 @@ use crate::hooks::{
     disable_warnings, loaded_image, use_cached_image, use_cluster_mutation, use_disable_confirm,
     use_disable_warnings, use_essential_guard,
 };
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
@@ -378,7 +379,7 @@ pub(crate) fn disable_warning_body(
         Some(warnings) if bundled => warnings.body_for(&item.package_id).map(str::to_string),
         _ => item
             .essential
-            .map(|package| package.disable_body.to_string()),
+            .map(|package| (package.disable_body)().to_string()),
     }
 }
 
@@ -457,7 +458,7 @@ pub fn package_context_menu(
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone()).action(
         IconType::Check,
-        "Select",
+        t("oneclient.components.package_row.select"),
         on_select,
     );
 
@@ -465,50 +466,66 @@ pub fn package_context_menu(
         let provider = item.provider;
         let package_id = item.package_id.clone();
         let package_type = package_type.to_string();
-        menu = menu.action(IconType::LinkExternal01, "View in browser", move |()| {
-            let _ = RouterContext::get().push(Route::BrowserPackage {
-                cluster_id,
-                package_type: package_type.clone(),
-                package_id: format!("{}:{}", provider as u8, package_id),
-                add_to_cluster: false,
-            });
-        });
+        menu = menu.action(
+            IconType::LinkExternal01,
+            t("oneclient.components.package_row.view_in_browser"),
+            move |()| {
+                let _ = RouterContext::get().push(Route::BrowserPackage {
+                    cluster_id,
+                    package_type: package_type.clone(),
+                    package_id: format!("{}:{}", provider as u8, package_id),
+                    add_to_cluster: false,
+                });
+            },
+        );
     }
 
     if let Some(url) = item.github_url.clone() {
-        menu = menu.action(IconType::LinkExternal01, "View in browser", move |()| {
-            crate::platform::open_url(&url);
-        });
+        menu = menu.action(
+            IconType::LinkExternal01,
+            t("oneclient.components.package_row.view_in_browser"),
+            move |()| {
+                crate::platform::open_url(&url);
+            },
+        );
     }
 
     if let Some(hash) = item.hash.clone() {
         menu = menu.action(
             IconType::Folder,
-            "View in folder",
+            t("oneclient.components.package_row.view_in_folder"),
             EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
         );
     }
 
     if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.installed) {
         menu = if item.deleted {
-            menu.separator()
-                .action(IconType::RefreshCcw02, "Restore", on_bundled)
+            menu.separator().action(
+                IconType::RefreshCcw02,
+                t("oneclient.components.package_row.restore"),
+                on_bundled,
+            )
         } else {
-            menu.separator()
-                .danger_action(IconType::Trash01, "Delete", on_bundled)
+            menu.separator().danger_action(
+                IconType::Trash01,
+                t("oneclient.common.delete"),
+                on_bundled,
+            )
         };
     }
 
     if item.installed && !item.in_bundle() {
         let hash = item.hash.clone();
         let name = item.name.clone();
-        menu = menu
-            .separator()
-            .danger_action(IconType::Trash01, "Delete", move |()| {
+        menu = menu.separator().danger_action(
+            IconType::Trash01,
+            t("oneclient.common.delete"),
+            move |()| {
                 if let Some(hash) = &hash {
                     on_delete.call((name.clone(), hash.clone()));
                 }
-            });
+            },
+        );
     }
 
     menu
@@ -726,12 +743,21 @@ fn grid_meta(
     } else if item.is_remote() {
         meta_text(item.provider.to_string(), muted)
     } else {
-        meta_text("Local file".to_string(), muted)
+        meta_text(
+            t("oneclient.components.package_row.local_file").to_string(),
+            muted,
+        )
     };
 
     let mut parts: Vec<Element> = Vec::new();
     if !item.author.is_empty() {
-        parts.push(meta_text(format!("by {}", item.author), muted));
+        parts.push(meta_text(
+            tf(
+                "oneclient.components.package_row.by_author",
+                &[&item.author],
+            ),
+            muted,
+        ));
     }
     if let Some(version) = &item.version {
         parts.push(meta_text(version.clone(), muted));
@@ -949,7 +975,10 @@ fn package_info(
                 .maybe(!item.author.is_empty(), |el| {
                     el.child(
                         label()
-                            .text(format!("by {}", item.author))
+                            .text(tf(
+                                "oneclient.components.package_row.by_author",
+                                &[&item.author],
+                            ))
                             .font_size(10.)
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
@@ -1042,7 +1071,10 @@ pub fn github_badge() -> Element {
 }
 
 fn outdated_badge() -> Element {
-    status_tag("Update available", colors::brand())
+    status_tag(
+        t("oneclient.components.package_row.update_available"),
+        colors::brand(),
+    )
 }
 
 fn copies_button(ignored: usize, on_press: EventHandler<()>) -> Element {
@@ -1057,26 +1089,37 @@ fn copies_button(ignored: usize, on_press: EventHandler<()>) -> Element {
                 .size(12.)
                 .color(colors::brand())
                 .into_element(),
-            format!("{} copies", ignored + 1),
+            tf("oneclient.components.package_row.copies", &[&(ignored + 1)]),
             colors::brand(),
         ))
         .into_element()
 }
 
 fn shadowed_badge() -> Element {
-    pill(None, "Using your copy".to_string(), colors::brand())
+    pill(
+        None,
+        t("oneclient.components.package_row.shadowed").to_string(),
+        colors::brand(),
+    )
 }
 
 fn outranked_badge() -> Element {
-    pill(None, "Using bundle's newer copy".to_string(), colors::brand())
+    pill(
+        None,
+        t("oneclient.components.package_row.outranked").to_string(),
+        colors::brand(),
+    )
 }
 
 fn new_badge() -> Element {
-    status_tag("New", colors::success())
+    status_tag(t("oneclient.components.package_row.new"), colors::success())
 }
 
 fn updated_badge() -> Element {
-    status_tag("Updated", colors::success())
+    status_tag(
+        t("oneclient.components.package_row.updated"),
+        colors::success(),
+    )
 }
 
 fn status_tag(text: impl Into<String>, accent: Color) -> Element {
@@ -1117,7 +1160,7 @@ fn local_badge() -> Element {
             .size(12.)
             .color(colors::fg_secondary())
             .into_element(),
-        "Local file".to_string(),
+        t("oneclient.components.package_row.local_file").to_string(),
     )
 }
 

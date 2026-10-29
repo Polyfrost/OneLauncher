@@ -2,7 +2,7 @@ use freya::prelude::*;
 use oneclient_java::{AvailableJava, JavaVendor};
 
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
-use crate::hooks::{provider_versions, use_provider_versions};
+use crate::hooks::{java_runtimes, provider_versions, use_java_runtimes, use_provider_versions};
 use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -70,6 +70,8 @@ impl Component for JavaInstallManager {
 
         let versions_query = use_provider_versions(vendor.clone());
         let (mut versions, loading) = provider_versions(&versions_query);
+        let runtimes_query = use_java_runtimes();
+        let runtimes = java_runtimes(&runtimes_query);
 
         if let Some(major) = suggested {
             versions.sort_by_key(|v| v.major != major);
@@ -90,11 +92,15 @@ impl Component for JavaInstallManager {
                 .spacing(8.);
             for available in versions {
                 let highlight = suggested == Some(available.major);
+                let installed = runtimes
+                    .iter()
+                    .any(|runtime| runtime.vendor == vendor && runtime.major == available.major);
                 area = area.child(
                     VersionRow {
                         vendor: vendor.clone(),
                         available,
                         suggested: highlight,
+                        installed,
                         on_install: self.on_install.clone(),
                     }
                     .into_element(),
@@ -202,6 +208,7 @@ struct VersionRow {
     vendor: JavaVendor,
     available: AvailableJava,
     suggested: bool,
+    installed: bool,
     on_install: Option<EventHandler<(JavaVendor, u32)>>,
 }
 
@@ -243,6 +250,26 @@ impl Component for VersionRow {
             );
         }
 
+        let action = if self.installed {
+            Button::new()
+                .secondary()
+                .small()
+                .disabled(true)
+                .child(Icon::new(IconType::Check).size(13.))
+                .text(t("oneclient.components.java_install_manager.installed"))
+        } else {
+            Button::new()
+                .primary()
+                .small()
+                .on_press(move |_| {
+                    if let Some(handler) = &on_install {
+                        handler.call((vendor.clone(), major));
+                    }
+                })
+                .child(Icon::new(IconType::Download01).size(13.))
+                .text(t("oneclient.common.install"))
+        };
+
         rect()
             .horizontal()
             .width(Size::fill())
@@ -269,17 +296,6 @@ impl Component for VersionRow {
                             .color(colors::fg_secondary()),
                     ),
             )
-            .child(
-                Button::new()
-                    .primary()
-                    .small()
-                    .on_press(move |_| {
-                        if let Some(handler) = &on_install {
-                            handler.call((vendor.clone(), major));
-                        }
-                    })
-                    .child(Icon::new(IconType::Download01).size(13.))
-                    .text(t("oneclient.common.install")),
-            )
+            .child(action)
     }
 }

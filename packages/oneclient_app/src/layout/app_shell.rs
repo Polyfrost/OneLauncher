@@ -22,8 +22,8 @@ use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
     ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
-    BrowserTypeState, DataPackWorldState, use_active_cluster_id, use_clusters, use_game_snapshot,
-    use_launcher, use_provide_active_cluster, use_provide_browser_compat,
+    BrowserTypeState, DataPackWorldState, use_active_cluster_id, use_clusters, use_dispatch,
+    use_game_snapshot, use_launcher, use_provide_active_cluster, use_provide_browser_compat,
     use_provide_browser_state, use_provide_browser_type, use_provide_datapack_world, use_splash,
 };
 use crate::theme::colors;
@@ -65,8 +65,13 @@ impl Component for AppShell {
             .find(|(_, s)| **s == LaunchStage::Running)
             .map(|(id, _)| *id);
 
+        // Peeked so turning the setting back on mid-game doesn't yank the view
+        let station = use_dispatch().station();
         use_side_effect_with_deps(&running_cluster, move |running| {
-            if let Some(cluster_id) = *running {
+            let open_log = station.peek().settings.settings.open_game_log_on_launch;
+            if let Some(cluster_id) = *running
+                && open_log
+            {
                 spawn(async move {
                     let _ = RouterContext::get().push(Route::ProcessLogs { cluster_id });
                 });

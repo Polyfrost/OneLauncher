@@ -3,7 +3,7 @@ use freya::router::RouterContext;
 use oneclient_content::packages::ResolvedAlternative;
 
 use crate::components::{
-    Button, Icon, IconType, Markdown, MarkdownStyle, OverlayPopup, remote_icon,
+    Button, Icon, IconType, Markdown, MarkdownStyle, OverlayPopup, ScrollArea, remote_icon,
 };
 use crate::hooks::{use_cached_image, use_dispatch, use_installs_snapshot};
 use crate::i18n::{t, tf};
@@ -159,7 +159,7 @@ fn flagged_content(prompt: &FlaggedInstallPrompt) -> impl IntoElement {
         );
     }
 
-    ScrollView::new()
+    ScrollArea::new()
         .width(Size::fill())
         .height(Size::Inner)
         .max_height(Size::px(CONTENT_MAX_H))

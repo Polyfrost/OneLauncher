@@ -3,7 +3,7 @@ use freya::router::RouterContext;
 use oneclient_common::domain::ContentType;
 use oneclient_core::{BisectExit, BisectRole, BisectStatus};
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, progress_track};
+use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, progress_track};
 use freya::query::UseMutation;
 
 use crate::Route;
@@ -491,7 +491,7 @@ impl Component for BisectQuestion {
                 .width(Size::fill())
                 .spacing(12.)
                 .child(
-                    ScrollView::new()
+                    ScrollArea::new()
                         .width(Size::fill())
                         .height(Size::px(240.))
                         .child(

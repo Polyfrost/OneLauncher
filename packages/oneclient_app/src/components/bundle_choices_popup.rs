@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use freya::prelude::*;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, toggle_controlled};
+use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, toggle_controlled};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
 use crate::i18n::{t, tf};
 use crate::theme::colors;
@@ -109,7 +109,7 @@ impl Component for BundleChoicesPopup {
                                     .color(colors::fg_secondary()),
                             )
                             .child(
-                                ScrollView::new()
+                                ScrollArea::new()
                                     .width(Size::fill())
                                     .height(Size::Inner)
                                     .max_height(Size::px(LIST_MAX_H))

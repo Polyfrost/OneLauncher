@@ -33,6 +33,43 @@ impl Component for DisableDependentsOverlay {
 
         let confirmed = current.clone();
 
+        let mut buttons = rect()
+            .horizontal()
+            .width(Size::fill())
+            .main_align(Alignment::End)
+            .spacing(8.)
+            .child(
+                Button::new()
+                    .secondary()
+                    .on_press(move |_| pending.set(None))
+                    .text(t("oneclient.common.cancel")),
+            );
+
+        if !current.required.is_empty() {
+            let alone = current.clone();
+            buttons = buttons.child(
+                Button::new()
+                    .secondary()
+                    .on_press(move |_| {
+                        apply(alone.clone(), true);
+                        pending.set(None);
+                    })
+                    .text(t(
+                        "oneclient.components.disable_dependents_popup.disable_anyway",
+                    )),
+            );
+        }
+
+        buttons = buttons.child(
+            Button::new()
+                .danger()
+                .on_press(move |_| {
+                    apply(confirmed.clone(), false);
+                    pending.set(None);
+                })
+                .text(disable::confirm_label(&current)),
+        );
+
         OverlayPopup::new()
             .on_close(move |_| pending.set(None))
             .child(
@@ -79,28 +116,7 @@ impl Component for DisableDependentsOverlay {
                                     .color(colors::fg_secondary()),
                             )
                             .child(lists(&current))
-                            .child(
-                                rect()
-                                    .horizontal()
-                                    .width(Size::fill())
-                                    .main_align(Alignment::End)
-                                    .spacing(8.)
-                                    .child(
-                                        Button::new()
-                                            .secondary()
-                                            .on_press(move |_| pending.set(None))
-                                            .text(t("oneclient.common.cancel")),
-                                    )
-                                    .child(
-                                        Button::new()
-                                            .danger()
-                                            .on_press(move |_| {
-                                                apply(confirmed.clone());
-                                                pending.set(None);
-                                            })
-                                            .text(disable::confirm_label(&current)),
-                                    ),
-                            ),
+                            .child(buttons),
                     ),
             )
             .into_element()
@@ -109,9 +125,14 @@ impl Component for DisableDependentsOverlay {
 
 /// Applied off the event handler: the write is a database round trip, and the
 /// modal has already closed on the user's answer.
-fn apply(pending: PendingDisable) {
+fn apply(pending: PendingDisable, alone: bool) {
     spawn_forever(async move {
-        if let Err(err) = disable::apply(&pending).await {
+        let result = if alone {
+            disable::apply_alone(&pending).await
+        } else {
+            disable::apply(&pending).await
+        };
+        if let Err(err) = result {
             tracing::warn!(%err, "failed to disable a package and its dependents");
             if let Ok(state) = launcher::state() {
                 state

@@ -1,12 +1,11 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use freya::prelude::*;
 use freya::query::MutationStateData;
 use oneclient_common::Patch;
-use oneclient_common::domain::GameLoader;
-use oneclient_core::settings::{
-    GameSettingsProfile, GraphicsBackend, PackageUpdateMode, ProfileUpdate, Resolution,
-};
+use oneclient_common::domain::{GameLoader, GraphicsBackend};
+use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
 use oneclient_java::JavaRuntime;
 
 use crate::components::{
@@ -16,20 +15,22 @@ use crate::components::{
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
     settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
-    use_game_profile, use_game_snapshot, use_java_runtimes, use_loader_versions,
-    use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
+    use_game_profile, use_game_snapshot, use_graphics_backend, use_java_runtimes,
+    use_loader_versions, use_migratable_routes, use_release_migration_checking,
+    use_settings_snapshot,
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
 use crate::view::app::clusters::{
-    DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts, ResetInstanceModal,
+    ClusterPickerButton, DeleteInstanceModal, EditInstanceModal, ExportInstanceModal,
+    InstanceFacts, ResetInstanceModal,
 };
 use crate::view::app::settings::{
     section_header, settings_row, settings_row_danger, settings_row_disabled,
 };
-use oneclient_core::clusters::{can_migrate_manually, rank_migration_sources};
+use oneclient_core::clusters::{Cluster, rank_migration_sources};
 
 use super::cluster_not_found;
 use super::imported_modpacks::ImportedModpacksSection;
@@ -114,19 +115,18 @@ impl Component for ClusterSettings {
         } else {
             Vec::new()
         };
-        let graphics_backend_row: Vec<Element> =
-            if GraphicsBackend::supported_on(&cluster.mc_version) {
+        let graphics_backend_row: Vec<Element> = match cluster.game_dir() {
+            Ok(game_dir) if GraphicsBackend::supported_on(&cluster.mc_version) => {
                 vec![
                     GraphicsBackendRow {
                         cluster_id,
-                        value: profile.graphics_backend,
-                        global: global.graphics_backend.unwrap_or_default(),
+                        game_dir,
                     }
                     .into_element(),
                 ]
-            } else {
-                Vec::new()
-            };
+            }
+            _ => Vec::new(),
+        };
 
         let migrate_row: Vec<Element> = if mod_loader {
             vec![MigrateFromRow { cluster_id }.into_element()]
@@ -306,7 +306,6 @@ enum Field {
     MemMax,
     JavaPath,
     BrowserUpdateMode,
-    GraphicsBackend,
 }
 
 fn profile_row(generation: u32, slot: &'static str, row: impl IntoElement) -> Element {
@@ -325,7 +324,6 @@ fn clear_update(field: Field) -> ProfileUpdate {
         Field::MemMax => u.mem_max = Patch::Clear,
         Field::JavaPath => u.java_path = Patch::Clear,
         Field::BrowserUpdateMode => u.browser_update_mode = Patch::Clear,
-        Field::GraphicsBackend => u.graphics_backend = Patch::Clear,
     }
     u
 }
@@ -1157,51 +1155,60 @@ impl Component for BrowserUpdateModeRow {
 #[derive(PartialEq)]
 struct GraphicsBackendRow {
     cluster_id: i64,
-    value: Option<GraphicsBackend>,
-    global: GraphicsBackend,
+    game_dir: PathBuf,
 }
 
 impl Component for GraphicsBackendRow {
     fn render(&self) -> impl IntoElement {
-        let cluster_id = self.cluster_id;
-        let overridden = self.value.is_some();
-        let resolved = self.value.unwrap_or(self.global);
+        let game_dir = self.game_dir.clone();
+        let current = use_graphics_backend(game_dir.clone());
+        let running = use_game_snapshot().is_running(self.cluster_id);
         let dispatch = use_dispatch();
 
         let options: Vec<String> = GraphicsBackend::ALL
             .iter()
-            .map(|backend| backend.label().to_string())
+            .map(ToString::to_string)
             .collect();
+        let control = Dropdown::new(
+            current.unwrap_or(GraphicsBackend::Default).to_string(),
+            options,
+        )
+        .width(Size::px(220.))
+        .height(Size::px(34.))
+        .on_select(move |idx: usize| {
+            if let Some(backend) = GraphicsBackend::ALL.get(idx).copied() {
+                dispatch.set_graphics_backend(game_dir.clone(), backend);
+            }
+        });
 
-        let control = {
-            let dispatch = dispatch.clone();
-            Dropdown::new(resolved.label(), options)
-                .width(Size::px(220.))
-                .height(Size::px(34.))
-                .on_select(move |idx: usize| {
-                    if let Some(backend) = GraphicsBackend::ALL.get(idx).copied() {
-                        dispatch.update_cluster_profile(
-                            cluster_id,
-                            ProfileUpdate {
-                                graphics_backend: Patch::Set(backend),
-                                ..Default::default()
-                            },
-                        );
-                    }
-                })
+        let locked = if running {
+            Some(t(
+                "oneclient.cluster.settings.graphics_backend.locked_running",
+            ))
+        } else if current.is_none() {
+            Some(t(
+                "oneclient.cluster.settings.graphics_backend.locked_never_started",
+            ))
+        } else {
+            None
         };
-
-        let on_reset: EventHandler<()> = (move |()| {
-            dispatch.update_cluster_profile(cluster_id, clear_update(Field::GraphicsBackend));
-        })
-        .into();
+        if let Some(reason) = locked {
+            return settings_row_disabled(
+                IconType::PaintPour,
+                t("oneclient.cluster.settings.graphics_backend.title"),
+                reason,
+                control,
+            )
+            .into_element();
+        }
 
         settings_row(
             IconType::PaintPour,
             t("oneclient.cluster.settings.graphics_backend.title"),
             t("oneclient.cluster.settings.graphics_backend.description"),
-            override_cell(control, overridden, on_reset),
+            control,
         )
+        .into_element()
     }
 }
 
@@ -1217,48 +1224,28 @@ impl Component for MigrateFromRow {
         let checking = use_release_migration_checking(cluster_id);
         let game = use_game_snapshot();
         let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
-        let mut picked = use_state(|| None::<(i64, i64)>);
+        let mut picked = use_state(|| None::<i64>);
 
-        let mut routes: Vec<(String, i64, i64)> = Vec::new();
-        if let Some(this) = clusters.iter().find(|cluster| cluster.id == cluster_id) {
-            routes.extend(
-                rank_migration_sources(this, &clusters)
-                    .into_iter()
-                    .map(|source| {
-                        (
-                            tf("oneclient.cluster.settings.migrate.from", &[&source.name]),
-                            cluster_id,
-                            source.id,
-                        )
-                    }),
-            );
-            routes.extend(
-                clusters
-                    .iter()
-                    .filter(|other| {
-                        other.id != cluster_id
-                            && can_migrate_manually(this.mc_loader, other.mc_loader)
-                    })
-                    .map(|target| {
-                        (
-                            tf("oneclient.cluster.settings.migrate.to", &[&target.name]),
-                            target.id,
-                            cluster_id,
-                        )
-                    }),
-            );
-        }
-        let has_partners = !routes.is_empty();
-        let migratable =
-            use_migratable_routes(routes.iter().map(|route| (route.1, route.2)).collect());
-        routes.retain(|route| migratable.contains(&(route.1, route.2)));
+        let mut sources: Vec<Cluster> = clusters
+            .iter()
+            .find(|cluster| cluster.id == cluster_id)
+            .map(|this| rank_migration_sources(this, &clusters))
+            .unwrap_or_default();
+        let has_partners = !sources.is_empty();
+        let migratable = use_migratable_routes(
+            sources
+                .iter()
+                .map(|source| (cluster_id, source.id))
+                .collect(),
+        );
+        sources.retain(|source| migratable.contains(&(cluster_id, source.id)));
 
         let selected = picked
             .read()
-            .and_then(|pair| routes.iter().find(|route| (route.1, route.2) == pair))
-            .or_else(|| routes.first())
+            .and_then(|id| sources.iter().find(|source| source.id == id))
+            .or_else(|| sources.first())
             .cloned();
-        let selected_pair = selected.as_ref().map(|route| (route.1, route.2));
+        let selected_pair = selected.as_ref().map(|source| (cluster_id, source.id));
         let running = selected_pair
             .is_some_and(|(target, source)| game.is_running(target) || game.is_running(source));
 
@@ -1283,7 +1270,7 @@ impl Component for MigrateFromRow {
             button = button.tooltip(t("oneclient.cluster.settings.migrate.game_running"));
         }
 
-        let picker: Element = if routes.is_empty() {
+        let picker: Element = if sources.is_empty() {
             label()
                 .text(if has_partners {
                     t("oneclient.cluster.settings.migrate.nothing")
@@ -1294,17 +1281,18 @@ impl Component for MigrateFromRow {
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
-            let pairs: Vec<(i64, i64)> = routes.iter().map(|route| (route.1, route.2)).collect();
-            let names: Vec<String> = routes.iter().map(|route| route.0.clone()).collect();
-            Dropdown::new(selected.map(|route| route.0).unwrap_or_default(), names)
-                .width(Size::px(220.))
-                .height(Size::px(34.))
-                .on_select(move |index: usize| {
-                    if let Some(pair) = pairs.get(index) {
-                        picked.set(Some(*pair));
-                    }
-                })
-                .into_element()
+            ClusterPickerButton {
+                label: selected
+                    .as_ref()
+                    .map(|source| tf("oneclient.cluster.settings.migrate.from", &[&source.name]))
+                    .unwrap_or_default(),
+                selected: selected.as_ref().map(|source| source.id),
+                only: Some(sources.iter().map(|source| source.id).collect()),
+                width: Size::px(220.),
+                height: 34.,
+                on_pick: (move |cluster: Cluster| picked.set(Some(cluster.id))).into(),
+            }
+            .into_element()
         };
 
         settings_row(

@@ -24,6 +24,7 @@ use crate::i18n::{t, tf};
 use crate::launcher::off_ui;
 use crate::theme::colors;
 use crate::ui::border_all_color;
+use crate::view::app::ClusterPickerButton;
 
 const DIALOG_W: f32 = 480.;
 const FILE_ROW_H: f32 = 34.;
@@ -560,23 +561,18 @@ fn cluster_field(
     selected_idx: usize,
     mut selected: State<Option<ClusterId>>,
 ) -> impl IntoElement {
-    let labels: Vec<String> = clusters
-        .iter()
-        .map(|c| format!("{} · {}", c.name, c.mc_version))
-        .collect();
-    let ids: Vec<ClusterId> = clusters.iter().map(|c| c.id).collect();
-    let current = labels[selected_idx].clone();
+    let current = &clusters[selected_idx];
 
     field(
         t("oneclient.components.file_drop.destination_cluster"),
-        Dropdown::new(current, labels)
-            .width(Size::fill())
-            .height(Size::px(32.))
-            .on_select(move |idx: usize| {
-                if let Some(id) = ids.get(idx) {
-                    selected.set(Some(*id));
-                }
-            }),
+        ClusterPickerButton {
+            label: format!("{} · {}", current.name, current.mc_version),
+            selected: Some(current.id),
+            only: Some(clusters.iter().map(|c| c.id).collect()),
+            width: Size::fill(),
+            height: 32.,
+            on_pick: (move |cluster: Cluster| selected.set(Some(cluster.id))).into(),
+        },
     )
 }
 

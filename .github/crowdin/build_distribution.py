@@ -94,7 +94,9 @@ def main():
 
     files = collect(build_archive(os.environ["CROWDIN_PROJECT_ID"], os.environ["CROWDIN_PERSONAL_TOKEN"]))
     if not files:
-        raise RuntimeError("no translated strings found")
+        write_output("changed", "false")
+        print("no translated strings found, nothing to publish")
+        return
 
     content_hash = digest(files)
     previous = read_previous(args.previous)

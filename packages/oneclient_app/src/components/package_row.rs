@@ -73,6 +73,8 @@ pub struct PackageEntry {
     pub shadowed: bool,
     /// The user's own copy, older than the bundle's the loader picks over it
     pub outranked: bool,
+    /// Other copies of this mod the loader ignores, folded into this row
+    pub copies: Vec<PackageEntry>,
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
     pub essential: Option<&'static EssentialPackage>,
@@ -125,6 +127,7 @@ pub struct PackageRow {
     selected: bool,
     selecting: bool,
     on_select: EventHandler<()>,
+    on_copies: Option<EventHandler<()>>,
     key: DiffKey,
 }
 
@@ -139,6 +142,7 @@ impl PackageRow {
             selected: false,
             selecting: false,
             on_select: (|()| {}).into(),
+            on_copies: None,
             key: DiffKey::None,
         }
     }
@@ -150,6 +154,11 @@ impl PackageRow {
 
     pub fn on_context(mut self, on_context: impl Into<EventHandler<(f32, f32)>>) -> Self {
         self.on_context = on_context.into();
+        self
+    }
+
+    pub fn on_copies(mut self, on_copies: impl Into<EventHandler<()>>) -> Self {
+        self.on_copies = Some(on_copies.into());
         self
     }
 
@@ -218,6 +227,7 @@ impl Component for PackageRow {
         };
 
         let on_context = Some(self.on_context.clone());
+        let on_copies = self.on_copies.clone().filter(|_| !item.copies.is_empty());
 
         let (card, radius) = match layout {
             CardLayout::List => (
@@ -228,6 +238,7 @@ impl Component for PackageRow {
                     icon,
                     on_toggle,
                     on_context.clone(),
+                    on_copies,
                 ),
                 8.,
             ),
@@ -240,6 +251,7 @@ impl Component for PackageRow {
                     on_toggle,
                     true,
                     on_context.clone(),
+                    on_copies,
                     hovered,
                 ),
                 6.,
@@ -537,7 +549,9 @@ fn list_card(
     icon: impl IntoElement,
     on_toggle: EventHandler<()>,
     on_context: Option<EventHandler<(f32, f32)>>,
+    on_copies: Option<EventHandler<()>>,
 ) -> Element {
+    let copies = item.copies.len();
     rect()
         .horizontal()
         .width(Size::fill())
@@ -550,6 +564,7 @@ fn list_card(
         .content(Content::Flex)
         .on_secondary_down(on_secondary(on_context.clone()))
         .child(package_info(item, package_type, cluster_id, icon))
+        .maybe_child(on_copies.map(|on_press| copies_button(copies, on_press)))
         .child(meta_size(item.size))
         .child(toggle_controlled(item.enabled, on_toggle).disabled(item.locked))
         .maybe_child(on_context.map(kebab_button))
@@ -565,6 +580,7 @@ pub(crate) fn grid_card(
     on_toggle: EventHandler<()>,
     navigable: bool, // if true, it takes the user to the mod page
     on_context: Option<EventHandler<(f32, f32)>>,
+    on_copies: Option<EventHandler<()>>,
     mut hovered: State<bool>,
 ) -> Element {
     let enabled = item.enabled;
@@ -633,7 +649,9 @@ pub(crate) fn grid_card(
         || item.outranked
         || item.bisect_role.is_some()
         || item.modpack.is_some()
-        || item.recency_badge().is_some();
+        || item.recency_badge().is_some()
+        || on_copies.is_some();
+    let copies = item.copies.len();
     let floating = badged.then(|| {
         rect()
             .horizontal()
@@ -646,6 +664,7 @@ pub(crate) fn grid_card(
             .main_align(Alignment::End)
             .cross_align(Alignment::Center)
             .spacing(4.)
+            .maybe_child(on_copies.map(|on_press| copies_button(copies, on_press)))
             .maybe_child(item.modpack.as_deref().map(modpack_badge))
             .maybe_child(item.is_outdated().then(outdated_badge))
             .maybe_child(item.shadowed.then(shadowed_badge))
@@ -1058,16 +1077,36 @@ fn outdated_badge() -> Element {
     )
 }
 
+fn copies_button(ignored: usize, on_press: EventHandler<()>) -> Element {
+    rect()
+        .cursor(CursorIcon::Pointer)
+        .on_press(move |e: Event<PressEventData>| {
+            e.stop_propagation();
+            on_press.call(());
+        })
+        .child(accent_badge(
+            Icon::new(IconType::Copy01)
+                .size(12.)
+                .color(colors::brand())
+                .into_element(),
+            tf("oneclient.components.package_row.copies", &[&(ignored + 1)]),
+            colors::brand(),
+        ))
+        .into_element()
+}
+
 fn shadowed_badge() -> Element {
-    status_tag(
-        t("oneclient.components.package_row.shadowed"),
+    pill(
+        None,
+        t("oneclient.components.package_row.shadowed").to_string(),
         colors::brand(),
     )
 }
 
 fn outranked_badge() -> Element {
-    status_tag(
-        t("oneclient.components.package_row.outranked"),
+    pill(
+        None,
+        t("oneclient.components.package_row.outranked").to_string(),
         colors::brand(),
     )
 }

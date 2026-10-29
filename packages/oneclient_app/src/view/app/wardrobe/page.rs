@@ -2,6 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::rc::Rc;
 
+use freya::animation::*;
 use freya::prelude::*;
 use freya::query::{MutationStateData, QueryCapability, UseQuery};
 use oneclient_mc::{MojangCape, MojangFullPlayerProfile};
@@ -966,6 +967,21 @@ impl Component for WardrobeBody {
             }
         });
 
+        let loading = query_is_loading(&look_query)
+            || query_is_loading(&plus_query)
+            || query_is_loading(&store_query);
+        let reveal = use_animation_with_dependencies(&loading, |conf, _| {
+            conf.on_creation(OnCreation::Run);
+            conf.on_change(OnChange::Rerun);
+            AnimNum::new(0., 1.)
+                .time(260)
+                .ease(Ease::Out)
+                .function(Function::Cubic)
+        });
+        if loading {
+            return centered_spinner(t("oneclient.wardrobe.page.loading"));
+        }
+
         let current_section = if data.plus_available() {
             *section.read()
         } else {
@@ -1088,6 +1104,7 @@ impl Component for WardrobeBody {
             .horizontal()
             .main_align(Alignment::Center)
             .padding(Gaps::new(8., 40., 32., 40.))
+            .opacity(reveal.get().value())
             .child(
                 rect()
                     .vertical()
@@ -1153,6 +1170,7 @@ impl Component for WardrobeBody {
                     ),
             )
             .maybe_child(confirm_overlay)
+            .into_element()
     }
 
     fn render_key(&self) -> DiffKey {

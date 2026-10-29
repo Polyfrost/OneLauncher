@@ -1,6 +1,6 @@
 use std::cell::Cell;
 
-use cargo_packager_updater::{Config, Update, check_update};
+use cargo_packager_updater::{Config, Update, WindowsConfig, check_update};
 use oneclient_events::{Choice, EventBus, Prompt};
 use uuid::Uuid;
 
@@ -145,6 +145,12 @@ fn check_for_update() -> anyhow::Result<Option<Update>> {
     let config = Config {
         endpoints: vec![UPDATER_ENDPOINT.parse()?],
         pubkey: UPDATER_PUBKEY.into(),
+        // The NSIS installer recreates the desktop and start menu shortcuts on every passive
+        // install unless told not to, which brings back a shortcut the user deleted
+        windows: Some(WindowsConfig {
+            installer_args: Some(vec!["/NS".into()]),
+            ..Default::default()
+        }),
         ..Default::default()
     };
 

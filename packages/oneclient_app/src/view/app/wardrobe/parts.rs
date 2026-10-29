@@ -513,6 +513,14 @@ impl Component for WardrobeCard {
                     on_select.call(());
                 }
             })
+            .maybe(has_menu && enabled, |el| {
+                el.on_secondary_down(move |e: Event<PressEventData>| {
+                    e.stop_propagation();
+                    if let Some(point) = global_point(&e) {
+                        menu_at.set(Some(point));
+                    }
+                })
+            })
             .child(
                 rect()
                     .width(Size::fill())

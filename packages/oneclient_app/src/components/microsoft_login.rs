@@ -6,7 +6,7 @@ use freya::text_edit::Clipboard;
 use oneclient_auth::{AuthErrorGuidance, MicrosoftLoginSession};
 use oneclient_core::LauncherError;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup};
+use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{
     CancelMicrosoftLoginKeys, login_code_already_handled, reset_login_code_dedup,
     use_begin_microsoft_login, use_cancel_microsoft_login, use_finish_microsoft_login,
@@ -214,7 +214,7 @@ pub(crate) fn login_dialog(
                                 .color(colors::fg_primary()),
                         )
                         .child(
-                            ScrollView::new()
+                            ScrollArea::new()
                                 .width(Size::fill())
                                 .height(Size::auto())
                                 .max_height(Size::window_percent(70.))

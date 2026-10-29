@@ -476,6 +476,11 @@ pub fn link_button() -> Button {
 }
 
 pub fn open_folder_button(folder: std::path::PathBuf) -> Button {
+    sized_open_folder_button(folder, 16.)
+}
+
+/// [`open_folder_button`] with a custom icon size, for buttons resized away from the icon default
+pub fn sized_open_folder_button(folder: std::path::PathBuf, icon_size: f32) -> Button {
     Button::new()
         .secondary()
         .icon()
@@ -484,7 +489,7 @@ pub fn open_folder_button(folder: std::path::PathBuf) -> Button {
             std::fs::create_dir_all(&folder).ok();
             crate::platform::open_path(&folder.to_string_lossy());
         })
-        .child(Icon::new(IconType::Folder).size(16.))
+        .child(Icon::new(IconType::Folder).size(icon_size))
 }
 
 pub fn copy_button(text: String, copied_body: &'static str, dispatch: crate::Actions) -> Button {

@@ -17,6 +17,7 @@ use crate::hooks::{
     use_disable_confirm, use_disable_warnings, use_dispatch, use_essential_guard,
     use_game_snapshot, use_package_meta_batch, use_selection, use_view_state,
 };
+use crate::i18n::{t, tf};
 
 use super::folder_list::confirm_dialog;
 
@@ -348,7 +349,13 @@ fn make_row(
     }
 }
 
-const BUNDLED_MARKER: &str = "(bundled)";
+pub(super) fn noun_one(content_type: ContentType) -> &'static str {
+    match content_type {
+        ContentType::Shader => t("oneclient.cluster.package_manager.noun.shader.one"),
+        ContentType::ResourcePack => t("oneclient.cluster.package_manager.noun.resource_pack.one"),
+        _ => t("oneclient.cluster.package_manager.noun.mod.one"),
+    }
+}
 
 fn package_url(item: &PackageEntry, content_type: ContentType) -> Option<String> {
     match item.provider {
@@ -372,7 +379,10 @@ fn export_line(item: &PackageEntry, content_type: ContentType) -> String {
         .filter(|version| !version.is_empty())
         .map(|version| {
             if item.in_bundle() {
-                format!("{version} {BUNDLED_MARKER}")
+                tf(
+                    "oneclient.cluster.package_manager.export.bundled",
+                    &[&version],
+                )
             } else {
                 version
             }
@@ -384,9 +394,19 @@ fn export_line(item: &PackageEntry, content_type: ContentType) -> String {
     segments.extend(package_url(item, content_type).or_else(|| item.github_url.clone()));
     segments.extend(version);
     if !item.author.is_empty() {
-        segments.push(format!("by {}", item.author));
+        segments.push(tf(
+            "oneclient.cluster.package_manager.export.author",
+            &[&item.author],
+        ));
     }
-    segments.push(if item.enabled { "enabled" } else { "disabled" }.to_string());
+    segments.push(
+        if item.enabled {
+            t("oneclient.cluster.package_manager.export.enabled")
+        } else {
+            t("oneclient.cluster.package_manager.export.disabled")
+        }
+        .to_string(),
+    );
 
     format!("- {}", segments.join(" | "))
 }
@@ -420,11 +440,11 @@ pub(super) enum Tab {
 impl Tab {
     pub(super) fn label(&self) -> String {
         match self {
-            Tab::All => "All".to_string(),
+            Tab::All => t("oneclient.cluster.package_manager.tab.all").to_string(),
             Tab::Category(c) => c.clone(),
-            Tab::Browser => "Online".to_string(),
-            Tab::Local => "Local".to_string(),
-            Tab::Deleted => "Deleted".to_string(),
+            Tab::Browser => t("oneclient.cluster.package_manager.tab.browser").to_string(),
+            Tab::Local => t("oneclient.cluster.package_manager.tab.local").to_string(),
+            Tab::Deleted => t("oneclient.cluster.package_manager.tab.deleted").to_string(),
         }
     }
 
@@ -762,7 +782,10 @@ impl Component for PackageManager {
                 }
                 let name = match targets.as_slice() {
                     [only] => only.name.clone(),
-                    _ => format!("{} {noun_plural}", targets.len()),
+                    _ => tf(
+                        "oneclient.cluster.package_manager.count",
+                        &[&targets.len(), &noun_plural],
+                    ),
                 };
                 if enabled {
                     mutation.mutate(ClusterAction::Batch(actions));
@@ -795,27 +818,36 @@ impl Component for PackageManager {
         let delete_dialog = confirm_delete.read().then(|| {
             let count = deletable.len() + bundled_deletable.len();
             let noun = if count == 1 {
-                package_type
+                noun_one(content_type)
             } else {
                 noun_plural
             };
-            let shared = if shares_content == Some(true) {
-                format!(" Shared {noun_plural} are deleted from every cluster that uses them.")
-            } else {
-                String::new()
-            };
-            let body = match (deletable.is_empty(), bundled_deletable.is_empty()) {
-                (_, true) => format!("This can't be undone.{shared}"),
-                (true, false) => format!(
-                    "Bundled {noun_plural} are turned off and moved to the Deleted tab, where you can restore them."
+            let shared = shares_content == Some(true);
+            let body = match (deletable.is_empty(), bundled_deletable.is_empty(), shared) {
+                (_, true, false) => t("oneclient.cluster.package_manager.delete.body").to_string(),
+                (_, true, true) => tf(
+                    "oneclient.cluster.package_manager.delete.body.shared",
+                    &[&noun_plural],
                 ),
-                (false, false) => format!(
-                    "Bundled {noun_plural} are turned off and moved to the Deleted tab, where you can restore them. The rest can't be undone.{shared}"
+                (true, false, _) => tf(
+                    "oneclient.cluster.package_manager.delete.body.bundled",
+                    &[&noun_plural],
+                ),
+                (false, false, false) => tf(
+                    "oneclient.cluster.package_manager.delete.body.mixed",
+                    &[&noun_plural],
+                ),
+                (false, false, true) => tf(
+                    "oneclient.cluster.package_manager.delete.body.mixed_shared",
+                    &[&noun_plural, &noun_plural],
                 ),
             };
             let warnings = disable_warnings(&warnings_query);
             confirm_dialog(
-                format!("Delete {count} {noun}?"),
+                tf(
+                    "oneclient.cluster.package_manager.delete.title",
+                    &[&count, &noun],
+                ),
                 body,
                 move || confirm_delete.set(false),
                 move || {
@@ -839,7 +871,7 @@ impl Component for PackageManager {
                         &targets,
                         match (deletable.as_slice(), targets.as_slice()) {
                             ([], [only]) => only.name.clone(),
-                            _ => format!("{count} {noun}"),
+                            _ => tf("oneclient.cluster.package_manager.count", &[&count, &noun]),
                         },
                         EssentialGuardKind::Remove,
                         warnings.clone(),

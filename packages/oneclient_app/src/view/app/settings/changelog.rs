@@ -9,6 +9,7 @@ use crate::hooks::{
     changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,
     use_changelog, use_dispatch, use_settings_snapshot,
 };
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 
 #[derive(PartialEq)]
@@ -37,7 +38,7 @@ impl Component for SettingsChangelog {
             return settings_page()
                 .child(
                     label()
-                        .text("Loading changelog...")
+                        .text(t("oneclient.settings.changelog.loading"))
                         .font_size(14.)
                         .color(colors::fg_secondary()),
                 )
@@ -48,7 +49,7 @@ impl Component for SettingsChangelog {
             return settings_page()
                 .child(
                     label()
-                        .text(format!("Couldn't load changelog: {error}"))
+                        .text(tf("oneclient.settings.changelog.load_failed", &[&error]))
                         .font_size(14.)
                         .color(colors::fg_secondary()),
                 )
@@ -105,7 +106,7 @@ impl Component for ReleaseCard {
         let chevron_deg = swing.get().value();
 
         let title = if self.current {
-            format!("{} (Currently Installed)", self.version)
+            tf("oneclient.settings.changelog.current", &[&self.version])
         } else {
             self.version.clone()
         };
@@ -144,7 +145,7 @@ impl Component for ReleaseCard {
             .maybe_child(is_open.then(|| {
                 if self.body.trim().is_empty() {
                     label()
-                        .text("No changes recorded for this version.")
+                        .text(t("oneclient.settings.changelog.empty"))
                         .font_size(12.)
                         .color(colors::fg_secondary())
                         .into_element()

@@ -8,6 +8,7 @@ use oneclient_core::game::{DayPlaytime, PlaytimeStats, WEEKDAY_LABELS};
 use crate::components::{
     BarChart, DateRange, DateRangePicker, IconType, Segment, SegmentedControl, ValueUnit,
 };
+use crate::i18n::{t, tf};
 use crate::utils::{format_day, format_duration, format_hour, parse_day};
 
 use super::{chart_card, nav_button};
@@ -47,9 +48,11 @@ impl Component for PlaytimeChart {
 
         let control = SegmentedControl::new(mode)
             .height(30.)
-            .segment(Segment::new(PlaytimeMode::Hour).label("Hour"))
-            .segment(Segment::new(PlaytimeMode::Day).label("Day"))
-            .segment(Segment::new(PlaytimeMode::Month).label("Month"))
+            .segment(Segment::new(PlaytimeMode::Hour).label(t("oneclient.analytics.playtime.hour")))
+            .segment(Segment::new(PlaytimeMode::Day).label(t("oneclient.analytics.playtime.day")))
+            .segment(
+                Segment::new(PlaytimeMode::Month).label(t("oneclient.analytics.playtime.month")),
+            )
             .into_element();
 
         let (title, subtitle, chart) = match m {
@@ -59,12 +62,17 @@ impl Component for PlaytimeChart {
                     .map(format_hour)
                     .unwrap_or_else(|| "—".to_string());
                 (
-                    "Playtime by hour",
-                    format!("Every day's {hour} hour, added up"),
+                    t("oneclient.analytics.playtime.by_hour.title"),
+                    tf("oneclient.analytics.playtime.by_hour.subtitle", &[&hour]),
                     BarChart::new(self.per_hour.clone(), (0..24).map(format_hour).collect())
                         .readout_labels(
                             (0..24)
-                                .map(|h| format!("All {} hours", format_hour(h)))
+                                .map(|h| {
+                                    tf(
+                                        "oneclient.analytics.playtime.by_hour.readout",
+                                        &[&format_hour(h)],
+                                    )
+                                })
                                 .collect(),
                         )
                         .highlight(self.peak_hour)
@@ -76,13 +84,13 @@ impl Component for PlaytimeChart {
             PlaytimeMode::Day => {
                 let day = self
                     .peak_weekday
-                    .map(|i| WEEKDAY_FULL[i].to_string())
+                    .map(|i| weekday_full(i).to_string())
                     .unwrap_or_else(|| "—".to_string());
                 (
-                    "Playtime by day",
-                    format!("Every {day} you have played, added up"),
+                    t("oneclient.analytics.playtime.by_day.title"),
+                    tf("oneclient.analytics.playtime.by_day.subtitle", &[&day]),
                     BarChart::new(self.per_weekday.clone(), weekday_labels())
-                        .readout_labels(WEEKDAY_FULL.iter().map(|d| format!("All {d}s")).collect())
+                        .readout_labels((0..7).map(|i| weekday_all(i).to_string()).collect())
                         .highlight(self.peak_weekday)
                         .unit(ValueUnit::Duration)
                         .gap(6.)
@@ -94,11 +102,11 @@ impl Component for PlaytimeChart {
                 let values: Vec<i64> = months.iter().map(|(_, s)| *s).collect();
                 let labels: Vec<String> = months
                     .iter()
-                    .map(|(m, _)| MONTH_ABBR[m.month0() as usize].to_string())
+                    .map(|(m, _)| month_abbr(m.month0()).to_string())
                     .collect();
                 let readout: Vec<String> = months
                     .iter()
-                    .map(|(m, _)| format!("{} {}", MONTH_ABBR[m.month0() as usize], m.year()))
+                    .map(|(m, _)| format!("{} {}", month_abbr(m.month0()), m.year()))
                     .collect();
                 let best = values
                     .iter()
@@ -107,11 +115,11 @@ impl Component for PlaytimeChart {
                     .filter(|(_, v)| **v > 0)
                     .map(|(i, _)| i);
                 let subtitle = match best {
-                    Some(i) => format!("Best month so far: {}", readout[i]),
-                    None => "No sessions recorded yet".to_string(),
+                    Some(i) => tf("oneclient.analytics.playtime.by_month.best", &[&readout[i]]),
+                    None => t("oneclient.analytics.no_sessions").to_string(),
                 };
                 (
-                    "Playtime by month",
+                    t("oneclient.analytics.playtime.by_month.title"),
                     subtitle,
                     BarChart::new(values, labels)
                         .readout_labels(readout)
@@ -164,8 +172,8 @@ impl Component for DailyChart {
         let series = continuous_series(&self.daily);
         let (Some((first_day, _)), Some((last_day, _))) = (series.first(), series.last()) else {
             return chart_card(
-                "Daily playtime",
-                "No sessions recorded yet".to_string(),
+                t("oneclient.analytics.daily.title"),
+                t("oneclient.analytics.no_sessions").to_string(),
                 None,
                 rect().height(Size::px(120.)).into_element(),
             );
@@ -231,16 +239,25 @@ impl Component for DailyChart {
                 SegmentedControl::new(range)
                     .height(30.)
                     .disabled(!paging)
-                    .segment(Segment::new(Range::TwoWeeks).label("2W"))
-                    .segment(Segment::new(Range::Month).label("1M"))
-                    .segment(Segment::new(Range::Quarter).label("3M"))
+                    .segment(
+                        Segment::new(Range::TwoWeeks)
+                            .label(t("oneclient.analytics.daily.range.two_weeks")),
+                    )
+                    .segment(
+                        Segment::new(Range::Month)
+                            .label(t("oneclient.analytics.daily.range.month")),
+                    )
+                    .segment(
+                        Segment::new(Range::Quarter)
+                            .label(t("oneclient.analytics.daily.range.quarter")),
+                    )
                     .into_element(),
             )
             .child(DateRangePicker::new(custom, (first_day, last_day)).height(30.))
             .into_element();
 
         chart_card(
-            "Daily playtime",
+            t("oneclient.analytics.daily.title"),
             subtitle,
             Some(nav),
             BarChart::new(values, labels)
@@ -308,31 +325,47 @@ fn monthly_series(daily: &[DayPlaytime]) -> Vec<(NaiveDate, i64)> {
     out
 }
 
-const MONTH_ABBR: [&str; 12] = [
-    "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
-];
+fn month_abbr(month0: u32) -> &'static str {
+    match month0 {
+        0 => t("oneclient.analytics.month.jan"),
+        1 => t("oneclient.analytics.month.feb"),
+        2 => t("oneclient.analytics.month.mar"),
+        3 => t("oneclient.analytics.month.apr"),
+        4 => t("oneclient.analytics.month.may"),
+        5 => t("oneclient.analytics.month.jun"),
+        6 => t("oneclient.analytics.month.jul"),
+        7 => t("oneclient.analytics.month.aug"),
+        8 => t("oneclient.analytics.month.sep"),
+        9 => t("oneclient.analytics.month.oct"),
+        10 => t("oneclient.analytics.month.nov"),
+        _ => t("oneclient.analytics.month.dec"),
+    }
+}
 
 pub(super) fn distribution_card(session_secs: &[i64], force: bool) -> Option<Element> {
     if session_secs.len() < 2 && !force {
         return None;
     }
 
-    const EDGES: [(i64, &str); 6] = [
-        (15 * 60, "<15m"),
-        (30 * 60, "15m-30m"),
-        (60 * 60, "30m-60m"),
-        (2 * 3600, "1h-2h"),
-        (4 * 3600, "2h-4h"),
-        (i64::MAX, "4h+"),
-    ];
+    const EDGES: [i64; 6] = [15 * 60, 30 * 60, 60 * 60, 2 * 3600, 4 * 3600, i64::MAX];
 
     let mut counts = [0i64; 6];
     for &s in session_secs {
-        let idx = EDGES.iter().position(|(edge, _)| s < *edge).unwrap_or(5);
+        let idx = EDGES.iter().position(|edge| s < *edge).unwrap_or(5);
         counts[idx] += 1;
     }
 
-    let labels: Vec<String> = EDGES.iter().map(|(_, l)| (*l).to_string()).collect();
+    let labels: Vec<String> = [
+        t("oneclient.analytics.session_length.under_15m"),
+        t("oneclient.analytics.session_length.15m_30m"),
+        t("oneclient.analytics.session_length.30m_60m"),
+        t("oneclient.analytics.session_length.1h_2h"),
+        t("oneclient.analytics.session_length.2h_4h"),
+        t("oneclient.analytics.session_length.over_4h"),
+    ]
+    .iter()
+    .map(|l| (*l).to_string())
+    .collect();
     let peak = counts
         .iter()
         .enumerate()
@@ -340,10 +373,13 @@ pub(super) fn distribution_card(session_secs: &[i64], force: bool) -> Option<Ele
         .filter(|(_, c)| **c > 0)
         .map(|(i, _)| i);
 
-    let subtitle = format!("{} sessions grouped by length", session_secs.len());
+    let subtitle = tf(
+        "oneclient.analytics.session_length.subtitle",
+        &[&session_secs.len()],
+    );
 
     Some(chart_card(
-        "Session length",
+        t("oneclient.analytics.session_length.title"),
         subtitle,
         None,
         BarChart::new(counts.to_vec(), labels)
@@ -354,15 +390,29 @@ pub(super) fn distribution_card(session_secs: &[i64], force: bool) -> Option<Ele
     ))
 }
 
-const WEEKDAY_FULL: [&str; 7] = [
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-    "Sunday",
-];
+fn weekday_full(i: usize) -> &'static str {
+    match i {
+        0 => t("oneclient.analytics.weekday.monday"),
+        1 => t("oneclient.analytics.weekday.tuesday"),
+        2 => t("oneclient.analytics.weekday.wednesday"),
+        3 => t("oneclient.analytics.weekday.thursday"),
+        4 => t("oneclient.analytics.weekday.friday"),
+        5 => t("oneclient.analytics.weekday.saturday"),
+        _ => t("oneclient.analytics.weekday.sunday"),
+    }
+}
+
+fn weekday_all(i: usize) -> &'static str {
+    match i {
+        0 => t("oneclient.analytics.weekday.all_mondays"),
+        1 => t("oneclient.analytics.weekday.all_tuesdays"),
+        2 => t("oneclient.analytics.weekday.all_wednesdays"),
+        3 => t("oneclient.analytics.weekday.all_thursdays"),
+        4 => t("oneclient.analytics.weekday.all_fridays"),
+        5 => t("oneclient.analytics.weekday.all_saturdays"),
+        _ => t("oneclient.analytics.weekday.all_sundays"),
+    }
+}
 
 fn weekday_labels() -> Vec<String> {
     WEEKDAY_LABELS.iter().map(|s| (*s).to_string()).collect()

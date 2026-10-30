@@ -16,6 +16,7 @@ use crate::hooks::{
     invalidate_logs_queries, try_cluster_logs, try_log_content, use_cluster_logs, use_log_action,
     use_log_content, use_overlay_claim_when, use_upload_log,
 };
+use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui;
@@ -49,11 +50,11 @@ impl LevelFilter {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::All => "All",
-            Self::Error => "Errors",
-            Self::Warn => "Warnings",
-            Self::Info => "Info",
-            Self::Debug => "Debug",
+            Self::All => t("oneclient.cluster.package_manager.tab.all"),
+            Self::Error => t("oneclient.cluster.logs.level.error"),
+            Self::Warn => t("oneclient.cluster.logs.level.warn"),
+            Self::Info => t("oneclient.cluster.logs.level.info"),
+            Self::Debug => t("oneclient.cluster.logs.level.debug"),
         }
     }
 }
@@ -81,32 +82,32 @@ impl Category {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Logs => "Logs",
-            Self::CrashReports => "Crash reports",
+            Self::Logs => t("oneclient.cluster.logs.category.logs"),
+            Self::CrashReports => t("oneclient.cluster.logs.category.crash_reports"),
         }
     }
 
     fn empty_label(self) -> &'static str {
         match self {
-            Self::Logs => "No logs",
-            Self::CrashReports => "No crash reports",
+            Self::Logs => t("oneclient.cluster.logs.category.logs.empty"),
+            Self::CrashReports => t("oneclient.cluster.logs.category.crash_reports.empty"),
         }
     }
 
     fn empty_note(self) -> &'static str {
         match self {
-            Self::Logs => "No logs recorded yet",
-            Self::CrashReports => "No crash reports, which is the good outcome",
+            Self::Logs => t("oneclient.cluster.logs.category.logs.empty_note"),
+            Self::CrashReports => t("oneclient.cluster.logs.category.crash_reports.empty_note"),
         }
     }
 }
 
 fn kind_badge(kind: LogKind) -> &'static str {
     match kind {
-        LogKind::Game { .. } => "Game output",
+        LogKind::Game { .. } => t("oneclient.cluster.process_logs.title"),
         LogKind::Minecraft => "Minecraft",
-        LogKind::CrashReport => "Crash report",
-        LogKind::Other => "Other",
+        LogKind::CrashReport => t("oneclient.cluster.logs.kind.crash_report"),
+        LogKind::Other => t("oneclient.cluster.logs.kind.other"),
     }
 }
 
@@ -262,7 +263,7 @@ fn top_bar(
 
     let size_text = selected_info
         .as_ref()
-        .map(|i| format!("{} on disk", format_size(i.size_bytes)))
+        .map(|i| tf("oneclient.cluster.logs.size", &[&format_size(i.size_bytes)]))
         .unwrap_or_else(|| category.read().empty_note().to_string());
 
     rect()
@@ -294,7 +295,7 @@ fn top_bar(
                     }
                 })
                 .child(Icon::new(IconType::LinkExternal01).size(15.))
-                .text("Open log"),
+                .text(t("oneclient.cluster.logs.open")),
         )
         .child(
             label()
@@ -314,7 +315,7 @@ fn top_bar(
                     });
                 })
                 .child(Icon::new(IconType::RefreshCw01).size(15.))
-                .text("Refresh"),
+                .text(t("oneclient.common.refresh")),
         )
         .child(
             Button::new()
@@ -322,7 +323,7 @@ fn top_bar(
                 .enabled(has_log)
                 .on_press(move |_| confirm.set(Some(Confirm::Clear)))
                 .child(Icon::new(IconType::Trash01).size(15.))
-                .text("Clear log"),
+                .text(t("oneclient.cluster.logs.clear")),
         )
         .into_element()
 }
@@ -354,7 +355,7 @@ pub fn viewer_header(
                     .into_element(),
             );
         if has_log {
-            base.placeholder("Search this log...")
+            base.placeholder(t("oneclient.cluster.logs.search"))
         } else {
             base
         }
@@ -539,7 +540,7 @@ impl Component for LogPicker {
                             .child(
                                 TextInput::new(filter)
                                     .auto_focus(true)
-                                    .placeholder("Search logs...")
+                                    .placeholder(t("oneclient.cluster.logs.picker.search"))
                                     .leading(
                                         Icon::new(IconType::SearchMd)
                                             .size(14.)
@@ -552,7 +553,7 @@ impl Component for LogPicker {
                                     .text(if no_files {
                                         category.read().empty_note()
                                     } else {
-                                        "No matches"
+                                        t("oneclient.cluster.logs.picker.no_matches")
                                     })
                                     .font_size(12.)
                                     .width(Size::fill())
@@ -647,15 +648,15 @@ pub fn confirm_overlay(
 ) -> impl IntoElement {
     let (title, body, confirm_label, danger) = match kind {
         Confirm::Clear => (
-            "Delete this log?",
-            "This log file will be permanently removed from disk.".to_string(),
-            "Delete",
+            t("oneclient.cluster.logs.delete.title"),
+            t("oneclient.cluster.logs.delete.body").to_string(),
+            t("oneclient.common.delete"),
             true,
         ),
         Confirm::Upload => (
-            "Upload to mclo.gs?",
-            "This log will be uploaded to mclo.gs and hosted publicly. Anyone with the link can read it. Don't upload logs containing sensitive information.".to_string(),
-            "Upload",
+            t("oneclient.cluster.logs.upload.title"),
+            t("oneclient.cluster.logs.upload.body").to_string(),
+            t("oneclient.cluster.logs.upload.confirm"),
             false,
         ),
     };
@@ -723,7 +724,7 @@ pub fn confirm_overlay(
                                     Button::new()
                                         .secondary()
                                         .on_press(move |_| confirm.set(None))
-                                        .text("Cancel"),
+                                        .text(t("oneclient.common.cancel")),
                                 )
                                 .child(
                                     if danger {

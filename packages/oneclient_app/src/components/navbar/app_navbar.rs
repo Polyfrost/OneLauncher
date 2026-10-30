@@ -11,6 +11,7 @@ use crate::{
         settled_or_loading, try_default_account, use_active_cluster_id, use_browser_type,
         use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
     },
+    i18n::t,
     theme,
     utils::default_cluster,
 };
@@ -153,13 +154,13 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
         .child(NavLink {
             active: route == Route::Home {},
             target: NavTarget::Route(Route::Home {}),
-            nav_label: "Home",
+            nav_label: t("oneclient.components.navbar.home"),
             over_art,
         })
         .child(NavLink {
             active: route == Route::Clusters {},
             target: NavTarget::Route(Route::Clusters {}),
-            nav_label: "Versions",
+            nav_label: t("oneclient.components.navbar.versions"),
             over_art,
         })
         .child(NavLink {
@@ -171,13 +172,13 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
                 }
             ),
             target: NavTarget::Route(browse_target),
-            nav_label: "Browse",
+            nav_label: t("oneclient.components.navbar.browse"),
             over_art,
         })
         .child(NavLink {
             active: route == Route::Wardrobe {},
             target: NavTarget::Route(Route::Wardrobe {}),
-            nav_label: "Wardrobe",
+            nav_label: t("oneclient.components.navbar.wardrobe"),
             over_art,
         })
 }
@@ -318,20 +319,20 @@ impl Component for NavbarRight {
             .spacing(8.)
             .child(
                 super::navbar_button(foreground)
-                    .tooltip("Stats")
+                    .tooltip(t("oneclient.components.navbar.stats"))
                     .child(Icon::new(IconType::LineChartUp01).size(20.))
                     .on_press(open_stats),
             )
             .child(
                 super::navbar_button(foreground)
-                    .tooltip("Notifications")
+                    .tooltip(t("oneclient.components.navbar.notifications"))
                     .child(notification_bell(unread))
                     .on_press(open_notifications),
             )
             .child(
                 super::navbar_button(foreground)
                     .overflow(Overflow::None)
-                    .tooltip("Control Center")
+                    .tooltip(t("oneclient.components.navbar.control_center"))
                     .padding(0.0)
                     .on_press(open_control_center)
                     .child(avatar_with_gear(account_uuid)),

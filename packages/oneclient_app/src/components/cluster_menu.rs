@@ -4,6 +4,7 @@ use oneclient_core::clusters::Cluster;
 
 use crate::components::{ContextMenu, IconType};
 use crate::hooks::{modpack_job_running, use_game_snapshot};
+use crate::i18n::t;
 use crate::routes::Route;
 use crate::view::app::DeleteInstanceModal;
 
@@ -38,37 +39,37 @@ pub(crate) fn cluster_menu_entries(cluster_id: i64) -> [(IconType, &'static str,
     [
         (
             IconType::InfoCircle,
-            "Overview",
+            t("oneclient.components.cluster_menu.overview"),
             Route::ClusterOverview { cluster_id },
         ),
         (
             IconType::Terminal,
-            "Logs",
+            t("oneclient.components.cluster_menu.logs"),
             Route::ClusterLogs { cluster_id },
         ),
         (
             IconType::Eye,
-            "Screenshots",
+            t("oneclient.components.cluster_menu.screenshots"),
             Route::ClusterScreenshots { cluster_id },
         ),
         (
             IconType::CodeSnippet02,
-            "Mods",
+            t("oneclient.components.cluster_menu.mods"),
             Route::ClusterMods { cluster_id },
         ),
         (
             IconType::PaintPour,
-            "Shaders",
+            t("oneclient.components.cluster_menu.shaders"),
             Route::ClusterShaders { cluster_id },
         ),
         (
             IconType::Colors,
-            "Textures",
+            t("oneclient.components.cluster_menu.textures"),
             Route::ClusterTextures { cluster_id },
         ),
         (
             IconType::Settings01,
-            "Settings",
+            t("oneclient.components.cluster_menu.settings"),
             Route::ClusterSettings { cluster_id },
         ),
     ]
@@ -125,13 +126,14 @@ impl Component for ClusterContextMenu {
                 });
             }
             if can_delete {
-                context =
-                    context
-                        .separator()
-                        .danger_action(IconType::Trash01, "Delete", move |()| {
-                            position.set(None);
-                            deleting.set(true);
-                        });
+                context = context.separator().danger_action(
+                    IconType::Trash01,
+                    t("oneclient.common.delete"),
+                    move |()| {
+                        position.set(None);
+                        deleting.set(true);
+                    },
+                );
             }
             context.into_element()
         });

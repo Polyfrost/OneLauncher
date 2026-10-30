@@ -7,6 +7,7 @@ use crate::components::{Button, Icon, IconType, TabBar, TabItem};
 use crate::hooks::{
     use_bisect, use_cluster, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata,
 };
+use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::entrance_motion_layer;
@@ -36,16 +37,16 @@ pub enum ClusterViewShellTab {
 impl ClusterViewShellTab {
     fn label(&self) -> &'static str {
         match self {
-            Self::Overview => "Overview",
-            Self::Logs => "Logs",
-            Self::GameLog => "Live Log",
-            Self::Screenshots => "Screenshots",
-            Self::Mods => "Mods",
-            Self::Shaders => "Shaders",
-            Self::Textures => "Textures",
-            Self::Worlds => "Worlds",
-            Self::DataPacks => "Data packs",
-            Self::Settings => "Settings",
+            Self::Overview => t("oneclient.layout.cluster.tab.overview"),
+            Self::Logs => t("oneclient.layout.cluster.tab.logs"),
+            Self::GameLog => t("oneclient.layout.cluster.tab.live_log"),
+            Self::Screenshots => t("oneclient.layout.cluster.tab.screenshots"),
+            Self::Mods => t("oneclient.layout.cluster.tab.mods"),
+            Self::Shaders => t("oneclient.layout.cluster.tab.shaders"),
+            Self::Textures => t("oneclient.layout.cluster.tab.textures"),
+            Self::Worlds => t("oneclient.layout.cluster.tab.worlds"),
+            Self::DataPacks => t("oneclient.layout.cluster.tab.data_packs"),
+            Self::Settings => t("oneclient.layout.cluster.tab.settings"),
         }
     }
 
@@ -355,7 +356,7 @@ fn cluster_header(
                             .icon()
                             .width(Size::px(ACTION_HEIGHT))
                             .height(Size::px(ACTION_HEIGHT))
-                            .tooltip("Stop game")
+                            .tooltip(t("oneclient.layout.cluster.stop_game"))
                             .on_press(move |_| kill_dispatch.kill_cluster(cluster_id))
                             .child(Icon::new(IconType::Square).size(ACTION_ICON_SIZE)),
                     )

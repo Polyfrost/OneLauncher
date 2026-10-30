@@ -7,6 +7,7 @@ use crate::disable;
 use crate::hooks::{
     EssentialGuardKind, Guarded, use_cluster_mutation, use_disable_confirm, use_essential_guard,
 };
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -26,8 +27,20 @@ impl Component for EssentialConfirmOverlay {
         };
 
         let (title, confirm_label) = match request.kind {
-            EssentialGuardKind::Disable => (format!("Turn off {}?", request.name), "Turn it off"),
-            EssentialGuardKind::Remove => (format!("Remove {}?", request.name), "Remove anyway"),
+            EssentialGuardKind::Disable => (
+                tf(
+                    "oneclient.components.essential_confirm.disable.title",
+                    &[&request.name],
+                ),
+                t("oneclient.components.essential_confirm.disable.confirm"),
+            ),
+            EssentialGuardKind::Remove => (
+                tf(
+                    "oneclient.components.essential_confirm.remove.title",
+                    &[&request.name],
+                ),
+                t("oneclient.components.essential_confirm.remove.confirm"),
+            ),
         };
 
         let then = request.then.clone();
@@ -96,7 +109,7 @@ impl Component for EssentialConfirmOverlay {
                                         Button::new()
                                             .primary()
                                             .on_press(move |_| pending.set(None))
-                                            .text("Keep it"),
+                                            .text(t("oneclient.components.essential_confirm.keep")),
                                     ),
                             ),
                     ),

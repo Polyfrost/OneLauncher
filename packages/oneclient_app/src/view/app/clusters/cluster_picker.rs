@@ -10,6 +10,7 @@ use crate::components::{
     VersionCard, centered_spinner,
 };
 use crate::hooks::{settled_or_loading, use_clusters};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::{ReleaseLine, sort_clusters_for_home, split_clusters};
@@ -145,9 +146,18 @@ impl Component for ClusterPickerModal {
         let mut headers: Vec<(Filter, &'static str)> = Vec::new();
         let mut sections: Vec<LazySection> = Vec::new();
         for (section, caption) in [
-            (Filter::OneClient, "Grouped by Minecraft version"),
-            (Filter::Custom, "Your own instances, modded or vanilla"),
-            (Filter::Modpacks, "Installed from Browse"),
+            (
+                Filter::OneClient,
+                t("oneclient.clusters.picker.caption.oneclient"),
+            ),
+            (
+                Filter::Custom,
+                t("oneclient.clusters.picker.caption.custom"),
+            ),
+            (
+                Filter::Modpacks,
+                t("oneclient.clusters.picker.caption.modpacks"),
+            ),
         ] {
             if !current.shows(section) {
                 continue;
@@ -172,10 +182,10 @@ impl Component for ClusterPickerModal {
         let selected = self.selected;
         let on_pick = self.on_pick.clone();
         let body = if loading {
-            centered_spinner("Loading instances")
+            centered_spinner(t("oneclient.clusters.picker.loading"))
         } else if sections.is_empty() {
             label()
-                .text("No instances match your search or filters.")
+                .text(t("oneclient.clusters.picker.empty"))
                 .font_size(13.)
                 .color(colors::fg_secondary())
                 .into_element()

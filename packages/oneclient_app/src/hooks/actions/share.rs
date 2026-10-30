@@ -10,6 +10,7 @@ use oneclient_events::GroupedProgressSession;
 
 use super::Actions;
 use crate::components::IconType;
+use crate::i18n::{t, tf};
 use crate::launcher::{self, off_ui};
 
 const MAX_LISTED: usize = 3;
@@ -48,29 +49,29 @@ pub fn exporting(cluster_id: ClusterId) -> bool {
 impl Actions {
     pub fn export_cluster(&self, cluster_id: ClusterId, mode: ExportMode) {
         if super::modpacks::modpack_job_running(cluster_id) {
-            self.notify("Wait for the install to finish")
-                .body("This instance is still being installed or updated. Export it once that's done.")
+            self.notify(t("oneclient.actions.share.blocked.installing.title"))
+                .body(t("oneclient.actions.share.blocked.installing.body"))
                 .error()
                 .send();
             return;
         }
         if oneclient_core::clusters::is_resetting(cluster_id) {
-            self.notify("This instance is being reset")
-                .body("Wait for the reset to finish, then try again.")
+            self.notify(t("oneclient.actions.share.blocked.resetting.title"))
+                .body(t("oneclient.actions.share.blocked.resetting.body"))
                 .error()
                 .send();
             return;
         }
         if super::external_import::import_running() {
-            self.notify("Wait for the import to finish")
-                .body("Instances can't be exported while an import is running.")
+            self.notify(t("oneclient.actions.share.blocked.importing.title"))
+                .body(t("oneclient.actions.share.blocked.importing.body"))
                 .error()
                 .send();
             return;
         }
         let Some(slot) = ExportSlot::claim(cluster_id) else {
-            self.notify("An export is already running")
-                .body("Wait for it to finish, then try again.")
+            self.notify(t("oneclient.actions.share.blocked.exporting.title"))
+                .body(t("oneclient.actions.share.blocked.exporting.body"))
                 .error()
                 .send();
             return;
@@ -95,7 +96,7 @@ impl Actions {
             let exported = off_ui({
                 let state = state.clone();
                 let dest = dest.clone();
-                let title = format!("Exporting {}", cluster.name);
+                let title = tf("oneclient.actions.share.exporting", &[&cluster.name]);
                 async move {
                     let session = GroupedProgressSession::start(&state.services.events, title);
                     let exported =
@@ -128,23 +129,38 @@ impl Actions {
             .map(|name| name.to_string_lossy().into_owned())
             .unwrap_or_else(|| cluster_name.to_string());
 
-        let mut body = format!("Saved {cluster_name} as {file}.");
+        let mut body = tf(
+            "oneclient.actions.share.exported.body",
+            &[&cluster_name, &file],
+        );
         if !report.embedded.is_empty() {
-            body.push_str(&format!(
-                " {} not on Modrinth or CurseForge went inside the file.",
-                count_label(report.embedded.len(), "file", "files")
+            body.push(' ');
+            body.push_str(&tf(
+                "oneclient.actions.share.exported.embedded",
+                &[&count_label(
+                    report.embedded.len(),
+                    t("oneclient.actions.share.file.one"),
+                    t("oneclient.actions.share.file.other"),
+                )],
             ));
         }
         if !report.missing.is_empty() {
-            body.push_str(&format!(
-                " Left out {} that could not be found: {}.",
-                count_label(report.missing.len(), "file", "files"),
-                listed(&report.missing)
+            body.push(' ');
+            body.push_str(&tf(
+                "oneclient.actions.share.exported.missing",
+                &[
+                    &count_label(
+                        report.missing.len(),
+                        t("oneclient.actions.share.file.one"),
+                        t("oneclient.actions.share.file.other"),
+                    ),
+                    &listed(&report.missing),
+                ],
             ));
         }
 
         let notification = self
-            .notify("Instance exported")
+            .notify(t("oneclient.actions.share.exported.title"))
             .body(body)
             .icon(IconType::Users01);
         if report.missing.is_empty() {
@@ -156,7 +172,7 @@ impl Actions {
 
     fn report_export_failure(&self, reason: &str) {
         tracing::error!("could not export an instance: {reason}");
-        self.notify("Couldn't export the instance")
+        self.notify(t("oneclient.actions.share.failed"))
             .body(reason.to_string())
             .error()
             .send();
@@ -172,9 +188,12 @@ async fn pick_export_file(cluster_name: &str) -> Option<PathBuf> {
     };
 
     let mut dialog = rfd::AsyncFileDialog::new()
-        .set_title("Export instance")
+        .set_title(t("oneclient.actions.share.dialog.title"))
         .set_file_name(format!("{stem}.{SHARE_EXTENSION}"))
-        .add_filter("OneClient instance", &[SHARE_EXTENSION]);
+        .add_filter(
+            t("oneclient.actions.share.dialog.filter"),
+            &[SHARE_EXTENSION],
+        );
     if let Some(dir) =
         directories::UserDirs::new().and_then(|dirs| dirs.download_dir().map(PathBuf::from))
     {
@@ -201,7 +220,7 @@ fn listed(names: &[String]) -> String {
         .join(", ");
     match names.len().saturating_sub(MAX_LISTED) {
         0 => shown,
-        extra => format!("{shown} and {extra} more"),
+        extra => tf("oneclient.actions.listed.more", &[&shown, &extra]),
     }
 }
 

@@ -2,6 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, OverlayPopup};
 use crate::hooks::{use_cluster, use_game_snapshot};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -42,21 +43,18 @@ impl Component for ResetInstanceModal {
             .as_ref()
             .is_some_and(|c| c.linked_modpack_hash.is_some());
 
-        let what = if shared {
-            "its mods and settings are reset"
-        } else {
-            "its mods, settings and config files are reset"
+        let warning = match (shared, modpack) {
+            (true, false) => tf("oneclient.clusters.reset.warning.shared", &[&self.name]),
+            (true, true) => tf(
+                "oneclient.clusters.reset.warning.shared_modpack",
+                &[&self.name],
+            ),
+            (false, false) => tf("oneclient.clusters.reset.warning.dedicated", &[&self.name]),
+            (false, true) => tf(
+                "oneclient.clusters.reset.warning.dedicated_modpack",
+                &[&self.name],
+            ),
         };
-        let reinstall = if modpack {
-            " and the modpack is installed again"
-        } else {
-            ""
-        };
-        let warning = format!(
-            "{} goes back to how it was when it was set up: {what}{reinstall}. \
-             Worlds, screenshots and logs are kept, and everything removed is moved to a backup folder.",
-            self.name
-        );
 
         let close_scrim = self.on_close.clone();
         let close_cancel = self.on_close.clone();
@@ -82,7 +80,7 @@ impl Component for ResetInstanceModal {
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 label()
-                                    .text("Reset instance")
+                                    .text(t("oneclient.clusters.reset.title"))
                                     .font_size(18.)
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
@@ -95,14 +93,14 @@ impl Component for ResetInstanceModal {
                             )
                             .maybe_child(shared.then(|| {
                                 label()
-                                    .text("This version uses the shared game folder, so the config files there are kept. Other versions use them too.")
+                                    .text(t("oneclient.clusters.reset.shared_note"))
                                     .font_size(12.)
                                     .color(colors::fg_secondary())
                                     .into_element()
                             }))
                             .maybe_child(running.then(|| {
                                 label()
-                                    .text("Close the game before resetting this instance.")
+                                    .text(t("oneclient.clusters.reset.running"))
                                     .font_size(12.)
                                     .color(colors::fg_secondary())
                                     .into_element()
@@ -117,7 +115,7 @@ impl Component for ResetInstanceModal {
                                         Button::new()
                                             .ghost()
                                             .on_press(move |_| close_cancel.call(()))
-                                            .text("Cancel"),
+                                            .text(t("oneclient.common.cancel")),
                                     )
                                     .child(
                                         Button::new()
@@ -127,7 +125,7 @@ impl Component for ResetInstanceModal {
                                                 on_reset.call(());
                                                 close_reset.call(());
                                             })
-                                            .text("Reset"),
+                                            .text(t("oneclient.common.reset")),
                                     ),
                             ),
                     ),

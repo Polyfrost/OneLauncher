@@ -13,6 +13,7 @@ use crate::components::{
     ART_PREVIEW_EDGE, AppNavbar, CodeBlock, CrashDialog, DynamicArt, FileDropOverlay, Icon,
     IconType, OverlayPopup, accept_drop, copy_button,
 };
+use crate::i18n::{t, tf};
 use crate::layout::AnimatedAppOutlet;
 use crate::use_settings_snapshot;
 use oneclient_core::clusters::Cluster;
@@ -160,7 +161,7 @@ impl Component for LaunchErrorDialog {
                                     )
                                     .child(
                                         label()
-                                            .text("Game failed to launch")
+                                            .text(t("oneclient.layout.game_error.title"))
                                             .font_size(18.)
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
@@ -168,7 +169,7 @@ impl Component for LaunchErrorDialog {
                             )
                             .child(
                                 label()
-                                    .text("Minecraft could not be launched. Error details:")
+                                    .text(t("oneclient.layout.game_error.description"))
                                     .font_size(13.)
                                     .color(colors::fg_secondary()),
                             )
@@ -185,14 +186,14 @@ impl Component for LaunchErrorDialog {
                                     .spacing(10.)
                                     .child(copy_button(
                                         self.message.clone(),
-                                        "Error message copied to your clipboard.",
+                                        t("oneclient.layout.game_error.copied"),
                                         copy_dispatch,
                                     ))
                                     .child(
                                         Button::new()
                                             .primary()
                                             .on_press(move |_| dispatch.dismiss_game_error())
-                                            .text("Close"),
+                                            .text(t("oneclient.common.close")),
                                     ),
                             ),
                     ),
@@ -588,5 +589,5 @@ pub(crate) fn back_button(destination: &str) -> impl IntoElement {
         })
         .margin(Gaps::new(0., 0., 0., 32.))
         .child(Icon::new(IconType::ArrowLeft).size(12.))
-        .text(format!("Back to {destination}"))
+        .text(tf("oneclient.layout.back_to", &[&destination]))
 }

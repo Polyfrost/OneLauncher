@@ -5,12 +5,13 @@ use std::path::PathBuf;
 use freya::prelude::*;
 use oneclient_content::packages::ContentType;
 
+use crate::components::PackageEntry;
 use crate::hooks::{
     bundle_overrides_map, bundles_with_status_items, cluster_content_items, modpack_sources_map,
     stale_hashes, use_bisect, use_bundle_overrides, use_bundles_with_status, use_cluster_content,
     use_modpack_sources, use_mods_folder_sync, use_package_updates, use_shadowed_mods,
 };
-use crate::components::PackageEntry;
+use crate::i18n::t;
 use crate::layout::cluster_content;
 
 use super::cluster_not_found;
@@ -53,7 +54,10 @@ impl Component for ClusterMods {
         let sources = modpack_sources_map(&sources);
         for item in &mut items {
             item.locked = bisect.is_some();
-            item.modpack = item.hash.as_ref().and_then(|hash| sources.get(hash).cloned());
+            item.modpack = item
+                .hash
+                .as_ref()
+                .and_then(|hash| sources.get(hash).cloned());
             let Some(hash) = &item.hash else {
                 continue;
             };
@@ -125,8 +129,8 @@ impl Component for ClusterMods {
             })
             .child(
                 PackageManager::new(
-                    "Mods",
-                    "mods",
+                    t("oneclient.cluster.mods.title"),
+                    t("oneclient.cluster.package_manager.noun.mod.other"),
                     "mod",
                     ContentType::Mod,
                     self.cluster_id,

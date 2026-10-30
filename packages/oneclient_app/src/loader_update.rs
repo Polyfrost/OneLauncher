@@ -6,6 +6,7 @@ use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt};
 
 use crate::hooks::Actions;
+use crate::i18n::{t, tf};
 use crate::launcher;
 use crate::launcher::off_ui;
 
@@ -62,20 +63,20 @@ pub async fn offer_before_launch(actions: &Actions, cluster_id: ClusterId) {
 
 fn offer_prompt(current: &str, latest: &str) -> Prompt<Option<PackageUpdateMode>> {
     Prompt::new(
-        "Fabric Loader update",
-        format!(
-            "Fabric Loader {latest} is available for this instance, which is on {current}. \
-             Would you like to update it before launching?"
-        ),
+        t("oneclient.loader_update.title"),
+        tf("oneclient.loader_update.body", &[&latest, &current]),
     )
     .option(
-        Choice::new("loader.update.always", "Always update"),
+        Choice::new("loader.update.always", t("oneclient.loader_update.always")),
         Some(PackageUpdateMode::Automatic),
     )
-    .option(Choice::primary("loader.update.once", "Update"), None)
     .option(
-        Choice::new("loader.update.never", "Never ask again"),
+        Choice::primary("loader.update.once", t("oneclient.loader_update.once")),
+        None,
+    )
+    .option(
+        Choice::new("loader.update.never", t("oneclient.loader_update.never")),
         Some(PackageUpdateMode::Skip),
     )
-    .dismiss("Not now")
+    .dismiss(t("oneclient.loader_update.not_now"))
 }

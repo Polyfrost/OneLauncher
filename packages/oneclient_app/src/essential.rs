@@ -1,20 +1,30 @@
 use oneclient_content::packages::ProviderId;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::i18n::t;
+
+#[derive(Debug, Clone, Copy)]
 pub struct EssentialPackage {
     pub provider: ProviderId,
     pub project_id: &'static str,
     pub name: &'static str,
-    pub disable_body: &'static str,
-    pub remove_body: &'static str,
+    pub disable_body: fn() -> &'static str,
+    pub remove_body: fn() -> &'static str,
 }
+
+impl PartialEq for EssentialPackage {
+    fn eq(&self, other: &Self) -> bool {
+        self.provider == other.provider && self.project_id == other.project_id
+    }
+}
+
+impl Eq for EssentialPackage {}
 
 pub const ESSENTIAL_PACKAGES: &[EssentialPackage] = &[EssentialPackage {
     provider: ProviderId::Modrinth,
     project_id: "Iw9mZi4a",
     name: "PolyPlus+",
-    disable_body: "PolyPlus+ powers your Poly+ cosmetics and playtime tracking. Turning it off disables them in game, and it stays off through future bundle updates until you turn it back on.",
-    remove_body: "PolyPlus+ powers your Poly+ cosmetics and playtime tracking. Removing it disables them in game and deletes the file from this cluster, so you would have to install it again from the Browser.",
+    disable_body: || t("oneclient.essential.polyplus.disable_body"),
+    remove_body: || t("oneclient.essential.polyplus.remove_body"),
 }];
 
 pub fn lookup(provider: ProviderId, package_id: &str) -> Option<&'static EssentialPackage> {

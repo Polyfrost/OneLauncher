@@ -9,6 +9,7 @@ use oneclient_core::{
 use super::cards::{BUNDLE_CARD_H, BUNDLE_COLUMNS, CellCard, cell_card};
 use crate::components::{Button, GRID_GAP, Icon, IconType, ScrollArea, centered_spinner};
 use crate::hooks::{Actions, external_launchers, use_dispatch, use_external_launchers};
+use crate::i18n::{t, tf};
 use crate::launcher::off_ui;
 use crate::theme::colors;
 use crate::ui::fixed_grid;
@@ -34,7 +35,9 @@ impl Component for ImportStep {
             return rect()
                 .width(Size::fill())
                 .height(Size::fill())
-                .child(centered_spinner("Looking for other launchers..."))
+                .child(centered_spinner(t(
+                    "oneclient.clusters.instance.import.searching",
+                )))
                 .into_element();
         };
 
@@ -89,16 +92,16 @@ fn nothing_found(
         )
         .child(
             label()
-                .text("No other launchers found")
+                .text(t("oneclient.clusters.instance.import.none_found.title"))
                 .font_size(14.)
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
-                .text(
-                    "Prism Launcher, MultiMC, PolyMC and the Modrinth App were checked in their usual folders.",
-                )
+                .text(t(
+                    "oneclient.clusters.instance.import.none_found.description",
+                ))
                 .width(Size::fill())
                 .font_size(12.)
                 .text_align(TextAlign::Center)
@@ -106,7 +109,7 @@ fn nothing_found(
         )
         .child(
             label()
-                .text("Using a portable or moved install? Choose its folder instead.")
+                .text(t("oneclient.clusters.instance.import.none_found.hint"))
                 .width(Size::fill())
                 .font_size(12.)
                 .text_align(TextAlign::Center)
@@ -137,7 +140,7 @@ fn not_listed_row(
         .child(
             label()
                 .width(Size::flex(1.0))
-                .text("Launcher missing? Portable and moved installs can be added by folder.")
+                .text(t("oneclient.clusters.instance.import.not_listed"))
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
@@ -161,7 +164,7 @@ fn choose_folder_button(
             let listed = listed.clone();
             spawn(async move {
                 let Some(handle) = rfd::AsyncFileDialog::new()
-                    .set_title("Choose a Prism, MultiMC or Modrinth App folder")
+                    .set_title(t("oneclient.clusters.instance.import.dialog.title"))
                     .pick_folder()
                     .await
                 else {
@@ -180,24 +183,22 @@ fn choose_folder_button(
                 .await;
                 match found {
                     Ok((Some(detection), true)) => dispatch
-                        .notify("Already listed")
-                        .body(format!(
-                            "{} at that folder is already in the list.",
-                            detection.launcher.display_name()
+                        .notify(t("oneclient.clusters.instance.import.already_listed.title"))
+                        .body(tf(
+                            "oneclient.clusters.instance.import.already_listed.body",
+                            &[&detection.launcher.display_name()],
                         ))
                         .send(),
                     Ok((Some(detection), false)) if !detection.instances.is_empty() => {
                         extra.write().push(detection);
                     }
                     Ok(_) => dispatch
-                        .notify("No instances found")
-                        .body(
-                            "That folder is not a Prism, MultiMC, PolyMC or Modrinth App install, or it has no instances.",
-                        )
+                        .notify(t("oneclient.clusters.instance.import.no_instances.title"))
+                        .body(t("oneclient.clusters.instance.import.no_instances.body"))
                         .error()
                         .send(),
                     Err(err) => dispatch
-                        .notify("Could not read that folder")
+                        .notify(t("oneclient.clusters.instance.import.read_failed"))
                         .body(err.to_string())
                         .error()
                         .send(),
@@ -205,7 +206,7 @@ fn choose_folder_button(
             });
         })
         .child(Icon::new(IconType::Folder).size(14.))
-        .text("Choose a folder")
+        .text(t("oneclient.clusters.instance.import.choose_folder"))
         .into_element()
 }
 
@@ -236,7 +237,10 @@ fn launcher_section(
                         id: instance.game_dir.to_string_lossy().into_owned(),
                         title: instance.name.clone(),
                         blurb: version_line(instance),
-                        meta: Some(format!("Can't be imported: uses {loader}")),
+                        meta: Some(tf(
+                            "oneclient.clusters.instance.import.unsupported_loader",
+                            &[&loader],
+                        )),
                         corner: None,
                         selected: false,
                         checkbox: false,
@@ -276,7 +280,11 @@ fn launcher_section(
         .collect();
     let toggle_all = (!section_instances.is_empty()).then(|| {
         label()
-            .text(if all_picked { "Clear" } else { "Select all" })
+            .text(if all_picked {
+                t("oneclient.clusters.instance.import.clear")
+            } else {
+                t("oneclient.clusters.instance.import.select_all")
+            })
             .font_size(12.)
             .color(colors::fg_secondary())
             .a11y_role(AccessibilityRole::Button)
@@ -297,7 +305,10 @@ fn launcher_section(
     let body = match &detection.problem {
         Some(problem) => label()
             .width(Size::fill())
-            .text(format!("Couldn't read this install: {problem}"))
+            .text(tf(
+                "oneclient.clusters.instance.import.problem",
+                &[&problem],
+            ))
             .font_size(12.)
             .color(colors::fg_secondary())
             .into_element(),
@@ -347,11 +358,11 @@ fn version_line(instance: &ExternalInstance) -> String {
 
 fn meta_line(instance: &ExternalInstance) -> Option<String> {
     if instance.linked_pack.is_some() {
-        return Some("Modpack, keeps getting updates".to_string());
+        return Some(t("oneclient.clusters.instance.import.linked_pack").to_string());
     }
     if !instance.groups.is_empty() {
         return Some(instance.groups.join(", "));
     }
     let hours = instance.played_secs / 3600;
-    (hours > 0).then(|| format!("{hours}h played"))
+    (hours > 0).then(|| tf("oneclient.clusters.instance.import.hours_played", &[&hours]))
 }

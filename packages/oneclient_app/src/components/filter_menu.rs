@@ -5,6 +5,7 @@ use crate::components::{
     Button, Icon, IconType, OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, use_open_level,
 };
 use crate::hooks::use_overlay_claim;
+use crate::i18n::t;
 use crate::theme::colors;
 
 const PANEL_W: f32 = 172.;
@@ -80,7 +81,7 @@ impl Component for FilterMenu {
                 Button::new()
                     .secondary()
                     .icon()
-                    .tooltip("Sort and filter")
+                    .tooltip(t("oneclient.components.filter_menu.tooltip"))
                     .width(Size::px(BUTTON_W))
                     .height(Size::px(34.))
                     .on_press(move |e: Event<PressEventData>| {

@@ -360,6 +360,7 @@ pub async fn start_launcher(
     );
 
     oneclient_net::status::start(state.services.requester.clone());
+    crate::translations::start(state.services.requester.clone());
     oneclient_polyplus::start(std::sync::Arc::clone(&state.auth));
     oneclient_core::run_startup_tasks(&state);
 

@@ -1,12 +1,72 @@
+use std::cell::Cell;
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::sync::LazyLock;
+use std::sync::{LazyLock, RwLock};
+
+use freya::prelude::State;
 
 static EN_US: LazyLock<HashMap<String, String>> = LazyLock::new(|| {
     serde_json::from_str(include_str!("../lang/en_us.json")).expect("lang/en_us.json is valid")
 });
 
+static ACTIVE: RwLock<Option<&'static HashMap<String, String>>> = RwLock::new(None);
+
+thread_local! {
+    static REVISION: Cell<Option<State<u32>>> = const { Cell::new(None) };
+}
+
+pub fn bind_revision(revision: State<u32>) {
+    REVISION.with(|slot| slot.set(Some(revision)));
+}
+
+pub fn source() -> &'static HashMap<String, String> {
+    &EN_US
+}
+
+pub fn install(table: Option<HashMap<String, String>>) {
+    let table = table.map(|table| &*Box::leak(Box::new(table)));
+    *ACTIVE.write().unwrap_or_else(|e| e.into_inner()) = table;
+}
+
+pub fn coverage() -> Option<u32> {
+    let active = (*ACTIVE.read().unwrap_or_else(|e| e.into_inner()))?;
+    Some((active.len() * 100 / EN_US.len().max(1)) as u32)
+}
+
+pub fn arity(text: &str) -> usize {
+    let mut sequential = 0;
+    let mut highest = 0;
+    let mut rest = text;
+    while let Some(start) = rest.find('%') {
+        let tail = &rest[start + 1..];
+        if let Some(after) = tail.strip_prefix('%') {
+            rest = after;
+        } else if let Some(after) = tail.strip_prefix('s') {
+            sequential += 1;
+            rest = after;
+        } else if let Some((index, after)) = tail
+            .split_once("$s")
+            .and_then(|(digits, after)| digits.parse::<usize>().ok().map(|i| (i, after)))
+        {
+            highest = highest.max(index);
+            rest = after;
+        } else {
+            rest = tail;
+        }
+    }
+    sequential.max(highest)
+}
+
 pub fn t(key: &'static str) -> &'static str {
+    REVISION.with(|slot| {
+        if let Some(revision) = slot.get() {
+            let _ = revision.try_read();
+        }
+    });
+    let active = *ACTIVE.read().unwrap_or_else(|e| e.into_inner());
+    if let Some(value) = active.and_then(|table| table.get(key)) {
+        return value;
+    }
     match EN_US.get(key) {
         Some(value) => value,
         None => {
@@ -72,6 +132,15 @@ mod tests {
         );
         assert_eq!(format_placeholders("50% off", &[]), "50% off");
         assert_eq!(format_placeholders("%s and %s", &[&"one"]), "one and ");
+    }
+
+    #[test]
+    fn counts_placeholders_like_the_formatter() {
+        assert_eq!(arity("plain"), 0);
+        assert_eq!(arity("%s of %s"), 2);
+        assert_eq!(arity("%2$s before %1$s"), 2);
+        assert_eq!(arity("100%% done, %s"), 1);
+        assert_eq!(arity("50% off"), 0);
     }
 
     fn collect_keys(dir: &Path, pattern: &regex::Regex, keys: &mut BTreeSet<String>) {

@@ -261,6 +261,21 @@ impl MutationCapability for ClusterMutation {
             }
         };
         let result = match keys {
+            ClusterAction::SetArtifactEnabled { cluster_id, .. }
+            | ClusterAction::RemoveArtifact { cluster_id, .. }
+            | ClusterAction::RemoveBundlePackageFromDisk { cluster_id, .. }
+            | ClusterAction::DeleteBundledArtifact { cluster_id, .. }
+            | ClusterAction::SetBundlePackageEnabled { cluster_id, .. }
+            | ClusterAction::SetDedicatedDir { cluster_id, .. }
+            | ClusterAction::VerifyFiles { cluster_id }
+            | ClusterAction::DeleteInstance { cluster_id }
+            | ClusterAction::ResetInstance { cluster_id }
+                if crate::hooks::update_check_running(*cluster_id) =>
+            {
+                Err(oneclient_content::ContentError::InvalidData {
+                    reason: t("oneclient.mutations.blocked.update_check").to_string(),
+                })
+            }
             ClusterAction::SetArtifactEnabled {
                 cluster_id,
                 hash,

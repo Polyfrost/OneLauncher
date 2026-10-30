@@ -15,7 +15,7 @@ use crate::components::{
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
     settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
-    use_game_profile, use_game_snapshot, use_graphics_backend, use_java_runtimes,
+    use_game_profile, use_game_snapshot, use_graphics_backend, use_java_runtimes, use_launcher,
     use_loader_versions, use_migratable_routes, use_release_migration_checking,
     use_settings_snapshot,
 };
@@ -27,6 +27,7 @@ use crate::view::app::clusters::{
     ClusterPickerButton, DeleteInstanceModal, EditInstanceModal, ExportInstanceModal,
     InstanceFacts, ResetInstanceModal,
 };
+use crate::view::app::launch_syncing;
 use crate::view::app::settings::{
     section_header, settings_row, settings_row_danger, settings_row_disabled,
 };
@@ -167,6 +168,13 @@ impl Component for ClusterSettings {
                         "oneclient.cluster.settings.section.instance",
                     )))
                     .child(instance_row)
+                    .child(
+                        CheckUpdatesRow {
+                            cluster_id,
+                            uses_bundles: cluster.uses_bundles(),
+                        }
+                        .into_element(),
+                    )
                     .child(
                         DedicatedDirRow {
                             cluster_id,
@@ -480,6 +488,54 @@ impl Component for InstanceRow {
 }
 
 #[derive(PartialEq)]
+struct CheckUpdatesRow {
+    cluster_id: i64,
+    uses_bundles: bool,
+}
+
+impl Component for CheckUpdatesRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+        let game = use_game_snapshot();
+        let checking = game.is_checking_updates(cluster_id);
+        let syncing = launch_syncing(&use_launcher(), self.uses_bundles);
+        let other_checking = !checking && game.any_update_check();
+        let busy = checking
+            || other_checking
+            || syncing
+            || game.is_active(cluster_id)
+            || game.is_launch_pending(cluster_id);
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .enabled(!busy)
+            .maybe(!busy, |el| {
+                el.on_press(move |_| dispatch.check_cluster_updates(cluster_id))
+            })
+            .maybe(game.is_active(cluster_id), |el| {
+                el.tooltip(t("oneclient.cluster.settings.check_updates.game_running"))
+            })
+            .maybe(other_checking, |el| {
+                el.tooltip(t("oneclient.cluster.settings.check_updates.other_running"))
+            })
+            .text(if checking {
+                t("oneclient.cluster.settings.check_updates.running")
+            } else {
+                t("oneclient.cluster.settings.check_updates.button")
+            });
+
+        settings_row(
+            IconType::RefreshCw01,
+            t("oneclient.cluster.settings.check_updates.title"),
+            t("oneclient.cluster.settings.check_updates.description"),
+            button,
+        )
+    }
+}
+
+#[derive(PartialEq)]
 struct ShortcutRow {
     cluster_id: i64,
 }
@@ -549,6 +605,7 @@ impl Component for VerifyFilesRow {
         let cluster_id = self.cluster_id;
         let mutation = use_cluster_mutation();
         let running = mutation_is_running(&mutation);
+        let checking = use_game_snapshot().is_checking_updates(cluster_id);
 
         let on_press = move |_| {
             mutation.mutate(ClusterAction::VerifyFiles { cluster_id });
@@ -558,8 +615,11 @@ impl Component for VerifyFilesRow {
         let button = Button::new()
             .small()
             .secondary()
-            .enabled(!running)
-            .maybe(!running, |el| el.on_press(on_press))
+            .enabled(!running && !checking)
+            .maybe(!running && !checking, |el| el.on_press(on_press))
+            .maybe(checking, |el| {
+                el.tooltip(t("oneclient.cluster.settings.verify.update_check_running"))
+            })
             .text(if running {
                 t("oneclient.cluster.settings.verify.running")
             } else {
@@ -1248,10 +1308,11 @@ impl Component for MigrateFromRow {
         let selected_pair = selected.as_ref().map(|source| (cluster_id, source.id));
         let running = selected_pair
             .is_some_and(|(target, source)| game.is_running(target) || game.is_running(source));
+        let updating = selected_pair.is_some_and(|(target, _)| game.is_checking_updates(target));
 
         let mut button = Button::new()
             .secondary()
-            .enabled(selected_pair.is_some() && !checking && !running)
+            .enabled(selected_pair.is_some() && !checking && !running && !updating)
             .on_press(move |_| {
                 if let Some((target, source)) = selected_pair {
                     dispatch.open_manual_migration(target, source);
@@ -1268,6 +1329,9 @@ impl Component for MigrateFromRow {
         };
         if running {
             button = button.tooltip(t("oneclient.cluster.settings.migrate.game_running"));
+        }
+        if updating {
+            button = button.tooltip(t("oneclient.cluster.settings.migrate.update_check_running"));
         }
 
         let picker: Element = if sources.is_empty() {

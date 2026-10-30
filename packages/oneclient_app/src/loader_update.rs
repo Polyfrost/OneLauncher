@@ -67,16 +67,16 @@ fn offer_prompt(current: &str, latest: &str) -> Prompt<Option<PackageUpdateMode>
         tf("oneclient.loader_update.body", &[&latest, &current]),
     )
     .option(
-        Choice::new("loader.update.never", t("oneclient.loader_update.never")),
-        Some(PackageUpdateMode::Skip),
-    )
-    .option(
         Choice::new("loader.update.always", t("oneclient.loader_update.always")),
         Some(PackageUpdateMode::Automatic),
     )
     .option(
         Choice::primary("loader.update.once", t("oneclient.loader_update.once")),
         None,
+    )
+    .option(
+        Choice::new("loader.update.never", t("oneclient.loader_update.never")),
+        Some(PackageUpdateMode::Skip),
     )
     .dismiss(t("oneclient.loader_update.not_now"))
 }

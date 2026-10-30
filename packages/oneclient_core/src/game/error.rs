@@ -35,6 +35,20 @@ pub enum GameError {
     )]
     SharedDirectoryBusy(String),
 
+    #[error("this instance is being reset; wait for the reset to finish before launching it")]
+    Resetting,
+
+    #[error(
+        "this instance's last reset didn't finish; run Reset Instance again from its settings before launching it"
+    )]
+    ResetUnfinished,
+
+    #[error("this instance is syncing from the shared folder; wait for it to finish")]
+    Syncing,
+
+    #[error("{0} is syncing from the shared folder; wait for it to finish before launching")]
+    SharedDirectorySyncing(String),
+
     #[error("failed to spawn the game process: {0}")]
     Spawn(String),
 
@@ -42,6 +56,9 @@ pub enum GameError {
         "the wrapper command '{program}' could not be started: {reason}. Check the Wrapper Command setting."
     )]
     WrapperSpawn { program: String, reason: String },
+
+    #[error("start the game once on this version before changing this setting")]
+    OptionsOutdated,
 }
 
 impl GameError {

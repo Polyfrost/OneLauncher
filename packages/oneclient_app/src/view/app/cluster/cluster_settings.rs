@@ -1,8 +1,10 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use freya::prelude::*;
+use freya::query::MutationStateData;
 use oneclient_common::Patch;
-use oneclient_common::domain::GameLoader;
+use oneclient_common::domain::{GameLoader, GraphicsBackend};
 use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
 use oneclient_java::JavaRuntime;
 
@@ -13,17 +15,25 @@ use crate::components::{
 use crate::hooks::{
     ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
     settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
-    use_game_profile, use_game_snapshot, use_java_runtimes, use_loader_versions,
-    use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
+    use_game_profile, use_game_snapshot, use_graphics_backend, use_java_runtimes,
+    use_loader_versions, use_migratable_routes, use_release_migration_checking,
+    use_settings_snapshot,
 };
+use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
-use crate::view::app::clusters::{DeleteInstanceModal, EditInstanceModal, InstanceFacts};
-use crate::view::app::settings::{section_header, settings_row, settings_row_disabled};
-use oneclient_core::clusters::{can_migrate_manually, rank_migration_sources};
+use crate::view::app::clusters::{
+    ClusterPickerButton, DeleteInstanceModal, EditInstanceModal, ExportInstanceModal,
+    InstanceFacts, ResetInstanceModal,
+};
+use crate::view::app::settings::{
+    section_header, settings_row, settings_row_danger, settings_row_disabled,
+};
+use oneclient_core::clusters::{Cluster, rank_migration_sources};
 
 use super::cluster_not_found;
+use super::imported_modpacks::ImportedModpacksSection;
 use super::modpack_settings::{ModpackRepairRow, ModpackUpdateRow};
 use crate::hooks::use_cluster;
 
@@ -52,6 +62,10 @@ impl Component for ClusterSettings {
             .unwrap_or(GameLoader::Fabric);
         let versions_query = use_loader_versions(mc_version, loader);
         let runtimes_query = use_java_runtimes();
+        // The profile rows copy their value into local state when they mount, so a
+        // reset bumps this to remount them with the profile it put back
+        let mut resets = use_state(|| 0u32);
+        let generation = *resets.read();
 
         let Some(cluster) = cluster else {
             return cluster_not_found();
@@ -59,8 +73,8 @@ impl Component for ClusterSettings {
 
         let Some(profile) = try_game_profile(&profile_query) else {
             let note = match query_error(&profile_query) {
-                Some(err) => format!("Could not load these settings: {err}"),
-                None => "Loading settings...".to_string(),
+                Some(err) => tf("oneclient.cluster.settings.load_error", &[&err]),
+                None => t("oneclient.cluster.settings.loading").to_string(),
             };
             return cluster_content().child(centered_note(&note)).into_element();
         };
@@ -89,7 +103,7 @@ impl Component for ClusterSettings {
         let mod_loader = !cluster.lacks_mod_loader();
         let loader_section: Vec<Element> = if mod_loader {
             vec![
-                section_header("LOADER").into_element(),
+                section_header(t("oneclient.cluster.settings.section.loader")).into_element(),
                 LoaderRow {
                     cluster_id,
                     loader,
@@ -101,21 +115,46 @@ impl Component for ClusterSettings {
         } else {
             Vec::new()
         };
+        let graphics_backend_row: Vec<Element> = match cluster.game_dir() {
+            Ok(game_dir) if GraphicsBackend::supported_on(&cluster.mc_version) => {
+                vec![
+                    GraphicsBackendRow {
+                        cluster_id,
+                        game_dir,
+                    }
+                    .into_element(),
+                ]
+            }
+            _ => Vec::new(),
+        };
+
         let migrate_row: Vec<Element> = if mod_loader {
             vec![MigrateFromRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
+        let problem_mod_row: Vec<Element> = if mod_loader {
+            vec![super::FindProblemModRow { cluster_id }.into_element()]
+        } else {
+            Vec::new()
+        };
+
+        let sync_row: Vec<Element> = if cluster.uses_dedicated_dir() && !cluster.is_isolated() {
+            vec![SyncSharedRow { cluster_id }.into_element()]
         } else {
             Vec::new()
         };
 
         let modpack_section: Vec<Element> = if cluster.linked_modpack_hash.is_some() {
             vec![
-                section_header("MODPACK").into_element(),
+                section_header(t("oneclient.cluster.settings.section.modpack")).into_element(),
                 ModpackUpdateRow { cluster_id }.into_element(),
                 ModpackRepairRow { cluster_id }.into_element(),
             ]
         } else {
             Vec::new()
         };
+        let imported_section = ImportedModpacksSection { cluster_id }.into_element();
 
         cluster_content()
             .child(
@@ -124,7 +163,9 @@ impl Component for ClusterSettings {
                     .height(Size::fill())
                     .scrollbar_gutter(true)
                     .spacing(4.)
-                    .child(section_header("INSTANCE"))
+                    .child(section_header(t(
+                        "oneclient.cluster.settings.section.instance",
+                    )))
                     .child(instance_row)
                     .child(
                         DedicatedDirRow {
@@ -134,24 +175,49 @@ impl Component for ClusterSettings {
                         }
                         .into_element(),
                     )
-                    .child(section_header("GAME"))
-                    .child(
+                    .append_children(sync_row)
+                    .child(section_header(t(
+                        "oneclient.cluster.settings.section.shortcut",
+                    )))
+                    .child(ShortcutRow { cluster_id }.into_element())
+                    .child(section_header(t(
+                        "oneclient.cluster.settings.section.content",
+                    )))
+                    .child(profile_row(
+                        generation,
+                        "BrowserUpdateModeRow",
+                        BrowserUpdateModeRow {
+                            cluster_id,
+                            value: profile.browser_update_mode,
+                            global: global.browser_update_mode.unwrap_or_default(),
+                        }
+                        .into_element(),
+                    ))
+                    .append_children(migrate_row)
+                    .child(section_header(t("oneclient.cluster.settings.section.game")))
+                    .child(profile_row(
+                        generation,
+                        "ToggleRow",
                         ToggleRow {
                             cluster_id,
                             value: profile.force_fullscreen,
                             global: global.force_fullscreen.unwrap_or(false),
                         }
                         .into_element(),
-                    )
-                    .child(
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "ResolutionRow",
                         ResolutionRow {
                             cluster_id,
                             value: profile.resolution,
                             global: global.resolution.unwrap_or_default(),
                         }
                         .into_element(),
-                    )
-                    .child(
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "MemoryRow",
                         MemoryRow {
                             cluster_id,
                             value: profile.mem_max,
@@ -160,12 +226,23 @@ impl Component for ClusterSettings {
                                 .unwrap_or_else(oneclient_common::default_mem_max),
                         }
                         .into_element(),
-                    )
+                    ))
+                    .append_children(graphics_backend_row)
                     .append_children(loader_section)
-                    .child(section_header("SHORTCUT"))
-                    .child(ShortcutRow { cluster_id }.into_element())
-                    .child(section_header("JAVA"))
+                    .child(section_header(t(
+                        "oneclient.cluster.settings.section.sharing",
+                    )))
                     .child(
+                        ExportRow {
+                            cluster_id,
+                            name: cluster.name.clone(),
+                        }
+                        .into_element(),
+                    )
+                    .child(section_header(t("oneclient.cluster.settings.section.java")))
+                    .child(profile_row(
+                        generation,
+                        "JavaRow",
                         JavaRow {
                             cluster_id,
                             value: profile.java_path.clone(),
@@ -173,26 +250,50 @@ impl Component for ClusterSettings {
                             runtimes,
                         }
                         .into_element(),
-                    )
-                    .child(text_row(cluster_id, TextField::JvmArgs, &profile, &global))
-                    .child(text_row(cluster_id, TextField::GameArgs, &profile, &global))
-                    .child(section_header("PROCESS"))
-                    .child(text_row(cluster_id, TextField::Pre, &profile, &global))
-                    .child(text_row(cluster_id, TextField::Wrapper, &profile, &global))
-                    .child(text_row(cluster_id, TextField::Post, &profile, &global))
-                    .child(section_header("CONTENT"))
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "JvmArgs",
+                        text_row(cluster_id, TextField::JvmArgs, &profile, &global),
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "GameArgs",
+                        text_row(cluster_id, TextField::GameArgs, &profile, &global),
+                    ))
+                    .child(section_header(t(
+                        "oneclient.cluster.settings.section.process",
+                    )))
+                    .child(profile_row(
+                        generation,
+                        "Pre",
+                        text_row(cluster_id, TextField::Pre, &profile, &global),
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "Wrapper",
+                        text_row(cluster_id, TextField::Wrapper, &profile, &global),
+                    ))
+                    .child(profile_row(
+                        generation,
+                        "Post",
+                        text_row(cluster_id, TextField::Post, &profile, &global),
+                    ))
+                    .append_children(modpack_section)
+                    .child(imported_section)
+                    .child(section_header(t(
+                        "oneclient.cluster.settings.section.repair",
+                    )))
+                    .child(VerifyFilesRow { cluster_id }.into_element())
+                    .append_children(problem_mod_row)
                     .child(
-                        BrowserUpdateModeRow {
+                        ResetInstanceRow {
                             cluster_id,
-                            value: profile.browser_update_mode,
-                            global: global.browser_update_mode.unwrap_or_default(),
+                            name: cluster.name.clone(),
+                            on_reset: (move |()| *resets.write() += 1).into(),
                         }
                         .into_element(),
-                    )
-                    .append_children(migrate_row)
-                    .append_children(modpack_section)
-                    .child(section_header("REPAIR"))
-                    .child(VerifyFilesRow { cluster_id }.into_element()),
+                    ),
             )
             .into_element()
     }
@@ -205,6 +306,14 @@ enum Field {
     MemMax,
     JavaPath,
     BrowserUpdateMode,
+}
+
+fn profile_row(generation: u32, slot: &'static str, row: impl IntoElement) -> Element {
+    rect()
+        .key((generation, slot))
+        .width(Size::fill())
+        .child(row)
+        .into_element()
 }
 
 fn clear_update(field: Field) -> ProfileUpdate {
@@ -235,9 +344,9 @@ fn reset_button(overridden: bool, on_reset: EventHandler<()>) -> impl IntoElemen
         .ghost()
         .icon()
         .tooltip(if overridden {
-            "Reset to the global setting"
+            t("oneclient.cluster.settings.override.reset")
         } else {
-            "Already using the global setting"
+            t("oneclient.cluster.settings.override.global")
         })
         .corner_radius(CornerRadius::new_all(7.))
         .maybe(overridden, |el| el.on_press(move |_| on_reset.call(())))
@@ -304,8 +413,8 @@ impl Component for ToggleRow {
 
         settings_row(
             IconType::Maximize01,
-            "Force Fullscreen",
-            "Force Minecraft to start in fullscreen mode.",
+            t("oneclient.cluster.settings.force_fullscreen.title"),
+            t("oneclient.cluster.settings.force_fullscreen.description"),
             override_cell(toggle(state), overridden, on_reset),
         )
     }
@@ -327,9 +436,9 @@ impl Component for InstanceRow {
 
         let editable = self.editable;
         let description = if editable {
-            "Change this instance's name, description, tags and cover image, or remove it from your list."
+            t("oneclient.cluster.settings.instance.description.editable")
         } else {
-            "Remove this version from your list."
+            t("oneclient.cluster.settings.instance.description")
         };
 
         let buttons = rect()
@@ -340,7 +449,7 @@ impl Component for InstanceRow {
                     .small()
                     .secondary()
                     .on_press(move |_| editing.set(true))
-                    .text("Edit")
+                    .text(t("oneclient.common.edit"))
                     .into_element()
             }))
             .child(
@@ -348,7 +457,7 @@ impl Component for InstanceRow {
                     .small()
                     .danger()
                     .on_press(move |_| deleting.set(true))
-                    .text("Delete"),
+                    .text(t("oneclient.common.delete")),
             );
 
         rect()
@@ -356,7 +465,7 @@ impl Component for InstanceRow {
             .width(Size::fill())
             .child(settings_row(
                 IconType::Pencil01,
-                "Instance Details",
+                t("oneclient.cluster.settings.instance.title"),
                 description,
                 buttons,
             ))
@@ -384,15 +493,49 @@ impl Component for ShortcutRow {
             .small()
             .secondary()
             .on_press(move |_| dispatch.create_cluster_shortcut(cluster_id))
-            .text("Create Shortcut");
+            .text(t("oneclient.cluster.settings.shortcut.create"));
 
         settings_row(
             IconType::Rocket02,
-            "Desktop Shortcut",
-            "Save a shortcut that starts this version straight from your desktop, \
-             without opening the launcher first.",
+            t("oneclient.cluster.settings.shortcut.title"),
+            t("oneclient.cluster.settings.shortcut.description"),
             button,
         )
+    }
+}
+
+#[derive(PartialEq)]
+struct ExportRow {
+    cluster_id: i64,
+    name: String,
+}
+
+impl Component for ExportRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let mut choosing = use_state(|| false);
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .on_press(move |_| choosing.set(true))
+            .text(t("oneclient.cluster.settings.export.button"));
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .child(settings_row(
+                IconType::Users01,
+                t("oneclient.cluster.settings.export.title"),
+                t("oneclient.cluster.settings.export.description"),
+                button,
+            ))
+            .maybe_child(choosing.read().then(|| {
+                ExportInstanceModal::new(cluster_id, self.name.clone(), move |()| {
+                    choosing.set(false)
+                })
+                .into_element()
+            }))
     }
 }
 
@@ -418,16 +561,114 @@ impl Component for VerifyFilesRow {
             .enabled(!running)
             .maybe(!running, |el| el.on_press(on_press))
             .text(if running {
-                "Verifying..."
+                t("oneclient.cluster.settings.verify.running")
             } else {
-                "Verify Files"
+                t("oneclient.cluster.settings.verify.button")
             });
 
         settings_row(
             IconType::ClipboardCheck,
-            "Verify Files",
-            "Check every installed file against its official checksum and \
-             re-download anything corrupt or missing. Takes a few minutes.",
+            t("oneclient.cluster.settings.verify.title"),
+            t("oneclient.cluster.settings.verify.description"),
+            button,
+        )
+    }
+}
+
+#[derive(PartialEq)]
+struct ResetInstanceRow {
+    cluster_id: i64,
+    name: String,
+    on_reset: EventHandler<()>,
+}
+
+impl Component for ResetInstanceRow {
+    fn render(&self) -> impl IntoElement {
+        let mut confirming = use_state(|| false);
+        let cluster_id = self.cluster_id;
+        let name = self.name.clone();
+        let mutation = use_cluster_mutation();
+        let running = mutation_is_running(&mutation);
+        let on_reset = self.on_reset.clone();
+        // The confirm modal unmounts as soon as Reset is pressed, so the wait for the reset
+        // runs in this row's scope to still report back once it has finished
+        let scope = current_scope_id();
+
+        let button = Button::new()
+            .small()
+            .danger()
+            .enabled(!running)
+            .maybe(!running, |el| el.on_press(move |_| confirming.set(true)))
+            .text(t("oneclient.common.reset"));
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .child(settings_row_danger(
+                IconType::RefreshCw01,
+                t("oneclient.cluster.settings.reset_instance.title"),
+                t("oneclient.cluster.settings.reset_instance.description"),
+                button,
+            ))
+            .maybe_child(confirming.read().then(|| {
+                let on_reset = on_reset.clone();
+                ResetInstanceModal::new(
+                    cluster_id,
+                    name.clone(),
+                    move |()| confirming.set(false),
+                    move |()| {
+                        let on_reset = on_reset.clone();
+                        let (done_tx, done_rx) = tokio::sync::oneshot::channel();
+                        // Detached like `mutate` so leaving the page can't cut the reset short
+                        spawn_forever(async move {
+                            mutation
+                                .mutate_async(ClusterAction::ResetInstance { cluster_id })
+                                .await;
+                            let _ = done_tx.send(());
+                        });
+                        spawn_in_scope(
+                            async move {
+                                if done_rx.await.is_ok() {
+                                    on_reset.call(());
+                                }
+                            },
+                            scope,
+                        );
+                    },
+                )
+                .into_element()
+            }))
+    }
+}
+
+#[derive(PartialEq)]
+struct SyncSharedRow {
+    cluster_id: i64,
+}
+
+impl Component for SyncSharedRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+        let syncing = use_game_snapshot().is_syncing_shared(cluster_id);
+
+        let button = Button::new()
+            .small()
+            .secondary()
+            .enabled(!syncing)
+            .maybe(!syncing, |el| {
+                el.on_press(move |_| dispatch.sync_from_shared_dir(cluster_id))
+            })
+            .text(if syncing {
+                t("oneclient.cluster.settings.sync.running")
+            } else {
+                t("oneclient.cluster.settings.sync.button")
+            });
+
+        settings_row(
+            IconType::RefreshCcw02,
+            t("oneclient.cluster.settings.sync.title"),
+            t("oneclient.cluster.settings.sync.description"),
             button,
         )
     }
@@ -445,29 +686,45 @@ impl Component for DedicatedDirRow {
         let cluster_id = self.cluster_id;
         let dedicated = self.dedicated;
         let mutation = use_cluster_mutation();
+        let dispatch = use_dispatch();
 
         if self.locked {
             return settings_row_disabled(
                 IconType::Folder,
-                "Dedicated Directory",
-                "Vanilla and modded instances always run in their own folder, so their worlds, settings and packs stay separate.",
+                t("oneclient.cluster.settings.dedicated_dir.title"),
+                t("oneclient.cluster.settings.dedicated_dir.locked"),
                 toggle_controlled(true, (|()| {}).into()),
             )
             .into_element();
         }
 
         let on_toggle: EventHandler<()> = (move |()| {
-            mutation.mutate(ClusterAction::SetDedicatedDir {
+            let action = ClusterAction::SetDedicatedDir {
                 cluster_id,
                 dedicated: !dedicated,
+            };
+            if dedicated {
+                mutation.mutate(action);
+                return;
+            }
+            // The new folder starts empty, so offer to bring the shared worlds and settings along
+            let dispatch = dispatch.clone();
+            spawn_forever(async move {
+                let reader = mutation.mutate_async(action).await;
+                if matches!(
+                    &*reader.state(),
+                    MutationStateData::Settled { res: Ok(_), .. }
+                ) {
+                    dispatch.sync_from_shared_dir(cluster_id);
+                }
             });
         })
         .into();
 
         settings_row(
             IconType::Folder,
-            "Dedicated Directory",
-            "Run this cluster in its own .minecraft instead of the shared one.",
+            t("oneclient.cluster.settings.dedicated_dir.title"),
+            t("oneclient.cluster.settings.dedicated_dir.description"),
             toggle_controlled(dedicated, on_toggle),
         )
         .into_element()
@@ -523,12 +780,16 @@ impl Component for MemoryRow {
         })
         .into();
 
-        let control = memory_field(memory, "Global", global);
+        let control = memory_field(
+            memory,
+            t("oneclient.cluster.settings.memory.global"),
+            global,
+        );
 
         settings_row(
             IconType::Database01,
-            "Memory",
-            "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
+            t("oneclient.cluster.settings.memory.title"),
+            t("oneclient.cluster.settings.memory.description"),
             override_cell(control, overridden, on_reset),
         )
     }
@@ -620,8 +881,8 @@ impl Component for ResolutionRow {
 
         settings_row(
             IconType::LayoutTop,
-            "Resolution",
-            "The game window resolution in pixels.",
+            t("oneclient.cluster.settings.resolution.title"),
+            t("oneclient.cluster.settings.resolution.description"),
             override_cell(control, overridden, on_reset),
         )
     }
@@ -641,32 +902,32 @@ impl TextField {
         match self {
             Self::JvmArgs => (
                 IconType::Terminal,
-                "JVM Arguments",
-                "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",
+                t("oneclient.cluster.settings.jvm_args.title"),
+                t("oneclient.cluster.settings.jvm_args.description"),
                 "-XX:+UseG1GC",
             ),
             Self::GameArgs => (
                 IconType::Play,
-                "Game Arguments",
-                "Extra arguments passed to Minecraft. Separate them with spaces; quote values containing spaces.",
+                t("oneclient.cluster.settings.game_args.title"),
+                t("oneclient.cluster.settings.game_args.description"),
                 "--tracy --tracyNoImages",
             ),
             Self::Pre => (
                 IconType::FilePlus02,
-                "Pre-Launch Command",
-                "Command to run before launching the game.",
+                t("oneclient.cluster.settings.pre_launch.title"),
+                t("oneclient.cluster.settings.pre_launch.description"),
                 "echo 'Game started'",
             ),
             Self::Wrapper => (
                 IconType::ParagraphWrap,
-                "Wrapper Command",
-                "Command to run when launching the game.",
+                t("oneclient.cluster.settings.wrapper.title"),
+                t("oneclient.cluster.settings.wrapper.description"),
                 "gamescope",
             ),
             Self::Post => (
                 IconType::FileX02,
-                "Post-Exit Command",
-                "Command to run after exiting the game.",
+                t("oneclient.cluster.settings.post_exit.title"),
+                t("oneclient.cluster.settings.post_exit.description"),
                 "echo 'Game exited'",
             ),
         }
@@ -789,19 +1050,20 @@ impl Component for JavaRow {
 
         let control: Element = if runtimes.is_empty() {
             label()
-                .text("No runtimes installed")
+                .text(t("oneclient.cluster.settings.java.none"))
                 .font_size(12.)
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
-            let mut options: Vec<String> = vec!["Automatic".into()];
+            let mut options: Vec<String> =
+                vec![t("oneclient.cluster.settings.java.automatic").into()];
             options.extend(runtimes.iter().map(runtime_label));
 
             let selected = resolved
                 .as_ref()
                 .and_then(|path| runtimes.iter().find(|r| &r.absolute_path == path))
                 .map(runtime_label)
-                .unwrap_or_else(|| "Automatic".into());
+                .unwrap_or_else(|| t("oneclient.cluster.settings.java.automatic").into());
 
             let paths: Vec<String> = runtimes.iter().map(|r| r.absolute_path.clone()).collect();
 
@@ -832,8 +1094,8 @@ impl Component for JavaRow {
 
         settings_row(
             IconType::CodeSnippet02,
-            "Java Runtime",
-            "The Java runtime used to launch this cluster.",
+            t("oneclient.cluster.settings.java.title"),
+            t("oneclient.cluster.settings.java.description"),
             override_cell(control, overridden, on_reset),
         )
     }
@@ -883,10 +1145,70 @@ impl Component for BrowserUpdateModeRow {
 
         settings_row(
             IconType::RefreshCw01,
-            "Browser Package Updates",
-            "What to do when content installed from the browser has a newer version. Bundle content is not affected.",
+            t("oneclient.cluster.settings.browser_updates.title"),
+            t("oneclient.cluster.settings.browser_updates.description"),
             override_cell(control, overridden, on_reset),
         )
+    }
+}
+
+#[derive(PartialEq)]
+struct GraphicsBackendRow {
+    cluster_id: i64,
+    game_dir: PathBuf,
+}
+
+impl Component for GraphicsBackendRow {
+    fn render(&self) -> impl IntoElement {
+        let game_dir = self.game_dir.clone();
+        let current = use_graphics_backend(game_dir.clone());
+        let running = use_game_snapshot().is_running(self.cluster_id);
+        let dispatch = use_dispatch();
+
+        let options: Vec<String> = GraphicsBackend::ALL
+            .iter()
+            .map(ToString::to_string)
+            .collect();
+        let control = Dropdown::new(
+            current.unwrap_or(GraphicsBackend::Default).to_string(),
+            options,
+        )
+        .width(Size::px(220.))
+        .height(Size::px(34.))
+        .on_select(move |idx: usize| {
+            if let Some(backend) = GraphicsBackend::ALL.get(idx).copied() {
+                dispatch.set_graphics_backend(game_dir.clone(), backend);
+            }
+        });
+
+        let locked = if running {
+            Some(t(
+                "oneclient.cluster.settings.graphics_backend.locked_running",
+            ))
+        } else if current.is_none() {
+            Some(t(
+                "oneclient.cluster.settings.graphics_backend.locked_never_started",
+            ))
+        } else {
+            None
+        };
+        if let Some(reason) = locked {
+            return settings_row_disabled(
+                IconType::PaintPour,
+                t("oneclient.cluster.settings.graphics_backend.title"),
+                reason,
+                control,
+            )
+            .into_element();
+        }
+
+        settings_row(
+            IconType::PaintPour,
+            t("oneclient.cluster.settings.graphics_backend.title"),
+            t("oneclient.cluster.settings.graphics_backend.description"),
+            control,
+        )
+        .into_element()
     }
 }
 
@@ -902,36 +1224,28 @@ impl Component for MigrateFromRow {
         let checking = use_release_migration_checking(cluster_id);
         let game = use_game_snapshot();
         let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
-        let mut picked = use_state(|| None::<(i64, i64)>);
+        let mut picked = use_state(|| None::<i64>);
 
-        let mut routes: Vec<(String, i64, i64)> = Vec::new();
-        if let Some(this) = clusters.iter().find(|cluster| cluster.id == cluster_id) {
-            routes.extend(
-                rank_migration_sources(this, &clusters)
-                    .into_iter()
-                    .map(|source| (format!("From {}", source.name), cluster_id, source.id)),
-            );
-            routes.extend(
-                clusters
-                    .iter()
-                    .filter(|other| {
-                        other.id != cluster_id
-                            && can_migrate_manually(this.mc_loader, other.mc_loader)
-                    })
-                    .map(|target| (format!("To {}", target.name), target.id, cluster_id)),
-            );
-        }
-        let has_partners = !routes.is_empty();
-        let migratable =
-            use_migratable_routes(routes.iter().map(|route| (route.1, route.2)).collect());
-        routes.retain(|route| migratable.contains(&(route.1, route.2)));
+        let mut sources: Vec<Cluster> = clusters
+            .iter()
+            .find(|cluster| cluster.id == cluster_id)
+            .map(|this| rank_migration_sources(this, &clusters))
+            .unwrap_or_default();
+        let has_partners = !sources.is_empty();
+        let migratable = use_migratable_routes(
+            sources
+                .iter()
+                .map(|source| (cluster_id, source.id))
+                .collect(),
+        );
+        sources.retain(|source| migratable.contains(&(cluster_id, source.id)));
 
         let selected = picked
             .read()
-            .and_then(|pair| routes.iter().find(|route| (route.1, route.2) == pair))
-            .or_else(|| routes.first())
+            .and_then(|id| sources.iter().find(|source| source.id == id))
+            .or_else(|| sources.first())
             .cloned();
-        let selected_pair = selected.as_ref().map(|route| (route.1, route.2));
+        let selected_pair = selected.as_ref().map(|source| (cluster_id, source.id));
         let running = selected_pair
             .is_some_and(|(target, source)| game.is_running(target) || game.is_running(source));
 
@@ -946,44 +1260,45 @@ impl Component for MigrateFromRow {
         button = if checking {
             button
                 .child(Icon::new(IconType::Loading02).size(14.))
-                .text("Checking…")
+                .text(t("oneclient.cluster.settings.migrate.checking"))
         } else {
             button
                 .child(Icon::new(IconType::Copy01).size(14.))
-                .text("Migrate...")
+                .text(t("oneclient.cluster.settings.migrate.button"))
         };
         if running {
-            button = button.tooltip("Close the game before migrating");
+            button = button.tooltip(t("oneclient.cluster.settings.migrate.game_running"));
         }
 
-        let picker: Element = if routes.is_empty() {
+        let picker: Element = if sources.is_empty() {
             label()
                 .text(if has_partners {
-                    "Nothing installed from the browser left to copy"
+                    t("oneclient.cluster.settings.migrate.nothing")
                 } else {
-                    "No other clusters with this loader"
+                    t("oneclient.cluster.settings.migrate.no_partners")
                 })
                 .font_size(12.)
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
-            let pairs: Vec<(i64, i64)> = routes.iter().map(|route| (route.1, route.2)).collect();
-            let names: Vec<String> = routes.iter().map(|route| route.0.clone()).collect();
-            Dropdown::new(selected.map(|route| route.0).unwrap_or_default(), names)
-                .width(Size::px(220.))
-                .height(Size::px(34.))
-                .on_select(move |index: usize| {
-                    if let Some(pair) = pairs.get(index) {
-                        picked.set(Some(*pair));
-                    }
-                })
-                .into_element()
+            ClusterPickerButton {
+                label: selected
+                    .as_ref()
+                    .map(|source| tf("oneclient.cluster.settings.migrate.from", &[&source.name]))
+                    .unwrap_or_default(),
+                selected: selected.as_ref().map(|source| source.id),
+                only: Some(sources.iter().map(|source| source.id).collect()),
+                width: Size::px(220.),
+                height: 34.,
+                on_pick: (move |cluster: Cluster| picked.set(Some(cluster.id))).into(),
+            }
+            .into_element()
         };
 
         settings_row(
             IconType::Copy01,
-            "Migrate",
-            "Copy mods, resource packs and shaders you installed from the browser to or from another cluster.",
+            t("oneclient.cluster.settings.migrate.title"),
+            t("oneclient.cluster.settings.migrate.description"),
             rect()
                 .horizontal()
                 .cross_align(Alignment::Center)
@@ -1014,7 +1329,7 @@ impl Component for LoaderRow {
 
         let control: Element = if versions.is_empty() {
             label()
-                .text("No versions available")
+                .text(t("oneclient.cluster.settings.loader.none"))
                 .font_size(12.)
                 .color(colors::fg_secondary())
                 .into_element()
@@ -1033,10 +1348,10 @@ impl Component for LoaderRow {
 
         settings_row(
             IconType::Rocket02,
-            "Loader Version",
-            format!(
-                "The {} loader version used to launch this cluster.",
-                self.loader
+            t("oneclient.cluster.settings.loader.title"),
+            tf(
+                "oneclient.cluster.settings.loader.description",
+                &[&self.loader],
             ),
             control,
         )

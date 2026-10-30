@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
 use freya::router::RouterContext;
@@ -17,10 +17,12 @@ use crate::hooks::{
     ClusterAction, settled_or_loading, use_active_cluster_id, use_cluster_mutation, use_clusters,
     use_dispatch,
 };
+use crate::i18n::{t, tf};
 use crate::utils::default_cluster;
 
 const MODPACK_BROWSE_TYPE: &str = "modpack";
 const MODPACK_EXTENSIONS: [&str; 2] = ["mrpack", "zip"];
+const IMPORT_EXTENSIONS: [&str; 2] = [oneclient_content::modpacks::SHARE_EXTENSION, "zip"];
 
 fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
     let mc_version = picks.versions.chosen.clone()?;
@@ -37,6 +39,7 @@ fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
         cover_source: wizard.details.cover.read().clone(),
         bundles: (picks.kind == ClusterKind::OneClient && picks.bundles.loaded)
             .then(|| picks.bundles.taken()),
+        dedicated: picks.kind == ClusterKind::OneClient && picks.folder == FolderChoice::Dedicated,
     })
 }
 
@@ -44,8 +47,12 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
     let description = wizard.details.description.read().trim().to_string();
     let tags = wizard.details.tags.read().clone();
 
-    let title = if picks.name.trim().is_empty() {
-        "New instance".to_string()
+    // The import creates one instance per pick, named after each source, so
+    // the suggested name of a version nobody chose means nothing here
+    let title = if picks.choice == TypeChoice::Import {
+        t("oneclient.clusters.instance.create.title.import").to_string()
+    } else if picks.name.trim().is_empty() {
+        t("oneclient.clusters.instance.create.title.new").to_string()
     } else {
         picks.name.clone()
     };
@@ -60,7 +67,17 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
                 Some(version) => format!("{version} · {}", picks.loader_label()),
                 None => picks.loader_label(),
             },
-            TypeChoice::Modpack => "Modpack".to_string(),
+            TypeChoice::Modpack => {
+                t("oneclient.clusters.instance.create.subtitle.modpack").to_string()
+            }
+            TypeChoice::Import => match picks.import_source {
+                ImportSource::File => {
+                    t("oneclient.clusters.instance.create.subtitle.file").to_string()
+                }
+                ImportSource::Launcher => {
+                    t("oneclient.clusters.instance.create.subtitle.launcher").to_string()
+                }
+            },
         }
     } else {
         description
@@ -87,7 +104,7 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
         })
         .collect();
 
-    let art = if picks.choice == TypeChoice::Modpack {
+    let art = if matches!(picks.choice, TypeChoice::Modpack | TypeChoice::Import) {
         version_art(None, None)
     } else {
         version_art(picks.versions.chosen.as_deref(), picks.loader.chosen)
@@ -133,6 +150,12 @@ impl Component for CreateInstanceModal {
             loader_version: use_state(|| None::<String>),
             declined: use_state(|| None::<HashSet<String>>),
             modpack_origin: use_state(|| ModpackOrigin::Browse),
+            import_source: use_state(|| ImportSource::File),
+            import_chosen: use_state(Vec::new),
+            import_extra: use_state(Vec::new),
+            import_mode: use_state(|| ImportMode::AsIs),
+            import_decisions: use_state(HashMap::new),
+            folder: use_state(|| FolderChoice::Shared),
             details: DetailsState::blank(),
         };
         let dispatch = use_dispatch();
@@ -145,6 +168,16 @@ impl Component for CreateInstanceModal {
         let first = picks.index == 0;
         let last = picks.step == Step::Customize;
         let modpack_step = picks.step == Step::Modpack;
+        let review_step = picks.step == Step::ImportReview;
+        let import_step = picks.step == Step::Import;
+        let improving = picks.import_mode == ImportMode::Improve;
+        let import_count = picks.import_count;
+        let import_jobs = if (import_step && !improving) || review_step {
+            picks.import_jobs(&wizard.import_chosen.read())
+        } else {
+            Vec::new()
+        };
+        let friend = picks.step == Step::ImportSource && picks.import_source == ImportSource::File;
         let origin = picks.modpack_origin;
         let index = picks.index;
         let mut step = wizard.step;
@@ -154,6 +187,7 @@ impl Component for CreateInstanceModal {
         let close_cancel = self.on_close.clone();
         let close_created = self.on_close.clone();
         let close_modpack = self.on_close.clone();
+        let close_import = self.on_close.clone();
 
         shell(Shell {
             rail: wizard_rail(wizard, &picks),
@@ -161,16 +195,38 @@ impl Component for CreateInstanceModal {
             title: title.to_string(),
             subtitle,
             body: steps::body(wizard, &picks),
-            scrolls_itself: picks.step == Step::Version,
+            scrolls_itself: matches!(
+                picks.step,
+                Step::Version | Step::Import | Step::ImportReview
+            ),
             note: footer_note(&picks),
-            secondary_label: if first { "Cancel" } else { "Back" }.to_string(),
-            primary_label: match (modpack_step, origin) {
-                (true, ModpackOrigin::Browse) => "Browse modpacks",
-                (true, ModpackOrigin::File) => "Choose file",
-                (false, _) if last => "Create instance",
-                (false, _) => "Next",
+            secondary_label: if first {
+                t("oneclient.common.cancel")
+            } else {
+                t("oneclient.common.back")
             }
             .to_string(),
+            primary_label: match (modpack_step, origin) {
+                _ if review_step && picks.import_screening.is_none() => {
+                    t("oneclient.clusters.instance.create.import_unchecked").to_string()
+                }
+                _ if (import_step && !improving) || review_step => match import_count {
+                    0 => t("oneclient.clusters.instance.create.import.none").to_string(),
+                    1 => t("oneclient.clusters.instance.create.import.one").to_string(),
+                    n => tf("oneclient.clusters.instance.create.import.other", &[&n]),
+                },
+                (false, _) if friend => {
+                    t("oneclient.clusters.instance.create.choose_file").to_string()
+                }
+                (true, ModpackOrigin::Browse) => {
+                    t("oneclient.clusters.instance.create.browse_modpacks").to_string()
+                }
+                (true, ModpackOrigin::File) => {
+                    t("oneclient.clusters.instance.create.choose_file").to_string()
+                }
+                (false, _) if last => t("oneclient.clusters.instance.create.create").to_string(),
+                (false, _) => t("oneclient.common.next").to_string(),
+            },
             primary_enabled: is_ready(&picks),
             on_close: (move |()| close_x.call(())).into(),
             on_secondary: (move |()| {
@@ -182,7 +238,12 @@ impl Component for CreateInstanceModal {
             })
             .into(),
             on_primary: (move |()| {
-                if modpack_step {
+                if friend {
+                    pick_shared_file(dispatch.clone(), close_modpack.clone());
+                } else if (import_step && !improving) || review_step {
+                    dispatch.import_external_instances(import_jobs.clone());
+                    close_import.call(());
+                } else if modpack_step {
                     start_modpack(
                         origin,
                         browse_cluster,
@@ -202,6 +263,24 @@ impl Component for CreateInstanceModal {
             .into(),
         })
     }
+}
+
+fn pick_shared_file(dispatch: crate::Actions, on_close: EventHandler<()>) {
+    spawn(async move {
+        let Some(handle) = rfd::AsyncFileDialog::new()
+            .set_title(t("oneclient.clusters.instance.create.dialog.import.title"))
+            .add_filter(
+                t("oneclient.clusters.instance.create.dialog.import.filter"),
+                &IMPORT_EXTENSIONS,
+            )
+            .pick_file()
+            .await
+        else {
+            return;
+        };
+        dispatch.import_file(handle.path().to_path_buf());
+        on_close.call(());
+    });
 }
 
 fn browse_cluster() -> i64 {
@@ -231,8 +310,11 @@ fn start_modpack(
         ModpackOrigin::File => {
             spawn(async move {
                 let Some(handle) = rfd::AsyncFileDialog::new()
-                    .set_title("Choose a modpack")
-                    .add_filter("Modpack", &MODPACK_EXTENSIONS)
+                    .set_title(t("oneclient.clusters.instance.create.dialog.modpack.title"))
+                    .add_filter(
+                        t("oneclient.clusters.instance.create.dialog.modpack.filter"),
+                        &MODPACK_EXTENSIONS,
+                    )
                     .pick_file()
                     .await
                 else {

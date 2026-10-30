@@ -6,13 +6,14 @@ use oneclient_core::clusters::Cluster;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Button, CARD_BG, CARD_GRID_H, CARD_H, CARD_NAME, CardLayout, GRID_GAP, GRID_MIN_W, Icon,
-    IconType, LocalImage, OverlayPopup, ScrollArea, Segment, SegmentedControl, TextInput, badge,
-    icon_box, kebab_button, meta_size, meta_text, on_secondary, open_folder_button,
+    Button, CARD_GRID_H, CARD_H, CardLayout, GRID_GAP, GRID_MIN_W, Icon, IconType, LocalImage,
+    OverlayPopup, ScrollArea, Segment, SegmentedControl, TextInput, badge, icon_box, kebab_button,
+    meta_size, meta_text, on_secondary, open_folder_button,
 };
 use crate::hooks::{
     loaded_image, settled_or_loading, use_cached_image, use_clusters, use_game_snapshot,
 };
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 
@@ -51,12 +52,10 @@ pub(super) fn use_game_folder_in_use(cluster: Option<&Cluster>) -> bool {
     })
 }
 
-pub(super) fn notify_in_use(dispatch: &crate::Actions, what: &str) {
+pub(super) fn notify_in_use(dispatch: &crate::Actions, body: &'static str) {
     dispatch
-        .notify("Close Minecraft first")
-        .body(format!(
-            "{what} can't be deleted while a version using this game folder is running."
-        ))
+        .notify(t("oneclient.cluster.folder_list.in_use.title"))
+        .body(body)
         .error()
         .send();
 }
@@ -98,7 +97,7 @@ pub(super) fn toolbar_panel(leading: Option<Element>, controls: Vec<Element>) ->
 
 pub(super) fn search_input(search: State<String>) -> Element {
     TextInput::new(search)
-        .placeholder("Search...")
+        .placeholder(t("oneclient.cluster.package_manager.search"))
         .width(Size::px(SEARCH_W))
         .leading(
             Icon::new(IconType::SearchMd)
@@ -252,7 +251,7 @@ impl Component for FolderCard {
                 .spacing(12.)
                 .padding(Gaps::new_all(10.))
                 .corner_radius(CornerRadius::new_all(8.))
-                .background(CARD_BG)
+                .background(colors::card())
                 .content(Content::Flex)
                 .on_secondary_down(on_secondary(on_context.clone()))
                 .child(self.list_info(icon))
@@ -261,7 +260,7 @@ impl Component for FolderCard {
                 .into_element(),
             CardLayout::Grid => {
                 let hovering = *hovered.read();
-                let muted = CARD_NAME.with_a(127);
+                let muted = colors::fg_primary().with_a(127);
 
                 let header = rect()
                     .horizontal()
@@ -282,7 +281,7 @@ impl Component for FolderCard {
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
                                     .width(Size::fill())
-                                    .color(Color::WHITE),
+                                    .color(colors::fg_strong()),
                             )
                             .child(meta_text(self.grid_meta(), muted)),
                     )
@@ -375,7 +374,7 @@ impl FolderCard {
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
                                     .max_width(Size::percent(60.))
-                                    .color(CARD_NAME),
+                                    .color(colors::fg_primary()),
                             )
                             .child(badge(
                                 Icon::new(self.badge.0)
@@ -420,7 +419,7 @@ pub(super) fn card_icon(icon: &CardIcon, size: f32) -> Element {
     }
 }
 
-pub(super) fn confirm_dialog(
+pub(crate) fn confirm_dialog(
     title: String,
     body: String,
     on_cancel: impl FnMut() + Clone + 'static,
@@ -437,13 +436,13 @@ pub(super) fn confirm_dialog(
             Button::new()
                 .secondary()
                 .on_press(move |_| cancel())
-                .text("Cancel")
+                .text(t("oneclient.common.cancel"))
                 .into_element(),
             Button::new()
                 .danger()
                 .on_press(move |_| on_confirm())
                 .child(Icon::new(IconType::Trash01).size(14.))
-                .text("Delete")
+                .text(t("oneclient.common.delete"))
                 .into_element(),
         ],
     )
@@ -471,7 +470,7 @@ pub(crate) fn dialog(
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
                         .corner_radius(CornerRadius::new_all(14.))
-                        .background(CARD_BG)
+                        .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             label()

@@ -15,6 +15,7 @@ use crate::hooks::{
     Actions, DiscardLeftoversKeys, mutation_error, mutation_is_running, try_leftovers,
     use_discard_leftovers, use_dispatch, use_launcher, use_leftovers, use_settings_snapshot,
 };
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::{border_all_color, note, path_block};
 
@@ -57,6 +58,11 @@ impl Component for SettingsLauncher {
             move || v
         });
 
+        let open_game_log = use_state({
+            let v = settings.open_game_log_on_launch;
+            move || v
+        });
+
         let mut first = use_state(|| true);
         use_side_effect(move || {
             let discord = *discord_rpc.read();
@@ -65,6 +71,7 @@ impl Component for SettingsLauncher {
             let background = *run_in_background.read();
             let tray = *show_tray_icon.read();
             let behaviour = *launch_behaviour.read();
+            let game_log = *open_game_log.read();
             if *first.peek() {
                 first.set(false);
                 return;
@@ -76,14 +83,15 @@ impl Component for SettingsLauncher {
                 next.run_in_background = background;
                 next.show_tray_icon = tray;
                 next.launch_behaviour = behaviour;
+                next.open_game_log_on_launch = game_log;
             });
         });
 
         // The only way back for someone who declined during onboarding
         let consent_summary = if settings.declined_tos {
-            "Declined. Poly+ and crash reporting stay off until you accept and restart OneClient."
+            t("oneclient.settings.launcher.terms.declined")
         } else {
-            "Accepted. Review them again at any time."
+            t("oneclient.settings.launcher.terms.accepted")
         };
         let review_terms = Button::new()
             .secondary()
@@ -91,20 +99,22 @@ impl Component for SettingsLauncher {
             .on_press(|_| {
                 let _ = RouterContext::get().replace(Route::OnboardingTerms {});
             })
-            .text("Review");
+            .text(t("oneclient.settings.launcher.terms.review"));
 
         settings_page()
-            .child(section_header("GENERAL"))
+            .child(section_header(t(
+                "oneclient.settings.launcher.section.general",
+            )))
             .child(settings_row(
                 IconType::Link03,
-                "Discord RPC",
-                "Enable Discord Rich Presence.",
+                t("oneclient.settings.launcher.discord_rpc.title"),
+                t("oneclient.settings.launcher.discord_rpc.description"),
                 resettable(toggle(discord_rpc), discord_rpc, defaults.discord_enabled),
             ))
             .child(settings_row(
                 IconType::AlertTriangle,
-                "Crash Reporting",
-                "Send anonymous crash and error reports to help fix bugs. Applies on restart.",
+                t("oneclient.settings.launcher.crash_reporting.title"),
+                t("oneclient.settings.launcher.crash_reporting.description"),
                 resettable(
                     toggle(crash_reporting),
                     crash_reporting,
@@ -113,8 +123,8 @@ impl Component for SettingsLauncher {
             ))
             .child(settings_row(
                 IconType::Maximize01,
-                "Start Maximized",
-                "Open the launcher window maximized. Applies on restart.",
+                t("oneclient.settings.launcher.start_maximized.title"),
+                t("oneclient.settings.launcher.start_maximized.description"),
                 resettable(
                     toggle(start_maximized),
                     start_maximized,
@@ -123,15 +133,17 @@ impl Component for SettingsLauncher {
             ))
             .child(settings_row(
                 IconType::File02,
-                "Terms & Privacy",
+                t("oneclient.settings.launcher.terms.title"),
                 consent_summary,
                 review_terms,
             ))
-            .child(section_header("SYSTEM"))
+            .child(section_header(t(
+                "oneclient.settings.launcher.section.system",
+            )))
             .child(settings_row(
                 IconType::Eye,
-                "While Playing",
-                "What the launcher window does once a game is running.",
+                t("oneclient.settings.launcher.launch_behaviour.title"),
+                t("oneclient.settings.launcher.launch_behaviour.description"),
                 resettable(
                     launch_behaviour_field(launch_behaviour),
                     launch_behaviour,
@@ -139,9 +151,19 @@ impl Component for SettingsLauncher {
                 ),
             ))
             .child(settings_row(
+                IconType::Terminal,
+                t("oneclient.settings.launcher.open_game_log.title"),
+                t("oneclient.settings.launcher.open_game_log.description"),
+                resettable(
+                    toggle(open_game_log),
+                    open_game_log,
+                    defaults.open_game_log_on_launch,
+                ),
+            ))
+            .child(settings_row(
                 IconType::Moon01,
-                "Run in Background",
-                "Closing the window keeps OneClient running. Open it again from the tray icon or by launching it.",
+                t("oneclient.settings.launcher.run_in_background.title"),
+                t("oneclient.settings.launcher.run_in_background.description"),
                 resettable(
                     toggle(run_in_background),
                     run_in_background,
@@ -150,15 +172,17 @@ impl Component for SettingsLauncher {
             ))
             .child(settings_row(
                 IconType::LayoutTop,
-                "Show Tray Icon",
-                "Show OneClient in the system tray or menu bar. Applies on restart.",
+                t("oneclient.settings.launcher.tray_icon.title"),
+                t("oneclient.settings.launcher.tray_icon.description"),
                 resettable(
                     toggle(show_tray_icon),
                     show_tray_icon,
                     defaults.show_tray_icon,
                 ),
             ))
-            .child(section_header("FOLDERS AND FILES"))
+            .child(section_header(t(
+                "oneclient.settings.launcher.section.folders",
+            )))
             .child(DataFolder.into_element())
             .into_element()
     }
@@ -202,9 +226,9 @@ impl Component for DataFolder {
             .disabled(checking_now)
             .on_press(move |_| browse(pending, error, checking))
             .text(if checking_now {
-                "Checking…"
+                t("oneclient.settings.launcher.data_folder.checking")
             } else {
-                "Change…"
+                t("oneclient.settings.launcher.data_folder.change")
             });
 
         let mut buttons = Vec::new();
@@ -216,7 +240,7 @@ impl Component for DataFolder {
                     .small()
                     .disabled(checking_now)
                     .on_press(move |_| plan(pending, error, checking, Source::Default))
-                    .text("Reset"),
+                    .text(t("oneclient.common.reset")),
             );
         }
 
@@ -228,7 +252,7 @@ impl Component for DataFolder {
             .spacing(4.)
             .child(settings_row(
                 IconType::Folder,
-                "Launcher Folder",
+                t("oneclient.settings.launcher.data_folder.title"),
                 data_dir.clone(),
                 row_actions(PathBuf::from(data_dir), buttons),
             ));
@@ -247,15 +271,18 @@ impl Component for DataFolder {
                 .on_press(move |_| {
                     discard.mutate(DiscardLeftoversKeys);
                 })
-                .text(if clearing { "Removing…" } else { "Remove" });
+                .text(if clearing {
+                    t("oneclient.settings.launcher.leftovers.removing")
+                } else {
+                    t("oneclient.common.remove")
+                });
 
             section = section.child(settings_row(
                 IconType::Database01,
-                "Old location",
-                format!(
-                    "{} still sitting in {}. Nothing uses it any more.",
-                    format_bytes(left.bytes),
-                    left.path.display()
+                t("oneclient.settings.launcher.leftovers.title"),
+                tf(
+                    "oneclient.settings.launcher.leftovers.description",
+                    &[&format_bytes(left.bytes), &left.path.display()],
                 ),
                 row_actions(left.path, vec![remove]),
             ));
@@ -301,7 +328,7 @@ fn plan(
         let picked = match source {
             Source::Picked => {
                 let mut dialog = rfd::AsyncFileDialog::new()
-                    .set_title("Choose where OneClient should store game data");
+                    .set_title(t("oneclient.settings.launcher.data_folder.picker_title"));
 
                 if let Some(start) = oneclient_common::paths::picker_start_dir() {
                     dialog = dialog.set_directory(start);
@@ -379,23 +406,31 @@ fn confirm_move(
                 .child(Icon::new(IconType::FolderDownload).size(20.))
                 .child(
                     label()
-                        .text("Move game data?")
+                        .text(t("oneclient.settings.launcher.move.title"))
                         .font_size(16.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),
         )
-        .child(path_block("From", &planned.from))
-        .child(path_block("To", &planned.to))
+        .child(path_block(
+            t("oneclient.settings.launcher.move.from"),
+            &planned.from,
+        ))
+        .child(path_block(
+            t("oneclient.settings.launcher.move.to"),
+            &planned.to,
+        ))
         .child(
             label()
                 .text(match free_after {
-                    Some(free) => format!(
-                        "{} to copy, leaving {} free on the new drive.",
-                        format_bytes(planned.bytes),
-                        format_bytes(free)
+                    Some(free) => tf(
+                        "oneclient.settings.launcher.move.size_with_free",
+                        &[&format_bytes(planned.bytes), &format_bytes(free)],
                     ),
-                    None => format!("{} to copy.", format_bytes(planned.bytes)),
+                    None => tf(
+                        "oneclient.settings.launcher.move.size",
+                        &[&format_bytes(planned.bytes)],
+                    ),
                 })
                 .font_size(12.)
                 .color(colors::fg_secondary()),
@@ -408,11 +443,7 @@ fn confirm_move(
     card = card
         .child(
             label()
-                .text(
-                    "Your settings and sign-in stay where they are. The old copy is kept until \
-                     you remove it, and OneClient has to restart before it uses the new folder. \
-                     The launcher shows the move on its own screen until it is done.",
-                )
+                .text(t("oneclient.settings.launcher.move.explanation"))
                 .font_size(12.)
                 .max_lines(4)
                 .color(colors::fg_secondary()),
@@ -427,7 +458,7 @@ fn confirm_move(
                     Button::new()
                         .secondary()
                         .on_press(move |_| pending.set(None))
-                        .text("Cancel"),
+                        .text(t("oneclient.common.cancel")),
                 )
                 .child(
                     Button::new()
@@ -437,7 +468,7 @@ fn confirm_move(
                             pending.set(None);
                             let _ = RouterContext::get().replace(Route::Relocating {});
                         })
-                        .text("Move"),
+                        .text(t("oneclient.settings.launcher.move.confirm")),
                 ),
         );
 

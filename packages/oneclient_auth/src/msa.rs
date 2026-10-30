@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::prelude::BASE64_URL_SAFE_NO_PAD;
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use reqwest::Client;
 use serde::Deserialize;
 use serde::de::Error as DeError;
@@ -511,8 +511,6 @@ fn is_revoked_refresh_error(error: &str) -> bool {
 struct MsaToken {
     access_token: String,
     refresh_token: String,
-    expires_in: u64,
-    obtained_at: DateTime<Utc>,
 }
 
 impl MsaToken {
@@ -520,8 +518,6 @@ impl MsaToken {
         Self {
             access_token: raw.access_token,
             refresh_token: raw.refresh_token,
-            expires_in: raw.expires_in,
-            obtained_at: Utc::now(),
         }
     }
 }
@@ -559,8 +555,10 @@ async fn account_from_msa_token(
         username: profile.name,
         access_token: minecraft_token.access_token,
         refresh_token: msa.refresh_token,
+        // The Minecraft token outlives the Microsoft one (24h vs 1h) keying off
+        // it means the refresh token is only rotated when the game token lapses
         #[allow(clippy::cast_possible_wrap)]
-        expires: msa.obtained_at + chrono::TimeDelta::seconds(msa.expires_in as i64),
+        expires: Utc::now() + chrono::TimeDelta::seconds(minecraft_token.expires_in as i64),
         kind: AccountKind::Microsoft,
         signed_out: false,
     })
@@ -642,6 +640,7 @@ async fn xsts_authorize(
 #[derive(Deserialize)]
 struct MinecraftToken {
     access_token: String,
+    expires_in: u64,
 }
 
 #[tracing::instrument(level = "debug", skip_all)]
@@ -730,7 +729,6 @@ struct OAuthErrorResponse {
 struct MsaTokenResponse {
     access_token: String,
     refresh_token: String,
-    expires_in: u64,
 }
 
 struct XblUserToken {

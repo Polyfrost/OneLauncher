@@ -6,7 +6,8 @@ use oneclient_events::Level;
 
 use crate::{
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
-    hooks::{use_dispatch, use_notifications_snapshot},
+    hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
+    i18n::{t, tf},
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
     transfer::TransferStats,
@@ -57,7 +58,7 @@ impl Component for NotificationPanel {
         if visible.is_empty() {
             rows.push(
                 label()
-                    .text("No notifications")
+                    .text(t("oneclient.components.notifications.empty"))
                     .font_size(13.)
                     .color(colors::fg_secondary())
                     .into_element(),
@@ -104,7 +105,7 @@ impl Component for NotificationPanel {
             )))
             .child(
                 label()
-                    .text("Notifications")
+                    .text(t("oneclient.components.notifications.title"))
                     .font_size(18.)
                     .font_weight(FontWeight::MEDIUM)
                     .a11y_role(AccessibilityRole::TitleBar),
@@ -144,6 +145,7 @@ impl Component for NotifEntryRow {
         let entry = self.entry.clone();
         let id = entry.id;
         let dispatch = use_dispatch();
+        let confirm_link = use_link_confirm();
         let enter_dispatch = dispatch.clone();
         let body_dispatch = dispatch.clone();
         let click_dismissable = entry.click_dismissable();
@@ -182,7 +184,7 @@ impl Component for NotifEntryRow {
                             .color(level_color(&entry.level)),
                     ),
             )
-            .child(row_body(&entry, body_dispatch));
+            .child(row_body(&entry, body_dispatch, confirm_link));
 
         rect()
             .vertical()
@@ -223,9 +225,9 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
                 .child(
                     label()
                         .text(if is_expanded {
-                            "Hide tasks".to_string()
+                            t("oneclient.components.notifications.hide_tasks").to_string()
                         } else {
-                            format!("Show {count} tasks")
+                            tf("oneclient.components.notifications.show_tasks", &[&count])
                         })
                         .font_size(11.)
                         .color(colors::fg_secondary()),
@@ -240,7 +242,10 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
         if count > TASK_LIMIT {
             list = list.child(
                 label()
-                    .text(format!("+{} more", count - TASK_LIMIT))
+                    .text(tf(
+                        "oneclient.components.notifications.more",
+                        &[&(count - TASK_LIMIT)],
+                    ))
                     .font_size(10.)
                     .color(colors::fg_secondary()),
             );
@@ -335,7 +340,11 @@ fn phase_badge(phase: &str) -> impl IntoElement {
         .into_element()
 }
 
-fn row_body(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
+fn row_body(
+    entry: &InboxEntry,
+    dispatch: crate::Actions,
+    confirm_link: State<Option<String>>,
+) -> impl IntoElement {
     rect()
         .vertical()
         .width(Size::flex(1.0))
@@ -382,10 +391,14 @@ fn row_body(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
-        .child(row_extra(entry, dispatch))
+        .child(row_extra(entry, dispatch, confirm_link))
 }
 
-fn row_extra(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
+fn row_extra(
+    entry: &InboxEntry,
+    dispatch: crate::Actions,
+    confirm_link: State<Option<String>>,
+) -> impl IntoElement {
     if let Some((current, total)) = entry.progress.filter(|_| entry.is_loading) {
         let frac = (current as f32 / total.max(1) as f32).clamp(0.0, 1.0);
         let bar = progress_track(
@@ -421,7 +434,7 @@ fn row_extra(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
                     .small()
                     .secondary()
                     .width(Size::flex(1.0))
-                    .text("Dismiss")
+                    .text(t("oneclient.common.dismiss"))
                     .on_press(move |_| dismiss_dispatch.dismiss_notification(id)),
             );
 
@@ -438,7 +451,7 @@ fn row_extra(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
                     } else {
                         ButtonVariant::Secondary
                     })
-                    .on_press(move |_| run_action(&action_dispatch, &kind)),
+                    .on_press(move |_| run_action(&action_dispatch, confirm_link, &kind)),
             );
         }
 
@@ -450,9 +463,12 @@ fn row_extra(entry: &InboxEntry, dispatch: crate::Actions) -> impl IntoElement {
 
 fn transfer_footer(stats: TransferStats) -> Element {
     let speed = format!("{}/s", format_size(stats.speed_bps as u64));
-    let eta = stats
-        .eta_secs
-        .map(|secs| format!("{} left", format_durations(secs as i64)));
+    let eta = stats.eta_secs.map(|secs| {
+        tf(
+            "oneclient.components.notifications.time_left",
+            &[&format_durations(secs as i64)],
+        )
+    });
 
     rect()
         .horizontal()
@@ -476,11 +492,16 @@ fn transfer_footer(stats: TransferStats) -> Element {
         .into_element()
 }
 
-fn run_action(dispatch: &crate::Actions, kind: &NotificationActionKind) {
+pub(crate) fn run_action(
+    dispatch: &crate::Actions,
+    mut confirm_link: State<Option<String>>,
+    kind: &NotificationActionKind,
+) {
     match kind {
         NotificationActionKind::OpenClusterUpdate(summaries) => {
             dispatch.open_cluster_update(summaries.clone());
         }
+        NotificationActionKind::OpenUrl(url) => confirm_link.set(Some(url.clone())),
     }
 }
 
@@ -511,7 +532,7 @@ impl Component for Footer {
                     } else {
                         colors::fg_primary()
                     }))
-                    .text("Clear all"),
+                    .text(t("oneclient.components.notifications.clear_all")),
             )
     }
 }

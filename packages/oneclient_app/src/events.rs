@@ -10,6 +10,7 @@ use oneclient_events::{Event, EventReceiver, GameEvent, LaunchStage, ProgressEve
 use tokio::sync::mpsc;
 
 use crate::hooks::PumpSignal;
+use crate::i18n::t;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
 use crate::state::{AppChannel, AppState, LoginProgress, StorageScanProgress};
 
@@ -102,6 +103,9 @@ impl EventPump {
                         launched.extend(&folded.launched);
                         playing = crate::platform::follow_game(&self.station, &launched, playing);
                     }
+                    if folded.crashed {
+                        crate::platform::focus_window();
+                    }
                 }
 
                 signal = self.signals.recv() => {
@@ -132,6 +136,7 @@ impl EventPump {
         let mut stages: Vec<(i64, LaunchStage)> = Vec::new();
         let mut logs: Vec<(i64, String)> = Vec::new();
         let mut failed: Option<(i64, String)> = None;
+        let mut crashed: Vec<oneclient_events::GameCrash> = Vec::new();
         let mut login: Option<Option<LoginProgress>> = None;
         let mut storage_scan: Option<Option<StorageScanProgress>> = None;
         let mut sync_complete = false;
@@ -162,6 +167,7 @@ impl EventPump {
                     folded.saw_stage = true;
                     failed = Some((cluster_id, message));
                 }
+                Event::Game(GameEvent::Crashed(crash)) => crashed.push(*crash),
                 Event::Progress(ProgressEvent::Update {
                     id,
                     ref label,
@@ -190,12 +196,13 @@ impl EventPump {
             }
         }
 
-        if !stages.is_empty() || !logs.is_empty() || failed.is_some() {
+        if !stages.is_empty() || !logs.is_empty() || failed.is_some() || !crashed.is_empty() {
             let mut guard = self.station.write_channel(AppChannel::Game);
             for (cluster_id, stage) in stages {
                 guard.game.stages.insert(cluster_id, stage);
                 if stage == LaunchStage::Checking {
                     guard.game.error = None;
+                    guard.game.clear_crash(cluster_id);
                     guard
                         .game
                         .logs
@@ -209,6 +216,13 @@ impl EventPump {
             if let Some((cluster_id, message)) = failed {
                 guard.game.stages.insert(cluster_id, LaunchStage::Exited);
                 guard.game.error = Some(message);
+            }
+            for crash in crashed {
+                if guard.game.is_active(crash.cluster_id) {
+                    continue;
+                }
+                guard.game.push_crash(crash);
+                folded.crashed = true;
             }
         }
 
@@ -263,6 +277,7 @@ struct Folded {
     touched_engine: bool,
     saw_game_log: bool,
     saw_stage: bool,
+    crashed: bool,
     launched: Vec<i64>,
     clusters: bool,
     java: bool,
@@ -406,9 +421,10 @@ pub fn report_startup_failure(station: &RadioStation<AppState, AppChannel>, err:
         inbox,
         Event::Notification(oneclient_events::Notification::Message(
             oneclient_events::Message {
-                title: "Launcher failed to start".into(),
+                title: t("oneclient.events.launcher_failed").into(),
                 body: message,
                 level: oneclient_events::Level::Error,
+                link: None,
             },
         )),
     );

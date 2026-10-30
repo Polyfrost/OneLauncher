@@ -12,6 +12,7 @@ use crate::{
         use_accounts, use_control_center_open, use_current_account, use_dispatch,
         use_remove_account, use_settings_snapshot,
     },
+    i18n::{t, tf},
     theme::colors,
     ui::{border_all_color, divider},
 };
@@ -81,16 +82,18 @@ impl Component for ControlPanel {
                     .spacing(2.)
                     .child(NavRow {
                         icon: IconType::BarChartSquare02,
-                        row_label: "Stats",
+                        row_label: t("oneclient.components.control_center.stats"),
                         target: Route::Stats {},
                     })
                     .child(NavRow {
                         icon: IconType::Settings02,
-                        row_label: "Settings",
+                        row_label: t("oneclient.components.control_center.settings"),
                         target: Route::SettingsLauncher {},
                     }),
             )
-            .child(section_label("QUICK SETTINGS"))
+            .child(section_label(t(
+                "oneclient.components.control_center.quick_settings",
+            )))
             .child(QuickSettings)
             .child(divider())
             .child(PanelFooter)
@@ -135,15 +138,17 @@ impl Component for AccountHeader {
             .unwrap_or_else(|| uuid::Uuid::nil().to_string());
         let username = match account.as_ref() {
             Some(account) => account.username.clone(),
-            None if loading => "Loading…".to_string(),
-            None => "Not signed in".to_string(),
+            None if loading => t("oneclient.components.control_center.loading").to_string(),
+            None => t("oneclient.components.control_center.not_signed_in").to_string(),
         };
         let subtitle = match (account.as_ref(), unusable) {
-            (_, true) => "Microsoft Account required",
-            (Some(account), false) if account.is_microsoft() => "Microsoft account",
-            (Some(_), false) => "Offline account",
-            (None, false) if loading => "Checking accounts",
-            (None, false) => "No account selected",
+            (_, true) => t("oneclient.components.control_center.microsoft_required"),
+            (Some(account), false) if account.is_microsoft() => {
+                t("oneclient.components.control_center.microsoft_account")
+            }
+            (Some(_), false) => t("oneclient.components.control_center.offline_account"),
+            (None, false) if loading => t("oneclient.components.control_center.checking_accounts"),
+            (None, false) => t("oneclient.components.control_center.no_account"),
         };
         let subtitle_color = if unusable {
             colors::danger()
@@ -152,7 +157,11 @@ impl Component for AccountHeader {
         };
 
         let signed_out = account.is_none() && !loading;
-        let action_label = if signed_out { "Sign In" } else { "Switch" };
+        let action_label = if signed_out {
+            t("oneclient.components.control_center.sign_in")
+        } else {
+            t("oneclient.components.control_center.switch")
+        };
         let open_switcher = move |_| {
             dispatch.close_control_center();
             if signed_out {
@@ -296,8 +305,12 @@ impl Component for QuickSettings {
             .content(Content::Flex)
             .spacing(8.)
             .child(
-                QuickTile::new(IconType::Discord, "Discord RPC", discord_on)
-                    .on_press(toggle_discord),
+                QuickTile::new(
+                    IconType::Discord,
+                    t("oneclient.components.control_center.discord_rpc"),
+                    discord_on,
+                )
+                .on_press(toggle_discord),
             )
     }
 }
@@ -358,16 +371,18 @@ impl Component for QuickTile {
             colors::component_bg()
         };
 
-        let title_color = if enabled {
-            colors::fg_primary()
-        } else {
+        let title_color = if !enabled {
             colors::fg_primary_disabled()
+        } else if on {
+            colors::on_brand()
+        } else {
+            colors::fg_primary()
         };
 
         let sub_color = if !enabled {
             colors::fg_primary_disabled()
         } else if on {
-            colors::fg_primary().with_a(200)
+            colors::on_brand().with_a(200)
         } else {
             colors::fg_secondary()
         };
@@ -413,7 +428,11 @@ impl Component for QuickTile {
                     )
                     .child(
                         label()
-                            .text(if on { "On" } else { "Off" })
+                            .text(if on {
+                                t("oneclient.common.on")
+                            } else {
+                                t("oneclient.common.off")
+                            })
                             .font_size(11.)
                             .color(sub_color),
                     ),
@@ -463,7 +482,7 @@ impl Component for PanelFooter {
                     .child(
                         footer_action(
                             IconType::Folder,
-                            "Open launcher folder",
+                            t("oneclient.components.control_center.open_folder"),
                             colors::fg_primary(),
                         )
                         .on_press(move |_| {
@@ -478,7 +497,7 @@ impl Component for PanelFooter {
                         el.child(
                             footer_action(
                                 IconType::LogOut01,
-                                "Sign out",
+                                t("oneclient.components.control_center.sign_out"),
                                 colors::fg_primary(),
                             )
                             .on_press(move |_| confirming.set(true)),
@@ -520,7 +539,9 @@ impl Component for PanelFooter {
                                                 )
                                                 .child(
                                                     label()
-                                                        .text("Sign out?")
+                                                        .text(t(
+                                                            "oneclient.components.control_center.sign_out_confirm.title",
+                                                        ))
                                                         .font_size(16.)
                                                         .font_weight(FontWeight::SEMI_BOLD)
                                                         .color(colors::fg_primary()),
@@ -528,8 +549,9 @@ impl Component for PanelFooter {
                                         )
                                         .child(
                                             label()
-                                                .text(format!(
-                                                    "{username} will be removed from OneClient. You will need to sign in again to use this account."
+                                                .text(tf(
+                                                    "oneclient.components.control_center.sign_out_confirm.body",
+                                                    &[&username],
                                                 ))
                                                 .font_size(12.)
                                                 .max_lines(4)
@@ -545,7 +567,7 @@ impl Component for PanelFooter {
                                                 .child(
                                                     Button::new()
                                                         .secondary()
-                                                        .text("Cancel")
+                                                        .text(t("oneclient.common.cancel"))
                                                         .on_press(move |_| {
                                                             confirming.set(false)
                                                         }),
@@ -553,7 +575,9 @@ impl Component for PanelFooter {
                                                 .child(
                                                     Button::new()
                                                         .danger()
-                                                        .text("Sign out")
+                                                        .text(t(
+                                                            "oneclient.components.control_center.sign_out",
+                                                        ))
                                                         .on_press(confirm_sign_out),
                                                 ),
                                         ),

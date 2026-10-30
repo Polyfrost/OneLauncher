@@ -1,14 +1,13 @@
 use freya::prelude::*;
 use oneclient_events::Answer;
 
+use crate::i18n::t;
 use crate::updater::UPDATE_CHOICE_INSTALL;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
 #[derive(PartialEq)]
 pub struct UpdatePromptOverlay;
@@ -30,11 +29,11 @@ impl Component for UpdatePromptOverlay {
         let dismiss_label = prompt
             .dismiss
             .clone()
-            .unwrap_or_else(|| "Not now".to_string());
+            .unwrap_or_else(|| t("oneclient.components.update_prompt.not_now").to_string());
         let install_label = prompt
             .choice(UPDATE_CHOICE_INSTALL)
             .map(|choice| choice.label.clone())
-            .unwrap_or_else(|| "Download".to_string());
+            .unwrap_or_else(|| t("oneclient.common.download").to_string());
 
         let close = dispatch.clone();
         let cancel = dispatch.clone();
@@ -55,7 +54,7 @@ impl Component for UpdatePromptOverlay {
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
                             .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 rect()

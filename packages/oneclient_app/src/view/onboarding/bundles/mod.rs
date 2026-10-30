@@ -10,6 +10,7 @@ use crate::hooks::{
     ClusterBundles, onboarding_bundles_items, package_meta_batch, query_error, query_is_loading,
     use_onboarding_bundles, use_onboarding_selection, use_package_meta_batch,
 };
+use crate::i18n::{t, tf};
 
 type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
 use crate::routes::Route;
@@ -32,19 +33,49 @@ const ANSWER_H: f32 = 48.;
 
 const FPS_WARNING_BUNDLE: &str = "SkyBlock";
 
-const FPS_WARNING_RUNS: &[(&str, bool, bool)] = &[
-    ("YOUR ", false, false),
-    ("FPS", true, false),
-    (" WILL BE ", false, false),
-    ("SIGNIFICANTLY WORSE", true, false),
-    (" WITH SKYBLOCK MODS. ", false, false),
-    ("DO NOT INSTALL", true, true),
-    (" UNLESS YOU PLAY HYPIXEL SKYBLOCK.", false, true),
-];
+fn fps_warning_runs() -> [(&'static str, bool, bool); 7] {
+    [
+        (
+            t("oneclient.onboarding.bundles.fps_warning.your"),
+            false,
+            false,
+        ),
+        (
+            t("oneclient.onboarding.bundles.fps_warning.fps"),
+            true,
+            false,
+        ),
+        (
+            t("oneclient.onboarding.bundles.fps_warning.will_be"),
+            false,
+            false,
+        ),
+        (
+            t("oneclient.onboarding.bundles.fps_warning.significantly_worse"),
+            true,
+            false,
+        ),
+        (
+            t("oneclient.onboarding.bundles.fps_warning.with_skyblock_mods"),
+            false,
+            false,
+        ),
+        (
+            t("oneclient.onboarding.bundles.fps_warning.do_not_install"),
+            true,
+            true,
+        ),
+        (
+            t("oneclient.onboarding.bundles.fps_warning.unless_hypixel"),
+            false,
+            true,
+        ),
+    ]
+}
 
 fn fps_warning_banner() -> impl IntoElement {
     let mut text = paragraph();
-    for (run, bold, underlined) in FPS_WARNING_RUNS {
+    for (run, bold, underlined) in &fps_warning_runs() {
         let mut span = Span::new(*run)
             .font_size(12.)
             .font_weight(if *bold {
@@ -236,9 +267,11 @@ impl Component for OnboardingBundles {
         let clusters = onboarding_bundles_items(&bundles_query).unwrap_or_default();
         let bundles_loaded = onboarding_bundles_items(&bundles_query).is_some();
         let catalog_msg = match query_error(&bundles_query) {
-            Some(err) => format!("Couldn't load bundles: {err}"),
-            None if query_is_loading(&bundles_query) => "Loading bundles...".to_string(),
-            None => "No optional bundles available".to_string(),
+            Some(err) => tf("oneclient.onboarding.bundles.load_failed", &[&err]),
+            None if query_is_loading(&bundles_query) => {
+                t("oneclient.onboarding.bundles.loading").to_string()
+            }
+            None => t("oneclient.onboarding.bundles.empty").to_string(),
         };
 
         let selected_set = selected.read().clone();
@@ -286,8 +319,8 @@ impl Component for OnboardingBundles {
                     .padding(Gaps::new(40., 80., 12., 80.))
                     .spacing(16.)
                     .child(step_heading(
-                        "Mods",
-                        "Everything you need is already included. Pick anything extra you want.",
+                        t("oneclient.onboarding.bundles.title"),
+                        t("oneclient.onboarding.bundles.subtitle"),
                     ))
                     .child(
                         rect()
@@ -334,7 +367,7 @@ fn opt_in_card(
 
     let mut card = rect().vertical().width(Size::fill()).spacing(10.).child(
         label()
-            .text(format!("Do you want to install {name} mods?"))
+            .text(tf("oneclient.onboarding.bundles.opt_in.question", &[&name]))
             .font_size(15.)
             .font_weight(FontWeight::SEMI_BOLD)
             .color(colors::fg_primary()),
@@ -351,8 +384,11 @@ fn opt_in_card(
                     .width(Size::flex(1.0))
                     .height(Size::px(ANSWER_H))
                     .child(choice_row_sized(
-                        "Yes",
-                        &format!("{} mods", yes_bundle.mod_count()),
+                        t("oneclient.common.yes"),
+                        &tf(
+                            "oneclient.onboarding.bundles.opt_in.mod_count",
+                            &[&yes_bundle.mod_count()],
+                        ),
                         wanted,
                         Size::fill(),
                         move |()| {
@@ -368,7 +404,7 @@ fn opt_in_card(
                     .width(Size::flex(1.0))
                     .height(Size::px(ANSWER_H))
                     .child(choice_row_sized(
-                        "No",
+                        t("oneclient.common.no"),
                         "",
                         !wanted,
                         Size::fill(),
@@ -411,7 +447,7 @@ fn opt_in_card(
                 .padding(Gaps::new(4., 0., 0., 0.))
                 .child(
                     label()
-                        .text(format!("What versions do you play {name} on?"))
+                        .text(tf("oneclient.onboarding.bundles.opt_in.versions", &[&name]))
                         .font_size(13.)
                         .color(colors::fg_secondary()),
                 )
@@ -470,7 +506,7 @@ fn extras_section(
         .spacing(10.)
         .child(
             label()
-                .text("Try out these additional mods:")
+                .text(t("oneclient.onboarding.bundles.extras"))
                 .font_size(15.)
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),

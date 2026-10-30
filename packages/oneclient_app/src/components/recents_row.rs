@@ -7,6 +7,7 @@ use oneclient_core::clusters::Cluster;
 
 use freya::elements::image::{AspectRatio, ImageCover, ImageHandle, image};
 
+use super::cluster_menu::cluster_menu_entries;
 use super::dynamic_art::use_art_bytes;
 use super::local_image::decode;
 use crate::components::{ART_PREVIEW_EDGE, ContextMenu, DynamicArt, Icon, IconType, LocalImage};
@@ -31,7 +32,6 @@ const MODPACK_ICON_PX: f32 = 72.0;
 const MODPACK_ICON_EDGE: u32 = 192;
 const MODPACK_BLUR: f32 = 4.0;
 const MODPACK_TINT: Color = Color::from_argb(40, 21, 28, 34);
-const MODPACK_BACKDROP: Color = Color::from_rgb(21, 28, 34);
 const MODPACK_TITLE_INSET: f32 = 8.0;
 const MODPACK_TITLE_LEFT: f32 = 10.5;
 const MARQUEE_DELAY: Duration = Duration::from_millis(200);
@@ -111,46 +111,6 @@ fn stagger_eased(progress: f32, index: usize, items: usize) -> f32 {
     let start = index.min(items.saturating_sub(1)) as f32 * STAGGER_MS as f32;
     let local = ((elapsed - start) / CARD_MS as f32).clamp(0., 1.);
     1.0 - (1.0 - local).powi(3)
-}
-
-fn cluster_menu_entries(cluster_id: i64) -> [(IconType, &'static str, Route); 7] {
-    [
-        (
-            IconType::InfoCircle,
-            "Overview",
-            Route::ClusterOverview { cluster_id },
-        ),
-        (
-            IconType::Terminal,
-            "Logs",
-            Route::ClusterLogs { cluster_id },
-        ),
-        (
-            IconType::Eye,
-            "Screenshots",
-            Route::ClusterScreenshots { cluster_id },
-        ),
-        (
-            IconType::CodeSnippet02,
-            "Mods",
-            Route::ClusterMods { cluster_id },
-        ),
-        (
-            IconType::PaintPour,
-            "Shaders",
-            Route::ClusterShaders { cluster_id },
-        ),
-        (
-            IconType::Colors,
-            "Textures",
-            Route::ClusterTextures { cluster_id },
-        ),
-        (
-            IconType::Settings01,
-            "Settings",
-            Route::ClusterSettings { cluster_id },
-        ),
-    ]
 }
 
 struct ClusterCard {
@@ -375,7 +335,7 @@ fn title_label(text: String) -> Label {
         .font_size(32.)
         .font_weight(FontWeight::SEMI_BOLD)
         .max_lines(1)
-        .color(colors::fg_primary())
+        .color(colors::on_media())
 }
 
 #[derive(PartialEq)]
@@ -491,7 +451,7 @@ impl Component for BlurredArt {
             .height(Size::fill())
             .position(Position::new_absolute())
             .overflow(Overflow::Clip)
-            .background(MODPACK_BACKDROP);
+            .background(colors::page_elevated());
 
         let Some(holder) = holder else {
             return backdrop.into_element();
@@ -601,7 +561,11 @@ impl Component for OtherVersionsTile {
                     .width(Size::fill())
                     .height(Size::fill())
                     .center()
-                    .child(Icon::new(IconType::DotsGrid).size(50.)),
+                    .child(
+                        Icon::new(IconType::DotsGrid)
+                            .size(50.)
+                            .color(colors::on_art()),
+                    ),
             )
     }
 }

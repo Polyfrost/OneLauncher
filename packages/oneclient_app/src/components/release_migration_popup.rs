@@ -18,6 +18,7 @@ use crate::hooks::{
     loaded_image, package_meta_batch, use_cached_image, use_dispatch, use_game_snapshot,
     use_launcher, use_notifications_snapshot, use_package_meta_batch, use_release_migration,
 };
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::state::{ReleaseMigrationPrompt, ReleasePlanState};
 use crate::theme::colors;
@@ -27,8 +28,6 @@ use crate::utils::format_size;
 const DIALOG_W: f32 = 1020.;
 const DIALOG_H: f32 = 616.;
 const ART_W: f32 = 368.;
-const PANEL_BG: Color = Color::from_rgb(22, 28, 35);
-const FOOTER_BG: Color = Color::from_rgb(19, 25, 31);
 const ROW_ICON: f32 = 32.;
 const CHECK_SIZE: f32 = 24.;
 const SKIPPED_ICON: f32 = 20.;
@@ -50,9 +49,9 @@ impl PackageTab {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Mods => "Mods",
-            Self::ResourcePacks => "Resource packs",
-            Self::Shaders => "Shaders",
+            Self::Mods => t("oneclient.components.release_migration.tab.mods"),
+            Self::ResourcePacks => t("oneclient.components.release_migration.tab.resource_packs"),
+            Self::Shaders => t("oneclient.components.release_migration.tab.shaders"),
         }
     }
 
@@ -226,7 +225,7 @@ fn dialog(
         .max_height(Size::window_percent(92.))
         .overflow(Overflow::Clip)
         .corner_radius(CornerRadius::new_all(18.))
-        .background(PANEL_BG)
+        .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
             0.,
@@ -269,7 +268,7 @@ fn art_panel(
         });
     }
     if let Some(java) = prompt.java_major {
-        runtime.push(format!("Java {java}"));
+        runtime.push(tf("oneclient.components.release_migration.java", &[&java]));
     }
 
     rect()
@@ -317,7 +316,7 @@ fn art_panel(
                                 .text(runtime.join(" · "))
                                 .font_size(13.)
                                 .margin(Gaps::new(12., 0., 0., 0.))
-                                .color(colors::fg_primary())
+                                .color(colors::on_art())
                         }))
                         .child(summary_card(plan, excluded)),
                 ),
@@ -364,10 +363,13 @@ fn summary_card(
                             !excluded.contains(&selection_key(package, plan.source_cluster_id))
                         })
                         .count();
-                format!("{selected} of {total}")
+                tf(
+                    "oneclient.components.release_migration.selected_of",
+                    &[&selected, &total],
+                )
             },
         );
-        rows = rows.child(summary_row(tab.label(), value, colors::fg_primary()));
+        rows = rows.child(summary_row(tab.label(), value, colors::on_art()));
     }
 
     let wont = plan.map_or_else(
@@ -385,9 +387,13 @@ fn summary_card(
                 .width(Size::fill())
                 .height(Size::px(1.))
                 .margin(Gaps::new(12., 0., 12., 0.))
-                .background(colors::component_border()),
+                .background(colors::on_media().with_a(26)),
         )
-        .child(summary_row("Won't migrate", wont, colors::fg_secondary()))
+        .child(summary_row(
+            t("oneclient.components.release_migration.wont_migrate"),
+            wont,
+            colors::on_art_secondary(),
+        ))
 }
 
 fn summary_row(name: &str, value: String, name_color: Color) -> impl IntoElement {
@@ -434,8 +440,9 @@ fn content_panel(
     } else {
         prompt.target.mc_version.as_str()
     };
-    let subtitle = format!(
-        "Files are copied into {target_title}. Your {source_title} cluster is left exactly as it is."
+    let subtitle = tf(
+        "oneclient.components.release_migration.subtitle",
+        &[&target_title, &source_title],
     );
 
     rect()
@@ -458,7 +465,7 @@ fn content_panel(
                         .cross_align(Alignment::Center)
                         .child(
                             label()
-                                .text("Migrate your packages")
+                                .text(t("oneclient.components.release_migration.title"))
                                 .font_size(21.)
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .width(Size::flex(1.))
@@ -519,7 +526,7 @@ fn source_picker(prompt: &ReleaseMigrationPrompt, dispatch: crate::Actions) -> i
         .margin(Gaps::new(18., 0., 0., 0.))
         .child(
             label()
-                .text("Migrate from")
+                .text(t("oneclient.components.release_migration.migrate_from"))
                 .font_size(13.)
                 .color(colors::fg_secondary()),
         )
@@ -593,9 +600,9 @@ fn tab_row(
                 .child(
                     label()
                         .text(if any_selected {
-                            "Clear all"
+                            t("oneclient.components.release_migration.clear_all")
                         } else {
-                            "Select all"
+                            t("oneclient.components.release_migration.select_all")
                         })
                         .font_size(13.)
                         .font_weight(FontWeight::SEMI_BOLD)
@@ -631,7 +638,7 @@ fn tab_pill(text: String, active: bool, mut on_press: impl FnMut() + 'static) ->
                 .font_size(14.)
                 .font_weight(FontWeight::MEDIUM)
                 .color(if active {
-                    Color::WHITE
+                    colors::on_brand()
                 } else {
                     colors::fg_primary()
                 }),
@@ -651,12 +658,11 @@ fn package_list(
 
     let message = match (prompt.plan(), plan) {
         (Some(ReleasePlanState::Loading) | None, _) => {
-            Some("Checking which packages have a compatible version…".to_string())
+            Some(t("oneclient.components.release_migration.checking").to_string())
         }
-        (Some(ReleasePlanState::Failed), _) => Some(
-            "Couldn't reach Modrinth or CurseForge. Check your connection and try again."
-                .to_string(),
-        ),
+        (Some(ReleasePlanState::Failed), _) => {
+            Some(t("oneclient.components.release_migration.failed").to_string())
+        }
         _ => None,
     };
     if let Some(message) = message {
@@ -687,9 +693,9 @@ fn package_list(
     };
 
     if rows.is_empty() && skipped.is_empty() && dependencies.is_empty() {
-        return list_message(format!(
-            "Nothing from {source_title} has a {} version yet.",
-            prompt.target.mc_version
+        return list_message(tf(
+            "oneclient.components.release_migration.nothing_compatible",
+            &[&source_title, &prompt.target.mc_version],
         ))
         .into_element();
     }
@@ -731,8 +737,11 @@ fn package_list(
         let open = *deps_open.read();
         scroll = scroll.child(section_header(
             IconType::Link03,
-            format!("Dependencies · {}", dependencies.len()),
-            Some("Installed with the packages that need them".to_string()),
+            tf(
+                "oneclient.components.release_migration.dependencies.title",
+                &[&dependencies.len()],
+            ),
+            Some(t("oneclient.components.release_migration.dependencies.subtitle").to_string()),
             open,
             deps_open,
             has_content,
@@ -774,7 +783,10 @@ fn package_list(
                         provider: dependency.provider,
                         version_name: dependency.version_name(),
                         size: dependency.size(),
-                        required_by: format!("Required by {}", required_by.join(", ")),
+                        required_by: tf(
+                            "oneclient.components.release_migration.required_by",
+                            &[&required_by.join(", ")],
+                        ),
                         needed: dependency.is_needed_by(&selected_hashes),
                         key: DiffKey::None,
                     }
@@ -795,7 +807,10 @@ fn package_list(
         let open = *wont_open.read();
         scroll = scroll.child(section_header(
             IconType::AlertCircle,
-            format!("Won't migrate · {}", skipped.len()),
+            tf(
+                "oneclient.components.release_migration.wont_migrate_count",
+                &[&skipped.len()],
+            ),
             most_common_reason(&skipped).map(|reason| reason_text(reason, mc_version)),
             open,
             wont_open,
@@ -806,8 +821,9 @@ fn package_list(
             if !cross_loader {
                 scroll = scroll.child(
                     label()
-                        .text(format!(
-                            "Added automatically when a {mc_version} build appears (up to {WAITLIST_DAYS} days)"
+                        .text(tf(
+                            "oneclient.components.release_migration.waitlist",
+                            &[mc_version, &WAITLIST_DAYS],
                         ))
                         .font_size(12.)
                         .max_lines(1)
@@ -873,9 +889,16 @@ fn build_label(prompt: &ReleaseMigrationPrompt) -> String {
 
 fn reason_text(reason: SkipReason, mc_version: &str) -> String {
     match reason {
-        SkipReason::NoCompatibleVersion => format!("No {mc_version} build yet"),
-        SkipReason::ProviderUnavailable => "Couldn't check its provider".to_string(),
-        SkipReason::MissingDependency => "Depends on a package that can't migrate".to_string(),
+        SkipReason::NoCompatibleVersion => tf(
+            "oneclient.components.release_migration.reason.no_build",
+            &[&mc_version],
+        ),
+        SkipReason::ProviderUnavailable => {
+            t("oneclient.components.release_migration.reason.provider_unavailable").to_string()
+        }
+        SkipReason::MissingDependency => {
+            t("oneclient.components.release_migration.reason.missing_dependency").to_string()
+        }
     }
 }
 
@@ -1040,7 +1063,7 @@ fn provider_label(provider: ProviderId) -> &'static str {
     match provider {
         ProviderId::Modrinth => "Modrinth",
         ProviderId::CurseForge => "CurseForge",
-        ProviderId::Local => "Local",
+        ProviderId::Local => t("oneclient.components.release_migration.provider.local"),
     }
 }
 
@@ -1158,9 +1181,9 @@ fn footer(
     let bytes: u64 = chosen.iter().map(|package| package.size).sum::<u64>() + dependency_bytes;
     let count = chosen.len();
 
-    let summary = format!(
-        "{count} of {total} packages selected · {} to copy",
-        format_size(bytes)
+    let summary = tf(
+        "oneclient.components.release_migration.summary",
+        &[&count, &total, &format_size(bytes)],
     );
 
     let enabled = count > 0 && !target_running;
@@ -1170,9 +1193,12 @@ fn footer(
         .on_press(move |_| {
             dispatch.migrate_release_packages(chosen.clone(), *copy_configs.peek());
         })
-        .text("Migrate");
+        .text(t("oneclient.components.release_migration.migrate"));
     if target_running {
-        migrate = migrate.tooltip(format!("Close {} before migrating", prompt.target.name));
+        migrate = migrate.tooltip(tf(
+            "oneclient.components.release_migration.close_target",
+            &[&prompt.target.name],
+        ));
     }
 
     rect()
@@ -1182,7 +1208,7 @@ fn footer(
         .cross_align(Alignment::Center)
         .spacing(12.)
         .padding(Gaps::new(16., 24., 16., 24.))
-        .background(FOOTER_BG)
+        .background(colors::page())
         .child(
             label()
                 .text(summary)
@@ -1191,16 +1217,17 @@ fn footer(
                 .max_lines(2)
                 .color(colors::fg_secondary()),
         )
-        .maybe_child(
-            prompt
-                .target_dedicated
-                .then(|| checkbox_labeled(copy_configs, "Copy configs")),
-        )
+        .maybe_child(prompt.target_dedicated.then(|| {
+            checkbox_labeled(
+                copy_configs,
+                t("oneclient.components.release_migration.copy_configs"),
+            )
+        }))
         .child(
             Button::new()
                 .ghost()
                 .on_press(move |_| dismiss.dismiss_release_migration())
-                .text("Not now"),
+                .text(t("oneclient.components.release_migration.not_now")),
         )
         .child(migrate)
 }
@@ -1305,7 +1332,10 @@ impl Component for MigrationRow {
                             .text(if self.package.enabled {
                                 format!("{provider} · {}", self.package.version_name)
                             } else {
-                                format!("{provider} · {} · Disabled", self.package.version_name)
+                                tf(
+                                    "oneclient.components.release_migration.disabled",
+                                    &[&provider, &self.package.version_name],
+                                )
                             })
                             .font_size(12.)
                             .max_lines(1)
@@ -1359,5 +1389,9 @@ fn check_box(checked: bool) -> impl IntoElement {
             )
             .alignment(BorderAlignment::Inner),
         )
-        .maybe_child(checked.then(|| Icon::new(IconType::Check).size(14.).color(Color::WHITE)))
+        .maybe_child(checked.then(|| {
+            Icon::new(IconType::Check)
+                .size(14.)
+                .color(colors::on_brand())
+        }))
 }

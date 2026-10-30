@@ -13,8 +13,6 @@ use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::updater::UPDATE_CHOICE_INSTALL;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-
 fn claimed_elsewhere(prompt: &PendingPromptView) -> bool {
     prompt.has_choice(JAVA_CHOICE_DOWNLOAD)
         || prompt.has_choice(UPDATE_CHOICE_INSTALL)
@@ -111,7 +109,7 @@ impl Component for GenericPromptOverlay {
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
                             .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 label()

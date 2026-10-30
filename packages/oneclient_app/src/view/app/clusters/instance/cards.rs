@@ -134,21 +134,21 @@ pub fn marker(selected: bool, checkbox: bool) -> Element {
             if selected {
                 colors::brand()
             } else {
-                colors::component_border()
+                colors::control_border()
             },
         ))
         .maybe_child(selected.then(|| {
             if checkbox {
                 Icon::new(IconType::Check)
                     .size(MARKER_MARK)
-                    .color(Color::WHITE)
+                    .color(colors::on_brand())
                     .into_element()
             } else {
                 rect()
                     .width(Size::px(MARKER_DOT))
                     .height(Size::px(MARKER_DOT))
                     .corner_radius(CornerRadius::new_all(999.))
-                    .background(Color::WHITE)
+                    .background(colors::on_brand())
                     .into_element()
             }
         }))

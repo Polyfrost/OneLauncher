@@ -9,6 +9,7 @@ use crate::components::{
     Button, Icon, IconType, Markdown, MarkdownStyle, Segment, SegmentedControl,
 };
 use crate::hooks::{ClusterAction, VERSIONS_PAGE_SIZE};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::format_size;
@@ -20,7 +21,7 @@ pub(super) fn loading_body() -> impl IntoElement {
         .padding(Gaps::new_all(32.))
         .child(
             label()
-                .text("Loading package...")
+                .text(t("oneclient.browser.package.loading"))
                 .font_size(14.)
                 .color(colors::fg_secondary()),
         )
@@ -30,10 +31,11 @@ pub(super) fn loading_body() -> impl IntoElement {
 pub(super) fn tabs(active_tab: State<usize>, has_gallery: bool) -> impl IntoElement {
     let mut control = SegmentedControl::new(active_tab)
         .height(36.)
-        .segment(Segment::new(0usize).label("About"))
-        .segment(Segment::new(1usize).label("Versions"));
+        .segment(Segment::new(0usize).label(t("oneclient.browser.package.tab.about")))
+        .segment(Segment::new(1usize).label(t("oneclient.browser.package.tab.versions")));
     if has_gallery {
-        control = control.segment(Segment::new(2usize).label("Gallery"));
+        control =
+            control.segment(Segment::new(2usize).label(t("oneclient.browser.package.tab.gallery")));
     }
     control
 }
@@ -42,8 +44,9 @@ pub(super) fn about_panel(project: &ProjectDetail) -> impl IntoElement {
     let body = match &project.body {
         PackageBody::Raw(md) => md.clone(),
         PackageBody::Url(url) => normalize_markdown(&format!(
-            "{}\n\n[View online]({})",
+            "{}\n\n[{}]({})",
             project.summary,
+            t("oneclient.browser.package.view_online"),
             escape_link_destination(url)
         )),
     };
@@ -80,7 +83,7 @@ impl Component for MarkdownPanel {
             .width(Size::fill())
             .padding(Gaps::new_all(20.))
             .corner_radius(CornerRadius::new_all(12.))
-            .background(PANEL_BG)
+            .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .child(
                 Markdown::new(self.body.clone())
@@ -124,7 +127,7 @@ pub(super) fn versions_panel(
             .padding(Gaps::new_all(32.))
             .child(
                 label()
-                    .text("No matching versions.")
+                    .text(t("oneclient.browser.package.versions.none"))
                     .font_size(13.)
                     .color(colors::fg_secondary()),
             )
@@ -209,7 +212,10 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
         ))
         .child(
             label()
-                .text(format!("Page {} / {}", current + 1, total_pages))
+                .text(tf(
+                    "oneclient.browser.package.versions.page",
+                    &[&(current + 1), &total_pages],
+                ))
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
@@ -235,10 +241,14 @@ fn version_row(
     enable: Option<ClusterAction>,
 ) -> impl IntoElement {
     let version_id = v.version_id.clone();
+    let version_label = v.version_number.clone();
     let mut chips: Vec<String> = v.loaders.iter().map(|l| l.real_name()).collect();
     chips.extend(v.game_versions.iter().cloned());
     let stats = {
-        let mut parts = vec![format!("{} downloads", abbreviate_number(v.downloads))];
+        let mut parts = vec![tf(
+            "oneclient.browser.package.versions.downloads",
+            &[&abbreviate_number(v.downloads)],
+        )];
         if v.file_size > 0 {
             parts.push(format_size(v.file_size));
         }
@@ -262,7 +272,7 @@ fn version_row(
         .content(Content::Flex)
         .padding(Gaps::new_all(12.))
         .corner_radius(CornerRadius::new_all(10.))
-        .background(PANEL_BG)
+        .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(release_badge(v.release_type))
         .child(
@@ -282,7 +292,10 @@ fn version_row(
                 .maybe(!requires.is_empty(), |el| {
                     el.child(
                         label()
-                            .text(format!("Requires {}", requires.join(", ")))
+                            .text(tf(
+                                "oneclient.browser.package.versions.requires",
+                                &[&requires.join(", ")],
+                            ))
                             .font_size(11.)
                             .max_lines(2)
                             .color(colors::fg_secondary()),
@@ -314,29 +327,49 @@ fn version_row(
             }
             .into_element(),
             None => version_button(
-                installed, v.name, project_id, version_id, installer, on_remove, installing,
+                installed,
+                v.name,
+                project_id,
+                version_id,
+                version_label,
+                installer,
+                on_remove,
+                installing,
             )
             .into_element(),
         })
 }
 
 /// A bundle pin with nothing linked leaves nothing to press no artifact to remove and installing by hand would duplicate it
+#[allow(clippy::too_many_arguments)]
 fn version_button(
     installed: Option<InstalledVersion>,
     version_name: String,
     project_id: String,
     version_id: String,
+    version_label: String,
     installer: Installer,
     on_remove: EventHandler<(String, String)>,
     busy: bool,
 ) -> impl IntoElement {
     let Some(installed) = installed else {
+        let text = if installer.add_to_cluster {
+            t("oneclient.common.add")
+        } else {
+            t("oneclient.common.install")
+        };
         return Button::new()
             .secondary()
             .small()
             .enabled(!busy)
-            .on_press(move |_| installer.install(project_id.clone(), version_id.clone()))
-            .text("Install");
+            .on_press(move |_| {
+                installer.install(
+                    project_id.clone(),
+                    version_id.clone(),
+                    version_label.clone(),
+                )
+            })
+            .text(text);
     };
 
     let Some(hash) = installed.hash else {
@@ -344,7 +377,7 @@ fn version_button(
             .secondary()
             .small()
             .enabled(false)
-            .text("Install");
+            .text(t("oneclient.common.install"));
     };
 
     Button::new()
@@ -352,7 +385,7 @@ fn version_button(
         .small()
         .enabled(!busy)
         .on_press(move |_| on_remove.call((version_name.clone(), hash.clone())))
-        .text("Remove")
+        .text(t("oneclient.common.remove"))
 }
 
 fn release_badge(release_type: ReleaseType) -> impl IntoElement {

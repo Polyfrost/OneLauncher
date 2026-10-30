@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, TooltipPlacement};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -137,13 +138,13 @@ impl Component for Pagination {
                 0,
                 current > 0,
                 IconType::ChevronsLeft,
-                "First page",
+                t("oneclient.components.pagination.first"),
             ))
             .child(icon_btn(
                 current.saturating_sub(1),
                 current > 0,
                 IconType::ArrowLeft,
-                "Previous page",
+                t("oneclient.components.pagination.previous"),
             ));
 
         if start > 0 {
@@ -168,13 +169,13 @@ impl Component for Pagination {
             current + 1,
             current < last,
             IconType::ArrowRight,
-            "Next page",
+            t("oneclient.components.pagination.next"),
         ))
         .child(icon_btn(
             last,
             current < last,
             IconType::ChevronsRight,
-            "Last page",
+            t("oneclient.components.pagination.last"),
         ))
     }
 }

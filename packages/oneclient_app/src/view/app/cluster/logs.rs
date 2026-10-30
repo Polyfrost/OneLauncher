@@ -16,6 +16,7 @@ use crate::hooks::{
     invalidate_logs_queries, try_cluster_logs, try_log_content, use_cluster_logs, use_log_action,
     use_log_content, use_overlay_claim_when, use_upload_log,
 };
+use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui;
@@ -23,7 +24,6 @@ use crate::utils::format_size;
 
 use super::cluster_not_found;
 use crate::hooks::use_cluster;
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const PICKER_ROW_H: f32 = 44.;
 const PICKER_ROW_SPACING: f32 = 2.;
 const PICKER_LIST_MAX_H: f32 = 300.;
@@ -50,14 +50,17 @@ impl LevelFilter {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::All => "All",
-            Self::Error => "Errors",
-            Self::Warn => "Warnings",
-            Self::Info => "Info",
-            Self::Debug => "Debug",
+            Self::All => t("oneclient.cluster.package_manager.tab.all"),
+            Self::Error => t("oneclient.cluster.logs.level.error"),
+            Self::Warn => t("oneclient.cluster.logs.level.warn"),
+            Self::Info => t("oneclient.cluster.logs.level.info"),
+            Self::Debug => t("oneclient.cluster.logs.level.debug"),
         }
     }
 }
+
+#[derive(Clone, Copy)]
+pub struct OpenGameOutput(pub State<bool>);
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum Confirm {
@@ -79,32 +82,32 @@ impl Category {
 
     fn label(self) -> &'static str {
         match self {
-            Self::Logs => "Logs",
-            Self::CrashReports => "Crash reports",
+            Self::Logs => t("oneclient.cluster.logs.category.logs"),
+            Self::CrashReports => t("oneclient.cluster.logs.category.crash_reports"),
         }
     }
 
     fn empty_label(self) -> &'static str {
         match self {
-            Self::Logs => "No logs",
-            Self::CrashReports => "No crash reports",
+            Self::Logs => t("oneclient.cluster.logs.category.logs.empty"),
+            Self::CrashReports => t("oneclient.cluster.logs.category.crash_reports.empty"),
         }
     }
 
     fn empty_note(self) -> &'static str {
         match self {
-            Self::Logs => "No logs recorded yet",
-            Self::CrashReports => "No crash reports, which is the good outcome",
+            Self::Logs => t("oneclient.cluster.logs.category.logs.empty_note"),
+            Self::CrashReports => t("oneclient.cluster.logs.category.crash_reports.empty_note"),
         }
     }
 }
 
 fn kind_badge(kind: LogKind) -> &'static str {
     match kind {
-        LogKind::Game { .. } => "Game output",
+        LogKind::Game { .. } => t("oneclient.cluster.process_logs.title"),
         LogKind::Minecraft => "Minecraft",
-        LogKind::CrashReport => "Crash report",
-        LogKind::Other => "Other",
+        LogKind::CrashReport => t("oneclient.cluster.logs.kind.crash_report"),
+        LogKind::Other => t("oneclient.cluster.logs.kind.other"),
     }
 }
 
@@ -123,15 +126,35 @@ impl Component for ClusterLogs {
         let search = use_state(String::new);
         let level = use_state(|| LevelFilter::All);
         let confirm = use_state(|| None::<Confirm>);
-        let category = use_state(|| Category::Logs);
+        let mut category = use_state(|| Category::Logs);
         let mut selected = use_state(PathBuf::new);
         let search_id = use_a11y();
+        let open_game_output = use_hook(try_consume_root_context::<OpenGameOutput>);
 
         use_mclogs_feedback(upload);
 
         // Reads `category` too so switching the picker re-picks a file instead of keeping a stale selection
         use_side_effect(move || {
             let files = visible_files(&logs_query, *category.read());
+            let wants_game_output = open_game_output.filter(|wanted| *wanted.0.read());
+
+            if wants_game_output.is_some() && *category.peek() != Category::Logs {
+                category.set(Category::Logs);
+                return;
+            }
+
+            if let Some(OpenGameOutput(mut wanted)) = wants_game_output
+                && try_cluster_logs(&logs_query).is_some()
+            {
+                wanted.set(false);
+                if let Some(file) = files
+                    .iter()
+                    .find(|f| matches!(f.kind, LogKind::Game { .. }))
+                {
+                    selected.set(file.path.clone());
+                    return;
+                }
+            }
 
             if files.is_empty() {
                 if !selected.peek().as_os_str().is_empty() {
@@ -231,6 +254,7 @@ fn top_bar(
     category: State<Category>,
 ) -> impl IntoElement {
     let has_log = !files.is_empty();
+    let selected_path = selected_info.as_ref().map(|i| i.path.clone());
 
     let picker_label = selected_info
         .as_ref()
@@ -239,7 +263,7 @@ fn top_bar(
 
     let size_text = selected_info
         .as_ref()
-        .map(|i| format!("{} on disk", format_size(i.size_bytes)))
+        .map(|i| tf("oneclient.cluster.logs.size", &[&format_size(i.size_bytes)]))
         .unwrap_or_else(|| category.read().empty_note().to_string());
 
     rect()
@@ -262,6 +286,18 @@ fn top_bar(
             .into_element(),
         )
         .child(
+            Button::new()
+                .secondary()
+                .enabled(selected_path.is_some())
+                .on_press(move |_| {
+                    if let Some(path) = &selected_path {
+                        crate::platform::open_path(&path.to_string_lossy());
+                    }
+                })
+                .child(Icon::new(IconType::LinkExternal01).size(15.))
+                .text(t("oneclient.cluster.logs.open")),
+        )
+        .child(
             label()
                 .text(size_text)
                 .font_size(11.)
@@ -279,7 +315,7 @@ fn top_bar(
                     });
                 })
                 .child(Icon::new(IconType::RefreshCw01).size(15.))
-                .text("Refresh"),
+                .text(t("oneclient.common.refresh")),
         )
         .child(
             Button::new()
@@ -287,7 +323,7 @@ fn top_bar(
                 .enabled(has_log)
                 .on_press(move |_| confirm.set(Some(Confirm::Clear)))
                 .child(Icon::new(IconType::Trash01).size(15.))
-                .text("Clear log"),
+                .text(t("oneclient.cluster.logs.clear")),
         )
         .into_element()
 }
@@ -309,14 +345,17 @@ pub fn viewer_header(
     };
 
     let search_input = {
-        let base = TextInput::new(search).a11y_id(search_id).enabled(has_log).leading(
-            Icon::new(IconType::SearchMd)
-                .size(15.)
-                .color(colors::fg_secondary())
-                .into_element(),
-        );
+        let base = TextInput::new(search)
+            .a11y_id(search_id)
+            .enabled(has_log)
+            .leading(
+                Icon::new(IconType::SearchMd)
+                    .size(15.)
+                    .color(colors::fg_secondary())
+                    .into_element(),
+            );
         if has_log {
-            base.placeholder("Search this log...")
+            base.placeholder(t("oneclient.cluster.logs.search"))
         } else {
             base
         }
@@ -501,7 +540,7 @@ impl Component for LogPicker {
                             .child(
                                 TextInput::new(filter)
                                     .auto_focus(true)
-                                    .placeholder("Search logs...")
+                                    .placeholder(t("oneclient.cluster.logs.picker.search"))
                                     .leading(
                                         Icon::new(IconType::SearchMd)
                                             .size(14.)
@@ -514,7 +553,7 @@ impl Component for LogPicker {
                                     .text(if no_files {
                                         category.read().empty_note()
                                     } else {
-                                        "No matches"
+                                        t("oneclient.cluster.logs.picker.no_matches")
                                     })
                                     .font_size(12.)
                                     .width(Size::fill())
@@ -609,15 +648,15 @@ pub fn confirm_overlay(
 ) -> impl IntoElement {
     let (title, body, confirm_label, danger) = match kind {
         Confirm::Clear => (
-            "Delete this log?",
-            "This log file will be permanently removed from disk.".to_string(),
-            "Delete",
+            t("oneclient.cluster.logs.delete.title"),
+            t("oneclient.cluster.logs.delete.body").to_string(),
+            t("oneclient.common.delete"),
             true,
         ),
         Confirm::Upload => (
-            "Upload to mclo.gs?",
-            "This log will be uploaded to mclo.gs and hosted publicly. Anyone with the link can read it. Don't upload logs containing sensitive information.".to_string(),
-            "Upload",
+            t("oneclient.cluster.logs.upload.title"),
+            t("oneclient.cluster.logs.upload.body").to_string(),
+            t("oneclient.cluster.logs.upload.confirm"),
             false,
         ),
     };
@@ -645,7 +684,7 @@ pub fn confirm_overlay(
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
                         .corner_radius(CornerRadius::new_all(14.))
-                        .background(CARD_BG)
+                        .background(colors::card())
                         .border(ui::border_all_color(1., colors::component_border()))
                         .child(
                             rect()
@@ -685,7 +724,7 @@ pub fn confirm_overlay(
                                     Button::new()
                                         .secondary()
                                         .on_press(move |_| confirm.set(None))
-                                        .text("Cancel"),
+                                        .text(t("oneclient.common.cancel")),
                                 )
                                 .child(
                                     if danger {

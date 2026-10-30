@@ -141,7 +141,7 @@ pub enum HashAlgorithm {
     Sha1,
 }
 
-/// Applies only to browser-installed packages bundles have their own update flow
+/// Applies to browser-installed packages and the Fabric loader bundles have their own update flow
 /// The check always runs regardless of variant so "out of date" markers stay populated
 #[derive(
     Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default, EnumIter, StrumDisplay,
@@ -185,6 +185,29 @@ impl PackageUpdateMode {
             "prompt" => Some(Self::Prompt),
             _ => None,
         }
+    }
+}
+
+/// The game's `preferredGraphicsBackend` option in `options.txt`
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, StrumDisplay)]
+#[serde(rename_all = "lowercase")]
+pub enum GraphicsBackend {
+    Default,
+    #[strum(to_string = "OpenGL")]
+    OpenGl,
+    Vulkan,
+}
+
+impl GraphicsBackend {
+    pub const ALL: &[Self] = &[Self::Default, Self::OpenGl, Self::Vulkan];
+
+    /// The option only exists from 26.2 onwards snapshots and anything that does
+    /// not parse as a release version are left alone
+    #[must_use]
+    pub fn supported_on(mc_version: &str) -> bool {
+        crate::version::parse_mc_version(mc_version)
+            .and_then(|v| Some((v.major, v.minor?)))
+            .is_some_and(|version| version >= (26, 2))
     }
 }
 

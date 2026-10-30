@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT DISTINCT\n\t\t\tpr.provider as \"provider!: i64\",\n\t\t\tpr.project_id,\n\t\t\tpr.version_id\n\t\tFROM cluster_artifacts ca\n\t\tJOIN provider_releases pr ON pr.hash = ca.hash\n\t\tWHERE ca.cluster_id = ? AND pr.dependencies_synced_at IS NULL\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "provider!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "project_id",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "name": "version_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "version_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fdc04bf11551836313c20bd93c75aa0d1ea74c60af1909959c4e11c0bad5628f"
+}

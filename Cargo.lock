@@ -4914,7 +4914,7 @@ checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "oneclient_app"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "anyhow",
  "arboard",
@@ -4928,6 +4928,7 @@ dependencies = [
  "freya-core",
  "freya-skia-safe",
  "freya-testing",
+ "freya-winit",
  "futures-util",
  "gtk-sys",
  "image",
@@ -4948,11 +4949,13 @@ dependencies = [
  "oneclient_polyplus",
  "open",
  "percent-encoding",
+ "plusrenderer",
  "polyio",
  "pulldown-cmark",
  "regex",
  "rfd",
  "rust-embed",
+ "serde_json",
  "sysinfo",
  "tokio",
  "tracing",
@@ -4960,11 +4963,12 @@ dependencies = [
  "uuid 1.26.1",
  "windows",
  "winresource",
+ "zbus",
 ]
 
 [[package]]
 name = "oneclient_auth"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -4988,7 +4992,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_cluster"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "bytes 1.12.1",
  "chrono",
@@ -5012,7 +5016,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_common"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "directories",
  "interfrost",
@@ -5025,7 +5029,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_content"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "async-trait",
  "async_zip",
@@ -5053,7 +5057,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_core"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "async-compression",
  "async-stream",
@@ -5118,7 +5122,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_db"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "async-tempfile",
  "chrono",
@@ -5133,7 +5137,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_discord"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "chrono",
  "discord-rich-presence",
@@ -5145,7 +5149,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_events"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "thiserror 2.0.21",
  "tokio",
@@ -5155,7 +5159,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_java"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "astral-tokio-tar",
  "async-tempfile",
@@ -5178,7 +5182,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_macro"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -5187,7 +5191,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_mc"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "base64 0.23.1",
  "chrono",
@@ -5209,7 +5213,7 @@ dependencies = [
 
 [[package]]
 name = "oneclient_net"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "arc-swap",
  "async-trait",
@@ -5231,11 +5235,12 @@ dependencies = [
 
 [[package]]
 name = "oneclient_polyplus"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "async-tungstenite 0.35.0",
  "bytes 1.12.1",
  "futures-util",
+ "image",
  "oneclient_auth",
  "oneclient_common",
  "polyio",
@@ -5527,6 +5532,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
 
 [[package]]
+name = "plusrenderer"
+version = "0.1.0"
+source = "git+https://github.com/Polyfrost/plusrenderer?rev=914ddf8cae388126407d86925a05fa3db085ebbc#914ddf8cae388126407d86925a05fa3db085ebbc"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "png"
 version = "0.17.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5574,7 +5588,7 @@ checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
 
 [[package]]
 name = "polyio"
-version = "2.8.0"
+version = "2.9.0"
 dependencies = [
  "astral-tokio-tar",
  "async-compression",
@@ -6734,6 +6748,7 @@ version = "1.0.151"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c841b55ecdae098c80dcae9cf767f6f8a0c2cdb3416bbef72181df4d0fe73f14"
 dependencies = [
+ "indexmap",
  "itoa",
  "memchr",
  "serde",

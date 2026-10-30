@@ -35,6 +35,7 @@ use freya::router::{RouterContext, use_route};
 use crate::Route;
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{has_migration_data, use_migration, use_onboarding_selection};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::{border_all_color, entrance_motion_layer};
 
@@ -156,7 +157,7 @@ pub(crate) fn onboarding_page(
 }
 
 pub(crate) fn onboarding_illustration(icon: IconType) -> impl IntoElement {
-    Icon::new(icon).size(240.).color(Color::WHITE)
+    Icon::new(icon).size(240.).color(colors::fg_strong())
 }
 
 pub(crate) fn onboarding_nav(
@@ -164,7 +165,7 @@ pub(crate) fn onboarding_nav(
     next: Route,
     next_enabled: bool,
 ) -> impl IntoElement {
-    onboarding_nav_action(back, "Next", next_enabled, move |()| {
+    onboarding_nav_action(back, t("oneclient.common.next"), next_enabled, move |()| {
         let _ = RouterContext::get().replace(next.clone());
     })
 }
@@ -191,7 +192,7 @@ pub(crate) fn onboarding_nav_action(
                 .on_press(move |_| {
                     let _ = RouterContext::get().replace(route.clone());
                 })
-                .text("Back")
+                .text(t("oneclient.common.back"))
                 .into_element()
         }))
         .child(

@@ -7,6 +7,7 @@ use oneclient_common::{VersionKey, parse_mc_version};
 use oneclient_core::clusters::Cluster;
 use oneclient_core::settings::ViewLayout;
 
+use crate::components::ClusterMenuTarget;
 use crate::components::{
     ART_PREVIEW_EDGE, Button, Dropdown, DynamicArt, FilterMenu, FilterOption, Icon, IconType,
     InstanceRow, ScrollArea, Segment, SegmentedControl, TabBar, TabItem, TextInput, VersionCard,
@@ -16,14 +17,15 @@ use crate::hooks::{
     settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
     use_launcher, use_version_metadata, use_view_state,
 };
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::{
     border_all_color, fixed_grid, grid_columns_for_width, last_played_label, window_logical_size,
 };
 use crate::utils::{
-    GridSelection, ReleaseLine, default_line, default_loader, default_version_key, format_duration,
-    line_title, resolve_cluster, sort_clusters_for_home, split_clusters,
+    ClusterGroups, GridSelection, ReleaseLine, default_line, default_loader, default_version_key,
+    format_duration, line_title, resolve_cluster, sort_clusters_for_home, split_clusters,
 };
 use crate::view::app::clusters::CreateInstanceModal;
 use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken};
@@ -46,7 +48,7 @@ const ART_MAX_HEIGHT_PX: f32 = 200.;
 const ART_MIN_SIDEBAR_PX: f32 = 420.;
 
 #[derive(Clone, Copy, PartialEq)]
-enum Filter {
+pub(crate) enum Filter {
     All,
     OneClient,
     Custom,
@@ -54,13 +56,67 @@ enum Filter {
 }
 
 impl Filter {
-    fn shows(self, section: Filter) -> bool {
+    pub(crate) const ALL: [Filter; 4] = [
+        Filter::All,
+        Filter::OneClient,
+        Filter::Custom,
+        Filter::Modpacks,
+    ];
+
+    pub(crate) fn shows(self, section: Filter) -> bool {
         self == Filter::All || self == section
+    }
+
+    pub(crate) fn of(cluster: &Cluster) -> Self {
+        if !cluster.is_isolated() {
+            Filter::OneClient
+        } else if cluster.linked_modpack_hash.is_some() {
+            Filter::Modpacks
+        } else {
+            Filter::Custom
+        }
+    }
+
+    pub(crate) fn label(self) -> &'static str {
+        match self {
+            Filter::All => t("oneclient.clusters.page.filter.all"),
+            Filter::OneClient => "OneClient",
+            Filter::Custom => t("oneclient.clusters.page.filter.custom"),
+            Filter::Modpacks => t("oneclient.clusters.page.filter.modpacks"),
+        }
     }
 }
 
+pub(crate) fn cluster_matches(cluster: &Cluster, loaders: &[String], needle: &str) -> bool {
+    (loaders.is_empty() || loaders.contains(&cluster.mc_loader.to_string()))
+        && (needle.is_empty()
+            || format!(
+                "{} {} {}",
+                cluster.name, cluster.mc_version, cluster.mc_loader
+            )
+            .to_lowercase()
+            .contains(needle))
+}
+
+pub(crate) fn loader_options(clusters: &[Cluster]) -> Vec<String> {
+    let mut loaders: Vec<String> = clusters.iter().map(|c| c.mc_loader.to_string()).collect();
+    loaders.sort();
+    loaders.dedup();
+    loaders
+}
+
+pub(crate) fn recent_line_heads(groups: &ClusterGroups) -> Vec<Cluster> {
+    sort_clusters_for_home(
+        groups
+            .values()
+            .rev()
+            .filter_map(|g| sort_clusters_for_home(g.clone()).into_iter().next())
+            .collect(),
+    )
+}
+
 #[derive(Clone, Copy, PartialEq)]
-enum Sort {
+pub(crate) enum Sort {
     RecentFirst,
     OldestFirst,
     NameAsc,
@@ -77,10 +133,10 @@ impl Sort {
 
     fn label(self) -> &'static str {
         match self {
-            Sort::RecentFirst => "Recently played",
-            Sort::OldestFirst => "Least recently played",
-            Sort::NameAsc => "Name (A-Z)",
-            Sort::NameDesc => "Name (Z-A)",
+            Sort::RecentFirst => t("oneclient.clusters.page.sort.recent"),
+            Sort::OldestFirst => t("oneclient.clusters.page.sort.oldest"),
+            Sort::NameAsc => t("oneclient.clusters.page.sort.name_asc"),
+            Sort::NameDesc => t("oneclient.clusters.page.sort.name_desc"),
         }
     }
 }
@@ -125,7 +181,7 @@ impl Component for Clusters {
                         .main_align(Alignment::Center)
                         .child(
                             label()
-                                .text("No versions available yet. Bundles are still syncing.")
+                                .text(t("oneclient.clusters.page.syncing"))
                                 .font_size(16.)
                                 .color(colors::fg_secondary()),
                         ),
@@ -219,21 +275,10 @@ impl Component for Clusters {
         let active_filter = *filter.read();
         let needle = query.read().trim().to_lowercase();
         let picked_loaders = loaders.read().clone();
-        let matches = |c: &Cluster| {
-            (picked_loaders.is_empty() || picked_loaders.contains(&c.mc_loader.to_string()))
-                && (needle.is_empty()
-                    || format!("{} {} {}", c.name, c.mc_version, c.mc_loader)
-                        .to_lowercase()
-                        .contains(&needle))
-        };
+        let matches = |c: &Cluster| cluster_matches(c, &picked_loaders, &needle);
         let sort_by = *sort.read();
 
-        let line_heads = sort_clusters_for_home(
-            lines
-                .iter()
-                .filter_map(|l| sort_clusters_for_home(groups[l].clone()).into_iter().next())
-                .collect(),
-        );
+        let line_heads = recent_line_heads(&groups);
         let shown_lines: Vec<ReleaseLine> =
             shown(&line_heads.iter().collect::<Vec<_>>(), sort_by, |c| {
                 active_filter.shows(Filter::OneClient)
@@ -249,10 +294,7 @@ impl Component for Clusters {
             active_filter.shows(Filter::Modpacks) && matches(c)
         });
 
-        let mut available_loaders: Vec<String> =
-            clusters.iter().map(|c| c.mc_loader.to_string()).collect();
-        available_loaders.sort();
-        available_loaders.dedup();
+        let available_loaders = loader_options(&clusters);
         let filters = rect()
             .horizontal()
             .spacing(8.)
@@ -262,34 +304,47 @@ impl Component for Clusters {
         let nothing_shown =
             shown_lines.is_empty() && shown_custom.is_empty() && shown_packs.is_empty();
 
-        let tabs = [
-            (Filter::All, "All"),
-            (Filter::OneClient, "OneClient"),
-            (Filter::Custom, "Custom"),
-            (Filter::Modpacks, "Modpacks"),
-        ]
-        .map(|(value, name)| {
-            TabItem::new(name, active_filter == value).on_press(move |_| filter.set(value))
+        let tabs = Filter::ALL.map(|value| {
+            TabItem::new(value.label(), active_filter == value).on_press(move |_| filter.set(value))
         });
 
+        let active_cluster = clusters
+            .iter()
+            .find(|c| Some(c.id) == *active_id.read())
+            .cloned();
         let line_cards: Vec<Element> = shown_lines
             .iter()
             .map(|&line| {
                 let list = &groups[&line];
                 let item = GridSelection::Line(line);
                 let is_selected = current == Some(item);
+                let picked = cluster
+                    .as_ref()
+                    .filter(|c| is_selected && list.iter().any(|listed| listed.id == c.id));
+                let line_menu = match list.as_slice() {
+                    [only] => Some(ClusterMenuTarget::for_cluster(only, true)),
+                    _ => picked
+                        .map(|c| c.id)
+                        .or_else(|| default_line_cluster(list, active_cluster.as_ref()))
+                        .and_then(|id| list.iter().find(|c| c.id == id))
+                        .map(|c| ClusterMenuTarget::for_cluster(c, false)),
+                };
                 let caption = match (is_selected, &cluster, list.as_slice()) {
                     (true, Some(c), _) | (_, _, [c]) => cluster_caption(c),
-                    _ => format!("{} instances", list.len()),
+                    _ => tf("oneclient.clusters.page.instance_count", &[&list.len()]),
                 };
                 let on_press = move |_| {
                     selected.set(Some(item));
                     selected_cluster.set(None);
                 };
                 if grid {
-                    VersionCard::new(line, list, caption, is_selected, on_press).into_element()
+                    VersionCard::new(line, list, caption, is_selected, on_press)
+                        .menu(line_menu)
+                        .into_element()
                 } else {
-                    InstanceRow::for_line(line, list, caption, is_selected, on_press).into_element()
+                    InstanceRow::for_line(line, list, caption, is_selected, on_press)
+                        .menu(line_menu)
+                        .into_element()
                 }
             })
             .collect();
@@ -300,10 +355,15 @@ impl Component for Clusters {
                     let item = GridSelection::Instance(c.id);
                     let is_selected = current == Some(item);
                     let on_press = move |_| selected.set(Some(item));
+                    let menu = Some(ClusterMenuTarget::for_cluster(c, true));
                     if grid {
-                        VersionCard::for_instance(c, is_selected, on_press).into_element()
+                        VersionCard::for_instance(c, is_selected, on_press)
+                            .menu(menu)
+                            .into_element()
                     } else {
-                        InstanceRow::new(c, is_selected, on_press).into_element()
+                        InstanceRow::new(c, is_selected, on_press)
+                            .menu(menu)
+                            .into_element()
                     }
                 })
                 .collect()
@@ -376,18 +436,22 @@ impl Component for Clusters {
                                     .append_children((!shown_lines.is_empty()).then(|| {
                                         section(
                                             "OneClient",
-                                            "Grouped by Minecraft version",
+                                            t("oneclient.clusters.page.section.oneclient"),
                                             fixed_grid(line_cards, columns, item_height, gap),
                                         )
                                     }))
                                     .append_children(
                                         [
                                             (
-                                                "Custom",
-                                                "Your own instances, modded or vanilla",
+                                                t("oneclient.clusters.page.section.custom"),
+                                                t("oneclient.clusters.page.section.custom_caption"),
                                                 &shown_custom,
                                             ),
-                                            ("Modpacks", "Installed from Browse", &shown_packs),
+                                            (
+                                                t("oneclient.clusters.page.section.modpacks"),
+                                                t("oneclient.clusters.page.section.modpacks_caption"),
+                                                &shown_packs,
+                                            ),
                                         ]
                                         .into_iter()
                                         .filter(|(_, _, list)| !list.is_empty())
@@ -408,7 +472,7 @@ impl Component for Clusters {
                                     )
                                     .append_children(nothing_shown.then(|| {
                                         label()
-                                            .text("No instances match your search or filters.")
+                                            .text(t("oneclient.clusters.page.no_matches"))
                                             .font_size(13.)
                                             .color(colors::fg_secondary())
                                             .into_element()
@@ -427,7 +491,7 @@ fn create_modal(mut show_create: State<bool>) -> Option<Element> {
         .then(|| CreateInstanceModal::new(move |()| show_create.set(false)).into_element())
 }
 
-fn shown<'a>(
+pub(crate) fn shown<'a>(
     list: &[&'a Cluster],
     sort: Sort,
     keep: impl Fn(&Cluster) -> bool,
@@ -485,30 +549,33 @@ fn section(title: &str, caption: &str, grid: Element) -> Element {
         .vertical()
         .width(Size::fill())
         .spacing(10.)
-        .child(
-            rect()
-                .horizontal()
-                .cross_align(Alignment::End)
-                .spacing(10.)
-                .child(
-                    label()
-                        .text(title.to_string())
-                        .font_size(14.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text(caption.to_string())
-                        .font_size(12.)
-                        .color(colors::fg_secondary()),
-                ),
-        )
+        .child(section_header(title, caption))
         .child(grid)
         .into_element()
 }
 
-fn toolbar(
+pub(crate) fn section_header(title: &str, caption: &str) -> Element {
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(10.)
+        .child(
+            label()
+                .text(title.to_string())
+                .font_size(14.)
+                .font_weight(FontWeight::MEDIUM)
+                .color(colors::fg_primary()),
+        )
+        .child(
+            label()
+                .text(caption.to_string())
+                .font_size(12.)
+                .color(colors::fg_secondary()),
+        )
+        .into_element()
+}
+
+pub(crate) fn toolbar(
     tabs: impl IntoIterator<Item = TabItem>,
     query: State<String>,
     inline_filters: Option<Element>,
@@ -539,7 +606,7 @@ fn toolbar(
         }))
 }
 
-fn filter_menu(
+pub(crate) fn filter_menu(
     available: &[String],
     mut loaders: State<Vec<String>>,
     mut sort: State<Sort>,
@@ -549,7 +616,7 @@ fn filter_menu(
 
     FilterMenu::new(!picked.is_empty() || sort_by != Sort::RecentFirst)
         .section(
-            "Sort by",
+            t("oneclient.clusters.page.sort_by"),
             Sort::ALL.map(|option| {
                 FilterOption::new(option.label(), sort_by == option, move |()| {
                     sort.set(option)
@@ -557,7 +624,7 @@ fn filter_menu(
             }),
         )
         .section(
-            "Loader",
+            t("oneclient.clusters.page.loader"),
             available.iter().map(|loader| {
                 let name = loader.clone();
                 FilterOption::new(loader.clone(), picked.contains(loader), move |()| {
@@ -584,11 +651,11 @@ fn layout_toggle(layout: State<ViewLayout>) -> Element {
         .into_element()
 }
 
-fn search_input(query: State<String>, width: Size) -> Element {
+pub(crate) fn search_input(query: State<String>, width: Size) -> Element {
     TextInput::new(query)
         .width(width)
         .height(Size::px(34.))
-        .placeholder("Search instances")
+        .placeholder(t("oneclient.clusters.page.search"))
         .leading(
             Icon::new(IconType::SearchMd)
                 .size(14.)
@@ -622,10 +689,9 @@ fn line_picker(
             .spacing(8.)
             .child(
                 label()
-                    .text(format!(
-                        "{} instances on {}",
-                        siblings.len(),
-                        line_title(line, siblings)
+                    .text(tf(
+                        "oneclient.clusters.page.instances_on",
+                        &[&siblings.len(), &line_title(line, siblings)],
                     ))
                     .font_size(12.)
                     .font_weight(FontWeight::MEDIUM)
@@ -674,8 +740,14 @@ impl Sidebar {
             description: None,
             meta: vec![
                 ("Minecraft", cluster.mc_version.clone()),
-                ("Loader", cluster.mc_loader.to_string()),
-                ("Last played", last_played_label(cluster.last_played)),
+                (
+                    t("oneclient.clusters.page.loader"),
+                    cluster.mc_loader.to_string(),
+                ),
+                (
+                    t("oneclient.clusters.page.meta.last_played"),
+                    last_played_label(cluster.last_played),
+                ),
             ],
             folder: cluster.dir().ok(),
             picker: None,
@@ -685,13 +757,13 @@ impl Sidebar {
     fn for_instance(cluster: &Cluster, width: f32) -> Self {
         let mut sidebar = Self::base(cluster, width);
         sidebar.type_label = if cluster.linked_modpack_hash.is_some() {
-            "Modpack"
+            t("oneclient.clusters.page.type.modpack")
         } else {
-            "Custom"
+            t("oneclient.clusters.page.type.custom")
         };
         sidebar.description = cluster.description.clone();
         sidebar.meta.push((
-            "Playtime",
+            t("oneclient.clusters.page.meta.playtime"),
             format_duration(i64::try_from(cluster.overall_played.as_secs()).unwrap_or(i64::MAX)),
         ));
         sidebar
@@ -779,7 +851,7 @@ impl Component for Sidebar {
                                             .text(self.title.clone())
                                             .font_size(24.)
                                             .font_weight(FontWeight::SEMI_BOLD)
-                                            .color(Color::WHITE),
+                                            .color(colors::fg_strong()),
                                     )
                                     .child(
                                         label()
@@ -813,7 +885,7 @@ impl Component for Sidebar {
                                 Button::new()
                                     .secondary()
                                     .icon()
-                                    .tooltip("Instance settings")
+                                    .tooltip(t("oneclient.clusters.page.instance_settings"))
                                     .on_press(move |_| {
                                         *active_id.write() = Some(cluster_id);
                                         let _ = RouterContext::get()
@@ -863,7 +935,7 @@ fn sidebar_art(art: DynamicArt, type_label: &str, height: f32) -> Element {
                         .text(type_label.to_string())
                         .font_size(11.)
                         .font_weight(FontWeight::MEDIUM)
-                        .color(colors::fg_primary()),
+                        .color(colors::on_media()),
                 ),
         )
         .into_element()
@@ -940,14 +1012,14 @@ fn page_header(mut show_create: State<bool>) -> impl IntoElement {
                 .spacing(6.)
                 .child(
                     label()
-                        .text("Versions")
+                        .text(t("oneclient.clusters.page.title"))
                         .font_size(32.)
                         .font_weight(FontWeight::SEMI_BOLD)
-                        .color(Color::WHITE),
+                        .color(colors::fg_strong()),
                 )
                 .child(
                     label()
-                        .text("Pick a OneClient version, or launch one of your own instances.")
+                        .text(t("oneclient.clusters.page.description"))
                         .font_size(13.)
                         .color(colors::fg_secondary()),
                 ),
@@ -957,7 +1029,7 @@ fn page_header(mut show_create: State<bool>) -> impl IntoElement {
                 .primary()
                 .on_press(move |_| show_create.set(true))
                 .child(Icon::new(IconType::Plus).size(16.))
-                .text("New instance"),
+                .text(t("oneclient.clusters.page.new_instance")),
         )
 }
 
@@ -973,13 +1045,13 @@ fn sidebar_error(width: f32) -> Element {
         .background(colors::component_bg())
         .child(
             label()
-                .text("Could not resolve a cluster for this version.")
+                .text(t("oneclient.clusters.page.error.title"))
                 .font_size(14.)
                 .color(colors::fg_secondary()),
         )
         .child(
             label()
-                .text("Try selecting a different version or mod loader.")
+                .text(t("oneclient.clusters.page.error.hint"))
                 .font_size(14.)
                 .color(colors::fg_secondary()),
         )

@@ -9,6 +9,7 @@ use crate::hooks::{
     terms_document, terms_is_loading, use_launcher, use_notifications_snapshot,
     use_settings_snapshot, use_splash, use_terms,
 };
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 
 /// Startup is a sequence of boolean gates, not measurable work, so the bar steps
@@ -36,7 +37,7 @@ impl Component for RecoveryActions {
                     .secondary()
                     .small()
                     .on_press(|_| crate::recovery::open_data_folder())
-                    .text("Open data folder"),
+                    .text(t("oneclient.startup.recovery.open_data_folder")),
             );
 
         if snapshots > 0 {
@@ -45,7 +46,7 @@ impl Component for RecoveryActions {
                     .primary()
                     .small()
                     .on_press(move |_| crate::recovery::restore_latest(&restore))
-                    .text("Restore last backup"),
+                    .text(t("oneclient.startup.recovery.restore_backup")),
             );
         }
 
@@ -54,7 +55,7 @@ impl Component for RecoveryActions {
                 .danger()
                 .small()
                 .on_press(move |_| crate::recovery::reset(&actions))
-                .text("Reset database"),
+                .text(t("oneclient.startup.recovery.reset_database")),
         )
     }
 }
@@ -136,7 +137,7 @@ impl Component for Startup {
             if let Some(err) = launcher.error.as_deref() {
                 let step = if launcher.ready { 2 } else { 1 };
                 (
-                    "Couldn't start OneClient".to_string(),
+                    t("oneclient.startup.error").to_string(),
                     Some(err.to_string()),
                     step,
                 )
@@ -149,9 +150,9 @@ impl Component for Startup {
                     .or_else(|| entry.progress.map(|(c, t)| format!("{c} / {t}")));
                 (entry.title.clone(), detail, 3)
             } else if launcher.ready {
-                ("Fetching versions and bundles...".to_string(), None, 2)
+                (t("oneclient.startup.fetching").to_string(), None, 2)
             } else {
-                ("Starting OneClient...".to_string(), None, 1)
+                (t("oneclient.startup.starting").to_string(), None, 1)
             };
 
         let is_error = launcher.error.is_some();
@@ -206,7 +207,7 @@ impl Component for Startup {
             )
             .child(
                 label()
-                    .text("The only Minecraft launcher you'll need.")
+                    .text(t("oneclient.startup.tagline"))
                     .font_size(15.)
                     .color(colors::fg_primary().with_a(140)),
             )
@@ -232,10 +233,7 @@ impl Component for Startup {
                 })
                 .child(
                     label()
-                        .text(format!(
-                            "Your data stays in {}. Nothing here deletes it.",
-                            launcher.data_dir
-                        ))
+                        .text(tf("oneclient.startup.data_safe", &[&launcher.data_dir]))
                         .font_size(11.)
                         .max_lines(2)
                         .color(colors::fg_secondary().with_a(130)),

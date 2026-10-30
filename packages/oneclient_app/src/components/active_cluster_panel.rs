@@ -10,6 +10,7 @@ use crate::hooks::{
     settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch, use_game_snapshot,
     use_launcher, use_version_metadata,
 };
+use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::utils::sort_clusters_for_home;
@@ -69,9 +70,9 @@ impl Component for ActiveClusterPanel {
                 .main_align(Alignment::Center)
                 .child(
                     label()
-                        .text("No versions yet")
+                        .text(t("oneclient.components.active_cluster_panel.empty"))
                         .font_size(24.)
-                        .color(colors::fg_secondary()),
+                        .color(colors::on_art_secondary()),
                 );
         };
 
@@ -110,14 +111,14 @@ impl Component for ActiveClusterPanel {
                     .font_size(56.)
                     .line_height(1.1)
                     .font_weight(FontWeight::BOLD)
-                    .color(colors::fg_primary()),
+                    .color(colors::on_art()),
             )
             .child(
                 label()
                     .text(subtitle)
                     .font_size(16.)
                     .font_weight(FontWeight::SEMI_BOLD)
-                    .color(colors::fg_secondary()),
+                    .color(colors::on_art_secondary()),
             )
             .child(
                 rect()
@@ -160,7 +161,7 @@ fn cluster_settings_button(cluster_id: i64) -> impl IntoElement {
     Button::new()
         .ghost()
         .icon()
-        .tooltip("Cluster settings")
+        .tooltip(t("oneclient.components.active_cluster_panel.settings"))
         .on_press(move |_| {
             let _ = RouterContext::get().push(Route::ClusterOverview { cluster_id });
         })

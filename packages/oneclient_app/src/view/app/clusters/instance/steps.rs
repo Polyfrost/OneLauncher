@@ -11,12 +11,17 @@ use super::cards::{
 };
 use super::data::Picks;
 use super::details::details_body;
-use super::model::{LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard};
-use super::model::{VERSION_KINDS, kind_bit};
+use super::import::ImportStep;
+use super::import_review::review_step;
+use super::model::{
+    FolderChoice, ImportMode, ImportSource, LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard,
+};
+use super::model::{kind_bit, version_kinds};
 use super::rail::version_art;
 use crate::components::{
     Dropdown, GRID_GAP, Icon, IconType, ScrollArea, TextInput, centered_spinner,
 };
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::{border_all_color, centered_note, fixed_grid, note};
 use crate::utils::bundle_display_name;
@@ -24,10 +29,22 @@ use crate::utils::bundle_display_name;
 pub fn body(wizard: Wizard, picks: &Picks) -> Element {
     let (key, inner) = match picks.step {
         Step::Type => ("step-type", type_step(wizard, picks)),
+        Step::Folder => ("step-folder", folder_step(wizard, picks)),
         Step::Loader => ("step-loader", loader_step(wizard, picks)),
         Step::Version => ("step-version", version_step(wizard, picks)),
         Step::Bundles => ("step-bundles", bundles_step(wizard, picks)),
         Step::Modpack => ("step-modpack", modpack_step(wizard, picks)),
+        Step::ImportSource => ("step-import-source", import_source_step(wizard, picks)),
+        Step::ImportMode => ("step-import-mode", import_mode_step(wizard, picks)),
+        Step::ImportReview => ("step-import-review", review_step(wizard, picks)),
+        Step::Import => (
+            "step-import",
+            ImportStep {
+                chosen: wizard.import_chosen,
+                extra: wizard.import_extra,
+            }
+            .into_element(),
+        ),
         Step::Customize => (
             "step-details",
             details_body(
@@ -44,11 +61,16 @@ pub fn body(wizard: Wizard, picks: &Picks) -> Element {
     rect()
         .key(key)
         .width(Size::fill())
-        .height(if picks.step == Step::Version {
-            Size::fill()
-        } else {
-            Size::auto()
-        })
+        .height(
+            if matches!(
+                picks.step,
+                Step::Version | Step::Import | Step::ImportReview
+            ) {
+                Size::fill()
+            } else {
+                Size::auto()
+            },
+        )
         .child(inner)
         .into_element()
 }
@@ -59,25 +81,33 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
             TypeChoice::OneClient,
             IconType::IconLogo,
             "OneClient",
-            Some("Recommended"),
-            "The most bleeding edge performance, QoL mods and world hosting in one instance.",
-            "Shares configs, worlds, and packs with your other OneClient instances.",
+            Some(t("oneclient.clusters.instance.steps.recommended")),
+            t("oneclient.clusters.instance.steps.type.oneclient.blurb"),
+            t("oneclient.clusters.instance.steps.type.oneclient.meta"),
         ),
         (
             TypeChoice::Scratch,
             IconType::Sliders04,
-            "Start from scratch",
+            t("oneclient.clusters.instance.steps.type.scratch.title"),
             None,
-            "Pick a loader and version, then add mods yourself.",
-            "Has its own game folder.",
+            t("oneclient.clusters.instance.steps.type.scratch.blurb"),
+            t("oneclient.clusters.instance.steps.own_folder"),
         ),
         (
             TypeChoice::Modpack,
             IconType::DownloadCloud02,
-            "Modpack",
+            t("oneclient.clusters.instance.steps.type.modpack.title"),
             None,
-            "Install a pack from Modrinth or CurseForge, or a file you downloaded.",
-            "Has its own game folder.",
+            t("oneclient.clusters.instance.steps.type.modpack.blurb"),
+            t("oneclient.clusters.instance.steps.own_folder"),
+        ),
+        (
+            TypeChoice::Import,
+            IconType::FolderDownload,
+            t("oneclient.clusters.instance.steps.type.import.title"),
+            None,
+            t("oneclient.clusters.instance.steps.type.import.blurb"),
+            t("oneclient.clusters.instance.steps.own_folder"),
         ),
     ];
 
@@ -113,16 +143,16 @@ fn modpack_step(wizard: Wizard, picks: &Picks) -> Element {
         (
             ModpackOrigin::Browse,
             IconType::Globe01,
-            "Browse modpacks",
-            "Search Modrinth and CurseForge. Installing a pack from there creates its instance.",
-            "Opens the browser on the Modpacks tab.",
+            t("oneclient.clusters.instance.steps.modpack.browse.title"),
+            t("oneclient.clusters.instance.steps.modpack.browse.blurb"),
+            t("oneclient.clusters.instance.steps.modpack.browse.meta"),
         ),
         (
             ModpackOrigin::File,
             IconType::File02,
-            "Import a file",
-            "Use a modpack you already downloaded or got from someone else.",
-            "Modrinth .mrpack or CurseForge .zip.",
+            t("oneclient.clusters.instance.steps.modpack.file.title"),
+            t("oneclient.clusters.instance.steps.modpack.file.blurb"),
+            t("oneclient.clusters.instance.steps.modpack.file.meta"),
         ),
     ];
 
@@ -142,6 +172,129 @@ fn modpack_step(wizard: Wizard, picks: &Picks) -> Element {
                 on_press: (move |()| chosen.set(origin)).into(),
             })
         }))
+        .into_element()
+}
+
+fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
+    let cards = [
+        (
+            ImportSource::File,
+            IconType::File02,
+            t("oneclient.clusters.instance.steps.import_source.file.title"),
+            t("oneclient.clusters.instance.steps.import_source.file.blurb"),
+            t("oneclient.clusters.instance.steps.import_source.file.meta"),
+        ),
+        (
+            ImportSource::Launcher,
+            IconType::FolderDownload,
+            t("oneclient.clusters.instance.steps.import_source.launcher.title"),
+            t("oneclient.clusters.instance.steps.import_source.launcher.blurb"),
+            t("oneclient.clusters.instance.steps.import_source.launcher.meta"),
+        ),
+    ];
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .children(cards.into_iter().map(|(source, icon, title, blurb, meta)| {
+            let mut chosen = wizard.import_source;
+            wide_card(WideCard {
+                icon,
+                title: title.to_string(),
+                badge: None,
+                blurb: blurb.to_string(),
+                meta: meta.to_string(),
+                selected: picks.import_source == source,
+                on_press: (move |()| chosen.set(source)).into(),
+            })
+        }))
+        .into_element()
+}
+
+fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
+    let cards = [
+        (
+            ImportMode::Improve,
+            IconType::IconLogo,
+            t("oneclient.clusters.instance.steps.import_mode.improve.title"),
+            Some(t("oneclient.clusters.instance.steps.recommended")),
+            t("oneclient.clusters.instance.steps.import_mode.improve.blurb"),
+            t("oneclient.clusters.instance.steps.import_mode.improve.meta"),
+        ),
+        (
+            ImportMode::AsIs,
+            IconType::FolderDownload,
+            t("oneclient.clusters.instance.steps.import_mode.as_is.title"),
+            None,
+            t("oneclient.clusters.instance.steps.import_mode.as_is.blurb"),
+            t("oneclient.clusters.instance.steps.import_mode.as_is.meta"),
+        ),
+    ];
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .children(
+            cards
+                .into_iter()
+                .map(|(mode, icon, title, badge, blurb, meta)| {
+                    let mut chosen = wizard.import_mode;
+                    wide_card(WideCard {
+                        icon,
+                        title: title.to_string(),
+                        badge: badge.map(str::to_string),
+                        blurb: blurb.to_string(),
+                        meta: meta.to_string(),
+                        selected: picks.import_mode == mode,
+                        on_press: (move |()| chosen.set(mode)).into(),
+                    })
+                }),
+        )
+        .into_element()
+}
+
+fn folder_step(wizard: Wizard, picks: &Picks) -> Element {
+    let cards = [
+        (
+            FolderChoice::Shared,
+            IconType::Link03,
+            t("oneclient.clusters.instance.steps.folder.shared.title"),
+            Some(t("oneclient.clusters.instance.steps.recommended")),
+            t("oneclient.clusters.instance.steps.folder.shared.blurb"),
+            t("oneclient.clusters.instance.steps.folder.shared.meta"),
+        ),
+        (
+            FolderChoice::Dedicated,
+            IconType::Folder,
+            t("oneclient.clusters.instance.steps.folder.dedicated.title"),
+            None,
+            t("oneclient.clusters.instance.steps.folder.dedicated.blurb"),
+            t("oneclient.clusters.instance.steps.folder.dedicated.meta"),
+        ),
+    ];
+
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(10.)
+        .children(
+            cards
+                .into_iter()
+                .map(|(folder, icon, title, badge, blurb, meta)| {
+                    let mut chosen = wizard.folder;
+                    wide_card(WideCard {
+                        icon,
+                        title: title.to_string(),
+                        badge: badge.map(str::to_string),
+                        blurb: blurb.to_string(),
+                        meta: meta.to_string(),
+                        selected: picks.folder == folder,
+                        on_press: (move |()| chosen.set(folder)).into(),
+                    })
+                }),
+        )
         .into_element()
 }
 
@@ -165,9 +318,12 @@ fn loader_step(wizard: Wizard, picks: &Picks) -> Element {
                 id: choice.name(),
                 title: choice.name(),
                 blurb: choice.blurb().to_string(),
-                meta: (!offered).then(|| {
-                    let version = picks.versions.chosen.as_deref();
-                    format!("No build for {}", version.unwrap_or("this version"))
+                meta: (!offered).then(|| match picks.versions.chosen.as_deref() {
+                    Some(version) => tf(
+                        "oneclient.clusters.instance.steps.loader.no_build",
+                        &[&version],
+                    ),
+                    None => t("oneclient.clusters.instance.steps.loader.no_build_any").to_string(),
                 }),
                 corner: loader_mark(choice, chosen == choice, LOADER_MARK_SIZE),
                 selected: offered && chosen == choice,
@@ -225,14 +381,19 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
                 .spacing(4.)
                 .child(
                     label()
-                        .text(format!("{} version", chosen.name()))
+                        .text(tf(
+                            "oneclient.clusters.instance.steps.loader_version.title",
+                            &[&chosen.name()],
+                        ))
                         .font_size(14.)
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
-                        .text("The newest build is picked for you. Change it if a package needs an older one.")
+                        .text(t(
+                            "oneclient.clusters.instance.steps.loader_version.description",
+                        ))
                         .font_size(12.)
                         .line_height(1.4)
                         .color(colors::fg_secondary()),
@@ -286,7 +447,7 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
         .child(
             rect().width(Size::flex(1.0)).child(
                 TextInput::new(wizard.query)
-                    .placeholder("Search versions")
+                    .placeholder(t("oneclient.clusters.instance.steps.version.search"))
                     .width(Size::fill())
                     .leading(Icon::new(IconType::SearchMd).size(14.)),
             ),
@@ -298,20 +459,20 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                 .spacing(10.)
                 .child(
                     label()
-                        .text("Show")
+                        .text(t("oneclient.clusters.instance.steps.version.show"))
                         .font_size(12.)
                         .color(colors::fg_secondary()),
                 )
                 .child(
                     Dropdown::new(
                         filter_summary(filter),
-                        VERSION_KINDS
+                        version_kinds()
                             .iter()
                             .map(|(name, _)| (*name).to_string())
                             .collect(),
                     )
                     .checked(
-                        VERSION_KINDS
+                        version_kinds()
                             .iter()
                             .map(|(_, kind)| filter & kind_bit(*kind) != 0)
                             .collect(),
@@ -319,7 +480,7 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                     .width(Size::px(168.))
                     .height(Size::px(32.))
                     .on_select(move |index: usize| {
-                        if let Some((_, kind)) = VERSION_KINDS.get(index) {
+                        if let Some((_, kind)) = version_kinds().get(index) {
                             let mask = *wizard.filter.peek();
                             wizard.filter.set(mask ^ kind_bit(*kind));
                             wizard.version.set(None);
@@ -332,15 +493,17 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
 }
 
 fn filter_summary(filter: u8) -> String {
-    let picked: Vec<&str> = VERSION_KINDS
+    let picked: Vec<&str> = version_kinds()
         .iter()
         .filter(|(_, kind)| filter & kind_bit(*kind) != 0)
         .map(|(name, _)| *name)
         .collect();
     match picked.as_slice() {
-        [] => "None".to_string(),
+        [] => t("oneclient.clusters.instance.steps.version.filter.none").to_string(),
         [only] => (*only).to_string(),
-        all if all.len() == VERSION_KINDS.len() => "All versions".to_string(),
+        all if all.len() == version_kinds().len() => {
+            t("oneclient.clusters.instance.steps.version.filter.all").to_string()
+        }
         [first, rest @ ..] => format!("{first} +{}", rest.len()),
     }
 }
@@ -350,10 +513,10 @@ fn version_list(mut wizard: Wizard, picks: &Picks) -> Element {
         return centered_failure(error);
     }
     if !picks.versions.loaded {
-        return centered_spinner("Loading versions...");
+        return centered_spinner(t("oneclient.clusters.instance.steps.version.loading"));
     }
     if picks.versions.list.is_empty() {
-        return centered_note("No versions match that search.");
+        return centered_note(t("oneclient.clusters.instance.steps.version.no_matches"));
     }
 
     let versions = picks.versions.list.clone();
@@ -388,7 +551,10 @@ fn centered_failure(message: &str) -> Element {
         .center()
         .padding(Gaps::new_symmetric(0., 16.))
         .child(note(
-            format!("Could not load the version list. {message}"),
+            tf(
+                "oneclient.clusters.instance.steps.version.load_failed",
+                &[&message],
+            ),
             colors::danger(),
         ))
         .into_element()
@@ -424,18 +590,23 @@ fn bundle_blurb(archive: &BundleArchive, names: &HashMap<String, String>) -> Str
     let head = listed.join(", ");
 
     match total.saturating_sub(3) {
-        0 if head.is_empty() => "Configuration only.".to_string(),
+        0 if head.is_empty() => {
+            t("oneclient.clusters.instance.steps.bundle.config_only").to_string()
+        }
         0 => head,
-        rest => format!("{head} and {rest} more"),
+        rest => tf(
+            "oneclient.clusters.instance.steps.bundle.more",
+            &[&head, &rest],
+        ),
     }
 }
 
 fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
     if picks.bundles.archives.is_empty() {
         return centered_note(if picks.bundles.loaded {
-            "No bundles ship for this version yet."
+            t("oneclient.clusters.instance.steps.bundles.none")
         } else {
-            "Loading bundles..."
+            t("oneclient.clusters.instance.steps.bundles.loading")
         });
     }
 
@@ -457,8 +628,11 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
                 title: bundle_display_name(archive),
                 blurb: bundle_blurb(archive, &picks.bundles.names),
                 meta: Some(match count {
-                    1 => "1 package".to_string(),
-                    many => format!("{many} packages"),
+                    1 => t("oneclient.clusters.instance.steps.bundle.packages.one").to_string(),
+                    many => tf(
+                        "oneclient.clusters.instance.steps.bundle.packages.other",
+                        &[&many],
+                    ),
                 }),
                 corner: None,
                 selected: !picks.bundles.declined.contains(&name),

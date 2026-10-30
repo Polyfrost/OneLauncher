@@ -1,15 +1,19 @@
 use super::*;
 
 use oneclient_content::packages::ProviderId;
-use oneclient_content::packages::types::{ProjectDetail, ProjectMember};
+use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSummary};
 
 use crate::components::{Button, Icon, IconType};
+use crate::i18n::{t, tf};
+use crate::utils::shorten;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
+const BUTTON_NAME_CHARS: usize = 22;
+
 pub(super) fn sidebar(
     project: Option<ProjectDetail>,
-    latest_version: Option<String>,
+    latest_version: Option<VersionSummary>,
     installer: Installer,
     confirm: State<Option<String>>,
     installed: Option<Installed>,
@@ -26,10 +30,11 @@ pub(super) fn sidebar(
     let project_id = project.id.clone();
     // Nothing to do when this version is already there or while an install is running
     let have_latest = match (&installed, &latest_version) {
-        (Some(installed), Some(latest)) => installed.is_version(latest),
+        (Some(installed), Some(latest)) => installed.is_version(&latest.version_id),
         _ => false,
     };
     let can_install = latest_version.is_some() && !have_latest && !installing && !waiting;
+    let import_prompt = installer.import_prompt;
     let enable = installed
         .as_ref()
         .and_then(Installed::disabled_bundled)
@@ -46,7 +51,7 @@ pub(super) fn sidebar(
                 .width(Size::fill())
                 .corner_radius(CornerRadius::new_all(12.))
                 .overflow(Overflow::Clip)
-                .background(PANEL_BG)
+                .background(colors::page_elevated())
                 .border(border_all_color(1., colors::component_border()))
                 .child(
                     rect()
@@ -69,9 +74,12 @@ pub(super) fn sidebar(
                                 .color(colors::fg_primary()),
                         )
                         .child(ProviderTag {
-                            text: format!("{} on {}", project.content_type, project.provider),
+                            text: tf(
+                                "oneclient.browser.package.sidebar.provider",
+                                &[&project.content_type, &project.provider],
+                            ),
                             provider: project.provider,
-                            url: provider_project_url(&project),
+                            url: project.web_url(),
                             confirm,
                         })
                         .maybe(!project.summary.is_empty(), |el| {
@@ -95,9 +103,9 @@ pub(super) fn sidebar(
                                 )
                                 .child(
                                     label()
-                                        .text(format!(
-                                            "{} downloads",
-                                            abbreviate_number(project.downloads)
+                                        .text(tf(
+                                            "oneclient.browser.package.sidebar.downloads",
+                                            &[&abbreviate_number(project.downloads)],
                                         ))
                                         .font_size(11.)
                                         .color(colors::fg_secondary()),
@@ -115,21 +123,50 @@ pub(super) fn sidebar(
                 .primary()
                 .width(Size::fill())
                 .enabled(can_install)
-                .on_press(move |_| {
-                    if let Some(version_id) = latest_version.clone() {
-                        installer.install_latest(project_id.clone(), version_id);
+                .on_press({
+                    let installer = installer.clone();
+                    move |_| {
+                        if let Some(latest) = latest_version.clone() {
+                            installer.install_latest(
+                                project_id.clone(),
+                                latest.version_id,
+                                latest.version_number,
+                            );
+                        }
                     }
                 })
                 .child(Icon::new(IconType::Download01).size(14.))
-                .text(if installing {
-                    "Installing..."
+                .text(if installing && installer.add_to_cluster {
+                    t("oneclient.browser.package.sidebar.adding").to_string()
+                } else if installing {
+                    t("oneclient.browser.package.sidebar.installing").to_string()
+                } else if installer.add_to_cluster {
+                    match &installer.cluster_name {
+                        Some(name) => tf(
+                            "oneclient.browser.package.sidebar.add_to",
+                            &[&shorten(name, BUTTON_NAME_CHARS, "\u{2026}")],
+                        ),
+                        None => t("oneclient.browser.package.sidebar.add_to_this").to_string(),
+                    }
+                } else if installer.modpack {
+                    t("oneclient.browser.package.sidebar.install_ellipsis").to_string()
                 } else if have_latest {
-                    "Latest installed"
+                    t("oneclient.browser.package.sidebar.latest_installed").to_string()
                 } else {
-                    "Install latest"
+                    t("oneclient.browser.package.sidebar.install_latest").to_string()
                 })
                 .into_element(),
         })
+        .maybe_child(import_prompt.map(|mut prompt| {
+            Button::new()
+                .secondary()
+                .width(Size::fill())
+                .enabled(!installing && !waiting)
+                .on_press(move |_| prompt.set(true))
+                .child(Icon::new(IconType::Plus).size(14.))
+                .text(t("oneclient.browser.package.sidebar.add_to_instance"))
+                .into_element()
+        }))
         .maybe(
             !project.members.is_empty() || !project.author.is_empty(),
             |el| el.child(authors_card(&project, confirm)),
@@ -139,24 +176,6 @@ pub(super) fn sidebar(
             el.child(links_card(&project.links, confirm))
         })
         .into_element()
-}
-
-/// Modrinth doesn't hand a url out so it's rebuilt from the slug CurseForge lists it as "Website"
-fn provider_project_url(project: &ProjectDetail) -> Option<String> {
-    match project.provider {
-        ProviderId::Modrinth => Some(format!(
-            "{}{}/{}",
-            ProviderId::Modrinth.website(),
-            project.content_type.modrinth_type(),
-            project.slug
-        )),
-        ProviderId::CurseForge => project
-            .links
-            .iter()
-            .find(|(label, _)| label == "Website")
-            .map(|(_, url)| url.clone()),
-        ProviderId::Local => None,
-    }
 }
 
 /// Plain text when the provider has no page so a local package doesn't look clickable
@@ -220,7 +239,7 @@ fn card_spaced(title: &str, rows: Vec<Element>, spacing: f32) -> impl IntoElemen
         .spacing(spacing)
         .padding(Gaps::new_all(16.))
         .corner_radius(CornerRadius::new_all(12.))
-        .background(PANEL_BG)
+        .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(
             label()
@@ -238,7 +257,7 @@ fn authors_card(project: &ProjectDetail, confirm: State<Option<String>>) -> impl
         vec![author_row(
             &ProjectMember {
                 name: project.author.clone(),
-                role: "Author".to_string(),
+                role: t("oneclient.browser.package.sidebar.author").to_string(),
                 url: None,
                 avatar_url: None,
             },
@@ -251,7 +270,7 @@ fn authors_card(project: &ProjectDetail, confirm: State<Option<String>>) -> impl
             .map(|m| author_row(m, confirm))
             .collect()
     };
-    card("Authors", rows)
+    card(t("oneclient.browser.package.sidebar.authors"), rows)
 }
 
 fn author_row(member: &ProjectMember, confirm: State<Option<String>>) -> Element {
@@ -330,26 +349,36 @@ impl Component for AuthorRow {
 fn details_card(project: &ProjectDetail) -> impl IntoElement {
     let mut rows: Vec<Element> = Vec::new();
     if !project.game_versions.is_empty() {
-        rows.push(pill_detail("Versions", &project.game_versions));
+        rows.push(pill_detail(
+            t("oneclient.browser.package.sidebar.versions"),
+            &project.game_versions,
+        ));
     }
     if !project.loaders.is_empty() {
         let loaders: Vec<String> = project.loaders.iter().map(|l| l.real_name()).collect();
-        rows.push(pill_detail("Loaders", &loaders));
+        rows.push(pill_detail(
+            t("oneclient.browser.package.sidebar.loaders"),
+            &loaders,
+        ));
     }
     if let Some(license) = &project.license {
-        rows.push(detail_row(IconType::Key01, "License", license));
+        rows.push(detail_row(
+            IconType::Key01,
+            t("oneclient.browser.package.sidebar.license"),
+            license,
+        ));
     }
     rows.push(detail_row(
         IconType::Calendar,
-        "Created",
+        t("oneclient.browser.package.sidebar.created"),
         &project.created.format("%Y-%m-%d").to_string(),
     ));
     rows.push(detail_row(
         IconType::ClockRewind,
-        "Updated",
+        t("oneclient.browser.package.sidebar.updated"),
         &project.updated.format("%Y-%m-%d").to_string(),
     ));
-    card("Details", rows)
+    card(t("oneclient.browser.package.sidebar.details"), rows)
 }
 
 fn detail_row(icon: IconType, key: &str, value: &str) -> Element {
@@ -392,7 +421,7 @@ fn links_card(links: &[(String, String)], confirm: State<Option<String>>) -> imp
         .iter()
         .map(|(lbl, url)| link_row(lbl.clone(), url.clone(), confirm))
         .collect();
-    card_spaced("Links", rows, 2.)
+    card_spaced(t("oneclient.browser.package.sidebar.links"), rows, 2.)
 }
 
 fn link_row(label_text: String, url: String, confirm: State<Option<String>>) -> Element {

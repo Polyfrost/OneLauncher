@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -158,7 +159,7 @@ fn header(
             Button::new()
                 .ghost()
                 .icon()
-                .alt("Close")
+                .alt(t("oneclient.common.close"))
                 .on_press(move |_| on_close.call(()))
                 .child(Icon::new(IconType::XClose).size(16.)),
         )

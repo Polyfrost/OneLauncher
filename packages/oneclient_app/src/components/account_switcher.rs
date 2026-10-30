@@ -12,6 +12,7 @@ use crate::{
         SetDefaultAccountKeys, try_accounts, try_default_account, use_account_switcher_open,
         use_accounts, use_current_account, use_dispatch, use_set_default_account,
     },
+    i18n::t,
     theme::colors,
     ui::divider,
 };
@@ -68,7 +69,7 @@ impl Component for AccountPanel {
         if ordered.is_empty() {
             rows = rows.child(
                 label()
-                    .text("No accounts yet")
+                    .text(t("oneclient.components.account_switcher.empty"))
                     .font_size(13.)
                     .color(colors::fg_secondary()),
             );
@@ -115,7 +116,7 @@ impl Component for AccountPanel {
                     .child(BackToControlCenter)
                     .child(
                         label()
-                            .text("Accounts")
+                            .text(t("oneclient.components.account_switcher.title"))
                             .font_size(18.)
                             .font_weight(FontWeight::MEDIUM)
                             .a11y_role(AccessibilityRole::TitleBar),
@@ -152,7 +153,7 @@ impl Component for BackToControlCenter {
             })
             .cursor(CursorIcon::Pointer)
             .a11y_role(AccessibilityRole::Button)
-            .a11y_alt("Back to control center")
+            .a11y_alt(t("oneclient.components.account_switcher.back"))
             .on_pointer_enter(move |_| hovered.set(true))
             .on_pointer_leave(move |_| hovered.set(false))
             .on_press(back)
@@ -247,7 +248,7 @@ impl Component for AccountRow {
                     .maybe(active, |el| {
                         el.child(
                             label()
-                                .text("Active")
+                                .text(t("oneclient.components.account_switcher.active"))
                                 .font_size(11.)
                                 .color(colors::fg_secondary()),
                         )
@@ -283,6 +284,6 @@ impl Component for Footer {
                     .size(16.)
                     .color(colors::fg_primary()),
             )
-            .text("Manage accounts")
+            .text(t("oneclient.components.account_switcher.manage"))
     }
 }

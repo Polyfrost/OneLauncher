@@ -3,11 +3,14 @@ use freya::prelude::*;
 use crate::components::{
     Button, Icon, IconType, Markdown, MarkdownStyle, OverlayPopup, ScrollArea,
 };
-use crate::hooks::{EssentialGuardKind, use_cluster_mutation, use_essential_guard};
+use crate::disable;
+use crate::hooks::{
+    EssentialGuardKind, Guarded, use_cluster_mutation, use_disable_confirm, use_essential_guard,
+};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const BODY_MAX_H: f32 = 400.;
 
 #[derive(PartialEq)]
@@ -17,17 +20,30 @@ impl Component for EssentialConfirmOverlay {
     fn render(&self) -> impl IntoElement {
         let mut pending = use_essential_guard();
         let cluster = use_cluster_mutation();
+        let pending_disable = use_disable_confirm();
 
         let Some(request) = pending.read().clone() else {
             return rect().into_element();
         };
 
         let (title, confirm_label) = match request.kind {
-            EssentialGuardKind::Disable => (format!("Turn off {}?", request.name), "Turn it off"),
-            EssentialGuardKind::Remove => (format!("Remove {}?", request.name), "Remove anyway"),
+            EssentialGuardKind::Disable => (
+                tf(
+                    "oneclient.components.essential_confirm.disable.title",
+                    &[&request.name],
+                ),
+                t("oneclient.components.essential_confirm.disable.confirm"),
+            ),
+            EssentialGuardKind::Remove => (
+                tf(
+                    "oneclient.components.essential_confirm.remove.title",
+                    &[&request.name],
+                ),
+                t("oneclient.components.essential_confirm.remove.confirm"),
+            ),
         };
 
-        let action = request.action.clone();
+        let then = request.then.clone();
 
         OverlayPopup::new()
             .on_close(move |_| pending.set(None))
@@ -44,7 +60,7 @@ impl Component for EssentialConfirmOverlay {
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
                             .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 rect()
@@ -77,7 +93,14 @@ impl Component for EssentialConfirmOverlay {
                                         Button::new()
                                             .secondary()
                                             .on_press(move |_| {
-                                                cluster.mutate(action.clone());
+                                                match then.clone() {
+                                                    Guarded::Mutate(action) => {
+                                                        cluster.mutate(action)
+                                                    }
+                                                    Guarded::Disable(request) => {
+                                                        disable::request(request, pending_disable)
+                                                    }
+                                                }
                                                 pending.set(None);
                                             })
                                             .text(confirm_label),
@@ -86,7 +109,7 @@ impl Component for EssentialConfirmOverlay {
                                         Button::new()
                                             .primary()
                                             .on_press(move |_| pending.set(None))
-                                            .text("Keep it"),
+                                            .text(t("oneclient.components.essential_confirm.keep")),
                                     ),
                             ),
                     ),
@@ -127,11 +150,11 @@ impl Component for WarningBody {
                             .border(border_all_color(1., colors::component_border()))
                             .child(Markdown::new(self.body.clone()).width(Size::fill()).style(
                                 MarkdownStyle {
-                                    color: Color::WHITE,
+                                    color: colors::fg_primary(),
                                     color_link: colors::code_info(),
-                                    color_code: Color::WHITE,
-                                    background_code: CARD_BG,
-                                    background_blockquote: CARD_BG,
+                                    color_code: colors::fg_primary(),
+                                    background_code: colors::card(),
+                                    background_blockquote: colors::card(),
                                     border_blockquote: colors::component_border(),
                                     background_divider: colors::component_border(),
                                     headings: [16., 14., 13., 12., 12., 12.],

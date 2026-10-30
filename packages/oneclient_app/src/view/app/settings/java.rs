@@ -6,6 +6,7 @@ use oneclient_java::{JavaRuntime, JavaVendor, is_launcher_managed};
 use super::settings_page;
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup, ScrollArea};
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
+use crate::i18n::t;
 use crate::invalidate_java_queries;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -24,9 +25,13 @@ impl Component for SettingsJava {
         let pending_remove = use_state(|| None::<PendingRemove>);
 
         let mut shell = settings_page()
-            .child(section_header("ADD RUNTIME"))
+            .child(section_header(t(
+                "oneclient.settings.java.section.add_runtime",
+            )))
             .child(AddRow { show_manager }.into_element())
-            .child(section_header("INSTALLED RUNTIMES"))
+            .child(section_header(t(
+                "oneclient.settings.java.section.installed_runtimes",
+            )))
             .child(runtimes_table(runtimes, pending_remove));
 
         if *show_manager.read() {
@@ -69,7 +74,7 @@ impl Component for AddRow {
             let dispatch = pick_dispatch.clone();
             spawn(async move {
                 if let Some(handle) = rfd::AsyncFileDialog::new()
-                    .set_title("Select a Java installation folder")
+                    .set_title(t("oneclient.settings.java.picker_title"))
                     .pick_folder()
                     .await
                 {
@@ -84,8 +89,8 @@ impl Component for AddRow {
             spawn(async move {
                 invalidate_java_queries().await;
                 dispatch
-                    .notify("Java runtimes refreshed")
-                    .body("The installed runtime list is up to date")
+                    .notify(t("oneclient.settings.java.refreshed.title"))
+                    .body(t("oneclient.settings.java.refreshed.body"))
                     .info()
                     .toast_only()
                     .send();
@@ -101,21 +106,21 @@ impl Component for AddRow {
                     .primary()
                     .on_press(move |_| show_manager.set(true))
                     .child(Icon::new(IconType::Download01).size(14.))
-                    .text("Install Manager"),
+                    .text(t("oneclient.settings.java.install_manager")),
             )
             .child(
                 Button::new()
                     .secondary()
                     .on_press(pick)
                     .child(Icon::new(IconType::Folder).size(14.))
-                    .text("Add from folder"),
+                    .text(t("oneclient.settings.java.add_from_folder")),
             )
             .child(
                 Button::new()
                     .secondary()
                     .on_press(refresh)
                     .child(Icon::new(IconType::RefreshCcw02).size(14.))
-                    .text("Refresh"),
+                    .text(t("oneclient.common.refresh")),
             )
     }
 }
@@ -132,7 +137,7 @@ fn runtimes_table(
             .background(colors::page_elevated())
             .child(
                 label()
-                    .text("No Java runtimes installed yet.")
+                    .text(t("oneclient.settings.java.empty"))
                     .font_size(12.)
                     .color(colors::fg_secondary()),
             )
@@ -185,12 +190,18 @@ fn table_header() -> impl IntoElement {
         .spacing(12.)
         .padding(Gaps::new_symmetric(8., 14.))
         .background(colors::component_bg())
-        .child(head("VENDOR", Size::px(130.)))
-        .child(head("VERSION", Size::px(90.)))
+        .child(head(
+            t("oneclient.settings.java.table.vendor"),
+            Size::px(130.),
+        ))
+        .child(head(
+            t("oneclient.settings.java.table.version"),
+            Size::px(90.),
+        ))
         .child(
             rect().width(Size::flex(1.0)).child(
                 label()
-                    .text("PATH")
+                    .text(t("oneclient.settings.java.table.path"))
                     .font_size(11.)
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_secondary()),
@@ -305,15 +316,19 @@ fn confirm_remove_modal(
     let remove_path = path.clone();
 
     let consequence = if managed {
-        "This runtime is managed by OneClient. Its files WILL be deleted."
+        t("oneclient.settings.java.remove.managed")
     } else {
-        "This runtime is not managed by OneClient. Its files will not be deleted."
+        t("oneclient.settings.java.remove.unmanaged")
     };
 
     let confirm = if managed {
-        Button::new().danger().text("Remove and delete files")
+        Button::new()
+            .danger()
+            .text(t("oneclient.settings.java.remove.delete_files"))
     } else {
-        Button::new().primary().text("Remove from list")
+        Button::new()
+            .primary()
+            .text(t("oneclient.settings.java.remove.from_list"))
     };
 
     OverlayPopup::new()
@@ -334,7 +349,7 @@ fn confirm_remove_modal(
                         .background(colors::page_elevated())
                         .child(
                             label()
-                                .text("Remove Java Runtime?")
+                                .text(t("oneclient.settings.java.remove.title"))
                                 .font_size(16.)
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
@@ -365,7 +380,7 @@ fn confirm_remove_modal(
                                     Button::new()
                                         .secondary()
                                         .on_press(move |_| pending.set(None))
-                                        .text("Cancel"),
+                                        .text(t("oneclient.common.cancel")),
                                 )
                                 .child(confirm.on_press(move |_| {
                                     dispatch.remove_java_runtime(remove_path.clone());

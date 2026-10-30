@@ -5,11 +5,10 @@ use oneclient_events::Answer;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
+use crate::i18n::t;
 use crate::microsoft_java::{MICROSOFT_JAVA_CHOICE_INSTALL, MICROSOFT_JAVA_CHOICE_NEVER};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
 const HOLD_SECONDS: u8 = 3;
 
@@ -65,15 +64,15 @@ impl Component for MicrosoftJavaPromptOverlay {
         let dismiss_label = prompt
             .dismiss
             .clone()
-            .unwrap_or_else(|| "Cancel".to_string());
+            .unwrap_or_else(|| t("oneclient.common.cancel").to_string());
         let never_label = prompt
             .choice(MICROSOFT_JAVA_CHOICE_NEVER)
             .map(|choice| choice.label.clone())
-            .unwrap_or_else(|| "Don't ask again".to_string());
+            .unwrap_or_else(|| t("oneclient.components.microsoft_java_prompt.never").to_string());
         let install_label = prompt
             .choice(MICROSOFT_JAVA_CHOICE_INSTALL)
             .map(|choice| choice.label.clone())
-            .unwrap_or_else(|| "Proceed".to_string());
+            .unwrap_or_else(|| t("oneclient.components.microsoft_java_prompt.proceed").to_string());
 
         let close = dispatch.clone();
         let cancel = dispatch.clone();
@@ -100,7 +99,7 @@ impl Component for MicrosoftJavaPromptOverlay {
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
                             .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 rect()

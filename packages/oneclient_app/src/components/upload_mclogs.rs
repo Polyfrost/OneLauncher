@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use freya::prelude::*;
 use freya::query::MutationStateData;
 use freya::text_edit::Clipboard;
@@ -5,28 +7,58 @@ use freya::text_edit::Clipboard;
 use crate::components::{Button, Icon, IconType};
 use crate::hooks::{UseUploadLog, use_dispatch};
 use crate::i18n::{t, tf};
+use crate::launcher::off_ui;
 use crate::view::app::cluster::logs::Confirm;
 
 #[derive(PartialEq)]
 pub struct UploadToMclogs {
-    has_log: bool,
+    path: Option<PathBuf>,
     confirm: State<Option<Confirm>>,
 }
 
 impl UploadToMclogs {
-    pub fn new(has_log: bool, confirm: State<Option<Confirm>>) -> Self {
-        Self { has_log, confirm }
+    pub fn new(path: Option<PathBuf>, confirm: State<Option<Confirm>>) -> Self {
+        Self { path, confirm }
     }
 }
 
 impl Component for UploadToMclogs {
     fn render(&self) -> impl IntoElement {
         let mut confirm = self.confirm;
+        let path = self.path.clone();
+        let current_path = use_reactive(&self.path);
 
         Button::new()
             .secondary()
-            .enabled(self.has_log)
-            .on_press(move |_| confirm.set(Some(Confirm::Upload)))
+            .enabled(path.is_some())
+            .on_press(move |_| {
+                let Some(path) = path.clone() else {
+                    return;
+                };
+                spawn(async move {
+                    let checked = path.clone();
+                    let check =
+                        off_ui(
+                            async move { oneclient_core::log_exceeds_upload_limit(&checked).await },
+                        )
+                        .await;
+                    if *current_path.peek() != Some(path) {
+                        return;
+                    }
+                    let too_long = match check {
+                        Ok(too_long) => too_long,
+                        Err(err) => {
+                            tracing::warn!("log size check failed: {err:?}");
+                            false
+                        }
+                    };
+                    confirm.set(Some(if too_long {
+                        Confirm::UploadTooLong
+                    } else {
+                        Confirm::Upload
+                    }));
+                });
+            })
             .child(Icon::new(IconType::LinkExternal01).size(15.))
             .text(t("oneclient.components.upload_mclogs.upload"))
     }

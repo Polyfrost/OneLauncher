@@ -2,6 +2,7 @@ use freya::prelude::*;
 
 use crate::components::IconType;
 use crate::hooks::use_onboarding_selection;
+use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::view::onboarding::{
@@ -25,11 +26,11 @@ impl Component for OnboardingWelcome {
             .spacing(16.)
             .child(step_heading(
                 "OneClient",
-                "Let's get you all set-up with the most advanced client.",
+                t("oneclient.onboarding.welcome.subtitle"),
             ))
             .child(
                 label()
-                    .text("This quick setup will pick your language, sign you in, and prepare your first versions. It only takes a minute.")
+                    .text(t("oneclient.onboarding.welcome.description"))
                     .font_size(15.)
                     .color(colors::fg_secondary()),
             )

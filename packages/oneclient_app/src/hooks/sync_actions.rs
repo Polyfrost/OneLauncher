@@ -11,6 +11,7 @@ use uuid::Uuid;
 
 use super::actions::{Actions, listed};
 use super::queries::invalidate_cluster_worlds;
+use crate::i18n::{t, tf};
 use crate::launcher::{self, off_ui};
 use crate::state::{AppChannel, AppState};
 
@@ -37,7 +38,7 @@ impl Actions {
                 Ok(dir) => dir,
                 Err(err) => {
                     actions
-                        .notify("Couldn't sync from the shared folder")
+                        .notify(t("oneclient.sync_actions.failed"))
                         .body(err.to_string())
                         .error()
                         .send();
@@ -48,7 +49,7 @@ impl Actions {
                 Ok(sync) => sync,
                 Err(block) => {
                     actions
-                        .notify("Couldn't sync from the shared folder")
+                        .notify(t("oneclient.sync_actions.failed"))
                         .body(block.to_string())
                         .error()
                         .send();
@@ -57,8 +58,8 @@ impl Actions {
             };
             if oneclient_core::clusters::is_resetting(cluster_id) {
                 actions
-                    .notify("Couldn't sync from the shared folder")
-                    .body("This instance is being reset. Wait for the reset to finish, then try again.")
+                    .notify(t("oneclient.sync_actions.failed"))
+                    .body(t("oneclient.sync_actions.resetting"))
                     .error()
                     .send();
                 return;
@@ -83,12 +84,12 @@ impl Actions {
             match result {
                 Ok(report) => events.finish_progress(
                     progress_id,
-                    "Synced from the shared folder",
+                    t("oneclient.sync_actions.synced"),
                     report_summary(&report, include_worlds),
                 ),
                 Err(err) => events.fail_progress(
                     progress_id,
-                    "Couldn't sync from the shared folder",
+                    t("oneclient.sync_actions.failed"),
                     err.to_string(),
                 ),
             }
@@ -99,9 +100,7 @@ impl Actions {
 pub(crate) async fn sync_launch_block(cluster_id: ClusterId) -> Option<&'static str> {
     let state = launcher::state().ok()?;
     if state.games.is_syncing(cluster_id) {
-        return Some(
-            "This instance is syncing from the shared folder. Press Play again once it finishes.",
-        );
+        return Some(t("oneclient.sync_actions.launch_block.this"));
     }
     if !state.games.any_syncing() {
         return None;
@@ -111,9 +110,7 @@ pub(crate) async fn sync_launch_block(cluster_id: ClusterId) -> Option<&'static 
         .get(cluster_id)
         .await
         .is_ok_and(|cluster| !cluster.uses_dedicated_dir());
-    shared.then_some(
-        "An instance is syncing from the shared folder. Press Play again once it finishes.",
-    )
+    shared.then(|| t("oneclient.sync_actions.launch_block.other"))
 }
 
 struct ShownSync {
@@ -168,47 +165,56 @@ async fn newer_shared_versions(state: &LauncherState, cluster_id: ClusterId) -> 
 }
 
 fn sync_prompt(newer: &[String]) -> Prompt<bool> {
-    const BODY: &str = "Copy settings, keybinds, the server list and mod configs from the shared \
-        .minecraft into this instance, replacing its own. Worlds missing here are copied too; \
-        worlds this instance already has are left untouched.";
+    let body = t("oneclient.sync_actions.prompt.body");
 
     if newer.is_empty() {
-        return Prompt::new("Sync from the shared folder", BODY)
-            .option(Choice::primary("sync_shared.everything", "Sync"), true)
-            .dismiss("Cancel");
+        return Prompt::new(t("oneclient.sync_actions.prompt.title"), body)
+            .option(
+                Choice::primary(
+                    "sync_shared.everything",
+                    t("oneclient.sync_actions.prompt.sync"),
+                ),
+                true,
+            )
+            .dismiss(t("oneclient.common.cancel"));
     }
 
     Prompt::new(
-        "Sync from the shared folder",
-        format!(
-            "{BODY} The shared folder is also used by Minecraft {}. Worlds saved there can break \
-             in this older version, and its settings may reset some keybinds.",
-            listed(newer.iter().cloned())
+        t("oneclient.sync_actions.prompt.title"),
+        tf(
+            "oneclient.sync_actions.prompt.body_newer",
+            &[&body, &listed(newer.iter().cloned())],
         ),
     )
     .option(
-        Choice::new("sync_shared.everything", "Sync everything"),
+        Choice::new(
+            "sync_shared.everything",
+            t("oneclient.sync_actions.prompt.everything"),
+        ),
         true,
     )
     .option(
-        Choice::primary("sync_shared.settings", "Settings only"),
+        Choice::primary(
+            "sync_shared.settings",
+            t("oneclient.sync_actions.prompt.settings_only"),
+        ),
         false,
     )
-    .dismiss("Cancel")
+    .dismiss(t("oneclient.common.cancel"))
 }
 
 fn report_summary(report: &SyncReport, include_worlds: bool) -> String {
     if report.total == 0 {
-        return "Nothing to sync in the shared folder.".to_string();
+        return t("oneclient.sync_actions.report.nothing").to_string();
     }
     if !include_worlds {
-        return "Settings are now copied into this instance.".to_string();
+        return t("oneclient.sync_actions.report.settings").to_string();
     }
     if report.skipped.is_empty() {
-        return "Settings and worlds are now copied into this instance.".to_string();
+        return t("oneclient.sync_actions.report.settings_and_worlds").to_string();
     }
-    format!(
-        "Settings copied. Skipped worlds this instance already has: {}.",
-        listed(report.skipped.iter().cloned())
+    tf(
+        "oneclient.sync_actions.report.skipped",
+        &[&listed(report.skipped.iter().cloned())],
     )
 }

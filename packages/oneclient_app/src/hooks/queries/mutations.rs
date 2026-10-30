@@ -16,6 +16,7 @@ use super::package_updates::PackageUpdatesQuery;
 use super::settings_profiles::{
     ClusterProfileQuery, ClusterSettingsQuery, GameProfileQuery, ListNamedProfilesQuery,
 };
+use crate::i18n::{t, tf};
 
 async fn timed(step: &'static str, fut: impl std::future::Future<Output = ()>) {
     let started = std::time::Instant::now();
@@ -254,8 +255,8 @@ impl MutationCapability for ClusterMutation {
             if live == LiveSync::Deferred && state.games.is_active(cluster_id) {
                 services
                     .events
-                    .notify("Saved for the next launch")
-                    .body("Minecraft is running, but this could not be added to the open game.")
+                    .notify(t("oneclient.mutations.deferred.title"))
+                    .body(t("oneclient.mutations.deferred.body"))
                     .send();
             }
         };
@@ -272,8 +273,7 @@ impl MutationCapability for ClusterMutation {
                 if crate::hooks::update_check_running(*cluster_id) =>
             {
                 Err(oneclient_content::ContentError::InvalidData {
-                    reason: "Wait for the update check to finish before changing this instance."
-                        .to_string(),
+                    reason: t("oneclient.mutations.blocked.update_check").to_string(),
                 })
             }
             ClusterAction::SetArtifactEnabled {
@@ -321,7 +321,7 @@ impl MutationCapability for ClusterMutation {
                 if state.games.is_syncing(*cluster_id) =>
             {
                 Err(oneclient_content::ContentError::InvalidData {
-                    reason: "Wait for the sync to finish before changing the folder.".to_string(),
+                    reason: t("oneclient.mutations.blocked.sync_before_folder").to_string(),
                 })
             }
             ClusterAction::SetDedicatedDir {
@@ -331,13 +331,11 @@ impl MutationCapability for ClusterMutation {
                 // Switching moves the instance's files, which a reset is moving too
                 if oneclient_core::clusters::is_resetting(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Wait for the reset to finish before changing the directory."
-                            .to_string(),
+                        reason: t("oneclient.mutations.blocked.reset_before_folder").to_string(),
                     })
                 } else if oneclient_core::clusters::has_imported_modpacks(&state, *cluster_id).await {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Remove the modpacks added to this instance under Added Modpacks before changing its folder."
-                            .to_string(),
+                        reason: t("oneclient.mutations.blocked.modpacks_before_folder").to_string(),
                     })
                 } else {
                     let switching = state
@@ -390,7 +388,9 @@ impl MutationCapability for ClusterMutation {
                 .await
                 {
                     Ok(report) => {
-                        let notify = services.events.notify("Verification complete");
+                        let notify = services
+                            .events
+                            .notify(t("oneclient.mutations.verification_complete"));
                         let notify = notify.body(report.summary());
                         if report.unrepairable.is_empty() {
                             notify.send();
@@ -437,8 +437,8 @@ impl MutationCapability for ClusterMutation {
                             tracing::warn!(cluster_id = cluster.id, error = %err, "failed to give the new instance a dedicated directory");
                             services
                                 .events
-                                .notify("Couldn't give the instance its own folder")
-                                .body(format!("It uses the shared folder for now: {err}"))
+                                .notify(t("oneclient.mutations.dedicated_dir_failed.title"))
+                                .body(tf("oneclient.mutations.dedicated_dir_failed.body", &[&err]))
                                 .error()
                                 .send();
                         }
@@ -488,7 +488,7 @@ impl MutationCapability for ClusterMutation {
 
                             let session = oneclient_events::GroupedProgressSession::start(
                                 &services.events,
-                                format!("Setting up {}", cluster.name),
+                                tf("oneclient.mutations.setting_up", &[&cluster.name]),
                             );
                             if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
                                 cluster.id,
@@ -570,17 +570,15 @@ impl MutationCapability for ClusterMutation {
             ClusterAction::DeleteInstance { cluster_id } => {
                 if crate::hooks::modpack_job_running(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Wait for the modpack to finish, or close its dialog, before deleting this instance."
-                            .to_string(),
+                        reason: t("oneclient.mutations.blocked.modpack_before_delete").to_string(),
                     })
                 } else if state.games.is_active(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Close the game before deleting this instance.".to_string(),
+                        reason: t("oneclient.mutations.blocked.game_before_delete").to_string(),
                     })
                 } else if state.games.is_syncing(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Wait for the sync to finish before deleting this instance."
-                            .to_string(),
+                        reason: t("oneclient.mutations.blocked.sync_before_delete").to_string(),
                     })
                 } else {
                     let (released, id) = (state.clone(), *cluster_id);
@@ -609,22 +607,19 @@ impl MutationCapability for ClusterMutation {
                 let claim = oneclient_core::clusters::ResetClaim::take(*cluster_id);
                 if crate::hooks::modpack_job_running(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Wait for the modpack to finish, or close its dialog, before resetting this instance."
-                            .to_string(),
+                        reason: t("oneclient.mutations.blocked.modpack_before_reset").to_string(),
                     })
                 } else if crate::hooks::exporting(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Wait for the export to finish before resetting this instance."
-                            .to_string(),
+                        reason: t("oneclient.mutations.blocked.export_before_reset").to_string(),
                     })
                 } else if state.games.is_active(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Close the game before resetting this instance.".to_string(),
+                        reason: t("oneclient.mutations.blocked.game_before_reset").to_string(),
                     })
                 } else if state.games.is_syncing(*cluster_id) {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "Wait for the sync from the shared folder to finish before resetting this instance."
-                            .to_string(),
+                        reason: t("oneclient.mutations.blocked.sync_before_reset").to_string(),
                     })
                 } else if let Some(claim) = claim {
                     let (state, cluster_id) = (state.clone(), *cluster_id);
@@ -637,7 +632,7 @@ impl MutationCapability for ClusterMutation {
                             .unwrap_or_default();
                         let session = oneclient_events::GroupedProgressSession::start(
                             &state.services.events,
-                            format!("Resetting {name}"),
+                            tf("oneclient.mutations.resetting", &[&name]),
                         );
                         let result = oneclient_core::clusters::reset_cluster(
                             &state,
@@ -665,7 +660,7 @@ impl MutationCapability for ClusterMutation {
                     }
                 } else {
                     Err(oneclient_content::ContentError::InvalidData {
-                        reason: "This instance is already being reset.".to_string(),
+                        reason: t("oneclient.mutations.blocked.already_resetting").to_string(),
                     })
                 }
             }
@@ -687,7 +682,7 @@ impl MutationCapability for ClusterMutation {
             state
                 .services
                 .events
-                .notify("Action failed")
+                .notify(t("oneclient.mutations.action_failed"))
                 .body(err)
                 .error()
                 .send();
@@ -711,17 +706,19 @@ fn notify_reset(
     report: &oneclient_core::clusters::ResetReport,
 ) {
     if let Some(err) = &report.reinstall_error {
-        let mut body = format!("Its content could not be installed again: {err}.");
+        let mut body = tf("oneclient.mutations.reset.reinstall_failed", &[&err]);
         if let Some(backup) = &report.backup_dir {
-            body.push_str(&format!(
-                " The files it replaced were moved to {}.",
-                backup.display()
+            body.push(' ');
+            body.push_str(&tf(
+                "oneclient.mutations.reset.moved_to",
+                &[&backup.display()],
             ));
         }
-        body.push_str(" Run Reset Instance again to finish. Until then it can't be launched.");
+        body.push(' ');
+        body.push_str(t("oneclient.mutations.reset.run_again"));
         services
             .events
-            .notify("Reset didn't finish")
+            .notify(t("oneclient.mutations.reset.unfinished"))
             .body(body)
             .error()
             .send();
@@ -729,24 +726,26 @@ fn notify_reset(
     }
 
     let mut body = if report.kept_shared_configs {
-        "Its mods and settings are back to how they were. Config files in the shared game folder were kept.".to_string()
+        t("oneclient.mutations.reset.done_kept_configs").to_string()
     } else {
-        "Its mods, settings and config files are back to how they were.".to_string()
+        t("oneclient.mutations.reset.done").to_string()
     };
     if let Some(backup) = &report.backup_dir {
-        body.push_str(&format!(
-            " The files it replaced were moved to {}.",
-            backup.display()
+        body.push(' ');
+        body.push_str(&tf(
+            "oneclient.mutations.reset.moved_to",
+            &[&backup.display()],
         ));
     }
 
-    let notify = services.events.notify("Instance reset");
+    let notify = services.events.notify(t("oneclient.mutations.reset.title"));
     if report.not_moved.is_empty() {
         notify.body(body).send();
     } else {
-        body.push_str(&format!(
-            " These could not be moved and were left in place: {}.",
-            report.not_moved.join(", ")
+        body.push(' ');
+        body.push_str(&tf(
+            "oneclient.mutations.reset.not_moved",
+            &[&report.not_moved.join(", ")],
         ));
         notify.body(body).error().send();
     }

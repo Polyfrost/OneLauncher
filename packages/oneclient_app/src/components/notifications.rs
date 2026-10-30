@@ -7,6 +7,7 @@ use oneclient_events::Level;
 use crate::{
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
     hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
+    i18n::{t, tf},
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
     transfer::TransferStats,
@@ -57,7 +58,7 @@ impl Component for NotificationPanel {
         if visible.is_empty() {
             rows.push(
                 label()
-                    .text("No notifications")
+                    .text(t("oneclient.components.notifications.empty"))
                     .font_size(13.)
                     .color(colors::fg_secondary())
                     .into_element(),
@@ -104,7 +105,7 @@ impl Component for NotificationPanel {
             )))
             .child(
                 label()
-                    .text("Notifications")
+                    .text(t("oneclient.components.notifications.title"))
                     .font_size(18.)
                     .font_weight(FontWeight::MEDIUM)
                     .a11y_role(AccessibilityRole::TitleBar),
@@ -224,9 +225,9 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
                 .child(
                     label()
                         .text(if is_expanded {
-                            "Hide tasks".to_string()
+                            t("oneclient.components.notifications.hide_tasks").to_string()
                         } else {
-                            format!("Show {count} tasks")
+                            tf("oneclient.components.notifications.show_tasks", &[&count])
                         })
                         .font_size(11.)
                         .color(colors::fg_secondary()),
@@ -241,7 +242,10 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
         if count > TASK_LIMIT {
             list = list.child(
                 label()
-                    .text(format!("+{} more", count - TASK_LIMIT))
+                    .text(tf(
+                        "oneclient.components.notifications.more",
+                        &[&(count - TASK_LIMIT)],
+                    ))
                     .font_size(10.)
                     .color(colors::fg_secondary()),
             );
@@ -430,7 +434,7 @@ fn row_extra(
                     .small()
                     .secondary()
                     .width(Size::flex(1.0))
-                    .text("Dismiss")
+                    .text(t("oneclient.common.dismiss"))
                     .on_press(move |_| dismiss_dispatch.dismiss_notification(id)),
             );
 
@@ -459,9 +463,12 @@ fn row_extra(
 
 fn transfer_footer(stats: TransferStats) -> Element {
     let speed = format!("{}/s", format_size(stats.speed_bps as u64));
-    let eta = stats
-        .eta_secs
-        .map(|secs| format!("{} left", format_durations(secs as i64)));
+    let eta = stats.eta_secs.map(|secs| {
+        tf(
+            "oneclient.components.notifications.time_left",
+            &[&format_durations(secs as i64)],
+        )
+    });
 
     rect()
         .horizontal()
@@ -525,7 +532,7 @@ impl Component for Footer {
                     } else {
                         colors::fg_primary()
                     }))
-                    .text("Clear all"),
+                    .text(t("oneclient.components.notifications.clear_all")),
             )
     }
 }

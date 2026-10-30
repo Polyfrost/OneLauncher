@@ -5,6 +5,7 @@ use crate::components::{Button, OverlayPopup};
 use crate::hooks::{
     ClusterAction, use_active_cluster_id, use_cluster, use_cluster_mutation, use_game_snapshot,
 };
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -47,15 +48,9 @@ impl Component for DeleteInstanceModal {
         let dedicated = cluster.as_ref().is_none_or(|c| c.uses_dedicated_dir());
         let provisioned = cluster.as_ref().is_some_and(|c| !c.user_created);
         let warning = if dedicated {
-            format!(
-                "{} and its files will be deleted, including its worlds, settings and installed content. This cannot be undone.",
-                self.name
-            )
+            tf("oneclient.clusters.delete.warning.dedicated", &[&self.name])
         } else {
-            format!(
-                "{} and its files will be deleted, including its settings and installed content. Worlds and everything else in the shared game folder are kept. This cannot be undone.",
-                self.name
-            )
+            tf("oneclient.clusters.delete.warning.shared", &[&self.name])
         };
 
         let close_scrim = self.on_close.clone();
@@ -81,7 +76,7 @@ impl Component for DeleteInstanceModal {
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 label()
-                                    .text("Delete instance")
+                                    .text(t("oneclient.clusters.delete.title"))
                                     .font_size(18.)
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
@@ -94,14 +89,14 @@ impl Component for DeleteInstanceModal {
                             )
                             .maybe_child(provisioned.then(|| {
                                 label()
-                                    .text("It won't be added back automatically. To play this version again, create a OneClient instance for it.")
+                                    .text(t("oneclient.clusters.delete.provisioned"))
                                     .font_size(12.)
                                     .color(colors::fg_secondary())
                                     .into_element()
                             }))
                             .maybe_child(running.then(|| {
                                 label()
-                                    .text("Close the game before deleting this instance.")
+                                    .text(t("oneclient.clusters.delete.running"))
                                     .font_size(12.)
                                     .color(colors::fg_secondary())
                                     .into_element()
@@ -116,7 +111,7 @@ impl Component for DeleteInstanceModal {
                                         Button::new()
                                             .ghost()
                                             .on_press(move |_| close_cancel.call(()))
-                                            .text("Cancel"),
+                                            .text(t("oneclient.common.cancel")),
                                     )
                                     .child(
                                         Button::new()
@@ -130,11 +125,12 @@ impl Component for DeleteInstanceModal {
                                                     *active_id.write() = None;
                                                 }
                                                 if !stay {
-                                                    let _ = RouterContext::get().push(Route::Home {});
+                                                    let _ =
+                                                        RouterContext::get().push(Route::Home {});
                                                 }
                                                 close_delete.call(());
                                             })
-                                            .text("Delete"),
+                                            .text(t("oneclient.common.delete")),
                                     ),
                             ),
                     ),

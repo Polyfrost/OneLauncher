@@ -12,6 +12,7 @@ use crate::components::{
     Button, Icon, IconType, ScrollArea, centered_spinner, explanation_panel, remote_icon,
 };
 use crate::hooks::{retry_import_screening, use_cached_image};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -30,7 +31,9 @@ pub fn review_step(wizard: Wizard, picks: &Picks) -> Element {
         return rect()
             .width(Size::fill())
             .height(Size::fill())
-            .child(centered_spinner("Checking mods..."))
+            .child(centered_spinner(t(
+                "oneclient.clusters.instance.import_review.checking",
+            )))
             .into_element();
     };
 
@@ -69,14 +72,16 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
         )
         .child(
             label()
-                .text("Couldn't check the mods")
+                .text(t("oneclient.clusters.instance.import_review.failed.title"))
                 .font_size(14.)
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
-                .text("OneClient's list of suggested improvements could not be loaded. Try again, or import without checking.")
+                .text(t(
+                    "oneclient.clusters.instance.import_review.failed.description",
+                ))
                 .width(Size::fill())
                 .font_size(12.)
                 .text_align(TextAlign::Center)
@@ -102,7 +107,7 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
                         spawn(async move { retry_import_screening(instances).await });
                     })
                     .child(Icon::new(IconType::RefreshCw01).size(14.))
-                    .text("Try again"),
+                    .text(t("oneclient.common.try_again")),
             ),
         )
         .into_element()
@@ -123,14 +128,16 @@ fn all_clear() -> Element {
         )
         .child(
             label()
-                .text("Nothing to improve")
+                .text(t("oneclient.clusters.instance.import_review.none.title"))
                 .font_size(14.)
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
-                .text("None of the mods in the selected instances have a suggested OneClient improvement.")
+                .text(t(
+                    "oneclient.clusters.instance.import_review.none.description",
+                ))
                 .width(Size::fill())
                 .font_size(12.)
                 .text_align(TextAlign::Center)
@@ -145,8 +152,11 @@ fn instance_section(
     screened: &ScreenedInstance,
 ) -> Element {
     let count = match screened.flagged.len() {
-        1 => "1 mod to improve".to_string(),
-        n => format!("{n} mods to improve"),
+        1 => t("oneclient.clusters.instance.import_review.count.one").to_string(),
+        n => tf(
+            "oneclient.clusters.instance.import_review.count.other",
+            &[&n],
+        ),
     };
 
     rect()
@@ -201,7 +211,10 @@ fn flagged_card(
     let file_line = if flagged.enabled {
         flagged.file_name.clone()
     } else {
-        format!("{} · disabled", flagged.file_name)
+        tf(
+            "oneclient.clusters.instance.import_review.disabled",
+            &[&flagged.file_name],
+        )
     };
 
     let alternatives = flagged.alternatives.iter().map(|alternative| {
@@ -283,16 +296,16 @@ fn flagged_card(
                     key.clone(),
                     ModDecision::Keep,
                     current == ModDecision::Keep,
-                    "Keep it",
-                    "Import the mod as it is.",
+                    t("oneclient.clusters.instance.import_review.keep.title"),
+                    t("oneclient.clusters.instance.import_review.keep.description"),
                 ))
                 .child(choice_option(
                     state,
                     key,
                     ModDecision::Remove,
                     current == ModDecision::Remove,
-                    "Leave it out",
-                    "Import the instance without this mod.",
+                    t("oneclient.clusters.instance.import_review.remove.title"),
+                    t("oneclient.clusters.instance.import_review.remove.description"),
                 )),
         )
         .into_element()
@@ -349,9 +362,17 @@ impl Component for AlternativeOption {
 
         let available = self.already_installed || self.alternative.version_number.is_some();
         let subtitle = match &self.alternative.version_number {
-            _ if self.already_installed => "Already in this instance · use it instead".to_string(),
-            Some(version) => format!("Use instead · {version}"),
-            None => format!("No version for {}", self.mc_version),
+            _ if self.already_installed => {
+                t("oneclient.clusters.instance.import_review.already_installed").to_string()
+            }
+            Some(version) => tf(
+                "oneclient.clusters.instance.import_review.use_instead",
+                &[&version],
+            ),
+            None => tf(
+                "oneclient.clusters.instance.import_review.no_version",
+                &[&self.mc_version],
+            ),
         };
         let content = option_content(
             self.selected,

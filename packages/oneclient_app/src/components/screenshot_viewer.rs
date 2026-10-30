@@ -10,6 +10,7 @@ use crate::components::{
 use crate::hooks::{
     Actions, ScreenshotAction, UseScreenshotAction, use_dispatch, use_screenshot_action,
 };
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::fmt_date;
 use crate::utils::{format_res, format_size};
@@ -168,7 +169,9 @@ impl Component for ScreenshotViewer {
                                                 }
                                             })
                                             .child(Icon::new(IconType::Folder).size(14.))
-                                            .text("Open in folder"),
+                                            .text(t(
+                                                "oneclient.components.screenshot_viewer.open_in_folder",
+                                            )),
                                     )
                                     .child(
                                         Button::new()
@@ -178,15 +181,17 @@ impl Component for ScreenshotViewer {
                                                     copy_path.clone(),
                                                 );
                                                 copy_dispatch
-                                                    .notify("Copied to clipboard")
-                                                    .body("Screenshot copied to your clipboard.")
+                                                    .notify(t("oneclient.components.button.copied"))
+                                                    .body(t(
+                                                        "oneclient.components.screenshot_viewer.copied",
+                                                    ))
                                                     .info()
                                                     .icon(IconType::ClipboardCheck)
                                                     .toast_only()
                                                     .send();
                                             })
                                             .child(Icon::new(IconType::Copy01).size(14.))
-                                            .text("Copy"),
+                                            .text(t("oneclient.common.copy")),
                                     )
                                     .child(
                                         Button::new()
@@ -198,7 +203,7 @@ impl Component for ScreenshotViewer {
                                                 delete_close.call(());
                                             })
                                             .child(Icon::new(IconType::Trash01).size(14.))
-                                            .text("Delete"),
+                                            .text(t("oneclient.common.delete")),
                                     ),
                             ),
                     ),
@@ -226,28 +231,36 @@ pub fn screenshot_context_menu(
 
     let context_menu = match on_select {
         Some(on_select) => ContextMenu::new(x, y)
-            .action(IconType::Check, "Select", on_select)
+            .action(
+                IconType::Check,
+                t("oneclient.components.screenshot_viewer.select"),
+                on_select,
+            )
             .separator(),
         None => ContextMenu::new(x, y),
     };
     context_menu
-        .action(IconType::Folder, "Open in folder", move |()| {
-            if let Some(dir) = open_path.parent() {
-                crate::platform::open_path(&dir.to_string_lossy());
-            }
-        })
-        .action(IconType::Copy01, "Copy", move |()| {
+        .action(
+            IconType::Folder,
+            t("oneclient.components.screenshot_viewer.open_in_folder"),
+            move |()| {
+                if let Some(dir) = open_path.parent() {
+                    crate::platform::open_path(&dir.to_string_lossy());
+                }
+            },
+        )
+        .action(IconType::Copy01, t("oneclient.common.copy"), move |()| {
             crate::platform::copy_image_to_clipboard(copy_path.clone());
             dispatch
-                .notify("Copied to clipboard")
-                .body("Screenshot copied to your clipboard.")
+                .notify(t("oneclient.components.button.copied"))
+                .body(t("oneclient.components.screenshot_viewer.copied"))
                 .info()
                 .icon(IconType::ClipboardCheck)
                 .toast_only()
                 .send();
         })
         .separator()
-        .danger_action(IconType::Trash01, "Delete", move |()| {
+        .danger_action(IconType::Trash01, t("oneclient.common.delete"), move |()| {
             action.mutate(ScreenshotAction::Delete {
                 path: delete_path.clone(),
             });
@@ -302,7 +315,10 @@ fn header_row(
     }
 
     if len > 1 {
-        meta = format!("{} of {} • {meta}", idx + 1, len);
+        meta = tf(
+            "oneclient.components.screenshot_viewer.position",
+            &[&(idx + 1), &len, &meta],
+        );
     }
 
     rect()
@@ -333,7 +349,7 @@ fn header_row(
             Button::new()
                 .ghost()
                 .icon()
-                .tooltip("Close")
+                .tooltip(t("oneclient.common.close"))
                 .on_press(on_close)
                 .child(Icon::new(IconType::XClose).size(18.)),
         )

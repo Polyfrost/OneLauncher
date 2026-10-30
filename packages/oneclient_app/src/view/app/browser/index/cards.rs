@@ -12,6 +12,7 @@ use crate::hooks::{
     ALL_VERSIONS, ClusterAction, VERSIONS_PAGE_SIZE, content_type_for_slug, use_browser_compat,
     use_cluster, use_dispatch, use_installs_snapshot, use_package_versions_when, version_list,
 };
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::view::app::browser::cluster_version;
 use crate::theme::colors;
@@ -213,10 +214,12 @@ impl Component for PackageCard {
                                     .spacing(5.)
                                     .child(
                                         label()
-                                            .text(format!(
-                                                "by {} · {} downloads",
-                                                self.item.author,
-                                                abbreviate_number(self.item.downloads)
+                                            .text(tf(
+                                                "oneclient.browser.index.card.author_downloads",
+                                                &[
+                                                    &self.item.author,
+                                                    &abbreviate_number(self.item.downloads),
+                                                ],
                                             ))
                                             .font_size(10.)
                                             .max_lines(1)
@@ -330,7 +333,10 @@ impl Component for ListRow {
                             )
                             .child(
                                 label()
-                                    .text(format!("by {}", item.author))
+                                    .text(tf(
+                                        "oneclient.browser.index.card.author",
+                                        &[&item.author],
+                                    ))
                                     .font_size(10.)
                                     .max_lines(1)
                                     .color(colors::fg_primary().with_a(140)),
@@ -536,11 +542,13 @@ impl Component for InstallButton {
                     .child(
                         label()
                             .text(match (installing, add_to_cluster) {
-                                (true, true) => "Adding",
-                                (true, false) => "Installing",
-                                (false, true) if incompatible => "Incompatible",
-                                (false, true) => "Add",
-                                (false, false) => "Install",
+                                (true, true) => t("oneclient.browser.index.card.adding"),
+                                (true, false) => t("oneclient.browser.index.card.installing"),
+                                (false, true) if incompatible => {
+                                    t("oneclient.browser.index.card.incompatible")
+                                }
+                                (false, true) => t("oneclient.common.add"),
+                                (false, false) => t("oneclient.common.install"),
                             })
                             .font_size(11.)
                             .font_weight(FontWeight::SEMI_BOLD)
@@ -589,7 +597,7 @@ pub(super) fn empty_state() -> impl IntoElement {
         .center()
         .child(
             label()
-                .text("No results. Try a different search, category or provider.")
+                .text(t("oneclient.browser.index.no_results"))
                 .font_size(14.)
                 .color(colors::fg_secondary()),
         )

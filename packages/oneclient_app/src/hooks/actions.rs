@@ -19,12 +19,13 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use freya::prelude::spawn_forever;
+use freya::query::QueriesStorage;
 use freya::radio::RadioStation;
 use oneclient_cluster::profiles::list_named_profiles;
 use oneclient_cluster::{
     Cluster, ClusterStage, ClusterUpdate, GameSettingsProfile, PackageUpdateMode, ProfileUpdate,
 };
-use oneclient_common::domain::{ContentType, ProviderId};
+use oneclient_common::domain::{ContentType, GraphicsBackend, ProviderId};
 use oneclient_content::packages::{LiveSync, LocalImportReport};
 use oneclient_core::relocate::RelocationPlan;
 use oneclient_core::settings::LauncherSettings;
@@ -34,6 +35,8 @@ use oneclient_events::{Answer, Level};
 use tokio::sync::mpsc;
 
 use crate::components::IconType;
+use crate::hooks::GraphicsBackendQuery;
+use crate::i18n::{t, tf};
 use crate::launcher::off_ui;
 use crate::notifications::{
     BundleChoices, ClusterUpdateSummary, NotificationAction, NotificationSpec, OptionalModRef,
@@ -325,6 +328,25 @@ impl Actions {
         }
     }
 
+    pub fn acknowledge_disable_warnings(&self, package_ids: &[String]) {
+        if package_ids.is_empty() {
+            return;
+        }
+        let mut changed = false;
+        let updated = self.mutate_settings(|settings| {
+            for id in package_ids {
+                if !settings.acknowledged_disable_warnings.contains(id) {
+                    settings.acknowledged_disable_warnings.push(id.clone());
+                    changed = true;
+                }
+            }
+        });
+
+        if let (true, Some(updated)) = (changed, updated) {
+            self.persist(updated);
+        }
+    }
+
     pub fn mark_onboarding_seen(&self) {
         if let Some(updated) = self.mutate_settings(|settings| settings.seen_onboarding = true) {
             self.persist(updated);
@@ -364,11 +386,8 @@ impl Actions {
         self.persist(updated);
 
         if was_declined {
-            self.notify("Restart to finish")
-                .body(
-                    "Thanks. OneClient reconnects to Polyfrost services the next time you start \
-                     it.",
-                )
+            self.notify(t("oneclient.actions.tos_accepted.title"))
+                .body(t("oneclient.actions.tos_accepted.body"))
                 .icon(IconType::RefreshCw01)
                 .send();
         }
@@ -508,6 +527,22 @@ impl Actions {
         });
     }
 
+    pub fn set_graphics_backend(&self, game_dir: PathBuf, backend: GraphicsBackend) {
+        spawn_forever(async move {
+            let Ok(state) = launcher::state() else { return };
+            match oneclient_core::game::write_graphics_backend(&game_dir, backend).await {
+                Ok(()) => QueriesStorage::<GraphicsBackendQuery>::invalidate_all().await,
+                Err(err) => state
+                    .services
+                    .events
+                    .notify(t("oneclient.actions.graphics_backend_failed"))
+                    .body(err.to_string())
+                    .error()
+                    .send(),
+            }
+        });
+    }
+
     pub fn create_and_assign_cluster_profile(
         &self,
         cluster_id: ClusterId,
@@ -570,13 +605,16 @@ impl Actions {
             {
                 Ok(()) => {
                     events
-                        .notify("Import complete")
-                        .body(format!("Copied your files from {}.", source.display_name()))
+                        .notify(t("oneclient.actions.migration_import.title"))
+                        .body(tf(
+                            "oneclient.actions.migration_import.body",
+                            &[&source.display_name()],
+                        ))
                         .send();
                     events.signal(oneclient_events::Signal::ClustersChanged);
                 }
                 Err(err) => events
-                    .notify("Import failed")
+                    .notify(t("oneclient.actions.import_failed"))
                     .body(err.to_string())
                     .error()
                     .send(),
@@ -599,7 +637,7 @@ impl Actions {
                     invalidate_java_queries().await
                 }
                 Err(err) => events
-                    .notify("Java install failed")
+                    .notify(t("oneclient.actions.java.install_failed"))
                     .body(err.to_string())
                     .error()
                     .send(),
@@ -614,13 +652,16 @@ impl Actions {
             match state.java.add_custom_runtime(path).await {
                 Ok(runtime) => {
                     events
-                        .notify("Java added")
-                        .body(format!("Java {} ({})", runtime.major, runtime.vendor))
+                        .notify(t("oneclient.actions.java.added.title"))
+                        .body(tf(
+                            "oneclient.actions.java.added.body",
+                            &[&runtime.major, &runtime.vendor],
+                        ))
                         .send();
                     events.signal(oneclient_events::Signal::JavaChanged);
                 }
                 Err(err) => events
-                    .notify("Failed to add Java")
+                    .notify(t("oneclient.actions.java.add_failed"))
                     .body(err.to_string())
                     .error()
                     .send(),
@@ -643,8 +684,11 @@ impl Actions {
                     let pinned = clusters_pinned_to_java(&profiles, &clusters, &path);
                     if !pinned.is_empty() {
                         events
-                            .notify("Cannot remove this JDK")
-                            .body(format!("It is used by cluster: {}", pinned.join(", ")))
+                            .notify(t("oneclient.actions.java.remove_blocked.title"))
+                            .body(tf(
+                                "oneclient.actions.java.remove_blocked.body",
+                                &[&pinned.join(", ")],
+                            ))
                             .error()
                             .send();
                         return;
@@ -818,10 +862,10 @@ impl Actions {
                 let content = state.services.content();
                 let session = oneclient_events::GroupedProgressSession::start(
                     &state.services.events,
-                    "Adding optional mods",
+                    t("oneclient.actions.optional_mods.adding"),
                 );
                 let opt_in = session.child(
-                    "Enabling mods",
+                    t("oneclient.actions.optional_mods.enabling"),
                     mods.len() as u64,
                     oneclient_events::TaskCategory::Packages,
                 );
@@ -907,20 +951,34 @@ impl Actions {
 
             if installed > 0 {
                 events
-                    .notify("Mods added")
-                    .body(format!(
-                        "{installed} mod{} added",
-                        if installed == 1 { "" } else { "s" }
-                    ))
+                    .notify(t("oneclient.actions.optional_mods.added.title"))
+                    .body(if installed == 1 {
+                        tf(
+                            "oneclient.actions.optional_mods.added.body.one",
+                            &[&installed],
+                        )
+                    } else {
+                        tf(
+                            "oneclient.actions.optional_mods.added.body.other",
+                            &[&installed],
+                        )
+                    })
                     .send();
             }
             if failed > 0 {
                 events
-                    .notify("Some mods were not added")
-                    .body(format!(
-                        "{failed} mod{} could not be installed",
-                        if failed == 1 { "" } else { "s" }
-                    ))
+                    .notify(t("oneclient.actions.optional_mods.failed.title"))
+                    .body(if failed == 1 {
+                        tf(
+                            "oneclient.actions.optional_mods.failed.body.one",
+                            &[&failed],
+                        )
+                    } else {
+                        tf(
+                            "oneclient.actions.optional_mods.failed.body.other",
+                            &[&failed],
+                        )
+                    })
                     .error()
                     .send();
             }
@@ -999,7 +1057,7 @@ impl Actions {
         state
             .services
             .events
-            .progress(id, "Downloading assets", current, total);
+            .progress(id, t("oneclient.actions.test_progress"), current, total);
     }
 
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
@@ -1008,8 +1066,8 @@ impl Actions {
             return;
         }
         if self.station.peek().game.is_checking_updates(cluster_id) {
-            self.notify("Checking for updates")
-                .body("Wait for the update check to finish, then press Play again.")
+            self.notify(t("oneclient.actions.launch.checking_updates.title"))
+                .body(t("oneclient.actions.launch.checking_updates.body"))
                 .send();
             return;
         }
@@ -1052,16 +1110,16 @@ impl Actions {
             return;
         }
         if exporting(cluster_id) {
-            self.notify("Wait for the export to finish")
-                .body("This instance is being exported. Check for updates once that's done.")
+            self.notify(t("oneclient.actions.update_check.exporting.title"))
+                .body(t("oneclient.actions.update_check.exporting.body"))
                 .send();
             return;
         }
         if self.station.peek().installs.cluster_installing(cluster_id)
             || cluster_writing(cluster_id)
         {
-            self.notify("Wait for the installs to finish")
-                .body("Mods are still being added to this instance. Try again once they're done.")
+            self.notify(t("oneclient.actions.update_check.installing.title"))
+                .body(t("oneclient.actions.update_check.installing.body"))
                 .send();
             return;
         }
@@ -1089,13 +1147,13 @@ impl Actions {
                     };
                     match check {
                         Some(check) if check.failed => actions
-                            .notify("Couldn't finish checking for updates")
-                            .body("Some update checks failed. Check your connection and try again.")
+                            .notify(t("oneclient.actions.update_check.failed.title"))
+                            .body(t("oneclient.actions.update_check.failed.body"))
                             .error()
                             .send(),
                         Some(check) if !check.found => actions
-                            .notify("No updates found")
-                            .body("This instance is up to date.")
+                            .notify(t("oneclient.actions.update_check.none.title"))
+                            .body(t("oneclient.actions.update_check.none.body"))
                             .send(),
                         _ => {}
                     }
@@ -1114,8 +1172,8 @@ impl Actions {
     pub(super) fn refuse_during_update_check(&self, cluster_id: ClusterId) -> bool {
         let checking = update_check_running(cluster_id);
         if checking {
-            self.notify("Wait for the update check to finish")
-                .body("This instance is being updated. Try again once that's done.")
+            self.notify(t("oneclient.actions.update_check.busy.title"))
+                .body(t("oneclient.actions.update_check.busy.body"))
                 .error()
                 .send();
         }
@@ -1224,22 +1282,18 @@ impl Actions {
                 Ok(None) => state
                     .services
                     .events
-                    .notify(format!("Could not find {name}"))
+                    .notify(tf("oneclient.actions.missing_mod.title", &[&name]))
                     .body(if range.is_some() {
-                        format!(
-                            "No version of {name} on Modrinth matches both this cluster and the version the other mods ask for."
-                        )
+                        tf("oneclient.actions.missing_mod.no_match_range", &[&name])
                     } else {
-                        format!(
-                            "No version of {name} for this cluster's Minecraft version and loader is on Modrinth."
-                        )
+                        tf("oneclient.actions.missing_mod.no_match", &[&name])
                     })
                     .error()
                     .send(),
                 Err(err) => state
                     .services
                     .events
-                    .notify("Install failed")
+                    .notify(t("oneclient.actions.install_failed"))
                     .body(err.to_string())
                     .error()
                     .send(),
@@ -1310,7 +1364,7 @@ impl Actions {
                     super::invalidate_cluster_queries().await;
                 }
                 Err(err) => events
-                    .notify("Import failed")
+                    .notify(t("oneclient.actions.import_failed"))
                     .body(err.to_string())
                     .error()
                     .send(),
@@ -1434,7 +1488,7 @@ impl Actions {
             // than arriving as a second one
             let spec = match &install.result {
                 Ok(name) => NotificationSpec {
-                    title: "Installed".to_string(),
+                    title: t("oneclient.actions.installed").to_string(),
                     body: crate::install::install_body(
                         name,
                         &install.dependencies,
@@ -1448,7 +1502,7 @@ impl Actions {
                     toast_only: true,
                 },
                 Err(err) => NotificationSpec {
-                    title: "Install failed".to_string(),
+                    title: t("oneclient.actions.install_failed").to_string(),
                     body: err.to_string(),
                     level: Level::Error,
                     icon: None,
@@ -1537,7 +1591,10 @@ impl Actions {
                 .await
             {
                 Ok(()) => {
-                    events.notify("Removed").body(display_name).send();
+                    events
+                        .notify(t("oneclient.actions.removed"))
+                        .body(display_name)
+                        .send();
 
                     // The row's next state is read off the cluster's content
                     // so refresh that before the busy flag drops
@@ -1545,7 +1602,7 @@ impl Actions {
                     events.signal(oneclient_events::Signal::ClustersChanged);
                 }
                 Err(err) => events
-                    .notify("Remove failed")
+                    .notify(t("oneclient.actions.remove_failed"))
                     .body(err.to_string())
                     .error()
                     .send(),
@@ -1588,13 +1645,13 @@ impl Actions {
             {
                 Ok(_) => {
                     events
-                        .notify("Installed")
-                        .body(format!("Added {bundle_name}"))
+                        .notify(t("oneclient.actions.installed"))
+                        .body(tf("oneclient.actions.bundle_added", &[&bundle_name]))
                         .send();
                     events.signal(oneclient_events::Signal::ClustersChanged);
                 }
                 Err(err) => events
-                    .notify("Install failed")
+                    .notify(t("oneclient.actions.install_failed"))
                     .body(err.to_string())
                     .error()
                     .send(),
@@ -1630,7 +1687,7 @@ impl Actions {
                     state
                         .services
                         .events
-                        .notify("Update failed")
+                        .notify(t("oneclient.actions.update_failed"))
                         .body(err.to_string())
                         .error()
                         .send();
@@ -1651,7 +1708,7 @@ impl Actions {
                 state
                     .services
                     .events
-                    .notify("Some mods failed to update")
+                    .notify(t("oneclient.actions.bundle_update.some_failed"))
                     .body(failures.join("\n"))
                     .error()
                     .send();
@@ -1678,7 +1735,7 @@ impl Actions {
                 tracing::error!("move skipped, launcher not ready: {err:#}");
                 self.write_relocation(RelocationState {
                     plan: Some(plan),
-                    result: Some(Err(format!("OneClient is not ready yet: {err}"))),
+                    result: Some(Err(tf("oneclient.actions.relocate.not_ready", &[&err]))),
                     ..RelocationState::default()
                 });
                 return;
@@ -1932,8 +1989,8 @@ impl Actions {
 
         if failures.is_empty() {
             if manual && changed {
-                self.notify("Mods updated")
-                    .body("This instance's bundled mods were updated.")
+                self.notify(t("oneclient.actions.update_check.bundles_updated.title"))
+                    .body(t("oneclient.actions.update_check.bundles_updated.body"))
                     .send();
             }
             return Some(UpdateCheck {
@@ -1942,23 +1999,29 @@ impl Actions {
             });
         }
 
-        let (title, outcome) = if manual {
-            ("Mods failed to update", "Try checking again.")
+        let details = failures.join("\n");
+        let (title, body) = if manual {
+            (
+                t("oneclient.actions.update_check.mods_failed.title"),
+                tf(
+                    "oneclient.actions.update_check.mods_failed.body",
+                    &[&failures.len(), &details],
+                ),
+            )
         } else {
             (
-                "Launch stopped: mods failed to update",
-                "so the game was not started. Try launching again.",
+                t("oneclient.actions.launch_updates_failed.title"),
+                tf(
+                    "oneclient.actions.launch_updates_failed.body",
+                    &[&failures.len(), &details],
+                ),
             )
         };
         state
             .services
             .events
             .notify(title)
-            .body(format!(
-                "OneClient could not update {} of this instance's mods, {outcome}\n{}",
-                failures.len(),
-                failures.join("\n")
-            ))
+            .body(body)
             .error()
             .send();
         None
@@ -2086,7 +2149,7 @@ impl Actions {
             let content = state.services.content();
             let session = oneclient_events::GroupedProgressSession::start(
                 &state.services.events,
-                "Updating packages",
+                t("oneclient.actions.package_updates.updating"),
             );
             session.expect(
                 oneclient_events::TaskCategory::Packages,
@@ -2120,11 +2183,18 @@ impl Actions {
         })
         .await;
         let spec = (applied > 0).then(|| NotificationSpec {
-            title: "Packages updated".to_string(),
-            body: format!(
-                "{applied} package{} updated",
-                if applied == 1 { "" } else { "s" }
-            ),
+            title: t("oneclient.actions.package_updates.updated.title").to_string(),
+            body: if applied == 1 {
+                tf(
+                    "oneclient.actions.package_updates.updated.body.one",
+                    &[&applied],
+                )
+            } else {
+                tf(
+                    "oneclient.actions.package_updates.updated.body.other",
+                    &[&applied],
+                )
+            },
             level: Level::Info,
             icon: Some(IconType::DownloadCloud02),
             progress: None,
@@ -2308,7 +2378,10 @@ impl Actions {
                 async move {
                     let session = oneclient_events::GroupedProgressSession::start(
                         &state.services.events,
-                        format!("Updating {}", update.display_name),
+                        tf(
+                            "oneclient.actions.package_update.updating",
+                            &[&update.display_name],
+                        ),
                     );
                     let child = session.child(
                         update.display_name.clone(),
@@ -2331,10 +2404,10 @@ impl Actions {
 
             let spec = match &result {
                 Ok(_) => NotificationSpec {
-                    title: "Updated".to_string(),
-                    body: format!(
-                        "{} is now on {}",
-                        update.display_name, update.latest_version_name
+                    title: t("oneclient.actions.package_update.updated.title").to_string(),
+                    body: tf(
+                        "oneclient.actions.package_update.updated.body",
+                        &[&update.display_name, &update.latest_version_name],
                     ),
                     level: Level::Info,
                     icon: Some(IconType::DownloadCloud02),
@@ -2343,7 +2416,7 @@ impl Actions {
                     toast_only: true,
                 },
                 Err(err) => NotificationSpec {
-                    title: "Update failed".to_string(),
+                    title: t("oneclient.actions.update_failed").to_string(),
                     body: err.to_string(),
                     level: Level::Error,
                     icon: None,
@@ -2414,20 +2487,20 @@ fn update_budget(manual: bool, launch_budget: Duration) -> Duration {
 fn cluster_busy(cluster_id: ClusterId) -> Option<(&'static str, &'static str)> {
     if modpack_job_running(cluster_id) {
         return Some((
-            "The modpack is still being set up",
-            "Wait for the modpack to finish, or close its dialog, then try again.",
+            t("oneclient.actions.launch.modpack_running.title"),
+            t("oneclient.actions.launch.modpack_running.body"),
         ));
     }
     if oneclient_core::clusters::is_resetting(cluster_id) {
         return Some((
-            "This instance is being reset",
-            "Wait for the reset to finish, then try again.",
+            t("oneclient.actions.launch.resetting.title"),
+            t("oneclient.actions.launch.resetting.body"),
         ));
     }
     if oneclient_core::verify::is_verifying(cluster_id) {
         return Some((
-            "This instance's files are being verified",
-            "Wait for the verification to finish, then try again.",
+            t("oneclient.actions.launch.verifying.title"),
+            t("oneclient.actions.launch.verifying.body"),
         ));
     }
     None
@@ -2435,13 +2508,13 @@ fn cluster_busy(cluster_id: ClusterId) -> Option<(&'static str, &'static str)> {
 
 async fn cluster_busy_elsewhere(cluster_id: ClusterId) -> Option<(&'static str, &'static str)> {
     if let Some(reason) = super::sync_actions::sync_launch_block(cluster_id).await {
-        return Some(("Wait for the sync to finish", reason));
+        return Some((t("oneclient.actions.launch.syncing"), reason));
     }
     modpacks::modpack_job_in_shared_dir(cluster_id)
         .await
         .then_some((
-            "A modpack is still being set up",
-            "It is changing an instance that shares this game folder. Try again once it finishes.",
+            t("oneclient.actions.launch.shared_modpack.title"),
+            t("oneclient.actions.launch.shared_modpack.body"),
         ))
 }
 
@@ -2525,7 +2598,7 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     let Some(account) = account else {
         events.game_failed(
             cluster_id,
-            "Add a Minecraft account before launching.".to_string(),
+            t("oneclient.actions.launch.no_account").to_string(),
         );
         return;
     };
@@ -2599,8 +2672,8 @@ async fn repair_and_relaunch(
         "launch failed on a missing file; repairing: {original:#}"
     );
     events
-        .notify("Repairing installation")
-        .body("Some game files are missing. Checking and re-downloading them.")
+        .notify(t("oneclient.actions.repair.started.title"))
+        .body(t("oneclient.actions.repair.started.body"))
         .send();
 
     let report = match oneclient_core::verify_cluster_files(state, cluster_id).await {
@@ -2611,14 +2684,17 @@ async fn repair_and_relaunch(
             // it was not fixed
             events.game_failed(
                 cluster_id,
-                format!("{original:#} (repair also failed: {repair_err:#})"),
+                tf(
+                    "oneclient.actions.repair.failed",
+                    &[&format!("{original:#}"), &format!("{repair_err:#}")],
+                ),
             );
             return;
         }
     };
 
     events
-        .notify("Repair complete")
+        .notify(t("oneclient.actions.repair.complete"))
         .body(report.summary())
         .send();
 
@@ -2633,32 +2709,52 @@ fn notify_import(events: &oneclient_events::EventBus, report: &LocalImportReport
 
     let Some(mut body) = (match report.imported.as_slice() {
         [] => None,
-        [only] => Some(format!("Added {}", only.file_name)),
-        rows => Some(format!("Added {} files", rows.len())),
+        [only] => Some(tf(
+            "oneclient.actions.local_import.added.one",
+            &[&only.file_name],
+        )),
+        rows => Some(tf(
+            "oneclient.actions.local_import.added.other",
+            &[&rows.len()],
+        )),
     }) else {
         let reason = report.failed.first().map_or_else(
-            || "Nothing could be read".to_string(),
+            || t("oneclient.actions.local_import.nothing_read").to_string(),
             |(_, err)| err.to_string(),
         );
 
-        events.notify("Import failed").body(reason).error().send();
+        events
+            .notify(t("oneclient.actions.import_failed"))
+            .body(reason)
+            .error()
+            .send();
         return;
     };
 
     if failed > 0 {
-        body.push_str(&format!(", {failed} could not be read"));
+        body = tf(
+            "oneclient.actions.local_import.with_failed",
+            &[&body, &failed],
+        );
     }
 
     if deferred {
-        body.push_str(". Minecraft is running, so it will be there at the next launch");
+        body = tf("oneclient.actions.local_import.deferred", &[&body]);
     }
 
     if failed == 0 {
-        events.notify("Imported").body(body).send();
+        events
+            .notify(t("oneclient.actions.imported"))
+            .body(body)
+            .send();
         return;
     }
 
-    events.notify("Imported").body(body).error().send();
+    events
+        .notify(t("oneclient.actions.imported"))
+        .body(body)
+        .error()
+        .send();
 }
 
 #[must_use = "the notification is not raised until `.send()` is called"]

@@ -7,9 +7,10 @@ use crate::components::{
     ValueUnit, slice_color,
 };
 use crate::hooks::{loaded_image, use_cached_image};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
-use crate::utils::{format_duration, plural};
+use crate::utils::format_duration;
 
 use super::{card, card_header};
 
@@ -71,7 +72,7 @@ impl Component for ServersSection {
         let mut labels: Vec<String> = top.iter().map(server_label).collect();
         if !rest.is_empty() {
             values.push(rest.iter().map(|s| m.of(s)).sum());
-            labels.push("Other".to_string());
+            labels.push(t("oneclient.analytics.servers.other").to_string());
         }
 
         let details = (!self.servers.is_empty()).then(|| {
@@ -82,8 +83,14 @@ impl Component for ServersSection {
                 .child(
                     SegmentedControl::new(metric)
                         .height(30.)
-                        .segment(Segment::new(ServerMetric::Playtime).label("Playtime"))
-                        .segment(Segment::new(ServerMetric::Joins).label("Joins")),
+                        .segment(
+                            Segment::new(ServerMetric::Playtime)
+                                .label(t("oneclient.analytics.servers.playtime")),
+                        )
+                        .segment(
+                            Segment::new(ServerMetric::Joins)
+                                .label(t("oneclient.analytics.servers.joins")),
+                        ),
                 )
                 .child(
                     Button::new()
@@ -91,7 +98,7 @@ impl Component for ServersSection {
                         .small()
                         .on_press(move |_| show_all.set(true))
                         .child(Icon::new(IconType::Eye).size(12.))
-                        .text("Details"),
+                        .text(t("oneclient.analytics.servers.details")),
                 )
                 .into_element()
         });
@@ -100,13 +107,31 @@ impl Component for ServersSection {
             .width(Size::fill())
             .spacing(14.)
             .child(card_header(
-                "Servers",
+                t("oneclient.analytics.servers.title"),
                 format!(
-                    "{} server{} · {} join{}",
-                    self.servers.len(),
-                    plural(self.servers.len() as i64),
-                    total_joins,
-                    plural(total_joins),
+                    "{} · {}",
+                    if self.servers.len() == 1 {
+                        tf(
+                            "oneclient.analytics.servers.count.one",
+                            &[&self.servers.len()],
+                        )
+                    } else {
+                        tf(
+                            "oneclient.analytics.servers.count.other",
+                            &[&self.servers.len()],
+                        )
+                    },
+                    if total_joins == 1 {
+                        tf(
+                            "oneclient.analytics.servers.join_count.one",
+                            &[&total_joins],
+                        )
+                    } else {
+                        tf(
+                            "oneclient.analytics.servers.join_count.other",
+                            &[&total_joins],
+                        )
+                    },
                 ),
                 details,
             ))
@@ -257,18 +282,24 @@ impl Component for ServerDetailsPopup {
                             .spacing(2.)
                             .child(
                                 label()
-                                    .text("All servers")
+                                    .text(t("oneclient.analytics.servers.all.title"))
                                     .font_size(16.)
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
-                                    .text(format!(
-                                        "All {} server{} by playtime",
-                                        servers.len(),
-                                        plural(servers.len() as i64)
-                                    ))
+                                    .text(if servers.len() == 1 {
+                                        tf(
+                                            "oneclient.analytics.servers.all.subtitle.one",
+                                            &[&servers.len()],
+                                        )
+                                    } else {
+                                        tf(
+                                            "oneclient.analytics.servers.all.subtitle.other",
+                                            &[&servers.len()],
+                                        )
+                                    })
                                     .font_size(12.)
                                     .color(colors::fg_secondary()),
                             ),
@@ -293,7 +324,7 @@ impl Component for ServerDetailsPopup {
 /// IPs stay masked in the always-visible legend the details popup reveals them on hover
 fn server_label(s: &ServerStat) -> String {
     if s.is_ip {
-        return "Direct IP".to_string();
+        return t("oneclient.analytics.servers.direct_ip").to_string();
     }
     display_address(s)
 }

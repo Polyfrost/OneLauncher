@@ -17,6 +17,7 @@ pub const LOADER_CARD_H: f32 = 124.;
 
 const MARKER_SIZE: f32 = 18.;
 const MARKER_MARK: f32 = 12.;
+const MARKER_DOT: f32 = 7.;
 const MARKER_RADIUS: f32 = 5.;
 
 #[derive(PartialEq)]
@@ -39,9 +40,9 @@ impl Component for SelectCard {
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
 
-        let ring = if self.selected || focused {
+        let ring = if self.selected {
             colors::brand()
-        } else if hovered {
+        } else if hovered || focused {
             colors::component_border_hover()
         } else {
             colors::component_border()
@@ -115,12 +116,14 @@ pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<El
     )
 }
 
-pub fn marker(selected: bool) -> Element {
+pub fn marker(selected: bool, checkbox: bool) -> Element {
+    let radius = if checkbox { MARKER_RADIUS } else { 999. };
+
     rect()
         .width(Size::px(MARKER_SIZE))
         .height(Size::px(MARKER_SIZE))
         .center()
-        .corner_radius(CornerRadius::new_all(MARKER_RADIUS))
+        .corner_radius(CornerRadius::new_all(radius))
         .background(if selected {
             colors::brand()
         } else {
@@ -135,10 +138,19 @@ pub fn marker(selected: bool) -> Element {
             },
         ))
         .maybe_child(selected.then(|| {
-            Icon::new(IconType::Check)
-                .size(MARKER_MARK)
-                .color(colors::on_brand())
-                .into_element()
+            if checkbox {
+                Icon::new(IconType::Check)
+                    .size(MARKER_MARK)
+                    .color(colors::on_brand())
+                    .into_element()
+            } else {
+                rect()
+                    .width(Size::px(MARKER_DOT))
+                    .height(Size::px(MARKER_DOT))
+                    .corner_radius(CornerRadius::new_all(999.))
+                    .background(colors::on_brand())
+                    .into_element()
+            }
         }))
         .into_element()
 }
@@ -262,7 +274,7 @@ pub fn cell_card(card: CellCard) -> Element {
                         .content(Content::Flex)
                         .cross_align(Alignment::Center)
                         .spacing(10.)
-                        .maybe_child(checkbox.then(|| marker(selected)))
+                        .child(marker(selected, checkbox))
                         .child(
                             label()
                                 .text(title)
@@ -313,6 +325,7 @@ pub fn version_row(row: &VersionRow, selected: bool, on_press: EventHandler<()>)
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(14.)
+        .child(marker(selected, false))
         .child(
             label()
                 .text(row.id.clone())

@@ -2,6 +2,7 @@ use freya::prelude::*;
 
 use crate::components::ScrollArea;
 use crate::hooks::{try_global_analytics, use_global_analytics};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::centered_note;
 use crate::view::app::{analytics_body, analytics_placeholder};
@@ -17,7 +18,7 @@ impl Component for Stats {
         let body: Element = match &analytics {
             None => loading_state(),
             Some(a) if a.playtime.session_count == 0 => {
-                analytics_placeholder("No playtime recorded yet. Launch a game and come back!")
+                analytics_placeholder(t("oneclient.stats.empty"))
             }
             Some(a) => analytics_body(a),
         };
@@ -50,14 +51,14 @@ fn header() -> Element {
         .spacing(2.)
         .child(
             label()
-                .text("Statistics")
+                .text(t("oneclient.stats.title"))
                 .font_size(32.)
                 .font_weight(FontWeight::BOLD)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
-                .text("How, when, and how much you play.")
+                .text(t("oneclient.stats.description"))
                 .font_size(13.)
                 .color(colors::fg_secondary()),
         )
@@ -65,5 +66,5 @@ fn header() -> Element {
 }
 
 fn loading_state() -> Element {
-    centered_note("Crunching your playtime…")
+    centered_note(t("oneclient.stats.loading"))
 }

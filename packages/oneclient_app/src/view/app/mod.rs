@@ -10,6 +10,7 @@ pub mod cluster;
 pub mod settings;
 
 use crate::hooks::{settled_or_loading, use_clusters, use_game_snapshot};
+use crate::i18n::t;
 use crate::state::{GameState as GameSnapshot, LauncherInit};
 use oneclient_core::clusters::Cluster;
 use oneclient_events::LaunchStage;
@@ -21,17 +22,17 @@ pub fn launch_button_state(
     shared_dir_taken: bool,
 ) -> (&'static str, bool) {
     let state = match game.stage(cluster_id) {
-        Some(LaunchStage::Checking) => ("Checking", false),
-        Some(LaunchStage::Waiting) => ("Waiting", false),
-        Some(LaunchStage::Downloading) => ("Downloading", false),
-        Some(LaunchStage::Launching) => ("Launching", false),
-        Some(LaunchStage::Running) => ("Running", false),
+        Some(LaunchStage::Checking) => (t("oneclient.app.launch.checking"), false),
+        Some(LaunchStage::Waiting) => (t("oneclient.app.launch.waiting"), false),
+        Some(LaunchStage::Downloading) => (t("oneclient.app.launch.downloading"), false),
+        Some(LaunchStage::Launching) => (t("oneclient.app.launch.launching"), false),
+        Some(LaunchStage::Running) => (t("oneclient.app.launch.running"), false),
         // The click's own flag held for a beat after a failure so a burst of clicks starts one game
-        _ if game.is_launch_pending(cluster_id) => ("Launching", false),
-        _ if game.is_syncing_shared(cluster_id) => ("Syncing", false),
+        _ if game.is_launch_pending(cluster_id) => (t("oneclient.app.launch.launching"), false),
+        _ if game.is_syncing_shared(cluster_id) => (t("oneclient.app.launch.syncing"), false),
         // Core refuses it anyway the shared game dir holds one game at a time
-        _ if shared_dir_taken => ("Folder in use", false),
-        _ => ("Launch", true),
+        _ if shared_dir_taken => (t("oneclient.app.launch.folder_in_use"), false),
+        _ => (t("oneclient.app.launch.launch"), true),
     };
     // Block launching while the startup bundle download is still running
     if syncing && state.1 {
@@ -69,7 +70,7 @@ pub fn launch_syncing(launcher: &LauncherInit, uses_bundles: bool) -> bool {
 
 pub(crate) use analytics::{analytics_body, analytics_placeholder};
 pub use clusters::Clusters;
-pub(crate) use clusters::DeleteInstanceModal;
+pub(crate) use clusters::{ClusterPickerButton, DeleteInstanceModal};
 pub use debug::Debug;
 pub use home::Home;
 pub use stats::Stats;

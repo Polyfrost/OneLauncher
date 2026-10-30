@@ -9,6 +9,7 @@ use crate::components::{
     Dropdown, Icon, IconType, TextInput, memory_field, toggle, validate_number,
 };
 use crate::hooks::{use_dispatch, use_settings_snapshot};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::view::app::settings::{resettable, resettable_all, section_header, settings_row};
 
@@ -101,11 +102,13 @@ impl Component for SettingsMinecraft {
         });
 
         let page = settings_page()
-            .child(section_header("GAME"))
+            .child(section_header(t(
+                "oneclient.settings.minecraft.section.game",
+            )))
             .child(settings_row(
                 IconType::Maximize01,
-                "Force Fullscreen",
-                "Force Minecraft to start in fullscreen mode.",
+                t("oneclient.settings.minecraft.force_fullscreen.title"),
+                t("oneclient.settings.minecraft.force_fullscreen.description"),
                 resettable(
                     toggle(fullscreen),
                     fullscreen,
@@ -114,8 +117,8 @@ impl Component for SettingsMinecraft {
             ))
             .child(settings_row(
                 IconType::LayoutTop,
-                "Resolution",
-                "The game window resolution in pixels.",
+                t("oneclient.settings.minecraft.resolution.title"),
+                t("oneclient.settings.minecraft.resolution.description"),
                 resettable_all(
                     resolution_field(width, height),
                     vec![
@@ -138,18 +141,22 @@ impl Component for SettingsMinecraft {
             ))
             .child(settings_row(
                 IconType::Database01,
-                "Memory",
-                "The amount of memory in megabytes allocated for the game. Presets leave 2 GB for the system.",
+                t("oneclient.settings.minecraft.memory.title"),
+                t("oneclient.settings.minecraft.memory.description"),
                 resettable(
-                    memory_field(memory, "Default", oneclient_common::default_mem_max()),
+                    memory_field(
+                        memory,
+                        t("oneclient.common.default"),
+                        oneclient_common::default_mem_max(),
+                    ),
                     memory,
                     String::new(),
                 ),
             ))
             .child(settings_row(
                 IconType::Terminal,
-                "JVM Arguments",
-                "Extra arguments passed to Java. Separate them with spaces; quote values containing spaces.",
+                t("oneclient.settings.minecraft.jvm_args.title"),
+                t("oneclient.settings.minecraft.jvm_args.description"),
                 resettable(
                     TextInput::new(jvm_args)
                         .placeholder("-XX:+UseG1GC")
@@ -161,8 +168,8 @@ impl Component for SettingsMinecraft {
             ))
             .child(settings_row(
                 IconType::Play,
-                "Game Arguments",
-                "Extra arguments passed to Minecraft. Separate them with spaces; quote values containing spaces.",
+                t("oneclient.settings.minecraft.game_args.title"),
+                t("oneclient.settings.minecraft.game_args.description"),
                 resettable(
                     TextInput::new(game_args)
                         .placeholder("--tracy --tracyNoImages")
@@ -172,22 +179,26 @@ impl Component for SettingsMinecraft {
                     defaults.game_args.clone().unwrap_or_default(),
                 ),
             ))
-            .child(section_header("CONTENT"))
+            .child(section_header(t(
+                "oneclient.settings.minecraft.section.content",
+            )))
             .child(settings_row(
                 IconType::RefreshCw01,
-                "Browser Package Updates",
-                "What to do when content you installed from the browser has a newer version. Packs from bundles are not affected.",
+                t("oneclient.settings.minecraft.browser_updates.title"),
+                t("oneclient.settings.minecraft.browser_updates.description"),
                 resettable(
                     update_mode_field(update_mode),
                     update_mode,
                     defaults.browser_update_mode.unwrap_or_default(),
                 ),
             ))
-            .child(section_header("PROCESS"))
+            .child(section_header(t(
+                "oneclient.settings.minecraft.section.process",
+            )))
             .child(settings_row(
                 IconType::FilePlus02,
-                "Pre-Launch Command",
-                "Command to run before launching the game.",
+                t("oneclient.settings.minecraft.pre_launch.title"),
+                t("oneclient.settings.minecraft.pre_launch.description"),
                 resettable(
                     TextInput::new(pre_launch_command)
                         .placeholder("echo 'Game started'")
@@ -199,8 +210,8 @@ impl Component for SettingsMinecraft {
             ))
             .child(settings_row(
                 IconType::ParagraphWrap,
-                "Wrapper Command",
-                "Command to run when launching the game.",
+                t("oneclient.settings.minecraft.wrapper.title"),
+                t("oneclient.settings.minecraft.wrapper.description"),
                 resettable(
                     TextInput::new(wrapper_command)
                         .placeholder("gamescope")
@@ -212,8 +223,8 @@ impl Component for SettingsMinecraft {
             ))
             .child(settings_row(
                 IconType::FileX02,
-                "Post-Exit Command",
-                "Command to run after exiting the game.",
+                t("oneclient.settings.minecraft.post_exit.title"),
+                t("oneclient.settings.minecraft.post_exit.description"),
                 resettable(
                     TextInput::new(post_exit_command)
                         .placeholder("echo 'Game exited'")
@@ -227,10 +238,13 @@ impl Component for SettingsMinecraft {
         let page = if gpus.read().is_empty() {
             page
         } else {
-            page.child(section_header("GRAPHICS")).child(settings_row(
+            page.child(section_header(t(
+                "oneclient.settings.minecraft.section.graphics",
+            )))
+            .child(settings_row(
                 IconType::Rocket02,
-                "GPU",
-                "The graphics card the game renders on. System default leaves the choice to your drivers.",
+                t("oneclient.settings.minecraft.gpu.title"),
+                t("oneclient.settings.minecraft.gpu.description"),
                 resettable(gpu_field(gpu, &gpus.read()), gpu, None),
             ))
         };
@@ -253,15 +267,15 @@ fn gpu_field(
     mut selected: State<Option<String>>,
     gpus: &[oneclient_core::game::gpu::Gpu],
 ) -> impl IntoElement {
-    const SYSTEM_DEFAULT: &str = "System default";
+    let system_default = t("oneclient.settings.minecraft.gpu.system_default");
 
     let current = selected
         .read()
         .as_deref()
         .and_then(|id| gpus.iter().find(|gpu| gpu.id == id))
-        .map_or(SYSTEM_DEFAULT.to_string(), |gpu| gpu.name.clone());
+        .map_or(system_default.to_string(), |gpu| gpu.name.clone());
 
-    let options = std::iter::once(SYSTEM_DEFAULT.to_string())
+    let options = std::iter::once(system_default.to_string())
         .chain(gpus.iter().map(|gpu| gpu.name.clone()))
         .collect();
     let ids: Vec<String> = gpus.iter().map(|gpu| gpu.id.clone()).collect();

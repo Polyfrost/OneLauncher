@@ -16,6 +16,4 @@ pub struct SettingProfileRow {
     pub os_extra: Option<String>,
     /// `PackageUpdateMode::as_str` NULL inherits the global setting
     pub browser_update_mode: Option<String>,
-    /// `GraphicsBackend::as_str` NULL inherits the global setting
-    pub graphics_backend: Option<String>,
 }

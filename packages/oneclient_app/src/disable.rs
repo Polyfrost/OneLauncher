@@ -16,6 +16,7 @@ use oneclient_content::packages::PackageStore;
 use oneclient_db::models::ClusterId;
 
 use crate::hooks::{Actions, invalidate_cluster_queries};
+use crate::i18n::{t, tf};
 use crate::launcher;
 
 /// How long the dependency backfill may hold up a toggle.
@@ -85,7 +86,7 @@ pub fn request(
                     state
                         .services
                         .events
-                        .notify("Could not disable")
+                        .notify(t("oneclient.disable.failed"))
                         .body(err.to_string())
                         .error()
                         .send();
@@ -122,14 +123,7 @@ pub async fn resolve(request: DisableRequest) -> anyhow::Result<Option<PendingDi
 
     // A `Package` root has nothing installed, so there is no flag to write —
     // only the bundle override the caller carries.
-    let mut hashes: Vec<String> = request
-        .roots
-        .iter()
-        .filter_map(|root| match root {
-            DisableRoot::Artifact(hash) => Some(hash.clone()),
-            DisableRoot::Package(..) => None,
-        })
-        .collect();
+    let mut hashes = root_hashes(&request);
     hashes.extend(impact.required_hashes());
 
     if impact.is_empty() {
@@ -149,6 +143,23 @@ pub async fn resolve(request: DisableRequest) -> anyhow::Result<Option<PendingDi
 pub async fn apply(pending: &PendingDisable) -> anyhow::Result<()> {
     let state = launcher::state()?;
     apply_now(&pending.request, &pending.hashes, &state.services.content()).await
+}
+
+pub async fn apply_alone(pending: &PendingDisable) -> anyhow::Result<()> {
+    let state = launcher::state()?;
+    let hashes = root_hashes(&pending.request);
+    apply_now(&pending.request, &hashes, &state.services.content()).await
+}
+
+fn root_hashes(request: &DisableRequest) -> Vec<String> {
+    request
+        .roots
+        .iter()
+        .filter_map(|root| match root {
+            DisableRoot::Artifact(hash) => Some(hash.clone()),
+            DisableRoot::Package(..) => None,
+        })
+        .collect()
 }
 
 async fn apply_now(
@@ -172,14 +183,11 @@ async fn apply_now(
 /// "Sodium is needed by other packages"
 pub fn title(pending: &PendingDisable) -> String {
     if pending.required.is_empty() {
-        format!("Other packages use {}", pending.request.name)
+        tf("oneclient.disable.title.optional", &[&pending.request.name])
+    } else if pending.request.roots.len() > 1 {
+        tf("oneclient.disable.title.other", &[&pending.request.name])
     } else {
-        let verb = if pending.request.roots.len() > 1 {
-            "are"
-        } else {
-            "is"
-        };
-        format!("{} {verb} needed by other packages", pending.request.name)
+        tf("oneclient.disable.title.one", &[&pending.request.name])
     }
 }
 
@@ -188,42 +196,30 @@ pub fn summary(pending: &PendingDisable) -> String {
 
     if pending.required.is_empty() {
         return match pending.optional.len() {
-            1 => format!(
-                "One installed package optionally depends on {name}. It runs without it, so it stays enabled."
-            ),
-            count => format!(
-                "{count} installed packages optionally depend on {name}. They run without it, so they stay enabled."
-            ),
+            1 => tf("oneclient.disable.summary.optional.one", &[&name]),
+            count => tf("oneclient.disable.summary.optional.other", &[&count, &name]),
         };
     }
 
-    let tail =
-        "A package left without a dependency it requires usually stops the game from starting.";
     match pending.required.len() {
-        1 => format!(
-            "One installed package requires {name}. Turning it off turns that one off too. {tail}"
-        ),
-        count => format!(
-            "{count} installed packages require {name}. Turning it off turns them off too. {tail}"
-        ),
+        1 => tf("oneclient.disable.summary.required.one", &[&name]),
+        count => tf("oneclient.disable.summary.required.other", &[&count, &name]),
     }
 }
 
 /// The heading over the packages that go off with it.
 pub fn disabled_heading(pending: &PendingDisable) -> String {
-    format!(
-        "Will be disabled with {} ({})",
-        pending.request.name,
-        pending.required.len()
+    tf(
+        "oneclient.disable.disabled_heading",
+        &[&pending.request.name, &pending.required.len()],
     )
 }
 
 /// The heading over the packages that are only mentioned.
 pub fn optional_heading(pending: &PendingDisable) -> String {
-    format!(
-        "Optionally depends on {} ({}) — stays enabled",
-        pending.request.name,
-        pending.optional.len()
+    tf(
+        "oneclient.disable.optional_heading",
+        &[&pending.request.name, &pending.optional.len()],
     )
 }
 
@@ -231,12 +227,12 @@ pub fn optional_heading(pending: &PendingDisable) -> String {
 /// because that is what leaves the cluster.
 pub fn confirm_label(pending: &PendingDisable) -> String {
     if pending.required.is_empty() {
-        return "Disable anyway".to_string();
+        return t("oneclient.disable.confirm.anyway").to_string();
     }
 
-    format!(
-        "Disable all {}",
-        pending.required.len() + pending.request.roots.len()
+    tf(
+        "oneclient.disable.confirm.all",
+        &[&(pending.required.len() + pending.request.roots.len())],
     )
 }
 

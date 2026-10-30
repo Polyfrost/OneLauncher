@@ -3,6 +3,7 @@ use oneclient_auth::MinecraftAccount;
 
 use crate::components::{Avatar, Button, Icon, IconType, use_microsoft_login};
 use crate::hooks::{try_default_account, use_current_account};
+use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::view::onboarding::{
@@ -25,8 +26,8 @@ impl Component for OnboardingAccount {
             .width(Size::fill())
             .spacing(24.)
             .child(step_heading(
-                "Account",
-                "Before you continue, we require you to own a copy of Minecraft: Java Edition.",
+                t("oneclient.onboarding.account.title"),
+                t("oneclient.onboarding.account.subtitle"),
             ))
             .child(match &account {
                 Some(account) => account_preview(account).into_element(),
@@ -110,9 +111,9 @@ fn sign_in_card(
                 .on_press(on_add)
                 .child(Icon::new(IconType::Globe01).size(16.))
                 .text(if pending {
-                    "Signing in..."
+                    t("oneclient.onboarding.account.signing_in")
                 } else {
-                    "Add Account"
+                    t("oneclient.onboarding.account.add")
                 }),
         )
         .maybe_child(error.map(|message| {

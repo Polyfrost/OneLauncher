@@ -181,19 +181,45 @@ impl QueryCapability for PackageMetaBatchQuery {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct PackageMetaCachedQuery;
+
+impl QueryCapability for PackageMetaCachedQuery {
+    type Ok = std::collections::HashMap<String, CachedPackageMeta>;
+    type Err = LauncherError;
+    type Keys = PackageMetaBatchKeys;
+
+    async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state()?;
+        Ok(oneclient_content::packages::read_cached_package_meta(
+            &state.services.content(),
+            keys.provider,
+            &keys.project_ids,
+        )
+        .await)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct PackageMetaBatch {
+    cached: UseQuery<PackageMetaCachedQuery>,
+    fetched: UseQuery<PackageMetaBatchQuery>,
+}
+
 pub fn use_package_meta_batch(
     provider: ProviderId,
     mut project_ids: Vec<String>,
-) -> UseQuery<PackageMetaBatchQuery> {
+) -> PackageMetaBatch {
     project_ids.sort();
     project_ids.dedup();
-    use_query(Query::new(
-        PackageMetaBatchKeys {
-            provider,
-            project_ids,
-        },
-        PackageMetaBatchQuery,
-    ))
+    let keys = PackageMetaBatchKeys {
+        provider,
+        project_ids,
+    };
+    PackageMetaBatch {
+        cached: use_query(Query::new(keys.clone(), PackageMetaCachedQuery)),
+        fetched: use_query(Query::new(keys, PackageMetaBatchQuery)),
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -251,9 +277,11 @@ pub fn project_web_urls(query: &UseQuery<ProjectWebUrlsQuery>) -> HashMap<String
 }
 
 pub fn package_meta_batch(
-    query: &UseQuery<PackageMetaBatchQuery>,
+    query: &PackageMetaBatch,
 ) -> std::collections::HashMap<String, CachedPackageMeta> {
-    super::state::settled_or_loading(query).unwrap_or_default()
+    super::state::settled_or_loading(&query.fetched)
+        .or_else(|| super::state::settled_or_loading(&query.cached))
+        .unwrap_or_default()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

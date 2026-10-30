@@ -17,7 +17,6 @@ pub const LOADER_CARD_H: f32 = 124.;
 
 const MARKER_SIZE: f32 = 18.;
 const MARKER_MARK: f32 = 12.;
-const MARKER_DOT: f32 = 7.;
 const MARKER_RADIUS: f32 = 5.;
 
 #[derive(PartialEq)]
@@ -116,14 +115,12 @@ pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<El
     )
 }
 
-pub fn marker(selected: bool, checkbox: bool) -> Element {
-    let radius = if checkbox { MARKER_RADIUS } else { 999. };
-
+pub fn marker(selected: bool) -> Element {
     rect()
         .width(Size::px(MARKER_SIZE))
         .height(Size::px(MARKER_SIZE))
         .center()
-        .corner_radius(CornerRadius::new_all(radius))
+        .corner_radius(CornerRadius::new_all(MARKER_RADIUS))
         .background(if selected {
             colors::brand()
         } else {
@@ -138,19 +135,10 @@ pub fn marker(selected: bool, checkbox: bool) -> Element {
             },
         ))
         .maybe_child(selected.then(|| {
-            if checkbox {
-                Icon::new(IconType::Check)
-                    .size(MARKER_MARK)
-                    .color(colors::on_brand())
-                    .into_element()
-            } else {
-                rect()
-                    .width(Size::px(MARKER_DOT))
-                    .height(Size::px(MARKER_DOT))
-                    .corner_radius(CornerRadius::new_all(999.))
-                    .background(colors::on_brand())
-                    .into_element()
-            }
+            Icon::new(IconType::Check)
+                .size(MARKER_MARK)
+                .color(colors::on_brand())
+                .into_element()
         }))
         .into_element()
 }
@@ -183,9 +171,8 @@ pub fn wide_card(card: WideCard) -> Element {
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(14.)
-        .child(marker(selected, false))
         .child(Icon::new(icon).size(25.).color(if selected {
-            colors::fg_primary()
+            colors::brand()
         } else {
             colors::fg_secondary()
         }))
@@ -275,7 +262,7 @@ pub fn cell_card(card: CellCard) -> Element {
                         .content(Content::Flex)
                         .cross_align(Alignment::Center)
                         .spacing(10.)
-                        .child(marker(selected, checkbox))
+                        .maybe_child(checkbox.then(|| marker(selected)))
                         .child(
                             label()
                                 .text(title)
@@ -326,7 +313,6 @@ pub fn version_row(row: &VersionRow, selected: bool, on_press: EventHandler<()>)
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(14.)
-        .child(marker(selected, false))
         .child(
             label()
                 .text(row.id.clone())

@@ -29,6 +29,9 @@ impl Actions {
                     return;
                 }
             };
+            if actions.refuse_during_update_check(cluster_id) {
+                return;
+            }
 
             let shared_dir = match oneclient_common::paths::shared_minecraft_dir() {
                 Ok(dir) => dir,

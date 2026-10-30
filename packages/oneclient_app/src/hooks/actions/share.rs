@@ -61,6 +61,9 @@ impl Actions {
                 .send();
             return;
         }
+        if self.refuse_during_update_check(cluster_id) {
+            return;
+        }
         if super::external_import::import_running() {
             self.notify("Wait for the import to finish")
                 .body("Instances can't be exported while an import is running.")

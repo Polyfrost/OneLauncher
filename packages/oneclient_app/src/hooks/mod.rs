@@ -31,7 +31,7 @@ pub use active_cluster::{
 
 pub use actions::{
     Actions, AlternativePick, ExternalImportJob, NotificationBuilder, PumpSignal, exporting,
-    modpack_job_running,
+    modpack_job_running, update_check_running,
 };
 pub(crate) use actions::listed;
 pub use queries::ALL_VERSIONS;

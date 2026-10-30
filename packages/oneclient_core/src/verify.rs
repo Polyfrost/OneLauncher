@@ -489,6 +489,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_cluster_stays_verifying_until_its_last_claim_drops() {
+        let cluster_id = i64::MAX;
+        let first = VerifyClaim::take(cluster_id);
+        let second = VerifyClaim::take(cluster_id);
+
+        drop(first);
+        assert!(is_verifying(cluster_id));
+
+        drop(second);
+        assert!(!is_verifying(cluster_id));
+    }
+
+    #[test]
     fn a_clean_sweep_says_so() {
         let report = ClusterVerifyReport {
             checked: 5123,

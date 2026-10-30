@@ -13,7 +13,7 @@ mod release_migration;
 mod share;
 pub use share::exporting;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
@@ -1051,6 +1051,20 @@ impl Actions {
             self.notify(title).body(body).send();
             return;
         }
+        if exporting(cluster_id) {
+            self.notify("Wait for the export to finish")
+                .body("This instance is being exported. Check for updates once that's done.")
+                .send();
+            return;
+        }
+        if self.station.peek().installs.cluster_installing(cluster_id)
+            || cluster_writing(cluster_id)
+        {
+            self.notify("Wait for the installs to finish")
+                .body("Mods are still being added to this instance. Try again once they're done.")
+                .send();
+            return;
+        }
 
         let claimed = self
             .station
@@ -1061,6 +1075,7 @@ impl Actions {
         if !claimed {
             return;
         }
+        let claim = UpdateCheckClaim::take(cluster_id);
 
         let station = self.station;
         let actions = self.clone();
@@ -1092,7 +1107,19 @@ impl Actions {
                 .write_channel(AppChannel::Game)
                 .game
                 .finish_update_check(cluster_id);
+            drop(claim);
         });
+    }
+
+    pub(super) fn refuse_during_update_check(&self, cluster_id: ClusterId) -> bool {
+        let checking = update_check_running(cluster_id);
+        if checking {
+            self.notify("Wait for the update check to finish")
+                .body("This instance is being updated. Try again once that's done.")
+                .error()
+                .send();
+        }
+        checking
     }
 
     pub fn kill_cluster(&self, cluster_id: ClusterId) {
@@ -1133,6 +1160,9 @@ impl Actions {
         name: String,
         range: Option<oneclient_events::VersionRange>,
     ) {
+        if self.refuse_during_update_check(cluster_id) {
+            return;
+        }
         {
             let mut channel = self.station.clone().write_channel(AppChannel::Installs);
             let installs = &mut channel.installs;
@@ -1234,11 +1264,13 @@ impl Actions {
     }
 
     pub fn import_local_files(&self, cluster_id: ClusterId, files: Vec<(PathBuf, ContentType)>) {
-        if files.is_empty() {
+        if files.is_empty() || self.refuse_during_update_check(cluster_id) {
             return;
         }
 
+        let write = ClusterWrite::take(cluster_id);
         spawn_forever(async move {
+            let _write = write;
             let Ok(state) = launcher::state() else { return };
             let events = state.services.events.clone();
             let imported = off_ui({
@@ -1333,6 +1365,9 @@ impl Actions {
         world: Option<String>,
         allow_flagged: bool,
     ) {
+        if self.refuse_during_update_check(cluster_id) {
+            return;
+        }
         let actions = self.clone();
 
         self.station
@@ -1469,6 +1504,9 @@ impl Actions {
         hash: impl Into<String>,
         display_name: impl Into<String>,
     ) {
+        if self.refuse_during_update_check(cluster_id) {
+            return;
+        }
         let (project_id, hash, display_name) =
             (project_id.into(), hash.into(), display_name.into());
         let actions = self.clone();
@@ -1523,8 +1561,13 @@ impl Actions {
         bundle_name: impl Into<String>,
         skip_compatibility: bool,
     ) {
+        if self.refuse_during_update_check(cluster_id) {
+            return;
+        }
         let bundle_name = bundle_name.into();
+        let write = ClusterWrite::take(cluster_id);
         spawn_forever(async move {
+            let _write = write;
             let Ok(state) = launcher::state() else { return };
             let events = state.services.events.clone();
             match off_ui({
@@ -1560,8 +1603,13 @@ impl Actions {
     }
 
     pub fn apply_bundle_updates(&self, cluster_id: ClusterId) {
+        if self.refuse_during_update_check(cluster_id) {
+            return;
+        }
         let actions = self.clone();
+        let write = ClusterWrite::take(cluster_id);
         spawn_forever(async move {
+            let _write = write;
             let Ok(state) = launcher::state() else { return };
             let result = match off_ui({
                 let state = state.clone();
@@ -1781,9 +1829,8 @@ impl Actions {
         let sync = {
             let bundles = state.bundles.clone();
             let content = content.clone();
-            off_ui(
-                async move { tokio::time::timeout(BUNDLE_SYNC_BUDGET, bundles.sync(&content)).await },
-            )
+            let budget = update_budget(manual, BUNDLE_SYNC_BUDGET);
+            off_ui(async move { tokio::time::timeout(budget, bundles.sync(&content)).await })
         };
         let synced = match sync.await {
             Ok(Ok(_)) => true,
@@ -1816,7 +1863,7 @@ impl Actions {
         let mut incomplete = !synced;
         let mut failures = Vec::new();
         for attempt in 1..=2 {
-            let deadline = Instant::now() + BUNDLE_APPLY_BUDGET;
+            let deadline = (!manual).then(|| Instant::now() + BUNDLE_APPLY_BUDGET);
             failures = match off_ui({
                 let state = state.clone();
                 async move {
@@ -1824,7 +1871,7 @@ impl Actions {
                         cluster_id,
                         state.bundles.as_ref(),
                         &state.services.content(),
-                        Some(deadline),
+                        deadline,
                     )
                     .await
                 }
@@ -1884,6 +1931,11 @@ impl Actions {
         }
 
         if failures.is_empty() {
+            if manual && changed {
+                self.notify("Mods updated")
+                    .body("This instance's bundled mods were updated.")
+                    .send();
+            }
             return Some(UpdateCheck {
                 found: changed,
                 failed: incomplete,
@@ -1921,14 +1973,16 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         cluster_id: ClusterId,
+        manual: bool,
     ) -> Option<bool> {
         let content = state.services.content();
 
         // Bounded a hanging network would otherwise hold the launch for
         // reqwest's much longer timeouts
+        let budget = update_budget(manual, UPDATE_CHECK_BUDGET);
         let check = match off_ui(async move {
             tokio::time::timeout(
-                UPDATE_CHECK_BUDGET,
+                budget,
                 oneclient_core::refresh_browser_package_updates(cluster_id, &content),
             )
             .await
@@ -1954,23 +2008,24 @@ impl Actions {
         };
 
         let pending = check.pending();
-        let mode = self.cluster_update_mode(state, cluster_id).await;
+        let mode = match self.cluster_update_mode(state, cluster_id).await {
+            PackageUpdateMode::Skip if manual => PackageUpdateMode::Prompt,
+            mode => mode,
+        };
 
         match plan_launch_updates(mode, pending) {
             LaunchUpdatePlan::Nothing => Some(false),
-            LaunchUpdatePlan::Apply(updates) => {
-                self.apply_updates_for_launch(state, &updates).await;
-                Some(true)
-            }
+            LaunchUpdatePlan::Apply(updates) => self
+                .apply_updates_for_launch(state, &updates)
+                .await
+                .then_some(true),
             LaunchUpdatePlan::Prompt(updates) => {
                 let group =
                     crate::install::package_update_group(cluster_id, &updates, &state.services)
                         .await?;
                 let chosen = self.prompt_package_updates(group).await;
-                if !chosen.is_empty() {
-                    self.apply_updates_for_launch(state, &chosen).await;
-                }
-                Some(true)
+                (chosen.is_empty() || self.apply_updates_for_launch(state, &chosen).await)
+                    .then_some(true)
             }
         }
     }
@@ -1988,7 +2043,7 @@ impl Actions {
             .resolve_bundle_updates_before_launch(state, cluster_id, manual)
             .await?;
         let packages = self
-            .resolve_package_updates_before_launch(state, cluster_id)
+            .resolve_package_updates_before_launch(state, cluster_id, manual)
             .await;
         Some(UpdateCheck {
             found: loader == Some(true) || bundles.found || packages == Some(true),
@@ -2023,9 +2078,10 @@ impl Actions {
         &self,
         state: &Arc<oneclient_core::LauncherState>,
         updates: &[oneclient_core::BrowserPackageUpdate],
-    ) {
+    ) -> bool {
         let state = state.clone();
         let updates = updates.to_vec();
+        let total = updates.len();
         let (applied, session_id) = off_ui(async move {
             let content = state.services.content();
             let session = oneclient_events::GroupedProgressSession::start(
@@ -2066,7 +2122,7 @@ impl Actions {
         let spec = (applied > 0).then(|| NotificationSpec {
             title: "Packages updated".to_string(),
             body: format!(
-                "{applied} package{} updated before launch",
+                "{applied} package{} updated",
                 if applied == 1 { "" } else { "s" }
             ),
             level: Level::Info,
@@ -2086,6 +2142,8 @@ impl Actions {
         if applied > 0 {
             super::invalidate_cluster_queries().await;
         }
+
+        applied == total
     }
 
     async fn resolve_bundle_choices_before_launch(
@@ -2236,8 +2294,13 @@ impl Actions {
     }
 
     pub fn apply_package_update(&self, update: oneclient_core::BrowserPackageUpdate) {
+        if self.refuse_during_update_check(update.cluster_id) {
+            return;
+        }
         let actions = self.clone();
+        let write = ClusterWrite::take(update.cluster_id);
         spawn_forever(async move {
+            let _write = write;
             let Ok(state) = launcher::state() else { return };
 
             let (result, session_id) = off_ui({
@@ -2344,6 +2407,10 @@ fn group_by_cluster(mods: &[(ClusterId, OptionalModRef)]) -> Vec<(ClusterId, Vec
     grouped
 }
 
+fn update_budget(manual: bool, launch_budget: Duration) -> Duration {
+    if manual { Duration::MAX } else { launch_budget }
+}
+
 fn cluster_busy(cluster_id: ClusterId) -> Option<(&'static str, &'static str)> {
     if modpack_job_running(cluster_id) {
         return Some((
@@ -2382,6 +2449,55 @@ async fn cluster_busy_elsewhere(cluster_id: ClusterId) -> Option<(&'static str, 
 struct UpdateCheck {
     found: bool,
     failed: bool,
+}
+
+static UPDATE_CHECKS: Mutex<BTreeSet<ClusterId>> = Mutex::new(BTreeSet::new());
+
+struct UpdateCheckClaim(ClusterId);
+
+impl UpdateCheckClaim {
+    fn take(cluster_id: ClusterId) -> Self {
+        UPDATE_CHECKS.lock().unwrap().insert(cluster_id);
+        Self(cluster_id)
+    }
+}
+
+impl Drop for UpdateCheckClaim {
+    fn drop(&mut self) {
+        UPDATE_CHECKS.lock().unwrap().remove(&self.0);
+    }
+}
+
+static CLUSTER_WRITES: Mutex<BTreeMap<ClusterId, usize>> = Mutex::new(BTreeMap::new());
+
+struct ClusterWrite(ClusterId);
+
+impl ClusterWrite {
+    fn take(cluster_id: ClusterId) -> Self {
+        *CLUSTER_WRITES.lock().unwrap().entry(cluster_id).or_default() += 1;
+        Self(cluster_id)
+    }
+}
+
+impl Drop for ClusterWrite {
+    fn drop(&mut self) {
+        let mut writes = CLUSTER_WRITES.lock().unwrap();
+        if let Some(count) = writes.get_mut(&self.0) {
+            *count -= 1;
+            if *count == 0 {
+                writes.remove(&self.0);
+            }
+        }
+    }
+}
+
+fn cluster_writing(cluster_id: ClusterId) -> bool {
+    CLUSTER_WRITES.lock().unwrap().contains_key(&cluster_id)
+}
+
+#[must_use]
+pub fn update_check_running(cluster_id: ClusterId) -> bool {
+    UPDATE_CHECKS.lock().unwrap().contains(&cluster_id)
 }
 
 async fn launch(actions: &Actions, cluster_id: ClusterId) {

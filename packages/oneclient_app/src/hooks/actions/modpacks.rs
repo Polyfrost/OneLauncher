@@ -639,6 +639,9 @@ impl Actions {
                 .send();
             return true;
         }
+        if self.refuse_during_update_check(cluster_id) {
+            return true;
+        }
         let running = self.station.peek().game.is_launch_pending(cluster_id)
             || launcher::state().is_ok_and(|state| state.games.is_active(cluster_id));
         if running {

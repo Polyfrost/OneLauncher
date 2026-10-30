@@ -29,6 +29,7 @@ pub async fn offer_before_launch(
             let cluster = state.clusters.get(cluster_id).await.ok()?;
             match loader_update_policy(&state, &cluster).await.ok()? {
                 PackageUpdateMode::Prompt => {}
+                PackageUpdateMode::Skip if manual => {}
                 PackageUpdateMode::Automatic if manual => {
                     return match auto_update_loader(&state, &cluster).await {
                         Ok(Some(updated)) => Some(LoaderCheck::Updated(format!(
@@ -87,6 +88,12 @@ pub async fn offer_before_launch(
             None => apply_loader_update(&state, cluster_id, latest)
                 .await
                 .map(drop),
+            Some(PackageUpdateMode::Automatic) if manual => {
+                set_loader_update_policy(&state, cluster_id, PackageUpdateMode::Automatic).await?;
+                apply_loader_update(&state, cluster_id, latest)
+                    .await
+                    .map(drop)
+            }
             Some(mode) => set_loader_update_policy(&state, cluster_id, mode).await,
         }
     })

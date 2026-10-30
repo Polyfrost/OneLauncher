@@ -357,7 +357,7 @@ impl GameState {
     }
 
     pub fn begin_update_check(&mut self, cluster_id: i64) -> bool {
-        if self.block_for(cluster_id).is_some() {
+        if self.block_for(cluster_id).is_some() || self.any_update_check() {
             return false;
         }
         self.update_checks.insert(cluster_id)
@@ -365,6 +365,11 @@ impl GameState {
 
     pub fn finish_update_check(&mut self, cluster_id: i64) {
         self.update_checks.remove(&cluster_id);
+    }
+
+    #[must_use]
+    pub fn any_update_check(&self) -> bool {
+        !self.update_checks.is_empty()
     }
 
     #[must_use]
@@ -479,6 +484,7 @@ mod tests {
 
         assert!(game.begin_update_check(1));
         assert!(!game.begin_update_check(1));
+        assert!(!game.begin_update_check(3));
         assert!(!game.begin_launch(1));
         assert!(game.begin_launch(2));
         game.finish_update_check(1);

@@ -490,7 +490,9 @@ impl Component for CheckUpdatesRow {
         let game = use_game_snapshot();
         let checking = game.is_checking_updates(cluster_id);
         let syncing = launch_syncing(&use_launcher(), self.uses_bundles);
+        let other_checking = !checking && game.any_update_check();
         let busy = checking
+            || other_checking
             || syncing
             || game.is_active(cluster_id)
             || game.is_launch_pending(cluster_id);
@@ -504,6 +506,9 @@ impl Component for CheckUpdatesRow {
             })
             .maybe(game.is_active(cluster_id), |el| {
                 el.tooltip("Close the game before checking for updates")
+            })
+            .maybe(other_checking, |el| {
+                el.tooltip("Wait for the other update check to finish")
             })
             .text(if checking {
                 "Checking..."
@@ -1288,10 +1293,11 @@ impl Component for MigrateFromRow {
         let selected_pair = selected.as_ref().map(|route| (route.1, route.2));
         let running = selected_pair
             .is_some_and(|(target, source)| game.is_running(target) || game.is_running(source));
+        let updating = selected_pair.is_some_and(|(target, _)| game.is_checking_updates(target));
 
         let mut button = Button::new()
             .secondary()
-            .enabled(selected_pair.is_some() && !checking && !running)
+            .enabled(selected_pair.is_some() && !checking && !running && !updating)
             .on_press(move |_| {
                 if let Some((target, source)) = selected_pair {
                     dispatch.open_manual_migration(target, source);
@@ -1308,6 +1314,9 @@ impl Component for MigrateFromRow {
         };
         if running {
             button = button.tooltip("Close the game before migrating");
+        }
+        if updating {
+            button = button.tooltip("Wait for the update check to finish");
         }
 
         let picker: Element = if routes.is_empty() {

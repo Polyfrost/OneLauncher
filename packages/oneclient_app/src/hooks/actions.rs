@@ -328,6 +328,25 @@ impl Actions {
         }
     }
 
+    pub fn acknowledge_disable_warnings(&self, package_ids: &[String]) {
+        if package_ids.is_empty() {
+            return;
+        }
+        let mut changed = false;
+        let updated = self.mutate_settings(|settings| {
+            for id in package_ids {
+                if !settings.acknowledged_disable_warnings.contains(id) {
+                    settings.acknowledged_disable_warnings.push(id.clone());
+                    changed = true;
+                }
+            }
+        });
+
+        if let (true, Some(updated)) = (changed, updated) {
+            self.persist(updated);
+        }
+    }
+
     pub fn mark_onboarding_seen(&self) {
         if let Some(updated) = self.mutate_settings(|settings| settings.seen_onboarding = true) {
             self.persist(updated);

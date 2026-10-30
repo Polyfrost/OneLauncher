@@ -5,7 +5,8 @@ use crate::components::{
 };
 use crate::disable;
 use crate::hooks::{
-    EssentialGuardKind, Guarded, use_cluster_mutation, use_disable_confirm, use_essential_guard,
+    EssentialGuardKind, Guarded, use_cluster_mutation, use_disable_confirm, use_dispatch,
+    use_essential_guard,
 };
 use crate::i18n::{t, tf};
 use crate::theme::colors;
@@ -21,6 +22,7 @@ impl Component for EssentialConfirmOverlay {
         let mut pending = use_essential_guard();
         let cluster = use_cluster_mutation();
         let pending_disable = use_disable_confirm();
+        let dispatch = use_dispatch();
 
         let Some(request) = pending.read().clone() else {
             return rect().into_element();
@@ -98,7 +100,11 @@ impl Component for EssentialConfirmOverlay {
                                                         cluster.mutate(action)
                                                     }
                                                     Guarded::Disable(request) => {
-                                                        disable::request(request, pending_disable)
+                                                        disable::request(
+                                                            request,
+                                                            pending_disable,
+                                                            dispatch.clone(),
+                                                        )
                                                     }
                                                 }
                                                 pending.set(None);

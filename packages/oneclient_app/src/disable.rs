@@ -15,7 +15,7 @@ pub use oneclient_content::packages::DisableRoot;
 use oneclient_content::packages::PackageStore;
 use oneclient_db::models::ClusterId;
 
-use crate::hooks::invalidate_cluster_queries;
+use crate::hooks::{Actions, invalidate_cluster_queries};
 use crate::i18n::{t, tf};
 use crate::launcher;
 
@@ -44,6 +44,7 @@ pub struct DisableRequest {
     pub name: String,
     pub roots: Vec<DisableRoot>,
     pub bundles: Vec<BundlePackage>,
+    pub warned: Vec<String>,
 }
 
 /// A disable waiting on the user: what the modal says, and what applying it
@@ -65,11 +66,19 @@ pub struct PendingDisable {
 /// runs off the event handler. `spawn_forever` rather than `spawn`: the row
 /// that was pressed is free to scroll out of the list, and its scope going with
 /// it must not cancel the answer.
-pub fn request(request: DisableRequest, mut pending: State<Option<PendingDisable>>) {
+pub fn request(
+    request: DisableRequest,
+    mut pending: State<Option<PendingDisable>>,
+    dispatch: Actions,
+) {
     spawn_forever(async move {
+        let warned = request.warned.clone();
         match resolve(request).await {
             // Nothing else was affected, so it is already off.
-            Ok(None) => invalidate_cluster_queries().await,
+            Ok(None) => {
+                dispatch.acknowledge_disable_warnings(&warned);
+                invalidate_cluster_queries().await
+            }
             Ok(Some(confirm)) => pending.set(Some(confirm)),
             Err(err) => {
                 tracing::warn!(%err, "failed to work out what a disable would affect");
@@ -238,6 +247,7 @@ mod tests {
                 name: "Sodium".to_string(),
                 roots: vec![DisableRoot::Artifact("hash".to_string())],
                 bundles: Vec::new(),
+                warned: Vec::new(),
             },
             required: required.iter().map(|n| (*n).to_string()).collect(),
             optional: optional.iter().map(|n| (*n).to_string()).collect(),

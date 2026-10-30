@@ -766,6 +766,7 @@ impl Component for PackageManager {
 
         let set_enabled: EventHandler<bool> = {
             let chosen = chosen.clone();
+            let dispatch = dispatch.clone();
             let warnings = disable_warnings(&warnings_query);
             (move |enabled: bool| {
                 if bisecting {
@@ -801,6 +802,7 @@ impl Component for PackageManager {
                     warnings.clone(),
                     guard,
                     pending_disable,
+                    dispatch.clone(),
                 );
             })
             .into()

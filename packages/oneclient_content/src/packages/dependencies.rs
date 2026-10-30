@@ -1,13 +1,15 @@
 use std::collections::{HashSet, VecDeque};
 
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
+use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::models::ClusterRow;
 use oneclient_events::VersionRange;
 
 use crate::ctx::ContentCtx;
 use crate::error::ContentResult;
+use crate::packages::local_manifest::read_jar_mod_id;
 use crate::packages::provider::PackageProvider;
-use crate::packages::store::PackageStore;
+use crate::packages::store::{PackageStore, artifact_absolute_path};
 use crate::packages::types::{
     DependencyKind, ProjectDetail, ReleaseType, SearchFilters, VersionDependency, VersionDetail,
     VersionSummary,
@@ -57,6 +59,9 @@ pub async fn resolve_required(
     let mut seen = installed_project_ids(provider_id, cluster_id, ctx).await?;
     seen.insert(root.project_id.clone());
 
+    // Read only once something fails to resolve, it opens every jar in the cluster
+    let mut installed_mod_ids: Option<HashSet<String>> = None;
+
     let mut queue: VecDeque<(VersionDependency, usize)> = root
         .dependencies
         .iter()
@@ -74,13 +79,21 @@ pub async fn resolve_required(
         let resolved = match resolve_one(provider, &dep, &cluster, ctx).await {
             Ok(Some(resolved)) => resolved,
             Ok(None) => {
-                tracing::warn!(?dep, "no compatible version for dependency");
-                resolution.unresolved.push(dependency_label(&dep));
+                if !installed_under_mod_id(provider, &dep, cluster_id, &mut installed_mod_ids, ctx)
+                    .await
+                {
+                    tracing::warn!(?dep, "no compatible version for dependency");
+                    resolution.unresolved.push(dependency_label(&dep));
+                }
                 continue;
             }
             Err(err) => {
-                tracing::warn!(?dep, %err, "failed to resolve dependency");
-                resolution.unresolved.push(dependency_label(&dep));
+                if !installed_under_mod_id(provider, &dep, cluster_id, &mut installed_mod_ids, ctx)
+                    .await
+                {
+                    tracing::warn!(?dep, %err, "failed to resolve dependency");
+                    resolution.unresolved.push(dependency_label(&dep));
+                }
                 continue;
             }
         };
@@ -421,6 +434,53 @@ async fn installed_project_ids(
         .filter(|linked| linked.provider == Some(provider_id))
         .filter_map(|linked| linked.project_id)
         .collect())
+}
+
+/// Bundles can ship a library from outside the provider, like Fabric Language Kotlin on 1.8.9
+/// which comes from GitHub because Modrinth has no build for it. The project id check can't see
+/// that copy, so a dependency the provider can't serve is also matched by its slug against the
+/// mod ids of the jars already in the cluster
+async fn installed_under_mod_id(
+    provider: &dyn PackageProvider,
+    dep: &VersionDependency,
+    cluster_id: i64,
+    installed: &mut Option<HashSet<String>>,
+    ctx: &ContentCtx,
+) -> bool {
+    let Some(project_id) = &dep.project_id else {
+        return false;
+    };
+    let Ok(project) = provider.get_project(project_id, ctx).await else {
+        return false;
+    };
+
+    if installed.is_none() {
+        *installed = Some(installed_mod_ids(cluster_id, ctx).await);
+    }
+    installed
+        .as_ref()
+        .is_some_and(|ids| ids.contains(&project.slug))
+}
+
+async fn installed_mod_ids(cluster_id: i64, ctx: &ContentCtx) -> HashSet<String> {
+    let Ok(linked) = PackageStore::list_linked_artifacts(cluster_id, ctx).await else {
+        return HashSet::new();
+    };
+
+    let mut ids = HashSet::new();
+    for artifact in linked.iter().filter(|a| a.content_type == ContentType::Mod) {
+        let Ok(Some(row)) = artifact_dao::get_artifact_by_hash(&ctx.db, &artifact.hash).await
+        else {
+            continue;
+        };
+        let Ok(jar) = artifact_absolute_path(&row.path) else {
+            continue;
+        };
+        if let Some(id) = read_jar_mod_id(&jar).await {
+            ids.insert(id.id);
+        }
+    }
+    ids
 }
 
 /// False for modpacks they bring their own file list

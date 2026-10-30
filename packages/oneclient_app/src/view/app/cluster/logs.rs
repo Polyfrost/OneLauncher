@@ -4,7 +4,7 @@ use std::sync::Arc;
 use freya::prelude::*;
 use freya::query::UseQuery;
 use oneclient_common::search::SearchQuery;
-use oneclient_core::{LogFileInfo, LogKind, LogLevel};
+use oneclient_core::{LogFileInfo, LogKind, LogLevel, LogTrim};
 
 use crate::components::upload_mclogs::{UploadToMclogs, use_mclogs_feedback};
 use crate::components::{
@@ -66,6 +66,7 @@ pub struct OpenGameOutput(pub State<bool>);
 pub enum Confirm {
     Clear,
     Upload,
+    UploadTooLong,
 }
 
 /// A crash report buried among thirty rotated `.log.gz` files is one nobody finds
@@ -199,6 +200,7 @@ impl Component for ClusterLogs {
         let files = visible_files(&logs_query, *category.read());
         let has_log = !files.is_empty();
         let selected_info = files.iter().find(|f| f.path == selected_path).cloned();
+        let upload_path = selected_info.as_ref().map(|info| info.path.clone());
 
         let lines = try_log_content(&content_query).unwrap_or_default();
         let viewer_lines: Arc<Vec<Arc<str>>> = Arc::new(
@@ -221,12 +223,16 @@ impl Component for ClusterLogs {
                 confirm,
                 category,
             ))
-            .child(
-                rect().width(Size::fill()).height(Size::flex(1.0)).child(
-                    LogViewer::new("", viewer_lines)
-                        .header(viewer_header(search, level, confirm, has_log, search_id)),
-                ),
-            );
+            .child(rect().width(Size::fill()).height(Size::flex(1.0)).child(
+                LogViewer::new("", viewer_lines).header(viewer_header(
+                    search,
+                    level,
+                    confirm,
+                    has_log,
+                    upload_path,
+                    search_id,
+                )),
+            ));
 
         cluster_content()
             .child(body.into_element())
@@ -333,6 +339,7 @@ pub fn viewer_header(
     level: State<LevelFilter>,
     confirm: State<Option<Confirm>>,
     has_log: bool,
+    upload_path: Option<PathBuf>,
     search_id: AccessibilityId,
 ) -> impl IntoElement {
     let on_key_down = move |e: Event<KeyboardEventData>| {
@@ -387,7 +394,7 @@ pub fn viewer_header(
                 )
                 .into_element(),
         )
-        .child(UploadToMclogs::new(has_log, confirm));
+        .child(UploadToMclogs::new(upload_path, confirm));
 
     rect()
         .vertical()
@@ -659,14 +666,67 @@ pub fn confirm_overlay(
             t("oneclient.cluster.logs.upload.confirm"),
             false,
         ),
+        Confirm::UploadTooLong => (
+            t("oneclient.cluster.logs.upload.too_long.title"),
+            t("oneclient.cluster.logs.upload.too_long.body").to_string(),
+            t("oneclient.cluster.logs.upload.too_long.keep_both"),
+            false,
+        ),
     };
+
+    let keep_start = (kind == Confirm::UploadTooLong).then(|| {
+        let path = path.clone();
+        Button::new()
+            .secondary()
+            .on_press(move |_| {
+                upload.mutate(UploadLogKeys {
+                    path: path.clone(),
+                    trim: LogTrim::KeepStart,
+                });
+                confirm.set(None);
+            })
+            .text(t("oneclient.cluster.logs.upload.too_long.keep_start"))
+    });
 
     let run = move |_| {
         match kind {
             Confirm::Clear => action.mutate(LogAction::Delete { path: path.clone() }),
-            Confirm::Upload => upload.mutate(UploadLogKeys { path: path.clone() }),
+            Confirm::Upload | Confirm::UploadTooLong => upload.mutate(UploadLogKeys {
+                path: path.clone(),
+                trim: LogTrim::KeepStartAndEnd,
+            }),
         }
         confirm.set(None);
+    };
+
+    let cancel_button = Button::new()
+        .secondary()
+        .on_press(move |_| confirm.set(None))
+        .text(t("oneclient.common.cancel"));
+
+    let confirm_button = if danger {
+        Button::new().danger()
+    } else {
+        Button::new().primary()
+    }
+    .on_press(run)
+    .text(confirm_label);
+
+    let buttons = match keep_start {
+        Some(keep_start) => rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(8.)
+            .child(confirm_button.width(Size::fill()))
+            .child(keep_start.width(Size::fill()))
+            .child(cancel_button.width(Size::fill())),
+        None => rect()
+            .horizontal()
+            .width(Size::fill())
+            .main_align(Alignment::End)
+            .spacing(8.)
+            .child(cancel_button)
+            .child(confirm_button),
     };
 
     OverlayPopup::new()
@@ -714,28 +774,7 @@ pub fn confirm_overlay(
                                 .width(Size::fill())
                                 .color(colors::fg_secondary()),
                         )
-                        .child(
-                            rect()
-                                .horizontal()
-                                .width(Size::fill())
-                                .main_align(Alignment::End)
-                                .spacing(8.)
-                                .child(
-                                    Button::new()
-                                        .secondary()
-                                        .on_press(move |_| confirm.set(None))
-                                        .text(t("oneclient.common.cancel")),
-                                )
-                                .child(
-                                    if danger {
-                                        Button::new().danger()
-                                    } else {
-                                        Button::new().primary()
-                                    }
-                                    .on_press(run)
-                                    .text(confirm_label),
-                                ),
-                        ),
+                        .child(buttons),
                 ),
         )
         .into_element()

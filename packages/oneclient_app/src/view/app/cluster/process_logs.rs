@@ -42,6 +42,12 @@ impl Component for ProcessLogs {
 
         let active = game.stage(self.cluster_id).is_some();
 
+        let output_path = try_cluster_logs(&logs_query)
+            .unwrap_or_default()
+            .into_iter()
+            .find(|file| matches!(file.kind, LogKind::Game { .. }))
+            .map(|file| file.path);
+
         let body = if active {
             let lines = game.logs_for(self.cluster_id);
             let has_log = !lines.is_empty();
@@ -49,17 +55,18 @@ impl Component for ProcessLogs {
 
             LogViewer::new(t("oneclient.cluster.process_logs.title"), visible)
                 .streaming(true)
-                .header(viewer_header(search, level, confirm, has_log, search_id))
+                .header(viewer_header(
+                    search,
+                    level,
+                    confirm,
+                    has_log,
+                    output_path.clone().filter(|_| has_log),
+                    search_id,
+                ))
                 .into_element()
         } else {
             not_running()
         };
-
-        let output_path = try_cluster_logs(&logs_query)
-            .unwrap_or_default()
-            .into_iter()
-            .find(|file| matches!(file.kind, LogKind::Game { .. }))
-            .map(|file| file.path);
 
         cluster_content()
             .child(body)

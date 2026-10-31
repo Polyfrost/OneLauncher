@@ -1,3 +1,4 @@
+use accesskit::Toggled;
 use freya::prelude::*;
 
 use super::model::{LoaderChoice, VersionRow};
@@ -35,14 +36,17 @@ impl Component for SelectCard {
         let mut hovering = use_state(|| false);
         let hovered = *hovering.read();
         let on_press = self.on_press.clone();
+        let selected = self.selected;
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
 
-        let ring = if self.selected || focused {
+        let ring = if focus() == Focus::Keyboard {
+            colors::fg_primary()
+        } else if self.selected {
             colors::brand()
-        } else if hovered {
+        } else if hovered || focused {
             colors::component_border_hover()
         } else {
             colors::component_border()
@@ -64,6 +68,7 @@ impl Component for SelectCard {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
+            .a11y_builder(move |node| node.set_toggled(Toggled::from(selected)))
             .cursor(CursorIcon::Pointer)
             .on_press(move |_| on_press.call(()))
             .on_pointer_enter(move |_| hovering.set(true))
@@ -185,9 +190,8 @@ pub fn wide_card(card: WideCard) -> Element {
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(14.)
-        .child(marker(selected, false))
         .child(Icon::new(icon).size(25.).color(if selected {
-            colors::fg_primary()
+            colors::brand()
         } else {
             colors::fg_secondary()
         }))

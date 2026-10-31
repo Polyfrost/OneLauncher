@@ -5,7 +5,7 @@ use freya::prelude::*;
 use oneclient_content::packages::ResolvedAlternative;
 use oneclient_core::{FlaggedImportMod, ScreenedInstance};
 
-use super::cards::SelectCard;
+use super::cards::{SelectCard, marker};
 use super::data::Picks;
 use super::model::{DecisionKey, ModDecision, Wizard, decision_for};
 use crate::components::{
@@ -320,7 +320,13 @@ fn choice_option(
     subtitle: &str,
 ) -> Element {
     let id = format!("{}:{}:{title}", key.0.display(), key.1);
-    let content = option_content(None, title.to_string(), subtitle.to_string(), true);
+    let content = option_content(
+        selected,
+        None,
+        title.to_string(),
+        subtitle.to_string(),
+        true,
+    );
     SelectCard {
         id,
         selected,
@@ -369,6 +375,7 @@ impl Component for AlternativeOption {
             ),
         };
         let content = option_content(
+            self.selected,
             Some(icon),
             self.alternative.name.clone(),
             subtitle,
@@ -414,6 +421,7 @@ impl Component for AlternativeOption {
 }
 
 fn option_content(
+    selected: bool,
     icon: Option<Element>,
     title: String,
     subtitle: String,
@@ -426,6 +434,7 @@ fn option_content(
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(10.)
+        .child(marker(selected, false))
         .maybe_child(icon)
         .child(
             rect()

@@ -11,7 +11,7 @@ pub use gc::{
     remove_unreferenced_files,
 };
 pub use link::{
-    LiveSync, drop_unmanaged_mod, link_or_copy, remove_entry, sharing_cluster_ids,
+    LiveSync, drop_unmanaged_mod, link_or_copy, remove_entry, sharing_cluster_ids, sharing_with,
     sweep_staging_files, try_link_materialized, try_unlink_materialized,
 };
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
@@ -357,7 +357,7 @@ impl PackageStore {
         let disabled =
             artifact_dao::disable_cluster_artifacts(&ctx.db, cluster_id, hashes, bundle_overrides)
                 .await?;
-        let sharing = link::sharing_cluster_ids(&ctx.db).await?;
+        let sharing = link::sharing_with(&ctx.db, &cluster).await?;
 
         for link in disabled {
             let Some(artifact) = artifact_dao::get_artifact_by_hash(&ctx.db, &link.hash).await?
@@ -427,7 +427,7 @@ impl PackageStore {
         .await?;
 
         if link::shares_content(&cluster, content_type) {
-            let sharing = link::sharing_cluster_ids(&ctx.db).await?;
+            let sharing = link::sharing_with(&ctx.db, &cluster).await?;
             artifact_dao::set_enabled_for_hash(&ctx.db, hash, i64::from(enabled), &sharing).await?;
         }
 

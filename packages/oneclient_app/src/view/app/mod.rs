@@ -12,7 +12,7 @@ pub mod settings;
 use crate::hooks::{settled_or_loading, use_clusters, use_game_snapshot};
 use crate::i18n::t;
 use crate::state::{GameState as GameSnapshot, LauncherInit};
-use oneclient_core::clusters::Cluster;
+use oneclient_core::clusters::{Cluster, DirTarget};
 use oneclient_events::LaunchStage;
 
 pub fn launch_button_state(
@@ -45,18 +45,17 @@ pub fn launch_button_state(
 /// Whether another shared cluster is starting or running in the shared game dir
 /// dedicated clusters never collide so any number of them may run alongside
 pub fn shared_dir_taken(game: &GameSnapshot, clusters: &[Cluster], cluster_id: i64) -> bool {
-    // Active games are few so filter on them before touching the marker files
-    let mut others = clusters
-        .iter()
-        .filter(|c| c.id != cluster_id && (game.is_active(c.id) || game.is_launch_pending(c.id)))
-        .peekable();
+    let Some(this) = clusters.iter().find(|c| c.id == cluster_id) else {
+        return false;
+    };
 
-    (others.peek().is_some() || game.any_shared_sync())
-        && clusters
-            .iter()
-            .find(|c| c.id == cluster_id)
-            .is_some_and(|c| !c.uses_dedicated_dir())
-        && (game.any_shared_sync() || others.any(|c| !c.uses_dedicated_dir()))
+    this.dir_target != DirTarget::Dedicated
+        && (game.shared_sync_touches(&this.dir_target)
+            || clusters.iter().any(|c| {
+                c.id != cluster_id
+                    && (game.is_active(c.id) || game.is_launch_pending(c.id))
+                    && c.shares_dir_with(this)
+            }))
 }
 
 pub fn use_shared_dir_taken(cluster_id: i64) -> bool {

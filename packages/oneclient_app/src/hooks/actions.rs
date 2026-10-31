@@ -7,7 +7,7 @@ mod external_import;
 pub use external_import::{AlternativePick, ExternalImportJob};
 mod modpacks;
 
-pub(crate) use modpacks::listed;
+pub(crate) use modpacks::{listed, modpack_job_in_shared_dir};
 pub use modpacks::modpack_job_running;
 mod release_migration;
 mod share;
@@ -2933,6 +2933,7 @@ mod tests {
             description: None,
             tags: Vec::new(),
             cover_path: None,
+            dir_target: Default::default(),
         }
     }
 

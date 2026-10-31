@@ -5,7 +5,7 @@ use freya::prelude::*;
 use oneclient_events::{Answer, ChoiceInput, ChoiceStyle};
 use oneclient_java::JAVA_CHOICE_DOWNLOAD;
 
-use crate::components::{Button, OverlayPopup};
+use crate::components::{Button, OVERLAY_BASE_LEVEL, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
 use crate::microsoft_java::MICROSOFT_JAVA_CHOICE_INSTALL;
 use crate::notifications::PendingPromptView;
@@ -111,6 +111,7 @@ impl Component for GenericPromptOverlay {
             .child(primary);
 
         OverlayPopup::new()
+            .overlay_level(OVERLAY_BASE_LEVEL + 3)
             .on_close(move |_| close.dismiss_prompt())
             .child(
                 rect()

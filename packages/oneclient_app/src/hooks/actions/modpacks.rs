@@ -10,9 +10,9 @@ use oneclient_content::modpacks::{
 use oneclient_content::packages::ResolvedAlternative;
 use oneclient_core::clusters::{
     ExistingPack, LoaderPlan, ModpackCluster, ModpackSource, PreparedImport, PreparedModpack,
-    create_modpack_instance,
-    import_modpack_into_cluster, install_modpack_instance, prepare_modpack, prepare_modpack_import,
-    remove_imported_modpack, repair_modpack_cluster, update_modpack_cluster,
+    create_modpack_instance, import_modpack_into_cluster, install_modpack_instance,
+    prepare_modpack, prepare_modpack_import, remove_imported_modpack, repair_modpack_cluster,
+    update_modpack_cluster,
 };
 use oneclient_db::models::ClusterId;
 use oneclient_events::GroupedProgressSession;
@@ -66,47 +66,47 @@ pub fn modpack_job_running(cluster_id: ClusterId) -> bool {
     busy_cluster() == Some(cluster_id)
 }
 
-pub(super) async fn modpack_job_in_shared_dir(cluster_id: ClusterId) -> bool {
+pub(crate) async fn modpack_job_in_shared_dir(cluster_id: ClusterId) -> bool {
     let Some(busy) = busy_cluster().filter(|id| *id != cluster_id) else {
         return false;
     };
     let Ok(state) = launcher::state() else {
         return false;
     };
-    let shares = |id| {
-        let state = state.clone();
-        async move {
-            state
-                .clusters
-                .get(id)
-                .await
-                .is_ok_and(|cluster| !cluster.uses_dedicated_dir())
-        }
-    };
-    shares(cluster_id).await && shares(busy).await
+    match (
+        state.clusters.get(cluster_id).await,
+        state.clusters.get(busy).await,
+    ) {
+        (Ok(cluster), Ok(busy)) => cluster.shares_dir_with(&busy),
+        _ => false,
+    }
 }
 
 fn take_prepared() -> Option<PreparedModpack> {
-    with_slot(|slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
-        JobSlot::AwaitingConfirm(prepared) => Some(*prepared),
-        other => {
-            *slot = other;
-            None
-        }
-    })
+    with_slot(
+        |slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
+            JobSlot::AwaitingConfirm(prepared) => Some(*prepared),
+            other => {
+                *slot = other;
+                None
+            }
+        },
+    )
 }
 
 fn take_prepared_import() -> Option<PreparedImport> {
-    with_slot(|slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
-        JobSlot::AwaitingImport(prepared) => {
-            *slot = JobSlot::Preparing(Some(prepared.cluster_id));
-            Some(*prepared)
-        }
-        other => {
-            *slot = other;
-            None
-        }
-    })
+    with_slot(
+        |slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
+            JobSlot::AwaitingImport(prepared) => {
+                *slot = JobSlot::Preparing(Some(prepared.cluster_id));
+                Some(*prepared)
+            }
+            other => {
+                *slot = other;
+                None
+            }
+        },
+    )
 }
 
 enum ModpackJob {
@@ -604,7 +604,10 @@ impl Actions {
     pub fn cancel_modpack(&self) {
         self.with_engine(|app| app.notifications.close_modpack_confirm());
         let waiting = with_slot(|slot| {
-            matches!(slot, JobSlot::AwaitingConfirm(_) | JobSlot::AwaitingImport(_))
+            matches!(
+                slot,
+                JobSlot::AwaitingConfirm(_) | JobSlot::AwaitingImport(_)
+            )
         });
         if waiting {
             self.release_modpack_job();
@@ -704,6 +707,18 @@ impl Actions {
                     *cluster_id
                 }
             };
+            if crate::hooks::sync_actions::sync_launch_block(cluster_id)
+                .await
+                .is_some()
+            {
+                actions
+                    .notify(t("oneclient.actions.launch.syncing"))
+                    .body(t("oneclient.actions.modpacks.sync_busy"))
+                    .error()
+                    .send();
+                actions.release_modpack_job();
+                return;
+            }
             actions.lock_modpack_cluster(cluster_id);
 
             let (job, outcome) = off_ui({
@@ -1103,7 +1118,10 @@ mod tests {
             flagged("kept", Vec::new()),
             flagged("skipped", Vec::new()),
             flagged("defaulted", Vec::new()),
-            flagged("replaced", vec![alternative("unresolved", None), swap.clone()]),
+            flagged(
+                "replaced",
+                vec![alternative("unresolved", None), swap.clone()],
+            ),
             flagged("replaced-again", vec![swap.clone()]),
             flagged("replaced-missing", vec![swap.clone()]),
             flagged("replaced-unresolved", vec![alternative("unresolved", None)]),

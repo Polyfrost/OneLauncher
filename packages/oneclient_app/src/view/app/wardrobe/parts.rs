@@ -482,7 +482,6 @@ impl Component for WardrobeCard {
             .content(Content::Flex)
             .corner_radius(CornerRadius::new_all(12.))
             .background(colors::page_elevated())
-            .border(hairline(outline))
             .overflow(Overflow::Clip)
             .opacity(if enabled { 1. } else { 0.5 })
             .cursor(if enabled {

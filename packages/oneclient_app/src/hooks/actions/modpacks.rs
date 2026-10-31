@@ -10,14 +10,15 @@ use oneclient_content::modpacks::{
 use oneclient_content::packages::ResolvedAlternative;
 use oneclient_core::clusters::{
     ExistingPack, LoaderPlan, ModpackCluster, ModpackSource, PreparedImport, PreparedModpack,
-    create_modpack_instance,
-    import_modpack_into_cluster, install_modpack_instance, prepare_modpack, prepare_modpack_import,
-    remove_imported_modpack, repair_modpack_cluster, update_modpack_cluster,
+    create_modpack_instance, import_modpack_into_cluster, install_modpack_instance,
+    prepare_modpack, prepare_modpack_import, remove_imported_modpack, repair_modpack_cluster,
+    update_modpack_cluster,
 };
 use oneclient_db::models::ClusterId;
 use oneclient_events::GroupedProgressSession;
 
 use super::Actions;
+use crate::i18n::{t, tf};
 use crate::launcher::{self, off_ui};
 use crate::notifications::{
     BlockedDownloads, ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView,
@@ -25,8 +26,6 @@ use crate::notifications::{
 use crate::state::AppChannel;
 
 const MAX_LISTED: usize = 3;
-const QUEUED_NOTICE: &str =
-    "This file was waiting in the import queue while another import finished.";
 
 enum JobSlot {
     Idle,
@@ -84,26 +83,30 @@ pub(crate) async fn modpack_job_in_shared_dir(cluster_id: ClusterId) -> bool {
 }
 
 fn take_prepared() -> Option<PreparedModpack> {
-    with_slot(|slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
-        JobSlot::AwaitingConfirm(prepared) => Some(*prepared),
-        other => {
-            *slot = other;
-            None
-        }
-    })
+    with_slot(
+        |slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
+            JobSlot::AwaitingConfirm(prepared) => Some(*prepared),
+            other => {
+                *slot = other;
+                None
+            }
+        },
+    )
 }
 
 fn take_prepared_import() -> Option<PreparedImport> {
-    with_slot(|slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
-        JobSlot::AwaitingImport(prepared) => {
-            *slot = JobSlot::Preparing(Some(prepared.cluster_id));
-            Some(*prepared)
-        }
-        other => {
-            *slot = other;
-            None
-        }
-    })
+    with_slot(
+        |slot| match std::mem::replace(slot, JobSlot::Preparing(None)) {
+            JobSlot::AwaitingImport(prepared) => {
+                *slot = JobSlot::Preparing(Some(prepared.cluster_id));
+                Some(*prepared)
+            }
+            other => {
+                *slot = other;
+                None
+            }
+        },
+    )
 }
 
 enum ModpackJob {
@@ -134,40 +137,41 @@ impl ModpackJob {
     fn texts(&self) -> JobTexts {
         match self {
             Self::Install(_) => JobTexts {
-                progress: "Installing modpack",
-                done: "Modpack installed",
-                problems: "Modpack installed with problems",
-                failed: "Modpack install failed",
+                progress: t("oneclient.actions.modpacks.texts.install.progress"),
+                done: t("oneclient.actions.modpacks.texts.install.done"),
+                problems: t("oneclient.actions.modpacks.texts.install.problems"),
+                failed: t("oneclient.actions.modpacks.texts.install.failed"),
             },
             Self::Import { .. } => JobTexts {
-                progress: "Adding modpack",
-                done: "Modpack added",
-                problems: "Modpack added with problems",
-                failed: "Could not add the modpack",
+                progress: t("oneclient.actions.modpacks.texts.import.progress"),
+                done: t("oneclient.actions.modpacks.texts.import.done"),
+                problems: t("oneclient.actions.modpacks.texts.import.problems"),
+                failed: t("oneclient.actions.modpacks.texts.import.failed"),
             },
             Self::Update { .. } => JobTexts {
-                progress: "Updating modpack",
-                done: "Modpack updated",
-                problems: "Modpack updated with problems",
-                failed: "Modpack update failed",
+                progress: t("oneclient.actions.modpacks.texts.update.progress"),
+                done: t("oneclient.actions.modpacks.texts.update.done"),
+                problems: t("oneclient.actions.modpacks.texts.update.problems"),
+                failed: t("oneclient.actions.modpacks.texts.update.failed"),
             },
             Self::Repair { .. } => JobTexts {
-                progress: "Reinstalling modpack files",
-                done: "Modpack files reinstalled",
-                problems: "Some modpack files are still missing",
-                failed: "Could not reinstall the modpack files",
+                progress: t("oneclient.actions.modpacks.texts.repair.progress"),
+                done: t("oneclient.actions.modpacks.texts.repair.done"),
+                problems: t("oneclient.actions.modpacks.texts.repair.problems"),
+                failed: t("oneclient.actions.modpacks.texts.repair.failed"),
             },
         }
     }
 
     fn done_body(&self, cluster_name: &str) -> String {
         match self {
-            Self::Install(_) => format!("{cluster_name} is ready to play."),
-            Self::Import { import, .. } => {
-                format!("{} was added to {cluster_name}.", import.pack_name())
-            }
-            Self::Update { .. } => format!("{cluster_name} is on the new version."),
-            Self::Repair { .. } => format!("{cluster_name} has everything the pack lists."),
+            Self::Install(_) => tf("oneclient.actions.modpacks.done.install", &[&cluster_name]),
+            Self::Import { import, .. } => tf(
+                "oneclient.actions.modpacks.done.import",
+                &[&import.pack_name(), &cluster_name],
+            ),
+            Self::Update { .. } => tf("oneclient.actions.modpacks.done.update", &[&cluster_name]),
+            Self::Repair { .. } => tf("oneclient.actions.modpacks.done.repair", &[&cluster_name]),
         }
     }
 }
@@ -175,7 +179,7 @@ impl ModpackJob {
 fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
     let manifest = &prepared.manifest;
     let loader = match (&manifest.loader, &manifest.loader_version) {
-        (loader, _) if !loader.is_modded() => "Vanilla".to_string(),
+        (loader, _) if !loader.is_modded() => t("oneclient.actions.modpacks.vanilla").to_string(),
         (loader, Some(version)) => format!("{loader} {version}"),
         (loader, None) => loader.to_string(),
     };
@@ -184,7 +188,7 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
         ModpackSource::File(path) => path
             .file_name()
             .map(|name| name.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "a file".to_string()),
+            .unwrap_or_else(|| t("oneclient.actions.modpacks.a_file").to_string()),
     };
 
     let (pack_name, version) = match &prepared.share {
@@ -192,7 +196,10 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
             shared.share.name.clone(),
             format!("{} {}", manifest.name, manifest.version),
         ),
-        Some(shared) => (shared.share.name.clone(), "Shared instance".to_string()),
+        Some(shared) => (
+            shared.share.name.clone(),
+            t("oneclient.actions.modpacks.shared_instance").to_string(),
+        ),
         None if manifest.name.trim().is_empty() => {
             (prepared.instance_name.clone(), manifest.version.clone())
         }
@@ -240,13 +247,16 @@ fn import_notes(import: &PreparedImport) -> Vec<(String, bool)> {
     let mut notes = Vec::new();
     match &import.loader {
         LoaderPlan::Raise { from, to } => notes.push((
-            format!("{loader} will be updated from {from} to {to}, the version this pack needs."),
+            tf(
+                "oneclient.actions.modpacks.notes.loader_raise",
+                &[&loader, &from, &to],
+            ),
             false,
         )),
         LoaderPlan::Behind { current, needed } => notes.push((
-            format!(
-                "This pack was made for {loader} {needed}, but {} uses {current}, which OneClient manages. Some of its mods may not load.",
-                import.cluster_name
+            tf(
+                "oneclient.actions.modpacks.notes.loader_behind",
+                &[&loader, &needed, &import.cluster_name, &current],
             ),
             true,
         )),
@@ -254,9 +264,9 @@ fn import_notes(import: &PreparedImport) -> Vec<(String, bool)> {
     }
     if import.shared_game_dir {
         notes.push((
-            format!(
-                "{} shares its game folder with other instances, so the pack's config files apply to them too.",
-                import.cluster_name
+            tf(
+                "oneclient.actions.modpacks.notes.shared_game_dir",
+                &[&import.cluster_name],
             ),
             false,
         ));
@@ -297,8 +307,8 @@ fn split_choices(
 impl Actions {
     fn claim_modpack_job(&self, target: Option<ClusterId>) -> bool {
         if super::external_import::import_running() {
-            self.notify("An import is already running")
-                .body("Wait for it to finish, then try again.")
+            self.notify(t("oneclient.actions.modpacks.busy.import"))
+                .body(t("oneclient.actions.modpacks.busy.body"))
                 .error()
                 .send();
             return false;
@@ -311,8 +321,8 @@ impl Actions {
             _ => false,
         });
         if !claimed {
-            self.notify("Another install is already running")
-                .body("Wait for it to finish, then try again.")
+            self.notify(t("oneclient.actions.modpacks.busy.install"))
+                .body(t("oneclient.actions.modpacks.busy.body"))
                 .error()
                 .send();
             return false;
@@ -366,8 +376,8 @@ impl Actions {
             && (super::external_import::import_running() || !modpack_job_idle())
         {
             waiting().push_back(source);
-            self.notify("Queued for import")
-                .body("It will start as soon as the current import or install finishes.")
+            self.notify(t("oneclient.actions.modpacks.queued.title"))
+                .body(t("oneclient.actions.modpacks.queued.body"))
                 .send();
             return;
         }
@@ -404,8 +414,10 @@ impl Actions {
             let prepared = off_ui({
                 let state = state.clone();
                 async move {
-                    let session =
-                        GroupedProgressSession::start(&state.services.events, "Reading modpack");
+                    let session = GroupedProgressSession::start(
+                        &state.services.events,
+                        t("oneclient.actions.modpacks.reading"),
+                    );
                     let prepared = prepare_modpack(&state, &source, Some(&session)).await;
                     session.finish();
                     prepared
@@ -420,7 +432,8 @@ impl Actions {
                 Ok(prepared) => {
                     let mut view = confirm_view(&prepared);
                     if queued {
-                        view.notices.insert(0, QUEUED_NOTICE.to_string());
+                        view.notices
+                            .insert(0, t("oneclient.actions.modpacks.queued_notice").to_string());
                     }
                     with_slot(|slot| *slot = JobSlot::AwaitingConfirm(Box::new(prepared)));
                     actions.with_engine(move |app| app.notifications.open_modpack_confirm(view));
@@ -428,7 +441,7 @@ impl Actions {
                 Err(err) => {
                     tracing::warn!(error = %err, "could not read the modpack");
                     actions
-                        .notify("Could not read the modpack")
+                        .notify(t("oneclient.actions.modpacks.read_failed"))
                         .body(err.to_string())
                         .error()
                         .send();
@@ -475,8 +488,10 @@ impl Actions {
             let prepared = off_ui({
                 let state = state.clone();
                 async move {
-                    let session =
-                        GroupedProgressSession::start(&state.services.events, "Reading modpack");
+                    let session = GroupedProgressSession::start(
+                        &state.services.events,
+                        t("oneclient.actions.modpacks.reading"),
+                    );
                     let prepared =
                         prepare_modpack_import(&state, cluster_id, &source, Some(&session)).await;
                     session.finish();
@@ -494,7 +509,7 @@ impl Actions {
                 Err(err) => {
                     tracing::warn!(cluster_id, error = %err, "could not prepare the modpack import");
                     actions
-                        .notify("Could not add the modpack")
+                        .notify(t("oneclient.actions.modpacks.texts.import.failed"))
                         .body(err.to_string())
                         .error()
                         .send();
@@ -559,16 +574,16 @@ impl Actions {
             match removed {
                 Ok(failed) if failed.is_empty() => {
                     actions
-                        .notify("Modpack removed")
-                        .body(format!("{name} was removed from the instance."))
+                        .notify(t("oneclient.actions.modpacks.removed.title"))
+                        .body(tf("oneclient.actions.modpacks.removed.body", &[&name]))
                         .send();
                 }
                 Ok(failed) => {
                     actions
-                        .notify("Modpack partly removed")
-                        .body(format!(
-                            "{} of the files from {name} could not be removed. Close anything using them and try again.",
-                            failed.len()
+                        .notify(t("oneclient.actions.modpacks.partly_removed.title"))
+                        .body(tf(
+                            "oneclient.actions.modpacks.partly_removed.body",
+                            &[&failed.len(), &name],
                         ))
                         .error()
                         .send();
@@ -576,7 +591,7 @@ impl Actions {
                 Err(err) => {
                     tracing::warn!(cluster_id, error = %err, "could not remove the modpack");
                     actions
-                        .notify("Could not remove the modpack")
+                        .notify(t("oneclient.actions.modpacks.remove_failed"))
                         .body(err.to_string())
                         .error()
                         .send();
@@ -589,7 +604,10 @@ impl Actions {
     pub fn cancel_modpack(&self) {
         self.with_engine(|app| app.notifications.close_modpack_confirm());
         let waiting = with_slot(|slot| {
-            matches!(slot, JobSlot::AwaitingConfirm(_) | JobSlot::AwaitingImport(_))
+            matches!(
+                slot,
+                JobSlot::AwaitingConfirm(_) | JobSlot::AwaitingImport(_)
+            )
         });
         if waiting {
             self.release_modpack_job();
@@ -615,31 +633,34 @@ impl Actions {
 
     fn refuse_while_running(&self, cluster_id: ClusterId) -> bool {
         if super::share::exporting(cluster_id) {
-            self.notify("Wait for the export to finish")
-                .body("This instance is being exported. Change its modpack once that's done.")
+            self.notify(t("oneclient.actions.modpacks.blocked.exporting.title"))
+                .body(t("oneclient.actions.modpacks.blocked.exporting.body"))
                 .error()
                 .send();
             return true;
         }
         if oneclient_core::clusters::is_resetting(cluster_id) {
-            self.notify("This instance is being reset")
-                .body("Wait for the reset to finish, then try again.")
+            self.notify(t("oneclient.actions.modpacks.blocked.resetting.title"))
+                .body(t("oneclient.actions.modpacks.blocked.resetting.body"))
                 .error()
                 .send();
             return true;
         }
         if self.station.peek().installs.cluster_installing(cluster_id) {
-            self.notify("Wait for the installs to finish")
-                .body("Mods are still being added to this instance. Try again once they're done.")
+            self.notify(t("oneclient.actions.modpacks.blocked.installing.title"))
+                .body(t("oneclient.actions.modpacks.blocked.installing.body"))
                 .error()
                 .send();
+            return true;
+        }
+        if self.refuse_during_update_check(cluster_id) {
             return true;
         }
         let running = self.station.peek().game.is_launch_pending(cluster_id)
             || launcher::state().is_ok_and(|state| state.games.is_active(cluster_id));
         if running {
-            self.notify("Close the game first")
-                .body("The modpack's files cannot be changed while Minecraft is running.")
+            self.notify(t("oneclient.actions.modpacks.blocked.running.title"))
+                .body(t("oneclient.actions.modpacks.blocked.running.body"))
                 .error()
                 .send();
         }
@@ -691,8 +712,8 @@ impl Actions {
                 .is_some()
             {
                 actions
-                    .notify("Wait for the sync to finish")
-                    .body("This game folder is being synced. Try again once it finishes.")
+                    .notify(t("oneclient.actions.launch.syncing"))
+                    .body(t("oneclient.actions.modpacks.sync_busy"))
                     .error()
                     .send();
                 actions.release_modpack_job();
@@ -784,10 +805,12 @@ impl Actions {
                             events.signal(oneclient_events::Signal::ClustersChanged);
                             crate::hooks::invalidate_cluster_queries().await;
                             match removed {
-                                Ok(()) => format!("{err} The unfinished instance was removed."),
-                                Err(_) => format!(
-                                    "{err} Use Reinstall Missing Files in the instance's settings to finish it."
-                                ),
+                                Ok(()) => {
+                                    tf("oneclient.actions.modpacks.failed.install_removed", &[&err])
+                                }
+                                Err(_) => {
+                                    tf("oneclient.actions.modpacks.failed.install_kept", &[&err])
+                                }
                             }
                         }
                         ModpackJob::Import {
@@ -805,23 +828,28 @@ impl Actions {
                                 String::new()
                             } else {
                                 format!(
-                                    " The replacements you picked were not installed: {}.",
-                                    listed(picked.into_iter())
+                                    " {}",
+                                    tf(
+                                        "oneclient.actions.modpacks.failed.replacements",
+                                        &[&listed(picked.into_iter())],
+                                    )
                                 )
                             };
                             let updating = import.previous.is_some()
                                 && import.target_bundle_name(*existing) == import.bundle_name;
                             if updating {
-                                format!(
-                                    "{err} Anything already updated was kept. Add the modpack again to finish, or remove it under Added Modpacks in the instance's settings.{replacements}"
+                                tf(
+                                    "oneclient.actions.modpacks.failed.import_updating",
+                                    &[&err, &replacements],
                                 )
                             } else {
-                                format!("{err} Nothing was added to the instance.{replacements}")
+                                tf(
+                                    "oneclient.actions.modpacks.failed.import_new",
+                                    &[&err, &replacements],
+                                )
                             }
                         }
-                        _ => format!(
-                            "{err} Use Reinstall Missing Files in the instance's settings to try again."
-                        ),
+                        _ => tf("oneclient.actions.modpacks.failed.other", &[&err]),
                     };
                     events.notify(texts.failed).body(body).error().send();
                     actions.release_modpack_job();
@@ -877,11 +905,13 @@ impl Actions {
             return;
         }
 
-        self.notify("Some mods are still missing")
-            .body(format!(
-                "{} is missing {}. It may not start until they are added.",
-                blocked.cluster_name,
-                listed(missing.iter().map(|file| file.project_name.clone())),
+        self.notify(t("oneclient.actions.modpacks.blocked_downloads.title"))
+            .body(tf(
+                "oneclient.actions.modpacks.blocked_downloads.body",
+                &[
+                    &blocked.cluster_name,
+                    &listed(missing.iter().map(|file| file.project_name.clone())),
+                ],
             ))
             .error()
             .send();
@@ -930,7 +960,7 @@ impl Actions {
                 Err(err) => {
                     tracing::warn!(cluster_id, error = %err, "could not add a manual download");
                     actions
-                        .notify("Could not add a download")
+                        .notify(t("oneclient.actions.modpacks.blocked_downloads.add_failed"))
                         .body(err.to_string())
                         .error()
                         .send();
@@ -949,15 +979,18 @@ fn notify_outcome(
     let texts = job.texts();
     let kept = match report.kept.len() {
         0 => String::new(),
-        1 => " 1 file already in the instance was kept instead of the pack's copy.".to_string(),
-        n => format!(" {n} files already in the instance were kept instead of the pack's copies."),
+        1 => format!(" {}", tf("oneclient.actions.modpacks.kept.one", &[&1])),
+        n => format!(" {}", tf("oneclient.actions.modpacks.kept.other", &[&n])),
     };
     let duplicates = if report.disabled_duplicates.is_empty() {
         String::new()
     } else {
         format!(
-            " Turned off extra copies of {} so only one version loads.",
-            listed(report.disabled_duplicates.iter().cloned())
+            " {}",
+            tf(
+                "oneclient.actions.modpacks.duplicates",
+                &[&listed(report.disabled_duplicates.iter().cloned())],
+            )
         )
     };
     let notices: String = report
@@ -986,9 +1019,13 @@ fn notify_outcome(
 
     actions
         .notify(texts.problems)
-        .body(format!(
-            "{cluster_name} could not get {}.{notices}",
-            listed(report.failed.iter().cloned())
+        .body(tf(
+            "oneclient.actions.modpacks.outcome.failed",
+            &[
+                &cluster_name,
+                &listed(report.failed.iter().cloned()),
+                &notices,
+            ],
         ))
         .error()
         .send();
@@ -1004,7 +1041,7 @@ pub(crate) fn listed(names: impl Iterator<Item = String>) -> String {
         .join(", ");
     match names.len().saturating_sub(MAX_LISTED) {
         0 => shown,
-        extra => format!("{shown} and {extra} more"),
+        extra => tf("oneclient.actions.listed.more", &[&shown, &extra]),
     }
 }
 
@@ -1081,7 +1118,10 @@ mod tests {
             flagged("kept", Vec::new()),
             flagged("skipped", Vec::new()),
             flagged("defaulted", Vec::new()),
-            flagged("replaced", vec![alternative("unresolved", None), swap.clone()]),
+            flagged(
+                "replaced",
+                vec![alternative("unresolved", None), swap.clone()],
+            ),
             flagged("replaced-again", vec![swap.clone()]),
             flagged("replaced-missing", vec![swap.clone()]),
             flagged("replaced-unresolved", vec![alternative("unresolved", None)]),

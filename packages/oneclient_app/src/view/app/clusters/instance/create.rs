@@ -17,6 +17,7 @@ use crate::hooks::{
     ClusterAction, settled_or_loading, use_active_cluster_id, use_cluster_mutation, use_clusters,
     use_dispatch,
 };
+use crate::i18n::{t, tf};
 use crate::utils::default_cluster;
 
 const MODPACK_BROWSE_TYPE: &str = "modpack";
@@ -55,9 +56,9 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
     // The import creates one instance per pick, named after each source, so
     // the suggested name of a version nobody chose means nothing here
     let title = if picks.choice == TypeChoice::Import {
-        "Import instances".to_string()
+        t("oneclient.clusters.instance.create.title.import").to_string()
     } else if picks.name.trim().is_empty() {
-        "New instance".to_string()
+        t("oneclient.clusters.instance.create.title.new").to_string()
     } else {
         picks.name.clone()
     };
@@ -72,10 +73,16 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
                 Some(version) => format!("{version} · {}", picks.loader_label()),
                 None => picks.loader_label(),
             },
-            TypeChoice::Modpack => "Modpack".to_string(),
+            TypeChoice::Modpack => {
+                t("oneclient.clusters.instance.create.subtitle.modpack").to_string()
+            }
             TypeChoice::Import => match picks.import_source {
-                ImportSource::File => "From a file".to_string(),
-                ImportSource::Launcher => "From Prism, MultiMC or the Modrinth App".to_string(),
+                ImportSource::File => {
+                    t("oneclient.clusters.instance.create.subtitle.file").to_string()
+                }
+                ImportSource::Launcher => {
+                    t("oneclient.clusters.instance.create.subtitle.launcher").to_string()
+                }
             },
         }
     } else {
@@ -199,21 +206,32 @@ impl Component for CreateInstanceModal {
                 Step::Folder | Step::Version | Step::Import | Step::ImportReview
             ),
             note: footer_note(&picks),
-            secondary_label: if first { "Cancel" } else { "Back" }.to_string(),
+            secondary_label: if first {
+                t("oneclient.common.cancel")
+            } else {
+                t("oneclient.common.back")
+            }
+            .to_string(),
             primary_label: match (modpack_step, origin) {
                 _ if review_step && picks.import_screening.is_none() => {
-                    "Import without checking".to_string()
+                    t("oneclient.clusters.instance.create.import_unchecked").to_string()
                 }
                 _ if (import_step && !improving) || review_step => match import_count {
-                    0 => "Import".to_string(),
-                    1 => "Import instance".to_string(),
-                    n => format!("Import {n} instances"),
+                    0 => t("oneclient.clusters.instance.create.import.none").to_string(),
+                    1 => t("oneclient.clusters.instance.create.import.one").to_string(),
+                    n => tf("oneclient.clusters.instance.create.import.other", &[&n]),
                 },
-                (false, _) if friend => "Choose file".to_string(),
-                (true, ModpackOrigin::Browse) => "Browse modpacks".to_string(),
-                (true, ModpackOrigin::File) => "Choose file".to_string(),
-                (false, _) if last => "Create instance".to_string(),
-                (false, _) => "Next".to_string(),
+                (false, _) if friend => {
+                    t("oneclient.clusters.instance.create.choose_file").to_string()
+                }
+                (true, ModpackOrigin::Browse) => {
+                    t("oneclient.clusters.instance.create.browse_modpacks").to_string()
+                }
+                (true, ModpackOrigin::File) => {
+                    t("oneclient.clusters.instance.create.choose_file").to_string()
+                }
+                (false, _) if last => t("oneclient.clusters.instance.create.create").to_string(),
+                (false, _) => t("oneclient.common.next").to_string(),
             },
             primary_enabled: is_ready(&picks),
             on_close: (move |()| close_x.call(())).into(),
@@ -256,9 +274,9 @@ impl Component for CreateInstanceModal {
 fn pick_shared_file(dispatch: crate::Actions, on_close: EventHandler<()>) {
     spawn(async move {
         let Some(handle) = rfd::AsyncFileDialog::new()
-            .set_title("Choose the instance to import")
+            .set_title(t("oneclient.clusters.instance.create.dialog.import.title"))
             .add_filter(
-                "OneClient, Prism Launcher or MultiMC instance",
+                t("oneclient.clusters.instance.create.dialog.import.filter"),
                 &IMPORT_EXTENSIONS,
             )
             .pick_file()
@@ -298,8 +316,11 @@ fn start_modpack(
         ModpackOrigin::File => {
             spawn(async move {
                 let Some(handle) = rfd::AsyncFileDialog::new()
-                    .set_title("Choose a modpack")
-                    .add_filter("Modpack", &MODPACK_EXTENSIONS)
+                    .set_title(t("oneclient.clusters.instance.create.dialog.modpack.title"))
+                    .add_filter(
+                        t("oneclient.clusters.instance.create.dialog.modpack.filter"),
+                        &MODPACK_EXTENSIONS,
+                    )
                     .pick_file()
                     .await
                 else {

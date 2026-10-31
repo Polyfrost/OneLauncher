@@ -1,4 +1,7 @@
+use std::path::PathBuf;
+
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
+use oneclient_common::domain::GraphicsBackend;
 use oneclient_core::LauncherError;
 use oneclient_core::clusters::Cluster;
 
@@ -49,4 +52,22 @@ pub fn use_clusters() -> UseQuery<ListClustersQuery> {
 pub fn use_cluster(cluster_id: i64) -> Option<Cluster> {
     let clusters = super::state::settled_or_loading(&use_clusters()).unwrap_or_default();
     clusters.into_iter().find(|c| c.id == cluster_id)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct GraphicsBackendQuery;
+
+impl QueryCapability for GraphicsBackendQuery {
+    type Ok = Option<GraphicsBackend>;
+    type Err = LauncherError;
+    type Keys = PathBuf;
+
+    async fn run(&self, game_dir: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        Ok(oneclient_core::game::read_graphics_backend(game_dir).await)
+    }
+}
+
+pub fn use_graphics_backend(game_dir: PathBuf) -> Option<GraphicsBackend> {
+    let query = use_query(Query::new(game_dir, GraphicsBackendQuery));
+    super::state::settled_or_loading(&query).flatten()
 }

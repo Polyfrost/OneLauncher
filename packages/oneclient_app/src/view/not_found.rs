@@ -1,5 +1,6 @@
 use freya::prelude::*;
 
+use crate::i18n::t;
 use crate::theme;
 
 #[derive(PartialEq, Clone)]
@@ -20,14 +21,14 @@ impl Component for NotFound {
             .spacing(16.)
             .child(
                 label()
-                    .text("404 - Not Found")
+                    .text(t("oneclient.not_found.title"))
                     .font_size(32.)
                     .font_weight(FontWeight::BOLD)
                     .color(theme::colors::fg_primary()),
             )
             .child(
                 label()
-                    .text("The page you are looking for does not exist.")
+                    .text(t("oneclient.not_found.description"))
                     .font_size(16.)
                     .color(theme::colors::fg_secondary()),
             )

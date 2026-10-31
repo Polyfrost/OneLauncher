@@ -3,7 +3,7 @@ use freya::router::RouterContext;
 use oneclient_common::domain::ContentType;
 use oneclient_core::{BisectExit, BisectRole, BisectStatus};
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, progress_track};
+use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, progress_track};
 use freya::query::UseMutation;
 
 use crate::Route;
@@ -11,6 +11,7 @@ use crate::hooks::{
     BisectAction, BisectMutation, cluster_content_items, invalidate_logs_queries, use_bisect,
     use_bisect_mutation, use_cluster_content, use_game_snapshot,
 };
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::settings_row;
@@ -58,7 +59,7 @@ impl Component for BisectBanner {
                     .height(Size::px(34.))
                     .font_size(12.)
                     .on_press(move |_| question_hidden.set(false))
-                    .text("Answer")
+                    .text(t("oneclient.cluster.bisect.banner.answer"))
                     .into_element(),
             );
         }
@@ -75,7 +76,7 @@ impl Component for BisectBanner {
                             disable: Vec::new(),
                         })
                     })
-                    .text("Try again")
+                    .text(t("oneclient.cluster.bisect.banner.try_again"))
                     .into_element(),
             );
         }
@@ -86,18 +87,18 @@ impl Component for BisectBanner {
                     .height(Size::px(34.))
                     .font_size(12.)
                     .enabled(idle)
-                    .tooltip("Put your mods back and start over with the mods the cluster has now")
+                    .tooltip(t("oneclient.cluster.bisect.banner.restart.tooltip"))
                     .on_press(move |_| mutation.mutate(BisectAction::Restart { cluster_id }))
-                    .text("Restart search")
+                    .text(t("oneclient.cluster.bisect.banner.restart"))
                     .into_element(),
             );
         }
         if status.confirmed && !status.finishing && !culprits.is_empty() {
             let disable: Vec<String> = culprits.iter().map(|(hash, _)| hash.clone()).collect();
             let label = if culprits.len() == 1 {
-                "Disable it and restore the rest"
+                t("oneclient.cluster.bisect.banner.disable.one")
             } else {
-                "Disable these and restore the rest"
+                t("oneclient.cluster.bisect.banner.disable.other")
             };
             buttons.push(
                 Button::new()
@@ -122,10 +123,10 @@ impl Component for BisectBanner {
                     .height(Size::px(34.))
                     .font_size(12.)
                     .enabled(idle)
-                    .tooltip("Go back one launch, in case you answered wrong")
+                    .tooltip(t("oneclient.cluster.bisect.banner.undo.tooltip"))
                     .on_press(move |_| mutation.mutate(BisectAction::Undo { cluster_id }))
                     .child(Icon::new(IconType::ClockRewind).size(14.))
-                    .text("Undo last answer")
+                    .text(t("oneclient.cluster.bisect.banner.undo"))
                     .into_element(),
             );
         }
@@ -143,9 +144,9 @@ impl Component for BisectBanner {
                         })
                     })
                     .text(if status.finished {
-                        "Restore everything"
+                        t("oneclient.cluster.bisect.banner.restore_all")
                     } else {
-                        "Stop and restore mods"
+                        t("oneclient.cluster.bisect.banner.stop")
                     })
                     .into_element(),
             );
@@ -243,8 +244,8 @@ impl Component for BisectBanner {
 fn banner_text(status: &BisectStatus, game_active: bool) -> (String, String) {
     if status.finishing {
         return (
-            "Restoring your mods".to_string(),
-            "Some mods couldn't be switched back yet. Close anything using the mod files, then try again.".to_string(),
+            t("oneclient.cluster.bisect.banner.restoring.title").to_string(),
+            t("oneclient.cluster.bisect.banner.restoring.body").to_string(),
         );
     }
 
@@ -253,53 +254,73 @@ fn banner_text(status: &BisectStatus, game_active: bool) -> (String, String) {
     let together = culprits.join(" + ");
 
     if status.finished {
-        let playing = "Play until you're sure whether the problem happens, then close the game.";
+        let playing = t("oneclient.cluster.bisect.banner.finished.playing");
         return match culprits.as_slice() {
             [] => (
-                "Nothing left to test".to_string(),
-                "Every mod in the search was removed. Restore your mods to finish.".to_string(),
+                t("oneclient.cluster.bisect.banner.empty.title").to_string(),
+                t("oneclient.cluster.bisect.banner.empty.body").to_string(),
             ),
             _ if status.confirmed => (
-                format!("Found it: {together}"),
+                tf("oneclient.cluster.bisect.banner.found.title", &[&together]),
                 if culprits.len() == 1 {
-                    "The problem happens with only this mod and the mods it needs on.".to_string()
+                    t("oneclient.cluster.bisect.banner.found.body.one").to_string()
                 } else {
-                    "The problem happens with only these mods and the mods they need on."
-                        .to_string()
+                    t("oneclient.cluster.bisect.banner.found.body.other").to_string()
                 },
             ),
-            _ if game_active => (format!("Checking {together}"), playing.to_string()),
+            _ if game_active => (
+                tf("oneclient.cluster.bisect.banner.checking", &[&together]),
+                playing.to_string(),
+            ),
             [only] => (
-                format!("Probably {only}"),
-                "Launch once more to make sure. Only this mod and the mods it needs are on."
-                    .to_string(),
+                tf("oneclient.cluster.bisect.banner.probably.title", &[only]),
+                t("oneclient.cluster.bisect.banner.probably.body").to_string(),
             ),
             many => (
-                format!("Narrowed it down to {} mods", many.len()),
-                format!(
-                    "{} are on together. Launch once more to make sure the problem happens with only them.",
-                    many.join(", ")
+                tf(
+                    "oneclient.cluster.bisect.banner.narrowed.title",
+                    &[&many.len()],
+                ),
+                tf(
+                    "oneclient.cluster.bisect.banner.narrowed.body",
+                    &[&many.join(", ")],
                 ),
             ),
         };
     }
 
-    let title = format!("Running mod diagnostics · launch {}", status.round + 1);
+    let title = tf(
+        "oneclient.cluster.bisect.banner.running.title",
+        &[&(status.round + 1)],
+    );
     let left = status.launches_left();
-    let plural = if left == 1 { "launch" } else { "launches" };
     let body = if game_active {
-        "Play until the problem shows up, or until you're sure it won't. Close the game when you're done.".to_string()
+        t("oneclient.cluster.bisect.banner.running.playing").to_string()
     } else {
         let partner = if culprits.is_empty() {
             String::new()
         } else {
-            format!("Looking for a mod that causes it together with {together}. ")
+            format!(
+                "{} ",
+                tf(
+                    "oneclient.cluster.bisect.banner.running.partner",
+                    &[&together]
+                )
+            )
         };
-        format!(
-            "{partner}{} of {} suspects are on. Launch the game and check if the problem happens, about {left} {plural} to go.",
-            status.testing_count(),
-            names.len(),
-        )
+        let (testing, total) = (status.testing_count(), names.len());
+        let progress = if left == 1 {
+            tf(
+                "oneclient.cluster.bisect.banner.running.body.one",
+                &[&testing, &total, &left],
+            )
+        } else {
+            tf(
+                "oneclient.cluster.bisect.banner.running.body.other",
+                &[&testing, &total, &left],
+            )
+        };
+        format!("{partner}{progress}")
     };
     (title, body)
 }
@@ -307,17 +328,20 @@ fn banner_text(status: &BisectStatus, game_active: bool) -> (String, String) {
 fn changed_text(status: &BisectStatus) -> String {
     let mut parts = Vec::new();
     if !status.removed.is_empty() {
-        parts.push(format!("{} left the cluster", status.removed.join(", ")));
-    }
-    if !status.added.is_empty() {
-        parts.push(format!(
-            "{} joined and stays on for every launch",
-            status.added.join(", ")
+        parts.push(tf(
+            "oneclient.cluster.bisect.changed.removed",
+            &[&status.removed.join(", ")],
         ));
     }
-    format!(
-        "Mods changed since the search started: {}. Restart the search so the result stays right.",
-        parts.join("; ")
+    if !status.added.is_empty() {
+        parts.push(tf(
+            "oneclient.cluster.bisect.changed.added",
+            &[&status.added.join(", ")],
+        ));
+    }
+    tf(
+        "oneclient.cluster.bisect.changed.body",
+        &[&parts.join("; ")],
     )
 }
 
@@ -351,30 +375,30 @@ impl Component for BisectQuestion {
         let choosing = *picking.read();
         let suggestion = status.suggestion.clone().filter(|_| !choosing);
         let title = if choosing {
-            "Which mod should stay on?"
+            t("oneclient.cluster.bisect.question.pick.title")
         } else if suggestion.is_some() {
-            "Did a missing mod cause this crash?"
+            t("oneclient.cluster.bisect.question.suggestion.title")
         } else if crashed {
-            "The game crashed. Is this the problem you're looking for?"
+            t("oneclient.cluster.bisect.question.crashed.title")
         } else {
-            "Did the problem happen?"
+            t("oneclient.cluster.bisect.question.title")
         };
         let body = if choosing {
-            "Pick the mods the crash says are missing. These are usually libraries, like a config or API mod. They will stay on whenever the mods being tested are on.".to_string()
+            t("oneclient.cluster.bisect.question.pick.body").to_string()
         } else if let Some(suggestion) = &suggestion {
             let who = if suggestion.needed_by.is_empty() {
-                "a mod that was on".to_string()
+                t("oneclient.cluster.bisect.question.suggestion.someone").to_string()
             } else {
                 suggestion.needed_by.join(", ")
             };
-            format!(
-                "{} was off for this launch, and the crash looks like {who} needs it. If you keep it on, this launch doesn't count and you try again.",
-                suggestion.missing.join(", ")
+            tf(
+                "oneclient.cluster.bisect.question.suggestion.body",
+                &[&suggestion.missing.join(", "), &who],
             )
         } else {
-            format!(
-                "{} of your mods were on for this launch. Your answer decides which half to test next.",
-                status.testing_count()
+            tf(
+                "oneclient.cluster.bisect.question.body",
+                &[&status.testing_count()],
             )
         };
 
@@ -450,9 +474,9 @@ impl Component for BisectQuestion {
                 .width(Size::fill())
                 .enabled(!busy && !cleared.is_empty())
                 .tooltip(if cleared.is_empty() {
-                    "Nothing has been cleared yet. Pick the mods, or skip this launch."
+                    t("oneclient.cluster.bisect.question.unsure.none")
                 } else {
-                    "Turns on every mod already ruled out, so a missing library is likely back"
+                    t("oneclient.cluster.bisect.question.unsure.tooltip")
                 })
                 .on_press(move |_| {
                     mutation.mutate(BisectAction::KeepOn {
@@ -461,13 +485,13 @@ impl Component for BisectQuestion {
                     });
                     reset();
                 })
-                .text("I don't know, turn on everything already cleared");
+                .text(t("oneclient.cluster.bisect.question.unsure"));
             rect()
                 .vertical()
                 .width(Size::fill())
                 .spacing(12.)
                 .child(
-                    ScrollView::new()
+                    ScrollArea::new()
                         .width(Size::fill())
                         .height(Size::px(240.))
                         .child(
@@ -490,7 +514,7 @@ impl Component for BisectQuestion {
                                 .secondary()
                                 .enabled(!busy)
                                 .on_press(move |_| reset())
-                                .text("Back"),
+                                .text(t("oneclient.common.back")),
                         )
                         .child(
                             Button::new()
@@ -503,7 +527,10 @@ impl Component for BisectQuestion {
                                     });
                                     reset();
                                 })
-                                .text(format!("Keep {} on", chosen.len())),
+                                .text(tf(
+                                    "oneclient.cluster.bisect.question.keep",
+                                    &[&chosen.len()],
+                                )),
                         ),
                 )
                 .into_element()
@@ -520,7 +547,7 @@ impl Component for BisectQuestion {
                         .on_press(move |_| {
                             mutation.mutate(BisectAction::AcceptSuggestion { cluster_id })
                         })
-                        .text("Yes, keep it on and try again"),
+                        .text(t("oneclient.cluster.bisect.question.suggestion.accept")),
                 )
                 .child(
                     Button::new()
@@ -530,7 +557,7 @@ impl Component for BisectQuestion {
                         .on_press(move |_| {
                             mutation.mutate(BisectAction::DeclineSuggestion { cluster_id })
                         })
-                        .text("No, this is the problem I'm looking for"),
+                        .text(t("oneclient.cluster.bisect.question.suggestion.decline")),
                 )
                 .child(check_logs_button(cluster_id, busy, hidden))
                 .into_element()
@@ -550,7 +577,7 @@ impl Component for BisectQuestion {
                         .width(Size::fill())
                         .enabled(!busy)
                         .on_press(answer(true))
-                        .text("Yes, it's still broken"),
+                        .text(t("oneclient.cluster.bisect.question.broken")),
                 )
                 .child(
                     Button::new()
@@ -558,7 +585,7 @@ impl Component for BisectQuestion {
                         .width(Size::fill())
                         .enabled(!busy)
                         .on_press(answer(false))
-                        .text("No, everything works"),
+                        .text(t("oneclient.cluster.bisect.question.works")),
                 )
                 .child(
                     Button::new()
@@ -566,7 +593,7 @@ impl Component for BisectQuestion {
                         .width(Size::fill())
                         .enabled(!busy)
                         .on_press(move |_| picking.set(true))
-                        .text("It crashed, but differently (a mod is missing)"),
+                        .text(t("oneclient.cluster.bisect.question.missing")),
                 )
                 .child(
                     Button::new()
@@ -574,7 +601,7 @@ impl Component for BisectQuestion {
                         .width(Size::fill())
                         .enabled(!busy)
                         .on_press(move |_| mutation.mutate(BisectAction::Skip { cluster_id }))
-                        .text("I didn't get to test, ask me next time"),
+                        .text(t("oneclient.cluster.bisect.question.skip")),
                 )
                 .child(check_logs_button(cluster_id, busy, hidden))
                 .into_element()
@@ -640,19 +667,16 @@ fn confirm_question(
     let cluster_id = status.cluster_id;
     let names: Vec<&str> = status.culprits().iter().map(|m| m.name.as_str()).collect();
     let title = if crashed {
-        "The game crashed. Is this the problem you're looking for?"
+        t("oneclient.cluster.bisect.question.crashed.title")
     } else {
-        "Did the problem happen?"
+        t("oneclient.cluster.bisect.question.title")
     };
-    let body = format!(
-        "Only {} and the mods {} were on for this launch.",
-        names.join(", "),
-        if names.len() == 1 {
-            "it needs"
-        } else {
-            "they need"
-        },
-    );
+    let joined = names.join(", ");
+    let body = if names.len() == 1 {
+        tf("oneclient.cluster.bisect.confirm.body.one", &[&joined])
+    } else {
+        tf("oneclient.cluster.bisect.confirm.body.other", &[&joined])
+    };
     let confirm = move |reproduced: bool| {
         move |_: Event<PressEventData>| {
             mutation.mutate(BisectAction::Confirm {
@@ -672,7 +696,7 @@ fn confirm_question(
                 .width(Size::fill())
                 .enabled(!busy)
                 .on_press(confirm(true))
-                .text("Yes, it still happened"),
+                .text(t("oneclient.cluster.bisect.confirm.yes")),
         )
         .child(
             Button::new()
@@ -680,7 +704,7 @@ fn confirm_question(
                 .width(Size::fill())
                 .enabled(!busy)
                 .on_press(confirm(false))
-                .text("No, it didn't happen"),
+                .text(t("oneclient.cluster.bisect.confirm.no")),
         )
         .child(
             Button::new()
@@ -688,7 +712,7 @@ fn confirm_question(
                 .width(Size::fill())
                 .enabled(!busy)
                 .on_press(move |_| mutation.mutate(BisectAction::Skip { cluster_id }))
-                .text("I didn't get to test, ask me next time"),
+                .text(t("oneclient.cluster.bisect.question.skip")),
         )
         .child(check_logs_button(cluster_id, busy, hidden));
 
@@ -753,7 +777,7 @@ fn check_logs_button(cluster_id: i64, busy: bool, mut hidden: State<bool>) -> El
             let _ = RouterContext::get().push(Route::ClusterLogs { cluster_id });
         })
         .child(Icon::new(IconType::Terminal).size(14.))
-        .text("Check logs")
+        .text(t("oneclient.cluster.bisect.check_logs"))
         .into_element()
 }
 
@@ -782,33 +806,32 @@ impl Component for FindProblemModRow {
 
         let can_start = enabled_mods >= 2 && !game_active && !busy && !running;
         let tooltip = if running {
-            "A search is already running, use the banner above to stop it"
+            t("oneclient.cluster.bisect.row.tooltip.running")
         } else if game_active {
-            "Close the game first"
+            t("oneclient.cluster.bisect.row.tooltip.game_active")
         } else if enabled_mods < 2 {
-            "Needs at least two enabled mods"
+            t("oneclient.cluster.bisect.row.tooltip.too_few")
         } else {
-            "Turn mods off in halves to find the one causing a crash or bug"
+            t("oneclient.cluster.bisect.row.tooltip.ready")
         };
 
         let launches = oneclient_core::bisect::launches_left(enabled_mods);
         let popup = confirm.read().then(|| {
             dialog(
-                "Find the mod causing a problem?".to_string(),
-                "Your mods will be put back the way they are now when you finish or stop. If the problem only happens sometimes, play long enough to be sure before answering."
-                    .to_string(),
+                t("oneclient.cluster.bisect.start.title").to_string(),
+                t("oneclient.cluster.bisect.start.body").to_string(),
                 Some(steps_list([
-                    "We turn off about half of your mods.".to_string(),
-                    "Launch the game and check if the problem happens.".to_string(),
-                    "Close the game and tell us if it did.".to_string(),
-                    format!("Repeat about {launches} times until we find the mod."),
+                    t("oneclient.cluster.bisect.start.step1").to_string(),
+                    t("oneclient.cluster.bisect.start.step2").to_string(),
+                    t("oneclient.cluster.bisect.start.step3").to_string(),
+                    tf("oneclient.cluster.bisect.start.step4", &[&launches]),
                 ])),
                 move || confirm.set(false),
                 [
                     Button::new()
                         .secondary()
                         .on_press(move |_| confirm.set(false))
-                        .text("Cancel")
+                        .text(t("oneclient.common.cancel"))
                         .into_element(),
                     Button::new()
                         .primary()
@@ -817,7 +840,7 @@ impl Component for FindProblemModRow {
                             mutation.mutate(BisectAction::Start { cluster_id });
                         })
                         .child(Icon::new(IconType::SearchMd).size(14.))
-                        .text("Start")
+                        .text(t("oneclient.cluster.bisect.start.confirm"))
                         .into_element(),
                 ],
             )
@@ -832,18 +855,17 @@ impl Component for FindProblemModRow {
                     .tooltip(tooltip)
                     .on_press(move |_| confirm.set(true))
                     .text(if running {
-                        "Running..."
+                        t("oneclient.cluster.bisect.row.running")
                     } else {
-                        "Start the process"
+                        t("oneclient.cluster.bisect.row.start")
                     }),
             )
             .maybe_child(popup);
 
         settings_row(
             IconType::SearchMd,
-            "Mod Diagnostics",
-            "Turn mods off in halves across a few launches to find the one \
-             causing a crash or bug. Your mods are put back when it ends.",
+            t("oneclient.cluster.bisect.row.title"),
+            t("oneclient.cluster.bisect.row.description"),
             button,
         )
     }

@@ -20,6 +20,7 @@ use oneclient_events::Level;
 
 use super::Actions;
 use crate::components::IconType;
+use crate::i18n::{t, tf};
 use crate::launcher;
 use crate::notifications::NotificationSpec;
 use crate::state::{AppChannel, PromptOrigin, ReleaseMigrationPrompt, ReleasePlanState};
@@ -437,7 +438,7 @@ impl Actions {
                 Ok(target) => target,
                 Err(err) => {
                     actions
-                        .notify("Release migration simulation failed")
+                        .notify(t("oneclient.actions.release_migration.simulation_failed"))
                         .body(err.to_string())
                         .level(Level::Error)
                         .send();
@@ -454,15 +455,17 @@ impl Actions {
                 Ok(OfferLookup::Offer(offer)) => offer,
                 Ok(OfferLookup::NoSources | OfferLookup::MissingCluster) => {
                     actions
-                        .notify("Nothing to migrate")
-                        .body("All found packages were migrated")
+                        .notify(t("oneclient.actions.release_migration.nothing.title"))
+                        .body(t(
+                            "oneclient.actions.release_migration.nothing.all_migrated",
+                        ))
                         .level(Level::Error)
                         .send();
                     return;
                 }
                 Err(err) => {
                     actions
-                        .notify("Release migration simulation failed")
+                        .notify(t("oneclient.actions.release_migration.simulation_failed"))
                         .body(err.to_string())
                         .level(Level::Error)
                         .send();
@@ -476,16 +479,18 @@ impl Actions {
                     SourcePlans::Ready { sources, plans } => (sources, plans),
                     SourcePlans::Nothing => {
                         actions
-                            .notify("Nothing to migrate")
-                            .body("All found packages were migrated")
+                            .notify(t("oneclient.actions.release_migration.nothing.title"))
+                            .body(t(
+                                "oneclient.actions.release_migration.nothing.all_migrated",
+                            ))
                             .level(Level::Error)
                             .send();
                         return;
                     }
                     SourcePlans::Unreachable => {
                         actions
-                            .notify("Release migration simulation failed")
-                            .body("Couldn't reach Modrinth or CurseForge.")
+                            .notify(t("oneclient.actions.release_migration.simulation_failed"))
+                            .body(t("oneclient.actions.release_migration.unreachable"))
                             .level(Level::Error)
                             .send();
                         return;
@@ -511,6 +516,9 @@ impl Actions {
     }
 
     pub fn open_manual_migration(&self, target_cluster_id: i64, source_cluster_id: i64) {
+        if self.refuse_during_update_check(target_cluster_id) {
+            return;
+        }
         self.set_release_migration_checking(target_cluster_id, true);
         self.set_release_migration_checking(source_cluster_id, true);
         let actions = self.clone();
@@ -527,8 +535,8 @@ impl Actions {
         let Ok(state) = launcher::state() else { return };
 
         let nothing = || {
-            self.notify("Nothing to migrate")
-                .body("No packages to migrate")
+            self.notify(t("oneclient.actions.release_migration.nothing.title"))
+                .body(t("oneclient.actions.release_migration.nothing.no_packages"))
                 .send();
         };
 
@@ -542,7 +550,7 @@ impl Actions {
             Ok(OfferLookup::MissingCluster) => return,
             Err(err) => {
                 tracing::warn!(error = %err, target_cluster_id, "manual migration lookup failed");
-                self.notify("Couldn't check for packages to migrate")
+                self.notify(t("oneclient.actions.release_migration.check_failed.title"))
                     .body(err.to_string())
                     .level(Level::Error)
                     .send();
@@ -550,26 +558,23 @@ impl Actions {
             }
         };
 
-        let (sources, plans) = match plan_sources(
-            &offer,
-            state.bundles.as_ref(),
-            &state.services.content(),
-        )
-        .await
-        {
-            SourcePlans::Ready { sources, plans } => (sources, plans),
-            SourcePlans::Nothing => {
-                nothing();
-                return;
-            }
-            SourcePlans::Unreachable => {
-                self.notify("Couldn't check for packages to migrate")
-                    .body("Couldn't reach Modrinth or CurseForge. Check your connection and try again.")
-                    .level(Level::Error)
-                    .send();
-                return;
-            }
-        };
+        let (sources, plans) =
+            match plan_sources(&offer, state.bundles.as_ref(), &state.services.content()).await {
+                SourcePlans::Ready { sources, plans } => (sources, plans),
+                SourcePlans::Nothing => {
+                    nothing();
+                    return;
+                }
+                SourcePlans::Unreachable => {
+                    self.notify(t("oneclient.actions.release_migration.check_failed.title"))
+                        .body(t(
+                            "oneclient.actions.release_migration.check_failed.unreachable",
+                        ))
+                        .level(Level::Error)
+                        .send();
+                    return;
+                }
+            };
 
         self.open_release_prompt(&state, *offer, sources, plans, PromptOrigin::Manual)
             .await;
@@ -623,24 +628,27 @@ impl Actions {
             }
 
             for install in &installs {
-                let verb = if install.names.len() == 1 {
-                    "supports"
-                } else {
-                    "support"
-                };
+                let args: [&dyn std::fmt::Display; 3] = [
+                    &install.names.join(", "),
+                    &install.mc_version,
+                    &install.cluster_name,
+                ];
                 actions
-                    .notify(format!("New {} builds added", install.mc_version))
-                    .body(format!(
-                        "{} now {verb} {} and {} added to {}.",
-                        install.names.join(", "),
-                        install.mc_version,
-                        if install.names.len() == 1 {
-                            "was"
-                        } else {
-                            "were"
-                        },
-                        install.cluster_name
+                    .notify(tf(
+                        "oneclient.actions.release_migration.builds_added.title",
+                        &[&install.mc_version],
                     ))
+                    .body(if install.names.len() == 1 {
+                        tf(
+                            "oneclient.actions.release_migration.builds_added.body.one",
+                            &args,
+                        )
+                    } else {
+                        tf(
+                            "oneclient.actions.release_migration.builds_added.body.other",
+                            &args,
+                        )
+                    })
                     .send();
             }
 
@@ -669,10 +677,13 @@ impl Actions {
         let mut taken = None;
         self.write_release_migration(|prompt| taken = prompt.take());
         let Some(prompt) = taken else { return };
+        if self.refuse_during_update_check(prompt.target.id) {
+            return;
+        }
         match prompt.origin {
             PromptOrigin::Fake => {
-                self.notify("Fake plan")
-                    .body("Nothing was installed")
+                self.notify(t("oneclient.actions.release_migration.fake.title"))
+                    .body(t("oneclient.actions.release_migration.fake.body"))
                     .send();
                 return;
             }
@@ -725,7 +736,9 @@ impl Actions {
         let waitlisted = !prompt.is_cross_loader();
 
         let actions = self.clone();
+        let write = super::ClusterWrite::take(prompt.target.id);
         spawn_forever(async move {
+            let _write = write;
             let Ok(state) = launcher::state() else { return };
             let content = state.services.content();
             let source = prompt.source().filter(|_| copy_configs_too).cloned();
@@ -734,7 +747,10 @@ impl Actions {
 
             let session = oneclient_events::GroupedProgressSession::start(
                 &state.services.events,
-                format!("Migrating to {}", target.name),
+                tf(
+                    "oneclient.actions.release_migration.migrating",
+                    &[&target.name],
+                ),
             );
             session.expect(
                 oneclient_events::TaskCategory::Packages,
@@ -819,15 +835,25 @@ impl Actions {
             let failed = total - migrated;
             let session_id = session.detach();
             let spec = Some(NotificationSpec {
-                title: format!("Migrated to {}", target.name),
-                body: if failed == 0 {
-                    format!(
-                        "{migrated} package{} copied into {}",
-                        if migrated == 1 { "" } else { "s" },
-                        target.name
+                title: tf(
+                    "oneclient.actions.release_migration.migrated.title",
+                    &[&target.name],
+                ),
+                body: if failed == 0 && migrated == 1 {
+                    tf(
+                        "oneclient.actions.release_migration.migrated.body.one",
+                        &[&migrated, &target.name],
+                    )
+                } else if failed == 0 {
+                    tf(
+                        "oneclient.actions.release_migration.migrated.body.other",
+                        &[&migrated, &target.name],
                     )
                 } else {
-                    format!("{migrated} of {total} packages copied, {failed} failed")
+                    tf(
+                        "oneclient.actions.release_migration.migrated.partial",
+                        &[&migrated, &total, &failed],
+                    )
                 },
                 level: if failed == 0 {
                     Level::Info

@@ -22,6 +22,6 @@ pub use identity::InstanceIdentity;
 pub use manager::{ClusterManager, SyncReport, unlinked_mods_repair_id};
 pub use oneclient_db::models::ClusterKind;
 pub use options::{ClusterUpdate, CreateClusterOptions};
-pub use profile::{GameSettingsProfile, GraphicsBackend, PackageUpdateMode, SettingsOsExtra};
+pub use profile::{GameSettingsProfile, PackageUpdateMode, SettingsOsExtra};
 pub use profiles::ProfileUpdate;
 pub use stage::ClusterStage;

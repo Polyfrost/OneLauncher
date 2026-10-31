@@ -4,6 +4,7 @@ use freya::query::{
 };
 use oneclient_core::{BisectAnswer, BisectStatus, LauncherError};
 
+use crate::i18n::t;
 use crate::launcher::off_ui;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -90,7 +91,7 @@ impl MutationCapability for BisectMutation {
                 BisectAction::Start { cluster_id } => {
                     let events = &state.services.events;
                     let progress_id = uuid::Uuid::new_v4();
-                    events.progress(progress_id, "Starting mod diagnostics", 0, 0);
+                    events.progress(progress_id, t("oneclient.bisect.starting"), 0, 0);
                     let started =
                         oneclient_core::start_bisect(&state, cluster_id, |label, done, total| {
                             events.progress(progress_id, label, done, total)
@@ -99,12 +100,12 @@ impl MutationCapability for BisectMutation {
                     match &started {
                         Ok(_) => events.finish_progress(
                             progress_id,
-                            "Mod diagnostics started",
-                            "Launch the game to test the first round.",
+                            t("oneclient.bisect.started.title"),
+                            t("oneclient.bisect.started.body"),
                         ),
                         Err(err) => events.fail_progress(
                             progress_id,
-                            "Couldn't start mod diagnostics",
+                            t("oneclient.bisect.start_failed"),
                             err.to_string(),
                         ),
                     }
@@ -170,7 +171,7 @@ impl MutationCapability for BisectMutation {
             state
                 .services
                 .events
-                .notify("Mod diagnostics")
+                .notify(t("oneclient.bisect.title"))
                 .body(err)
                 .error()
                 .send();

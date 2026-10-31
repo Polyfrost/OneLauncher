@@ -4,70 +4,66 @@ use super::data::Picks;
 use super::model::{
     FolderChoice, ImportMode, ImportSource, ModpackOrigin, Step, TypeChoice, Wizard,
 };
+use crate::i18n::{t, tf};
 
 pub fn heading(picks: &Picks) -> (&'static str, String) {
     match picks.step {
         Step::Type => (
-            "Choose a type",
-            "Four ways to start. Packages can be added to any of them later.".to_string(),
+            t("oneclient.clusters.instance.copy.type.title"),
+            t("oneclient.clusters.instance.copy.type.subtitle").to_string(),
         ),
         Step::Folder => (
-            "Choose a game folder",
-            "Where this instance keeps its worlds, settings and packs.".to_string(),
+            t("oneclient.clusters.instance.copy.folder.title"),
+            t("oneclient.clusters.instance.copy.folder.subtitle").to_string(),
         ),
         Step::Loader => (
-            "Choose a mod loader",
+            t("oneclient.clusters.instance.copy.loader.title"),
             match &picks.versions.chosen {
-                Some(version) => format!(
-                    "Loaders are what packages install into. Only the ones with a build for {version} can be picked."
+                Some(version) => tf(
+                    "oneclient.clusters.instance.copy.loader.subtitle_with_version",
+                    &[&version],
                 ),
-                None => "Loaders are what packages install into.".to_string(),
+                None => t("oneclient.clusters.instance.copy.loader.subtitle").to_string(),
             },
         ),
         Step::Version => (
-            "Choose a version",
+            t("oneclient.clusters.instance.copy.version.title"),
             match picks.choice {
                 TypeChoice::OneClient => {
-                    "Only versions OneClient ships a build for are listed.".to_string()
+                    t("oneclient.clusters.instance.copy.version.subtitle.oneclient").to_string()
                 }
                 TypeChoice::Scratch | TypeChoice::Modpack | TypeChoice::Import => {
-                    "Every Minecraft version. Switch the release type to reach snapshots, betas and alphas."
-                        .to_string()
+                    t("oneclient.clusters.instance.copy.version.subtitle.any").to_string()
                 }
             },
         ),
         Step::Bundles => (
-            "Add bundles",
-            "Curated sets of packages, installed and configured together. Take as many as you like."
-                .to_string(),
+            t("oneclient.clusters.instance.copy.bundles.title"),
+            t("oneclient.clusters.instance.copy.bundles.subtitle").to_string(),
         ),
         Step::Customize => (
-            "Name the instance",
-            "Everything here can be changed afterwards.".to_string(),
+            t("oneclient.clusters.instance.copy.customize.title"),
+            t("oneclient.clusters.instance.copy.customize.subtitle").to_string(),
         ),
         Step::Modpack => (
-            "Add a modpack",
-            "The pack decides the version, the loader and the mods. The instance is named after it."
-                .to_string(),
+            t("oneclient.clusters.instance.copy.modpack.title"),
+            t("oneclient.clusters.instance.copy.modpack.subtitle").to_string(),
         ),
         Step::ImportSource => (
-            "Import an instance",
-            "From a file someone exported from OneClient, or from another launcher on this computer."
-                .to_string(),
+            t("oneclient.clusters.instance.copy.import_source.title"),
+            t("oneclient.clusters.instance.copy.import_source.subtitle").to_string(),
         ),
         Step::ImportMode => (
-            "How to import",
-            "Bring instances over untouched, or let OneClient check their mods first.".to_string(),
+            t("oneclient.clusters.instance.copy.import_mode.title"),
+            t("oneclient.clusters.instance.copy.import_mode.subtitle").to_string(),
         ),
         Step::Import => (
-            "Import instances",
-            "Each one becomes its own instance with its mods, worlds and settings. The originals stay where they are."
-                .to_string(),
+            t("oneclient.clusters.instance.copy.import.title"),
+            t("oneclient.clusters.instance.copy.import.subtitle").to_string(),
         ),
         Step::ImportReview => (
-            "Review mods",
-            "OneClient has a better option for these mods. Choose what happens to each one before importing."
-                .to_string(),
+            t("oneclient.clusters.instance.copy.import_review.title"),
+            t("oneclient.clusters.instance.copy.import_review.subtitle").to_string(),
         ),
     }
 }
@@ -76,86 +72,102 @@ pub fn footer_note(picks: &Picks) -> String {
     match picks.step {
         Step::Type => match picks.choice {
             TypeChoice::OneClient => {
-                "Shares its game folder with your other OneClient instances unless you give it its own."
-                    .to_string()
+                t("oneclient.clusters.instance.copy.note.type.oneclient").to_string()
             }
-            TypeChoice::Scratch => "Keeps its own game folder, worlds and packs.".to_string(),
+            TypeChoice::Scratch => {
+                t("oneclient.clusters.instance.copy.note.type.scratch").to_string()
+            }
             TypeChoice::Modpack => {
-                "Keeps its own game folder, worlds and packs, set up the way the pack author made it."
-                    .to_string()
+                t("oneclient.clusters.instance.copy.note.type.modpack").to_string()
             }
             TypeChoice::Import => {
-                "Brings in an instance from a OneClient export, or from Prism Launcher, MultiMC, PolyMC or the Modrinth App."
-                    .to_string()
+                t("oneclient.clusters.instance.copy.note.type.import").to_string()
             }
         },
         Step::Folder => match &picks.folder {
             FolderChoice::Shared => {
-                "Only one instance using the shared folder can run at a time.".to_string()
+                t("oneclient.clusters.instance.copy.note.folder.shared").to_string()
             }
             FolderChoice::Dedicated => {
-                "Can run alongside your other instances. Switch this later in the instance settings."
-                    .to_string()
+                t("oneclient.clusters.instance.copy.note.folder.dedicated").to_string()
             }
-            FolderChoice::Custom(group) => {
-                format!("Only one instance using {group} can run at a time.")
-            }
+            FolderChoice::Custom(group) => tf(
+                "oneclient.clusters.instance.copy.note.folder.custom",
+                &[group],
+            ),
         },
         Step::Loader => match (&picks.versions.chosen, picks.loader.chosen) {
-            (Some(version), None) => format!("Pick a loader with a build for {version}."),
+            (Some(version), None) => {
+                tf("oneclient.clusters.instance.copy.note.loader", &[&version])
+            }
             _ => picks.loader_label(),
         },
         Step::Version => match &picks.versions.chosen {
-            Some(version) => format!("{version} downloads the first time you launch it."),
-            None => "Pick a version to continue.".to_string(),
+            Some(version) => tf(
+                "oneclient.clusters.instance.copy.note.version.chosen",
+                &[&version],
+            ),
+            None => t("oneclient.clusters.instance.copy.note.version.none").to_string(),
         },
         Step::Bundles => {
             let taken = picks.bundles.taken_count();
             let total = picks.bundles.archives.len();
             if taken == 0 {
-                "Nothing selected. OneConfig is installed either way.".to_string()
+                t("oneclient.clusters.instance.copy.note.bundles.none").to_string()
             } else {
-                format!("{taken} of {total} selected. Bundles can be changed later.")
+                tf(
+                    "oneclient.clusters.instance.copy.note.bundles.some",
+                    &[&taken, &total],
+                )
             }
         }
-        Step::Customize => "The instance is created locally. Nothing is uploaded.".to_string(),
+        Step::Customize => t("oneclient.clusters.instance.copy.note.customize").to_string(),
         Step::Modpack => match picks.modpack_origin {
             ModpackOrigin::Browse => {
-                "Installing a modpack from the browser creates its instance.".to_string()
+                t("oneclient.clusters.instance.copy.note.modpack.browse").to_string()
             }
             ModpackOrigin::File => {
-                "Takes .mrpack files from Modrinth and .zip files from CurseForge.".to_string()
+                t("oneclient.clusters.instance.copy.note.modpack.file").to_string()
             }
         },
         Step::ImportSource => match picks.import_source {
             ImportSource::File => {
-                "OneClient exports bring mods, packs, loader and Java. Prism Launcher and MultiMC exports bring the whole instance."
-                    .to_string()
+                t("oneclient.clusters.instance.copy.note.import_source.file").to_string()
             }
             ImportSource::Launcher => {
-                "Copies instances from Prism Launcher, MultiMC, PolyMC or the Modrinth App."
-                    .to_string()
+                t("oneclient.clusters.instance.copy.note.import_source.launcher").to_string()
             }
         },
         Step::ImportMode => match picks.import_mode {
-            ImportMode::AsIs => "Mods, worlds and settings come over unchanged.".to_string(),
+            ImportMode::AsIs => {
+                t("oneclient.clusters.instance.copy.note.import_mode.as_is").to_string()
+            }
             ImportMode::Improve => {
-                "Mods with a better OneClient option can be swapped for it or left out.".to_string()
+                t("oneclient.clusters.instance.copy.note.import_mode.improve").to_string()
             }
         },
         Step::Import => match picks.import_count {
-            0 => "Pick the instances to bring over.".to_string(),
-            1 => "1 instance selected. Accounts are not imported; sign in here.".to_string(),
-            n => format!("{n} instances selected. Accounts are not imported; sign in here."),
+            0 => t("oneclient.clusters.instance.copy.note.import.none").to_string(),
+            1 => t("oneclient.clusters.instance.copy.note.import.one").to_string(),
+            n => tf("oneclient.clusters.instance.copy.note.import.other", &[&n]),
         },
         Step::ImportReview => match (&picks.import_screening, picks.flagged_count()) {
             (None, _) if picks.import_screening_error.is_some() => {
-                "Mods were not checked. Importing brings them over unchanged.".to_string()
+                t("oneclient.clusters.instance.copy.note.import_review.unchecked").to_string()
             }
-            (None, _) => "Checking mods...".to_string(),
-            (Some(_), 0) => "Nothing to change. Accounts are not imported; sign in here.".to_string(),
-            (Some(_), 1) => "1 mod flagged. Accounts are not imported; sign in here.".to_string(),
-            (Some(_), n) => format!("{n} mods flagged. Accounts are not imported; sign in here."),
+            (None, _) => {
+                t("oneclient.clusters.instance.copy.note.import_review.checking").to_string()
+            }
+            (Some(_), 0) => {
+                t("oneclient.clusters.instance.copy.note.import_review.none").to_string()
+            }
+            (Some(_), 1) => {
+                t("oneclient.clusters.instance.copy.note.import_review.one").to_string()
+            }
+            (Some(_), n) => tf(
+                "oneclient.clusters.instance.copy.note.import_review.other",
+                &[&n],
+            ),
         },
     }
 }
@@ -164,56 +176,68 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
     match step {
         Step::Type => match picks.choice {
             TypeChoice::OneClient => "OneClient".to_string(),
-            TypeChoice::Scratch => "From scratch".to_string(),
-            TypeChoice::Modpack => "Modpack".to_string(),
-            TypeChoice::Import => "Import".to_string(),
+            TypeChoice::Scratch => t("oneclient.clusters.instance.copy.value.scratch").to_string(),
+            TypeChoice::Modpack => t("oneclient.clusters.instance.copy.value.modpack").to_string(),
+            TypeChoice::Import => t("oneclient.clusters.instance.copy.value.import").to_string(),
         },
         Step::Folder => match &picks.folder {
-            FolderChoice::Shared => "Shared".to_string(),
-            FolderChoice::Dedicated => "Dedicated".to_string(),
+            FolderChoice::Shared => t("oneclient.clusters.instance.copy.value.shared").to_string(),
+            FolderChoice::Dedicated => {
+                t("oneclient.clusters.instance.copy.value.dedicated").to_string()
+            }
             FolderChoice::Custom(group) => group.clone(),
         },
         Step::Loader => picks.loader_label(),
-        Step::Version => picks
-            .versions
-            .chosen
-            .clone()
-            .unwrap_or_else(|| "Not chosen".to_string()),
+        Step::Version => {
+            picks.versions.chosen.clone().unwrap_or_else(|| {
+                t("oneclient.clusters.instance.copy.value.not_chosen").to_string()
+            })
+        }
         Step::Bundles => {
             let taken = picks.bundles.taken_count();
             if taken == 0 {
-                "None".to_string()
+                t("oneclient.clusters.instance.copy.value.none").to_string()
             } else {
-                format!("{taken} selected")
+                tf("oneclient.clusters.instance.copy.value.selected", &[&taken])
             }
         }
         Step::Modpack => match picks.modpack_origin {
-            ModpackOrigin::Browse => "Browse".to_string(),
-            ModpackOrigin::File => "From a file".to_string(),
+            ModpackOrigin::Browse => t("oneclient.clusters.instance.copy.value.browse").to_string(),
+            ModpackOrigin::File => t("oneclient.clusters.instance.copy.value.file").to_string(),
         },
         Step::ImportSource => match picks.import_source {
-            ImportSource::File => "From a file".to_string(),
-            ImportSource::Launcher => "From a launcher".to_string(),
+            ImportSource::File => t("oneclient.clusters.instance.copy.value.file").to_string(),
+            ImportSource::Launcher => {
+                t("oneclient.clusters.instance.copy.value.launcher").to_string()
+            }
         },
         Step::ImportMode => match picks.import_mode {
-            ImportMode::AsIs => "As it is".to_string(),
-            ImportMode::Improve => "Improved".to_string(),
+            ImportMode::AsIs => t("oneclient.clusters.instance.copy.value.as_is").to_string(),
+            ImportMode::Improve => t("oneclient.clusters.instance.copy.value.improved").to_string(),
         },
         Step::Import => match picks.import_count {
-            0 => "None selected".to_string(),
-            n => format!("{n} selected"),
+            0 => t("oneclient.clusters.instance.copy.value.none_selected").to_string(),
+            n => tf("oneclient.clusters.instance.copy.value.selected", &[&n]),
         },
         Step::ImportReview => match (&picks.import_screening, picks.flagged_count()) {
-            (None, _) if picks.import_screening_error.is_some() => "Not checked".to_string(),
-            (None, _) => "Checking".to_string(),
-            (Some(_), 0) => "Nothing flagged".to_string(),
-            (Some(_), 1) => "1 flagged".to_string(),
-            (Some(_), n) => format!("{n} flagged"),
+            (None, _) if picks.import_screening_error.is_some() => {
+                t("oneclient.clusters.instance.copy.value.not_checked").to_string()
+            }
+            (None, _) => t("oneclient.clusters.instance.copy.value.checking").to_string(),
+            (Some(_), 0) => t("oneclient.clusters.instance.copy.value.nothing_flagged").to_string(),
+            (Some(_), 1) => t("oneclient.clusters.instance.copy.value.flagged.one").to_string(),
+            (Some(_), n) => tf(
+                "oneclient.clusters.instance.copy.value.flagged.other",
+                &[&n],
+            ),
         },
         Step::Customize => match wizard.details.tags.read().len() {
-            0 => "Optional".to_string(),
-            1 => "1 tag".to_string(),
-            many => format!("{many} tags"),
+            0 => t("oneclient.clusters.instance.copy.value.optional").to_string(),
+            1 => t("oneclient.clusters.instance.copy.value.tags.one").to_string(),
+            many => tf(
+                "oneclient.clusters.instance.copy.value.tags.other",
+                &[&many],
+            ),
         },
     }
 }

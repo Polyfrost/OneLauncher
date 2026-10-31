@@ -9,6 +9,7 @@ use oneclient_core::clusters::{Cluster, ModpackSource};
 
 use crate::components::{Button, Icon, IconType, ScrollArea};
 use crate::hooks::{listed, use_dispatch};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::cluster::dialog;
@@ -71,8 +72,12 @@ fn push_choice(choices: &mut Vec<MinecraftChoice>, mc: &str, pick: &VersionSumma
     detail.extend(pick.loaders.iter().map(|l| l.real_name()));
     match pick.release_type {
         ReleaseType::Release => {}
-        ReleaseType::Beta => detail.push("Beta".to_string()),
-        ReleaseType::Alpha => detail.push("Alpha".to_string()),
+        ReleaseType::Beta => {
+            detail.push(t("oneclient.browser.modpack_prompt.release.beta").to_string())
+        }
+        ReleaseType::Alpha => {
+            detail.push(t("oneclient.browser.modpack_prompt.release.alpha").to_string())
+        }
     }
     detail.push(pick.published.format("%Y-%m-%d").to_string());
     choices.push(MinecraftChoice {
@@ -171,22 +176,21 @@ impl Component for ModpackLoaderPrompt {
         };
 
         dialog(
-            "Which loader?".to_string(),
-            "This modpack is made for more than one mod loader. Pick the one to install."
-                .to_string(),
+            t("oneclient.browser.modpack_prompt.loader.title").to_string(),
+            t("oneclient.browser.modpack_prompt.loader.description").to_string(),
             Some(control),
             move || open.set(false),
             [
                 Button::new()
                     .secondary()
                     .on_press(move |_| open.set(false))
-                    .text("Cancel")
+                    .text(t("oneclient.common.cancel"))
                     .into_element(),
                 Button::new()
                     .primary()
                     .on_press(next)
                     .child(Icon::new(IconType::ArrowRight).size(14.))
-                    .text("Continue")
+                    .text(t("oneclient.common.continue"))
                     .into_element(),
             ],
         )
@@ -246,9 +250,9 @@ pub(crate) fn instance_choices(
             Some(InstanceChoice {
                 cluster_id: cluster.id,
                 name: cluster.name.clone(),
-                detail: format!(
-                    "Minecraft {}  ·  {loader}  ·  pack {}",
-                    cluster.mc_version, pick.version_number
+                detail: tf(
+                    "oneclient.browser.modpack_prompt.instance.detail",
+                    &[&cluster.mc_version, &loader, &pick.version_number],
                 ),
                 version_id: pick.version_id.clone(),
             })
@@ -322,13 +326,13 @@ impl Component for ModpackInstancePrompt {
         };
 
         let body = if can_add {
-            "Its mods are added next to the ones already in the instance. Only instances with a matching Minecraft version and loader are listed."
+            t("oneclient.browser.modpack_prompt.instance.description")
         } else {
-            "None of your instances use a Minecraft version and loader this pack is made for."
+            t("oneclient.browser.modpack_prompt.instance.none")
         };
 
         dialog(
-            "Add to which instance?".to_string(),
+            t("oneclient.browser.modpack_prompt.instance.title").to_string(),
             body.to_string(),
             control,
             move || open.set(false),
@@ -336,14 +340,14 @@ impl Component for ModpackInstancePrompt {
                 Button::new()
                     .secondary()
                     .on_press(move |_| open.set(false))
-                    .text("Cancel")
+                    .text(t("oneclient.common.cancel"))
                     .into_element(),
                 Button::new()
                     .primary()
                     .enabled(can_add)
                     .on_press(add)
                     .child(Icon::new(IconType::Plus).size(14.))
-                    .text("Add")
+                    .text(t("oneclient.common.add"))
                     .into_element(),
             ],
         )
@@ -398,22 +402,21 @@ impl Component for ModpackVersionPrompt {
         };
 
         dialog(
-            "Which Minecraft version?".to_string(),
-            "This modpack is made for several Minecraft versions. Pick the one to install."
-                .to_string(),
+            t("oneclient.browser.modpack_prompt.version.title").to_string(),
+            t("oneclient.browser.modpack_prompt.version.description").to_string(),
             Some(control),
             move || open.set(false),
             [
                 Button::new()
                     .secondary()
                     .on_press(move |_| open.set(false))
-                    .text("Cancel")
+                    .text(t("oneclient.common.cancel"))
                     .into_element(),
                 Button::new()
                     .primary()
                     .on_press(install)
                     .child(Icon::new(IconType::Download01).size(14.))
-                    .text("Install")
+                    .text(t("oneclient.common.install"))
                     .into_element(),
             ],
         )

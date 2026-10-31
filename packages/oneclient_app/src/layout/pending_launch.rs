@@ -6,6 +6,7 @@ use oneclient_core::LauncherState;
 use crate::Actions;
 use crate::components::IconType;
 use crate::hooks::{use_dispatch, use_launcher, use_pending_launch, use_settings_snapshot};
+use crate::i18n::{t, tf};
 use crate::launcher;
 use crate::routes::Route;
 use crate::state::LaunchBlock;
@@ -48,7 +49,7 @@ async fn launch_shortcut(actions: Actions, router: RouterContext, folder: String
         Err(err) => {
             tracing::error!(folder, "shortcut lookup failed: {err:#}");
             actions
-                .notify("Couldn't open that version")
+                .notify(t("oneclient.layout.pending_launch.open_failed"))
                 .body(format!("{err:#}"))
                 .error()
                 .send();
@@ -103,16 +104,13 @@ async fn blocker_name(cluster: &Cluster, block: LaunchBlock) -> Option<String> {
     }
 
     let Ok(state) = launcher::state() else {
-        return Some("Another version".to_string());
+        return Some(t("oneclient.layout.pending_launch.another_version").to_string());
     };
 
-    Some(
-        state
-            .clusters
-            .get(block.cluster_id())
-            .await
-            .map_or_else(|_| "Another version".to_string(), |other| other.name),
-    )
+    Some(state.clusters.get(block.cluster_id()).await.map_or_else(
+        |_| t("oneclient.layout.pending_launch.another_version").to_string(),
+        |other| other.name,
+    ))
 }
 
 fn report_already_open(
@@ -131,23 +129,27 @@ fn report_already_open(
     );
 
     let title = if running {
-        "Minecraft is already running"
+        t("oneclient.layout.pending_launch.already_running")
     } else {
-        "Minecraft is already starting"
+        t("oneclient.layout.pending_launch.already_starting")
     };
 
     let body = match (blocker, running) {
-        (None, true) => format!("{} is open already.", cluster.name),
-        (None, false) => format!("{} is on its way up.", cluster.name),
-        (Some(other), true) => {
-            format!(
-                "{other} is open. Close it before launching {}.",
-                cluster.name
-            )
-        }
-        (Some(other), false) => format!(
-            "{other} is on its way up. Wait for it before launching {}.",
-            cluster.name
+        (None, true) => tf(
+            "oneclient.layout.pending_launch.open_already",
+            &[&cluster.name],
+        ),
+        (None, false) => tf(
+            "oneclient.layout.pending_launch.on_its_way",
+            &[&cluster.name],
+        ),
+        (Some(other), true) => tf(
+            "oneclient.layout.pending_launch.blocked_running",
+            &[&other, &cluster.name],
+        ),
+        (Some(other), false) => tf(
+            "oneclient.layout.pending_launch.blocked_starting",
+            &[&other, &cluster.name],
         ),
     };
 

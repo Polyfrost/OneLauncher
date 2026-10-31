@@ -15,7 +15,7 @@ pub async fn list_all(pool: &SqlitePool) -> DbResult<Vec<SettingProfileRow>> {
         SettingProfileRow,
         r#"
 		SELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,
-		       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, graphics_backend
+		       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode
 		FROM setting_profiles
 		ORDER BY name ASC
 		"#,
@@ -31,7 +31,7 @@ pub async fn get_by_name(pool: &SqlitePool, name: &str) -> DbResult<Option<Setti
         SettingProfileRow,
         r#"
 		SELECT name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,
-		       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, graphics_backend
+		       hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode
 		FROM setting_profiles
 		WHERE name = ?
 		"#,
@@ -59,9 +59,9 @@ pub async fn upsert(
         r#"
 		INSERT INTO setting_profiles (
 			name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,
-			hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, graphics_backend
+			hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode
 		)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(name) DO UPDATE SET
 			java_path = excluded.java_path,
 			resolution = excluded.resolution,
@@ -74,10 +74,9 @@ pub async fn upsert(
 			hook_wrapper = excluded.hook_wrapper,
 			hook_post = excluded.hook_post,
 			os_extra = excluded.os_extra,
-			browser_update_mode = excluded.browser_update_mode,
-			graphics_backend = excluded.graphics_backend
+			browser_update_mode = excluded.browser_update_mode
 		RETURNING name, java_path, resolution, force_fullscreen, mem_max, launch_args, game_args, launch_env,
-                  hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode, graphics_backend
+                  hook_pre, hook_wrapper, hook_post, os_extra, browser_update_mode
 		"#,
         &row.name,
         &row.java_path,
@@ -92,7 +91,6 @@ pub async fn upsert(
         &row.hook_post,
         &row.os_extra,
         &row.browser_update_mode,
-        &row.graphics_backend,
     )
     .fetch_one(pool)
     .await

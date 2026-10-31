@@ -5,6 +5,7 @@ use oneclient_content::modpacks::{
 
 use crate::components::{Button, IconType};
 use crate::hooks::{use_dispatch, use_installs_snapshot};
+use crate::i18n::{t, tf};
 use crate::launcher::{self, off_ui};
 use crate::view::app::settings::settings_row;
 
@@ -53,21 +54,30 @@ fn run_check(cluster_id: i64, mut check: State<UpdateCheck>) {
 }
 
 fn update_description(current: Option<&ModpackRelease>, check: &UpdateCheck) -> String {
-    let installed = current.map(|release| format!("Installed: {}. ", release.name));
     let status = match check {
-        UpdateCheck::Idle => "Check Modrinth or CurseForge for a newer version of this pack.".to_string(),
-        UpdateCheck::Checking => "Checking for a newer version...".to_string(),
-        UpdateCheck::UpToDate => "This is the newest version for this Minecraft version.".to_string(),
-        UpdateCheck::Available { label, .. } => {
-            format!("{label} is available. Mods you removed stay removed and configs you edited are kept.")
+        UpdateCheck::Idle => t("oneclient.cluster.modpack_settings.update.idle").to_string(),
+        UpdateCheck::Checking => {
+            t("oneclient.cluster.modpack_settings.update.checking").to_string()
         }
+        UpdateCheck::UpToDate => {
+            t("oneclient.cluster.modpack_settings.update.up_to_date").to_string()
+        }
+        UpdateCheck::Available { label, .. } => tf(
+            "oneclient.cluster.modpack_settings.update.available",
+            &[label],
+        ),
         UpdateCheck::Unpublished => {
-            "This pack is not published on Modrinth or CurseForge, so it cannot be updated from here."
-                .to_string()
+            t("oneclient.cluster.modpack_settings.update.unpublished").to_string()
         }
-        UpdateCheck::Failed(err) => format!("Could not check for updates: {err}"),
+        UpdateCheck::Failed(err) => tf("oneclient.cluster.modpack_settings.update.failed", &[err]),
     };
-    format!("{}{status}", installed.unwrap_or_default())
+    match current {
+        Some(release) => tf(
+            "oneclient.cluster.modpack_settings.update.installed",
+            &[&release.name, &status],
+        ),
+        None => status,
+    }
 }
 
 #[derive(PartialEq)]
@@ -103,35 +113,35 @@ impl Component for ModpackUpdateRow {
                 .small()
                 .secondary()
                 .enabled(false)
-                .text("Working..."),
+                .text(t("oneclient.cluster.modpack_settings.working")),
             (UpdateCheck::Available { version_id, .. }, false) => {
                 let version_id = version_id.clone();
                 Button::new()
                     .small()
                     .primary()
                     .on_press(move |_| dispatch.update_modpack(cluster_id, version_id.clone()))
-                    .text("Update")
+                    .text(t("oneclient.cluster.modpack_settings.update.button"))
             }
-            (UpdateCheck::Checking, false) => Button::new()
-                .small()
-                .secondary()
-                .enabled(false)
-                .text("Checking..."),
+            (UpdateCheck::Checking, false) => {
+                Button::new().small().secondary().enabled(false).text(t(
+                    "oneclient.cluster.modpack_settings.update.checking_button",
+                ))
+            }
             (UpdateCheck::Unpublished, false) => Button::new()
                 .small()
                 .secondary()
                 .enabled(false)
-                .text("Check for updates"),
+                .text(t("oneclient.cluster.modpack_settings.update.check")),
             (_, false) => Button::new()
                 .small()
                 .secondary()
                 .on_press(move |_| run_check(cluster_id, check))
-                .text("Check for updates"),
+                .text(t("oneclient.cluster.modpack_settings.update.check")),
         };
 
         settings_row(
             IconType::DownloadCloud02,
-            "Modpack Updates",
+            t("oneclient.cluster.modpack_settings.update.title"),
             description,
             button,
         )
@@ -156,13 +166,16 @@ impl Component for ModpackRepairRow {
             .maybe(!busy, |el| {
                 el.on_press(move |_| dispatch.repair_modpack(cluster_id))
             })
-            .text(if busy { "Working..." } else { "Reinstall" });
+            .text(if busy {
+                t("oneclient.cluster.modpack_settings.working")
+            } else {
+                t("oneclient.cluster.modpack_settings.repair.button")
+            });
 
         settings_row(
             IconType::RefreshCw01,
-            "Reinstall Missing Files",
-            "Download anything from the pack that is missing and reopen the manual downloads for \
-             CurseForge files. Files you removed stay removed.",
+            t("oneclient.cluster.modpack_settings.repair.title"),
+            t("oneclient.cluster.modpack_settings.repair.description"),
             button,
         )
     }

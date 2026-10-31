@@ -38,15 +38,18 @@ impl Component for GenericPromptOverlay {
 
         let close = dispatch.clone();
 
-        let mut buttons = rect()
+        let mut secondary = rect()
             .horizontal()
-            .width(Size::fill())
-            .main_align(Alignment::End)
+            .content(Content::Wrap {
+                wrap_spacing: Some(8.),
+            })
+            .width(Size::flex(1.))
             .spacing(8.);
+        let mut primary = rect().horizontal().spacing(8.);
 
         if let Some(dismiss) = prompt.dismiss.clone() {
             let cancel = dispatch.clone();
-            buttons = buttons.child(
+            secondary = secondary.child(
                 Button::new()
                     .secondary()
                     .text(dismiss)
@@ -60,13 +63,13 @@ impl Component for GenericPromptOverlay {
             let input = choice.input.clone();
 
             let button = Button::new().text(choice.label.clone());
-            let button = match choice.style {
-                ChoiceStyle::Primary => button.primary(),
-                ChoiceStyle::Danger => button.danger(),
-                ChoiceStyle::Secondary => button.secondary(),
+            let (button, is_secondary) = match choice.style {
+                ChoiceStyle::Primary => (button.primary(), false),
+                ChoiceStyle::Danger => (button.danger(), false),
+                ChoiceStyle::Secondary => (button.secondary(), true),
             };
 
-            buttons = buttons.child(button.on_press(move |_| match &input {
+            let button = button.on_press(move |_| match &input {
                 // Answered from the dialog callback not the press since no folder is picked yet
                 Some(ChoiceInput::Folder { title }) => {
                     let dispatch = dispatch.clone();
@@ -91,8 +94,21 @@ impl Component for GenericPromptOverlay {
                     dispatch.answer_prompt(Answer::new(id));
                 }
                 None => dispatch.answer_prompt(Answer::new(id)),
-            }));
+            });
+            if is_secondary {
+                secondary = secondary.child(button);
+            } else {
+                primary = primary.child(button);
+            }
         }
+
+        let buttons = rect()
+            .horizontal()
+            .content(Content::Flex)
+            .width(Size::fill())
+            .spacing(8.)
+            .child(secondary)
+            .child(primary);
 
         OverlayPopup::new()
             .overlay_level(OVERLAY_BASE_LEVEL + 3)

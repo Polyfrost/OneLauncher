@@ -31,7 +31,7 @@ pub use active_cluster::{
 
 pub use actions::{
     Actions, AlternativePick, ExternalImportJob, NotificationBuilder, PumpSignal, exporting,
-    modpack_job_running,
+    modpack_job_running, update_check_running,
 };
 pub(crate) use actions::listed;
 pub use queries::ALL_VERSIONS;
@@ -83,6 +83,7 @@ pub use queries::{
     use_version_loaders, use_version_metadata, use_versions, version_list, versions_metadata,
     versions_total,
 };
+pub use queries::{GraphicsBackendQuery, use_graphics_backend};
 pub use queries::{
     add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,
     spawn_world_task, try_cluster_worlds, try_world_datapacks, try_world_size, use_cluster_worlds,

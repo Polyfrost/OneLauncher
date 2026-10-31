@@ -17,7 +17,7 @@ use super::import_review::review_step;
 use super::model::{
     FolderChoice, ImportMode, ImportSource, LoaderChoice, ModpackOrigin, Step, TypeChoice, Wizard,
 };
-use super::model::{VERSION_KINDS, kind_bit};
+use super::model::{kind_bit, version_kinds};
 use super::rail::version_art;
 use crate::components::{
     Button, Dropdown, GRID_GAP, Icon, IconType, ScrollArea, TextInput, centered_spinner,
@@ -26,6 +26,7 @@ use crate::hooks::{
     ClusterAction, settled_or_loading, use_cluster_mutation, use_clusters, use_dispatch,
     use_shared_groups,
 };
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::{border_all_color, centered_note, divider, fixed_grid, note};
 use crate::utils::bundle_display_name;
@@ -93,33 +94,33 @@ fn type_step(mut wizard: Wizard, picks: &Picks) -> Element {
             TypeChoice::OneClient,
             IconType::IconLogo,
             "OneClient",
-            Some("Recommended"),
-            "The most bleeding edge performance, QoL mods and world hosting in one instance.",
-            "Shares configs, worlds, and packs with your other OneClient instances, or gets its own folder.",
+            Some(t("oneclient.clusters.instance.steps.recommended")),
+            t("oneclient.clusters.instance.steps.type.oneclient.blurb"),
+            t("oneclient.clusters.instance.steps.type.oneclient.meta"),
         ),
         (
             TypeChoice::Scratch,
             IconType::Sliders04,
-            "Start from scratch",
+            t("oneclient.clusters.instance.steps.type.scratch.title"),
             None,
-            "Pick a loader and version, then add mods yourself.",
-            "Has its own game folder.",
+            t("oneclient.clusters.instance.steps.type.scratch.blurb"),
+            t("oneclient.clusters.instance.steps.own_folder"),
         ),
         (
             TypeChoice::Modpack,
             IconType::DownloadCloud02,
-            "Modpack",
+            t("oneclient.clusters.instance.steps.type.modpack.title"),
             None,
-            "Install a pack from Modrinth or CurseForge, or a file you downloaded.",
-            "Has its own game folder.",
+            t("oneclient.clusters.instance.steps.type.modpack.blurb"),
+            t("oneclient.clusters.instance.steps.own_folder"),
         ),
         (
             TypeChoice::Import,
             IconType::FolderDownload,
-            "Import",
+            t("oneclient.clusters.instance.steps.type.import.title"),
             None,
-            "Open an instance someone exported from OneClient, or bring one over from another launcher.",
-            "Has its own game folder.",
+            t("oneclient.clusters.instance.steps.type.import.blurb"),
+            t("oneclient.clusters.instance.steps.own_folder"),
         ),
     ];
 
@@ -156,16 +157,16 @@ fn modpack_step(wizard: Wizard, picks: &Picks) -> Element {
         (
             ModpackOrigin::Browse,
             IconType::Globe01,
-            "Browse modpacks",
-            "Search Modrinth and CurseForge. Installing a pack from there creates its instance.",
-            "Opens the browser on the Modpacks tab.",
+            t("oneclient.clusters.instance.steps.modpack.browse.title"),
+            t("oneclient.clusters.instance.steps.modpack.browse.blurb"),
+            t("oneclient.clusters.instance.steps.modpack.browse.meta"),
         ),
         (
             ModpackOrigin::File,
             IconType::File02,
-            "Import a file",
-            "Use a modpack you already downloaded or got from someone else.",
-            "Modrinth .mrpack or CurseForge .zip.",
+            t("oneclient.clusters.instance.steps.modpack.file.title"),
+            t("oneclient.clusters.instance.steps.modpack.file.blurb"),
+            t("oneclient.clusters.instance.steps.modpack.file.meta"),
         ),
     ];
 
@@ -194,16 +195,16 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
         (
             ImportSource::File,
             IconType::File02,
-            "Import from a file",
-            "Open an instance someone exported from OneClient, Prism Launcher or MultiMC.",
-            "A OneClient .mrpack, or a Prism Launcher or MultiMC export .zip.",
+            t("oneclient.clusters.instance.steps.import_source.file.title"),
+            t("oneclient.clusters.instance.steps.import_source.file.blurb"),
+            t("oneclient.clusters.instance.steps.import_source.file.meta"),
         ),
         (
             ImportSource::Launcher,
             IconType::FolderDownload,
-            "Import from launcher",
-            "Bring over instances from Prism Launcher, MultiMC or the Modrinth App.",
-            "Each keeps its own game folder.",
+            t("oneclient.clusters.instance.steps.import_source.launcher.title"),
+            t("oneclient.clusters.instance.steps.import_source.launcher.blurb"),
+            t("oneclient.clusters.instance.steps.import_source.launcher.meta"),
         ),
     ];
 
@@ -232,18 +233,18 @@ fn import_mode_step(wizard: Wizard, picks: &Picks) -> Element {
         (
             ImportMode::Improve,
             IconType::IconLogo,
-            "Improve with OneClient",
-            Some("Recommended"),
-            "Checks the mods against OneClient's list of suggested improvements.",
-            "You choose what happens to each one before importing.",
+            t("oneclient.clusters.instance.steps.import_mode.improve.title"),
+            Some(t("oneclient.clusters.instance.steps.recommended")),
+            t("oneclient.clusters.instance.steps.import_mode.improve.blurb"),
+            t("oneclient.clusters.instance.steps.import_mode.improve.meta"),
         ),
         (
             ImportMode::AsIs,
             IconType::FolderDownload,
-            "Import as it is",
+            t("oneclient.clusters.instance.steps.import_mode.as_is.title"),
             None,
-            "Every mod, world and setting comes over exactly as it was.",
-            "Nothing is checked or changed.",
+            t("oneclient.clusters.instance.steps.import_mode.as_is.blurb"),
+            t("oneclient.clusters.instance.steps.import_mode.as_is.meta"),
         ),
     ];
 
@@ -287,18 +288,18 @@ impl Component for FolderStep {
             (
                 FolderChoice::Shared,
                 IconType::Link03,
-                "Shared".to_string(),
-                Some("Recommended"),
-                "Uses the same game folder as your other OneClient instances, so worlds, settings and packs carry over.".to_string(),
-                "Only one shared instance can run at a time.".to_string(),
+                t("oneclient.clusters.instance.steps.folder.shared.title").to_string(),
+                Some(t("oneclient.clusters.instance.steps.recommended")),
+                t("oneclient.clusters.instance.steps.folder.shared.blurb").to_string(),
+                t("oneclient.clusters.instance.steps.folder.shared.meta").to_string(),
             ),
             (
                 FolderChoice::Dedicated,
                 IconType::Folder,
-                "Dedicated".to_string(),
+                t("oneclient.clusters.instance.steps.folder.dedicated.title").to_string(),
                 None,
-                "Gets its own game folder. Worlds, settings and packs stay separate from everything else.".to_string(),
-                "Can run alongside your other instances.".to_string(),
+                t("oneclient.clusters.instance.steps.folder.dedicated.blurb").to_string(),
+                t("oneclient.clusters.instance.steps.folder.dedicated.meta").to_string(),
             ),
         ];
         let custom = groups.into_iter().map(|group| {
@@ -308,9 +309,12 @@ impl Component for FolderStep {
                 .filter(|cluster| cluster.dir_target == target)
                 .count();
             let used_by = match members {
-                0 => "No instances use it yet.".to_string(),
-                1 => "Used by 1 instance.".to_string(),
-                n => format!("Used by {n} instances."),
+                0 => t("oneclient.clusters.instance.steps.folder.custom.used_by.none").to_string(),
+                1 => t("oneclient.clusters.instance.steps.folder.custom.used_by.one").to_string(),
+                n => tf(
+                    "oneclient.clusters.instance.steps.folder.custom.used_by.other",
+                    &[&n],
+                ),
             };
             (
                 (
@@ -318,8 +322,7 @@ impl Component for FolderStep {
                     IconType::Link03,
                     group,
                     None,
-                    "Shares worlds, settings and packs only with the instances in this folder."
-                        .to_string(),
+                    t("oneclient.clusters.instance.steps.folder.custom.blurb").to_string(),
                     used_by,
                 ),
                 members == 0,
@@ -360,9 +363,12 @@ impl Component for FolderStep {
                     .secondary()
                     .icon()
                     .tooltip(if empty {
-                        format!("Delete {group}")
+                        tf(
+                            "oneclient.clusters.instance.steps.folder.custom.delete",
+                            &[&group],
+                        )
                     } else {
-                        "Move the instances using this folder elsewhere before deleting it"
+                        t("oneclient.clusters.instance.steps.folder.custom.delete_in_use")
                             .to_string()
                     })
                     .enabled(empty)
@@ -382,15 +388,23 @@ impl Component for FolderStep {
                                 Err(_) => false,
                             };
                             let body = if linked {
-                                "This folder is a link to somewhere else. Only the link is removed; \
-                                 the files it points to are kept."
+                                t("oneclient.clusters.instance.steps.folder.custom.delete_prompt.link")
                             } else {
-                                "The folder and everything in it, including worlds, settings and \
-                                 screenshots, is deleted. This cannot be undone."
+                                t("oneclient.clusters.instance.steps.folder.custom.delete_prompt.body")
                             };
-                            let prompt = Prompt::new(format!("Delete {group}?"), body)
-                            .option(Choice::danger("shared_group.delete", "Delete"), ())
-                            .dismiss("Cancel");
+                            let title = tf(
+                                "oneclient.clusters.instance.steps.folder.custom.delete_prompt.title",
+                                &[&group],
+                            );
+                            let prompt = Prompt::new(title, body)
+                                .option(
+                                    Choice::danger(
+                                        "shared_group.delete",
+                                        t("oneclient.common.delete"),
+                                    ),
+                                    (),
+                                )
+                                .dismiss(t("oneclient.common.cancel"));
                             if !matches!(dispatch.events().ask(prompt).await, Ok(Some(_))) {
                                 return;
                             }
@@ -445,9 +459,12 @@ fn loader_step(wizard: Wizard, picks: &Picks) -> Element {
                 id: choice.name(),
                 title: choice.name(),
                 blurb: choice.blurb().to_string(),
-                meta: (!offered).then(|| {
-                    let version = picks.versions.chosen.as_deref();
-                    format!("No build for {}", version.unwrap_or("this version"))
+                meta: (!offered).then(|| match picks.versions.chosen.as_deref() {
+                    Some(version) => tf(
+                        "oneclient.clusters.instance.steps.loader.no_build",
+                        &[&version],
+                    ),
+                    None => t("oneclient.clusters.instance.steps.loader.no_build_any").to_string(),
                 }),
                 corner: loader_mark(choice, chosen == choice, LOADER_MARK_SIZE),
                 selected: offered && chosen == choice,
@@ -505,14 +522,19 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
                 .spacing(4.)
                 .child(
                     label()
-                        .text(format!("{} version", chosen.name()))
+                        .text(tf(
+                            "oneclient.clusters.instance.steps.loader_version.title",
+                            &[&chosen.name()],
+                        ))
                         .font_size(14.)
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
-                        .text("The newest build is picked for you. Change it if a package needs an older one.")
+                        .text(t(
+                            "oneclient.clusters.instance.steps.loader_version.description",
+                        ))
                         .font_size(12.)
                         .line_height(1.4)
                         .color(colors::fg_secondary()),
@@ -566,7 +588,7 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
         .child(
             rect().width(Size::flex(1.0)).child(
                 TextInput::new(wizard.query)
-                    .placeholder("Search versions")
+                    .placeholder(t("oneclient.clusters.instance.steps.version.search"))
                     .width(Size::fill())
                     .leading(Icon::new(IconType::SearchMd).size(14.)),
             ),
@@ -578,20 +600,20 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                 .spacing(10.)
                 .child(
                     label()
-                        .text("Show")
+                        .text(t("oneclient.clusters.instance.steps.version.show"))
                         .font_size(12.)
                         .color(colors::fg_secondary()),
                 )
                 .child(
                     Dropdown::new(
                         filter_summary(filter),
-                        VERSION_KINDS
+                        version_kinds()
                             .iter()
                             .map(|(name, _)| (*name).to_string())
                             .collect(),
                     )
                     .checked(
-                        VERSION_KINDS
+                        version_kinds()
                             .iter()
                             .map(|(_, kind)| filter & kind_bit(*kind) != 0)
                             .collect(),
@@ -599,7 +621,7 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                     .width(Size::px(168.))
                     .height(Size::px(32.))
                     .on_select(move |index: usize| {
-                        if let Some((_, kind)) = VERSION_KINDS.get(index) {
+                        if let Some((_, kind)) = version_kinds().get(index) {
                             let mask = *wizard.filter.peek();
                             wizard.filter.set(mask ^ kind_bit(*kind));
                             wizard.version.set(None);
@@ -612,15 +634,17 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
 }
 
 fn filter_summary(filter: u8) -> String {
-    let picked: Vec<&str> = VERSION_KINDS
+    let picked: Vec<&str> = version_kinds()
         .iter()
         .filter(|(_, kind)| filter & kind_bit(*kind) != 0)
         .map(|(name, _)| *name)
         .collect();
     match picked.as_slice() {
-        [] => "None".to_string(),
+        [] => t("oneclient.clusters.instance.steps.version.filter.none").to_string(),
         [only] => (*only).to_string(),
-        all if all.len() == VERSION_KINDS.len() => "All versions".to_string(),
+        all if all.len() == version_kinds().len() => {
+            t("oneclient.clusters.instance.steps.version.filter.all").to_string()
+        }
         [first, rest @ ..] => format!("{first} +{}", rest.len()),
     }
 }
@@ -630,10 +654,10 @@ fn version_list(mut wizard: Wizard, picks: &Picks) -> Element {
         return centered_failure(error);
     }
     if !picks.versions.loaded {
-        return centered_spinner("Loading versions...");
+        return centered_spinner(t("oneclient.clusters.instance.steps.version.loading"));
     }
     if picks.versions.list.is_empty() {
-        return centered_note("No versions match that search.");
+        return centered_note(t("oneclient.clusters.instance.steps.version.no_matches"));
     }
 
     let versions = picks.versions.list.clone();
@@ -668,7 +692,10 @@ fn centered_failure(message: &str) -> Element {
         .center()
         .padding(Gaps::new_symmetric(0., 16.))
         .child(note(
-            format!("Could not load the version list. {message}"),
+            tf(
+                "oneclient.clusters.instance.steps.version.load_failed",
+                &[&message],
+            ),
             colors::danger(),
         ))
         .into_element()
@@ -704,18 +731,23 @@ fn bundle_blurb(archive: &BundleArchive, names: &HashMap<String, String>) -> Str
     let head = listed.join(", ");
 
     match total.saturating_sub(3) {
-        0 if head.is_empty() => "Configuration only.".to_string(),
+        0 if head.is_empty() => {
+            t("oneclient.clusters.instance.steps.bundle.config_only").to_string()
+        }
         0 => head,
-        rest => format!("{head} and {rest} more"),
+        rest => tf(
+            "oneclient.clusters.instance.steps.bundle.more",
+            &[&head, &rest],
+        ),
     }
 }
 
 fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
     if picks.bundles.archives.is_empty() {
         return centered_note(if picks.bundles.loaded {
-            "No bundles ship for this version yet."
+            t("oneclient.clusters.instance.steps.bundles.none")
         } else {
-            "Loading bundles..."
+            t("oneclient.clusters.instance.steps.bundles.loading")
         });
     }
 
@@ -737,8 +769,11 @@ fn bundles_step(mut wizard: Wizard, picks: &Picks) -> Element {
                 title: bundle_display_name(archive),
                 blurb: bundle_blurb(archive, &picks.bundles.names),
                 meta: Some(match count {
-                    1 => "1 package".to_string(),
-                    many => format!("{many} packages"),
+                    1 => t("oneclient.clusters.instance.steps.bundle.packages.one").to_string(),
+                    many => tf(
+                        "oneclient.clusters.instance.steps.bundle.packages.other",
+                        &[&many],
+                    ),
                 }),
                 corner: None,
                 selected: !picks.bundles.declined.contains(&name),

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs::FileType;
 use std::path::{Path, PathBuf};
 
@@ -1720,6 +1720,8 @@ struct ModCopy {
 pub struct DuplicateMods {
     pub shadowed: HashSet<String>,
     pub outranked: HashSet<String>,
+    /// Hash of the copy the loader uses, to the copies it ignores
+    pub copies: HashMap<String, Vec<String>>,
 }
 
 fn shadowed_bundle_copies(mods: &[ModCopy], loader_picks_newer: bool) -> DuplicateMods {
@@ -1739,12 +1741,21 @@ fn shadowed_bundle_copies(mods: &[ModCopy], loader_picks_newer: bool) -> Duplica
             continue;
         }
 
+        let user_hashes = users.iter().map(|(hash, _)| (*hash).to_owned());
         if loader_picks_newer && users.iter().all(|(_, user)| is_older(user, bundle)) {
+            duplicates.outranked.extend(user_hashes.clone());
             duplicates
-                .outranked
-                .extend(users.iter().map(|(hash, _)| (*hash).to_owned()));
+                .copies
+                .entry(copy.hash.clone())
+                .or_default()
+                .extend(user_hashes);
         } else {
             duplicates.shadowed.insert(copy.hash.clone());
+            let mut user_hashes = user_hashes;
+            let used = user_hashes.next().unwrap_or_default();
+            let ignored = duplicates.copies.entry(used).or_default();
+            ignored.push(copy.hash.clone());
+            ignored.extend(user_hashes);
         }
     }
 

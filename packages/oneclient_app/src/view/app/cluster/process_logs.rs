@@ -10,6 +10,7 @@ use crate::hooks::{
     try_cluster_logs, use_cluster, use_cluster_logs, use_game_snapshot, use_log_action,
     use_upload_log,
 };
+use crate::i18n::t;
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::view::app::cluster::logs::{Confirm, LevelFilter, confirm_overlay, viewer_header};
@@ -41,24 +42,31 @@ impl Component for ProcessLogs {
 
         let active = game.stage(self.cluster_id).is_some();
 
-        let body = if active {
-            let lines = game.logs_for(self.cluster_id);
-            let has_log = !lines.is_empty();
-            let visible = filter_lines(&lines, &search.read(), *level.read());
-
-            LogViewer::new("Game output", visible)
-                .streaming(true)
-                .header(viewer_header(search, level, confirm, has_log, search_id))
-                .into_element()
-        } else {
-            not_running()
-        };
-
         let output_path = try_cluster_logs(&logs_query)
             .unwrap_or_default()
             .into_iter()
             .find(|file| matches!(file.kind, LogKind::Game { .. }))
             .map(|file| file.path);
+
+        let body = if active {
+            let lines = game.logs_for(self.cluster_id);
+            let has_log = !lines.is_empty();
+            let visible = filter_lines(&lines, &search.read(), *level.read());
+
+            LogViewer::new(t("oneclient.cluster.process_logs.title"), visible)
+                .streaming(true)
+                .header(viewer_header(
+                    search,
+                    level,
+                    confirm,
+                    has_log,
+                    output_path.clone().filter(|_| has_log),
+                    search_id,
+                ))
+                .into_element()
+        } else {
+            not_running()
+        };
 
         cluster_content()
             .child(body)
@@ -112,7 +120,7 @@ fn not_running() -> Element {
         .center()
         .child(
             label()
-                .text("This cluster is not running.")
+                .text(t("oneclient.cluster.process_logs.not_running"))
                 .font_size(14.)
                 .color(colors::fg_secondary()),
         )

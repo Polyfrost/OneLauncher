@@ -1,6 +1,7 @@
 use freya::prelude::*;
 use freya::router::*;
 
+use crate::i18n::t;
 use crate::layout::AppShell;
 use crate::layout::ClusterShell;
 use crate::layout::OnboardingShell;
@@ -136,48 +137,49 @@ pub enum Route {
 
 impl Route {
     pub fn title(&self) -> String {
-        match self {
-            Route::Startup { .. } => "Startup".to_string(),
-            Route::Relocating { .. } => "Moving".to_string(),
-            Route::OnboardingWelcome { .. } => "Welcome".to_string(),
-            Route::OnboardingLocation { .. } => "Folder".to_string(),
-            Route::OnboardingTerms { .. } => "Terms & Privacy".to_string(),
-            Route::OnboardingMigration { .. } => "Migration".to_string(),
-            Route::OnboardingLanguage { .. } => "Language".to_string(),
-            Route::OnboardingAccount { .. } => "Account".to_string(),
-            Route::OnboardingPreferences { .. } => "Accessibility".to_string(),
-            Route::OnboardingBundles { .. } => "Mods".to_string(),
-            Route::OnboardingSummary { .. } => "Summary".to_string(),
-            Route::Home { .. } => "Home".to_string(),
-            Route::Clusters { .. } => "Versions".to_string(),
-            Route::ClusterOverview { .. } => "Cluster".to_string(),
-            Route::ClusterLogs { .. } => "Cluster Logs".to_string(),
-            Route::ProcessLogs { .. } => "Process".to_string(),
-            Route::ClusterScreenshots { .. } => "Cluster Screenshots".to_string(),
-            Route::ClusterMods { .. } => "Cluster Mods".to_string(),
-            Route::ClusterShaders { .. } => "Cluster Shaders".to_string(),
-            Route::ClusterTextures { .. } => "Cluster Textures".to_string(),
-            Route::ClusterWorlds { .. } => "Cluster Worlds".to_string(),
-            Route::ClusterDataPacks { .. } => "Cluster Data Packs".to_string(),
-            Route::ClusterSettings { .. } => "Cluster Settings".to_string(),
-            Route::Browser { .. } => "Browser".to_string(),
-            Route::BrowserPackage { .. } => "Browser".to_string(),
-            Route::Wardrobe { .. } => "Wardrobe".to_string(),
-            Route::Stats { .. } => "Statistics".to_string(),
-            Route::Debug { .. } => "Debug".to_string(),
-            Route::SettingsAppearance { .. } => "Settings".to_string(),
-            Route::SettingsMinecraft { .. } => "Minecraft Settings".to_string(),
-            Route::SettingsAccounts { .. } => "Accounts".to_string(),
-            Route::SettingsLauncher { .. } => "Launcher Settings".to_string(),
-            Route::SettingsJava { .. } => "Java".to_string(),
-            Route::SettingsStorage { .. } => "Storage".to_string(),
-            Route::SettingsApis { .. } => "APIs".to_string(),
-            Route::SettingsLanguage { .. } => "Language".to_string(),
-            Route::SettingsDeveloper { .. } => "Developer Options".to_string(),
-            Route::SettingsChangelog { .. } => "Changelog".to_string(),
+        let title = match self {
+            Route::Startup { .. } => t("oneclient.routes.startup"),
+            Route::Relocating { .. } => t("oneclient.routes.relocating"),
+            Route::OnboardingWelcome { .. } => t("oneclient.routes.onboarding_welcome"),
+            Route::OnboardingLocation { .. } => t("oneclient.routes.onboarding_location"),
+            Route::OnboardingTerms { .. } => t("oneclient.routes.onboarding_terms"),
+            Route::OnboardingMigration { .. } => t("oneclient.routes.onboarding_migration"),
+            Route::OnboardingLanguage { .. } => t("oneclient.routes.onboarding_language"),
+            Route::OnboardingAccount { .. } => t("oneclient.routes.onboarding_account"),
+            Route::OnboardingPreferences { .. } => t("oneclient.routes.onboarding_preferences"),
+            Route::OnboardingBundles { .. } => t("oneclient.routes.onboarding_bundles"),
+            Route::OnboardingSummary { .. } => t("oneclient.routes.onboarding_summary"),
+            Route::Home { .. } => t("oneclient.routes.home"),
+            Route::Clusters { .. } => t("oneclient.routes.clusters"),
+            Route::ClusterOverview { .. } => t("oneclient.routes.cluster_overview"),
+            Route::ClusterLogs { .. } => t("oneclient.routes.cluster_logs"),
+            Route::ProcessLogs { .. } => t("oneclient.routes.process_logs"),
+            Route::ClusterScreenshots { .. } => t("oneclient.routes.cluster_screenshots"),
+            Route::ClusterMods { .. } => t("oneclient.routes.cluster_mods"),
+            Route::ClusterShaders { .. } => t("oneclient.routes.cluster_shaders"),
+            Route::ClusterTextures { .. } => t("oneclient.routes.cluster_textures"),
+            Route::ClusterWorlds { .. } => t("oneclient.routes.cluster_worlds"),
+            Route::ClusterDataPacks { .. } => t("oneclient.routes.cluster_data_packs"),
+            Route::ClusterSettings { .. } => t("oneclient.routes.cluster_settings"),
+            Route::Browser { .. } => t("oneclient.routes.browser"),
+            Route::BrowserPackage { .. } => t("oneclient.routes.browser_package"),
+            Route::Wardrobe { .. } => t("oneclient.routes.wardrobe"),
+            Route::Stats { .. } => t("oneclient.routes.stats"),
+            Route::Debug { .. } => t("oneclient.routes.debug"),
+            Route::SettingsAppearance { .. } => t("oneclient.routes.settings_appearance"),
+            Route::SettingsMinecraft { .. } => t("oneclient.routes.settings_minecraft"),
+            Route::SettingsAccounts { .. } => t("oneclient.routes.settings_accounts"),
+            Route::SettingsLauncher { .. } => t("oneclient.routes.settings_launcher"),
+            Route::SettingsJava { .. } => t("oneclient.routes.settings_java"),
+            Route::SettingsStorage { .. } => t("oneclient.routes.settings_storage"),
+            Route::SettingsApis { .. } => t("oneclient.routes.settings_apis"),
+            Route::SettingsLanguage { .. } => t("oneclient.routes.settings_language"),
+            Route::SettingsDeveloper { .. } => t("oneclient.routes.settings_developer"),
+            Route::SettingsChangelog { .. } => t("oneclient.routes.settings_changelog"),
             // Route::SettingsFeedback { .. } => "Feedback".to_string(),
-            Route::NotFound { .. } => "Not Found".to_string(),
-        }
+            Route::NotFound { .. } => t("oneclient.routes.not_found"),
+        };
+        title.to_string()
     }
 }
 

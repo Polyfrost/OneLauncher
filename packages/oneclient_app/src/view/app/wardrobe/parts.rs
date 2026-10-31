@@ -616,6 +616,16 @@ impl Component for WardrobeCard {
                             .color(strip_color),
                     ),
             )
+            .child(
+                rect()
+                    .position(Position::new_absolute().top(0.).left(0.))
+                    .layer(Layer::Relative(1))
+                    .width(Size::percent(100.))
+                    .height(Size::percent(100.))
+                    .corner_radius(CornerRadius::new_all(12.))
+                    .border(hairline(outline))
+                    .interactive(false),
+            )
             .maybe_child(self.badge.as_ref().map(|badge| {
                 rect()
                     .position(Position::new_absolute().top(0.).left(0.))

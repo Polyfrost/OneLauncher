@@ -228,9 +228,11 @@ pub fn text_size(size: f32) -> f32 {
     else {
         return size;
     };
-    let scale = SCALE_FACTOR.get().max(1.);
-    let bias = if scale < 1.5 { 0.9 } else { 0.5 };
-    (size * scale / step + bias).floor().max(1.) * step / scale
+    let scale = SCALE_FACTOR.get();
+    if scale < 1.5 {
+        return size;
+    }
+    (size * scale / step).round().max(1.) * step / scale
 }
 
 pub fn pixel_icon(path: &str) -> Option<(String, f32)> {
@@ -249,8 +251,7 @@ pub fn pixel_icon(path: &str) -> Option<(String, f32)> {
 
 pub fn pixel_icon_size(size: f32, cells: f32) -> f32 {
     let scale = SCALE_FACTOR.get().max(1.);
-    let bias = if scale < 1.5 { 0.95 } else { 0.5 };
-    (size * scale / cells + bias).floor().max(1.) * cells / scale
+    (size * scale / cells).round().max(1.) * cells / scale
 }
 
 pub fn wordmark(width: f32, height: f32, color: Color) -> Element {

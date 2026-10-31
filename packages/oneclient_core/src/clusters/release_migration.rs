@@ -228,7 +228,7 @@ pub async fn copy_configs(
     source: &Cluster,
     target: &Cluster,
 ) -> LauncherResult<usize> {
-    if !target.uses_dedicated_dir() {
+    if target.missing_shared_group().is_some() {
         return Ok(0);
     }
     let from = source.game_dir()?.join("config");
@@ -444,6 +444,7 @@ mod tests {
             description: None,
             tags: Vec::new(),
             cover_path: None,
+            dir_target: Default::default(),
         }
     }
 

@@ -13,7 +13,7 @@ use oneclient_common::patch::Patch;
 use oneclient_db::DbPool;
 use tokio::sync::Mutex;
 
-use crate::cluster::{Cluster, encode_tags, remove_mods_link};
+use crate::cluster::{Cluster, DirTarget, encode_tags, remove_mods_link};
 use crate::error::ClusterError;
 use crate::options::{ClusterUpdate, CreateClusterOptions};
 use crate::screenshots::thumbnail;
@@ -478,44 +478,160 @@ impl ClusterManager {
         dedicated: bool,
         is_running: bool,
     ) -> ClusterResult<()> {
+        let target = if dedicated {
+            DirTarget::Dedicated
+        } else {
+            DirTarget::Shared(None)
+        };
+        self.set_dir_target(cluster_id, &target, is_running).await
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn set_dir_target(
+        &self,
+        cluster_id: ClusterId,
+        target: &DirTarget,
+        is_running: bool,
+    ) -> ClusterResult<()> {
         if is_running {
             return Err(ClusterError::AlreadyRunning(cluster_id));
         }
 
         let cluster = self.get(cluster_id).await?;
-        if !dedicated && cluster.is_isolated() {
+        if *target != DirTarget::Dedicated && cluster.is_isolated() {
             return Err(ClusterError::DedicatedRequired(cluster_id));
         }
 
+        let dir = cluster.dir()?;
         let marker = cluster.dedicated_marker()?;
-        if dedicated {
-            polyio::create_dir_all(cluster.dir()?).await?;
-            polyio::write(&marker, b"").await?;
-        } else if marker.exists() {
-            polyio::remove_file(&marker).await?;
+        let group_marker = dir.join(oneclient_common::paths::SHARED_GROUP_MARKER);
+        match target {
+            DirTarget::Dedicated => {
+                polyio::create_dir_all(&dir).await?;
+                polyio::write(&marker, b"").await?;
+                if group_marker.exists() {
+                    polyio::remove_file(&group_marker).await.ok();
+                }
+            }
+            DirTarget::Shared(group) => {
+                if let Some(group) = group {
+                    let group = self
+                        .find_shared_group(group)
+                        .await?
+                        .ok_or_else(|| ClusterError::SharedGroupMissing(group.clone()))?;
+                    polyio::create_dir_all(&dir).await?;
+                    polyio::write_atomic(&group_marker, group.as_bytes()).await?;
+                } else if group_marker.exists() {
+                    polyio::remove_file(&group_marker).await?;
+                }
+                if marker.exists() {
+                    polyio::remove_file(&marker).await?;
+                }
+            }
         }
         Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn list_shared_groups(&self) -> ClusterResult<Vec<String>> {
+        let Ok(mut entries) = polyio::read_dir(oneclient_common::paths::shared_groups_dir()?).await
+        else {
+            return Ok(Vec::new());
+        };
+
+        let mut groups = Vec::new();
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if polyio::stat(entry.path())
+                .await
+                .is_ok_and(|meta| meta.is_dir())
+                && oneclient_common::paths::is_shared_group_name(&name)
+            {
+                groups.push(name);
+            }
+        }
+        groups.sort_by_key(|name| name.to_lowercase());
+        Ok(groups)
+    }
+
+    pub async fn find_shared_group(&self, name: &str) -> ClusterResult<Option<String>> {
+        let name = name.to_lowercase();
+        Ok(self
+            .list_shared_groups()
+            .await?
+            .into_iter()
+            .find(|group| group.to_lowercase() == name))
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn delete_shared_group(&self, name: &str) -> ClusterResult<()> {
+        if !oneclient_common::paths::is_shared_group_name(name) {
+            return Err(ClusterError::InvalidSharedGroupName);
+        }
+        if self.list().await?.iter().any(|cluster| {
+            cluster
+                .shared_group()
+                .is_some_and(|group| group.to_lowercase() == name.to_lowercase())
+        }) {
+            return Err(ClusterError::SharedGroupInUse(name.to_string()));
+        }
+
+        let trash = oneclient_common::paths::cluster_trash_dir()?;
+        polyio::create_dir_all(&trash).await?;
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let trashed = trash.join(format!("shared-{name}-{stamp}"));
+        polyio::rename(
+            oneclient_common::paths::shared_group_dir(Some(name))?,
+            &trashed,
+        )
+        .await?;
+        if let Err(err) = polyio::remove_dir_all(&trashed).await {
+            tracing::warn!(group = name, error = %err, "could not clear a deleted shared folder; it is cleared at the next start");
+        }
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn create_shared_group(&self, name: &str) -> ClusterResult<String> {
+        let name = Self::sanitize_name(&cap_folder_stem(name));
+        if !oneclient_common::paths::is_shared_group_name(&name) {
+            return Err(ClusterError::InvalidSharedGroupName);
+        }
+        if ["shared", "dedicated"].contains(&name.to_lowercase().as_str()) {
+            return Err(ClusterError::ReservedSharedGroupName(name));
+        }
+        if let Some(existing) = self.find_shared_group(&name).await? {
+            return Err(ClusterError::SharedGroupExists(existing));
+        }
+
+        polyio::create_dir_all(oneclient_common::paths::shared_group_dir(Some(&name))?).await?;
+        Ok(name)
     }
 
     #[tracing::instrument(level = "debug", skip(self, on_progress))]
     pub async fn sync_from_shared(
         &self,
         cluster_id: ClusterId,
+        from: Option<&str>,
         include_worlds: bool,
         on_progress: impl Fn(&str, u64, u64) + Send + Sync,
     ) -> ClusterResult<SyncReport> {
         let cluster = self.get(cluster_id).await?;
-        if !cluster.uses_dedicated_dir() {
-            return Err(ClusterError::NotDedicated(cluster.name));
+        if cluster.dir_target == DirTarget::Shared(from.map(str::to_owned)) {
+            return Err(ClusterError::SameFolder(cluster.name));
+        }
+        if let Some(group) = cluster.missing_shared_group() {
+            return Err(ClusterError::SharedGroupMissing(group));
+        }
+        let source = oneclient_common::paths::shared_group_dir(from)?;
+        if let Some(group) = from.filter(|_| !source.is_dir()) {
+            return Err(ClusterError::SharedGroupMissing(group.to_string()));
         }
 
-        copy_from_shared(
-            &oneclient_common::paths::shared_minecraft_dir()?,
-            &cluster.dir()?,
-            include_worlds,
-            on_progress,
-        )
-        .await
+        copy_from_shared(&source, &cluster.game_dir()?, include_worlds, on_progress).await
     }
 
     #[tracing::instrument(level = "debug", skip(self))]

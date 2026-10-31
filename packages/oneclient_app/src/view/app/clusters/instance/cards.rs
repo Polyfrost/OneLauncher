@@ -163,6 +163,7 @@ pub struct WideCard {
     pub meta: String,
     pub selected: bool,
     pub on_press: EventHandler<()>,
+    pub trailing: Option<Element>,
 }
 
 pub fn wide_card(card: WideCard) -> Element {
@@ -174,6 +175,7 @@ pub fn wide_card(card: WideCard) -> Element {
         meta,
         selected,
         on_press,
+        trailing,
     } = card;
     let title_id = title.clone();
 
@@ -221,6 +223,7 @@ pub fn wide_card(card: WideCard) -> Element {
                         .color(colors::fg_secondary()),
                 ),
         )
+        .maybe_child(trailing)
         .into_element();
 
     SelectCard {

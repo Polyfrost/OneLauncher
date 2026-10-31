@@ -75,5 +75,6 @@ pub fn cluster(id: i64) -> Cluster {
         description: None,
         tags: Vec::new(),
         cover_path: None,
+        dir_target: Default::default(),
     }
 }

@@ -22,6 +22,27 @@ impl QueryCapability for ListClustersQuery {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SharedGroupsQuery;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub struct SharedGroupsKeys;
+
+impl QueryCapability for SharedGroupsQuery {
+    type Ok = Vec<String>;
+    type Err = LauncherError;
+    type Keys = SharedGroupsKeys;
+
+    async fn run(&self, _keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
+        let state = crate::launcher::state()?;
+        Ok(state.clusters.list_shared_groups().await?)
+    }
+}
+
+pub fn use_shared_groups() -> UseQuery<SharedGroupsQuery> {
+    use_query(Query::new(SharedGroupsKeys, SharedGroupsQuery))
+}
+
 pub fn use_clusters() -> UseQuery<ListClustersQuery> {
     use_query(Query::new(ListClustersKeys, ListClustersQuery))
 }

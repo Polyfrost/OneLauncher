@@ -98,6 +98,7 @@ impl Component for ExportInstanceModal {
                                             meta: meta.to_string(),
                                             selected: chosen == option,
                                             on_press: (move |()| mode.set(option)).into(),
+                                            trailing: None,
                                         })
                                     },
                                 ),

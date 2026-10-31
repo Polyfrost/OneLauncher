@@ -67,7 +67,7 @@ pub fn modpack_job_running(cluster_id: ClusterId) -> bool {
     busy_cluster() == Some(cluster_id)
 }
 
-pub(super) async fn modpack_job_in_shared_dir(cluster_id: ClusterId) -> bool {
+pub(crate) async fn modpack_job_in_shared_dir(cluster_id: ClusterId) -> bool {
     let Some(busy) = busy_cluster().filter(|id| *id != cluster_id) else {
         return false;
     };
@@ -255,7 +255,7 @@ fn import_notes(import: &PreparedImport) -> Vec<(String, bool)> {
     if import.shared_game_dir {
         notes.push((
             format!(
-                "{} shares its game folder with your other OneClient instances, so the pack's config files apply to them too.",
+                "{} shares its game folder with other instances, so the pack's config files apply to them too.",
                 import.cluster_name
             ),
             false,
@@ -686,6 +686,18 @@ impl Actions {
                     *cluster_id
                 }
             };
+            if crate::hooks::sync_actions::sync_launch_block(cluster_id)
+                .await
+                .is_some()
+            {
+                actions
+                    .notify("Wait for the sync to finish")
+                    .body("This game folder is being synced. Try again once it finishes.")
+                    .error()
+                    .send();
+                actions.release_modpack_job();
+                return;
+            }
             actions.lock_modpack_cluster(cluster_id);
 
             let (job, outcome) = off_ui({

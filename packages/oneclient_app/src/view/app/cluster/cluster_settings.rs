@@ -23,8 +23,7 @@ use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::ui::centered_note;
 use crate::view::app::clusters::{
-    DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts,
-    ResetInstanceModal,
+    DeleteInstanceModal, EditInstanceModal, ExportInstanceModal, InstanceFacts, ResetInstanceModal,
 };
 use crate::view::app::settings::{
     section_header, settings_row, settings_row_danger, settings_row_disabled,
@@ -145,7 +144,7 @@ impl Component for ClusterSettings {
             vec![
                 SyncSharedRow {
                     cluster_id,
-                    target: cluster.dir_target(),
+                    target: cluster.dir_target.clone(),
                 }
                 .into_element(),
             ]
@@ -174,8 +173,7 @@ impl Component for ClusterSettings {
                     .child(
                         DirTargetRow {
                             cluster_id,
-                            target: cluster.dir_target(),
-                            missing: cluster.missing_shared_group().is_some(),
+                            target: cluster.dir_target.clone(),
                             locked: cluster.is_isolated(),
                         }
                         .into_element(),
@@ -710,7 +708,6 @@ impl Component for SyncSharedRow {
 struct DirTargetRow {
     cluster_id: i64,
     target: DirTarget,
-    missing: bool,
     locked: bool,
 }
 
@@ -720,7 +717,10 @@ impl Component for DirTargetRow {
         let current = self.target.clone();
         let mutation = use_cluster_mutation();
         let dispatch = use_dispatch();
-        let groups = settled_or_loading(&use_shared_groups()).unwrap_or_default();
+        let groups = settled_or_loading(&use_shared_groups());
+        let missing = matches!(&self.target, DirTarget::Shared(Some(group))
+            if groups.as_ref().is_some_and(|groups| !groups.contains(group)));
+        let groups = groups.unwrap_or_default();
         let mut naming = use_state(|| false);
         let mut name = use_state(String::new);
 
@@ -749,7 +749,7 @@ impl Component for DirTargetRow {
                 mutation.mutate(action);
                 return;
             };
-            if target != DirTarget::Dedicated {
+            if target != DirTarget::Dedicated || missing {
                 mutation.mutate(action);
                 return;
             }
@@ -806,7 +806,7 @@ impl Component for DirTargetRow {
             let selected = match &self.target {
                 DirTarget::Dedicated => "Dedicated".to_string(),
                 DirTarget::Shared(None) => "Shared".to_string(),
-                DirTarget::Shared(Some(group)) if self.missing => {
+                DirTarget::Shared(Some(group)) if missing => {
                     format!("{group} (missing)")
                 }
                 DirTarget::Shared(Some(group)) => group.clone(),

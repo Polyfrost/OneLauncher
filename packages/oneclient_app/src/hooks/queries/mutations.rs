@@ -56,13 +56,13 @@ pub async fn invalidate_cluster_queries() {
     )
     .await;
     timed(
-        "clusters",
-        QueriesStorage::<ListClustersQuery>::invalidate_all(),
+        "shared_groups",
+        QueriesStorage::<SharedGroupsQuery>::invalidate_all(),
     )
     .await;
     timed(
-        "shared_groups",
-        QueriesStorage::<SharedGroupsQuery>::invalidate_all(),
+        "clusters",
+        QueriesStorage::<ListClustersQuery>::invalidate_all(),
     )
     .await;
     timed(
@@ -329,6 +329,11 @@ impl MutationCapability for ClusterMutation {
                         reason: "Wait for the reset to finish before changing the directory."
                             .to_string(),
                     })
+                } else if crate::hooks::modpack_job_running(*cluster_id) {
+                    Err(oneclient_content::ContentError::InvalidData {
+                        reason: "Wait for the modpack to finish before changing the folder."
+                            .to_string(),
+                    })
                 } else if oneclient_core::clusters::has_imported_modpacks(&state, *cluster_id).await {
                     Err(oneclient_content::ContentError::InvalidData {
                         reason: "Remove the modpacks added to this instance under Added Modpacks before changing its folder."
@@ -341,7 +346,7 @@ impl MutationCapability for ClusterMutation {
                         .get(*cluster_id)
                         .await
                         .ok()
-                        .map(|cluster| cluster.dir_target());
+                        .map(|cluster| cluster.dir_target);
                     let mut target = target.clone();
                     let mut result = Ok(());
                     if *create && state.games.is_active(*cluster_id) {

@@ -10,7 +10,7 @@ use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt};
 use uuid::Uuid;
 
-use super::actions::{Actions, listed};
+use super::actions::{Actions, listed, modpack_job_in_shared_dir, modpack_job_running};
 use super::queries::invalidate_cluster_worlds;
 use crate::launcher::{self, off_ui};
 use crate::state::{AppChannel, AppState};
@@ -35,11 +35,12 @@ impl Actions {
 
             let dirs = async {
                 let shared = oneclient_common::paths::shared_group_dir(from.as_deref())?;
-                let dest = state.clusters.get(cluster_id).await?.game_dir()?;
-                Ok::<_, oneclient_cluster::ClusterError>((shared, dest))
+                let cluster = state.clusters.get(cluster_id).await?;
+                let dest = cluster.game_dir()?;
+                Ok::<_, oneclient_cluster::ClusterError>((shared, dest, cluster.dir_target))
             }
             .await;
-            let (shared_dir, dest) = match dirs {
+            let (shared_dir, dest, dest_folder) = match dirs {
                 Ok(dirs) => dirs,
                 Err(err) => {
                     actions
@@ -50,7 +51,7 @@ impl Actions {
                     return;
                 }
             };
-            let _sync = match state.games.begin_sync(cluster_id, &[&shared_dir, &dest]) {
+            let _sync = match state.games.begin_sync(cluster_id, &shared_dir, &dest) {
                 Ok(sync) => sync,
                 Err(block) => {
                     actions
@@ -69,7 +70,19 @@ impl Actions {
                     .send();
                 return;
             }
-            let _shown = ShownSync::start(actions.station(), cluster_id);
+            if modpack_job_running(cluster_id) || modpack_job_in_shared_dir(cluster_id).await {
+                actions
+                    .notify("Couldn't sync from the shared folder")
+                    .body("A modpack is being set up in this folder. Wait for it to finish, then try again.")
+                    .error()
+                    .send();
+                return;
+            }
+            let _shown = ShownSync::start(
+                actions.station(),
+                cluster_id,
+                vec![DirTarget::Shared(from.clone()), dest_folder],
+            );
 
             let events = actions.events();
             let progress_id = Uuid::new_v4();
@@ -115,12 +128,13 @@ pub(crate) async fn sync_launch_block(cluster_id: ClusterId) -> Option<&'static 
     if !state.games.any_syncing() {
         return None;
     }
-    let shared = state
+    let folder_syncing = state
         .clusters
         .get(cluster_id)
         .await
-        .is_ok_and(|cluster| !cluster.uses_dedicated_dir());
-    shared.then_some(
+        .and_then(|cluster| cluster.game_dir())
+        .is_ok_and(|dir| state.games.is_dir_syncing(&dir));
+    folder_syncing.then_some(
         "An instance is syncing from the shared folder. Press Play again once it finishes.",
     )
 }
@@ -131,27 +145,30 @@ struct ShownSync {
 }
 
 impl ShownSync {
-    fn start(station: RadioStation<AppState, AppChannel>, cluster_id: ClusterId) -> Self {
-        let shown = Self {
-            station,
-            cluster_id,
-        };
-        shown.set(true);
-        shown
-    }
-
-    fn set(&self, syncing: bool) {
-        self.station
+    fn start(
+        station: RadioStation<AppState, AppChannel>,
+        cluster_id: ClusterId,
+        folders: Vec<DirTarget>,
+    ) -> Self {
+        station
             .clone()
             .write_channel(AppChannel::Game)
             .game
-            .set_shared_sync(self.cluster_id, syncing);
+            .start_shared_sync(cluster_id, folders);
+        Self {
+            station,
+            cluster_id,
+        }
     }
 }
 
 impl Drop for ShownSync {
     fn drop(&mut self) {
-        self.set(false);
+        self.station
+            .clone()
+            .write_channel(AppChannel::Game)
+            .game
+            .end_shared_sync(self.cluster_id);
     }
 }
 
@@ -169,7 +186,7 @@ async fn newer_shared_versions(
 
     let mut newer: Vec<String> = clusters
         .iter()
-        .filter(|other| other.dir_target() == DirTarget::Shared(from.map(str::to_owned)))
+        .filter(|other| other.dir_target == DirTarget::Shared(from.map(str::to_owned)))
         .filter(|other| {
             fabric_version::compare(&other.mc_version, &this.mc_version) == Ordering::Greater
         })

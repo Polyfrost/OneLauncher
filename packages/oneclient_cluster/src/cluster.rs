@@ -16,10 +16,16 @@ use crate::stage::ClusterStage;
 
 pub use oneclient_common::paths::DEDICATED_MARKER;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DirTarget {
     Dedicated,
     Shared(Option<String>),
+}
+
+impl Default for DirTarget {
+    fn default() -> Self {
+        Self::Shared(None)
+    }
 }
 
 // takes a cluster out of the shared `mods` folder
@@ -65,6 +71,8 @@ pub struct Cluster {
     pub description: Option<String>,
     pub tags: Vec<String>,
     pub cover_path: Option<String>,
+    #[serde(default)]
+    pub dir_target: DirTarget,
 }
 
 impl PartialEq for Cluster {
@@ -93,6 +101,12 @@ impl Cluster {
         let stage =
             ClusterStage::from_repr(row.stage).ok_or(ClusterError::InvalidStage(row.stage))?;
         let kind = ClusterKind::from_repr(row.kind).ok_or(ClusterError::InvalidKind(row.kind))?;
+        let dir_target =
+            if kind.is_isolated() || paths::cluster_uses_dedicated_dir(&row.folder_name) {
+                DirTarget::Dedicated
+            } else {
+                DirTarget::Shared(paths::cluster_shared_group(&row.folder_name))
+            };
 
         Ok(Self {
             id: row.id,
@@ -112,6 +126,7 @@ impl Cluster {
             description: row.description,
             tags: serde_json::from_str(&row.tags).unwrap_or_default(),
             cover_path: row.cover_path,
+            dir_target,
         })
     }
 
@@ -139,18 +154,8 @@ impl Cluster {
             .filter(|group| paths::shared_group_dir(Some(group)).is_ok_and(|dir| !dir.is_dir()))
     }
 
-    pub fn dir_target(&self) -> DirTarget {
-        if self.uses_dedicated_dir() {
-            DirTarget::Dedicated
-        } else {
-            DirTarget::Shared(self.shared_group())
-        }
-    }
-
     pub fn shares_dir_with(&self, other: &Self) -> bool {
-        !self.uses_dedicated_dir()
-            && !other.uses_dedicated_dir()
-            && self.shared_group() == other.shared_group()
+        self.dir_target != DirTarget::Dedicated && self.dir_target == other.dir_target
     }
 
     pub fn is_isolated(&self) -> bool {

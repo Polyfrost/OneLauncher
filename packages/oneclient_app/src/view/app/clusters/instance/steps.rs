@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use freya::prelude::*;
 use oneclient_cluster::naming::{MAX_NAME_CHARS, validate_instance_name};
 use oneclient_core::BundleArchive;
+use oneclient_core::clusters::DirTarget;
 
 use super::cards::{
     BUNDLE_CARD_H, BUNDLE_COLUMNS, CARD_RADIUS, CellCard, LOADER_CARD_H, LOADER_COLUMNS,
@@ -300,12 +301,11 @@ impl Component for FolderStep {
                 "Can run alongside your other instances.".to_string(),
             ),
         ];
-        let pinned: Vec<Option<String>> =
-            clusters.iter().map(|cluster| cluster.shared_group()).collect();
         let custom = groups.into_iter().map(|group| {
-            let members = pinned
+            let target = DirTarget::Shared(Some(group.clone()));
+            let members = clusters
                 .iter()
-                .filter(|pin| pin.as_deref() == Some(group.as_str()))
+                .filter(|cluster| cluster.dir_target == target)
                 .count();
             let used_by = match members {
                 0 => "No instances use it yet.".to_string(),
@@ -375,11 +375,20 @@ impl Component for FolderStep {
                         let mut folder = folder;
                         let picked = selected == FolderChoice::Custom(group.clone());
                         spawn_forever(async move {
-                            let prompt = Prompt::new(
-                                format!("Delete {group}?"),
+                            let linked = match oneclient_common::paths::shared_group_dir(Some(&group)) {
+                                Ok(dir) => polyio::symlink_metadata(dir)
+                                    .await
+                                    .is_ok_and(|meta| meta.file_type().is_symlink()),
+                                Err(_) => false,
+                            };
+                            let body = if linked {
+                                "This folder is a link to somewhere else. Only the link is removed; \
+                                 the files it points to are kept."
+                            } else {
                                 "The folder and everything in it, including worlds, settings and \
-                                 screenshots, is deleted. This cannot be undone.",
-                            )
+                                 screenshots, is deleted. This cannot be undone."
+                            };
+                            let prompt = Prompt::new(format!("Delete {group}?"), body)
                             .option(Choice::danger("shared_group.delete", "Delete"), ())
                             .dismiss("Cancel");
                             if !matches!(dispatch.events().ask(prompt).await, Ok(Some(_))) {

@@ -207,6 +207,14 @@ async fn each_shared_folder_holds_only_its_own_clusters_packs() {
             .is_err(),
         "a sync never recreates a missing folder"
     );
+    assert!(
+        state
+            .clusters
+            .sync_from_shared(alpha.id, Some("Family"), false, |_, _, _| {})
+            .await
+            .is_err(),
+        "a sync from a missing folder fails instead of copying nothing"
+    );
     assert!(!family.exists());
     std::fs::rename(&renamed, &family).unwrap();
     assert_eq!(gamma.missing_shared_group(), None);
@@ -238,6 +246,16 @@ async fn each_shared_folder_holds_only_its_own_clusters_packs() {
     assert_eq!(
         state.clusters.list_shared_groups().await.unwrap(),
         vec!["Family".to_owned()]
+    );
+    let elsewhere = alpha.dir().unwrap().join("elsewhere");
+    std::fs::create_dir_all(&elsewhere).unwrap();
+    polyio::symlink_dir(&elsewhere, paths::shared_group_dir(Some("Linked")).unwrap())
+        .await
+        .unwrap();
+    assert_eq!(
+        state.clusters.list_shared_groups().await.unwrap(),
+        vec!["Family".to_owned(), "Linked".to_owned()],
+        "a folder moved to another drive behind a link still counts"
     );
     let trash = paths::cluster_trash_dir().unwrap();
     let leftovers = std::fs::read_dir(&trash)

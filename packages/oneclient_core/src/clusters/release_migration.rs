@@ -228,6 +228,9 @@ pub async fn copy_configs(
     source: &Cluster,
     target: &Cluster,
 ) -> LauncherResult<usize> {
+    if target.missing_shared_group().is_some() {
+        return Ok(0);
+    }
     let from = source.game_dir()?.join("config");
     let to = target.game_dir()?.join("config");
     if from == to || !polyio::try_exists(&from).await? {
@@ -441,6 +444,7 @@ mod tests {
             description: None,
             tags: Vec::new(),
             cover_path: None,
+            dir_target: Default::default(),
         }
     }
 

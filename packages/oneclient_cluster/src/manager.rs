@@ -542,7 +542,9 @@ impl ClusterManager {
         let mut groups = Vec::new();
         while let Ok(Some(entry)) = entries.next_entry().await {
             let name = entry.file_name().to_string_lossy().into_owned();
-            if entry.file_type().await.is_ok_and(|kind| kind.is_dir())
+            if polyio::stat(entry.path())
+                .await
+                .is_ok_and(|meta| meta.is_dir())
                 && oneclient_common::paths::is_shared_group_name(&name)
             {
                 groups.push(name);
@@ -618,20 +620,18 @@ impl ClusterManager {
         on_progress: impl Fn(&str, u64, u64) + Send + Sync,
     ) -> ClusterResult<SyncReport> {
         let cluster = self.get(cluster_id).await?;
-        if cluster.dir_target() == DirTarget::Shared(from.map(str::to_owned)) {
+        if cluster.dir_target == DirTarget::Shared(from.map(str::to_owned)) {
             return Err(ClusterError::SameFolder(cluster.name));
         }
         if let Some(group) = cluster.missing_shared_group() {
             return Err(ClusterError::SharedGroupMissing(group));
         }
+        let source = oneclient_common::paths::shared_group_dir(from)?;
+        if let Some(group) = from.filter(|_| !source.is_dir()) {
+            return Err(ClusterError::SharedGroupMissing(group.to_string()));
+        }
 
-        copy_from_shared(
-            &oneclient_common::paths::shared_group_dir(from)?,
-            &cluster.game_dir()?,
-            include_worlds,
-            on_progress,
-        )
-        .await
+        copy_from_shared(&source, &cluster.game_dir()?, include_worlds, on_progress).await
     }
 
     #[tracing::instrument(level = "debug", skip(self))]

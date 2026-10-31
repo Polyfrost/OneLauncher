@@ -498,6 +498,7 @@ impl Component for LogPicker {
                                 .text(label_text)
                                 .font_size(13.)
                                 .max_lines(1)
+                                .text_overflow(TextOverflow::Ellipsis)
                                 .color(colors::fg_primary()),
                         ),
                     )

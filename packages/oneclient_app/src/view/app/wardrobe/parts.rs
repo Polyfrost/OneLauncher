@@ -1052,6 +1052,7 @@ impl Component for CoverThumb {
                 .width(Size::fill())
                 .height(Size::fill())
                 .aspect_ratio(AspectRatio::Min)
+                .image_cover(ImageCover::Center)
                 .into_element(),
             None => rect()
                 .width(Size::fill())

@@ -378,7 +378,7 @@ fn fix_card(fix: &CrashFix, game_dir: Option<&str>, confirm: State<Option<String
 
     let mut fix = card().spacing(CARD_SPACING).child(
         label()
-            .text(fix.kind.to_uppercase())
+            .text(fix.kind.clone())
             .font_size(10.)
             .font_weight(FontWeight::SEMI_BOLD)
             .color(colors::brand()),

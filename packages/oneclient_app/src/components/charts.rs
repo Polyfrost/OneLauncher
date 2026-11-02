@@ -1,6 +1,7 @@
 use freya::engine::prelude::{Paint, PaintStyle, PathBuilder, SkColor, SkRect};
 use freya::prelude::*;
 
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::utils::format_duration;
 
@@ -158,7 +159,10 @@ impl Component for PieChart {
                     .unwrap_or_else(|| format!("#{}", i + 1)),
                 self.unit.format(self.values[i]),
             ),
-            _ => ("Total".to_string(), self.unit.format(total)),
+            _ => (
+                t("oneclient.components.charts.total").to_string(),
+                self.unit.format(total),
+            ),
         };
 
         rect()
@@ -341,7 +345,10 @@ impl Component for BarChart {
             Some(i) if i < self.values.len() => (self.readout_name(i), unit.format(self.values[i])),
             _ => {
                 let total: i64 = self.values.iter().sum();
-                ("Total".to_string(), unit.format(total))
+                (
+                    t("oneclient.components.charts.total").to_string(),
+                    unit.format(total),
+                )
             }
         };
 

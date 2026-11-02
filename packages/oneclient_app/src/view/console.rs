@@ -11,9 +11,8 @@ use tokio::sync::broadcast::error::RecvError;
 use tracing::Level;
 
 use crate::components::{Button, Icon, IconType, LogViewer, Segment, SegmentedControl, TextInput};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
-
-const WINDOW_TITLE: &str = "OneClient - Log Console";
 
 /// Old lines are dropped from the front this window can be left open for a whole session
 const MAX_LINES: usize = 5_000;
@@ -53,7 +52,7 @@ pub fn open_log_console() {
 
 fn window_config() -> WindowConfig {
     WindowConfig::new_app(LogConsoleApp)
-        .with_title(WINDOW_TITLE)
+        .with_title(t("oneclient.console.window_title"))
         .with_app_id(crate::constants::WINDOW_APP_ID)
         .with_icon(LaunchConfig::window_icon(include_bytes!(
             "../../icons/128x128.png"
@@ -131,11 +130,11 @@ impl Severity {
 
     fn label(self) -> &'static str {
         match self {
-            Self::All => "All",
-            Self::Debug => "Debug",
-            Self::Info => "Info",
-            Self::Warn => "Warnings",
-            Self::Error => "Errors",
+            Self::All => t("oneclient.console.severity.all"),
+            Self::Debug => t("oneclient.console.severity.debug"),
+            Self::Info => t("oneclient.console.severity.info"),
+            Self::Warn => t("oneclient.console.severity.warn"),
+            Self::Error => t("oneclient.console.severity.error"),
         }
     }
 }
@@ -194,7 +193,7 @@ impl Component for LogConsole {
             .padding(Gaps::new_all(12.))
             .background(colors::page())
             .child(
-                LogViewer::new("Launcher logs", lines.clone())
+                LogViewer::new(t("oneclient.console.launcher_logs"), lines.clone())
                     .streaming(true)
                     .header(
                         rect()
@@ -234,7 +233,7 @@ fn view_row(
         .child(
             rect().width(Size::flex(1.0)).child(
                 TextInput::new(search)
-                    .placeholder("Filter the stream...")
+                    .placeholder(t("oneclient.console.filter_placeholder"))
                     .leading(
                         Icon::new(IconType::SearchMd)
                             .size(15.)
@@ -245,7 +244,7 @@ fn view_row(
         )
         .child(
             label()
-                .text(format!("{shown} lines"))
+                .text(tf("oneclient.console.line_count", &[&shown]))
                 .font_size(11.)
                 .max_lines(1)
                 .color(colors::fg_secondary()),
@@ -271,7 +270,7 @@ fn view_row(
                 .secondary()
                 .on_press(move |_| entries.write().clear())
                 .child(Icon::new(IconType::Trash01).size(15.))
-                .text("Clear"),
+                .text(t("oneclient.common.clear")),
         )
         .into_element()
 }
@@ -293,23 +292,26 @@ fn filter_row(directives: State<String>, mut error: State<Option<String>>) -> im
         .padding(Gaps::new_symmetric(10., 14.))
         .child(
             label()
-                .text("Capture")
+                .text(t("oneclient.console.capture"))
                 .font_size(11.)
                 .max_lines(1)
                 .color(colors::fg_secondary()),
         )
-        .child(
-            rect()
-                .width(Size::flex(1.0))
-                .child(TextInput::new(directives).placeholder("RUST_LOG directives...")),
-        )
+        .child(rect().width(Size::flex(1.0)).child(
+            TextInput::new(directives).placeholder(t("oneclient.console.directives_placeholder")),
+        ))
         .child(
             Button::new()
                 .secondary()
                 .on_press(move |_| reset.set(logger::default_directives()))
-                .text("Defaults"),
+                .text(t("oneclient.console.defaults")),
         )
-        .child(Button::new().primary().on_press(apply).text("Apply"));
+        .child(
+            Button::new()
+                .primary()
+                .on_press(apply)
+                .text(t("oneclient.common.apply")),
+        );
 
     rect()
         .vertical()

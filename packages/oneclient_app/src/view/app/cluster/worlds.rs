@@ -12,6 +12,7 @@ use crate::hooks::{
     use_cluster, use_cluster_worlds, use_datapack_world, use_dispatch, use_saves_folder_watch,
     use_view_state, use_world_size,
 };
+use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
 use crate::routes::Route;
 use crate::theme::colors;
@@ -30,8 +31,6 @@ const LIST_ICON: f32 = 44.;
 const GRID_ICON: f32 = 40.;
 const LIST_PAD: f32 = 10.;
 const GRID_PAD: f32 = 14.;
-
-const SHARED_NOTICE: &str = "This version uses the shared game folder, so these worlds also appear in every other version that uses it.";
 
 const WORLD_ROWS: RowHeights = RowHeights {
     list: LIST_ICON + 2. * LIST_PAD,
@@ -107,17 +106,19 @@ impl Component for ClusterWorlds {
         } else if all.is_empty() {
             Some(
                 empty_shell(IconType::Globe01)
-                    .child(empty_title("No worlds yet."))
-                    .child(empty_hint(
-                        "Worlds show up here once you create one in game.",
-                    ))
+                    .child(empty_title(t("oneclient.cluster.worlds.empty.title")))
+                    .child(empty_hint(t("oneclient.cluster.worlds.empty.hint")))
                     .into_element(),
             )
         } else {
             Some(
                 empty_shell(IconType::SearchMd)
-                    .child(empty_title("No worlds match your search."))
-                    .child(empty_hint("Try a different term."))
+                    .child(empty_title(t(
+                        "oneclient.cluster.worlds.search_empty.title",
+                    )))
+                    .child(empty_hint(t(
+                        "oneclient.cluster.package_manager.search_empty.hint",
+                    )))
                     .into_element(),
             )
         };
@@ -132,20 +133,24 @@ impl Component for ClusterWorlds {
             let path = info.path.clone();
             let mut context = ContextMenu::new(x, y).title(info.folder_name.clone());
             if datapacks {
-                context = context.action(IconType::Database01, "Data packs", move |()| {
-                    open_datapacks(cluster_id, open_world.clone(), remembered)
-                });
+                context = context.action(
+                    IconType::Database01,
+                    t("oneclient.cluster.worlds.menu.datapacks"),
+                    move |()| open_datapacks(cluster_id, open_world.clone(), remembered),
+                );
             }
             context
-                .action(IconType::Folder, "Open folder", move |()| {
-                    crate::platform::open_path(&path.to_string_lossy())
-                })
+                .action(
+                    IconType::Folder,
+                    t("oneclient.cluster.datapacks.menu.open_folder"),
+                    move |()| crate::platform::open_path(&path.to_string_lossy()),
+                )
                 .separator()
-                .danger_action(IconType::Trash01, "Delete", {
+                .danger_action(IconType::Trash01, t("oneclient.common.delete"), {
                     let dispatch = dispatch.clone();
                     move |()| {
                         if in_use {
-                            notify_in_use(&dispatch, "Worlds");
+                            notify_in_use(&dispatch, t("oneclient.cluster.worlds.in_use"));
                         } else {
                             pending_delete.set(Some(target_world.clone()));
                         }
@@ -158,12 +163,12 @@ impl Component for ClusterWorlds {
         let confirm_overlay = pending_delete.read().clone().map(|world| {
             let target_world = world.clone();
             let body = if shared {
-                "This version uses the shared game folder, so the world is removed from every version that uses it. It can be restored from your system trash."
+                t("oneclient.cluster.worlds.delete.body.shared")
             } else {
-                "It can be restored from your system trash."
+                t("oneclient.cluster.worlds.delete.body")
             };
             confirm_dialog(
-                format!("Move \"{world}\" to trash?"),
+                tf("oneclient.cluster.datapacks.delete.title", &[&world]),
                 body.to_string(),
                 move || pending_delete.set(None),
                 {
@@ -171,12 +176,12 @@ impl Component for ClusterWorlds {
                     move || {
                         pending_delete.set(None);
                         if in_use {
-                            notify_in_use(&dispatch, "Worlds");
+                            notify_in_use(&dispatch, t("oneclient.cluster.worlds.in_use"));
                             return;
                         }
                         spawn_world_task(
                             dispatch.clone(),
-                            "Couldn't delete world",
+                            t("oneclient.cluster.worlds.delete_failed"),
                             delete_world(cluster_id, target_world.clone()),
                         );
                     }
@@ -193,7 +198,7 @@ impl Component for ClusterWorlds {
                 row,
                 empty,
                 shared
-                    .then(|| SHARED_NOTICE.to_string())
+                    .then(|| t("oneclient.cluster.worlds.shared_notice").to_string())
                     .into_iter()
                     .collect(),
             ))
@@ -226,7 +231,10 @@ impl Component for WorldCard {
                 .map_or(CardIcon::Symbol(IconType::Globe01), CardIcon::Image),
             if grid { GRID_ICON } else { LIST_ICON },
         );
-        let last_played = format!("Last played {}", fmt_date(info.last_played));
+        let last_played = tf(
+            "oneclient.cluster.worlds.last_played",
+            &[&fmt_date(info.last_played)],
+        );
         let on_press = self.on_press.clone();
         let pressable = on_press.is_some();
 

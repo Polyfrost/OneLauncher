@@ -25,6 +25,7 @@ pub use storage::SettingsStorage;
 
 use crate::{
     components::{Button, Icon, IconType},
+    i18n::t,
     theme::colors,
     ui::border_all_color,
 };
@@ -150,9 +151,9 @@ impl<T: Clone + PartialEq + 'static> Component for ResetButton<T> {
             .icon()
             .disabled(at_default)
             .alt(if at_default {
-                "Already at the default"
+                t("oneclient.settings.reset.at_default")
             } else {
-                "Reset to default"
+                t("oneclient.settings.reset.to_default")
             })
             .on_press(move |_| {
                 for (value, default) in &values {

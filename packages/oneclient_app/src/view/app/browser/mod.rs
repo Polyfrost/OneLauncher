@@ -39,6 +39,7 @@ use crate::components::{Button, Icon, IconType, set_enabled_action};
 use crate::hooks::{
     ClusterAction, loaded_image, mutation_is_running, use_cached_image, use_cluster_mutation,
 };
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 
@@ -51,8 +52,8 @@ pub(crate) enum InstallSource {
 impl InstallSource {
     fn label(self) -> &'static str {
         match self {
-            Self::Manual => "Installed",
-            Self::Bundled => "Bundled",
+            Self::Manual => t("oneclient.browser.common.source.installed"),
+            Self::Bundled => t("oneclient.browser.common.source.bundled"),
         }
     }
 
@@ -269,7 +270,11 @@ impl Component for EnableButton {
                 .primary()
                 .width(Size::fill())
                 .child(Icon::new(IconType::CheckCircle).size(14.))
-                .text(if running { "Enabling..." } else { "Enable" })
+                .text(if running {
+                    t("oneclient.browser.common.enabling_ellipsis")
+                } else {
+                    t("oneclient.browser.common.enable")
+                })
                 .into_element(),
             EnableVariant::Card { height } => rect()
                 .on_press(|e: Event<PressEventData>| e.stop_propagation())
@@ -290,7 +295,11 @@ impl Component for EnableButton {
                         )
                         .child(
                             label()
-                                .text(if running { "Enabling" } else { "Enable" })
+                                .text(if running {
+                                    t("oneclient.browser.common.enabling")
+                                } else {
+                                    t("oneclient.browser.common.enable")
+                                })
                                 .font_size(11.)
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .max_lines(1)
@@ -298,7 +307,11 @@ impl Component for EnableButton {
                         ),
                 )
                 .into_element(),
-            EnableVariant::VersionRow => button.secondary().small().text("Enable").into_element(),
+            EnableVariant::VersionRow => button
+                .secondary()
+                .small()
+                .text(t("oneclient.browser.common.enable"))
+                .into_element(),
         }
     }
 }
@@ -310,9 +323,12 @@ pub(crate) fn installed_badge(installed: InstallSource, font_size: f32) -> impl 
 /// Which of several installed versions the game actually loads
 pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
     let (text, color) = if active {
-        ("Active", colors::brand())
+        (t("oneclient.browser.common.active"), colors::brand())
     } else {
-        ("Inactive", colors::fg_secondary())
+        (
+            t("oneclient.browser.common.inactive"),
+            colors::fg_secondary(),
+        )
     };
 
     // No icon three pills in a row all wearing a tick reads as decoration

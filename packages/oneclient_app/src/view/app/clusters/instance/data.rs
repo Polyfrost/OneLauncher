@@ -464,7 +464,7 @@ pub fn resolve(w: Wizard) -> Picks {
         import_screening,
         import_screening_error,
         import_decisions: w.import_decisions.read().clone(),
-        folder: *w.folder.read(),
+        folder: w.folder.read().clone(),
         kind,
         name: w.details.effective_name(&suggested),
         suggested,

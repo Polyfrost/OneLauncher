@@ -2,6 +2,7 @@ use freya::prelude::*;
 
 use super::settings_page;
 use crate::components::{Icon, IconType};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::view::app::settings::section_header;
 
@@ -15,7 +16,9 @@ impl Component for SettingsLanguage {
         let selected = use_state(|| 0usize);
 
         settings_page()
-            .child(section_header("AVAILABLE LANGUAGES"))
+            .child(section_header(t(
+                "oneclient.settings.language.section.available",
+            )))
             .children(LANGUAGES.iter().enumerate().map(|(i, (native, english))| {
                 language_row(i, native, english, selected).into_element()
             }))

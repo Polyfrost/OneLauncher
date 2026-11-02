@@ -8,6 +8,7 @@ use crate::hooks::{
     imported_modpacks_list, use_cached_image, use_dispatch, use_imported_modpacks,
     use_installs_snapshot,
 };
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::view::app::settings::{section_header, settings_row};
@@ -19,8 +20,11 @@ const PACK_ICON: f32 = 32.;
 fn pick_modpack(cluster_id: i64, dispatch: crate::Actions) {
     spawn(async move {
         let Some(handle) = rfd::AsyncFileDialog::new()
-            .set_title("Choose a modpack")
-            .add_filter("Modpack", &MODPACK_EXTENSIONS)
+            .set_title(t("oneclient.cluster.imported_modpacks.picker.title"))
+            .add_filter(
+                t("oneclient.cluster.imported_modpacks.picker.filter"),
+                &MODPACK_EXTENSIONS,
+            )
             .pick_file()
             .await
         else {
@@ -65,7 +69,11 @@ impl Component for ImportedModpacksSection {
             .maybe(!busy, |el| {
                 el.on_press(move |_| pick_modpack(cluster_id, import.clone()))
             })
-            .text(if busy { "Working..." } else { "Choose file" });
+            .text(if busy {
+                t("oneclient.cluster.imported_modpacks.working")
+            } else {
+                t("oneclient.cluster.imported_modpacks.choose_file")
+            });
         let add_buttons = rect()
             .horizontal()
             .cross_align(Alignment::Center)
@@ -75,7 +83,7 @@ impl Component for ImportedModpacksSection {
                     .small()
                     .secondary()
                     .on_press(move |_| browse_modpacks(cluster_id))
-                    .text("Browse"),
+                    .text(t("oneclient.common.browse")),
             )
             .child(add_button);
 
@@ -98,16 +106,15 @@ impl Component for ImportedModpacksSection {
             let dispatch = dispatch.clone();
             let name = pack.name.clone();
             dialog(
-                format!("Remove {name}?"),
-                "Removes the mods and files this pack added. Mods you added yourself, mods another pack also uses and config files you edited stay."
-                    .to_string(),
+                tf("oneclient.cluster.imported_modpacks.remove.title", &[&name]),
+                t("oneclient.cluster.imported_modpacks.remove.body").to_string(),
                 None,
                 move || close.set(None),
                 [
                     Button::new()
                         .secondary()
                         .on_press(move |_| cancel.set(None))
-                        .text("Cancel")
+                        .text(t("oneclient.common.cancel"))
                         .into_element(),
                     Button::new()
                         .danger()
@@ -120,7 +127,7 @@ impl Component for ImportedModpacksSection {
                             );
                         })
                         .child(Icon::new(IconType::Trash01).size(14.))
-                        .text("Remove pack")
+                        .text(t("oneclient.cluster.imported_modpacks.remove.confirm"))
                         .into_element(),
                 ],
             )
@@ -130,11 +137,13 @@ impl Component for ImportedModpacksSection {
             .vertical()
             .width(Size::fill())
             .spacing(4.)
-            .child(section_header("ADDED MODPACKS"))
+            .child(section_header(t(
+                "oneclient.cluster.imported_modpacks.section",
+            )))
             .child(settings_row(
                 IconType::FilePlus02,
-                "Add a Modpack",
-                "Add the mods from a Modrinth .mrpack or CurseForge .zip to this instance. The pack must be for the same Minecraft version and loader.",
+                t("oneclient.cluster.imported_modpacks.add.title"),
+                t("oneclient.cluster.imported_modpacks.add.description"),
                 add_buttons,
             ))
             .children(rows)
@@ -154,14 +163,19 @@ impl Component for PackRow {
         let icon_query = use_cached_image(self.pack.icon_url.clone(), 256);
         let icon = remote_icon(self.pack.icon_url.as_deref(), &icon_query, PACK_ICON);
         let description = match &self.pack.provider {
-            Some(provider) if !self.pack.version.trim().is_empty() => {
-                format!("Version {} from {provider}", self.pack.version)
-            }
-            Some(provider) => format!("From {provider}"),
-            None if !self.pack.version.trim().is_empty() => {
-                format!("Version {} from a file", self.pack.version)
-            }
-            None => "Added from a file".to_string(),
+            Some(provider) if !self.pack.version.trim().is_empty() => tf(
+                "oneclient.cluster.imported_modpacks.source.provider_version",
+                &[&self.pack.version, &provider],
+            ),
+            Some(provider) => tf(
+                "oneclient.cluster.imported_modpacks.source.provider",
+                &[&provider],
+            ),
+            None if !self.pack.version.trim().is_empty() => tf(
+                "oneclient.cluster.imported_modpacks.source.file_version",
+                &[&self.pack.version],
+            ),
+            None => t("oneclient.cluster.imported_modpacks.source.file").to_string(),
         };
 
         let mut pending = self.pending_remove;
@@ -207,7 +221,7 @@ impl Component for PackRow {
                         el.on_press(move |_| pending.set(Some(pack.clone())))
                     })
                     .child(Icon::new(IconType::Trash01).size(14.))
-                    .text("Remove pack"),
+                    .text(t("oneclient.cluster.imported_modpacks.remove.confirm")),
             )
     }
 }

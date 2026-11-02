@@ -2,6 +2,7 @@ use std::time::Instant;
 
 use freya::prelude::*;
 
+use crate::i18n::{t, tf};
 use crate::theme;
 
 pub fn border_all(width: f32) -> Border {
@@ -85,25 +86,25 @@ pub fn fmt_date(ts: chrono::DateTime<chrono::Utc>) -> String {
 pub fn relative_time(created_at: Instant) -> String {
     let secs = created_at.elapsed().as_secs();
     match secs {
-        0..=59 => "Just now".to_string(),
-        60..=3599 => format!("{}m ago", secs / 60),
-        3600..=86_399 => format!("{}h ago", secs / 3600),
-        _ => format!("{}d ago", secs / 86_400),
+        0..=59 => t("oneclient.ui.relative_time.just_now").to_string(),
+        60..=3599 => tf("oneclient.ui.relative_time.minutes", &[&(secs / 60)]),
+        3600..=86_399 => tf("oneclient.ui.relative_time.hours", &[&(secs / 3600)]),
+        _ => tf("oneclient.ui.relative_time.days", &[&(secs / 86_400)]),
     }
 }
 
 pub fn last_played_label(ts: Option<chrono::DateTime<chrono::Utc>>) -> String {
     let Some(ts) = ts else {
-        return "Never".to_string();
+        return t("oneclient.ui.last_played.never").to_string();
     };
     match (chrono::Utc::now() - ts).num_days() {
-        ..=0 => "Today".to_string(),
-        1 => "Yesterday".to_string(),
-        d @ 2..=6 => format!("{d} days ago"),
-        d @ 7..=13 => format!("{} week ago", d / 7),
-        d @ 14..=29 => format!("{} weeks ago", d / 7),
-        d @ 30..=59 => format!("{} month ago", d / 30),
-        d => format!("{} months ago", d / 30),
+        ..=0 => t("oneclient.ui.last_played.today").to_string(),
+        1 => t("oneclient.ui.last_played.yesterday").to_string(),
+        d @ 2..=6 => tf("oneclient.ui.last_played.days", &[&d]),
+        d @ 7..=13 => tf("oneclient.ui.last_played.weeks.one", &[&(d / 7)]),
+        d @ 14..=29 => tf("oneclient.ui.last_played.weeks.other", &[&(d / 7)]),
+        d @ 30..=59 => tf("oneclient.ui.last_played.months.one", &[&(d / 30)]),
+        d => tf("oneclient.ui.last_played.months.other", &[&(d / 30)]),
     }
 }
 

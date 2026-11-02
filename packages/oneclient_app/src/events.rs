@@ -10,6 +10,7 @@ use oneclient_events::{Event, EventReceiver, GameEvent, LaunchStage, ProgressEve
 use tokio::sync::mpsc;
 
 use crate::hooks::PumpSignal;
+use crate::i18n::t;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
 use crate::state::{AppChannel, AppState, LoginProgress, StorageScanProgress};
 
@@ -420,7 +421,7 @@ pub fn report_startup_failure(station: &RadioStation<AppState, AppChannel>, err:
         inbox,
         Event::Notification(oneclient_events::Notification::Message(
             oneclient_events::Message {
-                title: "Launcher failed to start".into(),
+                title: t("oneclient.events.launcher_failed").into(),
                 body: message,
                 level: oneclient_events::Level::Error,
                 link: None,

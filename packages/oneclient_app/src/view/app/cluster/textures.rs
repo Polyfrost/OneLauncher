@@ -5,6 +5,7 @@ use crate::hooks::{
     bundle_overrides_map, bundles_with_status_items, cluster_content_items, stale_hashes,
     use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_package_updates,
 };
+use crate::i18n::t;
 use crate::layout::cluster_content;
 
 use super::cluster_not_found;
@@ -45,8 +46,8 @@ impl Component for ClusterTextures {
         cluster_content()
             .child(
                 PackageManager::new(
-                    "Textures",
-                    "resource packs",
+                    t("oneclient.cluster.textures.title"),
+                    t("oneclient.cluster.package_manager.noun.resource_pack.other"),
                     "texture",
                     ContentType::ResourcePack,
                     self.cluster_id,

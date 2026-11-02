@@ -2,13 +2,17 @@ use freya::prelude::*;
 use oneclient_java::{AvailableJava, JavaVendor};
 
 use crate::components::{Button, Dropdown, Icon, IconType, OverlayPopup, ScrollArea};
-use crate::hooks::{provider_versions, use_provider_versions};
+use crate::hooks::{java_runtimes, provider_versions, use_java_runtimes, use_provider_versions};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
 fn providers() -> Vec<(JavaVendor, &'static str)> {
     vec![
-        (JavaVendor::Microsoft, "Microsoft JDK (Fastest/Recommended)"),
+        (
+            JavaVendor::Microsoft,
+            t("oneclient.components.java_install_manager.microsoft"),
+        ),
         (JavaVendor::Zulu, "Azul Zulu"),
         (JavaVendor::Adoptium, "Eclipse Temurin"),
         (JavaVendor::Corretto, "Amazon Corretto"),
@@ -66,6 +70,8 @@ impl Component for JavaInstallManager {
 
         let versions_query = use_provider_versions(vendor.clone());
         let (mut versions, loading) = provider_versions(&versions_query);
+        let runtimes_query = use_java_runtimes();
+        let runtimes = java_runtimes(&runtimes_query);
 
         if let Some(major) = suggested {
             versions.sort_by_key(|v| v.major != major);
@@ -76,9 +82,9 @@ impl Component for JavaInstallManager {
         let current_label = provider_labels[idx].clone();
 
         let inner: Element = if loading {
-            status_text("Loading available versions...")
+            status_text(t("oneclient.components.java_install_manager.loading"))
         } else if versions.is_empty() {
-            status_text("No versions available from this provider.")
+            status_text(t("oneclient.components.java_install_manager.empty"))
         } else {
             let mut area = ScrollArea::new()
                 .width(Size::fill())
@@ -86,11 +92,15 @@ impl Component for JavaInstallManager {
                 .spacing(8.);
             for available in versions {
                 let highlight = suggested == Some(available.major);
+                let installed = runtimes
+                    .iter()
+                    .any(|runtime| runtime.vendor == vendor && runtime.major == available.major);
                 area = area.child(
                     VersionRow {
                         vendor: vendor.clone(),
                         available,
                         suggested: highlight,
+                        installed,
                         on_install: self.on_install.clone(),
                     }
                     .into_element(),
@@ -131,7 +141,7 @@ impl Component for JavaInstallManager {
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 label()
-                                    .text("Install Java")
+                                    .text(t("oneclient.components.java_install_manager.title"))
                                     .font_size(18.)
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
@@ -143,7 +153,9 @@ impl Component for JavaInstallManager {
                                     .spacing(6.)
                                     .child(
                                         label()
-                                            .text("Provider")
+                                            .text(t(
+                                                "oneclient.components.java_install_manager.provider",
+                                            ))
                                             .font_size(11.)
                                             .font_weight(FontWeight::MEDIUM)
                                             .color(colors::fg_secondary()),
@@ -169,7 +181,7 @@ impl Component for JavaInstallManager {
                                                     handler.call(());
                                                 }
                                             })
-                                            .text("Close"),
+                                            .text(t("oneclient.common.close")),
                                     ),
                             ),
                     ),
@@ -196,6 +208,7 @@ struct VersionRow {
     vendor: JavaVendor,
     available: AvailableJava,
     suggested: bool,
+    installed: bool,
     on_install: Option<EventHandler<(JavaVendor, u32)>>,
 }
 
@@ -212,7 +225,10 @@ impl Component for VersionRow {
             .spacing(8.)
             .child(
                 label()
-                    .text(format!("Java {major}"))
+                    .text(tf(
+                        "oneclient.components.java_install_manager.java_major",
+                        &[&major],
+                    ))
                     .font_size(14.)
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
@@ -226,13 +242,33 @@ impl Component for VersionRow {
                     .background(colors::brand())
                     .child(
                         label()
-                            .text("Suggested")
+                            .text(t("oneclient.components.java_install_manager.suggested"))
                             .font_size(10.)
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     ),
             );
         }
+
+        let action = if self.installed {
+            Button::new()
+                .secondary()
+                .small()
+                .disabled(true)
+                .child(Icon::new(IconType::Check).size(13.))
+                .text(t("oneclient.components.java_install_manager.installed"))
+        } else {
+            Button::new()
+                .primary()
+                .small()
+                .on_press(move |_| {
+                    if let Some(handler) = &on_install {
+                        handler.call((vendor.clone(), major));
+                    }
+                })
+                .child(Icon::new(IconType::Download01).size(13.))
+                .text(t("oneclient.common.install"))
+        };
 
         rect()
             .horizontal()
@@ -260,17 +296,6 @@ impl Component for VersionRow {
                             .color(colors::fg_secondary()),
                     ),
             )
-            .child(
-                Button::new()
-                    .primary()
-                    .small()
-                    .on_press(move |_| {
-                        if let Some(handler) = &on_install {
-                            handler.call((vendor.clone(), major));
-                        }
-                    })
-                    .child(Icon::new(IconType::Download01).size(13.))
-                    .text("Install"),
-            )
+            .child(action)
     }
 }

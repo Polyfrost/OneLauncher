@@ -469,10 +469,15 @@ fn config_owned_names(dir: &Path) -> Vec<OsString> {
 
 async fn drop_materialized_content(state: &LauncherState) {
     let mut dirs = Vec::new();
+    let mut shared_dirs: Vec<_> = paths::shared_minecraft_dir().into_iter().collect();
 
-    if let Ok(shared) = paths::shared_minecraft_dir() {
-        dirs.push((shared.clone(), manifest::MANIFEST_NAME));
-        dirs.push((shared, manifest::GLOBAL_MANIFEST_NAME));
+    match state.clusters.list_shared_groups().await {
+        Ok(groups) => shared_dirs.extend(
+            groups
+                .iter()
+                .filter_map(|group| paths::shared_group_dir(Some(group)).ok()),
+        ),
+        Err(err) => tracing::warn!(%err, "could not list the custom shared folders"),
     }
 
     match state.clusters.list().await {
@@ -494,6 +499,11 @@ async fn drop_materialized_content(state: &LauncherState) {
         }
     }
 
+    for shared in &shared_dirs {
+        dirs.push((shared.clone(), manifest::MANIFEST_NAME));
+        dirs.push((shared.clone(), manifest::GLOBAL_MANIFEST_NAME));
+    }
+
     for (dir, manifest_name) in dirs {
         let Some(loaded) = manifest::load(&dir, manifest_name).await else {
             continue;
@@ -511,8 +521,8 @@ async fn drop_materialized_content(state: &LauncherState) {
         manifest::clear(&dir, manifest_name).await;
     }
 
-    if let Ok(shared) = paths::shared_minecraft_dir() {
-        crate::game::unlink_cluster_logs(&shared).await;
+    for shared in &shared_dirs {
+        crate::game::unlink_cluster_logs(shared).await;
     }
 }
 
@@ -837,6 +847,39 @@ async fn remove_children_except(dir: &Path, keep: &[OsString]) -> Result<(), Str
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn a_shared_folder_nobody_uses_forgets_its_links_too() {
+        let state = crate::dev::ephemeral_state().await.unwrap();
+        let group = state.clusters.create_shared_group("Emptied").await.unwrap();
+        let dir = paths::shared_group_dir(Some(&group)).unwrap();
+        let pack = dir.join("resourcepacks").join("pack.zip");
+        polyio::create_dir_all(pack.parent().unwrap())
+            .await
+            .unwrap();
+        polyio::write(&pack, b"pack".as_slice()).await.unwrap();
+        manifest::save(
+            &dir,
+            manifest::GLOBAL_MANIFEST_NAME,
+            &manifest::MaterializedManifest::new(
+                1,
+                vec![manifest::ManifestEntry {
+                    path: "resourcepacks/pack.zip".to_string(),
+                    hash: "abc".to_string(),
+                }],
+            ),
+        )
+        .await;
+
+        drop_materialized_content(&state).await;
+
+        assert!(!pack.exists());
+        assert!(
+            manifest::load(&dir, manifest::GLOBAL_MANIFEST_NAME)
+                .await
+                .is_none()
+        );
+    }
 
     #[test]
     fn the_write_ahead_sidecars_are_never_copied_by_hand() {

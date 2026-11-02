@@ -12,6 +12,7 @@ use oneclient_events::Level;
 use crate::{
     components::{Button, ButtonSize, Icon, IconType, TooltipPlacement, progress_track},
     hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
+    i18n::t,
     motion::use_animations_enabled,
     notifications::{InboxEntry, NotificationActionKind},
     theme::colors,
@@ -329,7 +330,7 @@ fn close_button(dispatch: crate::Actions, id: u64) -> impl IntoElement {
                 .size(ButtonSize::Icon)
                 .width(Size::px(28.))
                 .height(Size::px(28.))
-                .tooltip("Dismiss")
+                .tooltip(t("oneclient.common.dismiss"))
                 .tooltip_placement(TooltipPlacement::Left)
                 .on_press(move |_| dispatch.dismiss_toast(id))
                 .child(
@@ -399,7 +400,7 @@ fn action_row(
     let review_label = action
         .as_ref()
         .map(|a| a.label.clone())
-        .unwrap_or_else(|| "Review".to_string());
+        .unwrap_or_else(|| t("oneclient.components.toasts.review").to_string());
     let review_kind = action.map(|a| a.kind);
     let review_icon = match review_kind {
         Some(NotificationActionKind::OpenUrl(_)) => IconType::LinkExternal01,
@@ -419,7 +420,7 @@ fn action_row(
                 .width(Size::flex(1.0))
                 .on_press(move |_| dismiss.dismiss_toast(id))
                 .child(Icon::new(IconType::XClose).size(16.))
-                .text("Dismiss"),
+                .text(t("oneclient.common.dismiss")),
         )
         .child(
             Button::new()

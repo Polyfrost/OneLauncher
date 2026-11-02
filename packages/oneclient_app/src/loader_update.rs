@@ -1,30 +1,60 @@
 use oneclient_common::PackageUpdateMode;
 use oneclient_core::clusters::{
-    apply_loader_update, available_loader_update, loader_update_policy, set_loader_update_policy,
+    apply_loader_update, auto_update_loader, available_loader_update, loader_update_policy,
+    set_loader_update_policy,
 };
 use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt};
 
 use crate::hooks::Actions;
+use crate::i18n::{t, tf};
 use crate::launcher;
 use crate::launcher::off_ui;
 
-pub async fn offer_before_launch(actions: &Actions, cluster_id: ClusterId) {
-    let Ok(state) = launcher::state() else {
-        return;
-    };
+enum LoaderCheck {
+    Nothing,
+    Updated(String),
+    Offer(String, String),
+}
 
-    let offer = off_ui({
+pub async fn offer_before_launch(
+    actions: &Actions,
+    cluster_id: ClusterId,
+    manual: bool,
+) -> Option<bool> {
+    let state = launcher::state().ok()?;
+
+    let check = off_ui({
         let state = state.clone();
         async move {
             let cluster = state.clusters.get(cluster_id).await.ok()?;
             match loader_update_policy(&state, &cluster).await.ok()? {
                 PackageUpdateMode::Prompt => {}
-                PackageUpdateMode::Automatic | PackageUpdateMode::Skip => return None,
+                PackageUpdateMode::Skip if manual => {}
+                PackageUpdateMode::Automatic if manual => {
+                    return match auto_update_loader(&state, &cluster).await {
+                        Ok(Some(updated)) => Some(LoaderCheck::Updated(format!(
+                            "{} Loader {}",
+                            updated.mc_loader,
+                            updated.mc_loader_version.unwrap_or_default()
+                        ))),
+                        Ok(None) => Some(LoaderCheck::Nothing),
+                        Err(err) => {
+                            tracing::warn!(cluster_id, error = %err, "could not update the loader");
+                            None
+                        }
+                    };
+                }
+                PackageUpdateMode::Automatic | PackageUpdateMode::Skip => {
+                    return Some(LoaderCheck::Nothing);
+                }
             }
-            let current = cluster.mc_loader_version.clone()?;
+            let Some(current) = cluster.mc_loader_version.clone() else {
+                return Some(LoaderCheck::Nothing);
+            };
             match available_loader_update(&state, &cluster).await {
-                Ok(latest) => latest.map(|latest| (current, latest)),
+                Ok(Some(latest)) => Some(LoaderCheck::Offer(current, latest)),
+                Ok(None) => Some(LoaderCheck::Nothing),
                 Err(err) => {
                     tracing::warn!(cluster_id, error = %err, "could not check for a loader update");
                     None
@@ -32,17 +62,25 @@ pub async fn offer_before_launch(actions: &Actions, cluster_id: ClusterId) {
             }
         }
     })
-    .await;
-    let Some((current, latest)) = offer else {
-        return;
+    .await?;
+    let (current, latest) = match check {
+        LoaderCheck::Nothing => return Some(false),
+        LoaderCheck::Updated(loader) => {
+            actions
+                .notify(t("oneclient.loader_update.updated.title"))
+                .body(tf("oneclient.loader_update.updated.body", &[&loader]))
+                .send();
+            return Some(true);
+        }
+        LoaderCheck::Offer(current, latest) => (current, latest),
     };
 
     let answer = match actions.events().ask(offer_prompt(&current, &latest)).await {
         Ok(Some(chosen)) => chosen.value,
-        Ok(None) => return,
+        Ok(None) => return Some(true),
         Err(err) => {
             tracing::warn!(cluster_id, error = %err, "loader update offer failed");
-            return;
+            return None;
         }
     };
 
@@ -51,31 +89,39 @@ pub async fn offer_before_launch(actions: &Actions, cluster_id: ClusterId) {
             None => apply_loader_update(&state, cluster_id, latest)
                 .await
                 .map(drop),
+            Some(PackageUpdateMode::Automatic) if manual => {
+                set_loader_update_policy(&state, cluster_id, PackageUpdateMode::Automatic).await?;
+                apply_loader_update(&state, cluster_id, latest)
+                    .await
+                    .map(drop)
+            }
             Some(mode) => set_loader_update_policy(&state, cluster_id, mode).await,
         }
     })
     .await;
     if let Err(err) = result {
         tracing::warn!(cluster_id, error = %err, "could not apply the loader update choice");
+        return None;
     }
+    Some(true)
 }
 
 fn offer_prompt(current: &str, latest: &str) -> Prompt<Option<PackageUpdateMode>> {
     Prompt::new(
-        "Fabric Loader update",
-        format!(
-            "Fabric Loader {latest} is available for this instance, which is on {current}. \
-             Would you like to update it before launching?"
-        ),
+        t("oneclient.loader_update.title"),
+        tf("oneclient.loader_update.body", &[&latest, &current]),
     )
     .option(
-        Choice::new("loader.update.never", "Never ask again"),
-        Some(PackageUpdateMode::Skip),
-    )
-    .option(
-        Choice::new("loader.update.always", "Always update"),
+        Choice::new("loader.update.always", t("oneclient.loader_update.always")),
         Some(PackageUpdateMode::Automatic),
     )
-    .option(Choice::primary("loader.update.once", "Update"), None)
-    .dismiss("Not now")
+    .option(
+        Choice::primary("loader.update.once", t("oneclient.loader_update.once")),
+        None,
+    )
+    .option(
+        Choice::new("loader.update.never", t("oneclient.loader_update.never")),
+        Some(PackageUpdateMode::Skip),
+    )
+    .dismiss(t("oneclient.loader_update.not_now"))
 }

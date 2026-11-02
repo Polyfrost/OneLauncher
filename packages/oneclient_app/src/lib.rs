@@ -11,6 +11,7 @@ pub mod essential;
 pub mod events;
 pub(crate) mod file_content;
 pub mod hooks;
+pub(crate) mod i18n;
 mod install;
 pub mod ipc;
 mod launcher;

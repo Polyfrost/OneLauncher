@@ -468,7 +468,10 @@ async fn installed_mod_ids(cluster_id: i64, ctx: &ContentCtx) -> HashSet<String>
     };
 
     let mut ids = HashSet::new();
-    for artifact in linked.iter().filter(|a| a.content_type == ContentType::Mod) {
+    for artifact in linked
+        .iter()
+        .filter(|a| a.enabled && a.content_type == ContentType::Mod)
+    {
         let Ok(Some(row)) = artifact_dao::get_artifact_by_hash(&ctx.db, &artifact.hash).await
         else {
             continue;

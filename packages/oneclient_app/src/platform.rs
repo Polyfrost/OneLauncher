@@ -387,11 +387,16 @@ pub mod tray {
             ],
         );
         let help_menu = Submenu::with_items(
-            "Help",
+            t("oneclient.tray.menu_bar.help"),
             true,
             &[
-                &MenuItem::with_id(HELP_ID, "Get Help", true, None),
-                &MenuItem::with_id(REPORT_ID, "Report an Issue...", true, None),
+                &MenuItem::with_id(HELP_ID, t("oneclient.tray.menu_bar.get_help"), true, None),
+                &MenuItem::with_id(
+                    REPORT_ID,
+                    t("oneclient.tray.menu_bar.report_issue"),
+                    true,
+                    None,
+                ),
             ],
         );
         let (Ok(app_menu), Ok(help_menu)) = (app_menu, help_menu) else {

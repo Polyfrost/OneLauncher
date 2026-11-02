@@ -6,11 +6,14 @@ use freya::radio::RadioStation;
 use uuid::Uuid;
 
 use oneclient_polyplus::{
-    BlockedPlayer, Friend, FriendRequest, MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE, PlusClient, PlusError,
+    BlockedPlayer, Friend, FriendRequest, MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE, PlayerStatus,
+    PlusClient, PlusError,
 };
 
-use crate::chat::{ChatRoster, FriendRequestStatus, FriendRequests};
+use crate::chat::{ChatRoster, ChatToast, FriendRequestStatus, FriendRequests};
+use crate::components::IconType;
 use crate::hooks::{Actions, PumpSignal};
+use crate::i18n::{t, tf};
 use crate::state::{AppChannel, AppState, AsyncStatus};
 
 const PAGE_SIZE: u64 = 50;
@@ -28,6 +31,10 @@ type Station = RadioStation<AppState, AppChannel>;
 
 fn client() -> Option<std::sync::Arc<PlusClient>> {
     oneclient_polyplus::client()
+}
+
+fn owner_of(station: Station) -> Option<Uuid> {
+    station.peek().chat.owner
 }
 
 fn report(station: Station, error: &PlusError) {
@@ -104,6 +111,7 @@ fn collect_roster(
 
 pub async fn load_roster(station: Station) {
     let Some(client) = client() else { return };
+    let owner = owner_of(station);
 
     let (friends, incoming, outgoing, blocked) = tokio::join!(
         client.friends(),
@@ -112,11 +120,19 @@ pub async fn load_roster(station: Station) {
         client.blocked(),
     );
 
+    if owner_of(station) != owner {
+        return;
+    }
+
     match collect_roster(friends, incoming, outgoing, blocked) {
         Ok(roster) => {
             if let Ok(mut last) = LAST_ROSTER.lock() {
                 *last = Some(Instant::now());
             }
+
+            oneclient_polyplus::watch_players(
+                roster.friends.iter().map(|friend| friend.player).collect(),
+            );
 
             station
                 .clone()
@@ -138,6 +154,7 @@ fn roster_is_fresh() -> bool {
 
 pub async fn load_conversations(station: Station) {
     let Some(client) = client() else { return };
+    let owner = owner_of(station);
 
     {
         let mut guard = station.clone().write_channel(AppChannel::Chat);
@@ -146,7 +163,12 @@ pub async fn load_conversations(station: Station) {
         }
     }
 
-    match client.groups().await {
+    let groups = client.groups().await;
+    if owner_of(station) != owner {
+        return;
+    }
+
+    match groups {
         Ok(groups) => station
             .clone()
             .write_channel(AppChannel::Chat)
@@ -180,7 +202,7 @@ pub async fn load_messages(station: Station, group_id: i32) {
             .clone()
             .write_channel(AppChannel::Chat)
             .chat
-            .fail_thread_load(group_id, "Chat is not available right now.".to_string());
+            .fail_thread_load(group_id, t("oneclient.chat.errors.unavailable").to_string());
         return;
     };
 
@@ -190,8 +212,14 @@ pub async fn load_messages(station: Station, group_id: i32) {
         .chat
         .begin_thread_load(group_id);
 
+    let owner = owner_of(station);
     let limit = PAGE_SIZE.min(MAX_PAGE_SIZE);
-    match client.messages(group_id, None, Some(limit)).await {
+    let page = client.messages(group_id, None, Some(limit)).await;
+    if owner_of(station) != owner {
+        return;
+    }
+
+    match page {
         Ok(page) => {
             let complete = (page.len() as u64) < limit;
             let mut guard = station.clone().write_channel(AppChannel::Chat);
@@ -218,8 +246,14 @@ pub async fn load_older_messages(station: Station, group_id: i32) {
         return;
     }
 
+    let owner = owner_of(station);
     let limit = PAGE_SIZE.min(MAX_PAGE_SIZE);
-    match client.messages(group_id, before, Some(limit)).await {
+    let page = client.messages(group_id, before, Some(limit)).await;
+    if owner_of(station) != owner {
+        return;
+    }
+
+    match page {
         Ok(page) => {
             let complete = (page.len() as u64) < limit;
             let mut guard = station.clone().write_channel(AppChannel::Chat);
@@ -322,7 +356,13 @@ async fn deliver(station: Station, group_id: i32, key: Uuid, content: String) {
         return;
     };
 
-    match client.send_message(group_id, &content, key).await {
+    let owner = owner_of(station);
+    let sent = client.send_message(group_id, &content, key).await;
+    if owner_of(station) != owner {
+        return;
+    }
+
+    match sent {
         Ok(message) => {
             let sender = message.sender;
             let mut guard = station.clone().write_channel(AppChannel::Chat);
@@ -377,6 +417,15 @@ pub enum ChatJob {
     RemoveFriend(Uuid),
     Block(Uuid),
     Unblock(Uuid),
+    SetStatus {
+        status: PlayerStatus,
+        previous: PlayerStatus,
+    },
+    AddMembers {
+        group_id: i32,
+        members: Vec<Uuid>,
+    },
+    LeaveGroup(i32),
     SwitchOwner {
         signed_in: bool,
     },
@@ -408,7 +457,13 @@ impl ChatJob {
                 content,
             } => {
                 let Some(client) = client() else { return };
-                match client.edit_message(group_id, message_id, &content).await {
+                let owner = owner_of(station);
+                let edited = client.edit_message(group_id, message_id, &content).await;
+                if owner_of(station) != owner {
+                    return;
+                }
+
+                match edited {
                     Ok(message) => station
                         .clone()
                         .write_channel(AppChannel::Chat)
@@ -422,7 +477,13 @@ impl ChatJob {
                 message_id,
             } => {
                 let Some(client) = client() else { return };
-                match client.delete_message(group_id, message_id).await {
+                let owner = owner_of(station);
+                let deleted = client.delete_message(group_id, message_id).await;
+                if owner_of(station) != owner {
+                    return;
+                }
+
+                match deleted {
                     Ok(()) => station
                         .clone()
                         .write_channel(AppChannel::Chat)
@@ -433,7 +494,13 @@ impl ChatJob {
             }
             Self::StartDirectMessage(player) => {
                 let Some(client) = client() else { return };
-                match client.open_direct_message(player).await {
+                let owner = owner_of(station);
+                let opened = client.open_direct_message(player).await;
+                if owner_of(station) != owner {
+                    return;
+                }
+
+                match opened {
                     Ok(summary) => {
                         load_conversations(station).await;
                         open_group(station, summary.id).await;
@@ -443,7 +510,13 @@ impl ChatJob {
             }
             Self::CreateGroup { name, members } => {
                 let Some(client) = client() else { return };
-                match client.create_group(&name, &members).await {
+                let owner = owner_of(station);
+                let created = client.create_group(&name, &members).await;
+                if owner_of(station) != owner {
+                    return;
+                }
+
+                match created {
                     Ok(summary) => {
                         load_conversations(station).await;
                         open_group(station, summary.id).await;
@@ -455,7 +528,7 @@ impl ChatJob {
                 let Some(client) = client() else {
                     settle_friend_request(
                         station,
-                        FriendRequestStatus::Failed("Chat is not available right now.".into()),
+                        FriendRequestStatus::Failed(t("oneclient.chat.errors.unavailable").into()),
                     );
                     return;
                 };
@@ -465,7 +538,10 @@ impl ChatJob {
                     Ok(None) => {
                         settle_friend_request(
                             station,
-                            FriendRequestStatus::Failed(format!("No player named {username}.")),
+                            FriendRequestStatus::Failed(tf(
+                                "oneclient.chat.errors.no_player",
+                                &[&username],
+                            )),
                         );
                         return;
                     }
@@ -513,15 +589,164 @@ impl ChatJob {
                 roster_change(station, client.unblock(player).await).await;
             }
             Self::SwitchOwner { signed_in } => {
-                oneclient_polyplus::forget_token().await;
-                oneclient_polyplus::restart_session();
+                oneclient_polyplus::watch_players(Vec::new());
+                oneclient_polyplus::restart_session().await;
 
                 if signed_in {
+                    load_self_status(station).await;
                     load_roster(station).await;
                     resync_chat(station).await;
                 }
             }
+            Self::AddMembers { group_id, members } => {
+                let Some(client) = client() else { return };
+                let owner = owner_of(station);
+
+                let mut failure = None;
+                for member in members {
+                    if let Err(err) = client.add_member(group_id, member).await {
+                        failure = Some(err);
+                        break;
+                    }
+                }
+
+                if owner_of(station) != owner {
+                    return;
+                }
+                if let Some(err) = failure {
+                    report(station, &err);
+                }
+                load_conversations(station).await;
+            }
+            Self::LeaveGroup(group_id) => {
+                let Some(client) = client() else { return };
+                let Some(owner) = owner_of(station) else {
+                    return;
+                };
+
+                let left = client.remove_member(group_id, owner).await;
+                if owner_of(station) != Some(owner) {
+                    return;
+                }
+
+                match left {
+                    Ok(()) => station
+                        .clone()
+                        .write_channel(AppChannel::Chat)
+                        .chat
+                        .forget_conversation(group_id),
+                    Err(err) => report(station, &err),
+                }
+                load_conversations(station).await;
+            }
+            Self::SetStatus { status, previous } => {
+                let Some(client) = client() else { return };
+                let owner = owner_of(station);
+                let result = client.set_status(status).await;
+                if owner_of(station) != owner {
+                    return;
+                }
+
+                if let Err(err) = result {
+                    {
+                        let mut guard = station.clone().write_channel(AppChannel::Chat);
+                        if guard.chat.self_status == status {
+                            guard.chat.self_status = previous;
+                        }
+                    }
+                    report(station, &err);
+                }
+            }
         }
+    }
+}
+
+const TOAST_PREVIEW_CHARS: usize = 120;
+
+pub async fn notify_chat(actions: Actions, toast: ChatToast) {
+    let name = player_name(toast.sender()).await;
+    let group_id = toast.group_id();
+
+    let (title, body, toast_only) = match toast {
+        ChatToast::Message {
+            group_name,
+            content,
+            ..
+        } => (
+            match group_name {
+                Some(group) => tf("oneclient.chat.notify.group_message", &[&name, &group]),
+                None => name,
+            },
+            preview(&content),
+            true,
+        ),
+        ChatToast::Invite { .. } => (
+            tf("oneclient.chat.notify.invite", &[&name]),
+            String::new(),
+            false,
+        ),
+        ChatToast::FriendRequest { .. } => (
+            tf("oneclient.chat.notify.friend_request", &[&name]),
+            String::new(),
+            false,
+        ),
+    };
+
+    let notice = actions
+        .notify(title)
+        .body(body)
+        .icon(IconType::MessageTextSquare01)
+        .action(crate::notifications::NotificationAction {
+            label: t("oneclient.chat.notify.open").to_string(),
+            kind: crate::notifications::NotificationActionKind::OpenChat(group_id),
+        });
+
+    if toast_only {
+        notice.toast_only().send();
+    } else {
+        notice.send();
+    }
+}
+
+fn preview(content: &str) -> String {
+    let mut chars = content.chars();
+    let mut cut: String = chars.by_ref().take(TOAST_PREVIEW_CHARS).collect();
+    if chars.next().is_some() {
+        cut.push('…');
+    }
+    cut
+}
+
+async fn player_name(player: Uuid) -> String {
+    let fallback = player.simple().to_string().chars().take(8).collect();
+    let Ok(state) = crate::launcher::state() else {
+        return fallback;
+    };
+
+    oneclient_mc::fetch_player_profile_view(&state.services.requester, &player.to_string(), None)
+        .await
+        .map(|view| view.username)
+        .unwrap_or(fallback)
+}
+
+pub async fn load_self_status(station: Station) {
+    let Some(client) = client() else { return };
+    let owner = owner_of(station);
+
+    let status = client.status().await;
+    if owner_of(station) != owner {
+        return;
+    }
+
+    match status {
+        Ok(status) => {
+            station
+                .clone()
+                .write_channel(AppChannel::Chat)
+                .chat
+                .self_status = status;
+        }
+        Err(err) => tracing::warn!("could not load the chat status: {err:#}"),
     }
 }
 
@@ -715,16 +940,44 @@ impl Actions {
         self.chat_job(ChatJob::Unblock(player));
     }
 
-    pub fn set_self_status(&self, status: crate::chat::SelfStatus) {
-        self.station()
-            .clone()
-            .write_channel(AppChannel::Chat)
-            .chat
-            .self_status = status;
+    pub fn add_group_members(&self, group_id: i32, members: Vec<Uuid>) {
+        if members.is_empty() {
+            return;
+        }
+
+        clear_error(self.station());
+        self.chat_job(ChatJob::AddMembers { group_id, members });
     }
 
-    pub fn accept_chat_invite(&self, invite_id: i32) {
-        tracing::warn!("accepting session invite {invite_id} is not supported yet");
+    pub fn leave_group(&self, group_id: i32) {
+        clear_error(self.station());
+        self.chat_job(ChatJob::LeaveGroup(group_id));
+    }
+
+    pub fn show_chat(&self, group_id: Option<i32>) {
+        if let Some(group_id) = group_id {
+            self.open_conversation(group_id);
+        }
+
+        if !crate::view::chat::is_chat_window_open() {
+            let mut guard = self.station().clone().write_channel(AppChannel::Social);
+            guard.social_open = true;
+            guard.social_popped_notice = false;
+        }
+    }
+
+    pub fn set_self_status(&self, status: PlayerStatus) {
+        let previous = {
+            let station = self.station();
+            let mut guard = station.clone().write_channel(AppChannel::Chat);
+            let previous = guard.chat.self_status;
+            guard.chat.self_status = status;
+            previous
+        };
+
+        if previous != status {
+            self.chat_job(ChatJob::SetStatus { status, previous });
+        }
     }
 
     pub fn decline_chat_invite(&self, invite_id: i32) {

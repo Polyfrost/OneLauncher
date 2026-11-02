@@ -48,6 +48,7 @@ impl App for OneClientApp {
                     events: events_rx,
                     signals: signals_rx,
                     station,
+                    actions: actions.clone(),
                 }
                 .run(),
             );

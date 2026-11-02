@@ -1,14 +1,15 @@
 use freya::prelude::*;
 use uuid::Uuid;
 
-use oneclient_polyplus::{BlockedPlayer, Friend, FriendRequest, GroupKind};
+use oneclient_polyplus::{BlockedPlayer, Friend, FriendRequest, GroupKind, PlayerStatus};
 
-use crate::chat::{ChatConversation, ChatInvite, ChatRoster, FriendRequestStatus, SelfStatus};
+use crate::chat::{ChatConversation, ChatInvite, ChatRoster, FriendRequestStatus};
 use crate::components::{Avatar, ContextMenu, Icon, IconType, ScrollArea, TextInput};
 use crate::hooks::{
     Actions, use_chat_friend_request, use_chat_invites, use_chat_self_status, use_dispatch,
     use_player_online,
 };
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 
 use super::common::{
@@ -25,6 +26,7 @@ pub(super) struct ListPane {
     pub expanded: bool,
     pub own_id: Uuid,
     pub username: String,
+    pub connected: bool,
     pub conversations: Vec<ChatConversation>,
     pub loading: bool,
     pub error: Option<String>,
@@ -82,6 +84,7 @@ impl Component for ListPane {
                 mode: self.mode,
                 own_id: self.own_id,
                 username: self.username.clone(),
+                connected: self.connected,
                 status_menu,
             })
             .child(
@@ -93,7 +96,7 @@ impl Component for ListPane {
                             .width(Size::fill())
                             .height(Size::px(32.))
                             .font_size(12.)
-                            .placeholder("Search friends and chats")
+                            .placeholder(t("oneclient.chat.list.search_placeholder"))
                             .leading(
                                 Icon::new(IconType::SearchMd)
                                     .size(14.)
@@ -141,20 +144,27 @@ struct PanelHeader {
     mode: PanelMode,
     own_id: Uuid,
     username: String,
+    connected: bool,
     status_menu: State<bool>,
 }
 
 impl Component for PanelHeader {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let status = use_chat_self_status();
+        let picked = use_chat_self_status();
         let mut status_menu = self.status_menu;
 
-        let (dot, status_label) = match status {
-            SelfStatus::Online => (colors::success(), "Online"),
-            SelfStatus::Invisible => (super::common::offline_dot(), "Invisible"),
+        let (dot, status) = match (self.connected, picked) {
+            (false, _) => (
+                super::common::offline_dot(),
+                t("oneclient.chat.status.offline"),
+            ),
+            (true, PlayerStatus::Online) => (colors::success(), t("oneclient.chat.status.online")),
+            (true, PlayerStatus::Offline) => (
+                super::common::offline_dot(),
+                t("oneclient.chat.status.invisible"),
+            ),
         };
-
         let pop_out = dispatch.clone();
         let dock = dispatch.clone();
         let close = dispatch;
@@ -190,7 +200,7 @@ impl Component for PanelHeader {
                             .on_press(move |_| status_menu.toggle())
                             .child(
                                 label()
-                                    .text(status_label)
+                                    .text(status)
                                     .font_size(12.)
                                     .color(colors::fg_secondary()),
                             )
@@ -208,17 +218,17 @@ impl Component for PanelHeader {
                     .cross_align(Alignment::Center)
                     .maybe_child((self.mode == PanelMode::Launcher).then(|| HeaderButton {
                         icon: IconType::LinkExternal01,
-                        tooltip: "Pop out into a window",
+                        tooltip: t("oneclient.chat.list.pop_out"),
                         on_press: EventHandler::new(move |_| pop_out.pop_out_social()),
                     }))
                     .maybe_child((self.mode == PanelMode::Window).then(|| HeaderButton {
                         icon: IconType::LayoutRight,
-                        tooltip: "Dock back into the launcher",
+                        tooltip: t("oneclient.chat.list.dock"),
                         on_press: EventHandler::new(move |_| dock.dock_social()),
                     }))
                     .maybe_child((self.mode == PanelMode::Launcher).then(|| HeaderButton {
                         icon: IconType::XClose,
-                        tooltip: "Close",
+                        tooltip: t("oneclient.chat.common.close"),
                         on_press: EventHandler::new(move |_| close.close_social()),
                     })),
             )
@@ -233,17 +243,19 @@ struct StatusMenu {
 impl Component for StatusMenu {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
+        let picked = use_chat_self_status();
 
-        let option = |status: SelfStatus, text: &'static str, note: &'static str| {
+        let option = |status: PlayerStatus, text: &'static str, note: &'static str| {
             let dispatch = dispatch.clone();
             let on_close = self.on_close.clone();
             StatusOption {
                 dot: match status {
-                    SelfStatus::Online => colors::success(),
-                    SelfStatus::Invisible => super::common::offline_dot(),
+                    PlayerStatus::Online => colors::success(),
+                    PlayerStatus::Offline => super::common::offline_dot(),
                 },
                 text,
                 note,
+                selected: picked == status,
                 on_pick: EventHandler::new(move |_| {
                     dispatch.set_self_status(status);
                     on_close.call(());
@@ -255,7 +267,7 @@ impl Component for StatusMenu {
             .position(Position::new_absolute().top(54.).left(52.))
             .layer(Layer::Overlay)
             .vertical()
-            .width(Size::px(160.))
+            .width(Size::px(180.))
             .padding(Gaps::new_all(6.))
             .spacing(2.)
             .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
@@ -263,14 +275,14 @@ impl Component for StatusMenu {
             .border(inset_border(hairline()))
             .shadow(popup_shadow())
             .child(option(
-                SelfStatus::Online,
-                "Online",
-                "Friends see what you play",
+                PlayerStatus::Online,
+                t("oneclient.chat.status.online"),
+                t("oneclient.chat.status.online_hint"),
             ))
             .child(option(
-                SelfStatus::Invisible,
-                "Invisible",
-                "Appear offline to everyone",
+                PlayerStatus::Offline,
+                t("oneclient.chat.status.invisible"),
+                t("oneclient.chat.status.invisible_hint"),
             ))
     }
 }
@@ -280,6 +292,7 @@ struct StatusOption {
     dot: Color,
     text: &'static str,
     note: &'static str,
+    selected: bool,
     on_pick: EventHandler<()>,
 }
 
@@ -293,6 +306,7 @@ impl Component for StatusOption {
             .width(Size::fill())
             .padding(Gaps::new_symmetric(6., 8.))
             .spacing(8.)
+            .content(Content::Flex)
             .cross_align(Alignment::Center)
             .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
             .background(if hovered() {
@@ -314,6 +328,7 @@ impl Component for StatusOption {
             .child(
                 rect()
                     .vertical()
+                    .width(Size::flex(1.0))
                     .spacing(2.)
                     .child(
                         label()
@@ -328,6 +343,11 @@ impl Component for StatusOption {
                             .color(colors::fg_secondary()),
                     ),
             )
+            .maybe_child(self.selected.then(|| {
+                Icon::new(IconType::Check)
+                    .size(12.)
+                    .color(colors::fg_secondary())
+            }))
     }
 }
 
@@ -374,7 +394,7 @@ impl Component for ErrorBanner {
                             .on_press(move |_| dispatch.retry_chat())
                             .child(
                                 label()
-                                    .text("Try again")
+                                    .text(t("oneclient.chat.common.try_again"))
                                     .font_size(11.)
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::fg_primary()),
@@ -382,7 +402,7 @@ impl Component for ErrorBanner {
                     )
                     .child(HeaderButton {
                         icon: IconType::XClose,
-                        tooltip: "Dismiss",
+                        tooltip: t("oneclient.chat.common.dismiss"),
                         on_press: EventHandler::new(move |_| dismiss.clear_chat_error()),
                     }),
             )
@@ -435,7 +455,7 @@ impl Component for InvitesCard {
                             )
                             .child(
                                 label()
-                                    .text("World invites")
+                                    .text(t("oneclient.chat.invites.title"))
                                     .font_size(12.)
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::fg_primary())
@@ -469,10 +489,7 @@ impl Component for InvitesCard {
                                 .border(edge_border(hairline(), 1., 0., 0.))
                                 .child(
                                     label()
-                                        .text(
-                                            "Accepting launches the right cluster and joins. \
-                                             Sending invites is only available in game.",
-                                        )
+                                        .text(t("oneclient.chat.invites.in_game_only"))
                                         .font_size(11.)
                                         .width(Size::fill())
                                         .color(colors::fg_secondary()),
@@ -498,7 +515,7 @@ impl Component for InviteRow {
         let group_id = self.invite.group_id;
         let view = self.view;
         let decline = dispatch.clone();
-        let open = dispatch.clone();
+        let open = dispatch;
 
         rect()
             .horizontal()
@@ -522,7 +539,7 @@ impl Component for InviteRow {
                     .spacing(3.)
                     .child(
                         label()
-                            .text("World invite")
+                            .text(t("oneclient.chat.invites.world_invite"))
                             .font_size(12.)
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary())
@@ -531,23 +548,19 @@ impl Component for InviteRow {
                     )
                     .child(
                         label()
-                            .text(format!("From {from}"))
+                            .text(tf("oneclient.chat.invites.from", &[&from]))
                             .font_size(11.)
                             .color(colors::fg_secondary())
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis),
                     ),
             )
-            .child(accent_button("Launch", move |e: Event<PressEventData>| {
-                e.stop_propagation();
-                dispatch.accept_chat_invite(id)
-            }))
             .child(
                 rect()
                     .on_press(|e: Event<PressEventData>| e.stop_propagation())
                     .child(HeaderButton {
                         icon: IconType::XClose,
-                        tooltip: "Decline",
+                        tooltip: t("oneclient.chat.common.decline"),
                         on_press: EventHandler::new(move |_| decline.decline_chat_invite(id)),
                     }),
             )
@@ -636,9 +649,13 @@ fn tab_strip(
                 .content(Content::Flex)
                 .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
                 .background(chip_bg())
-                .child(tab(PanelTab::Chats, "Chats", unread))
-                .child(tab(PanelTab::Friends, "Friends", incoming))
-                .child(tab(PanelTab::Groups, "Groups", 0)),
+                .child(tab(PanelTab::Chats, t("oneclient.chat.tabs.chats"), unread))
+                .child(tab(
+                    PanelTab::Friends,
+                    t("oneclient.chat.tabs.friends"),
+                    incoming,
+                ))
+                .child(tab(PanelTab::Groups, t("oneclient.chat.tabs.groups"), 0)),
         )
 }
 
@@ -649,11 +666,11 @@ fn open_chat(dispatch: &Actions, mut view: State<PanelView>, group_id: i32) {
 
 fn chats_tab(pane: &ListPane, query: &str) -> Element {
     if pane.loading {
-        return hint("Loading chats…").into_element();
+        return hint(t("oneclient.chat.list.loading")).into_element();
     }
 
     if pane.conversations.is_empty() {
-        return hint("No chats yet. Message a friend to start one.").into_element();
+        return hint(t("oneclient.chat.list.empty")).into_element();
     }
 
     rect()
@@ -708,9 +725,9 @@ impl Component for ChatRow {
         let is_group = self.conversation.kind == GroupKind::Group;
         let preview = self.conversation.preview.clone().map(|text| {
             if self.conversation.preview_sender == Some(self.own_id) {
-                format!("You: {text}")
+                tf("oneclient.chat.list.preview_you", &[&text])
             } else if is_group && self.conversation.preview_sender.is_some() {
-                format!("{sender_name}: {text}")
+                tf("oneclient.chat.list.preview_sender", &[&sender_name, &text])
             } else {
                 text
             }
@@ -822,8 +839,8 @@ pub(super) fn conversation_title(
         .clone()
         .or(resolved)
         .unwrap_or_else(|| match conversation.kind {
-            GroupKind::Group => "Group".to_string(),
-            _ => "Direct message".to_string(),
+            GroupKind::Group => t("oneclient.chat.list.kind_group").to_string(),
+            _ => t("oneclient.chat.list.kind_direct").to_string(),
         })
 }
 
@@ -912,12 +929,22 @@ impl Component for FriendsTab {
                     .child(AddFriend),
             )
             .maybe_child(has_requests.then(|| {
-                section_heading(format!("Requests — {}", request_rows.len())).into_element()
+                section_heading(tf(
+                    "oneclient.chat.friends.requests_heading",
+                    &[&request_rows.len()],
+                ))
+                .into_element()
             }))
             .children(request_rows)
-            .child(section_heading(format!("Online — {online_count}")))
+            .child(section_heading(tf(
+                "oneclient.chat.friends.online_heading",
+                &[&online_count],
+            )))
             .children(friend_rows(online, true))
-            .child(section_heading(format!("Offline — {offline_count}")))
+            .child(section_heading(tf(
+                "oneclient.chat.friends.offline_heading",
+                &[&offline_count],
+            )))
             .children(friend_rows(offline, false))
             .child(BlockedLink {
                 count: blocked,
@@ -942,11 +969,11 @@ impl Component for AddFriend {
         let (note, note_color) = match &status {
             FriendRequestStatus::Idle => (None, colors::fg_secondary()),
             FriendRequestStatus::Sending(username) => (
-                Some(format!("Sending a request to {username}…")),
+                Some(tf("oneclient.chat.friends.request_sending", &[&username])),
                 colors::fg_secondary(),
             ),
             FriendRequestStatus::Sent(username) => (
-                Some(format!("Request sent to {username}.")),
+                Some(tf("oneclient.chat.friends.request_sent", &[&username])),
                 colors::fg_secondary(),
             ),
             FriendRequestStatus::Failed(error) => (Some(error.clone()), colors::danger()),
@@ -966,10 +993,14 @@ impl Component for AddFriend {
             return rect()
                 .vertical()
                 .width(Size::fill())
-                .child(chip_button(IconType::Plus, "Add friend", move |_| {
-                    reset.reset_friend_request();
-                    open.set(true);
-                }))
+                .child(chip_button(
+                    IconType::Plus,
+                    t("oneclient.chat.friends.add"),
+                    move |_| {
+                        reset.reset_friend_request();
+                        open.set(true);
+                    },
+                ))
                 .maybe_child(note)
                 .into_element();
         }
@@ -990,15 +1021,15 @@ impl Component for AddFriend {
                             .height(Size::px(32.))
                             .font_size(12.)
                             .auto_focus(true)
-                            .placeholder("Minecraft username")
+                            .placeholder(t("oneclient.chat.friends.username_placeholder"))
                             .on_submit(move |_| send_request(&send_key, name, open)),
                     )
-                    .child(accent_button("Send", move |_| {
+                    .child(accent_button(t("oneclient.chat.common.send"), move |_| {
                         send_request(&dispatch, name, open)
                     }))
                     .child(HeaderButton {
                         icon: IconType::XClose,
-                        tooltip: "Cancel",
+                        tooltip: t("oneclient.chat.common.cancel"),
                         on_press: EventHandler::new(move |_| {
                             let mut name = name;
                             name.set(String::new());
@@ -1041,9 +1072,9 @@ impl Component for RequestRow {
         let id = self.request.id;
         let age = ago(self.request.created_at);
         let sub = if self.incoming {
-            format!("Wants to be friends · {age}")
+            tf("oneclient.chat.friends.incoming_request", &[&age])
         } else {
-            format!("Pending · sent {age}")
+            tf("oneclient.chat.friends.outgoing_request", &[&age])
         };
 
         let accept = dispatch.clone();
@@ -1051,16 +1082,19 @@ impl Component for RequestRow {
 
         person_row(self.request.player, name, sub, false)
             .maybe_child(incoming.then(|| {
-                square_button(IconType::Check, "Accept", true, move |_| {
-                    accept.accept_friend_request(id)
-                })
+                square_button(
+                    IconType::Check,
+                    t("oneclient.chat.common.accept"),
+                    true,
+                    move |_| accept.accept_friend_request(id),
+                )
             }))
             .child(square_button(
                 IconType::XClose,
                 if incoming {
-                    "Decline"
+                    t("oneclient.chat.common.decline")
                 } else {
-                    "Cancel request"
+                    t("oneclient.chat.friends.cancel_request")
                 },
                 false,
                 move |_| {
@@ -1169,7 +1203,11 @@ impl Component for FriendRow {
         let online = self.online;
         let mut view = self.view;
 
-        let activity = if online { "Online" } else { "Offline" };
+        let activity = if online {
+            t("oneclient.chat.status.online")
+        } else {
+            t("oneclient.chat.status.offline")
+        };
 
         let open = dispatch.clone();
         let context = (*menu.read()).map(|(x, y)| {
@@ -1179,17 +1217,25 @@ impl Component for FriendRow {
             ContextMenu::new(x, y)
                 .title(name.clone())
                 .on_close(move |_| menu.set(None))
-                .action(IconType::MessageTextSquare01, "Message", move |()| {
-                    message.start_direct_message(player);
-                    view.set(PanelView::Chat);
-                })
+                .action(
+                    IconType::MessageTextSquare01,
+                    t("oneclient.chat.friends.message"),
+                    move |()| {
+                        message.start_direct_message(player);
+                        view.set(PanelView::Chat);
+                    },
+                )
                 .separator()
-                .danger_action(IconType::Trash01, "Remove friend", move |()| {
-                    remove.remove_friend(player)
-                })
-                .danger_action(IconType::XClose, "Block", move |()| {
-                    block.block_player(player)
-                })
+                .danger_action(
+                    IconType::Trash01,
+                    t("oneclient.chat.friends.remove"),
+                    move |()| remove.remove_friend(player),
+                )
+                .danger_action(
+                    IconType::XClose,
+                    t("oneclient.chat.friends.block"),
+                    move |()| block.block_player(player),
+                )
                 .into_element()
         });
 
@@ -1300,7 +1346,7 @@ impl Component for BlockedLink {
             .on_press(move |_| view.set(PanelView::Blocked))
             .child(
                 label()
-                    .text("Blocked players")
+                    .text(t("oneclient.chat.blocked.title"))
                     .font_size(12.)
                     .color(color)
                     .width(Size::flex(1.0)),
@@ -1343,14 +1389,16 @@ fn groups_tab(pane: &ListPane, query: &str, on_create: EventHandler<()>) -> Elem
             rect()
                 .width(Size::fill())
                 .padding(Gaps::new(0., 8., 6., 8.))
-                .child(chip_button(IconType::Plus, "Create group", move |_| {
-                    on_create.call(())
-                })),
+                .child(chip_button(
+                    IconType::Plus,
+                    t("oneclient.chat.groups.create"),
+                    move |_| on_create.call(()),
+                )),
         )
         .maybe_child(
             groups
                 .is_empty()
-                .then(|| hint("No groups yet.").into_element()),
+                .then(|| hint(t("oneclient.chat.groups.empty")).into_element()),
         )
         .children(groups)
         .into_element()
@@ -1371,7 +1419,10 @@ impl Component for GroupRow {
         let group_id = self.conversation.id;
         let view = self.view;
         let members = self.conversation.members.len();
-        let sub = format!("{members} members · {} online", online.len());
+        let sub = tf(
+            "oneclient.chat.groups.members_online",
+            &[&members, &online.len()],
+        );
 
         rect()
             .horizontal()
@@ -1449,25 +1500,28 @@ impl Component for BlockedPane {
                     .border(edge_border(hairline(), 0., 0., 1.))
                     .child(HeaderButton {
                         icon: IconType::ArrowLeft,
-                        tooltip: "Back",
+                        tooltip: t("oneclient.chat.common.back"),
                         on_press: EventHandler::new(move |_| view.set(PanelView::List)),
                     })
                     .child(
                         label()
-                            .text("Blocked players")
+                            .text(t("oneclient.chat.blocked.title"))
                             .font_size(14.)
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     ),
             )
             .child(
-                rect().width(Size::fill()).padding(Gaps::new(12., 16., 4., 16.)).child(
-                    label()
-                        .text("Blocked players can't message you, send invites or see your status.")
-                        .font_size(12.)
-                        .width(Size::fill())
-                        .color(colors::fg_secondary()),
-                ),
+                rect()
+                    .width(Size::fill())
+                    .padding(Gaps::new(12., 16., 4., 16.))
+                    .child(
+                        label()
+                            .text(t("oneclient.chat.blocked.description"))
+                            .font_size(12.)
+                            .width(Size::fill())
+                            .color(colors::fg_secondary()),
+                    ),
             )
             .child(
                 ScrollArea::new()
@@ -1479,14 +1533,19 @@ impl Component for BlockedPane {
                             .width(Size::fill())
                             .padding(Gaps::new_all(8.))
                             .maybe_child(
-                                self.blocked
-                                    .is_empty()
-                                    .then(|| hint("No blocked players.").into_element()),
+                                self.blocked.is_empty().then(|| {
+                                    hint(t("oneclient.chat.blocked.empty")).into_element()
+                                }),
                             )
                             .children(
                                 self.blocked
                                     .iter()
-                                    .map(|entry| BlockedRow { player: entry.player }.into_element())
+                                    .map(|entry| {
+                                        BlockedRow {
+                                            player: entry.player,
+                                        }
+                                        .into_element()
+                                    })
                                     .collect::<Vec<_>>(),
                             ),
                     ),
@@ -1539,7 +1598,7 @@ impl Component for BlockedRow {
                     .on_press(move |_| dispatch.unblock_player(player))
                     .child(
                         label()
-                            .text("Unblock")
+                            .text(t("oneclient.chat.blocked.unblock"))
                             .font_size(12.)
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),

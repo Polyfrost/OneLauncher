@@ -23,6 +23,28 @@ impl<'de> Deserialize<'de> for GroupKind {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PlayerStatus {
+    #[default]
+    Online,
+    Offline,
+}
+
+impl<'de> Deserialize<'de> for PlayerStatus {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        Ok(match String::deserialize(deserializer)?.as_str() {
+            "offline" => Self::Offline,
+            _ => Self::Online,
+        })
+    }
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub(crate) struct StatusBody {
+    pub status: PlayerStatus,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RelationshipKind {
     Friend,
@@ -59,6 +81,8 @@ pub struct GroupSummary {
     pub last_message: Option<LastMessage>,
     #[serde(default)]
     pub unread: bool,
+    #[serde(default)]
+    pub special: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -137,6 +161,22 @@ pub(crate) struct ResolveResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn status_body_round_trips_with_the_server_shape() {
+        let sent = serde_json::to_value(StatusBody {
+            status: PlayerStatus::Offline,
+        })
+        .expect("status should serialize");
+        assert_eq!(sent, serde_json::json!({ "status": "offline" }));
+
+        let online: StatusBody =
+            serde_json::from_str(r#"{"status":"online"}"#).expect("online should parse");
+        let unknown: StatusBody =
+            serde_json::from_str(r#"{"status":"away"}"#).expect("unknown should parse");
+        assert_eq!(online.status, PlayerStatus::Online);
+        assert_eq!(unknown.status, PlayerStatus::Online);
+    }
 
     #[test]
     fn unknown_group_kinds_do_not_fail_the_list() {

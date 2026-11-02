@@ -11,8 +11,8 @@ use oneclient_events::{
 };
 use tokio::sync::mpsc;
 
-use crate::chat::ChatMessage;
-use crate::hooks::PumpSignal;
+use crate::chat::{ChatMessage, ChatToast};
+use crate::hooks::{Actions, PumpSignal};
 use crate::i18n::t;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
 use crate::state::{AppChannel, AppState, LoginProgress, StorageScanProgress};
@@ -26,6 +26,7 @@ pub struct EventPump {
     pub events: EventReceiver,
     pub signals: mpsc::UnboundedReceiver<PumpSignal>,
     pub station: RadioStation<AppState, AppChannel>,
+    pub actions: Actions,
 }
 
 impl EventPump {
@@ -239,6 +240,7 @@ impl EventPump {
             }
         }
 
+        let mut toasts: Vec<ChatToast> = Vec::new();
         if !chat_events.is_empty() {
             let mut guard = self.station.write_channel(AppChannel::Chat);
             for event in chat_events {
@@ -271,9 +273,32 @@ impl EventPump {
                         let viewing = (crate::view::chat::is_chat_window_focused()
                             || guard.social_open)
                             && guard.chat.active == Some(group_id);
+                        let own = guard.chat.owner == Some(sender);
+                        if viewing && !own && !folded.chat_read.contains(&group_id) {
+                            folded.chat_read.push(group_id);
+                        }
+                        if !viewing && !own {
+                            let group_name = guard
+                                .chat
+                                .conversation(group_id)
+                                .filter(|conversation| {
+                                    conversation.kind == oneclient_polyplus::GroupKind::Group
+                                })
+                                .and_then(|conversation| conversation.name.clone());
+                            toasts.retain(|toast| toast.group_id() != Some(group_id));
+                            toasts.push(match invite_id {
+                                Some(_) => ChatToast::Invite { group_id, sender },
+                                None => ChatToast::Message {
+                                    group_id,
+                                    sender,
+                                    group_name,
+                                    content: content.clone(),
+                                },
+                            });
+                        }
                         guard
                             .chat
-                            .note_activity(group_id, sender, content, !viewing);
+                            .note_activity(group_id, sender, content, !viewing && !own);
                     }
                     ChatEvent::MessageEdited {
                         group_id,
@@ -289,9 +314,14 @@ impl EventPump {
                     } => guard.chat.remove(group_id, message_id),
                     ChatEvent::PresenceChanged { .. } => {}
                     ChatEvent::RosterChanged => folded.chat_roster = true,
+                    ChatEvent::FriendRequestReceived { sender } => {
+                        folded.chat_roster = true;
+                        toasts.push(ChatToast::FriendRequest { sender });
+                    }
                     ChatEvent::ConnectionChanged { connected } => {
                         guard.chat.connected = connected;
                         folded.chat_reconnected |= connected;
+                        folded.chat_roster |= connected;
                     }
                 }
             }
@@ -356,6 +386,15 @@ impl EventPump {
         if folded.chat_reconnected {
             let station = self.station;
             spawn_forever(async move { crate::hooks::resync_chat(station).await });
+            spawn_forever(async move { crate::hooks::load_self_status(station).await });
+        }
+        for toast in toasts {
+            let actions = self.actions.clone();
+            spawn_forever(async move { crate::hooks::notify_chat(actions, toast).await });
+        }
+        for group_id in std::mem::take(&mut folded.chat_read) {
+            let station = self.station;
+            spawn_forever(async move { crate::hooks::mark_chat_read(station, group_id).await });
         }
 
         folded
@@ -374,6 +413,7 @@ struct Folded {
     chat_roster: bool,
     chat_unknown_group: bool,
     chat_reconnected: bool,
+    chat_read: Vec<i32>,
 }
 
 fn reconcile(

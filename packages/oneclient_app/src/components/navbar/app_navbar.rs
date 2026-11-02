@@ -334,7 +334,7 @@ impl Component for NavbarRight {
             .spacing(8.)
             .maybe_child(chat_allowed.then(|| {
                 super::navbar_button(foreground)
-                    .tooltip("Friends and chat")
+                    .tooltip(t("oneclient.components.navbar.social"))
                     .enabled(has_account)
                     .child(social_icon(unread_chats))
                     .on_press(toggle_social)

@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use tokio::sync::RwLock;
+use uuid::Uuid;
 
 use oneclient_common::constants;
 use oneclient_events::EventBus;
@@ -16,8 +17,8 @@ use oneclient_net::{RequestClient, RequestError};
 
 pub use models::{
     BlockedPlayer, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary, LastMessage,
-    MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, RelationshipKind, ResolvedPlayer,
-    SessionInvite,
+    MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, PlayerStatus, RelationshipKind,
+    ResolvedPlayer, SessionInvite,
 };
 pub use packets::ClientboundPacket;
 
@@ -93,8 +94,10 @@ pub struct PlusClient {
     requester: RequestClient,
     auth: Arc<oneclient_auth::AuthService>,
     events: EventBus,
-    token: RwLock<Option<String>>,
+    token: RwLock<Option<(Uuid, String)>>,
+    session_account: std::sync::Mutex<Option<Uuid>>,
     restart: tokio::sync::watch::Sender<u64>,
+    watched: tokio::sync::watch::Sender<Vec<Uuid>>,
 }
 
 impl PlusClient {
@@ -108,7 +111,9 @@ impl PlusClient {
             auth,
             events,
             token: RwLock::new(None),
+            session_account: std::sync::Mutex::new(None),
             restart: tokio::sync::watch::Sender::new(0),
+            watched: tokio::sync::watch::Sender::new(Vec::new()),
         }
     }
 
@@ -121,12 +126,18 @@ impl PlusClient {
             return Err(PlusError::ConsentRequired);
         }
 
-        if let Some(token) = self.token.read().await.clone() {
+        let owner = self.auth.default_account().await?.map(|account| account.id);
+
+        if let Some((id, token)) = self.token.read().await.clone()
+            && Some(id) == owner
+        {
             return Ok(token);
         }
 
         let mut guard = self.token.write().await;
-        if let Some(token) = guard.clone() {
+        if let Some((id, token)) = guard.clone()
+            && Some(id) == owner
+        {
             return Ok(token);
         }
 
@@ -134,7 +145,7 @@ impl PlusClient {
             .await?
             .ok_or(PlusError::NoAccount)?;
         let token = session::login(&self.requester, &account).await?;
-        *guard = Some(token.clone());
+        *guard = Some((account.id, token.clone()));
 
         Ok(token)
     }
@@ -143,10 +154,40 @@ impl PlusClient {
         self.token.write().await.take();
     }
 
+    pub(crate) fn set_session_account(&self, account: Option<Uuid>) {
+        if let Ok(mut current) = self.session_account.lock() {
+            *current = account;
+        }
+    }
+
+    async fn restart_if_switched(&self) {
+        let owner = self
+            .auth
+            .default_account()
+            .await
+            .ok()
+            .flatten()
+            .filter(oneclient_auth::MinecraftAccount::is_microsoft)
+            .map(|account| account.id);
+
+        let current = self
+            .session_account
+            .lock()
+            .ok()
+            .and_then(|current| *current);
+        if current != owner {
+            self.request_restart();
+        }
+    }
+
     pub(crate) fn request_restart(&self) {
         self.restart.send_modify(|generation| {
             *generation = generation.wrapping_add(1);
         });
+    }
+
+    pub(crate) fn watched_players(&self) -> tokio::sync::watch::Receiver<Vec<Uuid>> {
+        self.watched.subscribe()
     }
 
     pub(crate) fn restart_signal(&self) -> tokio::sync::watch::Receiver<u64> {
@@ -177,15 +218,23 @@ pub fn client() -> Option<Arc<PlusClient>> {
     CLIENT.get().map(Arc::clone)
 }
 
-pub async fn forget_token() {
-    if let Some(client) = client() {
-        client.forget_token().await;
-    }
+pub fn watch_players(mut players: Vec<Uuid>) {
+    let Some(client) = client() else { return };
+
+    players.sort_unstable();
+    players.dedup();
+    client.watched.send_if_modified(|watched| {
+        if *watched == players {
+            return false;
+        }
+        *watched = players;
+        true
+    });
 }
 
-pub fn restart_session() {
+pub async fn restart_session() {
     if let Some(client) = client() {
-        client.request_restart();
+        client.restart_if_switched().await;
     }
 }
 

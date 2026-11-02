@@ -5,7 +5,7 @@ use chrono::{DateTime, FixedOffset, Utc};
 use uuid::Uuid;
 
 use oneclient_polyplus::{
-    BlockedPlayer, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary,
+    BlockedPlayer, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary, PlayerStatus,
 };
 
 use crate::state::AsyncStatus;
@@ -44,6 +44,7 @@ pub struct ChatConversation {
     pub preview: Option<String>,
     pub preview_sender: Option<Uuid>,
     pub last_activity: Option<DateTime<FixedOffset>>,
+    pub special: bool,
 }
 
 impl From<GroupSummary> for ChatConversation {
@@ -62,6 +63,7 @@ impl From<GroupSummary> for ChatConversation {
             preview,
             preview_sender,
             last_activity,
+            special: value.special,
         }
     }
 }
@@ -145,19 +147,48 @@ pub enum FriendRequestStatus {
     Failed(String),
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub enum SelfStatus {
-    #[default]
-    Online,
-    Invisible,
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChatInvite {
     pub id: i32,
     pub from: Uuid,
     pub group_id: i32,
     pub message_id: i64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum ChatToast {
+    Message {
+        group_id: i32,
+        sender: Uuid,
+        group_name: Option<String>,
+        content: String,
+    },
+    Invite {
+        group_id: i32,
+        sender: Uuid,
+    },
+    FriendRequest {
+        sender: Uuid,
+    },
+}
+
+impl ChatToast {
+    #[must_use]
+    pub fn sender(&self) -> Uuid {
+        match self {
+            Self::Message { sender, .. }
+            | Self::Invite { sender, .. }
+            | Self::FriendRequest { sender } => *sender,
+        }
+    }
+
+    #[must_use]
+    pub fn group_id(&self) -> Option<i32> {
+        match self {
+            Self::Message { group_id, .. } | Self::Invite { group_id, .. } => Some(*group_id),
+            Self::FriendRequest { .. } => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -201,7 +232,7 @@ pub struct ChatState {
     pub error: Option<String>,
     pub active: Option<i32>,
     pub owner: Option<Uuid>,
-    pub self_status: SelfStatus,
+    pub self_status: PlayerStatus,
     pub friend_request: FriendRequestStatus,
     conversations: Vec<ChatConversation>,
     messages: HashMap<i32, Arc<Vec<ChatMessage>>>,
@@ -271,8 +302,14 @@ impl ChatState {
         self.roster.clone()
     }
 
+    #[must_use]
+    pub fn has_incoming_requests(&self) -> bool {
+        !self.roster.requests.incoming.is_empty()
+    }
+
     pub fn set_roster(&mut self, roster: ChatRoster) {
         self.roster = roster;
+        self.presence.clear();
     }
 
     #[must_use]
@@ -332,6 +369,18 @@ impl ChatState {
         let mut messages: Vec<ChatMessage> = page.into_iter().map(ChatMessage::from).collect();
         messages.sort_by_key(|message| message.id);
         messages.dedup_by_key(|message| message.id);
+
+        if let (Some(first), Some(last)) = (messages.first(), messages.last()) {
+            let (first, last) = (first.id, last.id);
+            messages.extend(
+                self.messages_for(group_id)
+                    .iter()
+                    .filter(|message| message.id < first || message.id > last)
+                    .cloned(),
+            );
+            messages.sort_by_key(|message| message.id);
+        }
+
         self.messages.insert(group_id, Arc::new(messages));
     }
 
@@ -448,6 +497,18 @@ impl ChatState {
         self.presence.insert(player, online);
     }
 
+    pub fn forget_conversation(&mut self, group_id: i32) {
+        self.conversations
+            .retain(|conversation| conversation.id != group_id);
+        self.messages.remove(&group_id);
+        self.pending.remove(&group_id);
+        self.threads.remove(&group_id);
+        self.complete.remove(&group_id);
+        if self.active == Some(group_id) {
+            self.active = None;
+        }
+    }
+
     pub fn mark_read(&mut self, group_id: i32) {
         if let Some(conversation) = self
             .conversations
@@ -541,6 +602,7 @@ mod tests {
             members: Vec::new(),
             last_message: None,
             unread,
+            special: false,
         }
     }
 
@@ -831,6 +893,65 @@ mod tests {
         };
 
         assert!(!chat.inbox().loading);
+    }
+
+    #[test]
+    fn reloading_the_newest_page_keeps_older_history_and_live_messages() {
+        let mut chat = ChatState::default();
+        chat.upsert(1, message(5, "older page"));
+        chat.upsert(1, message(20, "stale copy"));
+        chat.upsert(1, message(25, "deleted meanwhile"));
+        chat.upsert(1, message(40, "arrived live"));
+
+        chat.set_messages(
+            1,
+            vec![
+                fetched(10, "newest page", "2026-01-01T00:00:00Z"),
+                fetched(20, "fresh copy", "2026-01-01T00:01:00Z"),
+                fetched(30, "newest page", "2026-01-01T00:02:00Z"),
+            ],
+        );
+
+        let messages = chat.messages_for(1);
+        let ids: Vec<i64> = messages.iter().map(|m| m.id).collect();
+        assert_eq!(ids, vec![5, 10, 20, 30, 40]);
+        assert_eq!(messages[2].content, "fresh copy");
+    }
+
+    #[test]
+    fn a_fresh_roster_overrides_old_presence() {
+        let mut chat = ChatState::default();
+        let friend = Uuid::from_u128(2);
+        chat.set_presence(friend, true);
+
+        chat.set_roster(ChatRoster {
+            friends: vec![Friend {
+                player: friend,
+                kind: oneclient_polyplus::RelationshipKind::Friend,
+                since: DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z").expect("timestamp"),
+                online: false,
+            }],
+            ..ChatRoster::default()
+        });
+
+        assert!(!chat.is_online(friend));
+    }
+
+    #[test]
+    fn leaving_a_group_forgets_it_entirely() {
+        let mut chat = ChatState::default();
+        chat.set_conversations(vec![summary(1, false), summary(2, false)]);
+        chat.upsert(1, message(10, "hello"));
+        chat.begin_send(1, Uuid::from_u128(9), "draft".into());
+        chat.active = Some(1);
+
+        chat.forget_conversation(1);
+
+        let ids: Vec<i32> = chat.conversations().iter().map(|c| c.id).collect();
+        assert_eq!(ids, vec![2]);
+        assert!(!chat.has_messages(1));
+        assert!(chat.pending_for(1).is_empty());
+        assert_eq!(chat.active, None);
     }
 
     #[test]

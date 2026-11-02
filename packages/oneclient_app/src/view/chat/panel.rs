@@ -5,6 +5,7 @@ use crate::components::IconType;
 use crate::hooks::{
     settled_or_loading, use_chat_inbox, use_chat_roster, use_current_account, use_dispatch,
 };
+use crate::i18n::t;
 use crate::theme::colors;
 
 use super::common::HeaderButton;
@@ -51,7 +52,12 @@ impl Component for SocialPanel {
         let (own_id, username) = account
             .flatten()
             .map(|account| (account.id, account.username))
-            .unwrap_or_else(|| (Uuid::nil(), "Not signed in".to_string()));
+            .unwrap_or_else(|| {
+                (
+                    Uuid::nil(),
+                    t("oneclient.chat.panel.not_signed_in").to_string(),
+                )
+            });
 
         use_hook({
             let dispatch = dispatch.clone();
@@ -87,6 +93,7 @@ impl Component for SocialPanel {
             expanded: self.expanded,
             own_id,
             username,
+            connected: chat.connected,
             conversations: chat.conversations.clone(),
             loading: chat.loading,
             error: chat
@@ -147,14 +154,14 @@ fn empty_detail() -> Element {
         .spacing(6.)
         .child(
             label()
-                .text("No chat selected")
+                .text(t("oneclient.chat.panel.no_chat_selected"))
                 .font_size(14.)
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
-                .text("Pick a chat, friend or group from the list.")
+                .text(t("oneclient.chat.panel.no_chat_selected_hint"))
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )
@@ -172,7 +179,7 @@ fn opening(error: &Option<String>, on_back: Option<EventHandler<()>>) -> Element
                 .padding(Gaps::new(12., 10., 12., 8.))
                 .child(HeaderButton {
                     icon: IconType::ArrowLeft,
-                    tooltip: "Back",
+                    tooltip: t("oneclient.chat.common.back"),
                     on_press: on_back,
                 })
         }))
@@ -184,7 +191,11 @@ fn opening(error: &Option<String>, on_back: Option<EventHandler<()>>) -> Element
                 .padding(Gaps::new_all(24.))
                 .child(
                     label()
-                        .text(error.clone().unwrap_or_else(|| "Opening chat…".to_string()))
+                        .text(
+                            error
+                                .clone()
+                                .unwrap_or_else(|| t("oneclient.chat.panel.opening").to_string()),
+                        )
                         .font_size(12.)
                         .color(match error {
                             Some(_) => colors::danger(),

@@ -4,13 +4,12 @@ use freya::prelude::*;
 use freya::winit::dpi::{PhysicalPosition, PhysicalSize};
 
 use crate::hooks::{use_dispatch, use_provide_station};
+use crate::i18n::t;
 use crate::state::AppState;
 use crate::theme::{self, colors};
 use crate::view::single_window::{Claim, SingleWindow};
 
 use super::panel::{PanelMode, SocialPanel};
-
-const WINDOW_TITLE: &str = "Social — OneClient";
 
 const WINDOW_WIDTH_PX: f64 = 940.;
 const WINDOW_HEIGHT_PX: f64 = 720.;
@@ -114,7 +113,7 @@ pub fn close_chat_window() {
 
 fn window_config(position: Option<PhysicalPosition<i32>>) -> WindowConfig {
     WindowConfig::new_app(ChatApp)
-        .with_title(WINDOW_TITLE)
+        .with_title(t("oneclient.chat.window.title"))
         .with_app_id(crate::constants::WINDOW_APP_ID)
         .with_icon(LaunchConfig::window_icon(include_bytes!(
             "../../../icons/128x128.png"

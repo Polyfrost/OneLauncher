@@ -2,6 +2,7 @@ use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
 
 use crate::hooks::{use_chat_allowed, use_dispatch, use_social_open, use_social_popped_notice};
+use crate::i18n::t;
 use crate::theme::{self, colors};
 
 use super::common::{CARD_RADIUS_PX, ROW_RADIUS_PX, chip_bg, hairline, inset_border, popup_shadow};
@@ -101,7 +102,7 @@ impl Component for PoppedNotice {
             .border(inset_border(hairline()))
             .child(
                 label()
-                    .text("Social is open in a separate window")
+                    .text(t("oneclient.chat.overlay.popped_out"))
                     .font_size(12.)
                     .color(colors::fg_primary()),
             )
@@ -117,7 +118,7 @@ impl Component for PoppedNotice {
                     .on_press(move |_| dispatch.dock_social())
                     .child(
                         label()
-                            .text("Dock back")
+                            .text(t("oneclient.chat.overlay.dock_back"))
                             .font_size(12.)
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),

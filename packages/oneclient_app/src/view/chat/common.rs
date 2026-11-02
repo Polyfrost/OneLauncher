@@ -4,6 +4,7 @@ use uuid::Uuid;
 
 use crate::components::{Avatar, Icon, IconType};
 use crate::hooks::{settled_or_loading, use_player_profile};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 
 pub(super) const LIST_WIDTH_PX: f32 = 320.;
@@ -76,7 +77,7 @@ pub(super) fn row_time(at: DateTime<FixedOffset>) -> String {
 
     match days {
         ..=0 => local.format("%H:%M").to_string(),
-        1 => "Yesterday".to_string(),
+        1 => t("oneclient.chat.time.yesterday").to_string(),
         2..=6 => local.format("%a").to_string(),
         _ => local.format("%d/%m").to_string(),
     }
@@ -87,8 +88,8 @@ pub(super) fn day_label(at: DateTime<FixedOffset>) -> String {
     let days = (Local::now().date_naive() - local.date_naive()).num_days();
 
     match days {
-        ..=0 => "Today".to_string(),
-        1 => "Yesterday".to_string(),
+        ..=0 => t("oneclient.chat.time.today").to_string(),
+        1 => t("oneclient.chat.time.yesterday").to_string(),
         _ => local.format("%B %-d").to_string(),
     }
 }
@@ -97,13 +98,13 @@ pub(super) fn ago(at: DateTime<FixedOffset>) -> String {
     let elapsed = Utc::now().signed_duration_since(at);
 
     if elapsed.num_minutes() < 1 {
-        "just now".to_string()
+        t("oneclient.chat.time.just_now").to_string()
     } else if elapsed.num_hours() < 1 {
-        format!("{}m", elapsed.num_minutes())
+        tf("oneclient.chat.time.minutes", &[&elapsed.num_minutes()])
     } else if elapsed.num_days() < 1 {
-        format!("{}h", elapsed.num_hours())
+        tf("oneclient.chat.time.hours", &[&elapsed.num_hours()])
     } else {
-        format!("{}d", elapsed.num_days())
+        tf("oneclient.chat.time.days", &[&elapsed.num_days()])
     }
 }
 

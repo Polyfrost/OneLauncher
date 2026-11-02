@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,7 +12,7 @@ use oneclient_auth::MinecraftAccount;
 use oneclient_events::{ChatEvent, EventBus};
 use oneclient_net::{RequestClient, RequestError};
 
-use crate::packets::ClientboundPacket;
+use crate::packets::{ClientboundPacket, ServerboundPacket};
 use crate::{PlusClient, PlusError, base_url, plus_blocked};
 
 const MOJANG_JOIN_URL: &str = "https://sessionserver.mojang.com/session/minecraft/join";
@@ -20,6 +21,9 @@ const PING_INTERVAL: Duration = Duration::from_secs(30);
 
 const RECONNECT_DELAY: Duration = Duration::from_secs(15);
 const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(300);
+
+const MAX_PLAYERS_PER_PACKET: usize = 64;
+const MAX_WATCHED_PLAYERS: usize = 512;
 
 #[derive(serde::Deserialize)]
 struct LoginResponse {
@@ -36,6 +40,7 @@ enum Outcome {
 enum Frame {
     Ping,
     Restart,
+    Watch,
     Message(Option<Message>),
 }
 
@@ -106,12 +111,17 @@ async fn session(
 ) -> Outcome {
     let account = match current_account(&client.auth).await {
         Ok(Some(account)) => account,
-        Ok(None) => return Outcome::NoAccount,
+        Ok(None) => {
+            client.set_session_account(None);
+            return Outcome::NoAccount;
+        }
         Err(err) => {
+            client.set_session_account(None);
             tracing::warn!("[plus] no account to open a session for: {err}");
             return Outcome::Failed;
         }
     };
+    client.set_session_account(Some(account.id));
 
     let id = account.id;
     let mut connected = false;
@@ -169,12 +179,14 @@ async fn run_session(
     tracing::info!("[plus] websocket connected for {}", account.id);
 
     let account_id = account.id;
+    let mut watched = client.watched_players();
     pump(
         &mut websocket,
         &client.events,
         PING_INTERVAL,
         account_id,
         restart,
+        &mut watched,
         || async move { plus_blocked() || account_changed(&client.auth, account_id).await },
     )
     .await
@@ -186,6 +198,7 @@ async fn pump<F, Fut>(
     ping_interval: Duration,
     account_id: Uuid,
     restart: &mut tokio::sync::watch::Receiver<u64>,
+    watched: &mut tokio::sync::watch::Receiver<Vec<Uuid>>,
     should_stop: F,
 ) -> Result<Ended, PlusError>
 where
@@ -196,10 +209,15 @@ where
     ping.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
     ping.tick().await;
 
+    let mut subscribed = HashSet::new();
+    let wanted = watched.borrow_and_update().clone();
+    sync_watched(websocket, &mut subscribed, &wanted).await?;
+
     loop {
         let frame = tokio::select! {
             _ = ping.tick() => Frame::Ping,
             _ = restart.changed() => Frame::Restart,
+            Ok(()) = watched.changed() => Frame::Watch,
             message = websocket.try_next() => Frame::Message(message?),
         };
 
@@ -213,6 +231,10 @@ where
                 websocket.send(Message::Ping(Bytes::new())).await?;
             }
             Frame::Restart => return Ok(Ended::Restart),
+            Frame::Watch => {
+                let wanted = watched.borrow_and_update().clone();
+                sync_watched(websocket, &mut subscribed, &wanted).await?;
+            }
             Frame::Message(Some(Message::Text(payload))) => dispatch(events, &payload),
             Frame::Message(Some(Message::Close { code, reason })) => {
                 tracing::info!("[plus] websocket closed by the server: {code:?} {reason}");
@@ -224,6 +246,47 @@ where
     }
 
     Ok(Ended::Closed)
+}
+
+async fn sync_watched(
+    websocket: &mut reqwest_websocket::WebSocket,
+    subscribed: &mut HashSet<Uuid>,
+    wanted: &[Uuid],
+) -> Result<(), PlusError> {
+    let wanted: HashSet<Uuid> = wanted
+        .iter()
+        .copied()
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .take(MAX_WATCHED_PLAYERS)
+        .collect();
+
+    let removed: Vec<Uuid> = subscribed.difference(&wanted).copied().collect();
+    let added: Vec<Uuid> = wanted.difference(subscribed).copied().collect();
+
+    for players in removed.chunks(MAX_PLAYERS_PER_PACKET) {
+        send(
+            websocket,
+            &ServerboundPacket::UnsubscribePlayers { players },
+        )
+        .await?;
+    }
+    for players in added.chunks(MAX_PLAYERS_PER_PACKET) {
+        send(websocket, &ServerboundPacket::SubscribePlayers { players }).await?;
+    }
+
+    *subscribed = wanted;
+    Ok(())
+}
+
+async fn send(
+    websocket: &mut reqwest_websocket::WebSocket,
+    packet: &ServerboundPacket<'_>,
+) -> Result<(), PlusError> {
+    let payload = serde_json::to_string(packet)
+        .map_err(|err| PlusError::Request(RequestError::SerializeError(err)))?;
+    websocket.send(Message::Text(payload)).await?;
+    Ok(())
 }
 
 fn dispatch(events: &EventBus, payload: &str) {
@@ -272,8 +335,10 @@ fn dispatch(events: &EventBus, payload: &str) {
         ClientboundPacket::PlayerPresence { player, online } => {
             events.chat(ChatEvent::PresenceChanged { player, online });
         }
-        ClientboundPacket::FriendRequestReceived { .. }
-        | ClientboundPacket::FriendRequestUpdated { .. }
+        ClientboundPacket::FriendRequestReceived { sender, .. } => {
+            events.chat(ChatEvent::FriendRequestReceived { sender });
+        }
+        ClientboundPacket::FriendRequestUpdated { .. }
         | ClientboundPacket::FriendRemoved { .. } => events.chat(ChatEvent::RosterChanged),
         ClientboundPacket::Error {
             error_code,
@@ -414,6 +479,8 @@ mod tests {
 
         let restart = tokio::sync::watch::Sender::new(0u64);
         let mut quiet = restart.subscribe();
+        let watched = tokio::sync::watch::Sender::new(Vec::new());
+        let mut nobody = watched.subscribe();
 
         let pumped = tokio::time::timeout(
             Duration::from_secs(10),
@@ -423,6 +490,7 @@ mod tests {
                 Duration::from_millis(50),
                 Uuid::nil(),
                 &mut quiet,
+                &mut nobody,
                 || async { false },
             ),
         )
@@ -434,6 +502,87 @@ mod tests {
             Ended::Closed
         ));
         assert_eq!(pings.load(Ordering::SeqCst), 3);
+    }
+
+    async fn text_recording_server(
+        close_after: usize,
+    ) -> (
+        String,
+        tokio::sync::oneshot::Receiver<Vec<serde_json::Value>>,
+    ) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+        let port = listener.local_addr().expect("addr").port();
+        let (done, received) = tokio::sync::oneshot::channel();
+
+        tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept");
+            let mut server = accept_async(stream).await.expect("handshake");
+            let mut texts = Vec::new();
+
+            while let Some(Ok(message)) = server.next().await {
+                if let ServerMessage::Text(text) = message {
+                    texts.push(serde_json::from_str(text.as_str()).expect("json packet"));
+                    if texts.len() >= close_after {
+                        let _ = server.close(None).await;
+                        break;
+                    }
+                }
+            }
+
+            let _ = done.send(texts);
+        });
+
+        (format!("ws://127.0.0.1:{port}/websocket"), received)
+    }
+
+    fn players_of(packet: &serde_json::Value) -> HashSet<Uuid> {
+        serde_json::from_value(packet["players"].clone()).expect("players")
+    }
+
+    #[tokio::test]
+    async fn watched_friends_are_subscribed_and_kept_in_step() {
+        let first = Uuid::from_u128(1);
+        let second = Uuid::from_u128(2);
+        let third = Uuid::from_u128(3);
+
+        let (url, received) = text_recording_server(3).await;
+        let mut websocket = connect(&url).await;
+        let (events, _receiver) = EventBus::channel();
+
+        let restart = tokio::sync::watch::Sender::new(0u64);
+        let mut quiet = restart.subscribe();
+        let watched = tokio::sync::watch::Sender::new(vec![first, second]);
+        let mut friends = watched.subscribe();
+
+        let pumping = tokio::spawn(async move {
+            pump(
+                &mut websocket,
+                &events,
+                Duration::from_secs(60),
+                Uuid::nil(),
+                &mut quiet,
+                &mut friends,
+                || async { false },
+            )
+            .await
+            .map(|_| ())
+        });
+
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        watched.send_replace(vec![second, third]);
+
+        let texts = tokio::time::timeout(Duration::from_secs(10), received)
+            .await
+            .expect("server should see three packets")
+            .expect("server result");
+        let _ = pumping.await;
+
+        assert_eq!(texts[0]["type"], "SubscribePlayers");
+        assert_eq!(players_of(&texts[0]), HashSet::from([first, second]));
+        assert_eq!(texts[1]["type"], "UnsubscribePlayers");
+        assert_eq!(players_of(&texts[1]), HashSet::from([first]));
+        assert_eq!(texts[2]["type"], "SubscribePlayers");
+        assert_eq!(players_of(&texts[2]), HashSet::from([third]));
     }
 
     #[test]

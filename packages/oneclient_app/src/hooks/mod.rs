@@ -9,7 +9,10 @@ mod shortcut_actions;
 mod sync_actions;
 mod view_state;
 
-pub use chat::{ChatJob, load_conversations, load_roster, resync_chat};
+pub use chat::{
+    ChatJob, load_conversations, load_roster, load_self_status, mark_read as mark_chat_read,
+    notify_chat, resync_chat,
+};
 
 pub use debounce::use_debounced;
 pub use overlay_claims::{
@@ -216,7 +219,10 @@ pub fn use_chat_thread(group_id: i32) -> ChatThread {
 }
 
 pub fn use_chat_unread() -> bool {
-    use_radio(AppChannel::Chat).read().chat.has_unread()
+    let roster = use_radio(AppChannel::ChatRoster);
+    let chat = use_radio(AppChannel::Chat);
+    let incoming = roster.read().chat.has_incoming_requests();
+    incoming || chat.read().chat.has_unread()
 }
 
 pub fn use_player_online(player: uuid::Uuid) -> bool {
@@ -249,7 +255,7 @@ pub fn use_chat_friend_request() -> crate::chat::FriendRequestStatus {
         .clone()
 }
 
-pub fn use_chat_self_status() -> crate::chat::SelfStatus {
+pub fn use_chat_self_status() -> oneclient_polyplus::PlayerStatus {
     use_radio(AppChannel::Chat).read().chat.self_status
 }
 

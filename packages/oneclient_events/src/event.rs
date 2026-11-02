@@ -275,6 +275,10 @@ pub enum ChatEvent {
 
     RosterChanged,
 
+    FriendRequestReceived {
+        sender: Uuid,
+    },
+
     ConnectionChanged {
         connected: bool,
     },

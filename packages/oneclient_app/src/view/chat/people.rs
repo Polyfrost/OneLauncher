@@ -6,7 +6,8 @@ use uuid::Uuid;
 use oneclient_polyplus::Friend;
 
 use crate::components::{Avatar, Button, Icon, IconType, OverlayPopup, ScrollArea, TextInput};
-use crate::hooks::use_dispatch;
+use crate::hooks::{use_chat_roster, use_dispatch};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -98,19 +99,19 @@ impl Component for NewGroupDialog {
                 .height(Size::fill())
                 .content(Content::Flex)
                 .spacing(14.)
-                .child(dialog_title("New group", close))
+                .child(dialog_title(t("oneclient.chat.new_group.title"), close))
                 .child(
                     TextInput::new(name)
                         .width(Size::fill())
-                        .placeholder("Group name"),
+                        .placeholder(t("oneclient.chat.new_group.name_placeholder")),
                 )
-                .child(section_heading("Members"))
+                .child(section_heading(t("oneclient.chat.new_group.members")))
                 .child(
                     ScrollArea::new()
                         .width(Size::fill())
                         .height(Size::flex(1.0))
                         .child(if rows.is_empty() {
-                            hint("Add friends first, then you can group them.").into_element()
+                            hint(t("oneclient.chat.new_group.no_friends")).into_element()
                         } else {
                             rect()
                                 .vertical()
@@ -129,11 +130,98 @@ impl Component for NewGroupDialog {
                             Button::new()
                                 .primary()
                                 .medium()
-                                .text("Create")
+                                .text(t("oneclient.chat.new_group.create"))
                                 .enabled(can_create)
                                 .on_press(move |_| {
                                     dispatch.create_chat_group(title.clone(), members.clone());
                                     creating.call(());
+                                }),
+                        ),
+                )
+                .into_element(),
+        )
+    }
+}
+
+#[derive(PartialEq)]
+pub(super) struct AddMembersDialog {
+    pub group_id: i32,
+    pub members: Vec<Uuid>,
+    pub on_close: EventHandler<()>,
+}
+
+impl Component for AddMembersDialog {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let roster = use_chat_roster();
+        let mut picked = use_state(HashSet::<Uuid>::new);
+
+        let chosen = picked.read().clone();
+        let group_id = self.group_id;
+        let close = self.on_close.clone();
+        let adding = self.on_close.clone();
+
+        let rows: Vec<Element> = roster
+            .friends
+            .iter()
+            .filter(|friend| !self.members.contains(&friend.player))
+            .map(|friend| {
+                let player = friend.player;
+                MemberOption {
+                    player,
+                    selected: chosen.contains(&player),
+                    on_toggle: EventHandler::new(move |_| {
+                        let mut next = picked.read().clone();
+                        if !next.remove(&player) {
+                            next.insert(player);
+                        }
+                        picked.set(next);
+                    }),
+                }
+                .into_element()
+            })
+            .collect();
+
+        let additions: Vec<Uuid> = chosen.iter().copied().collect();
+
+        dialog(
+            self.on_close.clone(),
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .height(Size::fill())
+                .content(Content::Flex)
+                .spacing(14.)
+                .child(dialog_title(t("oneclient.chat.groups.add_members"), close))
+                .child(
+                    ScrollArea::new()
+                        .width(Size::fill())
+                        .height(Size::flex(1.0))
+                        .child(if rows.is_empty() {
+                            hint(t("oneclient.chat.groups.no_friends_to_add")).into_element()
+                        } else {
+                            rect()
+                                .vertical()
+                                .width(Size::fill())
+                                .spacing(4.)
+                                .children(rows)
+                                .into_element()
+                        }),
+                )
+                .child(
+                    rect()
+                        .horizontal()
+                        .width(Size::fill())
+                        .main_align(Alignment::End)
+                        .child(
+                            Button::new()
+                                .primary()
+                                .medium()
+                                .text(t("oneclient.chat.groups.add"))
+                                .enabled(!additions.is_empty())
+                                .on_press(move |_| {
+                                    dispatch.add_group_members(group_id, additions.clone());
+                                    adding.call(());
                                 }),
                         ),
                 )

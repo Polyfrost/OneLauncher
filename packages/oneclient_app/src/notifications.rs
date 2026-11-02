@@ -31,6 +31,7 @@ pub enum NotificationActionKind {
     OpenClusterUpdate(Vec<ClusterUpdateSummary>),
     /// Routed through the link confirm popup rather than opened straight away
     OpenUrl(String),
+    OpenChat(Option<i32>),
 }
 
 /// Carries core updates whole not a display projection the modal's Update button

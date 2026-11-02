@@ -57,9 +57,29 @@ pub enum ClientboundPacket {
     Unhandled,
 }
 
+#[derive(Debug, serde::Serialize)]
+#[serde(tag = "type")]
+pub(crate) enum ServerboundPacket<'a> {
+    SubscribePlayers { players: &'a [Uuid] },
+    UnsubscribePlayers { players: &'a [Uuid] },
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn subscribing_matches_the_server_shape() {
+        let player = Uuid::from_u128(1);
+        let packet =
+            serde_json::to_value(ServerboundPacket::SubscribePlayers { players: &[player] })
+                .expect("packet should serialize");
+
+        assert_eq!(
+            packet,
+            serde_json::json!({ "type": "SubscribePlayers", "players": [player] })
+        );
+    }
 
     #[test]
     fn parses_a_group_message() {

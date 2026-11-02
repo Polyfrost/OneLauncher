@@ -6,8 +6,8 @@ use oneclient_net::RequestError;
 
 use crate::models::{
     BlockedPlayer, CreateGroupRequest, EditMessageRequest, Friend, FriendRequest, GroupMessage,
-    GroupSummary, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, ResolveRequest, ResolveResponse,
-    ResolvedPlayer, SendMessageRequest,
+    GroupSummary, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, PlayerStatus, ResolveRequest, ResolveResponse,
+    ResolvedPlayer, SendMessageRequest, StatusBody,
 };
 use crate::{PlusClient, PlusError, base_url};
 
@@ -219,6 +219,19 @@ impl PlusClient {
         .await
     }
 
+    pub async fn status(&self) -> Result<PlayerStatus, PlusError> {
+        let body: StatusBody = self
+            .json(Method::GET, self.url("/account/status")?, None)
+            .await?;
+        Ok(body.status)
+    }
+
+    pub async fn set_status(&self, status: PlayerStatus) -> Result<(), PlusError> {
+        let body = serialize(&StatusBody { status })?;
+        self.unit(Method::PUT, self.url("/account/status")?, Some(body))
+            .await
+    }
+
     pub async fn resolve_players(&self, ids: &[Uuid]) -> Result<Vec<ResolvedPlayer>, PlusError> {
         let mut resolved = Vec::with_capacity(ids.len());
 
@@ -234,14 +247,12 @@ impl PlusClient {
     }
 
     pub async fn lookup_username(&self, username: &str) -> Result<Option<Uuid>, PlusError> {
-        match self
-            .json::<ResolvedPlayer>(
-                Method::GET,
-                self.url(&format!("/players/by-username/{username}"))?,
-                None,
-            )
-            .await
-        {
+        let mut url = self.url("/players/by-username")?;
+        url.path_segments_mut()
+            .map_err(|()| url::ParseError::RelativeUrlWithCannotBeABaseBase)?
+            .push(username);
+
+        match self.json::<ResolvedPlayer>(Method::GET, url, None).await {
             Ok(player) => Ok(Some(player.id)),
             Err(err) if err.is_not_found() => Ok(None),
             Err(err) => Err(err),

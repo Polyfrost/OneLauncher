@@ -4,10 +4,11 @@ use uuid::Uuid;
 use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 
 use crate::chat::{ChatConversation, ChatMessage, MessageInvite, PendingMessage, ThreadStatus};
-use crate::components::{Avatar, Button, Icon, IconType, ScrollArea, TextInput};
+use crate::components::{Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, TextInput};
 use crate::hooks::{
     Actions, use_chat_online_set, use_chat_thread, use_dispatch, use_player_online,
 };
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 
 use super::common::{
@@ -15,7 +16,8 @@ use super::common::{
     edge_border, group_heads, hairline, head_with_dot, hover_bg, inset_border, popup_shadow,
     presence_color, use_player_name,
 };
-use super::list::{accent_button, conversation_title};
+use super::list::conversation_title;
+use super::people::AddMembersDialog;
 
 const PAGE_TRIGGER_PX: f32 = 240.;
 
@@ -59,11 +61,15 @@ impl Component for ThreadView {
         let mut pinned = use_state(|| true);
         let mut may_page = use_state(|| false);
         let mut shown = use_state(|| group_id);
+        let mut editing = use_state(|| None::<(i64, String)>);
+        let mut adding = use_state(|| false);
 
         if *shown.peek() != group_id {
             shown.set(group_id);
             pinned.set(true);
             may_page.set(false);
+            editing.set(None);
+            adding.set(false);
         }
 
         let paging = dispatch.clone();
@@ -82,8 +88,11 @@ impl Component for ThreadView {
             rows.push(
                 MessageRow {
                     message: message.clone(),
+                    group_id,
+                    own: message.sender == own_id,
                     show_head,
                     first: previous.is_none(),
+                    editing,
                 }
                 .into_element(),
             );
@@ -105,6 +114,9 @@ impl Component for ThreadView {
         }
 
         let title_hint = self.conversation.clone();
+        let members = self.conversation.members.clone();
+        let leave = dispatch.clone();
+        let back = self.on_back.clone();
 
         rect()
             .vertical()
@@ -117,11 +129,18 @@ impl Component for ThreadView {
                 show_back: !self.expanded,
                 can_close: self.can_close && !self.expanded,
                 on_back: self.on_back.clone(),
+                on_add_members: EventHandler::new(move |_| adding.set(true)),
+                on_leave: EventHandler::new(move |_| {
+                    leave.leave_group(group_id);
+                    back.call(());
+                }),
             })
             .child(match (empty, &thread.status) {
-                (true, ThreadStatus::Loading) => {
-                    thread_notice("Loading messages…", colors::fg_secondary(), None)
-                }
+                (true, ThreadStatus::Loading) => thread_notice(
+                    t("oneclient.chat.thread.loading"),
+                    colors::fg_secondary(),
+                    None,
+                ),
                 (true, ThreadStatus::Error(message)) => thread_notice(
                     message.clone(),
                     colors::danger(),
@@ -129,7 +148,11 @@ impl Component for ThreadView {
                         paging.reload_conversation(group_id);
                     })),
                 ),
-                (true, _) => thread_notice("No messages yet.", colors::fg_secondary(), None),
+                (true, _) => thread_notice(
+                    t("oneclient.chat.thread.empty"),
+                    colors::fg_secondary(),
+                    None,
+                ),
                 _ => ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
@@ -169,11 +192,20 @@ impl Component for ThreadView {
                     group_id,
                     placeholder: title_hint,
                     own_id,
+                    editing,
                     on_sent: EventHandler::new(move |_| pinned.set(true)),
                     key: DiffKey::None,
                 }
                 .key(group_id),
             )
+            .maybe_child(adding().then(|| {
+                AddMembersDialog {
+                    group_id,
+                    members,
+                    on_close: EventHandler::new(move |_| adding.set(false)),
+                }
+                .into_element()
+            }))
     }
 }
 
@@ -215,7 +247,7 @@ fn thread_notice(
             Button::new()
                 .secondary()
                 .small()
-                .text("Try again")
+                .text(t("oneclient.chat.common.try_again"))
                 .on_press(on_retry)
         }))
         .into_element()
@@ -241,7 +273,7 @@ fn thread_banner(message: String, on_retry: EventHandler<Event<PressEventData>>)
             Button::new()
                 .ghost()
                 .small()
-                .text("Try again")
+                .text(t("oneclient.chat.common.try_again"))
                 .on_press(on_retry),
         )
         .into_element()
@@ -254,11 +286,41 @@ struct ThreadHeader {
     show_back: bool,
     can_close: bool,
     on_back: EventHandler<()>,
+    on_add_members: EventHandler<()>,
+    on_leave: EventHandler<()>,
 }
 
 impl Component for ThreadHeader {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
+        let mut menu = use_state(|| None::<(f32, f32)>);
+        let is_group = self.conversation.kind == GroupKind::Group;
+        let can_leave = !self.conversation.special;
+
+        let context = (*menu.read()).map(|(x, y)| {
+            let add = self.on_add_members.clone();
+            let leave = self.on_leave.clone();
+            let options = ContextMenu::new(x, y)
+                .on_close(move |_| menu.set(None))
+                .action(
+                    IconType::Plus,
+                    t("oneclient.chat.groups.add_members"),
+                    move |()| add.call(()),
+                );
+
+            if can_leave {
+                options
+                    .separator()
+                    .danger_action(
+                        IconType::LogOut01,
+                        t("oneclient.chat.groups.leave"),
+                        move |()| leave.call(()),
+                    )
+                    .into_element()
+            } else {
+                options.into_element()
+            }
+        });
         let counterpart = self.conversation.counterpart(self.own_id);
         let name = use_player_name(counterpart.unwrap_or(self.own_id));
         let online = use_player_online(counterpart.unwrap_or(self.own_id));
@@ -274,12 +336,12 @@ impl Component for ThreadHeader {
         let title = conversation_title(&self.conversation, counterpart.map(|_| name));
 
         let sub = match (self.conversation.kind, counterpart) {
-            (GroupKind::Group, _) => format!(
-                "{} members · {online_members} online",
-                self.conversation.members.len()
+            (GroupKind::Group, _) => tf(
+                "oneclient.chat.groups.members_online",
+                &[&self.conversation.members.len(), &online_members],
             ),
-            (_, Some(_)) if online => "Online".to_string(),
-            (_, Some(_)) => "Offline".to_string(),
+            (_, Some(_)) if online => t("oneclient.chat.status.online").to_string(),
+            (_, Some(_)) => t("oneclient.chat.status.offline").to_string(),
             _ => String::new(),
         };
 
@@ -298,7 +360,7 @@ impl Component for ThreadHeader {
             .border(edge_border(hairline(), 0., 0., 1.))
             .maybe_child(self.show_back.then(|| HeaderButton {
                 icon: IconType::ArrowLeft,
-                tooltip: "Back",
+                tooltip: t("oneclient.chat.common.back"),
                 on_press: self.on_back.clone(),
             }))
             .child(match counterpart {
@@ -328,17 +390,34 @@ impl Component for ThreadHeader {
                             .text_overflow(TextOverflow::Ellipsis),
                     ),
             )
+            .maybe_child(is_group.then(|| {
+                rect()
+                    .on_press(move |e: Event<PressEventData>| {
+                        if let PressEventData::Mouse(m) = e.data() {
+                            menu.set(Some((
+                                m.global_location.x as f32,
+                                m.global_location.y as f32,
+                            )));
+                        }
+                    })
+                    .child(HeaderButton {
+                        icon: IconType::DotsVertical,
+                        tooltip: t("oneclient.chat.groups.options"),
+                        on_press: EventHandler::new(|_| {}),
+                    })
+            }))
+            .maybe_child(context)
             .maybe_child(self.can_close.then(|| {
                 let pop_out = dispatch.clone();
                 HeaderButton {
                     icon: IconType::LinkExternal01,
-                    tooltip: "Open in a window",
+                    tooltip: t("oneclient.chat.thread.open_in_window"),
                     on_press: EventHandler::new(move |_| pop_out.pop_out_social()),
                 }
             }))
             .maybe_child(self.can_close.then(|| HeaderButton {
                 icon: IconType::XClose,
-                tooltip: "Close",
+                tooltip: t("oneclient.chat.common.close"),
                 on_press: EventHandler::new(move |_| dispatch.close_social()),
             }))
     }
@@ -385,7 +464,7 @@ fn sender_line(name: String, time: Option<String>, edited: bool) -> impl IntoEle
         }))
         .maybe_child(edited.then(|| {
             label()
-                .text("edited")
+                .text(t("oneclient.chat.thread.edited"))
                 .font_size(10.)
                 .color(colors::fg_secondary())
         }))
@@ -394,13 +473,40 @@ fn sender_line(name: String, time: Option<String>, edited: bool) -> impl IntoEle
 #[derive(PartialEq)]
 struct MessageRow {
     message: ChatMessage,
+    group_id: i32,
+    own: bool,
     show_head: bool,
     first: bool,
+    editing: State<Option<(i64, String)>>,
 }
 
 impl Component for MessageRow {
     fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
         let name = use_player_name(self.message.sender);
+        let mut menu = use_state(|| None::<(f32, f32)>);
+        let editable = self.own && self.message.invite.is_none();
+
+        let context = (*menu.read()).filter(|_| editable).map(|(x, y)| {
+            let mut editing = self.editing;
+            let group_id = self.group_id;
+            let message_id = self.message.id;
+            let content = self.message.content.clone();
+            ContextMenu::new(x, y)
+                .on_close(move |_| menu.set(None))
+                .action(
+                    IconType::Pencil01,
+                    t("oneclient.chat.thread.edit"),
+                    move |()| editing.set(Some((message_id, content.clone()))),
+                )
+                .separator()
+                .danger_action(
+                    IconType::Trash01,
+                    t("oneclient.chat.thread.delete"),
+                    move |()| dispatch.delete_chat_message(group_id, message_id),
+                )
+                .into_element()
+        });
         let gap = if self.first {
             8.
         } else if self.show_head {
@@ -431,7 +537,25 @@ impl Component for MessageRow {
                         .into_element(),
                 });
 
-        message_grid(self.show_head.then_some(self.message.sender), gap, body)
+        rect()
+            .width(Size::fill())
+            .on_secondary_down(move |e: Event<PressEventData>| {
+                if !editable {
+                    return;
+                }
+                if let PressEventData::Mouse(m) = e.data() {
+                    menu.set(Some((
+                        m.global_location.x as f32,
+                        m.global_location.y as f32,
+                    )));
+                }
+            })
+            .child(message_grid(
+                self.show_head.then_some(self.message.sender),
+                gap,
+                body,
+            ))
+            .maybe_child(context)
     }
 }
 
@@ -442,19 +566,35 @@ struct InviteCard {
 
 impl Component for InviteCard {
     fn render(&self) -> impl IntoElement {
-        let dispatch = use_dispatch();
-        let id = self.invite.id;
-
-        let footer = match self.invite.status.as_str() {
-            "accepted" => status_line(Some(IconType::Check), "Running", colors::success()),
-            "declined" => status_line(None, "Declined", colors::fg_secondary()),
-            "expired" => status_line(None, "Expired", colors::fg_secondary()),
-            _ => rect()
-                .width(Size::fill())
-                .child(accent_button("Launch", move |_| {
-                    dispatch.accept_chat_invite(id)
-                }))
-                .into_element(),
+        let footer = if self.invite.is_open() {
+            status_line(
+                None,
+                t("oneclient.chat.invites.join_in_game"),
+                colors::fg_secondary(),
+            )
+        } else {
+            match self.invite.status.to_ascii_lowercase().as_str() {
+                "accepted" => status_line(
+                    Some(IconType::Check),
+                    t("oneclient.chat.invites.running"),
+                    colors::success(),
+                ),
+                "declined" => status_line(
+                    None,
+                    t("oneclient.chat.invites.declined"),
+                    colors::fg_secondary(),
+                ),
+                "expired" => status_line(
+                    None,
+                    t("oneclient.chat.invites.expired"),
+                    colors::fg_secondary(),
+                ),
+                _ => status_line(
+                    None,
+                    t("oneclient.chat.invites.cancelled"),
+                    colors::fg_secondary(),
+                ),
+            }
         };
 
         rect()
@@ -472,7 +612,7 @@ impl Component for InviteCard {
                     .spacing(5.)
                     .child(
                         label()
-                            .text("WORLD INVITE")
+                            .text(t("oneclient.chat.invites.card_label"))
                             .font_size(10.)
                             .font_weight(FontWeight::MEDIUM)
                             .letter_spacing(0.6)
@@ -480,7 +620,7 @@ impl Component for InviteCard {
                     )
                     .child(
                         label()
-                            .text("Shared session")
+                            .text(t("oneclient.chat.invites.shared_session"))
                             .font_size(14.)
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
@@ -545,7 +685,11 @@ impl Component for PendingRow {
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text(if failed { "Not sent" } else { "Sending…" })
+                            .text(if failed {
+                                t("oneclient.chat.thread.not_sent")
+                            } else {
+                                t("oneclient.chat.thread.sending")
+                            })
                             .font_size(10.)
                             .color(if failed {
                                 colors::danger()
@@ -557,14 +701,14 @@ impl Component for PendingRow {
                         Button::new()
                             .ghost()
                             .small()
-                            .text("Retry")
+                            .text(t("oneclient.chat.common.retry"))
                             .on_press(move |_| dispatch.retry_chat_message(group_id, key))
                     }))
                     .maybe_child(failed.then(|| {
                         Button::new()
                             .ghost()
                             .small()
-                            .text("Discard")
+                            .text(t("oneclient.chat.thread.discard"))
                             .on_press(move |_| discard.discard_chat_message(group_id, key))
                     })),
             );
@@ -580,6 +724,7 @@ impl Component for PendingRow {
 fn submit_draft(
     dispatch: &Actions,
     mut draft: State<String>,
+    mut editing: State<Option<(i64, String)>>,
     group_id: i32,
     on_sent: &EventHandler<()>,
 ) {
@@ -588,9 +733,20 @@ fn submit_draft(
         return;
     }
 
-    dispatch.send_chat_message(group_id, content);
+    let edit = editing.read().clone();
+    match edit {
+        Some((message_id, original)) => {
+            if content.trim() != original.trim() {
+                dispatch.edit_chat_message(group_id, message_id, content);
+            }
+            editing.set(None);
+        }
+        None => {
+            dispatch.send_chat_message(group_id, content);
+            on_sent.call(());
+        }
+    }
     draft.set(String::new());
-    on_sent.call(());
 }
 
 #[derive(PartialEq)]
@@ -598,6 +754,7 @@ struct Composer {
     group_id: i32,
     placeholder: ChatConversation,
     own_id: Uuid,
+    editing: State<Option<(i64, String)>>,
     on_sent: EventHandler<()>,
     key: DiffKey,
 }
@@ -615,7 +772,20 @@ impl Component for Composer {
         let mut emoji_open = use_state(|| false);
         let mut picker_area = use_state(Area::default);
         let mut toggle_area = use_state(Area::default);
+        let mut loaded_edit = use_state(|| None::<i64>);
         let group_id = self.group_id;
+        let editing = self.editing;
+        let mut cancel_edit = self.editing;
+
+        let current_edit = editing.read().clone();
+        let edit_id = current_edit.as_ref().map(|(id, _)| *id);
+        if edit_id != *loaded_edit.peek() {
+            match &current_edit {
+                Some((_, content)) => draft.set(content.clone()),
+                None => draft.set(String::new()),
+            }
+            loaded_edit.set(edit_id);
+        }
 
         let counterpart = self.placeholder.counterpart(self.own_id);
         let name = use_player_name(counterpart.unwrap_or(self.own_id));
@@ -651,7 +821,7 @@ impl Component for Composer {
                 .child(
                     rect().padding(Gaps::new(2., 0., 0., 0.)).child(
                         label()
-                            .text("EMOJI")
+                            .text(t("oneclient.chat.thread.emoji_heading"))
                             .font_size(11.)
                             .font_weight(FontWeight::MEDIUM)
                             .letter_spacing(0.44)
@@ -690,6 +860,33 @@ impl Component for Composer {
             .padding(Gaps::new(8., 12., 12., 12.))
             .spacing(6.)
             .maybe_child(picker)
+            .maybe_child(current_edit.is_some().then(|| {
+                rect()
+                    .horizontal()
+                    .width(Size::fill())
+                    .spacing(6.)
+                    .content(Content::Flex)
+                    .cross_align(Alignment::Center)
+                    .child(
+                        Icon::new(IconType::Pencil01)
+                            .size(12.)
+                            .color(colors::fg_secondary()),
+                    )
+                    .child(
+                        label()
+                            .text(t("oneclient.chat.thread.editing"))
+                            .font_size(11.)
+                            .width(Size::flex(1.0))
+                            .color(colors::fg_secondary()),
+                    )
+                    .child(
+                        Button::new()
+                            .ghost()
+                            .small()
+                            .text(t("oneclient.chat.common.cancel"))
+                            .on_press(move |_| cancel_edit.set(None)),
+                    )
+            }))
             .child(
                 rect()
                     .horizontal()
@@ -709,7 +906,7 @@ impl Component for Composer {
                             .center()
                             .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
                             .cursor(CursorIcon::Pointer)
-                            .a11y_alt("Emoji")
+                            .a11y_alt(t("oneclient.chat.thread.emoji"))
                             .on_sized(move |e: Event<SizedEventData>| {
                                 toggle_area.set_if_modified(e.area)
                             })
@@ -723,10 +920,10 @@ impl Component for Composer {
                             .bare()
                             .width(Size::flex(1.0))
                             .font_size(14.)
-                            .placeholder(format!("Message {title}"))
+                            .placeholder(tf("oneclient.chat.thread.message_placeholder", &[&title]))
                             .on_submit(move |_| {
                                 emoji_open.set(false);
-                                submit_draft(&on_key, draft, group_id, &sent_by_key);
+                                submit_draft(&on_key, draft, editing, group_id, &sent_by_key);
                             }),
                     )
                     .child(
@@ -737,19 +934,17 @@ impl Component for Composer {
                             .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
                             .background(colors::brand())
                             .cursor(CursorIcon::Pointer)
-                            .a11y_alt("Send")
+                            .a11y_alt(t("oneclient.chat.common.send"))
                             .on_press(move |_| {
                                 emoji_open.set(false);
-                                submit_draft(&dispatch, draft, group_id, &sent_by_press);
+                                submit_draft(&dispatch, draft, editing, group_id, &sent_by_press);
                             })
                             .child(Icon::new(IconType::Send01).size(14.).color(Color::WHITE)),
                     ),
             )
             .maybe_child(too_long.then(|| {
                 label()
-                    .text(format!(
-                        "Messages are limited to {MAX_MESSAGE_LENGTH} characters."
-                    ))
+                    .text(tf("oneclient.chat.thread.too_long", &[&MAX_MESSAGE_LENGTH]))
                     .font_size(11.)
                     .color(colors::danger())
             }))

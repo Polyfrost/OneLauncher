@@ -11,6 +11,7 @@ use crate::hooks::{
     try_cluster_worlds, try_world_datapacks, use_cluster, use_cluster_worlds, use_datapack_world,
     use_dispatch, use_view_state, use_world_datapacks,
 };
+use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
 use crate::theme::colors;
 use crate::{Actions, Route};
@@ -21,7 +22,7 @@ use super::folder_list::{
     matches_search, notify_in_use, search_input, toolbar_action, toolbar_panel,
     use_game_folder_in_use,
 };
-use super::package_manager::{empty_hint, empty_shell, empty_title};
+use super::package_manager::{copy_list_button, empty_hint, empty_shell, empty_title};
 
 const WORLD_PICKER_W: f32 = 220.;
 
@@ -33,8 +34,8 @@ pub struct ClusterDataPacks {
 fn pick_and_add(cluster_id: i64, world: String, dispatch: Actions) {
     spawn(async move {
         let Some(handles) = rfd::AsyncFileDialog::new()
-            .set_title("Select data packs to add")
-            .add_filter("Data pack", &["zip"])
+            .set_title(t("oneclient.cluster.datapacks.picker.title"))
+            .add_filter(t("oneclient.cluster.datapacks.picker.filter"), &["zip"])
             .pick_files()
             .await
         else {
@@ -43,7 +44,7 @@ fn pick_and_add(cluster_id: i64, world: String, dispatch: Actions) {
         let files = handles.iter().map(|h| h.path().to_path_buf()).collect();
         spawn_world_task(
             dispatch,
-            "Couldn't add data packs",
+            t("oneclient.cluster.datapacks.add_failed"),
             add_world_datapacks(cluster_id, world, files),
         );
     });
@@ -91,10 +92,10 @@ impl Component for ClusterDataPacks {
         let Some(world) = current else {
             let empty = (!query_is_loading(&worlds_query)).then(|| {
                 empty_shell(IconType::Globe01)
-                    .child(empty_title("No worlds yet."))
-                    .child(empty_hint(
-                        "Data packs live inside worlds, so create a world in game first.",
-                    ))
+                    .child(empty_title(t(
+                        "oneclient.cluster.datapacks.no_worlds.title",
+                    )))
+                    .child(empty_hint(t("oneclient.cluster.datapacks.no_worlds.hint")))
                     .into_element()
             });
             return cluster_content()
@@ -141,9 +142,15 @@ impl Component for ClusterDataPacks {
                     },
                     title: info.file_name.clone(),
                     badge: if info.is_dir {
-                        (IconType::Folder, "Folder".to_string())
+                        (
+                            IconType::Folder,
+                            t("oneclient.cluster.datapacks.badge.folder").to_string(),
+                        )
                     } else {
-                        (IconType::File02, "Zip".to_string())
+                        (
+                            IconType::File02,
+                            t("oneclient.cluster.datapacks.badge.zip").to_string(),
+                        )
                     },
                     description: info.description.clone(),
                     size: info.size_bytes,
@@ -161,10 +168,8 @@ impl Component for ClusterDataPacks {
             let add_dispatch = dispatch.clone();
             Some(
                 empty_shell(IconType::FilePlus02)
-                    .child(empty_title("No data packs in this world yet."))
-                    .child(empty_hint(
-                        "Data packs only apply to the world they are added to.",
-                    ))
+                    .child(empty_title(t("oneclient.cluster.datapacks.empty.title")))
+                    .child(empty_hint(t("oneclient.cluster.datapacks.empty.hint")))
                     .child(rect().height(Size::px(6.)))
                     .child(
                         rect()
@@ -178,7 +183,7 @@ impl Component for ClusterDataPacks {
                                         browse(cluster_id, browse_world.clone(), remembered)
                                     })
                                     .child(Icon::new(IconType::SearchMd).size(14.))
-                                    .text("Browse Content")
+                                    .text(t("oneclient.cluster.package_manager.browse_content"))
                             })
                             .child(
                                 Button::new()
@@ -191,7 +196,7 @@ impl Component for ClusterDataPacks {
                                         )
                                     })
                                     .child(Icon::new(IconType::FilePlus02).size(14.))
-                                    .text("Add from file"),
+                                    .text(t("oneclient.cluster.package_manager.add_from_file")),
                             ),
                     )
                     .into_element(),
@@ -199,8 +204,12 @@ impl Component for ClusterDataPacks {
         } else {
             Some(
                 empty_shell(IconType::SearchMd)
-                    .child(empty_title("No data packs match your search."))
-                    .child(empty_hint("Try a different term."))
+                    .child(empty_title(t(
+                        "oneclient.cluster.datapacks.search_empty.title",
+                    )))
+                    .child(empty_hint(t(
+                        "oneclient.cluster.package_manager.search_empty.hint",
+                    )))
                     .into_element(),
             )
         };
@@ -226,14 +235,31 @@ impl Component for ClusterDataPacks {
         let mut controls = vec![search_input(search)];
         controls.extend(folder.clone().map(folder_button));
         controls.push(layout_toggle(layout));
+        if !all.is_empty() {
+            let mut names: Vec<String> = all.iter().map(|p| p.file_name.clone()).collect();
+            names.sort_by_key(|name| name.to_lowercase());
+            controls.push(copy_list_button(
+                dispatch.clone(),
+                names.len(),
+                t("oneclient.cluster.datapacks.noun.one"),
+                t("oneclient.cluster.datapacks.noun.other"),
+                move || {
+                    names
+                        .iter()
+                        .map(|name| format!("- {name}"))
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                },
+            ));
+        }
         let browse_world = world.clone();
         controls.push(
-            toolbar_action(IconType::SearchMd, "Browse")
+            toolbar_action(IconType::SearchMd, t("oneclient.common.browse"))
                 .on_press(move |_| browse(cluster_id, browse_world.clone(), remembered))
                 .into_element(),
         );
         controls.push(
-            toolbar_action(IconType::Plus, "Add Data Packs")
+            toolbar_action(IconType::Plus, t("oneclient.cluster.datapacks.add"))
                 .on_press(move |_| {
                     pick_and_add(cluster_id, add_world.clone(), add_dispatch.clone())
                 })
@@ -245,17 +271,21 @@ impl Component for ClusterDataPacks {
             let reveal = folder.clone();
             ContextMenu::new(x, y)
                 .title(info.file_name.clone())
-                .action(IconType::Folder, "Open folder", move |()| {
-                    if let Some(dir) = &reveal {
-                        crate::platform::open_path(&dir.to_string_lossy());
-                    }
-                })
+                .action(
+                    IconType::Folder,
+                    t("oneclient.cluster.datapacks.menu.open_folder"),
+                    move |()| {
+                        if let Some(dir) = &reveal {
+                            crate::platform::open_path(&dir.to_string_lossy());
+                        }
+                    },
+                )
                 .separator()
-                .danger_action(IconType::Trash01, "Delete", {
+                .danger_action(IconType::Trash01, t("oneclient.common.delete"), {
                     let dispatch = dispatch.clone();
                     move |()| {
                         if in_use {
-                            notify_in_use(&dispatch, "Data packs");
+                            notify_in_use(&dispatch, t("oneclient.cluster.datapacks.in_use"));
                         } else {
                             pending_delete.set(Some(delete_name.clone()));
                         }
@@ -268,22 +298,20 @@ impl Component for ClusterDataPacks {
         let confirm_overlay = pending_delete.read().clone().map(|file_name| {
             let delete_world = world.clone();
             confirm_dialog(
-                format!("Move \"{file_name}\" to trash?"),
-                format!(
-                    "It is removed from \"{world}\" only and can be restored from your system trash."
-                ),
+                tf("oneclient.cluster.datapacks.delete.title", &[&file_name]),
+                tf("oneclient.cluster.datapacks.delete.body", &[&world]),
                 move || pending_delete.set(None),
                 {
                     let dispatch = dispatch.clone();
                     move || {
                         pending_delete.set(None);
                         if in_use {
-                            notify_in_use(&dispatch, "Data packs");
+                            notify_in_use(&dispatch, t("oneclient.cluster.datapacks.in_use"));
                             return;
                         }
                         spawn_world_task(
                             dispatch.clone(),
-                            "Couldn't delete data pack",
+                            t("oneclient.cluster.datapacks.delete_failed"),
                             delete_world_datapack(
                                 cluster_id,
                                 delete_world.clone(),

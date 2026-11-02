@@ -15,7 +15,30 @@ use super::paths::artifact_absolute_path;
 const STAGING_SUFFIX: &str = ".oneclient-tmp";
 
 pub(crate) fn shares_content(cluster: &ClusterRow, content_type: ContentType) -> bool {
-    content_type.is_global() && !cluster.is_isolated()
+    content_type.is_global() && crate::modpacks::shares_game_dir(cluster)
+}
+
+pub async fn sharing_cluster_ids(
+    db: &DbPool,
+    group: Option<&str>,
+) -> Result<Vec<i64>, sqlx::Error> {
+    Ok(oneclient_db::dao::cluster::list_all(db)
+        .await?
+        .into_iter()
+        .filter(|cluster| {
+            crate::modpacks::shares_game_dir(cluster)
+                && paths::cluster_shared_group(&cluster.folder_name).as_deref() == group
+        })
+        .map(|cluster| cluster.id)
+        .collect())
+}
+
+pub async fn sharing_with(db: &DbPool, cluster: &ClusterRow) -> Result<Vec<i64>, sqlx::Error> {
+    sharing_cluster_ids(
+        db,
+        paths::cluster_shared_group(&cluster.folder_name).as_deref(),
+    )
+    .await
 }
 
 /// What a live add actually did, so a caller can say so instead of promising
@@ -124,7 +147,7 @@ async fn materialized_root(
     content_type: ContentType,
 ) -> Option<(PathBuf, &'static str)> {
     if shares_content(cluster, content_type) {
-        return paths::shared_minecraft_dir()
+        return paths::cluster_shared_dir(&cluster.folder_name)
             .ok()
             .map(|dir| (dir, manifest::GLOBAL_MANIFEST_NAME));
     }

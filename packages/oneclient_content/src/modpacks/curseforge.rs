@@ -253,12 +253,11 @@ impl ModpackContents {
 }
 
 fn download_page(project: &ProjectDetail, file_id: &str) -> Option<String> {
-    let website = project
-        .links
-        .iter()
-        .find(|(label, _)| label == "Website")
-        .map(|(_, url)| url.trim_end_matches('/').to_string())?;
-    Some(format!("{website}/download/{file_id}"))
+    let website = project.web_url()?;
+    Some(format!(
+        "{}/download/{file_id}",
+        website.trim_end_matches('/')
+    ))
 }
 
 fn parse_loader(loaders: &[CfModLoader]) -> ContentResult<(GameLoader, Option<String>)> {

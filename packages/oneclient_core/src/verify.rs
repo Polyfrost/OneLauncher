@@ -1,4 +1,6 @@
-use std::sync::Arc;
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use oneclient_common::paths;
 use oneclient_content::packages::PackageStore;
@@ -14,6 +16,34 @@ use crate::game::{
 };
 use crate::state::LauncherState;
 
+static VERIFYING: Mutex<BTreeMap<i64, usize>> = Mutex::new(BTreeMap::new());
+
+struct VerifyClaim(i64);
+
+impl VerifyClaim {
+    fn take(cluster_id: i64) -> Self {
+        *VERIFYING.lock().unwrap().entry(cluster_id).or_default() += 1;
+        Self(cluster_id)
+    }
+}
+
+impl Drop for VerifyClaim {
+    fn drop(&mut self) {
+        let mut verifying = VERIFYING.lock().unwrap();
+        if let Some(count) = verifying.get_mut(&self.0) {
+            *count -= 1;
+            if *count == 0 {
+                verifying.remove(&self.0);
+            }
+        }
+    }
+}
+
+#[must_use]
+pub fn is_verifying(cluster_id: i64) -> bool {
+    VERIFYING.lock().unwrap().contains_key(&cluster_id)
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ClusterVerifyReport {
     pub checked: usize,
@@ -21,6 +51,7 @@ pub struct ClusterVerifyReport {
     pub corrupt: usize,
     pub missing: usize,
     pub repaired: usize,
+    pub refetched: usize,
     /// Corrupt with no source to re-fetch from named so the user can replace them
     pub unrepairable: Vec<String>,
     /// Game files re-downloaded uncounted because the assets index was gone too
@@ -50,6 +81,12 @@ impl ClusterVerifyReport {
 
     fn counts_summary(&self) -> String {
         if self.is_clean() {
+            if self.refetched > 0 {
+                return format!(
+                    "All {} files verified, {} refetched.",
+                    self.checked, self.refetched
+                );
+            }
             return format!("All {} files verified.", self.checked);
         }
 
@@ -67,6 +104,9 @@ impl ClusterVerifyReport {
         if self.repaired > 0 {
             parts.push(format!("{} repaired", self.repaired));
         }
+        if self.refetched > 0 {
+            parts.push(format!("{} refetched", self.refetched));
+        }
         if !self.unrepairable.is_empty() {
             parts.push(format!("{} could not be replaced", self.unrepairable.len()));
         }
@@ -82,6 +122,7 @@ pub async fn verify_cluster_files(
     state: &Arc<LauncherState>,
     cluster_id: i64,
 ) -> LauncherResult<ClusterVerifyReport> {
+    let _claim = VerifyClaim::take(cluster_id);
     let cluster = state.clusters.get(cluster_id).await?;
 
     let progress = GroupedProgressSession::start(
@@ -172,8 +213,10 @@ async fn run_verify(
     // whole directory is gone hand the work to prepare
     let reinstalled_game_files = assets_index.is_none();
 
+    let mut unverifiable: Vec<PathBuf> = Vec::new();
+
     if let Some(assets_index) = assets_index {
-        let game = verify_game_files(
+        let (game, stale) = verify_game_files(
             progress,
             &version_info,
             assets_index,
@@ -187,6 +230,7 @@ async fn run_verify(
         report.missing += game.missing;
         game_broken = game.corrupt + game.missing;
         natives_broken = game.natives_unextracted;
+        unverifiable = stale;
     } else {
         tracing::warn!("assets index is missing; re-downloading the game files wholesale");
     }
@@ -203,8 +247,12 @@ async fn run_verify(
         game_broken
     };
 
-    if repairable > 0 || reinstalled_game_files {
-        prepare_cluster_locked(state, cluster_id, false, true, true, Some(progress)).await?;
+    if repairable > 0 || !unverifiable.is_empty() || reinstalled_game_files {
+        let staged = stage_aside(unverifiable).await;
+        let prepared =
+            prepare_cluster_locked(state, cluster_id, false, true, true, Some(progress)).await;
+        report.refetched = settle_staged(staged).await;
+        prepared?;
         report.repaired += repairable;
     }
 
@@ -220,6 +268,78 @@ async fn run_verify(
     report.reinstalled_game_files = reinstalled_game_files;
 
     Ok(report)
+}
+
+fn staged_path(path: &std::path::Path) -> Option<PathBuf> {
+    let mut aside = path.file_name()?.to_os_string();
+    aside.push(".stale");
+
+    Some(path.with_file_name(aside))
+}
+
+async fn reclaim_orphans(paths: &[PathBuf]) {
+    for path in paths {
+        let Some(aside) = staged_path(path) else {
+            continue;
+        };
+
+        if polyio::stat(&aside).await.is_err() {
+            continue;
+        }
+
+        let recovered = if polyio::stat(path).await.is_ok() {
+            polyio::remove_file(&aside).await
+        } else {
+            polyio::rename(&aside, path).await
+        };
+
+        match recovered {
+            Ok(()) => {
+                tracing::info!(path = %path.display(), "reclaimed a copy left by an interrupted verify");
+            }
+            Err(err) => {
+                tracing::warn!(path = %aside.display(), "could not reclaim a staged copy: {err}");
+            }
+        }
+    }
+}
+
+async fn stage_aside(paths: Vec<PathBuf>) -> Vec<(PathBuf, PathBuf)> {
+    reclaim_orphans(&paths).await;
+
+    let mut staged = Vec::with_capacity(paths.len());
+
+    for path in paths {
+        let Some(aside) = staged_path(&path) else {
+            continue;
+        };
+
+        match polyio::rename(&path, &aside).await {
+            Ok(()) => staged.push((path, aside)),
+            Err(err) => {
+                tracing::warn!(path = %path.display(), "could not stage for a refetch: {err}");
+            }
+        }
+    }
+
+    staged
+}
+
+async fn settle_staged(staged: Vec<(PathBuf, PathBuf)>) -> usize {
+    let mut refetched = 0;
+
+    for (path, aside) in staged {
+        if polyio::stat(&path).await.is_ok() {
+            refetched += 1;
+            if let Err(err) = polyio::remove_file(&aside).await {
+                tracing::warn!(path = %aside.display(), "could not drop the staged copy: {err}");
+            }
+        } else if let Err(err) = polyio::rename(&aside, &path).await {
+            tracing::error!(path = %path.display(), "could not restore after a failed refetch: {err}");
+        }
+    }
+
+    refetched
 }
 
 /// The content cache is content-addressed so a file that does not hash to its
@@ -369,6 +489,19 @@ mod tests {
     use super::*;
 
     #[test]
+    fn a_cluster_stays_verifying_until_its_last_claim_drops() {
+        let cluster_id = i64::MAX;
+        let first = VerifyClaim::take(cluster_id);
+        let second = VerifyClaim::take(cluster_id);
+
+        drop(first);
+        assert!(is_verifying(cluster_id));
+
+        drop(second);
+        assert!(!is_verifying(cluster_id));
+    }
+
+    #[test]
     fn a_clean_sweep_says_so() {
         let report = ClusterVerifyReport {
             checked: 5123,
@@ -386,6 +519,7 @@ mod tests {
             corrupt: 3,
             missing: 1,
             repaired: 4,
+            refetched: 0,
             unrepairable: Vec::new(),
             reinstalled_game_files: false,
             natives_in_use_by: None,
@@ -396,6 +530,18 @@ mod tests {
             report.summary(),
             "Checked 5123 files: 3 corrupt, 1 missing, 4 repaired."
         );
+    }
+
+    #[test]
+    fn hashless_loader_libraries_are_reported_as_refetched() {
+        let report = ClusterVerifyReport {
+            checked: 131,
+            refetched: 8,
+            ..Default::default()
+        };
+
+        assert!(report.is_clean());
+        assert_eq!(report.summary(), "All 131 files verified, 8 refetched.");
     }
 
     #[test]

@@ -7,23 +7,22 @@ pub use onboarding_navbar::OnboardingNavbar;
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType};
+use crate::i18n::t;
 
-pub(super) fn navbar_button() -> Button {
+pub(super) fn navbar_button(foreground: Option<Color>) -> Button {
     Button::new()
         .ghost()
+        .foreground(foreground)
         .icon()
         .width(Size::px(36.))
         .height(Size::px(36.))
 }
 
 pub fn window_controls() -> impl IntoElement {
-    controls(|| {
-        crate::view::chat::close_chat_window();
-        crate::platform::close();
-    })
+    window_controls_with(None)
 }
 
-fn controls(on_close: impl Fn() + 'static) -> impl IntoElement {
+pub fn window_controls_with(foreground: Option<Color>) -> impl IntoElement {
     let minimize = |_| {
         Platform::get().with_window(Platform::window_id(), |win| {
             win.set_minimized(true);
@@ -36,7 +35,10 @@ fn controls(on_close: impl Fn() + 'static) -> impl IntoElement {
         });
     };
 
-    let close = move |_| on_close();
+    let close = |_| {
+        crate::view::chat::close_chat_window();
+        crate::platform::close();
+    };
 
     rect()
         .horizontal()
@@ -45,20 +47,20 @@ fn controls(on_close: impl Fn() + 'static) -> impl IntoElement {
         .spacing(8.)
         .layer(Layer::OverlayLevel(15))
         .child(
-            navbar_button()
-                .tooltip("Minimize")
+            navbar_button(foreground)
+                .tooltip(t("oneclient.components.navbar.minimize"))
                 .child(Icon::new(IconType::Minus))
                 .on_press(minimize),
         )
         .child(
-            navbar_button()
-                .tooltip("Maximize")
+            navbar_button(foreground)
+                .tooltip(t("oneclient.components.navbar.maximize"))
                 .child(Icon::new(IconType::Maximize01).size(20.))
                 .on_press(maximize),
         )
         .child(
-            navbar_button()
-                .tooltip("Close")
+            navbar_button(foreground)
+                .tooltip(t("oneclient.common.close"))
                 .child(Icon::new(IconType::X))
                 .on_press(close),
         )

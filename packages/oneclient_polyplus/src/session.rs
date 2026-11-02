@@ -84,7 +84,7 @@ pub(crate) fn spawn(client: Arc<PlusClient>) {
     });
 }
 
-fn build_socket_client() -> Result<reqwest::Client, reqwest::Error> {
+pub(crate) fn build_socket_client() -> Result<reqwest::Client, reqwest::Error> {
     let builder = reqwest::Client::builder()
         .tcp_keepalive(Some(Duration::from_secs(15)))
         .connect_timeout(Duration::from_secs(10))

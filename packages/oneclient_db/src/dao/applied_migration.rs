@@ -22,3 +22,22 @@ pub async fn mark_applied(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error
 
     Ok(())
 }
+
+pub async fn forget(pool: &SqlitePool, id: &str) -> Result<(), sqlx::Error> {
+    sqlx::query("DELETE FROM applied_migrations WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+
+    Ok(())
+}
+
+pub async fn forget_prefix(pool: &SqlitePool, prefix: &str) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query("DELETE FROM applied_migrations WHERE substr(id, 1, length(?)) = ?")
+        .bind(prefix)
+        .bind(prefix)
+        .execute(pool)
+        .await?;
+
+    Ok(result.rows_affected())
+}

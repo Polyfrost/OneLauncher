@@ -207,6 +207,26 @@ pub async fn required_java_major(
     Ok(info.java_version.map(|java| java.major_version))
 }
 
+pub(crate) async fn resolved_loader_version(
+    state: &Arc<LauncherState>,
+    cluster: &Cluster,
+) -> LauncherResult<Option<String>> {
+    if let Some(pinned) = &cluster.mc_loader_version {
+        return Ok(Some(pinned.clone()));
+    }
+    let mc_version = oneclient_common::version::normalize_mc_version_input(&cluster.mc_version);
+    let mut metadata = state.metadata.lock().await;
+    let loader = get_loader_version(
+        &mut metadata,
+        &state.services.mc(),
+        &mc_version,
+        cluster.mc_loader,
+        None,
+    )
+    .await?;
+    Ok(loader.map(|loader| loader.id))
+}
+
 #[tracing::instrument(level = "debug", skip(state, bundles))]
 pub async fn estimate_cluster_download(
     state: &Arc<LauncherState>,

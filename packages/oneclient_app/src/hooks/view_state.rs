@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use freya::prelude::*;
 use oneclient_core::settings::{ViewLayout, ViewState};
 
@@ -7,6 +9,7 @@ use super::{use_dispatch, use_settings_snapshot};
 pub struct PersistedView {
     pub layout: State<ViewLayout>,
     pub sort: State<Option<String>>,
+    pub filters: State<BTreeMap<String, String>>,
 }
 
 pub fn use_view_state(key: &str) -> PersistedView {
@@ -17,14 +20,17 @@ pub fn use_view_state(key: &str) -> PersistedView {
     let initial = settings.view_state(&key);
     let init_layout = initial.layout;
     let init_sort = initial.sort;
+    let init_filters = initial.filters;
     let layout = use_state(move || init_layout);
     let sort = use_state(move || init_sort.clone());
+    let filters = use_state(move || init_filters.clone());
 
     let mut first = use_state(|| true);
     use_side_effect(move || {
         let next = ViewState {
             layout: *layout.read(),
             sort: sort.read().clone(),
+            filters: filters.read().clone(),
         };
         if *first.peek() {
             first.set(false);
@@ -38,5 +44,9 @@ pub fn use_view_state(key: &str) -> PersistedView {
         dispatch.set_settings(updated);
     });
 
-    PersistedView { layout, sort }
+    PersistedView {
+        layout,
+        sort,
+        filters,
+    }
 }

@@ -59,7 +59,7 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
     let data = paths::data_dir()?;
     let config = paths::config_dir()?;
 
-    let category_dirs = [
+    let mut category_dirs = vec![
         ("Packages", paths::packages_cache_dir()?),
         ("Minecraft versions", paths::versions_dir()?),
         ("Libraries", paths::libraries_dir()?),
@@ -71,6 +71,15 @@ pub async fn storage_report(state: &LauncherState) -> LauncherResult<StorageRepo
         ("Image cache", paths::images_cache_dir()?),
         ("Bundles", paths::bundles_dir()?),
     ];
+    let shared_groups = paths::shared_groups_dir()?;
+    if polyio::try_exists(&shared_groups).await.unwrap_or(false) {
+        category_dirs.push(("Custom shared directories", shared_groups));
+    }
+    // Only there once an instance has been reset
+    let reset_backups = paths::cluster_reset_backups_dir()?;
+    if polyio::try_exists(&reset_backups).await.unwrap_or(false) {
+        category_dirs.push(("Reset backups", reset_backups));
+    }
 
     let cluster_list = state.clusters.list().await?;
 

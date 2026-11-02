@@ -10,9 +10,10 @@ use skia_safe::sampling_options::CubicResampler;
 use crate::Route;
 use crate::components::Button;
 use crate::components::{
-    ART_PREVIEW_EDGE, AppNavbar, CodeBlock, DynamicArt, FileDropOverlay, Icon, IconType,
-    OverlayPopup, accept_drop, copy_button,
+    ART_PREVIEW_EDGE, AppNavbar, CodeBlock, CrashDialog, DynamicArt, FileDropOverlay, Icon,
+    IconType, OverlayPopup, accept_drop, copy_button,
 };
+use crate::i18n::{t, tf};
 use crate::layout::AnimatedAppOutlet;
 use crate::use_settings_snapshot;
 use oneclient_core::clusters::Cluster;
@@ -70,8 +71,13 @@ impl Component for AppShell {
             .find(|(_, s)| **s == LaunchStage::Running)
             .map(|(id, _)| *id);
 
+        // Peeked so turning the setting back on mid-game doesn't yank the view
+        let station = use_dispatch().station();
         use_side_effect_with_deps(&running_cluster, move |running| {
-            if let Some(cluster_id) = *running {
+            let open_log = station.peek().settings.settings.open_game_log_on_launch;
+            if let Some(cluster_id) = *running
+                && open_log
+            {
                 spawn(async move {
                     let _ = RouterContext::get().push(Route::ProcessLogs { cluster_id });
                 });
@@ -108,15 +114,17 @@ impl Component for AppShell {
                     .clone()
                     .map(|message| LaunchErrorDialog { message }.into_element()),
             )
+            .maybe_child(
+                game.current_crash()
+                    .filter(|_| game.error.is_none())
+                    .map(|crash| CrashDialog { crash }.into_element()),
+            )
     }
 }
 
 pub fn hides_overlay(route: &Route) -> bool {
     matches!(route, Route::Home {})
 }
-
-const DIALOG_BG: Color = Color::from_rgb(21, 28, 34);
-const CODE_BG: Color = Color::from_rgb(13, 18, 22);
 
 #[derive(PartialEq)]
 struct LaunchErrorDialog {
@@ -141,7 +149,7 @@ impl Component for LaunchErrorDialog {
                         rect()
                             .vertical()
                             .width(Size::px(560.))
-                            .background(DIALOG_BG)
+                            .background(colors::page_elevated())
                             .corner_radius(CornerRadius::new_all(16.))
                             .padding(Gaps::new_all(24.))
                             .spacing(16.)
@@ -159,7 +167,7 @@ impl Component for LaunchErrorDialog {
                                     )
                                     .child(
                                         label()
-                                            .text("Game failed to launch")
+                                            .text(t("oneclient.layout.game_error.title"))
                                             .font_size(18.)
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
@@ -167,13 +175,13 @@ impl Component for LaunchErrorDialog {
                             )
                             .child(
                                 label()
-                                    .text("Minecraft could not be launched. Error details:")
+                                    .text(t("oneclient.layout.game_error.description"))
                                     .font_size(13.)
                                     .color(colors::fg_secondary()),
                             )
                             .child(
                                 CodeBlock::new(self.message.clone())
-                                    .background(CODE_BG)
+                                    .background(colors::page())
                                     .height(260.),
                             )
                             .child(
@@ -184,14 +192,14 @@ impl Component for LaunchErrorDialog {
                                     .spacing(10.)
                                     .child(copy_button(
                                         self.message.clone(),
-                                        "Error message copied to your clipboard.",
+                                        t("oneclient.layout.game_error.copied"),
                                         copy_dispatch,
                                     ))
                                     .child(
                                         Button::new()
                                             .primary()
                                             .on_press(move |_| dispatch.dismiss_game_error())
-                                            .text("Close"),
+                                            .text(t("oneclient.common.close")),
                                     ),
                             ),
                     ),
@@ -215,7 +223,7 @@ pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
                 .width(Size::fill())
                 .background(
                     LinearGradient::new()
-                        .stop((Color::BLACK.with_a(scale(100)), 0.))
+                        .stop((colors::shade().with_a(scale(100)), 0.))
                         .stop((colors::page().with_a(scale(255)), 95.0)),
                 ),
         )
@@ -450,6 +458,7 @@ impl Component for ParallaxArt {
             .height(Size::fill())
             .overflow(Overflow::Clip)
             .position(Position::new_absolute())
+            .background(colors::art_backdrop())
             .interactive(false)
             .on_sized(move |e: Event<SizedEventData>| {
                 let (sw, sh) = (e.area.width(), e.area.height());
@@ -553,9 +562,7 @@ fn gradient_overlay_radial() -> impl IntoElement {
                 let h = bounds.height();
 
                 #[rustfmt::skip]
-                let uniforms: [f32; 2] = [
-                    w, h,
-                ];
+                let uniforms: [f32; 2] = [w, h];
 
                 let bytes = unsafe {
                     std::slice::from_raw_parts(
@@ -588,5 +595,5 @@ pub(crate) fn back_button(destination: &str) -> impl IntoElement {
         })
         .margin(Gaps::new(0., 0., 0., 32.))
         .child(Icon::new(IconType::ArrowLeft).size(12.))
-        .text(format!("Back to {destination}"))
+        .text(tf("oneclient.layout.back_to", &[&destination]))
 }

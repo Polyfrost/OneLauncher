@@ -7,13 +7,13 @@ use super::LogLevel;
 
 static SECRET: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(
-        r#"(--accessToken|--session(?:Id)?)([\s,=]+)[^\s,\[\]'"]+|(token:)[^:\s]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"#,
+        r#"(--accessToken|--session(?:Id)?)([\s,=]+)[^\s,\[\]'"]+|(\(Session ID is )[^)\s]+|(token:)[^:\s]+|eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*"#,
     )
     .expect("secret pattern")
 });
 
 pub fn censor(line: &str) -> Cow<'_, str> {
-    SECRET.replace_all(line, "${1}${2}${3}[censored]")
+    SECRET.replace_all(line, "${1}${2}${3}${4}[censored]")
 }
 
 pub fn parse_level(line: &str) -> Option<LogLevel> {

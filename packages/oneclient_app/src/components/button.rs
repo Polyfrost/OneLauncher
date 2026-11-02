@@ -5,6 +5,7 @@ use freya::prelude::*;
 
 use crate::{
     components::{Icon, IconTint, IconType, TooltipPlacement, tooltip::use_tooltip_anchor},
+    i18n::t,
     theme::colors,
 };
 
@@ -25,8 +26,6 @@ pub enum ButtonSize {
     Large,
     Icon,
 }
-
-const DISABLED_OPACITY: f32 = 0.5;
 
 struct ButtonColors {
     background: Color,
@@ -52,6 +51,7 @@ pub struct Button {
 
     enabled: bool,
     focusable: bool,
+    foreground: Option<Color>,
     alt: Option<Box<str>>,
     tooltip: Option<Box<str>>,
     tooltip_placement: TooltipPlacement,
@@ -113,6 +113,7 @@ impl Button {
             variant,
             enabled: true,
             focusable: true,
+            foreground: None,
             alt: None,
             tooltip: None,
             tooltip_placement: TooltipPlacement::default(),
@@ -196,6 +197,11 @@ impl Button {
 
     pub fn focusable(mut self, focusable: impl Into<bool>) -> Self {
         self.focusable = focusable.into();
+        self
+    }
+
+    pub fn foreground(mut self, color: impl Into<Option<Color>>) -> Self {
+        self.foreground = color.into();
         self
     }
 
@@ -293,7 +299,7 @@ impl Component for Button {
         };
 
         let foreground = if enabled() {
-            palette.foreground
+            self.foreground.unwrap_or(palette.foreground)
         } else {
             palette.disabled_foreground
         };
@@ -311,7 +317,7 @@ impl Component for Button {
         } else if hovering() {
             palette.hover_border
         } else if focus().is_focused() {
-            palette.focus_border.or(Some(Color::WHITE))
+            palette.focus_border.or(Some(colors::fg_strong()))
         } else {
             palette.border
         };
@@ -333,7 +339,7 @@ impl Component for Button {
         rect = rect.background(background).color(foreground);
 
         if !enabled() {
-            rect = rect.opacity(DISABLED_OPACITY);
+            rect = rect.opacity(colors::disabled_opacity());
         }
 
         if let Some(border) = border_color {
@@ -379,8 +385,8 @@ fn variant_colors(variant: ButtonVariant) -> ButtonColors {
             hover_background: colors::brand_hover(),
             pressed_background: colors::brand_pressed(),
             disabled_background: colors::brand_disabled(),
-            foreground: colors::fg_primary(),
-            disabled_foreground: colors::fg_primary_disabled(),
+            foreground: colors::on_brand(),
+            disabled_foreground: colors::on_brand_disabled(),
             border: None,
             hover_border: None,
             pressed_border: None,
@@ -403,8 +409,8 @@ fn variant_colors(variant: ButtonVariant) -> ButtonColors {
             hover_background: colors::danger_hover(),
             pressed_background: colors::danger_pressed(),
             disabled_background: colors::danger_disabled(),
-            foreground: colors::fg_primary(),
-            disabled_foreground: colors::fg_primary_disabled(),
+            foreground: colors::on_color(colors::danger()),
+            disabled_foreground: colors::on_color(colors::danger_disabled()),
             border: None,
             hover_border: None,
             pressed_border: None,
@@ -466,19 +472,24 @@ pub fn link_button() -> Button {
                 .size(14.)
                 .color(colors::fg_primary()),
         )
-        .child(label().text("Open"))
+        .child(label().text(t("oneclient.common.open")))
 }
 
 pub fn open_folder_button(folder: std::path::PathBuf) -> Button {
+    sized_open_folder_button(folder, 16.)
+}
+
+/// [`open_folder_button`] with a custom icon size, for buttons resized away from the icon default
+pub fn sized_open_folder_button(folder: std::path::PathBuf, icon_size: f32) -> Button {
     Button::new()
         .secondary()
         .icon()
-        .tooltip("Open folder")
+        .tooltip(t("oneclient.components.button.open_folder"))
         .on_press(move |_| {
             std::fs::create_dir_all(&folder).ok();
             crate::platform::open_path(&folder.to_string_lossy());
         })
-        .child(Icon::new(IconType::Folder).size(16.))
+        .child(Icon::new(IconType::Folder).size(icon_size))
 }
 
 pub fn copy_button(text: String, copied_body: &'static str, dispatch: crate::Actions) -> Button {
@@ -488,14 +499,14 @@ pub fn copy_button(text: String, copied_body: &'static str, dispatch: crate::Act
             if let Err(err) = freya::text_edit::Clipboard::set(text.clone()) {
                 tracing::warn!("clipboard copy failed: {err:?}");
                 dispatch
-                    .notify("Copy failed")
-                    .body("Could not copy to the clipboard.")
+                    .notify(t("oneclient.components.button.copy_failed.title"))
+                    .body(t("oneclient.components.button.copy_failed.body"))
                     .error()
                     .toast_only()
                     .send();
             } else {
                 dispatch
-                    .notify("Copied to clipboard")
+                    .notify(t("oneclient.components.button.copied"))
                     .body(copied_body)
                     .info()
                     .icon(IconType::ClipboardCheck)
@@ -504,5 +515,5 @@ pub fn copy_button(text: String, copied_body: &'static str, dispatch: crate::Act
             }
         })
         .child(Icon::new(IconType::Copy01).size(14.))
-        .text("Copy")
+        .text(t("oneclient.common.copy"))
 }

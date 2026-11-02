@@ -4,10 +4,9 @@ use oneclient_java::{JAVA_CHOICE_DOWNLOAD, JAVA_CHOICE_FOLDER, JavaVendor};
 
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
 #[derive(PartialEq)]
 pub struct JavaPromptOverlay;
@@ -61,7 +60,10 @@ impl Component for JavaPromptOverlay {
             let dispatch = folder.clone();
             spawn(async move {
                 if let Some(handle) = rfd::AsyncFileDialog::new()
-                    .set_title(format!("Select a Java {major} installation folder"))
+                    .set_title(tf(
+                        "oneclient.components.java_prompt.picker_title",
+                        &[&major],
+                    ))
                     .pick_folder()
                     .await
                 {
@@ -86,7 +88,7 @@ impl Component for JavaPromptOverlay {
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
                             .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 rect()
@@ -124,21 +126,23 @@ impl Component for JavaPromptOverlay {
                                         Button::new()
                                             .secondary()
                                             .on_press(move |_| cancel.dismiss_prompt())
-                                            .text("Cancel"),
+                                            .text(t("oneclient.common.cancel")),
                                     )
                                     .child(
                                         Button::new()
                                             .secondary()
                                             .on_press(pick_folder)
                                             .child(Icon::new(IconType::Folder).size(14.))
-                                            .text("Choose folder"),
+                                            .text(t(
+                                                "oneclient.components.java_prompt.choose_folder",
+                                            )),
                                     )
                                     .child(
                                         Button::new()
                                             .primary()
                                             .on_press(move |_| show_manager.set(true))
                                             .child(Icon::new(IconType::DownloadCloud02).size(14.))
-                                            .text("Download"),
+                                            .text(t("oneclient.common.download")),
                                     ),
                             ),
                     ),

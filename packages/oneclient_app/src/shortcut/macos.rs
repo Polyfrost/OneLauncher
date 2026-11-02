@@ -29,7 +29,11 @@ fn build(request: &ShortcutRequest, exe: &Path, path: &Path) -> Result<()> {
     std::fs::write(&script, shell_script(exe, &request.folder_name))?;
     std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755))?;
 
-    let icon = copy_icon(exe, &resources);
+    let icon = request
+        .icon
+        .as_deref()
+        .and_then(|source| cluster_icon(source, &resources))
+        .or_else(|| copy_icon(exe, &resources));
     std::fs::write(
         contents.join("Info.plist"),
         info_plist(
@@ -41,6 +45,21 @@ fn build(request: &ShortcutRequest, exe: &Path, path: &Path) -> Result<()> {
     )?;
 
     Ok(())
+}
+
+fn cluster_icon(source: &Path, resources: &Path) -> Option<String> {
+    let png = super::square_icon(source, image::ImageFormat::Png)?;
+    let entry_len = u32::try_from(png.len() + 8).ok()?;
+
+    let mut icns = Vec::with_capacity(png.len() + 16);
+    icns.extend_from_slice(b"icns");
+    icns.extend_from_slice(&(entry_len + 8).to_be_bytes());
+    icns.extend_from_slice(b"ic08");
+    icns.extend_from_slice(&entry_len.to_be_bytes());
+    icns.extend_from_slice(&png);
+
+    std::fs::write(resources.join("icon.icns"), icns).ok()?;
+    Some("icon".to_string())
 }
 
 fn copy_icon(exe: &Path, resources: &Path) -> Option<String> {

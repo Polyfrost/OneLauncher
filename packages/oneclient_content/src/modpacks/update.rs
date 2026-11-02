@@ -115,6 +115,26 @@ pub async fn check_modpack_update(
     })
 }
 
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn latest_modpack_version(
+    provider: ProviderId,
+    project_id: &str,
+    mc_version: &str,
+    loader: GameLoader,
+    ctx: &ContentCtx,
+) -> ContentResult<Option<VersionSummary>> {
+    let versions = ctx
+        .providers
+        .get(provider)?
+        .list_versions(project_id, Some(mc_version), None, 0, VERSIONS_LIMIT, ctx)
+        .await?
+        .items
+        .into_iter()
+        .filter(|version| version.loaders.is_empty() || version.loaders.contains(&loader))
+        .collect();
+    Ok(latest_of(versions))
+}
+
 fn cluster_loader(repr: i64) -> Option<GameLoader> {
     u8::try_from(repr).ok().and_then(GameLoader::from_repr)
 }
@@ -132,13 +152,21 @@ fn newest(versions: Vec<VersionSummary>, current: &ModpackRelease) -> Option<Ver
                 .map(|at| at.with_timezone(&chrono::Utc))
         });
 
-    let newer = versions.into_iter().filter(|version| {
-        version.version_id != current.version_id
-            && current_published.is_none_or(|published| version.published > published)
-    });
+    let newer = versions
+        .into_iter()
+        .filter(|version| {
+            version.version_id != current.version_id
+                && current_published.is_none_or(|published| version.published > published)
+        })
+        .collect();
 
-    let (releases, others): (Vec<_>, Vec<_>) =
-        newer.partition(|version| matches!(version.release_type, ReleaseType::Release));
+    latest_of(newer)
+}
+
+fn latest_of(versions: Vec<VersionSummary>) -> Option<VersionSummary> {
+    let (releases, others): (Vec<_>, Vec<_>) = versions
+        .into_iter()
+        .partition(|version| matches!(version.release_type, ReleaseType::Release));
 
     let latest =
         |list: Vec<VersionSummary>| list.into_iter().max_by_key(|version| version.published);

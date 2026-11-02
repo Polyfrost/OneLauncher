@@ -235,9 +235,7 @@ pub async fn plan_downloads(
                         library_artifact_size(&lib),
                     ));
             let natives = match natives_mode {
-                NativesMode::Extract => {
-                    force || !natives_extracted(&natives_dir, &lib, &java_arch)
-                }
+                NativesMode::Extract => force || !natives_extracted(&natives_dir, &lib, &java_arch),
                 NativesMode::LeaveInPlace => false,
             };
 
@@ -281,13 +279,14 @@ pub struct VerifyReport {
     /// Mismatched the manifest and were removed
     pub corrupt: usize,
     pub missing: usize,
+    pub unverifiable: usize,
     pub natives_unextracted: usize,
 }
 
 impl VerifyReport {
     #[must_use]
     pub fn needs_repair(&self) -> bool {
-        self.corrupt > 0 || self.missing > 0
+        self.corrupt > 0 || self.missing > 0 || self.unverifiable > 0
     }
 }
 
@@ -416,10 +415,16 @@ pub async fn check_natives(
 
     let mut report = NativesReport::default();
     for (family, verdicts) in families {
-        if verdicts.iter().any(|(v, _)| matches!(v, JarVerdict::Usable)) {
+        if verdicts
+            .iter()
+            .any(|(v, _)| matches!(v, JarVerdict::Usable))
+        {
             continue;
         }
-        if verdicts.iter().any(|(v, _)| matches!(v, JarVerdict::Unreadable)) {
+        if verdicts
+            .iter()
+            .any(|(v, _)| matches!(v, JarVerdict::Unreadable))
+        {
             if verdicts
                 .iter()
                 .any(|(v, extracted)| *extracted && matches!(v, JarVerdict::Unreadable))
@@ -457,7 +462,7 @@ pub async fn verify_game_files(
     assets_index: AssetsIndex,
     java_arch: &str,
     minecraft_updated: bool,
-) -> McResult<VerifyReport> {
+) -> McResult<(VerifyReport, Vec<PathBuf>)> {
     let legacy = uses_legacy_assets(&version.assets);
     let asset_dir = if legacy {
         paths::legacy_assets_dir()?
@@ -467,6 +472,7 @@ pub async fn verify_game_files(
     let lib_dir = paths::libraries_dir()?;
 
     let mut targets: Vec<(PathBuf, String)> = Vec::new();
+    let mut unverifiable: Vec<PathBuf> = Vec::new();
 
     for (name, asset) in assets_index.objects {
         let path = asset_object_path(&asset_dir, &name, &asset.hash, legacy);
@@ -494,6 +500,8 @@ pub async fn verify_game_files(
             && !artifact.sha1.is_empty()
         {
             targets.push((lib_dir.join(&artifact_path), artifact.sha1.clone()));
+        } else {
+            unverifiable.push(lib_dir.join(&artifact_path));
         }
     }
 
@@ -513,8 +521,18 @@ pub async fn verify_game_files(
 
     // One blocking task for the whole sweep a spawn_blocking per small asset
     // would cost more than the hashing itself
-    let mut report = tokio::task::spawn_blocking(move || {
+    let (mut report, stale) = tokio::task::spawn_blocking(move || {
         let mut report = VerifyReport::default();
+        let mut stale: Vec<PathBuf> = Vec::new();
+
+        for path in unverifiable {
+            if path.is_file() {
+                stale.push(path);
+            } else {
+                report.missing += 1;
+            }
+        }
+        report.unverifiable = stale.len();
 
         for (index, (path, expected)) in targets.iter().enumerate() {
             if !path.is_file() {
@@ -557,7 +575,7 @@ pub async fn verify_game_files(
             }
         }
 
-        report
+        (report, stale)
     })
     .await
     .map_err(std::io::Error::other)?;
@@ -582,13 +600,14 @@ pub async fn verify_game_files(
         checked = report.checked,
         corrupt = report.corrupt,
         missing = report.missing,
+        unverifiable = report.unverifiable,
         natives_repairable = natives.repairable.len(),
         natives_unsupported = natives.unsupported.len(),
         elapsed_ms = started.elapsed().as_millis() as u64,
         "verified game files"
     );
 
-    Ok(report)
+    Ok((report, stale))
 }
 
 #[tracing::instrument(skip_all)]
@@ -1651,7 +1670,12 @@ fn processor_inputs(info: &VersionInfo) -> Option<serde_json::Value> {
     let refs = processors
         .iter()
         .flat_map(|it| &it.args)
-        .chain(info.data.iter().flatten().flat_map(|(_, it)| [&it.client, &it.server]))
+        .chain(
+            info.data
+                .iter()
+                .flatten()
+                .flat_map(|(_, it)| [&it.client, &it.server]),
+        )
         .filter_map(|it| it.strip_prefix('[')?.strip_suffix(']'));
     let named: BTreeSet<&str> = processors
         .iter()

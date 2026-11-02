@@ -12,7 +12,9 @@ use crate::hooks::{
     ALL_VERSIONS, ClusterAction, VERSIONS_PAGE_SIZE, content_type_for_slug, use_browser_compat,
     use_cluster, use_dispatch, use_installs_snapshot, use_package_versions_when, version_list,
 };
+use crate::i18n::{t, tf};
 use crate::routes::Route;
+use crate::view::app::browser::cluster_version;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -48,6 +50,7 @@ pub(super) fn grid_row(
     package_type: &str,
     installed: &InstalledMap,
     cols: usize,
+    add_to_cluster: bool,
 ) -> impl IntoElement {
     let package_type = package_type.to_string();
     let fill = cols.saturating_sub(row.len());
@@ -66,8 +69,14 @@ pub(super) fn grid_row(
             row.into_iter()
                 .zip(installed)
                 .map(move |(item, installed)| {
-                    PackageCard::new(item, cluster_id, package_type.clone(), installed)
-                        .into_element()
+                    PackageCard::new(
+                        item,
+                        cluster_id,
+                        package_type.clone(),
+                        installed,
+                        add_to_cluster,
+                    )
+                    .into_element()
                 }),
         )
         .maybe(fill > 0, move |mut el| {
@@ -79,11 +88,18 @@ pub(super) fn grid_row(
         .into_element()
 }
 
-fn open_package(cluster_id: i64, package_type: &str, provider: ProviderId, id: &str) {
+fn open_package(
+    cluster_id: i64,
+    package_type: &str,
+    provider: ProviderId,
+    id: &str,
+    add_to_cluster: bool,
+) {
     let _ = RouterContext::get().push(Route::BrowserPackage {
         cluster_id,
         package_type: package_type.to_string(),
         package_id: encode_package_id(provider, id),
+        add_to_cluster,
     });
 }
 
@@ -93,6 +109,7 @@ struct PackageCard {
     cluster_id: i64,
     package_type: String,
     installed: Option<CardInstalled>,
+    add_to_cluster: bool,
 }
 
 impl PackageCard {
@@ -101,12 +118,14 @@ impl PackageCard {
         cluster_id: i64,
         package_type: String,
         installed: Option<CardInstalled>,
+        add_to_cluster: bool,
     ) -> Self {
         Self {
             item,
             cluster_id,
             package_type,
             installed,
+            add_to_cluster,
         }
     }
 }
@@ -122,6 +141,7 @@ impl Component for PackageCard {
             None => PackageBanner::new(icon_url.clone(), BANNER_H),
         };
         let cluster_id = self.cluster_id;
+        let add_to_cluster = self.add_to_cluster;
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -146,7 +166,9 @@ impl Component for PackageCard {
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
             .cursor(CursorIcon::Pointer)
-            .on_press(move |_| open_package(cluster_id, &package_type, provider, &id))
+            .on_press(move |_| {
+                open_package(cluster_id, &package_type, provider, &id, add_to_cluster)
+            })
             .child(
                 rect()
                     .width(Size::fill())
@@ -192,10 +214,12 @@ impl Component for PackageCard {
                                     .spacing(5.)
                                     .child(
                                         label()
-                                            .text(format!(
-                                                "by {} · {} downloads",
-                                                self.item.author,
-                                                abbreviate_number(self.item.downloads)
+                                            .text(tf(
+                                                "oneclient.browser.index.card.author_downloads",
+                                                &[
+                                                    &self.item.author,
+                                                    &abbreviate_number(self.item.downloads),
+                                                ],
                                             ))
                                             .font_size(10.)
                                             .max_lines(1)
@@ -218,6 +242,7 @@ impl Component for PackageCard {
                         self.cluster_id,
                         &self.package_type,
                         self.installed.clone(),
+                        self.add_to_cluster,
                     )),
             )
     }
@@ -228,12 +253,14 @@ pub(super) fn list_row(
     cluster_id: i64,
     package_type: &str,
     installed: &InstalledMap,
+    add_to_cluster: bool,
 ) -> impl IntoElement {
     ListRow {
         installed: installed_for(installed, &item, cluster_id),
         item,
         cluster_id,
         package_type: package_type.to_string(),
+        add_to_cluster,
     }
 }
 
@@ -243,6 +270,7 @@ struct ListRow {
     cluster_id: i64,
     package_type: String,
     installed: Option<CardInstalled>,
+    add_to_cluster: bool,
 }
 
 impl Component for ListRow {
@@ -252,6 +280,7 @@ impl Component for ListRow {
         let id = item.id.clone();
         let provider = item.provider;
         let package_type = self.package_type.clone();
+        let add_to_cluster = self.add_to_cluster;
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -280,7 +309,9 @@ impl Component for ListRow {
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
             .cursor(CursorIcon::Pointer)
-            .on_press(move |_| open_package(cluster_id, &package_type, provider, &id))
+            .on_press(move |_| {
+                open_package(cluster_id, &package_type, provider, &id, add_to_cluster)
+            })
             .child(Thumbnail::new(item.icon_url.clone(), 48.).radius(6.))
             .child(
                 rect()
@@ -302,7 +333,10 @@ impl Component for ListRow {
                             )
                             .child(
                                 label()
-                                    .text(format!("by {}", item.author))
+                                    .text(tf(
+                                        "oneclient.browser.index.card.author",
+                                        &[&item.author],
+                                    ))
                                     .font_size(10.)
                                     .max_lines(1)
                                     .color(colors::fg_primary().with_a(140)),
@@ -324,6 +358,7 @@ impl Component for ListRow {
                 self.cluster_id,
                 &self.package_type,
                 self.installed.clone(),
+                self.add_to_cluster,
             ))
     }
 }
@@ -336,6 +371,7 @@ struct InstallButton {
     content_type: ContentType,
     /// Cluster already has this one, so the control becomes a static pill
     installed: Option<CardInstalled>,
+    add_to_cluster: bool,
 }
 
 impl InstallButton {
@@ -344,13 +380,16 @@ impl InstallButton {
         cluster_id: i64,
         package_type: &str,
         installed: Option<CardInstalled>,
+        add_to_cluster: bool,
     ) -> Self {
+        let content_type = content_type_for_slug(package_type);
         Self {
             provider: item.provider,
             project_id: item.id.clone(),
             cluster_id,
-            content_type: content_type_for_slug(package_type),
+            content_type,
             installed,
+            add_to_cluster: add_to_cluster && content_type == ContentType::Modpack,
         }
     }
 }
@@ -388,7 +427,15 @@ impl Component for InstallButton {
                 VERSIONS_PAGE_SIZE
             },
         ));
-        let latest = preferred_version(&versions, self.content_type).map(|v| v.version_id.clone());
+        let add_to_cluster = self.add_to_cluster;
+        let latest = if add_to_cluster {
+            cluster
+                .as_ref()
+                .and_then(|c| cluster_version(&versions, c))
+        } else {
+            preferred_version(&versions, self.content_type)
+        }
+        .map(|v| v.version_id.clone());
         let is_datapack = self.content_type == ContentType::DataPack;
         let mut world_prompt = use_state(|| None::<String>);
         let mut modpack_prompt = use_state(|| false);
@@ -431,6 +478,8 @@ impl Component for InstallButton {
                 .into_element();
         }
 
+        let incompatible = add_to_cluster && latest.is_none() && !versions.is_empty();
+
         rect()
             // The card behind is one big press target stop here so the package page doesn't open on top of the install
             .on_press(|e: Event<PressEventData>| e.stop_propagation())
@@ -447,7 +496,16 @@ impl Component for InstallButton {
                             let Some(version_id) = latest.clone() else {
                                 return;
                             };
-                            if is_datapack {
+                            if add_to_cluster {
+                                dispatch.import_modpack(
+                                    cluster_id,
+                                    ModpackSource::Provider {
+                                        provider,
+                                        project_id: project_id.clone(),
+                                        version_id,
+                                    },
+                                );
+                            } else if is_datapack {
                                 world_prompt.set(Some(version_id));
                             } else if is_modpack {
                                 let picks = minecraft_choices(&versions);
@@ -483,7 +541,15 @@ impl Component for InstallButton {
                     )
                     .child(
                         label()
-                            .text(if installing { "Installing" } else { "Install" })
+                            .text(match (installing, add_to_cluster) {
+                                (true, true) => t("oneclient.browser.index.card.adding"),
+                                (true, false) => t("oneclient.browser.index.card.installing"),
+                                (false, true) if incompatible => {
+                                    t("oneclient.browser.index.card.incompatible")
+                                }
+                                (false, true) => t("oneclient.common.add"),
+                                (false, false) => t("oneclient.common.install"),
+                            })
                             .font_size(11.)
                             .font_weight(FontWeight::SEMI_BOLD)
                             .max_lines(1)
@@ -531,7 +597,7 @@ pub(super) fn empty_state() -> impl IntoElement {
         .center()
         .child(
             label()
-                .text("No results. Try a different search, category or provider.")
+                .text(t("oneclient.browser.index.no_results"))
                 .font_size(14.)
                 .color(colors::fg_secondary()),
         )

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM cluster_bisect_mods WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "207a9d88155e296fe6e22080f374d6244b8874b9769fbfce95fd2438b7a22d3f"
+}

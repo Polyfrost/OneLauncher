@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tINSERT INTO cluster_bundle_overrides (cluster_id, bundle_name, package_id, override_type)\n\t\tVALUES (?, ?, ?, ?)\n\t\tON CONFLICT(cluster_id, bundle_name, package_id) DO UPDATE SET\n\t\t\toverride_type = excluded.override_type\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "ae99263bd7a5173b2db9a89fab846903386a3373e967274f68dbd7bed2d148f2"
+}

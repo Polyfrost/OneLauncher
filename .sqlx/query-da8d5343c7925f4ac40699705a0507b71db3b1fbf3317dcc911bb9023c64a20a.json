@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO cluster_bisect_edges (cluster_id, from_hash, to_hash, kind)\n            VALUES (?, ?, ?, ?)\n            ON CONFLICT(cluster_id, from_hash, to_hash) DO UPDATE SET\n                kind = MIN(kind, excluded.kind)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "da8d5343c7925f4ac40699705a0507b71db3b1fbf3317dcc911bb9023c64a20a"
+}

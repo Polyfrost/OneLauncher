@@ -1,3 +1,4 @@
+pub mod launchers;
 pub mod oneclient_v1;
 pub mod vanilla;
 

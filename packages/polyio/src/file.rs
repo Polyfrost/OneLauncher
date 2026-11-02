@@ -130,14 +130,14 @@ pub async fn try_exists(path: impl AsRef<std::path::Path>) -> PolyIOResult<bool>
     skip(path),
     fields(path = %path.as_ref().display())
 )]
-pub async fn read_gz_to_string(path: impl AsRef<std::path::Path>) -> PolyIOResult<String> {
+pub async fn read_gz(path: impl AsRef<std::path::Path>) -> PolyIOResult<Vec<u8>> {
     let mut f = tokio::fs::File::open(path).await?;
     let mut buf = vec![];
     tokio::io::AsyncReadExt::read_to_end(&mut f, &mut buf).await?;
 
     let mut decoder = async_compression::tokio::bufread::GzipDecoder::new(buf.as_slice());
-    let mut dst = String::new();
-    tokio::io::AsyncReadExt::read_to_string(&mut decoder, &mut dst).await?;
+    let mut dst = vec![];
+    tokio::io::AsyncReadExt::read_to_end(&mut decoder, &mut dst).await?;
 
     Ok(dst)
 }
@@ -307,7 +307,8 @@ static ATOMIC_WRITE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// Sibling rather than temp dir `rename` across mount points fails with
 /// `EXDEV` and `/tmp` is often a separate tmpfs on Linux
-fn temp_sibling(path: &Path) -> PathBuf {
+#[must_use]
+pub fn temp_sibling(path: &Path) -> PathBuf {
     let n = ATOMIC_WRITE_COUNTER.fetch_add(1, Ordering::Relaxed);
     let stem = path
         .file_name()

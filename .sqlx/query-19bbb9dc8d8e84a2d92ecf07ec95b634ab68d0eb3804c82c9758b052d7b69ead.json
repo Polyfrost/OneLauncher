@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tUPDATE provider_releases\n\t\tSET dependencies_synced_at = datetime('now')\n\t\tWHERE provider = ? AND project_id = ? AND version_id = ?\n\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "19bbb9dc8d8e84a2d92ecf07ec95b634ab68d0eb3804c82c9758b052d7b69ead"
+}

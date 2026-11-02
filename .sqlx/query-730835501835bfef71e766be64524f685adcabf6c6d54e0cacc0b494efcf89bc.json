@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\t\tINSERT INTO provider_release_dependencies (\n\t\t\t\tprovider, project_id, version_id,\n\t\t\t\tdependency_project_id, dependency_version_id, kind\n\t\t\t)\n\t\t\tVALUES (?, ?, ?, ?, ?, ?)\n\t\t\tON CONFLICT(provider, project_id, version_id, dependency_project_id, dependency_version_id)\n\t\t\tDO UPDATE SET kind = excluded.kind\n\t\t\t",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "730835501835bfef71e766be64524f685adcabf6c6d54e0cacc0b494efcf89bc"
+}

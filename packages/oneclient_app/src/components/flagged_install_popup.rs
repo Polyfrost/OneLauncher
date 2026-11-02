@@ -3,16 +3,16 @@ use freya::router::RouterContext;
 use oneclient_content::packages::ResolvedAlternative;
 
 use crate::components::{
-    Button, Icon, IconType, Markdown, MarkdownStyle, OverlayPopup, remote_icon,
+    Button, Icon, IconType, Markdown, MarkdownStyle, OverlayPopup, ScrollArea, remote_icon,
 };
 use crate::hooks::{use_cached_image, use_dispatch, use_installs_snapshot};
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::state::FlaggedInstallPrompt;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::browser::encode_package_id;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_W: f32 = 460.;
 const ROW_H: f32 = 48.;
 const ICON_SIZE: f32 = 32.;
@@ -50,14 +50,14 @@ impl Component for FlaggedInstallPopup {
 
 fn dialog(prompt: FlaggedInstallPrompt, dispatch: crate::Actions) -> impl IntoElement {
     let description = if prompt.alternatives.is_empty() {
-        format!(
-            "{} is flagged as a problematic mod. Installing it is not recommended.",
-            prompt.name
+        tf(
+            "oneclient.components.flagged_install_popup.description",
+            &[&prompt.name],
         )
     } else {
-        format!(
-            "{} is flagged as a problematic mod. Installing it is not recommended, consider one of these alternatives instead.",
-            prompt.name
+        tf(
+            "oneclient.components.flagged_install_popup.description_alternatives",
+            &[&prompt.name],
         )
     };
 
@@ -71,7 +71,7 @@ fn dialog(prompt: FlaggedInstallPrompt, dispatch: crate::Actions) -> impl IntoEl
         .spacing(SECTION_GAP)
         .padding(Gaps::new_all(DIALOG_PADDING))
         .corner_radius(CornerRadius::new_all(14.))
-        .background(CARD_BG)
+        .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .child(
             rect()
@@ -90,7 +90,7 @@ fn dialog(prompt: FlaggedInstallPrompt, dispatch: crate::Actions) -> impl IntoEl
                         )
                         .child(
                             label()
-                                .text("Flagged mod")
+                                .text(t("oneclient.components.flagged_install_popup.title"))
                                 .font_size(16.)
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
@@ -122,13 +122,15 @@ fn dialog(prompt: FlaggedInstallPrompt, dispatch: crate::Actions) -> impl IntoEl
                 Button::new()
                     .secondary()
                     .on_press(move |_| cancel.dismiss_flagged_install())
-                    .text("Cancel"),
+                    .text(t("oneclient.common.cancel")),
             )
             .child(
                 Button::new()
                     .danger()
                     .on_press(move |_| anyway.install_flagged_anyway(prompt.clone()))
-                    .text("Install anyway"),
+                    .text(t(
+                        "oneclient.components.flagged_install_popup.install_anyway",
+                    )),
             ),
     )
 }
@@ -157,7 +159,7 @@ fn flagged_content(prompt: &FlaggedInstallPrompt) -> impl IntoElement {
         );
     }
 
-    ScrollView::new()
+    ScrollArea::new()
         .width(Size::fill())
         .height(Size::Inner)
         .max_height(Size::px(CONTENT_MAX_H))
@@ -176,11 +178,12 @@ impl Component for AlternativeRow {
         let dispatch = use_dispatch();
         let icon_query = use_cached_image(self.alternative.icon_url.clone(), 256);
         let icon = remote_icon(self.alternative.icon_url.as_deref(), &icon_query, ICON_SIZE);
-        let version = self
-            .alternative
-            .version_number
-            .clone()
-            .unwrap_or_else(|| format!("No version for {}", self.mc_version));
+        let version = self.alternative.version_number.clone().unwrap_or_else(|| {
+            tf(
+                "oneclient.components.flagged_install_popup.no_version",
+                &[&self.mc_version],
+            )
+        });
         alternative_row(
             self.alternative.clone(),
             version,
@@ -248,14 +251,15 @@ fn alternative_row(
                         cluster_id,
                         package_type: "mod".to_string(),
                         package_id: encode_package_id(provider, &project_id),
+                        add_to_cluster: false,
                     });
                 })
                 .child(Icon::new(IconType::ArrowRight).size(14.))
-                .text("Go to page"),
+                .text(t("oneclient.components.flagged_install_popup.go_to_page")),
         )
 }
 
-fn explanation_panel(markdown: String) -> impl IntoElement {
+pub(crate) fn explanation_panel(markdown: String) -> impl IntoElement {
     rect()
         .width(Size::fill())
         .padding(Gaps::new_all(12.))
@@ -269,8 +273,8 @@ fn explanation_panel(markdown: String) -> impl IntoElement {
                     color: colors::fg_primary(),
                     color_link: colors::code_info(),
                     color_code: colors::fg_primary(),
-                    background_code: CARD_BG,
-                    background_blockquote: CARD_BG,
+                    background_code: colors::card(),
+                    background_blockquote: colors::card(),
                     border_blockquote: colors::component_border(),
                     background_divider: colors::component_border(),
                     headings: [16., 14., 13., 12., 12., 12.],

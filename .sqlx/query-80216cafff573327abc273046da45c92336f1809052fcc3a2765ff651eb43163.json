@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT cluster_id, round, pending_exit, started_at, retry_note, confirmed, finishing\n        FROM cluster_bisect_sessions\n        WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "round",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "round"
+          }
+        }
+      },
+      {
+        "name": "pending_exit",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "pending_exit"
+          }
+        }
+      },
+      {
+        "name": "started_at",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "name": "retry_note",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "retry_note"
+          }
+        }
+      },
+      {
+        "name": "confirmed",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "confirmed"
+          }
+        }
+      },
+      {
+        "name": "finishing",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "finishing"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "80216cafff573327abc273046da45c92336f1809052fcc3a2765ff651eb43163"
+}

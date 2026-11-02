@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT from_hash, to_hash, kind FROM cluster_bisect_edges\n        WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "from_hash",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_edges",
+            "name": "from_hash"
+          }
+        }
+      },
+      {
+        "name": "to_hash",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_edges",
+            "name": "to_hash"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_edges",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "1655617d9147395700f7d745651d9d2aa93dc08dd28672491ef97649f3242839"
+}

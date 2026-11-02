@@ -5,6 +5,7 @@ use freya::text_edit::Clipboard;
 use regex::Regex;
 
 use crate::components::{Icon, IconType, ScrollArea, ScrollAreaCtx, corrected_scroll};
+use crate::i18n::t;
 use crate::theme::{self, colors};
 
 const LINE_H: f32 = 16.;
@@ -73,7 +74,7 @@ impl WidthCache {
     }
 }
 
-fn clean_line(raw: &str) -> String {
+pub fn clean_line(raw: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     let mut chars = raw.chars();
     let mut col = 0usize;
@@ -287,11 +288,16 @@ fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
         } else {
             colors::fg_secondary()
         }))
-        .child(label().text("Auto-scroll").font_size(11.).color(if on {
-            colors::brand()
-        } else {
-            colors::fg_secondary()
-        }))
+        .child(
+            label()
+                .text(t("oneclient.components.log_viewer.auto_scroll"))
+                .font_size(11.)
+                .color(if on {
+                    colors::brand()
+                } else {
+                    colors::fg_secondary()
+                }),
+        )
         .into_element()
 }
 

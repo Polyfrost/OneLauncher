@@ -3,12 +3,10 @@ use oneclient_content::packages::ProviderId;
 
 use crate::components::{Icon, IconType, github_badge, provider_badge};
 use crate::hooks::{loaded_image, use_cached_image};
+use crate::i18n::tf;
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
-
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
-const CARD_NAME: Color = Color::from_rgb(213, 219, 255);
 
 pub(super) const CARD_GRID_H: f32 = 148.;
 pub(super) const GRID_GAP: f32 = 10.;
@@ -46,7 +44,7 @@ impl Component for OnboardingModCard {
         let (bg, border, alpha) = if self.enabled {
             (colors::brand().with_a(38), colors::brand(), 255)
         } else {
-            (CARD_BG, colors::component_border(), 140)
+            (colors::card(), colors::component_border(), 140)
         };
 
         let on_toggle = self.on_toggle.clone();
@@ -71,12 +69,15 @@ impl Component for OnboardingModCard {
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
-                            .color(CARD_NAME.with_a(alpha)),
+                            .color(colors::fg_primary().with_a(alpha)),
                     )
                     .maybe(!self.author.is_empty(), |el| {
                         el.child(
                             label()
-                                .text(format!("by {}", self.author))
+                                .text(tf(
+                                    "oneclient.onboarding.bundles.mod.author",
+                                    &[&self.author],
+                                ))
                                 .font_size(10.)
                                 .max_lines(1)
                                 .width(Size::fill())

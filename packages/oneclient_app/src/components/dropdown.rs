@@ -3,7 +3,7 @@ use freya::prelude::*;
 use crate::components::{Icon, IconType, ScrollArea};
 use crate::hooks::use_overlay_claim_when;
 use crate::theme::colors;
-use crate::ui::border_all_color;
+use crate::ui::{border_all_color, window_logical_size};
 
 const OPTION_HEIGHT: f32 = 28.;
 const OPTION_SPACING: f32 = 2.;
@@ -114,7 +114,7 @@ impl Component for Dropdown {
 
         let offset_y = match (button_area(), list_area()) {
             (Some(button), Some(list)) => {
-                let root_height = Platform::get().root_size.peek().height;
+                let root_height = window_logical_size().height;
                 let space_below = root_height - button.max_y();
                 let space_above = button.min_y();
                 if list.height() > space_below && list.height() <= space_above {

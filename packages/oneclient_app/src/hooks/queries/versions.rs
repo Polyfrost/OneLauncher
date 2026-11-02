@@ -221,7 +221,10 @@ pub struct JavaMajorsQuery;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct JavaMajorsKeys {
-    pub versions: Vec<String>,
+    /// Each version with the loader it launches on. A loader's version info can
+    /// ask for a different Java than vanilla does: OneClient's 1.8.9 runs on 25,
+    /// where vanilla 1.8.9 says 8
+    pub versions: Vec<(String, GameLoader)>,
 }
 
 impl QueryCapability for JavaMajorsQuery {
@@ -243,26 +246,39 @@ impl QueryCapability for JavaMajorsQuery {
             let resolved = {
                 let mut metadata = state.metadata.lock().await;
                 let mut resolved = Vec::with_capacity(wanted.len());
-                for id in &wanted {
-                    if let Ok((version, _, _)) =
+                for (id, loader) in &wanted {
+                    let Ok((version, _, _)) =
                         oneclient_core::game::resolve_minecraft_version(&mut metadata, &mc, id)
                             .await
-                    {
-                        resolved.push((id.clone(), version));
-                    }
+                    else {
+                        continue;
+                    };
+                    // The same loader version a new cluster would get, so the
+                    // Java shown is the one it will launch with
+                    let loader_version = oneclient_core::game::get_loader_version(
+                        &mut metadata,
+                        &mc,
+                        id,
+                        *loader,
+                        None,
+                    )
+                    .await
+                    .ok()
+                    .flatten();
+                    resolved.push((id.clone(), version, *loader, loader_version));
                 }
                 resolved
             };
 
-            let lookups = resolved.into_iter().map(|(id, version)| {
+            let lookups = resolved.into_iter().map(|(id, version, loader, loader_version)| {
                 let mc = mc.clone();
                 async move {
                     let info = oneclient_core::game::download_version_info(
                         &mc,
                         None,
                         &version,
-                        oneclient_common::domain::GameLoader::Vanilla,
-                        None,
+                        loader,
+                        loader_version.as_ref(),
                         false,
                     )
                     .await
@@ -284,7 +300,7 @@ impl QueryCapability for JavaMajorsQuery {
     }
 }
 
-pub fn use_java_majors(versions: Vec<String>) -> UseQuery<JavaMajorsQuery> {
+pub fn use_java_majors(versions: Vec<(String, GameLoader)>) -> UseQuery<JavaMajorsQuery> {
     use_query(Query::new(JavaMajorsKeys { versions }, JavaMajorsQuery))
 }
 

@@ -19,6 +19,8 @@ use anyhow::{Context, Result, bail};
 const MAX_STEM: usize = 96;
 const FALLBACK_STEM: &str = "OneClient";
 const MAX_COLLISIONS: usize = 20;
+#[cfg(any(target_os = "macos", windows))]
+const ICON_EDGE: u32 = 256;
 const FORBIDDEN: &[char] = &['<', '>', ':', '"', '/', '\\', '|', '?', '*'];
 
 const RESERVED: &[&str] = &[
@@ -30,6 +32,7 @@ pub struct ShortcutRequest {
     pub cluster_name: String,
     pub folder_name: String,
     pub dir: PathBuf,
+    pub icon: Option<PathBuf>,
 }
 
 pub fn create(request: &ShortcutRequest) -> Result<PathBuf> {
@@ -58,6 +61,18 @@ pub fn default_dir() -> Option<PathBuf> {
 }
 
 pub fn launcher_exe() -> Result<PathBuf> {
+    if let Some(exe) = std::env::var_os("ONECLIENT_LAUNCHER_EXE") {
+        let path = PathBuf::from(exe);
+        if path.is_absolute() {
+            return Ok(path);
+        }
+    }
+
+    #[cfg(all(unix, not(target_os = "macos")))]
+    if let Some(wrapper) = flatpak_wrapper() {
+        return Ok(wrapper);
+    }
+
     #[cfg(all(unix, not(target_os = "macos")))]
     if let Some(appimage) = std::env::var_os("APPIMAGE") {
         let path = PathBuf::from(appimage);
@@ -68,6 +83,41 @@ pub fn launcher_exe() -> Result<PathBuf> {
 
     let exe = std::env::current_exe().context("couldn't locate the OneClient executable")?;
     Ok(dunce::canonicalize(&exe).unwrap_or(exe))
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn flatpak_wrapper() -> Option<PathBuf> {
+    let id = std::env::var("FLATPAK_ID").ok()?;
+    let info = std::fs::read_to_string("/.flatpak-info").ok()?;
+    let app_path = info
+        .lines()
+        .find_map(|line| line.strip_prefix("app-path="))?;
+    let (installation, _) = app_path.split_once(&format!("/app/{id}/"))?;
+    Some(Path::new(installation).join("exports/bin").join(id))
+}
+
+#[cfg(any(target_os = "macos", windows))]
+fn square_icon(source: &Path, format: image::ImageFormat) -> Option<Vec<u8>> {
+    let img = image::ImageReader::open(source)
+        .ok()?
+        .with_guessed_format()
+        .ok()?
+        .decode()
+        .ok()?
+        .resize(ICON_EDGE, ICON_EDGE, image::imageops::FilterType::Lanczos3)
+        .to_rgba8();
+
+    let mut canvas = image::RgbaImage::new(ICON_EDGE, ICON_EDGE);
+    image::imageops::overlay(
+        &mut canvas,
+        &img,
+        i64::from((ICON_EDGE - img.width()) / 2),
+        i64::from((ICON_EDGE - img.height()) / 2),
+    );
+
+    let mut out = std::io::Cursor::new(Vec::new());
+    canvas.write_to(&mut out, format).ok()?;
+    Some(out.into_inner())
 }
 
 fn file_stem(name: &str) -> String {

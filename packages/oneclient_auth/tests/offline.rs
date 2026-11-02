@@ -122,8 +122,8 @@ async fn signed_out_account_stays_listed_and_default() {
     let account = reloaded.get_account(msa_id).expect("entry must survive");
     assert!(account.needs_sign_in());
     assert!(
-        account.refresh_token.is_empty(),
-        "the dead token must not be kept"
+        !account.refresh_token.is_empty(),
+        "the refresh token is kept so the next renewal can retry it"
     );
     assert!(account.access_token.is_empty());
     assert_eq!(reloaded.default_user, Some(msa_id));

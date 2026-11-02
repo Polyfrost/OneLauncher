@@ -9,7 +9,7 @@ use chrono::{DateTime, Utc};
 
 pub use error::LogsError;
 pub use manage::{cluster_output_log, delete_log_at, list_cluster_logs, read_log_at};
-pub use mclogs::upload_log_at;
+pub use mclogs::{log_exceeds_upload_limit, upload_log_at};
 pub use parse::{censor, parse_level};
 
 /// No launcher variant on purpose the launcher's own logs live in the log console
@@ -87,6 +87,12 @@ pub struct ReadOptions {
     pub max_lines: Option<usize>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum LogTrim {
+    KeepStartAndEnd,
+    KeepStart,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct MclogsUploadResponse {
     pub id: String,
@@ -117,6 +123,16 @@ mod tests {
     }
 
     #[test]
+    fn censors_session_id() {
+        assert_eq!(
+            censor(
+                "[12:00:00] [Client thread/INFO]: (Session ID is token:eyJabc.def.ghi:0123abcd)"
+            ),
+            "[12:00:00] [Client thread/INFO]: (Session ID is [censored])"
+        );
+    }
+
+    #[test]
     fn carries_level_forward() {
         let opts = ReadOptions::default();
 
@@ -128,5 +144,19 @@ mod tests {
         assert_eq!(lines[0].level, LogLevel::Error);
         assert_eq!(lines[1].level, LogLevel::Error);
         assert_eq!(lines[2].level, LogLevel::Error);
+    }
+
+    #[tokio::test]
+    async fn reads_a_log_that_is_not_utf8() {
+        let dir = polyio::tempdir().await.expect("temp dir");
+        let path = dir.dir_path().join("cluster-output.log");
+        polyio::write(&path, b"ok\n\x8crodowisko\n".to_vec())
+            .await
+            .unwrap();
+
+        let content = super::manage::read_file_string(&path).await.unwrap();
+
+        assert_eq!(content.lines().count(), 2);
+        assert!(content.ends_with("rodowisko\n"));
     }
 }

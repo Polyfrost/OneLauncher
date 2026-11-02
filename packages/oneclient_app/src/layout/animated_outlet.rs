@@ -87,6 +87,7 @@ fn is_text_entry(role: AccessibilityRole) -> bool {
 fn enter_kind(from: &Route, to: &Route) -> Enter {
     if (is_sidebar_route(from) && is_sidebar_route(to))
         || (is_cluster_route(from) && is_cluster_route(to))
+        || (matches!(from, Route::Browser { .. }) && matches!(to, Route::Browser { .. }))
     {
         Enter::None
     } else if hides_overlay(from) {

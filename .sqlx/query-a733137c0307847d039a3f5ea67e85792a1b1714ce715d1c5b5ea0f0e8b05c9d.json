@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT cluster_id FROM cluster_bisect_sessions\n        WHERE finishing = 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_sessions",
+            "name": "cluster_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "a733137c0307847d039a3f5ea67e85792a1b1714ce715d1c5b5ea0f0e8b05c9d"
+}

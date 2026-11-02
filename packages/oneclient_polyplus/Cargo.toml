@@ -27,6 +27,7 @@ futures-util.workspace = true
 
 bytes.workspace = true
 chrono.workspace = true
+image.workspace = true
 rand.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -15,6 +15,7 @@ use crate::components::{
     Icon, IconType, ScrollArea, ScrollAreaCtx, TextInput, TooltipPlacement, use_tooltip_anchor,
 };
 use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
+use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::use_dispatch;
@@ -55,233 +56,236 @@ struct SearchItem {
 }
 
 // TODO Replace this with inventory crate or something
-const SEARCH_INDEX: &[SearchItem] = &[
-    SearchItem {
-        id: "launcher.discord_rpc",
-        icon: IconType::Link03,
-        title: "Discord RPC",
-        description: "Enable Discord Rich Presence.",
-        keywords: &["discord", "rpc", "rich presence"],
-        route: Route::SettingsLauncher {},
-    },
-    SearchItem {
-        id: "launcher.folder",
-        icon: IconType::Folder,
-        title: "Launcher Folder",
-        description: "Open the launcher data directory, or move it to another drive.",
-        keywords: &[
-            "data dir",
-            "directory",
-            "folder",
-            "open",
-            "move",
-            "change",
-            "relocate",
-            "location",
-            "drive",
-            "disk",
-        ],
-        route: Route::SettingsLauncher {},
-    },
-    SearchItem {
-        id: "appearance.accent_color",
-        icon: IconType::PaintPour,
-        title: "Accent color",
-        description: "The main color used across the launcher.",
-        keywords: &["theme", "accent", "color", "brand"],
-        route: Route::SettingsAppearance {},
-    },
-    SearchItem {
-        id: "appearance.custom_theme",
-        icon: IconType::Colors,
-        title: "Custom theme",
-        description: "Create, edit, and import launcher themes.",
-        keywords: &["theme", "custom", "import", "export"],
-        route: Route::SettingsAppearance {},
-    },
-    SearchItem {
-        id: "appearance.parallax_background",
-        icon: IconType::Eye,
-        title: "Parallax background",
-        description: "Make the home screen background drift with your cursor.",
-        keywords: &["background", "parallax", "motion"],
-        route: Route::SettingsAppearance {},
-    },
-    SearchItem {
-        id: "appearance.animations",
-        icon: IconType::Play,
-        title: "Animations",
-        description: "Toggle all animations in the launcher.",
-        keywords: &["reduce motion", "animations", "effects"],
-        route: Route::SettingsAppearance {},
-    },
-    SearchItem {
-        id: "apis.modrinth_key",
-        icon: IconType::Key01,
-        title: "Modrinth API key",
-        description: "Personal access token used for Modrinth requests.",
-        keywords: &["modrinth", "token", "api key", "pat"],
-        route: Route::SettingsApis {},
-    },
-    SearchItem {
-        id: "apis.curseforge_key",
-        icon: IconType::Key01,
-        title: "CurseForge API key",
-        description: "API key used for CurseForge requests.",
-        keywords: &["curseforge", "api key"],
-        route: Route::SettingsApis {},
-    },
-    SearchItem {
-        id: "apis.custom_endpoint",
-        icon: IconType::Globe01,
-        title: "Custom API Endpoint",
-        description: "Override the default OneClient backend endpoint.",
-        keywords: &["endpoint", "api", "backend", "url"],
-        route: Route::SettingsApis {},
-    },
-    SearchItem {
-        id: "minecraft.force_fullscreen",
-        icon: IconType::Maximize01,
-        title: "Force Fullscreen",
-        description: "Force Minecraft to start in fullscreen mode.",
-        keywords: &["fullscreen", "window"],
-        route: Route::SettingsMinecraft {},
-    },
-    SearchItem {
-        id: "minecraft.resolution",
-        icon: IconType::LayoutTop,
-        title: "Resolution",
-        description: "The game window resolution in pixels.",
-        keywords: &["width", "height", "window size", "resolution"],
-        route: Route::SettingsMinecraft {},
-    },
-    SearchItem {
-        id: "minecraft.memory",
-        icon: IconType::Database01,
-        title: "Memory",
-        description: "The amount of memory allocated for the game.",
-        keywords: &["ram", "memory", "heap", "xmx"],
-        route: Route::SettingsMinecraft {},
-    },
-    SearchItem {
-        id: "minecraft.pre_launch",
-        icon: IconType::FilePlus02,
-        title: "Pre-Launch Command",
-        description: "Command to run before launching the game.",
-        keywords: &["hook", "command", "pre launch", "prelaunch"],
-        route: Route::SettingsMinecraft {},
-    },
-    SearchItem {
-        id: "minecraft.wrapper",
-        icon: IconType::ParagraphWrap,
-        title: "Wrapper Command",
-        description: "Command to run when launching the game.",
-        keywords: &["hook", "command", "wrapper", "gamescope"],
-        route: Route::SettingsMinecraft {},
-    },
-    SearchItem {
-        id: "minecraft.post_exit",
-        icon: IconType::FileX02,
-        title: "Post-Exit Command",
-        description: "Command to run after exiting the game.",
-        keywords: &["hook", "command", "post exit", "postexit"],
-        route: Route::SettingsMinecraft {},
-    },
-    // Java routing only the page is not built from settings_row_focus yet
-    SearchItem {
-        id: "java.install",
-        icon: IconType::Download01,
-        title: "Install Java",
-        description: "Install a Java runtime from a provider.",
-        keywords: &["java", "runtime", "temurin", "zulu", "install manager"],
-        route: Route::SettingsJava {},
-    },
-    SearchItem {
-        id: "java.add_folder",
-        icon: IconType::Folder,
-        title: "Add Java from folder",
-        description: "Add an existing Java installation.",
-        keywords: &["java", "runtime", "custom", "folder", "path"],
-        route: Route::SettingsJava {},
-    },
-    SearchItem {
-        id: "storage.usage",
-        icon: IconType::Database01,
-        title: "Disk usage",
-        description: "See what the launcher is storing and where.",
-        keywords: &["storage", "disk", "space", "size", "usage", "cache"],
-        route: Route::SettingsStorage {},
-    },
-    SearchItem {
-        id: "storage.cleanup",
-        icon: IconType::Trash01,
-        title: "Free up space",
-        description: "Remove cached packages and leftovers nothing is using.",
-        keywords: &[
-            "storage", "clean", "cleanup", "free", "space", "cache", "unused", "orphan", "leftover",
-        ],
-        route: Route::SettingsStorage {},
-    },
-    SearchItem {
-        id: "language.select",
-        icon: IconType::Globe01,
-        title: "Language",
-        description: "Choose the launcher language.",
-        keywords: &[
-            "language", "locale", "english", "spanish", "french", "german", "russian", "japanese",
-            "chinese",
-        ],
-        route: Route::SettingsLanguage {},
-    },
-    SearchItem {
-        id: "developer.compat_only",
-        icon: IconType::SearchMd,
-        title: "Compatible content only",
-        description: "Filter the content browser to the active cluster.",
-        keywords: &["browser", "compat", "filter"],
-        route: Route::SettingsDeveloper {},
-    },
-    SearchItem {
-        id: "developer.log_debug",
-        icon: IconType::Terminal,
-        title: "Log Debug Info",
-        description: "Enable extra debug logging (requires restart).",
-        keywords: &["debug", "logs", "logging"],
-        route: Route::SettingsDeveloper {},
-    },
-    SearchItem {
-        id: "developer.show_dev",
-        icon: IconType::CodeSnippet02,
-        title: "Show Dev stuff",
-        description: "Enable dev tools and show the debug page.",
-        keywords: &["devtools", "developer", "debug"],
-        route: Route::SettingsDeveloper {},
-    },
-    SearchItem {
-        id: "developer.debug_page",
-        icon: IconType::CodeSnippet02,
-        title: "Debug Page",
-        description: "Open the debug page.",
-        keywords: &["debug", "page"],
-        route: Route::SettingsDeveloper {},
-    },
-    SearchItem {
-        id: "nav.accounts",
-        icon: IconType::Users01,
-        title: "Accounts",
-        description: "Manage Minecraft / Microsoft accounts.",
-        keywords: &["account", "login", "microsoft", "msa"],
-        route: Route::SettingsAccounts {},
-    },
-    SearchItem {
-        id: "nav.changelog",
-        icon: IconType::RefreshCcw02,
-        title: "Changelog",
-        description: "View what's new in OneClient.",
-        keywords: &["changelog", "release notes", "updates"],
-        route: Route::SettingsChangelog {},
-    },
-];
+fn search_index() -> Vec<SearchItem> {
+    vec![
+        SearchItem {
+            id: "launcher.discord_rpc",
+            icon: IconType::Link03,
+            title: t("oneclient.settings.launcher.discord_rpc.title"),
+            description: t("oneclient.settings.launcher.discord_rpc.description"),
+            keywords: &["discord", "rpc", "rich presence"],
+            route: Route::SettingsLauncher {},
+        },
+        SearchItem {
+            id: "launcher.folder",
+            icon: IconType::Folder,
+            title: t("oneclient.settings.launcher.data_folder.title"),
+            description: t("oneclient.layout.search.launcher.folder.description"),
+            keywords: &[
+                "data dir",
+                "directory",
+                "folder",
+                "open",
+                "move",
+                "change",
+                "relocate",
+                "location",
+                "drive",
+                "disk",
+            ],
+            route: Route::SettingsLauncher {},
+        },
+        SearchItem {
+            id: "appearance.accent_color",
+            icon: IconType::PaintPour,
+            title: t("oneclient.settings.appearance.accent_color.title"),
+            description: t("oneclient.layout.search.appearance.accent_color.description"),
+            keywords: &["theme", "accent", "color", "brand"],
+            route: Route::SettingsAppearance {},
+        },
+        SearchItem {
+            id: "appearance.custom_theme",
+            icon: IconType::Colors,
+            title: t("oneclient.settings.appearance.custom_theme.title"),
+            description: t("oneclient.layout.search.appearance.custom_theme.description"),
+            keywords: &["theme", "custom", "import", "export"],
+            route: Route::SettingsAppearance {},
+        },
+        SearchItem {
+            id: "appearance.parallax_background",
+            icon: IconType::Eye,
+            title: t("oneclient.settings.appearance.parallax_background.title"),
+            description: t("oneclient.layout.search.appearance.parallax_background.description"),
+            keywords: &["background", "parallax", "motion"],
+            route: Route::SettingsAppearance {},
+        },
+        SearchItem {
+            id: "appearance.animations",
+            icon: IconType::Play,
+            title: t("oneclient.settings.appearance.animations.title"),
+            description: t("oneclient.layout.search.appearance.animations.description"),
+            keywords: &["reduce motion", "animations", "effects"],
+            route: Route::SettingsAppearance {},
+        },
+        SearchItem {
+            id: "apis.modrinth_key",
+            icon: IconType::Key01,
+            title: t("oneclient.layout.search.apis.modrinth_key.title"),
+            description: t("oneclient.settings.apis.modrinth_key.description"),
+            keywords: &["modrinth", "token", "api key", "pat"],
+            route: Route::SettingsApis {},
+        },
+        SearchItem {
+            id: "apis.curseforge_key",
+            icon: IconType::Key01,
+            title: t("oneclient.layout.search.apis.curseforge_key.title"),
+            description: t("oneclient.settings.apis.curseforge_key.description"),
+            keywords: &["curseforge", "api key"],
+            route: Route::SettingsApis {},
+        },
+        SearchItem {
+            id: "apis.custom_endpoint",
+            icon: IconType::Globe01,
+            title: t("oneclient.settings.apis.custom_endpoint.title"),
+            description: t("oneclient.settings.apis.custom_endpoint.description"),
+            keywords: &["endpoint", "api", "backend", "url"],
+            route: Route::SettingsApis {},
+        },
+        SearchItem {
+            id: "minecraft.force_fullscreen",
+            icon: IconType::Maximize01,
+            title: t("oneclient.settings.minecraft.force_fullscreen.title"),
+            description: t("oneclient.settings.minecraft.force_fullscreen.description"),
+            keywords: &["fullscreen", "window"],
+            route: Route::SettingsMinecraft {},
+        },
+        SearchItem {
+            id: "minecraft.resolution",
+            icon: IconType::LayoutTop,
+            title: t("oneclient.settings.minecraft.resolution.title"),
+            description: t("oneclient.settings.minecraft.resolution.description"),
+            keywords: &["width", "height", "window size", "resolution"],
+            route: Route::SettingsMinecraft {},
+        },
+        SearchItem {
+            id: "minecraft.memory",
+            icon: IconType::Database01,
+            title: t("oneclient.settings.minecraft.memory.title"),
+            description: t("oneclient.layout.search.minecraft.memory.description"),
+            keywords: &["ram", "memory", "heap", "xmx"],
+            route: Route::SettingsMinecraft {},
+        },
+        SearchItem {
+            id: "minecraft.pre_launch",
+            icon: IconType::FilePlus02,
+            title: t("oneclient.settings.minecraft.pre_launch.title"),
+            description: t("oneclient.settings.minecraft.pre_launch.description"),
+            keywords: &["hook", "command", "pre launch", "prelaunch"],
+            route: Route::SettingsMinecraft {},
+        },
+        SearchItem {
+            id: "minecraft.wrapper",
+            icon: IconType::ParagraphWrap,
+            title: t("oneclient.settings.minecraft.wrapper.title"),
+            description: t("oneclient.settings.minecraft.wrapper.description"),
+            keywords: &["hook", "command", "wrapper", "gamescope"],
+            route: Route::SettingsMinecraft {},
+        },
+        SearchItem {
+            id: "minecraft.post_exit",
+            icon: IconType::FileX02,
+            title: t("oneclient.settings.minecraft.post_exit.title"),
+            description: t("oneclient.settings.minecraft.post_exit.description"),
+            keywords: &["hook", "command", "post exit", "postexit"],
+            route: Route::SettingsMinecraft {},
+        },
+        // Java routing only the page is not built from settings_row_focus yet
+        SearchItem {
+            id: "java.install",
+            icon: IconType::Download01,
+            title: t("oneclient.layout.search.java.install.title"),
+            description: t("oneclient.layout.search.java.install.description"),
+            keywords: &["java", "runtime", "temurin", "zulu", "install manager"],
+            route: Route::SettingsJava {},
+        },
+        SearchItem {
+            id: "java.add_folder",
+            icon: IconType::Folder,
+            title: t("oneclient.layout.search.java.add_folder.title"),
+            description: t("oneclient.layout.search.java.add_folder.description"),
+            keywords: &["java", "runtime", "custom", "folder", "path"],
+            route: Route::SettingsJava {},
+        },
+        SearchItem {
+            id: "storage.usage",
+            icon: IconType::Database01,
+            title: t("oneclient.layout.search.storage.usage.title"),
+            description: t("oneclient.layout.search.storage.usage.description"),
+            keywords: &["storage", "disk", "space", "size", "usage", "cache"],
+            route: Route::SettingsStorage {},
+        },
+        SearchItem {
+            id: "storage.cleanup",
+            icon: IconType::Trash01,
+            title: t("oneclient.layout.search.storage.cleanup.title"),
+            description: t("oneclient.layout.search.storage.cleanup.description"),
+            keywords: &[
+                "storage", "clean", "cleanup", "free", "space", "cache", "unused", "orphan",
+                "leftover",
+            ],
+            route: Route::SettingsStorage {},
+        },
+        SearchItem {
+            id: "language.select",
+            icon: IconType::Globe01,
+            title: t("oneclient.layout.settings.tab.language"),
+            description: t("oneclient.layout.search.language.select.description"),
+            keywords: &[
+                "language", "locale", "english", "spanish", "french", "german", "russian",
+                "japanese", "chinese",
+            ],
+            route: Route::SettingsLanguage {},
+        },
+        SearchItem {
+            id: "developer.compat_only",
+            icon: IconType::SearchMd,
+            title: t("oneclient.settings.developer.compat_only.title"),
+            description: t("oneclient.layout.search.developer.compat_only.description"),
+            keywords: &["browser", "compat", "filter"],
+            route: Route::SettingsDeveloper {},
+        },
+        SearchItem {
+            id: "developer.log_debug",
+            icon: IconType::Terminal,
+            title: t("oneclient.settings.developer.log_debug.title"),
+            description: t("oneclient.layout.search.developer.log_debug.description"),
+            keywords: &["debug", "logs", "logging"],
+            route: Route::SettingsDeveloper {},
+        },
+        SearchItem {
+            id: "developer.show_dev",
+            icon: IconType::CodeSnippet02,
+            title: t("oneclient.layout.search.developer.show_dev.title"),
+            description: t("oneclient.layout.search.developer.show_dev.description"),
+            keywords: &["devtools", "developer", "debug"],
+            route: Route::SettingsDeveloper {},
+        },
+        SearchItem {
+            id: "developer.debug_page",
+            icon: IconType::CodeSnippet02,
+            title: t("oneclient.settings.developer.debug_page.title"),
+            description: t("oneclient.layout.search.developer.debug_page.description"),
+            keywords: &["debug", "page"],
+            route: Route::SettingsDeveloper {},
+        },
+        SearchItem {
+            id: "nav.accounts",
+            icon: IconType::Users01,
+            title: t("oneclient.layout.settings.tab.accounts"),
+            description: t("oneclient.layout.search.nav.accounts.description"),
+            keywords: &["account", "login", "microsoft", "msa"],
+            route: Route::SettingsAccounts {},
+        },
+        SearchItem {
+            id: "nav.changelog",
+            icon: IconType::RefreshCcw02,
+            title: t("oneclient.layout.settings.tab.changelog"),
+            description: t("oneclient.layout.search.nav.changelog.description"),
+            keywords: &["changelog", "release notes", "updates"],
+            route: Route::SettingsChangelog {},
+        },
+    ]
+}
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum SettingsTab {
@@ -300,16 +304,16 @@ pub enum SettingsTab {
 impl SettingsTab {
     fn label(self) -> &'static str {
         match self {
-            Self::MinecraftSettings => "Minecraft settings",
-            Self::Accounts => "Accounts",
-            Self::LauncherSettings => "Launcher settings",
+            Self::MinecraftSettings => t("oneclient.layout.settings.tab.minecraft"),
+            Self::Accounts => t("oneclient.layout.settings.tab.accounts"),
+            Self::LauncherSettings => t("oneclient.layout.settings.tab.launcher"),
             Self::Java => "Java",
-            Self::Storage => "Storage",
-            Self::Appearance => "Appearance",
-            Self::Apis => "APIs",
-            Self::Language => "Language",
-            Self::DeveloperOptions => "Developer options",
-            Self::Changelog => "Changelog",
+            Self::Storage => t("oneclient.layout.settings.tab.storage"),
+            Self::Appearance => t("oneclient.layout.settings.tab.appearance"),
+            Self::Apis => t("oneclient.layout.settings.tab.apis"),
+            Self::Language => t("oneclient.layout.settings.tab.language"),
+            Self::DeveloperOptions => t("oneclient.layout.settings.tab.developer"),
+            Self::Changelog => t("oneclient.layout.settings.tab.changelog"),
         }
     }
 
@@ -349,27 +353,29 @@ struct SettingsGroup {
     tabs: &'static [SettingsTab],
 }
 
-const GROUPS: &[SettingsGroup] = &[
-    SettingsGroup {
-        label: "LAUNCHER SETTINGS",
-        tabs: &[
-            SettingsTab::LauncherSettings,
-            SettingsTab::Java,
-            SettingsTab::Storage,
-            SettingsTab::Appearance,
-            SettingsTab::Apis,
-            SettingsTab::Language,
-        ],
-    },
-    SettingsGroup {
-        label: "GAME SETTINGS",
-        tabs: &[SettingsTab::MinecraftSettings, SettingsTab::Accounts],
-    },
-    SettingsGroup {
-        label: "ABOUT",
-        tabs: &[SettingsTab::DeveloperOptions, SettingsTab::Changelog],
-    },
-];
+fn groups() -> [SettingsGroup; 3] {
+    [
+        SettingsGroup {
+            label: t("oneclient.layout.settings.group.launcher"),
+            tabs: &[
+                SettingsTab::LauncherSettings,
+                SettingsTab::Java,
+                SettingsTab::Storage,
+                SettingsTab::Appearance,
+                SettingsTab::Apis,
+                SettingsTab::Language,
+            ],
+        },
+        SettingsGroup {
+            label: t("oneclient.layout.settings.group.game"),
+            tabs: &[SettingsTab::MinecraftSettings, SettingsTab::Accounts],
+        },
+        SettingsGroup {
+            label: t("oneclient.layout.settings.group.about"),
+            tabs: &[SettingsTab::DeveloperOptions, SettingsTab::Changelog],
+        },
+    ]
+}
 
 #[derive(PartialEq)]
 pub struct SettingsShell;
@@ -504,7 +510,7 @@ fn search_width_for(header_width: f32) -> f32 {
 fn search_box(mut search: State<String>, width: f32) -> impl IntoElement {
     let has_query = !search.read().trim().is_empty();
     let base = TextInput::new(search)
-        .placeholder("Search settings...")
+        .placeholder(t("oneclient.layout.settings.search.placeholder"))
         .width(Size::px(width))
         .leading(
             Icon::new(IconType::SearchMd)
@@ -545,7 +551,7 @@ fn settings_score(item: &SearchItem, query: &SearchQuery) -> Option<(u8, MatchSc
 }
 
 fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element> {
-    let mut scored: Vec<(u8, MatchScore, SearchItem)> = SEARCH_INDEX
+    let mut scored: Vec<(u8, MatchScore, SearchItem)> = search_index()
         .iter()
         .filter_map(|item| settings_score(item, query).map(|(f, s)| (f, s, item.clone())))
         .collect();
@@ -570,7 +576,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                 .background(colors::page_elevated())
                 .child(
                     label()
-                        .text("No settings matched your search.")
+                        .text(t("oneclient.layout.settings.search.empty"))
                         .font_size(12.)
                         .color(colors::fg_secondary()),
                 )
@@ -584,7 +590,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
             .padding(Gaps::new(16., 0., 8., 2.))
             .child(
                 label()
-                    .text("SEARCH RESULTS")
+                    .text(t("oneclient.layout.settings.search.results"))
                     .font_size(11.)
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_secondary()),
@@ -670,7 +676,7 @@ fn sidebar(active: SettingsTab, changelog_unread: bool) -> impl IntoElement {
                 .width(Size::fill())
                 .height(Size::flex(1.0))
                 .spacing(16.)
-                .children(GROUPS.iter().map(|group| {
+                .children(groups().into_iter().map(|group| {
                     rect()
                         .vertical()
                         .width(Size::fill())
@@ -733,7 +739,7 @@ impl Component for SidebarInfo {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let tooltip = use_tooltip_anchor(
-            Some("Click to copy to clipboard".into()),
+            Some(t("oneclient.layout.settings.info.copy_tooltip").into()),
             TooltipPlacement::Top,
         );
 
@@ -748,7 +754,7 @@ impl Component for SidebarInfo {
             )),
             Cow::Owned(self.kernel_version.clone()),
             Cow::Owned(self.cpu_kind.clone()),
-            Cow::Owned(format!("RAM Total of {} MB", self.ram_mb)),
+            Cow::Owned(tf("oneclient.layout.settings.info.ram", &[&self.ram_mb])),
         ];
 
         let text = items
@@ -761,15 +767,15 @@ impl Component for SidebarInfo {
             if let Err(err) = Clipboard::set(text.clone()) {
                 tracing::warn!("clipboard copy failed: {err:?}");
                 dispatch
-                    .notify("Copy failed")
-                    .body("Could not copy system information to the clipboard.")
+                    .notify(t("oneclient.layout.settings.info.copy_failed.title"))
+                    .body(t("oneclient.layout.settings.info.copy_failed.body"))
                     .error()
                     .toast_only()
                     .send();
             } else {
                 dispatch
-                    .notify("Copied to clipboard")
-                    .body("System information copied to your clipboard.")
+                    .notify(t("oneclient.layout.settings.info.copied.title"))
+                    .body(t("oneclient.layout.settings.info.copied.body"))
                     .info()
                     .icon(IconType::ClipboardCheck)
                     .toast_only()

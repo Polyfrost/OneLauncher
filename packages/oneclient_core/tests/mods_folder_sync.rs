@@ -104,7 +104,7 @@ async fn a_mod_removed_in_the_launcher_stays_removed_before_the_first_launch() {
     std::fs::create_dir_all(&mods).unwrap();
     let ctx = state.services.content();
 
-    std::fs::write(mods.join("a.jar"), jar("one")).unwrap();
+    std::fs::write(mods.join("a.jar"), jar("unlaunched")).unwrap();
     assert!(sync_cluster_mods(&state, cluster.id).await);
     let linked = PackageStore::list_linked_artifacts(cluster.id, &ctx)
         .await

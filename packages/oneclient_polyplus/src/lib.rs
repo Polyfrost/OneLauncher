@@ -1,3 +1,4 @@
+pub mod api;
 mod models;
 mod packets;
 mod rest;
@@ -5,6 +6,7 @@ mod session;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
 
 use tokio::sync::RwLock;
 
@@ -18,6 +20,8 @@ pub use models::{
     SessionInvite,
 };
 pub use packets::ClientboundPacket;
+
+pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 static STARTED: AtomicBool = AtomicBool::new(false);
 static CLIENT: std::sync::OnceLock<Arc<PlusClient>> = std::sync::OnceLock::new();
@@ -38,6 +42,18 @@ pub enum PlusError {
 
     #[error("Poly+ is off because the Terms of Service and Privacy Policy were declined")]
     ConsentRequired,
+
+    #[error("Poly+ needs a Microsoft account")]
+    OfflineAccount,
+
+    #[error("Poly+ request failed (HTTP {status}): {body}")]
+    Api { status: u16, body: String },
+
+    #[error("could not build the Poly+ client: {0}")]
+    Client(String),
+
+    #[error("could not read the Poly+ asset: {0}")]
+    Asset(String),
 
     #[error(transparent)]
     Request(#[from] RequestError),
@@ -173,10 +189,21 @@ pub fn restart_session() {
     }
 }
 
-pub(crate) fn plus_blocked() -> bool {
+pub fn plus_blocked() -> bool {
     oneclient_common::consent::blocks_url(base_url())
 }
 
-fn base_url() -> &'static str {
-    constants::PLUS_BACKEND_URL.trim_end_matches('/')
+pub fn base_url() -> &'static str {
+    static URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    URL.get_or_init(|| {
+        let local = cfg!(debug_assertions)
+            .then(|| std::env::var("ONECLIENT_PLUS_URL").ok())
+            .flatten()
+            .filter(|url| !url.trim().is_empty());
+        local
+            .as_deref()
+            .unwrap_or(constants::PLUS_BACKEND_URL)
+            .trim_end_matches('/')
+            .to_string()
+    })
 }

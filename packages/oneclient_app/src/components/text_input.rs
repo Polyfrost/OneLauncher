@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::clamp_to_window;
 
@@ -133,6 +134,11 @@ impl TextInput {
 
     pub fn auto_focus(mut self, auto_focus: impl Into<bool>) -> Self {
         self.input = self.input.auto_focus(auto_focus);
+        self
+    }
+
+    pub fn a11y_id(mut self, a11y_id: impl Into<AccessibilityId>) -> Self {
+        self.input = self.input.a11y_id(a11y_id);
         self
     }
 
@@ -279,7 +285,7 @@ impl Component for TextInput {
                             .width(Size::px(22.))
                             .height(Size::px(22.))
                             .padding(3.)
-                            .tooltip("Expand")
+                            .tooltip(t("oneclient.components.text_input.expand"))
                             .on_press(move |e: Event<PressEventData>| {
                                 e.stop_propagation();
                                 expanded.set(true);

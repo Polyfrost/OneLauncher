@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT cluster_id, hash, cleared_round, testing, name, pinned_round, disable_on_finish\n        FROM cluster_bisect_mods\n        WHERE cluster_id = ?\n        ORDER BY hash\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "cluster_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "cluster_id"
+          }
+        }
+      },
+      {
+        "name": "hash",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "cleared_round",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "cleared_round"
+          }
+        }
+      },
+      {
+        "name": "testing",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "testing"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "pinned_round",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "pinned_round"
+          }
+        }
+      },
+      {
+        "name": "disable_on_finish",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_bisect_mods",
+            "name": "disable_on_finish"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      true,
+      true,
+      false
+    ]
+  },
+  "hash": "50ea596056f75a6892fa9be4423d69ec0acd3848fe9da325474390ecafef069b"
+}

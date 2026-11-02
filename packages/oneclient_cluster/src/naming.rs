@@ -1,5 +1,3 @@
-use crate::manager::ClusterManager;
-
 pub const MAX_NAME_CHARS: usize = 20;
 pub const MAX_TAG_CHARS: usize = 20;
 pub const MAX_FOLDER_CHARS: usize = 40;
@@ -18,8 +16,8 @@ impl NameProblem {
         match self {
             Self::Empty => "Enter a name.",
             Self::TooLong => "Use 20 characters or fewer.",
-            Self::ForbiddenCharacters => "Use only letters A-Z, digits, spaces and _ - . ( )",
-            Self::NoUsableCharacters => "Include at least one letter (A-Z) or digit.",
+            Self::ForbiddenCharacters => "Use only letters, digits, spaces and _ - . ( )",
+            Self::NoUsableCharacters => "Include at least one letter or digit.",
         }
     }
 }
@@ -30,9 +28,21 @@ impl std::fmt::Display for NameProblem {
     }
 }
 
+/// Letters and digits from any script: "Świat" and "世界" are names too
 #[must_use]
 pub fn is_allowed_name_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || matches!(c, '_' | '-' | ' ' | '.' | '(' | ')')
+    c.is_alphanumeric() || is_name_punctuation(c)
+}
+
+/// Folders on disk stay ASCII even when the name is not; older Forge on
+/// Java 8 is known to fail to start from a game path with non-ASCII in it
+#[must_use]
+pub fn is_folder_name_char(c: char) -> bool {
+    c.is_ascii_alphanumeric() || is_name_punctuation(c)
+}
+
+fn is_name_punctuation(c: char) -> bool {
+    matches!(c, '_' | '-' | ' ' | '.' | '(' | ')')
 }
 
 pub fn validate_instance_name(name: &str) -> Result<(), NameProblem> {
@@ -54,7 +64,7 @@ pub fn validate_name(name: &str, max_chars: Option<usize>) -> Result<(), NamePro
     if !name.chars().all(is_allowed_name_char) {
         return Err(NameProblem::ForbiddenCharacters);
     }
-    if ClusterManager::sanitize_name(name).is_empty() {
+    if !name.chars().any(char::is_alphanumeric) {
         return Err(NameProblem::NoUsableCharacters);
     }
     Ok(())
@@ -80,12 +90,11 @@ mod tests {
         assert_eq!(validate_instance_name("My Survival"), Ok(()));
         assert_eq!(validate_instance_name("Modpack (v2.1)_x-y"), Ok(()));
         assert_eq!(validate_instance_name("   "), Err(NameProblem::Empty));
+        assert_eq!(validate_instance_name("Świat"), Ok(()));
+        assert_eq!(validate_instance_name("世界"), Ok(()));
+        assert_eq!(validate_instance_name("Мир (2)"), Ok(()));
         assert_eq!(
-            validate_instance_name("Świat"),
-            Err(NameProblem::ForbiddenCharacters)
-        );
-        assert_eq!(
-            validate_instance_name("世界"),
+            validate_instance_name("🎮"),
             Err(NameProblem::ForbiddenCharacters)
         );
         assert_eq!(

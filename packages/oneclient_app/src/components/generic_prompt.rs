@@ -5,15 +5,13 @@ use freya::prelude::*;
 use oneclient_events::{Answer, ChoiceInput, ChoiceStyle};
 use oneclient_java::JAVA_CHOICE_DOWNLOAD;
 
-use crate::components::{Button, OverlayPopup};
+use crate::components::{Button, OVERLAY_BASE_LEVEL, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
 use crate::microsoft_java::MICROSOFT_JAVA_CHOICE_INSTALL;
 use crate::notifications::PendingPromptView;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::updater::UPDATE_CHOICE_INSTALL;
-
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
 fn claimed_elsewhere(prompt: &PendingPromptView) -> bool {
     prompt.has_choice(JAVA_CHOICE_DOWNLOAD)
@@ -40,15 +38,18 @@ impl Component for GenericPromptOverlay {
 
         let close = dispatch.clone();
 
-        let mut buttons = rect()
+        let mut secondary = rect()
             .horizontal()
-            .width(Size::fill())
-            .main_align(Alignment::End)
+            .content(Content::Wrap {
+                wrap_spacing: Some(8.),
+            })
+            .width(Size::flex(1.))
             .spacing(8.);
+        let mut primary = rect().horizontal().spacing(8.);
 
         if let Some(dismiss) = prompt.dismiss.clone() {
             let cancel = dispatch.clone();
-            buttons = buttons.child(
+            secondary = secondary.child(
                 Button::new()
                     .secondary()
                     .text(dismiss)
@@ -62,13 +63,13 @@ impl Component for GenericPromptOverlay {
             let input = choice.input.clone();
 
             let button = Button::new().text(choice.label.clone());
-            let button = match choice.style {
-                ChoiceStyle::Primary => button.primary(),
-                ChoiceStyle::Danger => button.danger(),
-                ChoiceStyle::Secondary => button.secondary(),
+            let (button, is_secondary) = match choice.style {
+                ChoiceStyle::Primary => (button.primary(), false),
+                ChoiceStyle::Danger => (button.danger(), false),
+                ChoiceStyle::Secondary => (button.secondary(), true),
             };
 
-            buttons = buttons.child(button.on_press(move |_| match &input {
+            let button = button.on_press(move |_| match &input {
                 // Answered from the dialog callback not the press since no folder is picked yet
                 Some(ChoiceInput::Folder { title }) => {
                     let dispatch = dispatch.clone();
@@ -93,10 +94,24 @@ impl Component for GenericPromptOverlay {
                     dispatch.answer_prompt(Answer::new(id));
                 }
                 None => dispatch.answer_prompt(Answer::new(id)),
-            }));
+            });
+            if is_secondary {
+                secondary = secondary.child(button);
+            } else {
+                primary = primary.child(button);
+            }
         }
 
+        let buttons = rect()
+            .horizontal()
+            .content(Content::Flex)
+            .width(Size::fill())
+            .spacing(8.)
+            .child(secondary)
+            .child(primary);
+
         OverlayPopup::new()
+            .overlay_level(OVERLAY_BASE_LEVEL + 3)
             .on_close(move |_| close.dismiss_prompt())
             .child(
                 rect()
@@ -111,7 +126,7 @@ impl Component for GenericPromptOverlay {
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
                             .corner_radius(CornerRadius::new_all(14.))
-                            .background(CARD_BG)
+                            .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 label()

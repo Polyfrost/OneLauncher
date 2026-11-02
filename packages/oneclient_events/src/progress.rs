@@ -48,6 +48,9 @@ pub enum GroupedProgressEvent {
     End {
         session_id: Uuid,
     },
+    Abort {
+        session_id: Uuid,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -57,6 +60,8 @@ pub enum TaskPhase {
     Verifying,
     Extracting,
     Installing,
+    Exporting,
+    Importing,
 }
 
 impl TaskPhase {
@@ -67,6 +72,8 @@ impl TaskPhase {
             Self::Verifying => "Verifying",
             Self::Extracting => "Extracting",
             Self::Installing => "Installing",
+            Self::Exporting => "Exporting",
+            Self::Importing => "Importing",
         }
     }
 }
@@ -231,6 +238,15 @@ impl GroupedProgressSession {
 
     pub fn finish(self) {
         self.inner.end();
+    }
+
+    pub fn abort(self) {
+        if self.inner.ended.swap(true, Ordering::Relaxed) {
+            return;
+        }
+        self.inner.events.emit(GroupedProgressEvent::Abort {
+            session_id: self.inner.session_id,
+        });
     }
 
     /// Consumes the session without emitting an `End` event

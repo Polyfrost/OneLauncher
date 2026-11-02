@@ -13,7 +13,7 @@ use oneclient_common::patch::Patch;
 use oneclient_db::DbPool;
 use tokio::sync::Mutex;
 
-use crate::cluster::{Cluster, encode_tags, remove_mods_link};
+use crate::cluster::{Cluster, DirTarget, encode_tags, remove_mods_link};
 use crate::error::ClusterError;
 use crate::options::{ClusterUpdate, CreateClusterOptions};
 use crate::screenshots::thumbnail;
@@ -53,7 +53,7 @@ impl ClusterManager {
 
     pub fn sanitize_name(name: &str) -> String {
         let mut name = name.to_string();
-        name.retain(crate::naming::is_allowed_name_char);
+        name.retain(crate::naming::is_folder_name_char);
         let name = name.trim().trim_end_matches(['.', ' ']);
 
         let stem_len = name.find('.').unwrap_or(name.len());
@@ -145,7 +145,12 @@ impl ClusterManager {
             }
         }
 
-        let folder_stem = Self::sanitize_name(&cap_folder_stem(&options.name));
+        let mut folder_stem = Self::sanitize_name(&cap_folder_stem(&options.name));
+        // A name written entirely in another script has nothing ASCII left
+        // for the folder; the name itself is kept as typed
+        if folder_stem.is_empty() && options.user_created {
+            folder_stem = FALLBACK_FOLDER_STEM.to_string();
+        }
         if folder_stem.is_empty() {
             return Err(ClusterError::EmptyName);
         }
@@ -317,7 +322,9 @@ impl ClusterManager {
                 _ => polyio::remove_file(&path).await,
             };
             match removed {
-                Ok(()) => tracing::info!(entry = %name, "cleared a leftover deleted cluster folder"),
+                Ok(()) => {
+                    tracing::info!(entry = %name, "cleared a leftover deleted cluster folder")
+                }
                 Err(err) => {
                     tracing::warn!(entry = %name, error = %err, "failed to clear a leftover deleted cluster folder")
                 }
@@ -403,12 +410,8 @@ impl ClusterManager {
         let cluster = self.get(cluster_id).await?;
 
         if !cluster.user_created {
-            cluster_dao::dismiss_provision(
-                &self.db,
-                &cluster.mc_version,
-                cluster.mc_loader as i64,
-            )
-            .await?;
+            cluster_dao::dismiss_provision(&self.db, &cluster.mc_version, cluster.mc_loader as i64)
+                .await?;
         }
 
         let trashed = if remove_files && cluster.is_isolated() {
@@ -475,23 +478,160 @@ impl ClusterManager {
         dedicated: bool,
         is_running: bool,
     ) -> ClusterResult<()> {
+        let target = if dedicated {
+            DirTarget::Dedicated
+        } else {
+            DirTarget::Shared(None)
+        };
+        self.set_dir_target(cluster_id, &target, is_running).await
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn set_dir_target(
+        &self,
+        cluster_id: ClusterId,
+        target: &DirTarget,
+        is_running: bool,
+    ) -> ClusterResult<()> {
         if is_running {
             return Err(ClusterError::AlreadyRunning(cluster_id));
         }
 
         let cluster = self.get(cluster_id).await?;
-        if !dedicated && cluster.is_isolated() {
+        if *target != DirTarget::Dedicated && cluster.is_isolated() {
             return Err(ClusterError::DedicatedRequired(cluster_id));
         }
 
+        let dir = cluster.dir()?;
         let marker = cluster.dedicated_marker()?;
-        if dedicated {
-            polyio::create_dir_all(cluster.dir()?).await?;
-            polyio::write(&marker, b"").await.ok();
-        } else if marker.exists() {
-            polyio::remove_file(&marker).await.ok();
+        let group_marker = dir.join(oneclient_common::paths::SHARED_GROUP_MARKER);
+        match target {
+            DirTarget::Dedicated => {
+                polyio::create_dir_all(&dir).await?;
+                polyio::write(&marker, b"").await?;
+                if group_marker.exists() {
+                    polyio::remove_file(&group_marker).await.ok();
+                }
+            }
+            DirTarget::Shared(group) => {
+                if let Some(group) = group {
+                    let group = self
+                        .find_shared_group(group)
+                        .await?
+                        .ok_or_else(|| ClusterError::SharedGroupMissing(group.clone()))?;
+                    polyio::create_dir_all(&dir).await?;
+                    polyio::write_atomic(&group_marker, group.as_bytes()).await?;
+                } else if group_marker.exists() {
+                    polyio::remove_file(&group_marker).await?;
+                }
+                if marker.exists() {
+                    polyio::remove_file(&marker).await?;
+                }
+            }
         }
         Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn list_shared_groups(&self) -> ClusterResult<Vec<String>> {
+        let Ok(mut entries) = polyio::read_dir(oneclient_common::paths::shared_groups_dir()?).await
+        else {
+            return Ok(Vec::new());
+        };
+
+        let mut groups = Vec::new();
+        while let Ok(Some(entry)) = entries.next_entry().await {
+            let name = entry.file_name().to_string_lossy().into_owned();
+            if polyio::stat(entry.path())
+                .await
+                .is_ok_and(|meta| meta.is_dir())
+                && oneclient_common::paths::is_shared_group_name(&name)
+            {
+                groups.push(name);
+            }
+        }
+        groups.sort_by_key(|name| name.to_lowercase());
+        Ok(groups)
+    }
+
+    pub async fn find_shared_group(&self, name: &str) -> ClusterResult<Option<String>> {
+        let name = name.to_lowercase();
+        Ok(self
+            .list_shared_groups()
+            .await?
+            .into_iter()
+            .find(|group| group.to_lowercase() == name))
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn delete_shared_group(&self, name: &str) -> ClusterResult<()> {
+        if !oneclient_common::paths::is_shared_group_name(name) {
+            return Err(ClusterError::InvalidSharedGroupName);
+        }
+        if self.list().await?.iter().any(|cluster| {
+            cluster
+                .shared_group()
+                .is_some_and(|group| group.to_lowercase() == name.to_lowercase())
+        }) {
+            return Err(ClusterError::SharedGroupInUse(name.to_string()));
+        }
+
+        let trash = oneclient_common::paths::cluster_trash_dir()?;
+        polyio::create_dir_all(&trash).await?;
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let trashed = trash.join(format!("shared-{name}-{stamp}"));
+        polyio::rename(
+            oneclient_common::paths::shared_group_dir(Some(name))?,
+            &trashed,
+        )
+        .await?;
+        if let Err(err) = polyio::remove_dir_all(&trashed).await {
+            tracing::warn!(group = name, error = %err, "could not clear a deleted shared folder; it is cleared at the next start");
+        }
+        Ok(())
+    }
+
+    #[tracing::instrument(level = "debug", skip(self))]
+    pub async fn create_shared_group(&self, name: &str) -> ClusterResult<String> {
+        let name = Self::sanitize_name(&cap_folder_stem(name));
+        if !oneclient_common::paths::is_shared_group_name(&name) {
+            return Err(ClusterError::InvalidSharedGroupName);
+        }
+        if ["shared", "dedicated"].contains(&name.to_lowercase().as_str()) {
+            return Err(ClusterError::ReservedSharedGroupName(name));
+        }
+        if let Some(existing) = self.find_shared_group(&name).await? {
+            return Err(ClusterError::SharedGroupExists(existing));
+        }
+
+        polyio::create_dir_all(oneclient_common::paths::shared_group_dir(Some(&name))?).await?;
+        Ok(name)
+    }
+
+    #[tracing::instrument(level = "debug", skip(self, on_progress))]
+    pub async fn sync_from_shared(
+        &self,
+        cluster_id: ClusterId,
+        from: Option<&str>,
+        include_worlds: bool,
+        on_progress: impl Fn(&str, u64, u64) + Send + Sync,
+    ) -> ClusterResult<SyncReport> {
+        let cluster = self.get(cluster_id).await?;
+        if cluster.dir_target == DirTarget::Shared(from.map(str::to_owned)) {
+            return Err(ClusterError::SameFolder(cluster.name));
+        }
+        if let Some(group) = cluster.missing_shared_group() {
+            return Err(ClusterError::SharedGroupMissing(group));
+        }
+        let source = oneclient_common::paths::shared_group_dir(from)?;
+        if let Some(group) = from.filter(|_| !source.is_dir()) {
+            return Err(ClusterError::SharedGroupMissing(group.to_string()));
+        }
+
+        copy_from_shared(&source, &cluster.game_dir()?, include_worlds, on_progress).await
     }
 
     #[tracing::instrument(level = "debug", skip(self))]
@@ -695,6 +835,8 @@ async fn ensure_profile_exists(pool: &oneclient_db::DbPool, name: &str) -> Clust
     Ok(())
 }
 
+const FALLBACK_FOLDER_STEM: &str = "Instance";
+
 #[tracing::instrument(level = "debug")]
 fn cap_folder_stem(name: &str) -> String {
     name.trim()
@@ -738,9 +880,217 @@ async fn ensure_content_dirs(cluster_path: &std::path::Path) -> ClusterResult<()
     Ok(())
 }
 
+const SYNCED_SETTINGS: [&str; 6] = [
+    "options.txt",
+    "optionsof.txt",
+    "optionsshaders.txt",
+    "servers.dat",
+    "hotbar.nbt",
+    "config",
+];
+
+const SYNC_STAGING: &str = ".sync-staging";
+
+async fn copy_from_shared(
+    shared: &std::path::Path,
+    dest: &std::path::Path,
+    include_worlds: bool,
+    on_progress: impl Fn(&str, u64, u64) + Send + Sync,
+) -> ClusterResult<SyncReport> {
+    if polyio::canonicalize(shared).ok() == polyio::canonicalize(dest).ok() {
+        return Ok(SyncReport::default());
+    }
+
+    let settings: Vec<&str> = SYNCED_SETTINGS
+        .into_iter()
+        .filter(|name| shared.join(name).exists())
+        .collect();
+
+    let shared_saves = shared.join(crate::worlds::SAVES_DIR);
+    let dest_saves = dest.join(crate::worlds::SAVES_DIR);
+    let staging_root = dest.join(SYNC_STAGING);
+    polyio::remove_dir_all(&staging_root).await.ok();
+
+    let mut worlds = Vec::new();
+    if include_worlds && let Ok(mut entries) = polyio::read_dir(&shared_saves).await {
+        while let Some(entry) = entries.next_entry().await? {
+            if entry.path().join(crate::worlds::LEVEL_DAT).is_file() {
+                worlds.push(entry.file_name());
+            }
+        }
+    }
+
+    let total = (settings.len() + worlds.len()) as u64;
+    let mut done = 0;
+
+    for name in settings {
+        on_progress(&format!("Syncing {name}"), done, total);
+        let src = shared.join(name);
+        if src.is_dir() {
+            polyio::copy_dir(&src, &dest.join(name), &[]).await?;
+        } else if src.is_file() {
+            polyio::copy(&src, dest.join(name)).await?;
+        }
+        done += 1;
+    }
+
+    let mut skipped = Vec::new();
+    for name in worlds {
+        let label = name.to_string_lossy().into_owned();
+        on_progress(&format!("Syncing world {label}"), done, total);
+        done += 1;
+        let target = dest_saves.join(&name);
+        if polyio::symlink_metadata(&target).await.is_ok() {
+            skipped.push(label);
+            continue;
+        }
+
+        let staging = staging_root.join(&name);
+        let copied = async {
+            polyio::create_dir_all(&staging).await?;
+            polyio::create_dir_all(&dest_saves).await?;
+            polyio::copy_dir(&shared_saves.join(&name), &staging, &["session.lock"]).await?;
+            rename_with_retry(&staging, &target).await
+        }
+        .await;
+        if let Err(err) = copied {
+            polyio::remove_dir_all(&staging_root).await.ok();
+            return Err(err.into());
+        }
+    }
+
+    polyio::remove_dir_all(&staging_root).await.ok();
+    Ok(SyncReport { skipped, total })
+}
+
+async fn rename_with_retry(
+    from: &std::path::Path,
+    to: &std::path::Path,
+) -> Result<(), polyio::IOError> {
+    let mut attempt = 0;
+    loop {
+        match polyio::rename(from, to).await {
+            Err(_) if attempt < 4 => {
+                attempt += 1;
+                tokio::time::sleep(std::time::Duration::from_millis(250 * attempt)).await;
+            }
+            result => return result,
+        }
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct SyncReport {
+    pub skipped: Vec<String>,
+    pub total: u64,
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{COVER_MAX_EDGE, ClusterManager, cap_folder_stem, is_cover_file, shrink_cover};
+    use super::{
+        COVER_MAX_EDGE, ClusterManager, cap_folder_stem, copy_from_shared, is_cover_file,
+        shrink_cover,
+    };
+
+    #[tokio::test]
+    async fn syncing_overwrites_settings_but_never_an_existing_world() {
+        let shared = polyio::tempdir().await.expect("shared dir");
+        let dest = polyio::tempdir().await.expect("dest dir");
+        let (shared, dest) = (shared.dir_path(), dest.dir_path());
+
+        for (path, body) in [
+            ("options.txt", "shared"),
+            ("config/sodium.json", "shared"),
+            ("saves/New/level.dat", "shared"),
+            ("saves/New/session.lock", "lock"),
+            ("saves/Kept/level.dat", "shared"),
+            ("saves/junk/readme.txt", "x"),
+            ("screenshots/a.png", "x"),
+        ] {
+            let path = shared.join(path);
+            polyio::create_dir_all(path.parent().unwrap())
+                .await
+                .unwrap();
+            polyio::write(path, body.as_bytes().to_vec()).await.unwrap();
+        }
+        for (path, body) in [("options.txt", "mine"), ("saves/Kept/level.dat", "mine")] {
+            let path = dest.join(path);
+            polyio::create_dir_all(path.parent().unwrap())
+                .await
+                .unwrap();
+            polyio::write(path, body.as_bytes().to_vec()).await.unwrap();
+        }
+
+        let stale = dest.join(".sync-staging/Gone/region/r.0.0.mca");
+        polyio::create_dir_all(stale.parent().unwrap())
+            .await
+            .unwrap();
+        polyio::write(&stale, b"half".to_vec()).await.unwrap();
+
+        let steps = std::sync::Mutex::new(Vec::new());
+        let report = copy_from_shared(shared, dest, true, |_, done, total| {
+            steps.lock().unwrap().push((done, total))
+        })
+        .await
+        .unwrap();
+
+        let read = |path: &str| std::fs::read_to_string(dest.join(path)).unwrap();
+        assert_eq!(
+            steps.into_inner().unwrap(),
+            vec![(0, 4), (1, 4), (2, 4), (3, 4)]
+        );
+        assert_eq!(report.total, 4);
+        assert_eq!(report.skipped, vec!["Kept".to_string()]);
+        assert!(!dest.join(".sync-staging").exists());
+        assert!(!dest.join("saves/New/region").exists());
+        assert_eq!(
+            std::fs::read_dir(dest.join("saves")).unwrap().count(),
+            2,
+            "only New and Kept belong in saves"
+        );
+        assert_eq!(read("options.txt"), "shared");
+        assert_eq!(read("config/sodium.json"), "shared");
+        assert_eq!(read("saves/New/level.dat"), "shared");
+        assert_eq!(read("saves/Kept/level.dat"), "mine");
+        assert!(!dest.join("saves/New/session.lock").exists());
+        assert!(!dest.join("saves/junk").exists());
+        assert!(!dest.join("screenshots").exists());
+    }
+
+    #[tokio::test]
+    async fn an_empty_shared_folder_reports_nothing_to_sync() {
+        let shared = polyio::tempdir().await.expect("shared dir");
+        let dest = polyio::tempdir().await.expect("dest dir");
+
+        let report = copy_from_shared(shared.dir_path(), dest.dir_path(), true, |_, _, _| {})
+            .await
+            .unwrap();
+
+        assert_eq!(report.total, 0);
+        assert!(report.skipped.is_empty());
+    }
+
+    #[tokio::test]
+    async fn settings_only_leaves_worlds_behind() {
+        let shared = polyio::tempdir().await.expect("shared dir");
+        let dest = polyio::tempdir().await.expect("dest dir");
+        let (shared, dest) = (shared.dir_path(), dest.dir_path());
+        for path in ["options.txt", "saves/New/level.dat"] {
+            let path = shared.join(path);
+            polyio::create_dir_all(path.parent().unwrap())
+                .await
+                .unwrap();
+            polyio::write(path, b"shared".to_vec()).await.unwrap();
+        }
+
+        let report = copy_from_shared(shared, dest, false, |_, _, _| {})
+            .await
+            .unwrap();
+
+        assert_eq!(report.total, 1);
+        assert!(dest.join("options.txt").exists());
+        assert!(!dest.join("saves").exists());
+    }
 
     #[test]
     fn a_long_modpack_name_gets_a_short_folder() {
@@ -752,6 +1102,15 @@ mod tests {
             ClusterManager::sanitize_name(&cap_folder_stem("Short Pack")),
             "Short Pack"
         );
+    }
+
+    #[test]
+    fn folders_stay_ascii_whatever_the_name() {
+        let folder = |name: &str| ClusterManager::sanitize_name(&cap_folder_stem(name));
+        assert_eq!(folder("Świat 2"), "wiat 2");
+        // Nothing ASCII left: create_core falls back to FALLBACK_FOLDER_STEM
+        assert_eq!(folder("世界"), "");
+        assert!(crate::naming::validate_modpack_instance_name("世界").is_ok());
     }
 
     fn png(width: u32, height: u32) -> Vec<u8> {

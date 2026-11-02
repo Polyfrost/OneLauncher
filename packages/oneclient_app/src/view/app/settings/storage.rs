@@ -7,9 +7,9 @@ use crate::hooks::{
     StorageAction, mutation_is_running, try_storage_report, use_storage_action, use_storage_report,
     use_storage_scan_progress,
 };
+use crate::i18n::{t, tf};
 use crate::state::StorageScanProgress;
 use crate::theme::colors;
-use crate::utils::plural;
 
 /// Rows narrower than this would render as a sliver so they get a floor
 const MIN_BAR_FRACTION: f32 = 0.015;
@@ -35,7 +35,7 @@ impl Component for SettingsStorage {
             .on_press(move |_| {
                 report_query.invalidate();
             })
-            .child(label().text("Refresh"));
+            .child(label().text(t("oneclient.common.refresh")));
 
         let mut page = settings_page().child(hero(&report, refresh.into_element()));
 
@@ -43,45 +43,50 @@ impl Component for SettingsStorage {
             page = page.child(scan_card(scan.as_ref()));
         }
 
-        page.child(section_header("FREE UP SPACE"))
-            .child(
-                ReclaimRow {
-                    icon: IconType::FileX02,
-                    title: "Unreferenced cache files",
-                    description: unused_cache_description(&report.unreferenced_cache),
-                    action: StorageAction::CleanUnreferencedCache,
-                    empty: report.unreferenced_cache.is_empty(),
-                }
-                .into_element(),
-            )
-            .child(
-                ReclaimRow {
-                    icon: IconType::Trash01,
-                    title: "Leftover cluster content",
-                    description: legacy_content_description(
-                        &report.legacy_cluster_content,
-                        &report.unused_natives,
-                    ),
-                    action: StorageAction::CleanLegacyClusterContent,
-                    empty: report.legacy_cluster_content.is_empty()
-                        && report.unused_natives.is_empty(),
-                }
-                .into_element(),
-            )
-            .child(section_header("WHAT'S USING SPACE"))
-            .child(usage_list(
-                &report.categories,
-                colors::brand(),
-                "Nothing stored yet.",
-            ))
-            .child(section_header("CLUSTERS"))
-            .child(usage_list(
-                &report.clusters,
-                colors::fg_secondary(),
-                "No cluster is using any space.",
-            ))
-            .child(footnote())
-            .into_element()
+        page.child(section_header(t(
+            "oneclient.settings.storage.section.free_up_space",
+        )))
+        .child(
+            ReclaimRow {
+                icon: IconType::FileX02,
+                title: t("oneclient.settings.storage.unused_cache.title"),
+                description: unused_cache_description(&report.unreferenced_cache),
+                action: StorageAction::CleanUnreferencedCache,
+                empty: report.unreferenced_cache.is_empty(),
+            }
+            .into_element(),
+        )
+        .child(
+            ReclaimRow {
+                icon: IconType::Trash01,
+                title: t("oneclient.settings.storage.legacy.title"),
+                description: legacy_content_description(
+                    &report.legacy_cluster_content,
+                    &report.unused_natives,
+                ),
+                action: StorageAction::CleanLegacyClusterContent,
+                empty: report.legacy_cluster_content.is_empty() && report.unused_natives.is_empty(),
+            }
+            .into_element(),
+        )
+        .child(section_header(t(
+            "oneclient.settings.storage.section.usage",
+        )))
+        .child(usage_list(
+            &report.categories,
+            colors::brand(),
+            t("oneclient.settings.storage.usage_empty"),
+        ))
+        .child(section_header(t(
+            "oneclient.settings.storage.section.clusters",
+        )))
+        .child(usage_list(
+            &report.clusters,
+            colors::fg_secondary(),
+            t("oneclient.settings.storage.clusters_empty"),
+        ))
+        .child(footnote())
+        .into_element()
     }
 }
 
@@ -91,9 +96,12 @@ fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
         + report.unused_natives.bytes;
 
     let subtitle = if reclaimable > 0 {
-        format!("{} can be freed", format_bytes(reclaimable))
+        tf(
+            "oneclient.settings.storage.reclaimable",
+            &[&format_bytes(reclaimable)],
+        )
     } else {
-        "Nothing to free up".to_string()
+        t("oneclient.settings.storage.nothing_to_free").to_string()
     };
 
     rect()
@@ -147,7 +155,7 @@ fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
             rect().width(Size::flex(1.0)).child(
                 label()
                     .text(scan.map_or_else(
-                        || "Measuring disk usage…".to_string(),
+                        || t("oneclient.settings.storage.measuring").to_string(),
                         |scan| format!("{}…", scan.label),
                     ))
                     .font_size(14.)
@@ -198,7 +206,11 @@ impl Component for ReclaimRow {
             .on_press(move |_| {
                 action.mutate(kind);
             })
-            .child(label().text(if running { "Cleaning…" } else { "Clean up" }));
+            .child(label().text(if running {
+                t("oneclient.settings.storage.cleaning")
+            } else {
+                t("oneclient.settings.storage.clean_up")
+            }));
 
         rect()
             .horizontal()
@@ -209,7 +221,7 @@ impl Component for ReclaimRow {
             .padding(Gaps::new_symmetric(12., 16.))
             .corner_radius(CornerRadius::new_all(12.))
             .background(colors::page_elevated())
-            .maybe(self.empty, |el| el.opacity(0.55))
+            .maybe(self.empty, |el| el.opacity(colors::disabled_opacity()))
             .child(Icon::new(self.icon))
             .child(
                 rect()
@@ -311,51 +323,72 @@ fn largest(entries: &[StorageEntry]) -> Option<u64> {
 
 fn unused_cache_description(entry: &ReclaimableEntry) -> String {
     if entry.is_empty() {
-        return "Nothing here - every cached file belongs to an installed package.".to_string();
+        return t("oneclient.settings.storage.unused_cache.empty").to_string();
     }
 
-    format!(
-        "{} across {} file{} that no installed package points at.",
-        format_bytes(entry.bytes),
-        entry.files,
-        plural(entry.files as i64)
-    )
+    if entry.files == 1 {
+        tf(
+            "oneclient.settings.storage.unused_cache.description.one",
+            &[&format_bytes(entry.bytes), &entry.files],
+        )
+    } else {
+        tf(
+            "oneclient.settings.storage.unused_cache.description.other",
+            &[&format_bytes(entry.bytes), &entry.files],
+        )
+    }
 }
 
 fn legacy_content_description(content: &ReclaimableEntry, natives: &ReclaimableEntry) -> String {
     if content.is_empty() && natives.is_empty() {
-        return "Nothing here - no old cluster content and no unused natives.".to_string();
+        return t("oneclient.settings.storage.legacy.empty").to_string();
     }
 
     let mut parts = Vec::new();
 
     if !content.is_empty() {
-        parts.push(format!(
-            "{} across {} file{} left in cluster folders by an older version",
-            format_bytes(content.bytes),
-            content.files,
-            plural(content.files as i64)
-        ));
+        parts.push(if content.files == 1 {
+            tf(
+                "oneclient.settings.storage.legacy.content.one",
+                &[&format_bytes(content.bytes), &content.files],
+            )
+        } else {
+            tf(
+                "oneclient.settings.storage.legacy.content.other",
+                &[&format_bytes(content.bytes), &content.files],
+            )
+        });
     }
 
     if !natives.is_empty() {
-        parts.push(format!(
-            "{} across {} native folder{} no cluster uses any more",
-            format_bytes(natives.bytes),
-            natives.files,
-            plural(natives.files as i64)
-        ));
+        parts.push(if natives.files == 1 {
+            tf(
+                "oneclient.settings.storage.legacy.natives.one",
+                &[&format_bytes(natives.bytes), &natives.files],
+            )
+        } else {
+            tf(
+                "oneclient.settings.storage.legacy.natives.other",
+                &[&format_bytes(natives.bytes), &natives.files],
+            )
+        });
     }
 
     // Natives are not inert deleting them costs a re-download on the next launch
     // so promising the space is free would be a lie
     let tail = if natives.is_empty() {
-        "Already ignored when you play; this just reclaims the space."
+        t("oneclient.settings.storage.legacy.tail_content")
     } else {
-        "Nothing a cluster still needs is touched; anything else is fetched again on demand."
+        t("oneclient.settings.storage.legacy.tail_natives")
     };
 
-    format!("{}. {tail}", parts.join(", plus "))
+    tf(
+        "oneclient.settings.storage.legacy.summary",
+        &[
+            &parts.join(t("oneclient.settings.storage.legacy.joiner")),
+            &tail,
+        ],
+    )
 }
 
 fn empty_note(text: &'static str) -> impl IntoElement {
@@ -378,10 +411,7 @@ fn footnote() -> impl IntoElement {
         .padding(Gaps::new(16., 4., 8., 4.))
         .child(
             label()
-                .text(
-                    "Packages live in a shared cache and are copied into the game folder only \
-                     while you play. Removing a package frees its cache entry automatically.",
-                )
+                .text(t("oneclient.settings.storage.footnote"))
                 .font_size(12.)
                 .color(colors::fg_secondary()),
         )

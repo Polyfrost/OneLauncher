@@ -1,0 +1,74 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT\n\t\t\tca.hash,\n\t\t\tpr.provider as \"provider!: i64\",\n\t\t\tprd.dependency_project_id,\n\t\t\tprd.dependency_version_id,\n\t\t\tprd.kind\n\t\tFROM cluster_artifacts ca\n\t\tJOIN provider_releases pr ON pr.hash = ca.hash\n\t\tJOIN provider_release_dependencies prd\n\t\t\tON prd.provider = pr.provider\n\t\t\tAND prd.project_id = pr.project_id\n\t\t\tAND prd.version_id = pr.version_id\n\t\tWHERE ca.cluster_id = ?\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "hash",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "provider!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "dependency_project_id",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_release_dependencies",
+            "name": "dependency_project_id"
+          }
+        }
+      },
+      {
+        "name": "dependency_version_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_release_dependencies",
+            "name": "dependency_version_id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_release_dependencies",
+            "name": "kind"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "4803784ce8aa7fae7e697345c9b9d64e4447a3415bfe1c95e6c1eaa9e3ef4534"
+}

@@ -1,10 +1,9 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 
 pub fn use_shared_delete(
     cluster_id: i64,
@@ -66,10 +65,13 @@ struct SharedPackageDeleteDialog {
 
 impl Component for SharedPackageDeleteDialog {
     fn render(&self) -> impl IntoElement {
-        let title = format!("Delete {} from every cluster?", self.name);
-        let body = format!(
-            "Resource packs and shaders are shared, so this deletes it from all {} clusters that use it.",
-            self.clusters
+        let title = tf(
+            "oneclient.components.package_delete_dialog.title",
+            &[&self.name],
+        );
+        let body = tf(
+            "oneclient.components.package_delete_dialog.body",
+            &[&self.clusters],
         );
         let close = self.on_cancel.clone();
         let cancel = self.on_cancel.clone();
@@ -88,7 +90,7 @@ impl Component for SharedPackageDeleteDialog {
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
                         .corner_radius(CornerRadius::new_all(14.))
-                        .background(CARD_BG)
+                        .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             rect()
@@ -125,14 +127,14 @@ impl Component for SharedPackageDeleteDialog {
                                     Button::new()
                                         .secondary()
                                         .on_press(move |_| cancel.call(()))
-                                        .text("Cancel"),
+                                        .text(t("oneclient.common.cancel")),
                                 )
                                 .child(
                                     Button::new()
                                         .danger()
                                         .on_press(move |_| confirm.call(()))
                                         .child(Icon::new(IconType::Trash01).size(14.))
-                                        .text("Delete"),
+                                        .text(t("oneclient.common.delete")),
                                 ),
                         ),
                 ),

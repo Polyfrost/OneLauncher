@@ -5,14 +5,14 @@ use freya::router::RouterContext;
 use notify::{Event, EventKind};
 use oneclient_content::modpacks::BlockedFile;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup};
+use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::hooks::{use_dispatch, use_folder_watch, use_notifications_snapshot};
+use crate::i18n::{t, tf};
 use crate::notifications::BlockedDownloads;
 use crate::routes::Route;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_W: f32 = 560.;
 const DIALOG_PAD: f32 = 22.;
 const LIST_MAX_H: f32 = 300.;
@@ -111,18 +111,24 @@ impl Component for BlockedDownloadsDialog {
             cluster_id,
             self.blocked.remaining(),
             chosen.clone(),
+            self.blocked.bundle_name.clone(),
         );
         {
             let dispatch = dispatch.clone();
             let downloads = downloads.clone();
-            use_side_effect_with_deps(&deps, move |(_, cluster_id, files, chosen)| {
+            use_side_effect_with_deps(&deps, move |(_, cluster_id, files, chosen, bundle_name)| {
                 if files.is_empty() {
                     return;
                 }
                 let locations: Vec<PathBuf> =
                     downloads.iter().chain(chosen.iter()).cloned().collect();
                 if !locations.is_empty() {
-                    dispatch.scan_blocked_downloads(*cluster_id, locations, files.clone());
+                    dispatch.scan_blocked_downloads(
+                        *cluster_id,
+                        bundle_name.clone(),
+                        locations,
+                        files.clone(),
+                    );
                 }
             });
         }
@@ -165,16 +171,21 @@ fn folder_label(path: &Path) -> String {
 
 fn watched_text(downloads: Option<&Path>, chosen: Option<&Path>) -> String {
     match (downloads, chosen) {
-        (Some(_), Some(chosen)) => format!("Downloads and {}", chosen.display()),
+        (Some(_), Some(chosen)) => tf(
+            "oneclient.components.blocked_downloads.watched_both",
+            &[&chosen.display()],
+        ),
         (Some(downloads), None) => downloads.display().to_string(),
         (None, Some(chosen)) => chosen.display().to_string(),
-        (None, None) => "Nothing yet. Add a folder or use Browse.".to_string(),
+        (None, None) => t("oneclient.components.blocked_downloads.watched_none").to_string(),
     }
 }
 
 fn pick_extra_folder(cluster_id: i64, start: Option<PathBuf>, mut extra: ExtraFolder) {
     spawn(async move {
-        let mut picker = rfd::AsyncFileDialog::new().set_title("Pick the folder you download into");
+        let mut picker = rfd::AsyncFileDialog::new().set_title(t(
+            "oneclient.components.blocked_downloads.folder_picker_title",
+        ));
         if let Some(start) = start {
             picker = picker.set_directory(start);
         }
@@ -222,7 +233,7 @@ fn folder_row(
                         .spacing(2.)
                         .child(
                             label()
-                                .text("Watching")
+                                .text(t("oneclient.components.blocked_downloads.watching"))
                                 .font_size(11.)
                                 .color(colors::fg_secondary()),
                         )
@@ -240,9 +251,9 @@ fn folder_row(
                         .small()
                         .on_press(move |_| pick_extra_folder(cluster_id, start.clone(), extra))
                         .text(if has_extra {
-                            "Change folder"
+                            t("oneclient.components.blocked_downloads.change_folder")
                         } else {
-                            "Add folder"
+                            t("oneclient.components.blocked_downloads.add_folder")
                         }),
                 )
                 .maybe_child(has_extra.then(|| {
@@ -251,7 +262,7 @@ fn folder_row(
                         .ghost()
                         .small()
                         .on_press(move |_| extra.set(None))
-                        .text("Remove")
+                        .text(t("oneclient.common.remove"))
                         .into_element()
                 })),
         )
@@ -277,41 +288,47 @@ fn dialog(
     let count = blocked.files.len();
     let added = blocked.added.len().min(count);
     let done = added == count;
-    let plural = crate::utils::plural(count as i64);
     let where_to = match (downloads, chosen) {
-        (_, Some(chosen)) => format!(
-            "Download each one from its page and it will be picked up from Downloads or {} automatically.",
-            folder_label(chosen)
+        (_, Some(chosen)) => tf(
+            "oneclient.components.blocked_downloads.where_to.chosen",
+            &[&folder_label(chosen)],
         ),
         (Some(_), None) => {
-            "Download each one from its page and it will be picked up from your Downloads folder automatically."
-                .to_string()
+            t("oneclient.components.blocked_downloads.where_to.downloads").to_string()
         }
-        (None, None) => {
-            "Download each one from its page, then add the folder you saved them to or use Browse."
-                .to_string()
-        }
+        (None, None) => t("oneclient.components.blocked_downloads.where_to.none").to_string(),
     };
-    let subtitle = if done {
-        format!(
-            "All {count} file{plural} are in {}. It is ready to play.",
-            blocked.cluster_name
-        )
-    } else {
-        format!(
-            "CurseForge does not let launchers download {count} file{plural} that {} needs. {where_to}",
-            blocked.cluster_name
-        )
+    let subtitle = match (done, count == 1) {
+        (true, true) => tf(
+            "oneclient.components.blocked_downloads.ready.one",
+            &[&count, &blocked.cluster_name],
+        ),
+        (true, false) => tf(
+            "oneclient.components.blocked_downloads.ready.other",
+            &[&count, &blocked.cluster_name],
+        ),
+        (false, true) => tf(
+            "oneclient.components.blocked_downloads.blocked.one",
+            &[&count, &blocked.cluster_name, &where_to],
+        ),
+        (false, false) => tf(
+            "oneclient.components.blocked_downloads.blocked.other",
+            &[&count, &blocked.cluster_name, &where_to],
+        ),
     };
     let title = if done {
-        "Manual downloads added".to_string()
+        t("oneclient.components.blocked_downloads.title.done").to_string()
     } else if added > 0 {
-        format!("Some files need a manual download ({added} of {count} added)")
+        tf(
+            "oneclient.components.blocked_downloads.title.progress",
+            &[&added, &count],
+        )
     } else {
-        "Some files need a manual download".to_string()
+        t("oneclient.components.blocked_downloads.title").to_string()
     };
 
     let cluster_id = blocked.cluster_id;
+    let bundle_name = blocked.bundle_name.clone();
     let files = blocked.remaining();
     let browse = dispatch.clone();
     let close = dispatch.clone();
@@ -327,7 +344,7 @@ fn dialog(
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
         .corner_radius(CornerRadius::new_all(16.))
-        .background(CARD_BG)
+        .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
             0.,
@@ -379,17 +396,19 @@ fn dialog(
                                 .primary()
                                 .on_press(move |_| close.close_blocked_downloads())
                                 .child(Icon::new(IconType::Check).size(15.))
-                                .text("Done"),
+                                .text(t("oneclient.common.done")),
                         )
                         .into_element()
                 } else {
-                    footer(cluster_id, files, browse_start, browse, close).into_element()
+                    footer(cluster_id, bundle_name, files, browse_start, browse, close)
+                        .into_element()
                 }),
         )
 }
 
 fn footer(
     cluster_id: i64,
+    bundle_name: String,
     files: Vec<BlockedFile>,
     browse_start: Option<PathBuf>,
     browse: crate::Actions,
@@ -405,18 +424,20 @@ fn footer(
             Button::new()
                 .ghost()
                 .on_press(move |_| close.close_blocked_downloads())
-                .text("Skip for now"),
+                .text(t("oneclient.components.blocked_downloads.skip")),
         )
         .child(
             Button::new()
                 .primary()
                 .on_press(move |_| {
                     let dispatch = browse.clone();
+                    let bundle_name = bundle_name.clone();
                     let files = files.clone();
                     let start = browse_start.clone();
                     spawn(async move {
-                        let mut picker =
-                            rfd::AsyncFileDialog::new().set_title("Pick the downloaded files");
+                        let mut picker = rfd::AsyncFileDialog::new().set_title(t(
+                            "oneclient.components.blocked_downloads.files_picker_title",
+                        ));
                         if let Some(start) = start {
                             picker = picker.set_directory(start);
                         }
@@ -425,17 +446,17 @@ fn footer(
                                 .iter()
                                 .map(|handle| handle.path().to_path_buf())
                                 .collect();
-                            dispatch.scan_blocked_downloads(cluster_id, picked, files);
+                            dispatch.scan_blocked_downloads(cluster_id, bundle_name, picked, files);
                         }
                     });
                 })
                 .child(Icon::new(IconType::Folder).size(15.))
-                .text("Browse"),
+                .text(t("oneclient.components.blocked_downloads.browse")),
         )
 }
 
 fn file_list(blocked: &BlockedDownloads) -> impl IntoElement {
-    ScrollView::new()
+    ScrollArea::new()
         .width(Size::fill())
         .height(Size::Inner)
         .max_height(Size::px(LIST_MAX_H))
@@ -470,7 +491,7 @@ fn file_row(file: &BlockedFile, added: bool) -> impl IntoElement {
             )
             .child(
                 label()
-                    .text("Added")
+                    .text(t("oneclient.components.blocked_downloads.added"))
                     .font_size(12.)
                     .font_weight(FontWeight::SEMI_BOLD)
                     .color(colors::success()),
@@ -487,7 +508,7 @@ fn file_row(file: &BlockedFile, added: bool) -> impl IntoElement {
                 }
             })
             .child(Icon::new(IconType::LinkExternal01).size(13.))
-            .text("Open page")
+            .text(t("oneclient.components.blocked_downloads.open_page"))
             .into_element()
     };
 

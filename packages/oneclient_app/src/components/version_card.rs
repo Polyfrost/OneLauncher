@@ -1,7 +1,9 @@
 use freya::prelude::*;
 use oneclient_core::clusters::Cluster;
 
-use crate::components::{ART_PREVIEW_EDGE, DynamicArt};
+use crate::components::cluster_menu::open_menu_at;
+use crate::components::{ART_PREVIEW_EDGE, ClusterContextMenu, ClusterMenuTarget, DynamicArt};
+use crate::i18n::tf;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::{GridSelection, ReleaseLine, line_art_key, line_title};
@@ -16,9 +18,15 @@ pub struct VersionCard {
     pub count: usize,
     pub selected: bool,
     pub on_press: EventHandler<Event<PressEventData>>,
+    pub menu: Option<ClusterMenuTarget>,
 }
 
 impl VersionCard {
+    pub fn menu(mut self, target: Option<ClusterMenuTarget>) -> Self {
+        self.menu = target;
+        self
+    }
+
     pub fn new(
         line: ReleaseLine,
         clusters: &[Cluster],
@@ -35,6 +43,7 @@ impl VersionCard {
             count: clusters.len(),
             selected,
             on_press: on_press.into(),
+            menu: None,
         }
     }
 
@@ -51,6 +60,7 @@ impl VersionCard {
             count: 1,
             selected,
             on_press: on_press.into(),
+            menu: None,
         }
     }
 }
@@ -63,12 +73,14 @@ impl PartialEq for VersionCard {
             && self.caption == other.caption
             && self.count == other.count
             && self.selected == other.selected
+            && self.menu == other.menu
     }
 }
 
 impl Component for VersionCard {
     fn render(&self) -> impl IntoElement {
         let mut hovering = use_state(|| false);
+        let menu_at = use_state(|| None::<(f32, f32)>);
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
@@ -105,8 +117,18 @@ impl Component for VersionCard {
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
             .on_press(move |e| on_press.call(e))
+            .maybe(self.menu.is_some(), |el| {
+                el.on_secondary_down(open_menu_at(menu_at))
+            })
             .on_pointer_enter(move |_| hovering.set(true))
             .on_pointer_leave(move |_| hovering.set(false))
+            .maybe_child(self.menu.clone().map(|target| {
+                ClusterContextMenu {
+                    target,
+                    position: menu_at,
+                }
+                .into_element()
+            }))
             .child(
                 rect()
                     .width(Size::fill())
@@ -145,7 +167,7 @@ impl Component for VersionCard {
                             .font_size(11.)
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
-                            .color(colors::fg_secondary()),
+                            .color(colors::on_media().with_a(150)),
                     ),
             )
             .maybe_child((self.count > 1).then(|| {
@@ -157,10 +179,13 @@ impl Component for VersionCard {
                     .background(Color::from_af32rgb(0.66, 11, 16, 19))
                     .child(
                         label()
-                            .text(format!("{} instances", self.count))
+                            .text(tf(
+                                "oneclient.components.version_card.instances",
+                                &[&self.count],
+                            ))
                             .font_size(11.)
                             .font_weight(FontWeight::MEDIUM)
-                            .color(colors::fg_primary()),
+                            .color(colors::on_media()),
                     )
                     .into_element()
             }))

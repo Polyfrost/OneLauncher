@@ -151,4 +151,10 @@ async fn modrinth_get_project_with_body_has_markdown() {
         PackageBody::Raw(body) => assert!(!body.is_empty(), "body should not be empty"),
         PackageBody::Url(url) => panic!("expected a fetched body, got a link to {url}"),
     }
+    assert!(
+        project
+            .members
+            .iter()
+            .any(|m| m.role == "Organization" && m.name == "CaffeineMC")
+    );
 }

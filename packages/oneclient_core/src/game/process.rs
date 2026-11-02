@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
 use std::time::Instant;
 
 use sysinfo::{Pid, ProcessesToUpdate, Signal, System};
@@ -58,11 +58,45 @@ pub struct GameProcess {
     pub started: Instant,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DirBusy {
+    Game(i64),
+    Syncing(i64),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+pub enum SyncBlock {
+    #[error("Close this instance's game before syncing.")]
+    Running,
+    #[error("Close the game that uses the shared folder before syncing.")]
+    SharedInUse,
+    #[error("This instance is already syncing.")]
+    AlreadySyncing,
+    #[error("Another sync is using this folder. Try again once it finishes.")]
+    FolderSyncing,
+}
+
+pub struct SyncGuard<'a> {
+    games: &'a GameProcessManager,
+    cluster_id: i64,
+}
+
+impl Drop for SyncGuard<'_> {
+    fn drop(&mut self) {
+        self.games
+            .syncs
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .remove(&self.cluster_id);
+    }
+}
+
 #[derive(Default)]
 pub struct GameProcessManager {
     inner: Mutex<HashMap<i64, GameProcess>>,
     kills: Mutex<HashMap<i64, oneshot::Sender<()>>>,
     dirs: Mutex<HashMap<i64, PathBuf>>,
+    syncs: Mutex<HashMap<i64, [PathBuf; 2]>>,
     natives: Mutex<HashMap<i64, PathBuf>>,
     launching: tokio::sync::Mutex<()>,
 }
@@ -149,19 +183,78 @@ impl GameProcessManager {
     /// `exclusive` is for the shared game directory which holds one game at a
     /// time whoever it belongs to counting the cluster's own session too
     /// Returns the cluster already holding `dir`
-    pub fn claim_dir(&self, cluster_id: i64, dir: &Path, exclusive: bool) -> Result<(), i64> {
+    pub fn claim_dir(&self, cluster_id: i64, dir: &Path, exclusive: bool) -> Result<(), DirBusy> {
         let mut dirs = self.dirs.lock().unwrap();
+
+        let syncing = self
+            .syncs
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|(id, synced)| **id == cluster_id || synced.iter().any(|d| d == dir))
+            .map(|(id, _)| *id);
+        if let Some(syncing) = syncing {
+            return Err(DirBusy::Syncing(syncing));
+        }
 
         let holder = dirs
             .iter()
             .find(|(id, d)| (exclusive || **id != cluster_id) && d.as_path() == dir)
             .map(|(id, _)| *id);
         if let Some(holder) = holder {
-            return Err(holder);
+            return Err(DirBusy::Game(holder));
         }
 
         dirs.insert(cluster_id, dir.to_path_buf());
         Ok(())
+    }
+
+    pub fn begin_sync(
+        &self,
+        cluster_id: i64,
+        source: &Path,
+        dest: &Path,
+    ) -> Result<SyncGuard<'_>, SyncBlock> {
+        let dirs = self.dirs.lock().unwrap();
+        let mut syncs = self.syncs.lock().unwrap();
+
+        if self.is_active(cluster_id) {
+            return Err(SyncBlock::Running);
+        }
+        if syncs.contains_key(&cluster_id) {
+            return Err(SyncBlock::AlreadySyncing);
+        }
+        if dirs.values().any(|dir| dir == source || dir == dest) {
+            return Err(SyncBlock::SharedInUse);
+        }
+        if syncs
+            .values()
+            .any(|[from, to]| to == source || to == dest || from == dest)
+        {
+            return Err(SyncBlock::FolderSyncing);
+        }
+
+        syncs.insert(cluster_id, [source.to_path_buf(), dest.to_path_buf()]);
+        Ok(SyncGuard {
+            games: self,
+            cluster_id,
+        })
+    }
+
+    pub fn is_syncing(&self, cluster_id: i64) -> bool {
+        self.syncs.lock().unwrap().contains_key(&cluster_id)
+    }
+
+    pub fn is_dir_syncing(&self, dir: &Path) -> bool {
+        self.syncs
+            .lock()
+            .unwrap()
+            .values()
+            .any(|synced| synced.iter().any(|d| d == dir))
+    }
+
+    pub fn any_syncing(&self) -> bool {
+        !self.syncs.lock().unwrap().is_empty()
     }
 
     pub fn dir_in_use_by(&self, dir: &Path, exclude: i64) -> Option<i64> {
@@ -225,7 +318,7 @@ mod tests {
         let shared = Path::new("shared");
 
         assert_eq!(games.claim_dir(1, shared, true), Ok(()));
-        assert_eq!(games.claim_dir(2, shared, true), Err(1));
+        assert_eq!(games.claim_dir(2, shared, true), Err(DirBusy::Game(1)));
 
         games.remove(1);
         assert_eq!(games.claim_dir(2, shared, true), Ok(()));
@@ -237,7 +330,71 @@ mod tests {
 
         assert_eq!(games.claim_dir(1, Path::new("one"), false), Ok(()));
         assert_eq!(games.claim_dir(2, Path::new("two"), false), Ok(()));
-        assert_eq!(games.claim_dir(3, Path::new("one"), false), Err(1));
+        assert_eq!(
+            games.claim_dir(3, Path::new("one"), false),
+            Err(DirBusy::Game(1))
+        );
+    }
+
+    #[test]
+    fn a_sync_holds_off_its_cluster_and_the_shared_dir_until_dropped() {
+        let games = GameProcessManager::new();
+        let shared = Path::new("shared");
+
+        let sync = games
+            .begin_sync(1, shared, Path::new("one"))
+            .expect("nothing is running");
+        assert_eq!(
+            games.begin_sync(1, shared, Path::new("one")).err(),
+            Some(SyncBlock::AlreadySyncing)
+        );
+        assert_eq!(
+            games.claim_dir(1, Path::new("one"), false),
+            Err(DirBusy::Syncing(1))
+        );
+        assert_eq!(games.claim_dir(2, shared, true), Err(DirBusy::Syncing(1)));
+        assert_eq!(games.claim_dir(3, Path::new("three"), false), Ok(()));
+        assert_eq!(games.claim_dir(6, Path::new("group"), true), Ok(()));
+        assert!(games.is_syncing(1));
+        assert!(games.is_dir_syncing(shared));
+        assert!(!games.is_dir_syncing(Path::new("group")));
+
+        drop(sync);
+        assert!(!games.any_syncing());
+        assert_eq!(games.claim_dir(2, shared, true), Ok(()));
+        assert_eq!(
+            games.begin_sync(4, shared, Path::new("four")).err(),
+            Some(SyncBlock::SharedInUse)
+        );
+
+        games.set_stage(5, LaunchStage::Running);
+        assert_eq!(
+            games.begin_sync(5, shared, Path::new("five")).err(),
+            Some(SyncBlock::Running)
+        );
+    }
+
+    #[test]
+    fn syncs_may_share_a_source_but_never_a_folder_being_written() {
+        let games = GameProcessManager::new();
+        let (source, dest) = (Path::new("source"), Path::new("dest"));
+
+        let _sync = games
+            .begin_sync(1, source, dest)
+            .expect("nothing else runs");
+        assert_eq!(
+            games.begin_sync(2, Path::new("other"), dest).err(),
+            Some(SyncBlock::FolderSyncing)
+        );
+        assert_eq!(
+            games.begin_sync(3, dest, Path::new("other")).err(),
+            Some(SyncBlock::FolderSyncing)
+        );
+        assert_eq!(
+            games.begin_sync(4, Path::new("other"), source).err(),
+            Some(SyncBlock::FolderSyncing)
+        );
+        assert!(games.begin_sync(5, source, Path::new("other")).is_ok());
     }
 
     #[test]
@@ -248,7 +405,10 @@ mod tests {
         games.set_natives(1, natives.to_path_buf());
         assert_eq!(games.natives_in_use_by(natives, None), Some(1));
         assert_eq!(games.natives_in_use_by(natives, Some(1)), None);
-        assert_eq!(games.natives_in_use_by(Path::new("natives/1.21"), None), None);
+        assert_eq!(
+            games.natives_in_use_by(Path::new("natives/1.21"), None),
+            None
+        );
 
         games.remove(1);
         assert_eq!(games.natives_in_use_by(natives, None), None);

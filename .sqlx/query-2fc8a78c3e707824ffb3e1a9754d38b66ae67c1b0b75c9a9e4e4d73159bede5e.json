@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM cluster_bisect_edges WHERE cluster_id = ?\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "2fc8a78c3e707824ffb3e1a9754d38b66ae67c1b0b75c9a9e4e4d73159bede5e"
+}

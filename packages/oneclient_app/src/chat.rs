@@ -365,21 +365,23 @@ impl ChatState {
         self.error = None;
     }
 
-    pub fn set_messages(&mut self, group_id: i32, page: Vec<GroupMessage>) {
+    pub fn set_messages(&mut self, group_id: i32, page: Vec<GroupMessage>, known: Option<i64>) {
         let mut messages: Vec<ChatMessage> = page.into_iter().map(ChatMessage::from).collect();
         messages.sort_by_key(|message| message.id);
         messages.dedup_by_key(|message| message.id);
 
-        if let (Some(first), Some(last)) = (messages.first(), messages.last()) {
-            let (first, last) = (first.id, last.id);
-            messages.extend(
-                self.messages_for(group_id)
-                    .iter()
-                    .filter(|message| message.id < first || message.id > last)
-                    .cloned(),
-            );
-            messages.sort_by_key(|message| message.id);
-        }
+        let first = messages.first().map(|message| message.id);
+        let last = messages.last().map_or(i64::MIN, |message| message.id);
+        let newer = last.max(known.unwrap_or(i64::MIN));
+        messages.extend(
+            self.messages_for(group_id)
+                .iter()
+                .filter(|message| {
+                    first.is_some_and(|first| message.id < first) || message.id > newer
+                })
+                .cloned(),
+        );
+        messages.sort_by_key(|message| message.id);
 
         self.messages.insert(group_id, Arc::new(messages));
     }
@@ -910,12 +912,37 @@ mod tests {
                 fetched(20, "fresh copy", "2026-01-01T00:01:00Z"),
                 fetched(30, "newest page", "2026-01-01T00:02:00Z"),
             ],
+            Some(25),
         );
 
         let messages = chat.messages_for(1);
         let ids: Vec<i64> = messages.iter().map(|m| m.id).collect();
         assert_eq!(ids, vec![5, 10, 20, 30, 40]);
         assert_eq!(messages[2].content, "fresh copy");
+    }
+
+    #[test]
+    fn reloading_the_newest_page_drops_messages_deleted_while_away() {
+        let mut chat = ChatState::default();
+        chat.upsert(1, message(10, "kept"));
+        chat.upsert(1, message(50, "deleted while away"));
+
+        chat.set_messages(
+            1,
+            vec![fetched(10, "kept", "2026-01-01T00:00:00Z")],
+            chat.newest_message(1),
+        );
+        assert_eq!(
+            chat.messages_for(1)
+                .iter()
+                .map(|m| m.id)
+                .collect::<Vec<_>>(),
+            vec![10]
+        );
+
+        chat.upsert(1, message(60, "deleted too"));
+        chat.set_messages(1, Vec::new(), Some(60));
+        assert!(chat.messages_for(1).is_empty());
     }
 
     #[test]

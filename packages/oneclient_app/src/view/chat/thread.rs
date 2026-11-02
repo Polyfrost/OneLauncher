@@ -773,6 +773,7 @@ impl Component for Composer {
         let mut picker_area = use_state(Area::default);
         let mut toggle_area = use_state(Area::default);
         let mut loaded_edit = use_state(|| None::<i64>);
+        let mut stashed = use_state(String::new);
         let group_id = self.group_id;
         let editing = self.editing;
         let mut cancel_edit = self.editing;
@@ -780,9 +781,12 @@ impl Component for Composer {
         let current_edit = editing.read().clone();
         let edit_id = current_edit.as_ref().map(|(id, _)| *id);
         if edit_id != *loaded_edit.peek() {
+            if loaded_edit.peek().is_none() {
+                stashed.set(draft.peek().clone());
+            }
             match &current_edit {
                 Some((_, content)) => draft.set(content.clone()),
-                None => draft.set(String::new()),
+                None => draft.set(std::mem::take(&mut *stashed.write())),
             }
             loaded_edit.set(edit_id);
         }

@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
 use freya::radio::RadioStation;
@@ -26,6 +26,8 @@ static RESYNC_RUNNING: AtomicBool = AtomicBool::new(false);
 static RESYNC_QUEUED: AtomicBool = AtomicBool::new(false);
 static LAST_RESYNC: Mutex<Option<Instant>> = Mutex::new(None);
 static LAST_ROSTER: Mutex<Option<Instant>> = Mutex::new(None);
+static STATUS_TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+static STATUS_UNSAVED: AtomicUsize = AtomicUsize::new(0);
 
 type Station = RadioStation<AppState, AppChannel>;
 
@@ -213,6 +215,7 @@ pub async fn load_messages(station: Station, group_id: i32) {
         .begin_thread_load(group_id);
 
     let owner = owner_of(station);
+    let known = station.peek().chat.newest_message(group_id);
     let limit = PAGE_SIZE.min(MAX_PAGE_SIZE);
     let page = client.messages(group_id, None, Some(limit)).await;
     if owner_of(station) != owner {
@@ -223,7 +226,7 @@ pub async fn load_messages(station: Station, group_id: i32) {
         Ok(page) => {
             let complete = (page.len() as u64) < limit;
             let mut guard = station.clone().write_channel(AppChannel::Chat);
-            guard.chat.set_messages(group_id, page);
+            guard.chat.set_messages(group_id, page, known);
             guard.chat.set_history_complete(group_id, complete);
             guard.chat.settle_thread_load(group_id);
         }
@@ -417,10 +420,7 @@ pub enum ChatJob {
     RemoveFriend(Uuid),
     Block(Uuid),
     Unblock(Uuid),
-    SetStatus {
-        status: PlayerStatus,
-        previous: PlayerStatus,
-    },
+    SetStatus,
     AddMembers {
         group_id: i32,
         members: Vec<Uuid>,
@@ -639,22 +639,25 @@ impl ChatJob {
                 }
                 load_conversations(station).await;
             }
-            Self::SetStatus { status, previous } => {
-                let Some(client) = client() else { return };
-                let owner = owner_of(station);
-                let result = client.set_status(status).await;
+            Self::SetStatus => {
+                let (owner, result) = {
+                    let _turn = STATUS_TURN.lock().await;
+                    let owner = owner_of(station);
+                    let status = station.peek().chat.self_status;
+                    let result = match client() {
+                        Some(client) => Some(client.set_status(status).await),
+                        None => None,
+                    };
+                    (owner, result)
+                };
+                STATUS_UNSAVED.fetch_sub(1, Ordering::SeqCst);
                 if owner_of(station) != owner {
                     return;
                 }
 
-                if let Err(err) = result {
-                    {
-                        let mut guard = station.clone().write_channel(AppChannel::Chat);
-                        if guard.chat.self_status == status {
-                            guard.chat.self_status = previous;
-                        }
-                    }
+                if let Some(Err(err)) = result {
                     report(station, &err);
+                    load_self_status(station).await;
                 }
             }
         }
@@ -731,6 +734,7 @@ async fn player_name(player: Uuid) -> String {
 
 pub async fn load_self_status(station: Station) {
     let Some(client) = client() else { return };
+    let _turn = STATUS_TURN.lock().await;
     let owner = owner_of(station);
 
     let status = client.status().await;
@@ -739,6 +743,7 @@ pub async fn load_self_status(station: Station) {
     }
 
     match status {
+        Ok(_) if STATUS_UNSAVED.load(Ordering::SeqCst) > 0 => {}
         Ok(status) => {
             station
                 .clone()
@@ -967,17 +972,16 @@ impl Actions {
     }
 
     pub fn set_self_status(&self, status: PlayerStatus) {
-        let previous = {
-            let station = self.station();
-            let mut guard = station.clone().write_channel(AppChannel::Chat);
-            let previous = guard.chat.self_status;
-            guard.chat.self_status = status;
-            previous
-        };
-
-        if previous != status {
-            self.chat_job(ChatJob::SetStatus { status, previous });
+        let station = self.station();
+        let mut guard = station.clone().write_channel(AppChannel::Chat);
+        if guard.chat.self_status == status {
+            return;
         }
+        guard.chat.self_status = status;
+        drop(guard);
+
+        STATUS_UNSAVED.fetch_add(1, Ordering::SeqCst);
+        self.chat_job(ChatJob::SetStatus);
     }
 
     pub fn decline_chat_invite(&self, invite_id: i32) {

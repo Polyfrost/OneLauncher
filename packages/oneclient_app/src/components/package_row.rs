@@ -26,7 +26,6 @@ pub(crate) const GRID_MIN_W: f32 = 290.;
 const GRID_CARD_PADDING: f32 = 14.;
 const BADGE_STRIP_H: f32 = 20.;
 const BADGE_STRIP_LIFT: f32 = 2.;
-const TAG_LETTER_SPACING: f32 = 0.6;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -1141,16 +1140,15 @@ fn status_tag(text: impl Into<String>, accent: Color) -> Element {
         .background(colors::component_bg())
         .child(
             rect()
-                .padding(Gaps::new(1., 6., 3., 6. + TAG_LETTER_SPACING))
+                .padding(Gaps::new(1., 6., 2., 6.))
                 .corner_radius(CornerRadius::new_all(4.))
                 .background(accent.with_a(38))
                 .border(border_all_color(1., accent.with_a(96)))
                 .child(
                     label()
-                        .text(text.into().to_uppercase())
-                        .font_size(9.)
-                        .font_weight(FontWeight::BOLD)
-                        .letter_spacing(TAG_LETTER_SPACING)
+                        .text(text.into())
+                        .font_size(10.)
+                        .font_weight(FontWeight::SEMI_BOLD)
                         .color(accent),
                 ),
         )

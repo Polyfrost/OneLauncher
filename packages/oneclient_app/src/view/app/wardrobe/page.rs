@@ -1612,8 +1612,14 @@ fn visible_slots(ctx: &GridCtx, layout: &Layout, view: &ScrollAreaCtx) -> Elemen
     let mut column = rect().vertical().width(Size::fill());
     let lead = slots.get(first).map_or(layout.total, |slot| slot.y);
     if lead > 0. {
-        column = column.child(rect().width(Size::fill()).height(Size::px(lead)));
+        column = column.child(
+            rect()
+                .key("lead")
+                .width(Size::fill())
+                .height(Size::px(lead)),
+        );
     }
+
     for (index, slot) in slots[first..last].iter().enumerate() {
         column = column.child(
             rect()
@@ -1631,10 +1637,17 @@ fn visible_slots(ctx: &GridCtx, layout: &Layout, view: &ScrollAreaCtx) -> Elemen
                 ),
         );
     }
+
     let tail = slots.get(last).map_or(0., |slot| layout.total - slot.y);
     if tail > 0. {
-        column = column.child(rect().width(Size::fill()).height(Size::px(tail)));
+        column = column.child(
+            rect()
+                .key("tail")
+                .width(Size::fill())
+                .height(Size::px(tail)),
+        );
     }
+
     column.into_element()
 }
 

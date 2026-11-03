@@ -77,6 +77,7 @@ pub struct LinkedArtifactRow {
     pub display_name: Option<String>,
     pub display_version: Option<String>,
     pub published_at: Option<String>,
+    pub added_at: Option<String>,
 }
 
 // used for resourcepacks and shaders

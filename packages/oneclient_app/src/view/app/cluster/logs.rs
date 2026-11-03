@@ -170,7 +170,8 @@ impl Component for ClusterLogs {
             if !valid {
                 let pick = files
                     .iter()
-                    .find(|f| f.name == "latest.log")
+                    .find(|f| matches!(f.kind, LogKind::Game { .. }))
+                    .or_else(|| files.iter().find(|f| f.name == "latest.log"))
                     .or_else(|| files.first());
 
                 if let Some(file) = pick {

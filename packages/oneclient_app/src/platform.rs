@@ -415,12 +415,11 @@ pub mod frame {
                 return;
             };
 
-            let composes_frame =
-                gpu_name.is_some_and(|gpu| gpu.contains("NVIDIA") || gpu.contains("Arc"));
-            if *graphics_driver == "OpenGL" && !composes_frame {
-                install(hwnd, gpu_name.unwrap_or("an unknown GPU"));
-            } else {
+            let gpu = gpu_name.unwrap_or("an unknown GPU");
+            if *graphics_driver != "OpenGL" || gpu.contains("NVIDIA") || gpu.contains("Arc") {
                 decorate(window, hwnd);
+            } else if gpu.contains("Intel") {
+                install(hwnd, gpu);
             }
         }
     }

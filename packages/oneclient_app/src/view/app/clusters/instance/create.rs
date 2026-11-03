@@ -80,6 +80,9 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
                 ImportSource::File => {
                     t("oneclient.clusters.instance.create.subtitle.file").to_string()
                 }
+                ImportSource::Code => {
+                    t("oneclient.clusters.instance.create.subtitle.code").to_string()
+                }
                 ImportSource::Launcher => {
                     t("oneclient.clusters.instance.create.subtitle.launcher").to_string()
                 }
@@ -157,6 +160,7 @@ impl Component for CreateInstanceModal {
             declined: use_state(|| None::<HashSet<String>>),
             modpack_origin: use_state(|| ModpackOrigin::Browse),
             import_source: use_state(|| ImportSource::File),
+            share_code: use_state(String::new),
             import_chosen: use_state(Vec::new),
             import_extra: use_state(Vec::new),
             import_mode: use_state(|| ImportMode::AsIs),
@@ -184,6 +188,8 @@ impl Component for CreateInstanceModal {
             Vec::new()
         };
         let friend = picks.step == Step::ImportSource && picks.import_source == ImportSource::File;
+        let by_code = picks.step == Step::ImportSource && picks.import_source == ImportSource::Code;
+        let share_code = picks.share_code.clone();
         let origin = picks.modpack_origin;
         let index = picks.index;
         let mut step = wizard.step;
@@ -194,6 +200,7 @@ impl Component for CreateInstanceModal {
         let close_created = self.on_close.clone();
         let close_modpack = self.on_close.clone();
         let close_import = self.on_close.clone();
+        let close_code = self.on_close.clone();
 
         shell(Shell {
             rail: wizard_rail(wizard, &picks),
@@ -224,6 +231,9 @@ impl Component for CreateInstanceModal {
                 (false, _) if friend => {
                     t("oneclient.clusters.instance.create.choose_file").to_string()
                 }
+                (false, _) if by_code => {
+                    t("oneclient.clusters.instance.create.open_share").to_string()
+                }
                 (true, ModpackOrigin::Browse) => {
                     t("oneclient.clusters.instance.create.browse_modpacks").to_string()
                 }
@@ -246,6 +256,9 @@ impl Component for CreateInstanceModal {
             on_primary: (move |()| {
                 if friend {
                     pick_shared_file(dispatch.clone(), close_modpack.clone());
+                } else if by_code {
+                    dispatch.import_share(share_code.clone());
+                    close_code.call(());
                 } else if (import_step && !improving) || review_step {
                     dispatch.import_external_instances(import_jobs.clone());
                     close_import.call(());

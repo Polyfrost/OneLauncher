@@ -11,6 +11,7 @@ use crate::i18n::t;
 use crate::routes::Route;
 use crate::theme::{colors, text_size};
 use crate::ui::entrance_motion_layer;
+use crate::view::app::ExportInstanceModal;
 use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken};
 
 const HEADER_HEIGHT: f32 = 64.;
@@ -127,6 +128,7 @@ impl Component for ClusterShell {
         let launch_state = launch_button_state(&game, cluster_id, syncing, shared_dir_taken);
         let bisecting = use_bisect(cluster_id).is_some();
         let mut question_hidden = use_state(|| false);
+        let mut sharing = use_state(|| false);
         let open_game_output = use_state(|| false);
         use_hook(move || {
             provide_root_context(crate::view::app::cluster::OpenGameOutput(open_game_output))
@@ -183,6 +185,7 @@ impl Component for ClusterShell {
                 launch_state,
                 game.is_running(cluster_id),
                 cluster.game_dir().ok(),
+                sharing,
             )
             .into_element()
         });
@@ -232,6 +235,12 @@ impl Component for ClusterShell {
                     cluster_id,
                     hidden: question_hidden,
                 }
+                .into_element()
+            }))
+            .maybe_child(cluster.as_ref().filter(|_| *sharing.read()).map(|cluster| {
+                ExportInstanceModal::new(cluster_id, cluster.name.clone(), move |()| {
+                    sharing.set(false)
+                })
                 .into_element()
             }))
     }
@@ -300,6 +309,7 @@ impl Component for ClusterContentOutlet {
     }
 }
 
+#[expect(clippy::too_many_arguments)]
 fn cluster_header(
     title: String,
     subtitle: String,
@@ -308,6 +318,7 @@ fn cluster_header(
     launch_state: (&'static str, bool),
     running: bool,
     folder: Option<std::path::PathBuf>,
+    mut sharing: State<bool>,
 ) -> impl IntoElement {
     let (launch_label, launch_enabled) = launch_state;
     let kill_dispatch = dispatch.clone();
@@ -349,6 +360,16 @@ fn cluster_header(
                         .width(Size::px(ACTION_HEIGHT))
                         .height(Size::px(ACTION_HEIGHT))
                 }))
+                .child(
+                    Button::new()
+                        .secondary()
+                        .icon()
+                        .width(Size::px(ACTION_HEIGHT))
+                        .height(Size::px(ACTION_HEIGHT))
+                        .tooltip(t("oneclient.layout.cluster.share"))
+                        .on_press(move |_| sharing.set(true))
+                        .child(Icon::new(IconType::Share01).size(ACTION_ICON_SIZE)),
+                )
                 .maybe(running, |el| {
                     el.child(
                         Button::new()

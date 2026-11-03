@@ -12,7 +12,9 @@ use crate::components::{
 };
 use crate::hooks::{use_cached_image, use_dispatch, use_notifications_snapshot};
 use crate::i18n::{t, tf};
-use crate::notifications::{ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView};
+use crate::notifications::{
+    ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView, SharedPreview,
+};
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::utils::{count_label, format_size};
@@ -354,6 +356,7 @@ fn dialog(
     .map(IntoElement::into_element);
     let warned =
         flagged_pack.is_some() || unlisted.is_some() || unverified.is_some() || unchecked.is_some();
+    let shared_section = confirm.shared.as_ref().map(shared_section);
     let add_button = Button::new().on_press(move |_| {
         if importing {
             add.confirm_modpack_import(choices.read().clone(), *existing.read());
@@ -461,6 +464,7 @@ fn dialog(
                                                 .into_element()
                                         }),
                                 )
+                                .maybe_child(shared_section)
                                 .children(import_notes)
                                 .maybe_child(existing_section)
                                 .maybe_child(flagged_section),
@@ -483,6 +487,112 @@ fn dialog(
                         .child(add_button),
                 ),
         )
+}
+
+fn shared_section(preview: &SharedPreview) -> Element {
+    let unverified = preview.files.iter().filter(|file| !file.verified).count();
+    let mut lines = vec![
+        label()
+            .text(tf(
+                "oneclient.components.modpack_confirm.shared.linked",
+                &[&preview.code],
+            ))
+            .font_size(text_size(12.))
+            .max_lines(4)
+            .color(colors::fg_secondary())
+            .into_element(),
+    ];
+    if unverified > 0 {
+        lines.push(
+            label()
+                .text(count_label(
+                    unverified,
+                    t("oneclient.components.modpack_confirm.shared.unverified.one"),
+                    t("oneclient.components.modpack_confirm.shared.unverified.other"),
+                ))
+                .font_size(text_size(12.))
+                .max_lines(3)
+                .color(colors::code_warn())
+                .into_element(),
+        );
+    }
+    if preview.settings > 0 {
+        lines.push(
+            label()
+                .text(count_label(
+                    preview.settings,
+                    t("oneclient.components.modpack_confirm.shared.settings.one"),
+                    t("oneclient.components.modpack_confirm.shared.settings.other"),
+                ))
+                .font_size(text_size(12.))
+                .color(colors::fg_secondary())
+                .into_element(),
+        );
+    }
+
+    let rows: Vec<Element> = preview
+        .files
+        .iter()
+        .map(|file| {
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .content(Content::Flex)
+                .cross_align(Alignment::Center)
+                .spacing(10.)
+                .child(
+                    label()
+                        .text(file.name.clone())
+                        .width(Size::flex(1.))
+                        .font_size(text_size(12.5))
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
+                        .color(colors::fg_primary()),
+                )
+                .child(label().text(file.source).font_size(text_size(11.5)).color(
+                    if file.verified {
+                        colors::fg_secondary()
+                    } else {
+                        colors::code_warn()
+                    },
+                ))
+                .into_element()
+        })
+        .collect();
+
+    let mut section = rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(8.)
+        .children(lines);
+    if !rows.is_empty() {
+        section = section.child(
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(6.)
+                .padding(Gaps::new_all(12.))
+                .corner_radius(rounded(10.))
+                .background(colors::component_bg())
+                .border(border_all_color(1., colors::component_border()))
+                .child(
+                    label()
+                        .text(t("oneclient.components.modpack_confirm.shared.inside"))
+                        .font_size(text_size(12.5))
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .color(colors::fg_primary()),
+                )
+                .children(rows)
+                .maybe_child(preview.truncated.then(|| {
+                    label()
+                        .text(t("oneclient.components.modpack_confirm.shared.more"))
+                        .font_size(text_size(12.))
+                        .color(colors::fg_secondary())
+                        .into_element()
+                })),
+        );
+    }
+    section.into_element()
 }
 
 fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> impl IntoElement {

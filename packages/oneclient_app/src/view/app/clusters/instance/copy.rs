@@ -135,6 +135,9 @@ pub fn footer_note(picks: &Picks) -> String {
             ImportSource::File => {
                 t("oneclient.clusters.instance.copy.note.import_source.file").to_string()
             }
+            ImportSource::Code => {
+                t("oneclient.clusters.instance.copy.note.import_source.code").to_string()
+            }
             ImportSource::Launcher => {
                 t("oneclient.clusters.instance.copy.note.import_source.launcher").to_string()
             }
@@ -203,6 +206,7 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
         },
         Step::ImportSource => match picks.import_source {
             ImportSource::File => t("oneclient.clusters.instance.copy.value.file").to_string(),
+            ImportSource::Code => t("oneclient.clusters.instance.copy.value.code").to_string(),
             ImportSource::Launcher => {
                 t("oneclient.clusters.instance.copy.value.launcher").to_string()
             }
@@ -269,7 +273,11 @@ pub fn is_ready(picks: &Picks) -> bool {
                 && (picks.choice == TypeChoice::Scratch || picks.loader.chosen.is_some())
         }
         Step::Customize => validate_instance_name(&picks.name).is_ok(),
-        Step::ImportSource | Step::ImportMode => true,
+        Step::ImportSource => {
+            picks.import_source != ImportSource::Code
+                || oneclient_core::sharing::ShareCode::parse(&picks.share_code).is_some()
+        }
+        Step::ImportMode => true,
         Step::Import => picks.import_count > 0,
         Step::ImportReview => {
             picks.import_count > 0

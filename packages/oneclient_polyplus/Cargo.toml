@@ -22,6 +22,7 @@ reqwest.workspace = true
 reqwest-websocket.workspace = true
 tokio.workspace = true
 futures-util.workspace = true
+tokio-util.workspace = true
 
 bytes.workspace = true
 image.workspace = true

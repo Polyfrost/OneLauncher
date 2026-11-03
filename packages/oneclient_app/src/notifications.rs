@@ -90,6 +90,7 @@ pub struct ModpackConfirm {
     pub unlisted: Vec<UnlistedMod>,
     pub mods_unchecked: bool,
     pub mods_unconfirmed: usize,
+    pub shared: Option<SharedPreview>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -104,6 +105,21 @@ pub struct UnpublishedInstance {
     pub game: String,
     pub mods: Vec<UnpublishedFile>,
     pub unconfirmed: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SharedPreview {
+    pub code: String,
+    pub files: Vec<SharedPreviewFile>,
+    pub settings: usize,
+    pub truncated: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct SharedPreviewFile {
+    pub name: String,
+    pub source: &'static str,
+    pub verified: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]

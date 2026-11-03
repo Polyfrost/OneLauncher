@@ -200,6 +200,13 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
             t("oneclient.clusters.instance.steps.import_source.file.meta"),
         ),
         (
+            ImportSource::Code,
+            IconType::Users01,
+            t("oneclient.clusters.instance.steps.import_source.code.title"),
+            t("oneclient.clusters.instance.steps.import_source.code.blurb"),
+            t("oneclient.clusters.instance.steps.import_source.code.meta"),
+        ),
+        (
             ImportSource::Launcher,
             IconType::FolderDownload,
             t("oneclient.clusters.instance.steps.import_source.launcher.title"),
@@ -208,6 +215,7 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
         ),
     ];
 
+    let by_code = picks.import_source == ImportSource::Code;
     rect()
         .vertical()
         .width(Size::fill())
@@ -224,6 +232,15 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
                 on_press: (move |()| chosen.set(source)).into(),
                 trailing: None,
             })
+        }))
+        .maybe_child(by_code.then(|| {
+            TextInput::new(wizard.share_code)
+                .width(Size::fill())
+                .placeholder(t(
+                    "oneclient.clusters.instance.steps.import_source.code.placeholder",
+                ))
+                .auto_focus(true)
+                .into_element()
         }))
         .into_element()
 }

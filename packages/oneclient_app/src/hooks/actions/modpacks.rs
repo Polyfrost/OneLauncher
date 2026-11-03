@@ -24,6 +24,7 @@ use crate::notifications::{
     BlockedDownloads, ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView,
 };
 use crate::state::AppChannel;
+use crate::utils::count_label;
 
 const MAX_LISTED: usize = 3;
 
@@ -206,8 +207,19 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
         None => (manifest.name.clone(), manifest.version.clone()),
     };
 
+    let mut notices = prepared.notices().to_vec();
+    if let Some(shared) = &prepared.share
+        && !shared.share.settings.is_empty()
+    {
+        notices.push(count_label(
+            shared.share.settings.len(),
+            t("oneclient.actions.modpacks.shared_settings.one"),
+            t("oneclient.actions.modpacks.shared_settings.other"),
+        ));
+    }
+
     ModpackConfirm {
-        notices: prepared.notices().to_vec(),
+        notices,
         pack_name,
         version,
         instance_name: prepared.instance_name.clone(),
@@ -217,6 +229,7 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
         summary: prepared.summary(),
         import: None,
         flagged: prepared.flagged.clone(),
+        shared: super::share::share_preview(&prepared.source),
         unlisted: prepared.unlisted.clone(),
         mods_unchecked: prepared.mods_unchecked,
         mods_unconfirmed: prepared.mods_unconfirmed,
@@ -765,6 +778,9 @@ impl Actions {
 
             match outcome {
                 Ok(ModpackCluster { cluster, report }) => {
+                    if let ModpackJob::Install(prepared) = &job {
+                        actions.link_installed(&prepared.source, cluster.id).await;
+                    }
                     events.signal(oneclient_events::Signal::ClustersChanged);
                     crate::hooks::invalidate_cluster_queries().await;
                     notify_outcome(&actions, &job, &cluster.name, &report);

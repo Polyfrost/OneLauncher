@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use oneclient_cluster::naming::{is_allowed_name_char, validate_modpack_instance_name};
-use oneclient_cluster::{Cluster, ClusterKind, ClusterUpdate, CreateClusterOptions};
+use oneclient_cluster::{Cluster, ClusterKind, ClusterUpdate, CreateClusterOptions, DirTarget};
 use oneclient_common::domain::{GameLoader, ProviderId};
 use oneclient_common::patch::Patch;
 use oneclient_content::{ContentCtx, ContentError};
@@ -294,6 +294,16 @@ pub async fn create_modpack_instance(
     };
 
     let cluster = state.clusters.create(&global, options).await?;
+    if prepared
+        .share
+        .as_ref()
+        .is_some_and(|shared| shared.share.dedicated_dir && !cluster.uses_dedicated_dir())
+    {
+        state
+            .clusters
+            .set_dir_target(cluster.id, &DirTarget::Dedicated, false)
+            .await?;
+    }
     if prepared
         .share
         .as_ref()

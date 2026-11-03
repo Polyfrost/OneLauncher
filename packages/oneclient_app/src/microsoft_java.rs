@@ -297,6 +297,10 @@ fn opted_out(state: &Arc<LauncherState>) -> bool {
         return true;
     }
 
+    if oneclient_java::vendors::default_vendor() != JavaVendor::Microsoft {
+        return true;
+    }
+
     let settings = state.settings.read();
     settings.skip_microsoft_java || !settings.seen_onboarding
 }

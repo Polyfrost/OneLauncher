@@ -23,14 +23,18 @@ use serde::{Deserialize, Deserializer, Serialize};
 pub use zulu::ZuluRuntimeProvider;
 
 pub fn runtime_providers() -> Vec<Box<dyn JavaRuntimeProvider>> {
-    vec![
+    let mut providers: Vec<Box<dyn JavaRuntimeProvider>> = vec![
         Box::new(MicrosoftRuntimeProvider),
         Box::new(ZuluRuntimeProvider),
         Box::new(AdoptiumRuntimeProvider),
         Box::new(CorrettoRuntimeProvider),
         Box::new(LibericaRuntimeProvider),
         Box::new(MojangRuntimeProvider),
-    ]
+    ];
+    if crate::platform::is_legacy_macos() {
+        providers.sort_by_key(|provider| provider.vendor() != JavaVendor::Mojang);
+    }
+    providers
 }
 
 // For making sure microsoft jdk provider is first

@@ -28,6 +28,17 @@ pub fn overlay_is_topmost(level: u8) -> bool {
     OPEN_LEVELS.with_borrow(|open| open.iter().all(|&other| other <= level))
 }
 
+pub fn use_open_level(level: u8) {
+    use_hook(move || OPEN_LEVELS.with_borrow_mut(|open| open.push(level)));
+    use_drop(move || {
+        OPEN_LEVELS.with_borrow_mut(|open| {
+            if let Some(pos) = open.iter().rposition(|&other| other == level) {
+                open.remove(pos);
+            }
+        });
+    });
+}
+
 #[derive(PartialEq)]
 pub struct OverlayPopup {
     children: Vec<Element>,
@@ -102,14 +113,7 @@ impl Component for OverlayPopup {
         let key_close = self.on_close.clone();
         let level = self.overlay_level;
 
-        use_hook(move || OPEN_LEVELS.with_borrow_mut(|open| open.push(level)));
-        use_drop(move || {
-            OPEN_LEVELS.with_borrow_mut(|open| {
-                if let Some(pos) = open.iter().rposition(|&other| other == level) {
-                    open.remove(pos);
-                }
-            });
-        });
+        use_open_level(level);
 
         let fade = use_animation(|conf| {
             conf.on_creation(OnCreation::Run);

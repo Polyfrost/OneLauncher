@@ -1,11 +1,12 @@
 use freya::prelude::*;
 use oneclient_events::Answer;
 
+use crate::i18n::t;
 use crate::updater::UPDATE_CHOICE_INSTALL;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(PartialEq)]
@@ -28,11 +29,11 @@ impl Component for UpdatePromptOverlay {
         let dismiss_label = prompt
             .dismiss
             .clone()
-            .unwrap_or_else(|| "Not now".to_string());
+            .unwrap_or_else(|| t("oneclient.components.update_prompt.not_now").to_string());
         let install_label = prompt
             .choice(UPDATE_CHOICE_INSTALL)
             .map(|choice| choice.label.clone())
-            .unwrap_or_else(|| "Download".to_string());
+            .unwrap_or_else(|| t("oneclient.common.download").to_string());
 
         let close = dispatch.clone();
         let cancel = dispatch.clone();
@@ -52,7 +53,7 @@ impl Component for UpdatePromptOverlay {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -68,7 +69,7 @@ impl Component for UpdatePromptOverlay {
                                     .child(
                                         label()
                                             .text(prompt.title.clone())
-                                            .font_size(16.)
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),
@@ -76,7 +77,7 @@ impl Component for UpdatePromptOverlay {
                             .child(
                                 label()
                                     .text(prompt.question.clone())
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(4)
                                     .width(Size::fill())
                                     .color(colors::fg_secondary()),

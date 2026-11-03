@@ -1,9 +1,10 @@
+use accesskit::Toggled;
 use freya::prelude::*;
 
 use super::model::{LoaderChoice, VersionRow};
 use crate::AppAssets;
 use crate::components::{AssetImage, Icon, IconType, pill};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 pub const CARD_RADIUS: f32 = 12.;
@@ -35,14 +36,17 @@ impl Component for SelectCard {
         let mut hovering = use_state(|| false);
         let hovered = *hovering.read();
         let on_press = self.on_press.clone();
+        let selected = self.selected;
 
         let a11y_id = use_a11y();
         let focus = use_focus(a11y_id);
         let focused = focus().is_focused();
 
-        let ring = if self.selected || focused {
+        let ring = if focus() == Focus::Keyboard {
+            colors::fg_primary()
+        } else if self.selected {
             colors::brand()
-        } else if hovered {
+        } else if hovered || focused {
             colors::component_border_hover()
         } else {
             colors::component_border()
@@ -53,7 +57,7 @@ impl Component for SelectCard {
             .width(Size::fill())
             .height(self.height.map_or_else(Size::auto, Size::px))
             .padding(self.padding)
-            .corner_radius(CornerRadius::new_all(CARD_RADIUS))
+            .corner_radius(rounded(CARD_RADIUS))
             .overflow(Overflow::Clip)
             .background(if hovered || focused {
                 colors::component_bg_hover()
@@ -64,6 +68,7 @@ impl Component for SelectCard {
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
+            .a11y_builder(move |node| node.set_toggled(Toggled::from(selected)))
             .cursor(CursorIcon::Pointer)
             .on_press(move |_| on_press.call(()))
             .on_pointer_enter(move |_| hovering.set(true))
@@ -83,7 +88,7 @@ pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<El
             rect()
                 .width(Size::px(size))
                 .height(Size::px(size))
-                .corner_radius(CornerRadius::new_all(5.))
+                .corner_radius(rounded(5.))
                 .overflow(Overflow::Clip)
                 .opacity(if selected { 1.0 } else { 0.7 })
                 .child(drawn)
@@ -102,12 +107,12 @@ pub fn loader_mark(choice: LoaderChoice, selected: bool, size: f32) -> Option<El
             .width(Size::px(size))
             .height(Size::px(size))
             .center()
-            .corner_radius(CornerRadius::new_all(5.))
+            .corner_radius(rounded(5.))
             .border(border_all_color(1., colors::component_border()))
             .child(
                 label()
                     .text(choice.short())
-                    .font_size(9.)
+                    .font_size(text_size(9.))
                     .font_weight(FontWeight::SEMI_BOLD)
                     .letter_spacing(0.4)
                     .color(color),
@@ -123,7 +128,7 @@ pub fn marker(selected: bool, checkbox: bool) -> Element {
         .width(Size::px(MARKER_SIZE))
         .height(Size::px(MARKER_SIZE))
         .center()
-        .corner_radius(CornerRadius::new_all(radius))
+        .corner_radius(rounded(radius))
         .background(if selected {
             colors::brand()
         } else {
@@ -147,7 +152,7 @@ pub fn marker(selected: bool, checkbox: bool) -> Element {
                 rect()
                     .width(Size::px(MARKER_DOT))
                     .height(Size::px(MARKER_DOT))
-                    .corner_radius(CornerRadius::new_all(999.))
+                    .corner_radius(rounded(999.))
                     .background(colors::on_brand())
                     .into_element()
             }
@@ -163,6 +168,7 @@ pub struct WideCard {
     pub meta: String,
     pub selected: bool,
     pub on_press: EventHandler<()>,
+    pub trailing: Option<Element>,
 }
 
 pub fn wide_card(card: WideCard) -> Element {
@@ -174,6 +180,7 @@ pub fn wide_card(card: WideCard) -> Element {
         meta,
         selected,
         on_press,
+        trailing,
     } = card;
     let title_id = title.clone();
 
@@ -183,9 +190,8 @@ pub fn wide_card(card: WideCard) -> Element {
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(14.)
-        .child(marker(selected, false))
         .child(Icon::new(icon).size(25.).color(if selected {
-            colors::fg_primary()
+            colors::brand()
         } else {
             colors::fg_secondary()
         }))
@@ -202,25 +208,26 @@ pub fn wide_card(card: WideCard) -> Element {
                         .child(
                             label()
                                 .text(title)
-                                .font_size(15.)
+                                .font_size(text_size(15.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(colors::fg_primary()),
                         )
                         .maybe_child(badge.map(|badge| {
                             label()
                                 .text(badge)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary())
                         })),
                 )
                 .child(
                     label()
                         .text(format!("{blurb} {meta}"))
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .line_height(1.45)
                         .color(colors::fg_secondary()),
                 ),
         )
+        .maybe_child(trailing)
         .into_element();
 
     SelectCard {
@@ -280,7 +287,7 @@ pub fn cell_card(card: CellCard) -> Element {
                             label()
                                 .text(title)
                                 .width(Size::flex(1.0))
-                                .font_size(14.)
+                                .font_size(text_size(14.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .max_lines(1)
                                 .color(colors::fg_primary()),
@@ -291,7 +298,7 @@ pub fn cell_card(card: CellCard) -> Element {
                     label()
                         .text(blurb)
                         .width(Size::fill())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .line_height(1.4)
                         .max_lines(3)
                         .color(colors::fg_secondary()),
@@ -300,7 +307,7 @@ pub fn cell_card(card: CellCard) -> Element {
         .maybe_child(meta.map(|meta| {
             label()
                 .text(meta)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary())
                 .into_element()
@@ -331,7 +338,7 @@ pub fn version_row(row: &VersionRow, selected: bool, on_press: EventHandler<()>)
             label()
                 .text(row.id.clone())
                 .width(Size::px(110.))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .max_lines(1)
                 .color(colors::fg_primary()),
@@ -340,7 +347,7 @@ pub fn version_row(row: &VersionRow, selected: bool, on_press: EventHandler<()>)
             label()
                 .text(row.meta.clone())
                 .width(Size::flex(1.0))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(1)
                 .text_align(TextAlign::Right)
                 .color(colors::fg_secondary()),
@@ -354,7 +361,7 @@ pub fn version_row(row: &VersionRow, selected: bool, on_press: EventHandler<()>)
             label()
                 .text(row.date.clone())
                 .width(Size::px(84.))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(1)
                 .text_align(TextAlign::Right)
                 .color(colors::fg_secondary())

@@ -15,7 +15,7 @@ use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters};
 use crate::motion::use_animations_enabled;
 use crate::routes::Route;
 use crate::theme;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all, border_all_color};
 use crate::utils::sort_clusters_for_home;
 
@@ -204,7 +204,7 @@ impl Component for ClusterCard {
                     .width(Size::fill())
                     .height(Size::fill())
                     .position(Position::new_absolute())
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .overflow(Overflow::Clip)
                     .border(
                         if active || focused {
@@ -330,7 +330,7 @@ impl Component for ClusterCard {
 fn title_label(text: String) -> Label {
     label()
         .text(text)
-        .font_size(32.)
+        .font_size(text_size(32.))
         .font_weight(FontWeight::SEMI_BOLD)
         .max_lines(1)
         .color(colors::on_media())
@@ -490,7 +490,7 @@ fn modpack_badge(icon: std::path::PathBuf) -> Element {
         .width(Size::px(MODPACK_ICON_PX))
         .height(Size::px(MODPACK_ICON_PX))
         .min_width(Size::px(MODPACK_ICON_PX))
-        .corner_radius(CornerRadius::new_all(14.))
+        .corner_radius(rounded(14.))
         .overflow(Overflow::Clip)
         .child(LocalImage::new(icon, MODPACK_ICON_EDGE, false))
         .into_element()
@@ -519,7 +519,7 @@ impl Component for OtherVersionsTile {
             .height(Size::fill())
             .offset_y(rise)
             .opacity(eased)
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .border(
                 if focused {
                     border_all_color(2., colors::brand())

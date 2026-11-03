@@ -9,14 +9,16 @@ use oneclient_content::modpacks::{SHARE_EXTENSION, detect_format};
 use oneclient_content::packages::PackageError;
 use oneclient_core::clusters::ModpackSource;
 use oneclient_core::{
-    ExternalImportReport, ExternalInstance, ImportChoices, InstanceArchive, alternative_version_id,
-    discard_instance_archive, import_external_instance, is_instance_archive, open_instance_archive,
+    ExternalImportReport, ExternalInstance, ImportChoices, InstanceArchive, UnpublishedCheck,
+    alternative_version_id, discard_instance_archive, find_unpublished_mods,
+    import_external_instance, instance_mods_stamp, is_instance_archive, open_instance_archive,
 };
 use oneclient_events::{GroupedProgressSession, TaskCategory, TaskPhase};
 
 use super::Actions;
+use crate::i18n::{t, tf};
 use crate::launcher::{self, off_ui};
-use crate::notifications::BlockedDownloads;
+use crate::notifications::{BlockedDownloads, UnpublishedInstance};
 
 const MAX_LISTED: usize = 3;
 
@@ -55,6 +57,12 @@ fn next_batch() -> Option<Vec<ExternalImportJob>> {
     Some(std::mem::take(pending))
 }
 
+static CONFIRMING: Mutex<Vec<(ExternalImportJob, bool)>> = Mutex::new(Vec::new());
+
+fn confirming() -> MutexGuard<'static, Vec<(ExternalImportJob, bool)>> {
+    CONFIRMING.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 static WAITING_FOR_INSTALL: Mutex<Vec<ExternalImportJob>> = Mutex::new(Vec::new());
 
 pub(super) fn take_waiting() -> Vec<ExternalImportJob> {
@@ -91,8 +99,8 @@ impl Drop for RunningImport {
         self.hold(&dropped);
         discard_workdir_set(std::mem::take(&mut self.workdirs));
         self.actions
-            .notify("Import stopped")
-            .body("Something went wrong, so the remaining imports were cancelled. Try importing them again.")
+            .notify(t("oneclient.actions.external_import.stopped.title"))
+            .body(t("oneclient.actions.external_import.stopped.body"))
             .error()
             .send();
         self.actions.resume_imports();
@@ -110,6 +118,7 @@ pub struct ExternalImportJob {
     pub choices: ImportChoices,
     pub alternatives: Vec<AlternativePick>,
     pub workdir: Option<PathBuf>,
+    pub reviewed: Option<u64>,
 }
 
 #[derive(Debug, Clone)]
@@ -126,6 +135,7 @@ impl ExternalImportJob {
             choices: ImportChoices::default(),
             alternatives: Vec::new(),
             workdir: None,
+            reviewed: None,
         }
     }
 
@@ -158,9 +168,108 @@ fn discard_workdir_set(workdirs: HashSet<PathBuf>) {
 }
 
 impl Actions {
+    pub fn import_external_instances(&self, jobs: Vec<ExternalImportJob>) {
+        if jobs.is_empty() {
+            return;
+        }
+
+        let actions = self.clone();
+        spawn_in_window(async move {
+            let mut held = HeldForCheck {
+                actions: actions.clone(),
+                jobs: Some(jobs),
+            };
+            let Ok(state) = launcher::state() else {
+                actions.start_external_imports(held.jobs.take().unwrap_or_default());
+                return;
+            };
+            let to_check: Vec<(ExternalInstance, Option<u64>)> = held
+                .jobs
+                .iter()
+                .flatten()
+                .map(|job| (job.instance.clone(), job.reviewed))
+                .collect();
+            let found = off_ui(async move {
+                let mut session = None;
+                let mut found = Vec::new();
+                for (instance, reviewed) in to_check {
+                    if let Some(stamp) = reviewed
+                        && instance_mods_stamp(&instance).await == stamp
+                    {
+                        continue;
+                    }
+                    session.get_or_insert_with(|| {
+                        GroupedProgressSession::start(
+                            &state.services.events,
+                            t("oneclient.actions.external_import.checking"),
+                        )
+                    });
+                    let check = find_unpublished_mods(&state, &instance).await;
+                    if !check.mods.is_empty() || check.unconfirmed > 0 {
+                        found.push(unpublished_view(&instance, check));
+                    }
+                }
+                if let Some(session) = session {
+                    session.finish();
+                }
+                found
+            })
+            .await;
+            let jobs = held.jobs.take().unwrap_or_default();
+
+            if found.is_empty() {
+                actions.start_external_imports(jobs);
+                return;
+            }
+            let warned: HashSet<PathBuf> =
+                found.iter().map(|(game_dir, _)| game_dir.clone()).collect();
+            let held: Vec<(ExternalImportJob, bool)> = jobs
+                .into_iter()
+                .map(|job| {
+                    let flagged = warned.contains(&job.instance.game_dir);
+                    (job, flagged)
+                })
+                .collect();
+            let others = held.iter().filter(|(_, flagged)| !flagged).count();
+            confirming().extend(held);
+            let views = found.into_iter().map(|(_, view)| view).collect();
+            actions
+                .with_engine(move |app| app.notifications.open_unpublished_import(views, others));
+        });
+    }
+
+    pub fn confirm_unpublished_import(&self, all: bool) {
+        self.with_engine(|app| app.notifications.close_unpublished_import());
+        let held = std::mem::take(&mut *confirming());
+        let (start, skipped): (Vec<_>, Vec<_>) =
+            held.into_iter().partition(|(_, flagged)| all || !flagged);
+        let start: Vec<ExternalImportJob> = start.into_iter().map(|(job, _)| job).collect();
+        let kept: HashSet<&PathBuf> = start
+            .iter()
+            .filter_map(|job| job.workdir.as_ref())
+            .collect();
+        let unused: HashSet<PathBuf> = skipped
+            .into_iter()
+            .filter_map(|(job, _)| job.workdir)
+            .filter(|workdir| !kept.contains(workdir))
+            .collect();
+        discard_workdir_set(unused);
+        self.start_external_imports(start);
+    }
+
+    pub fn cancel_unpublished_import(&self) {
+        self.with_engine(|app| app.notifications.close_unpublished_import());
+        let held = std::mem::take(&mut *confirming());
+        discard_workdir_set(
+            held.into_iter()
+                .filter_map(|(job, _)| job.workdir)
+                .collect(),
+        );
+    }
+
     /// Instances go one at a time: each can pull a whole modpack and hash
     /// hundreds of files, and running them side by side only fights over disk
-    pub fn import_external_instances(&self, jobs: Vec<ExternalImportJob>) {
+    pub(super) fn start_external_imports(&self, jobs: Vec<ExternalImportJob>) {
         if jobs.is_empty() {
             return;
         }
@@ -169,16 +278,16 @@ impl Actions {
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .extend(jobs);
-            self.notify("Queued for import")
-                .body("It will import as soon as the current install finishes.")
+            self.notify(t("oneclient.actions.external_import.queued.title"))
+                .body(t("oneclient.actions.external_import.queued.after_install"))
                 .send();
             return;
         }
         let jobs = match admit(jobs) {
             Admission::Start(jobs) => jobs,
             Admission::Queued => {
-                self.notify("Queued for import")
-                    .body("It will import as soon as the current import finishes.")
+                self.notify(t("oneclient.actions.external_import.queued.title"))
+                    .body(t("oneclient.actions.external_import.queued.after_import"))
                     .send();
                 return;
             }
@@ -209,6 +318,7 @@ impl Actions {
                         choices,
                         alternatives,
                         workdir: _,
+                        reviewed: _,
                     } = job;
                     let name = instance.name.clone();
                     let total = done + (batch_len - index) + queued_count();
@@ -218,9 +328,15 @@ impl Actions {
                         let state = state.clone();
                         async move {
                             let title = if total > 1 {
-                                format!("Importing {} ({position} of {total})", instance.name)
+                                tf(
+                                    "oneclient.actions.external_import.importing_batch",
+                                    &[&instance.name, &position, &total],
+                                )
                             } else {
-                                format!("Importing {}", instance.name)
+                                tf(
+                                    "oneclient.actions.external_import.importing",
+                                    &[&instance.name],
+                                )
                             };
                             let session =
                                 GroupedProgressSession::start(&state.services.events, title);
@@ -267,7 +383,10 @@ impl Actions {
                         Err(err) => {
                             tracing::warn!(instance = %name, error = %err, "could not import instance");
                             actions
-                                .notify(format!("Could not import {name}"))
+                                .notify(tf(
+                                    "oneclient.actions.external_import.import_failed",
+                                    &[&name],
+                                ))
                                 .body(err.to_string())
                                 .error()
                                 .send();
@@ -327,15 +446,19 @@ impl Actions {
                     let file = path
                         .file_name()
                         .map(|name| name.to_string_lossy().into_owned())
-                        .unwrap_or_else(|| "the file".to_string());
+                        .unwrap_or_else(|| {
+                            t("oneclient.actions.external_import.the_file").to_string()
+                        });
                     if let Some(reason) = &reason {
                         tracing::warn!(file, error = %reason, "could not read the dropped file");
                     }
                     actions
-                        .notify(format!("Can't import {file}"))
+                        .notify(tf(
+                            "oneclient.actions.external_import.unsupported.title",
+                            &[&file],
+                        ))
                         .body(reason.unwrap_or_else(|| {
-                            "This .zip isn't a OneClient, Prism Launcher, MultiMC or CurseForge export."
-                                .to_string()
+                            t("oneclient.actions.external_import.unsupported.body").to_string()
                         }))
                         .error()
                         .send();
@@ -353,7 +476,7 @@ impl Actions {
             let file = path
                 .file_name()
                 .map(|name| name.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "the file".to_string());
+                .unwrap_or_else(|| t("oneclient.actions.external_import.the_file").to_string());
 
             let opened = off_ui({
                 let state = state.clone();
@@ -361,9 +484,13 @@ impl Actions {
                 async move {
                     let session = GroupedProgressSession::start(
                         &state.services.events,
-                        format!("Reading {file}"),
+                        tf("oneclient.actions.external_import.reading", &[&file]),
                     );
-                    let child = session.child("Unpacking the instance", 1, TaskCategory::Packages);
+                    let child = session.child(
+                        t("oneclient.actions.external_import.unpacking"),
+                        1,
+                        TaskCategory::Packages,
+                    );
                     child.set_phase(TaskPhase::Importing);
                     let opened = open_instance_archive(&path).await;
                     child.finish();
@@ -384,7 +511,10 @@ impl Actions {
                 Err(err) => {
                     tracing::warn!(file, error = %err, "could not open an instance export");
                     actions
-                        .notify(format!("Could not open {file}"))
+                        .notify(tf(
+                            "oneclient.actions.external_import.open_failed",
+                            &[&file],
+                        ))
                         .body(err.to_string())
                         .error()
                         .send();
@@ -433,6 +563,42 @@ impl Actions {
     }
 }
 
+fn unpublished_view(
+    instance: &ExternalInstance,
+    check: UnpublishedCheck,
+) -> (PathBuf, UnpublishedInstance) {
+    let loader = match &instance.loader_version {
+        Some(version) => format!("{} {version}", instance.loader),
+        None => instance.loader.to_string(),
+    };
+    let view = UnpublishedInstance {
+        name: instance.name.clone(),
+        game: format!("{} · {loader}", instance.mc_version),
+        mods: check.mods,
+        unconfirmed: check.unconfirmed,
+    };
+    (instance.game_dir.clone(), view)
+}
+
+struct HeldForCheck {
+    actions: Actions,
+    jobs: Option<Vec<ExternalImportJob>>,
+}
+
+impl Drop for HeldForCheck {
+    fn drop(&mut self) {
+        let Some(jobs) = self.jobs.take() else {
+            return;
+        };
+        discard_workdir_set(jobs.into_iter().filter_map(|job| job.workdir).collect());
+        self.actions
+            .notify(t("oneclient.actions.external_import.stopped.title"))
+            .body(t("oneclient.actions.external_import.stopped.check_failed"))
+            .error()
+            .send();
+    }
+}
+
 fn notify_summary(actions: &Actions, imported: &[ExternalImportReport], unavailable: &[String]) {
     if imported.is_empty() {
         return;
@@ -440,9 +606,15 @@ fn notify_summary(actions: &Actions, imported: &[ExternalImportReport], unavaila
 
     let names = listed(imported.iter().map(|r| r.cluster_name.clone()));
     let mut body = if imported.len() == 1 {
-        format!("{names} is ready to play.")
+        tf(
+            "oneclient.actions.external_import.summary.ready.one",
+            &[&names],
+        )
     } else {
-        format!("{names} are ready to play.")
+        tf(
+            "oneclient.actions.external_import.summary.ready.other",
+            &[&names],
+        )
     };
 
     let failed: Vec<String> = imported
@@ -454,51 +626,74 @@ fn notify_summary(actions: &Actions, imported: &[ExternalImportReport], unavaila
     let blocked: usize = imported.iter().map(|r| r.blocked.len()).sum();
 
     if !failed.is_empty() {
-        body.push_str(&format!(
-            " Could not bring over {}.",
-            listed(failed.into_iter())
+        body.push(' ');
+        body.push_str(&tf(
+            "oneclient.actions.external_import.summary.content_failed",
+            &[&listed(failed.into_iter())],
         ));
     }
     if skipped > 0 {
-        body.push_str(&format!(
-            " {skipped} mod{} skipped: the instance has no mod loader.",
-            if skipped == 1 { " was" } else { "s were" }
-        ));
+        body.push(' ');
+        body.push_str(&if skipped == 1 {
+            tf(
+                "oneclient.actions.external_import.summary.skipped.one",
+                &[&skipped],
+            )
+        } else {
+            tf(
+                "oneclient.actions.external_import.summary.skipped.other",
+                &[&skipped],
+            )
+        });
     }
     if left_out > 0 {
-        body.push_str(&format!(
-            " {left_out} mod{} left out.",
-            if left_out == 1 { " was" } else { "s were" }
-        ));
+        body.push(' ');
+        body.push_str(&if left_out == 1 {
+            tf(
+                "oneclient.actions.external_import.summary.left_out.one",
+                &[&left_out],
+            )
+        } else {
+            tf(
+                "oneclient.actions.external_import.summary.left_out.other",
+                &[&left_out],
+            )
+        });
     }
     if !unavailable.is_empty() {
-        body.push_str(&format!(
-            " Could not find a version of {} to install instead.",
-            listed(unavailable.iter().cloned())
+        body.push(' ');
+        body.push_str(&tf(
+            "oneclient.actions.external_import.summary.unavailable",
+            &[&listed(unavailable.iter().cloned())],
         ));
     }
     if blocked > 0 {
-        body.push_str(" Some modpack files still need a manual download from CurseForge.");
+        body.push(' ');
+        body.push_str(t("oneclient.actions.external_import.summary.blocked"));
     }
     for report in imported {
         if !report.parts_skipped.is_empty() {
-            body.push_str(&format!(
-                " {} was imported without {}: jar mods and custom components aren't supported.",
-                report.cluster_name,
-                listed(report.parts_skipped.iter().cloned())
+            body.push(' ');
+            body.push_str(&tf(
+                "oneclient.actions.external_import.summary.parts_skipped",
+                &[
+                    &report.cluster_name,
+                    &listed(report.parts_skipped.iter().cloned()),
+                ],
             ));
         }
         if let Some(major) = report.java_pinned {
-            body.push_str(&format!(
-                " {} uses Java {major}, as it did before.",
-                report.cluster_name
+            body.push(' ');
+            body.push_str(&tf(
+                "oneclient.actions.external_import.summary.java_pinned",
+                &[&report.cluster_name, &major],
             ));
         }
         if let Some(major) = report.jvm_args_dropped_for {
-            body.push_str(&format!(
-                " {}'s Java arguments were left out: they were written for Java {major}, \
-                 which is not set up.",
-                report.cluster_name
+            body.push(' ');
+            body.push_str(&tf(
+                "oneclient.actions.external_import.summary.jvm_args_dropped",
+                &[&report.cluster_name, &major],
             ));
         }
     }
@@ -508,15 +703,19 @@ fn notify_summary(actions: &Actions, imported: &[ExternalImportReport], unavaila
         .collect();
     if !unreadable.is_empty() {
         tracing::warn!(files = ?unreadable, "import skipped files it could not read");
-        body.push_str(&format!(
-            " Could not copy {}; it may be open in another program.",
-            listed(unreadable.into_iter())
+        body.push(' ');
+        body.push_str(&tf(
+            "oneclient.actions.external_import.summary.unreadable",
+            &[&listed(unreadable.into_iter())],
         ));
     }
 
     let title = match imported.len() {
-        1 => "Instance imported".to_string(),
-        n => format!("{n} instances imported"),
+        1 => t("oneclient.actions.external_import.summary.title.one").to_string(),
+        n => tf(
+            "oneclient.actions.external_import.summary.title.other",
+            &[&n],
+        ),
     };
     actions.notify(title).body(body).send();
 }
@@ -530,9 +729,9 @@ fn listed(names: impl Iterator<Item = String>) -> String {
         ([one], 0) => one.clone(),
         (many, 0) => {
             let (last, head) = many.split_last().expect("non-empty");
-            format!("{} and {last}", head.join(", "))
+            tf("oneclient.actions.listed.and", &[&head.join(", "), &last])
         }
-        (many, rest) => format!("{} and {rest} more", many.join(", ")),
+        (many, rest) => tf("oneclient.actions.listed.more", &[&many.join(", "), &rest]),
     }
 }
 

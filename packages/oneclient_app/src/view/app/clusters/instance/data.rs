@@ -87,6 +87,22 @@ impl Picks {
             .sum()
     }
 
+    pub fn unpublished_count(&self) -> usize {
+        self.import_screening
+            .iter()
+            .flatten()
+            .map(|screened| screened.unpublished.len())
+            .sum()
+    }
+
+    pub fn unconfirmed_count(&self) -> usize {
+        self.import_screening
+            .iter()
+            .flatten()
+            .map(|screened| screened.unconfirmed)
+            .sum()
+    }
+
     pub fn import_jobs(&self, chosen: &[ExternalInstance]) -> Vec<ExternalImportJob> {
         chosen
             .iter()
@@ -100,6 +116,7 @@ impl Picks {
                     .iter()
                     .flatten()
                     .find(|screened| screened.game_dir == instance.game_dir);
+                job.reviewed = screened.map(|screened| screened.mods_stamp);
                 for flagged in screened.iter().flat_map(|screened| &screened.flagged) {
                     match decision_for(&self.import_decisions, &instance.game_dir, flagged) {
                         ModDecision::Keep => {}
@@ -464,7 +481,7 @@ pub fn resolve(w: Wizard) -> Picks {
         import_screening,
         import_screening_error,
         import_decisions: w.import_decisions.read().clone(),
-        folder: *w.folder.read(),
+        folder: w.folder.read().clone(),
         kind,
         name: w.details.effective_name(&suggested),
         suggested,

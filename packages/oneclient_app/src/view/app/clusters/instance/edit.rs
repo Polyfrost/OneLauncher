@@ -9,6 +9,7 @@ use super::details::{DetailsState, details_body};
 use super::rail::{Rail, facts_card, rail, version_art};
 use super::shell::{Shell, shell};
 use crate::hooks::{ClusterAction, use_cluster_mutation};
+use crate::i18n::t;
 
 #[derive(Clone, PartialEq)]
 pub struct InstanceFacts {
@@ -46,7 +47,7 @@ fn kind_label(kind: ClusterKind) -> &'static str {
     match kind {
         ClusterKind::OneClient => "OneClient",
         ClusterKind::Vanilla => "Vanilla",
-        ClusterKind::Modded => "Modded",
+        ClusterKind::Modded => t("oneclient.clusters.instance.edit.kind.modded"),
     }
 }
 
@@ -107,19 +108,22 @@ impl Component for EditInstanceModal {
                 art,
                 title,
                 subtitle,
-                card: facts_card(
-                    vec![
-                        ("Type", kind_label(self.facts.kind).to_string()),
-                        ("Version", self.facts.mc_version.clone()),
-                        ("Loader", loader),
-                    ],
-                ),
+                card: facts_card(vec![
+                    (
+                        t("oneclient.clusters.instance.edit.facts.type"),
+                        kind_label(self.facts.kind).to_string(),
+                    ),
+                    (
+                        t("oneclient.clusters.instance.edit.facts.version"),
+                        self.facts.mc_version.clone(),
+                    ),
+                    (t("oneclient.clusters.instance.edit.facts.loader"), loader),
+                ]),
                 tags,
             }),
-            eyebrow: Some("Instance details".to_string()),
-            title: "Edit the instance".to_string(),
-            subtitle: "Only how it is presented changes here. The version, loader and installed content stay as they are."
-                .to_string(),
+            eyebrow: Some(t("oneclient.clusters.instance.edit.eyebrow").to_string()),
+            title: t("oneclient.clusters.instance.edit.title").to_string(),
+            subtitle: t("oneclient.clusters.instance.edit.subtitle").to_string(),
             body: details_body(
                 state,
                 self.facts.name.clone(),
@@ -129,9 +133,9 @@ impl Component for EditInstanceModal {
                 name_limit(self.facts.modpack),
             ),
             scrolls_itself: false,
-            note: "Changes apply straight away.".to_string(),
-            secondary_label: "Cancel".to_string(),
-            primary_label: "Save changes".to_string(),
+            note: t("oneclient.clusters.instance.edit.note").to_string(),
+            secondary_label: t("oneclient.common.cancel").to_string(),
+            primary_label: t("oneclient.clusters.instance.edit.save").to_string(),
             primary_enabled: ready,
             on_close: (move |()| close_x.call(())).into(),
             on_secondary: (move |()| close_cancel.call(())).into(),

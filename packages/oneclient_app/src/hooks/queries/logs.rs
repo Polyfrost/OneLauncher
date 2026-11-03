@@ -5,7 +5,7 @@ use freya::query::{
     use_mutation, use_query,
 };
 use oneclient_core::{
-    LauncherError, LogFileInfo, LogLevel, LogLine, MclogsUploadResponse, ReadOptions,
+    LauncherError, LogFileInfo, LogLevel, LogLine, LogTrim, MclogsUploadResponse, ReadOptions,
 };
 
 use crate::launcher::{off_ui, off_ui_blocking};
@@ -97,6 +97,7 @@ pub async fn invalidate_logs_queries() {
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct UploadLogKeys {
     pub path: PathBuf,
+    pub trim: LogTrim,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -110,9 +111,10 @@ impl MutationCapability for UploadLogMutation {
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let state = crate::launcher::state()?;
         let path = keys.path.clone();
-        Ok(off_ui(
-            async move { oneclient_core::upload_log_at(&state.services.requester, &path).await },
-        )
+        let trim = keys.trim;
+        Ok(off_ui(async move {
+            oneclient_core::upload_log_at(&state.services.requester, &path, trim).await
+        })
         .await?)
     }
 }

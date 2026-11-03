@@ -1,7 +1,8 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
-use crate::theme::colors;
+use crate::i18n::t;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::clamp_to_window;
 
 const GAP_VERT: f32 = 8.0;
@@ -13,7 +14,7 @@ const EXPANDED_HEIGHT: f32 = 180.;
 fn text_input(value: impl Into<WritableSetter<String>>) -> Input {
     Input::new(value)
         .padding(Gaps::new_symmetric(GAP_VERT, GAP_HORI))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .focus_background(colors::component_bg_pressed())
         .border_fill(colors::component_border())
@@ -72,7 +73,7 @@ impl TextInput {
             elements: Vec::new(),
             key: DiffKey::None,
         }
-        .font_size(14.)
+        .font_size(text_size(14.))
     }
 
     pub fn enabled(mut self, enabled: impl Into<bool>) -> Self {
@@ -101,7 +102,7 @@ impl TextInput {
         self.input = self
             .input
             .padding(Gaps::new_symmetric(GAP_VERT / 2., GAP_HORI / 1.5));
-        self.font_size(12.)
+        self.font_size(text_size(12.))
     }
 
     pub fn multiline(mut self, multiline: bool) -> Self {
@@ -243,7 +244,7 @@ impl Component for TextInput {
                 .on_close(move |_| expanded.set(false))
                 .child(
                     rect()
-                        .corner_radius(CornerRadius::new_all(8.))
+                        .corner_radius(rounded(8.))
                         .shadow(Shadow::from((
                             0.,
                             8.,
@@ -273,7 +274,7 @@ impl Component for TextInput {
                             .width(Size::px(22.))
                             .height(Size::px(22.))
                             .padding(3.)
-                            .tooltip("Expand")
+                            .tooltip(t("oneclient.components.text_input.expand"))
                             .on_press(move |e: Event<PressEventData>| {
                                 e.stop_propagation();
                                 expanded.set(true);

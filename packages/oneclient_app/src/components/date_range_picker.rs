@@ -2,7 +2,8 @@ use chrono::{Datelike, Days, Months, NaiveDate};
 use freya::prelude::*;
 
 use crate::components::{Icon, IconType, OverlayPopup};
-use crate::theme::colors;
+use crate::i18n::{t, tf};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, clamp_to_window};
 use crate::utils::format_day;
 
@@ -72,7 +73,7 @@ impl Component for DateRangePicker {
         let trigger_text = match selected {
             Some((a, b)) if a == b => format_day(a),
             Some((a, b)) => format!("{} – {}", format_day(a), format_day(b)),
-            None => "Pick dates".to_string(),
+            None => t("oneclient.components.date_range_picker.placeholder").to_string(),
         };
 
         rect()
@@ -83,7 +84,7 @@ impl Component for DateRangePicker {
                     .cross_align(Alignment::Center)
                     .spacing(6.)
                     .padding(Gaps::new_symmetric(0., 10.))
-                    .corner_radius(CornerRadius::new_all(9.))
+                    .corner_radius(rounded(9.))
                     .background(if hovering() {
                         colors::component_bg_hover()
                     } else {
@@ -117,7 +118,7 @@ impl Component for DateRangePicker {
                     .child(
                         label()
                             .text(trigger_text)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .color(colors::fg_primary()),
                     ),
@@ -137,7 +138,7 @@ impl Component for DateRangePicker {
                     .vertical()
                     .spacing(8.)
                     .padding(12.)
-                    .corner_radius(CornerRadius::new_all(10.))
+                    .corner_radius(rounded(10.))
                     .border(border_all_color(1., colors::component_border()))
                     .background(colors::page_elevated())
                     .on_sized(move |e: Event<SizedEventData>| {
@@ -195,7 +196,7 @@ fn month_header(
         .child(
             label()
                 .text(format!("{} {}", month_name(shown.month0()), shown.year()))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .width(Size::flex(1.0))
                 .text_align(TextAlign::Center)
@@ -215,7 +216,7 @@ fn arrow(
         .width(Size::px(24.))
         .height(Size::px(24.))
         .center()
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(colors::component_bg())
         .maybe(enabled, |el| {
             el.cursor(CursorIcon::Pointer)
@@ -231,12 +232,20 @@ fn arrow(
 
 fn weekday_header() -> Element {
     let mut row = rect().horizontal().spacing(CELL_GAP);
-    for day in ["M", "T", "W", "T", "F", "S", "S"] {
+    for day in [
+        t("oneclient.components.date_range_picker.weekday.mon"),
+        t("oneclient.components.date_range_picker.weekday.tue"),
+        t("oneclient.components.date_range_picker.weekday.wed"),
+        t("oneclient.components.date_range_picker.weekday.thu"),
+        t("oneclient.components.date_range_picker.weekday.fri"),
+        t("oneclient.components.date_range_picker.weekday.sat"),
+        t("oneclient.components.date_range_picker.weekday.sun"),
+    ] {
         row = row.child(
             rect().width(Size::px(CELL)).center().child(
                 label()
                     .text(day.to_string())
-                    .font_size(10.)
+                    .font_size(text_size(10.))
                     .color(colors::fg_secondary()),
             ),
         );
@@ -328,7 +337,7 @@ impl<F: FnMut(NaiveDate) + Clone + 'static> Component for DayCell<F> {
             .width(Size::px(CELL))
             .height(Size::px(CELL - 2.))
             .center()
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(background)
             .maybe(enabled, |el| {
                 el.cursor(CursorIcon::Pointer)
@@ -342,7 +351,7 @@ impl<F: FnMut(NaiveDate) + Clone + 'static> Component for DayCell<F> {
             .child(
                 label()
                     .text(day.day().to_string())
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(color),
             )
     }
@@ -354,8 +363,11 @@ fn footer(
     mut clear: impl FnMut() + 'static,
 ) -> Element {
     let hint = match pending {
-        Some(day) => format!("From {} — pick an end date", format_day(day)),
-        None => "Click a start date, then an end date".to_string(),
+        Some(day) => tf(
+            "oneclient.components.date_range_picker.pick_end",
+            &[&format_day(day)],
+        ),
+        None => t("oneclient.components.date_range_picker.pick_start").to_string(),
     };
 
     rect()
@@ -367,7 +379,7 @@ fn footer(
         .child(
             label()
                 .text(hint)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .max_lines(2)
                 .width(Size::flex(1.0))
                 .color(colors::fg_secondary()),
@@ -375,7 +387,7 @@ fn footer(
         .maybe_child(has_range.then(|| {
             rect()
                 .padding(Gaps::new_symmetric(4., 8.))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(colors::component_bg())
                 .cursor(CursorIcon::Pointer)
                 .a11y_role(AccessibilityRole::Button)
@@ -385,8 +397,8 @@ fn footer(
                 })
                 .child(
                     label()
-                        .text("Reset")
-                        .font_size(11.)
+                        .text(t("oneclient.common.reset"))
+                        .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 )
                 .into_element()
@@ -395,19 +407,18 @@ fn footer(
 }
 
 fn month_name(month0: u32) -> &'static str {
-    const MONTHS: [&str; 12] = [
-        "January",
-        "February",
-        "March",
-        "April",
-        "May",
-        "June",
-        "July",
-        "August",
-        "September",
-        "October",
-        "November",
-        "December",
-    ];
-    MONTHS[(month0 as usize).min(11)]
+    match month0 {
+        0 => t("oneclient.components.date_range_picker.month.january"),
+        1 => t("oneclient.components.date_range_picker.month.february"),
+        2 => t("oneclient.components.date_range_picker.month.march"),
+        3 => t("oneclient.components.date_range_picker.month.april"),
+        4 => t("oneclient.components.date_range_picker.month.may"),
+        5 => t("oneclient.components.date_range_picker.month.june"),
+        6 => t("oneclient.components.date_range_picker.month.july"),
+        7 => t("oneclient.components.date_range_picker.month.august"),
+        8 => t("oneclient.components.date_range_picker.month.september"),
+        9 => t("oneclient.components.date_range_picker.month.october"),
+        10 => t("oneclient.components.date_range_picker.month.november"),
+        _ => t("oneclient.components.date_range_picker.month.december"),
+    }
 }

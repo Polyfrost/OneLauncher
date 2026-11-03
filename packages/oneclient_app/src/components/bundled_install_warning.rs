@@ -3,7 +3,8 @@ use oneclient_content::packages::ProviderId;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::use_dispatch;
-use crate::theme::colors;
+use crate::i18n::{t, tf};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(Clone, PartialEq)]
@@ -22,11 +23,13 @@ pub fn bundled_install_body(pending: &PendingBundledInstall) -> String {
     let incoming = &pending.version_label;
 
     match &pending.bundled_version {
-        Some(bundled) => format!(
-            "{project} comes with this cluster's bundle, pinned to {bundled}. Installing {incoming} overrides the bundle's copy and can break other mods in the cluster or stop the game from starting."
+        Some(bundled) => tf(
+            "oneclient.components.bundled_install_warning.body_pinned",
+            &[project, bundled, incoming],
         ),
-        None => format!(
-            "{project} comes with this cluster's bundle. Installing {incoming} overrides the bundle's copy and can break other mods in the cluster or stop the game from starting."
+        None => tf(
+            "oneclient.components.bundled_install_warning.body",
+            &[project, incoming],
         ),
     }
 }
@@ -61,7 +64,7 @@ impl Component for BundledInstallWarning {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -76,8 +79,10 @@ impl Component for BundledInstallWarning {
                                     )
                                     .child(
                                         label()
-                                            .text("Not the bundled version")
-                                            .font_size(16.)
+                                            .text(t(
+                                                "oneclient.components.bundled_install_warning.title",
+                                            ))
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),
@@ -85,7 +90,7 @@ impl Component for BundledInstallWarning {
                             .child(
                                 label()
                                     .text(body)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(8)
                                     .width(Size::fill())
                                     .color(colors::fg_secondary()),
@@ -100,7 +105,7 @@ impl Component for BundledInstallWarning {
                                         Button::new()
                                             .secondary()
                                             .on_press(move |_| pending.set(None))
-                                            .text("Cancel"),
+                                            .text(t("oneclient.common.cancel")),
                                     )
                                     .child(
                                         Button::new()
@@ -116,7 +121,9 @@ impl Component for BundledInstallWarning {
                                                 pending.set(None);
                                             })
                                             .child(Icon::new(IconType::Download01).size(14.))
-                                            .text("Install anyway"),
+                                            .text(t(
+                                                "oneclient.components.bundled_install_warning.install_anyway",
+                                            )),
                                     ),
                             ),
                     ),

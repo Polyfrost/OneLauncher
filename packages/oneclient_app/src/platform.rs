@@ -234,6 +234,7 @@ pub mod tray {
     use freya::tray::{TrayEvent, TrayIcon, TrayIconBuilder};
 
     use crate::constants;
+    use crate::i18n::t;
     use crate::ipc::{self, IpcCommand};
 
     const OPEN_ID: &str = "oneclient.open";
@@ -241,6 +242,14 @@ pub mod tray {
     const STOP_ID: &str = "oneclient.stop";
     const LOGS_ID: &str = "oneclient.logs";
     const QUIT_ID: &str = "oneclient.quit";
+    #[cfg(target_os = "macos")]
+    const HELP_ID: &str = "oneclient.help";
+    #[cfg(target_os = "macos")]
+    const REPORT_ID: &str = "oneclient.report";
+    #[cfg(target_os = "macos")]
+    const HELP_URL: &str = "https://discord.gg/polyfrost";
+    #[cfg(target_os = "macos")]
+    const REPORT_URL: &str = "https://github.com/Polyfrost/OneLauncher/issues/new/choose";
 
     #[cfg(target_os = "macos")]
     const ICON: &[u8] = include_bytes!("../icons/tray.png");
@@ -251,6 +260,8 @@ pub mod tray {
 
     thread_local! {
         static GAME_ITEMS: RefCell<Vec<MenuItem>> = const { RefCell::new(Vec::new()) };
+        #[cfg(target_os = "macos")]
+        static MENU_BAR: RefCell<Option<Menu>> = const { RefCell::new(None) };
     }
 
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
@@ -267,22 +278,26 @@ pub mod tray {
     }
 
     pub fn build() -> TrayIcon {
-        let stop = MenuItem::with_id(STOP_ID, "Stop game", false, None);
-        let logs = MenuItem::with_id(LOGS_ID, "Show logs", false, None);
+        let live_on_linux = cfg!(target_os = "linux");
+        let stop = MenuItem::with_id(STOP_ID, t("oneclient.tray.stop_game"), live_on_linux, None);
+        let logs = MenuItem::with_id(LOGS_ID, t("oneclient.tray.show_logs"), live_on_linux, None);
 
         let menu = Menu::with_items(&[
-            &MenuItem::with_id(OPEN_ID, "Open OneClient", true, None),
-            &MenuItem::with_id(PLAY_ID, "Play last version", true, None),
+            &MenuItem::with_id(OPEN_ID, t("oneclient.tray.open"), true, None),
+            &MenuItem::with_id(PLAY_ID, t("oneclient.tray.play_last"), true, None),
             &PredefinedMenuItem::separator(),
             &stop,
             &logs,
             &PredefinedMenuItem::separator(),
-            &MenuItem::with_id(QUIT_ID, "Quit OneClient", true, None),
+            &MenuItem::with_id(QUIT_ID, t("oneclient.tray.quit"), true, None),
         ])
         .expect("failed to build the tray menu");
 
         GAME_ITEMS.with_borrow_mut(|items| *items = vec![stop, logs]);
         ACTIVE.store(true, Ordering::Relaxed);
+
+        #[cfg(target_os = "macos")]
+        install_menu_bar();
 
         let builder = TrayIconBuilder::new()
             .with_menu(Box::new(menu))
@@ -304,6 +319,10 @@ pub mod tray {
                 STOP_ID => IpcCommand::Stop,
                 LOGS_ID => IpcCommand::Logs,
                 QUIT_ID => IpcCommand::Quit,
+                #[cfg(target_os = "macos")]
+                HELP_ID => return super::open_url(HELP_URL),
+                #[cfg(target_os = "macos")]
+                REPORT_ID => return super::open_url(REPORT_URL),
                 _ => return,
             },
             #[cfg(target_os = "windows")]
@@ -315,6 +334,55 @@ pub mod tray {
             TrayEvent::Icon(_) => return,
         };
         ipc::send(command);
+    }
+
+    /// winit only builds the app menu, so the menu bar had no Help menu. It's set up with the
+    /// tray because menu clicks reach the app through the tray handler
+    #[cfg(target_os = "macos")]
+    fn install_menu_bar() {
+        use freya::tray::menu::Submenu;
+
+        let app_menu = Submenu::with_items(
+            constants::WINDOW_TITLE,
+            true,
+            &[
+                &PredefinedMenuItem::about(None, None),
+                &PredefinedMenuItem::separator(),
+                &PredefinedMenuItem::services(None),
+                &PredefinedMenuItem::separator(),
+                &PredefinedMenuItem::hide(None),
+                &PredefinedMenuItem::hide_others(None),
+                &PredefinedMenuItem::show_all(None),
+                &PredefinedMenuItem::separator(),
+                &PredefinedMenuItem::quit(None),
+            ],
+        );
+        let help_menu = Submenu::with_items(
+            t("oneclient.tray.menu_bar.help"),
+            true,
+            &[
+                &MenuItem::with_id(HELP_ID, t("oneclient.tray.menu_bar.get_help"), true, None),
+                &MenuItem::with_id(
+                    REPORT_ID,
+                    t("oneclient.tray.menu_bar.report_issue"),
+                    true,
+                    None,
+                ),
+            ],
+        );
+        let (Ok(app_menu), Ok(help_menu)) = (app_menu, help_menu) else {
+            tracing::warn!("failed to build the menu bar");
+            return;
+        };
+
+        let Ok(menu) = Menu::with_items(&[&app_menu, &help_menu]) else {
+            tracing::warn!("failed to build the menu bar");
+            return;
+        };
+        menu.init_for_nsapp();
+        // Gives it the system search field
+        help_menu.set_as_help_menu_for_nsapp();
+        MENU_BAR.with_borrow_mut(|bar| *bar = Some(menu));
     }
 
     fn play_last() {

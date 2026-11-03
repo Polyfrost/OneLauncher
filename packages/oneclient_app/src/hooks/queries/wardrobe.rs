@@ -17,6 +17,7 @@ use oneclient_polyplus::api::{
 use uuid::Uuid;
 
 use super::player_profile::FetchPlayerProfileQuery;
+use crate::i18n::{t, tf};
 
 const WARDROBE_STALE: Duration = Duration::from_secs(60);
 const PROFILE_TTL: Duration = Duration::from_secs(120);
@@ -87,50 +88,39 @@ pub struct WardrobeKeys {
 
 pub fn plus_message(err: PlusError) -> String {
     match err {
-        PlusError::ConsentRequired => {
-            "Poly+ needs the Terms of Service and Privacy Policy. Accept them in OneClient's settings."
-                .into()
-        }
-        PlusError::OfflineAccount => "Sign in with a Microsoft account to use Poly+.".into(),
+        PlusError::ConsentRequired => t("oneclient.wardrobe.plus.consent_required").into(),
+        PlusError::OfflineAccount => t("oneclient.wardrobe.plus.offline_account").into(),
         PlusError::JoinRejected { status: 429, .. } => {
-            "Minecraft is limiting sign-ins right now. Try again in a minute.".into()
+            t("oneclient.wardrobe.plus.join_rate_limited").into()
         }
         PlusError::JoinRejected { status, .. } if status >= 500 => {
-            "Minecraft's servers are having trouble. Try again later.".into()
+            t("oneclient.wardrobe.mojang.server_error").into()
         }
-        PlusError::JoinRejected { .. } => {
-            "Minecraft didn't accept the sign-in. Sign in to the account again.".into()
-        }
+        PlusError::JoinRejected { .. } => t("oneclient.wardrobe.mojang.sign_in_rejected").into(),
         PlusError::LoginRejected { status, .. } if status >= 500 => {
-            "The Poly+ servers are having trouble. Try again later.".into()
+            t("oneclient.wardrobe.plus.server_error").into()
         }
-        PlusError::LoginRejected { .. } => "Poly+ couldn't sign you in. Try again later.".into(),
-        PlusError::Api { status: 404, .. } => "That item no longer exists.".into(),
-        PlusError::Api { status: 409, .. } => {
-            "You've reached the limit. Delete one to make room.".into()
-        }
-        PlusError::Api { status: 429, .. } => {
-            "Too many changes at once. Try again in a moment.".into()
-        }
+        PlusError::LoginRejected { .. } => t("oneclient.wardrobe.plus.login_rejected").into(),
+        PlusError::Api { status: 404, .. } => t("oneclient.wardrobe.plus.not_found").into(),
+        PlusError::Api { status: 409, .. } => t("oneclient.wardrobe.plus.limit_reached").into(),
+        PlusError::Api { status: 429, .. } => t("oneclient.wardrobe.plus.rate_limited").into(),
         PlusError::Api { status, .. } if status >= 500 => {
-            "The Poly+ servers are having trouble. Try again later.".into()
+            t("oneclient.wardrobe.plus.server_error").into()
         }
         PlusError::Api { body, .. } if !body.trim().is_empty() => body.trim().to_string(),
         PlusError::Request(err) if err.is_decode() => {
-            "The Poly+ servers sent an unexpected response.".into()
+            t("oneclient.wardrobe.plus.unexpected_response").into()
         }
         PlusError::Request(_) | PlusError::Websocket(_) => {
-            "Couldn't reach the Poly+ servers.".into()
+            t("oneclient.wardrobe.plus.unreachable").into()
         }
         other => other.to_string(),
     }
 }
 
-fn list_message(err: PlusError, what: &str) -> String {
+fn list_message(err: PlusError, unavailable: &str) -> String {
     match err {
-        PlusError::Api { status: 404, .. } => {
-            format!("{what} aren't available on the Poly+ servers yet.")
-        }
+        PlusError::Api { status: 404, .. } => unavailable.to_string(),
         other => plus_message(other),
     }
 }
@@ -150,26 +140,22 @@ fn mojang_reason(err: &oneclient_mc::McError) -> Option<String> {
 
 fn mojang_message(err: oneclient_mc::McError) -> String {
     match err.http_status() {
-        Some(429) => "Minecraft is limiting changes right now. Try again in a minute.".into(),
-        Some(401 | 403) => {
-            "Minecraft didn't accept the sign-in. Sign in to the account again.".into()
-        }
-        Some(status) if status >= 500 => {
-            "Minecraft's servers are having trouble. Try again later.".into()
-        }
+        Some(429) => t("oneclient.wardrobe.mojang.rate_limited").into(),
+        Some(401 | 403) => t("oneclient.wardrobe.mojang.sign_in_rejected").into(),
+        Some(status) if status >= 500 => t("oneclient.wardrobe.mojang.server_error").into(),
         Some(status) => match mojang_reason(&err) {
-            Some(reason) => format!("Minecraft rejected the change: {reason}"),
-            None => format!("Minecraft rejected the change (HTTP {status})."),
+            Some(reason) => tf("oneclient.wardrobe.mojang.rejected_reason", &[&reason]),
+            None => tf("oneclient.wardrobe.mojang.rejected_status", &[&status]),
         },
-        None => format!("Couldn't reach Minecraft's servers ({err})."),
+        None => tf("oneclient.wardrobe.mojang.unreachable", &[&err]),
     }
 }
 
 fn mojang_read_message(err: oneclient_mc::McError) -> String {
     match err.http_status() {
-        Some(404) => "This account doesn't have a Minecraft: Java Edition profile.".into(),
+        Some(404) => t("oneclient.wardrobe.mojang.no_profile").into(),
         Some(status) if (400..500).contains(&status) && !matches!(status, 401 | 403 | 429) => {
-            format!("Minecraft couldn't load the profile (HTTP {status}).")
+            tf("oneclient.wardrobe.mojang.profile_failed", &[&status])
         }
         _ => mojang_message(err),
     }
@@ -183,10 +169,10 @@ async fn fresh_account(id: Uuid) -> Result<MinecraftAccount, String> {
         .await
         .map_err(|err| err.to_string())?;
     if !account.is_microsoft() {
-        return Err("Sign in with a Microsoft account to use the wardrobe.".into());
+        return Err(t("oneclient.wardrobe.account.signed_out").into());
     }
     if account.needs_sign_in() || account.access_token.is_empty() {
-        return Err("Sign in to the account again to use the wardrobe.".into());
+        return Err(t("oneclient.wardrobe.account.needs_sign_in").into());
     }
     Ok(account)
 }
@@ -254,7 +240,7 @@ async fn record_current_skin(
         return Ok(None);
     };
     let Some(hash) = api::texture_hash(&skin.url) else {
-        return Err("Couldn't read your current Minecraft skin.".into());
+        return Err(t("oneclient.wardrobe.skin.read_failed").into());
     };
     let key = (account.id, hash);
     let mut recorded = RECORDED.lock().await;
@@ -262,10 +248,10 @@ async fn record_current_skin(
         if let Some(id) = recorded.saved.get(&key) {
             return id
                 .map(Some)
-                .ok_or_else(|| "Your current skin was removed from your library.".to_string());
+                .ok_or_else(|| t("oneclient.wardrobe.skin.removed_from_library").to_string());
         }
         if recorded.blocked(&key) {
-            return Err("Your current skin couldn't be saved to your library recently.".into());
+            return Err(t("oneclient.wardrobe.skin.save_blocked").into());
         }
     }
     match add_worn_skin(account, &key.1, skin_model(&skin.variant), None).await {
@@ -380,7 +366,7 @@ impl QueryCapability for OutfitsQuery {
         let account = fresh_account(keys.account).await?;
         let list = api::list_outfits(&account)
             .await
-            .map_err(|err| list_message(err, "Outfits"))?;
+            .map_err(|err| list_message(err, t("oneclient.wardrobe.list.outfits_unavailable")))?;
 
         let unadopted = list
             .active_outfit_id
@@ -412,7 +398,7 @@ impl QueryCapability for SkinsQuery {
         let account = fresh_account(keys.account).await?;
         let list = api::list_skins(&account)
             .await
-            .map_err(|err| list_message(err, "Skins"))?;
+            .map_err(|err| list_message(err, t("oneclient.wardrobe.list.skins_unavailable")))?;
         if let Ok(profile) = mojang_profile(&account).await
             && !already_recorded(account.id, &profile).await
             && matches!(
@@ -601,9 +587,12 @@ impl QueryCapability for TransactionsQuery {
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         let account = fresh_account(keys.account).await?;
-        api::transactions(&account)
-            .await
-            .map_err(|err| format!("Couldn't load transactions: {}", plus_message(err)))
+        api::transactions(&account).await.map_err(|err| {
+            tf(
+                "oneclient.wardrobe.transactions_failed",
+                &[&plus_message(err)],
+            )
+        })
     }
 }
 
@@ -904,31 +893,39 @@ impl WardrobeAction {
                 cosmetic: Some(_),
                 name,
                 ..
-            } => Some(format!("Equipping {name}...")),
+            } => Some(tf("oneclient.wardrobe.pending.equipping", &[&name])),
             Self::Equip {
                 cosmetic: None,
                 name,
                 ..
-            } => Some(format!("Unequipping {name}...")),
+            } => Some(tf("oneclient.wardrobe.pending.unequipping", &[&name])),
             Self::MojangCape {
                 cape: Some(_),
                 name,
                 ..
-            } => Some(format!("Equipping {name}...")),
+            } => Some(tf("oneclient.wardrobe.pending.equipping", &[&name])),
             Self::MojangCape {
                 cape: None, name, ..
-            } => Some(format!("Removing {name}...")),
-            Self::WearSkin { name, .. } => Some(format!("Changing your skin to {name}...")),
+            } => Some(tf("oneclient.wardrobe.pending.removing", &[&name])),
+            Self::WearSkin { name, .. } => {
+                Some(tf("oneclient.wardrobe.pending.wearing_skin", &[&name]))
+            }
             Self::AddSkinFile { .. } | Self::AddSkinUrl { .. } | Self::AddSkinUsername { .. } => {
-                Some("Adding skin...".into())
+                Some(t("oneclient.wardrobe.pending.adding_skin").into())
             }
-            Self::Checkout { .. } | Self::BuyNow { .. } => Some("Opening checkout...".into()),
+            Self::Checkout { .. } | Self::BuyNow { .. } => {
+                Some(t("oneclient.wardrobe.pending.checkout").into())
+            }
             Self::DeleteSkin { name, .. } | Self::DeleteOutfit { name, .. } => {
-                Some(format!("Deleting {name}..."))
+                Some(tf("oneclient.wardrobe.pending.deleting", &[&name]))
             }
-            Self::ApplyOutfit { name, .. } => Some(format!("Switching to {name}...")),
-            Self::CreateOutfit { .. } => Some("Saving your current look...".into()),
-            Self::ParticleColor { .. } => Some("Changing your particle color...".into()),
+            Self::ApplyOutfit { name, .. } => {
+                Some(tf("oneclient.wardrobe.pending.applying_outfit", &[&name]))
+            }
+            Self::CreateOutfit { .. } => Some(t("oneclient.wardrobe.pending.saving_look").into()),
+            Self::ParticleColor { .. } => {
+                Some(t("oneclient.wardrobe.pending.particle_color").into())
+            }
             Self::RenameSkin { .. }
             | Self::FavoriteSkin { .. }
             | Self::SkinArms { .. }
@@ -1042,9 +1039,9 @@ async fn sync_active_outfit(
 
 fn synced(synced: bool, done: String) -> String {
     if synced {
-        format!("{done}.")
+        tf("oneclient.wardrobe.synced.done", &[&done])
     } else {
-        format!("{done}, but your active outfit couldn't be updated.")
+        tf("oneclient.wardrobe.synced.outfit_not_updated", &[&done])
     }
 }
 
@@ -1102,16 +1099,16 @@ async fn save_worn_skin(
     });
     remember_profile(account, profile.clone()).await;
     let Some((hash, model)) = worn else {
-        return Ok("Added the skin and put it on.".into());
+        return Ok(t("oneclient.wardrobe.skin.added_worn.done").into());
     };
     let mut recorded = RECORDED.lock().await;
     let info = match add_worn_skin(account, &hash, model, name).await {
         Ok(info) => info,
         Err(err) => {
             recorded.failed((account.id, hash), &err);
-            return Err(format!(
-                "Put the skin on, but couldn't save it to your library. {}",
-                plus_message(err)
+            return Err(tf(
+                "oneclient.wardrobe.skin.added_not_saved",
+                &[&plus_message(err)],
             ));
         }
     };
@@ -1119,7 +1116,7 @@ async fn save_worn_skin(
     drop(recorded);
     Ok(synced(
         sync_active_outfit(account, &profile, LookChange::Skin(info.id)).await,
-        "Added the skin and put it on".into(),
+        t("oneclient.wardrobe.skin.added_worn").into(),
     ))
 }
 
@@ -1139,9 +1136,9 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
                 .await
                 .map_err(plus_message)?;
             Ok(if cosmetic.is_some() {
-                format!("Equipped {name}.")
+                tf("oneclient.wardrobe.equip.equipped", &[&name])
             } else {
-                format!("Unequipped {name}.")
+                tf("oneclient.wardrobe.equip.unequipped", &[&name])
             })
         }
         WardrobeAction::MojangCape { cape, name, .. } => {
@@ -1154,9 +1151,9 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
             Ok(synced(
                 sync_active_outfit(account, &profile, LookChange::Cape(cape.clone())).await,
                 if cape.is_some() {
-                    format!("Equipped {name}")
+                    tf("oneclient.wardrobe.cape.equipped", &[&name])
                 } else {
-                    format!("Removed {name}")
+                    tf("oneclient.wardrobe.cape.removed", &[&name])
                 },
             ))
         }
@@ -1176,12 +1173,10 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
             Ok(match record_current_skin(account, &profile, true).await {
                 Ok(Some(skin)) => synced(
                     sync_active_outfit(account, &profile, LookChange::Skin(skin)).await,
-                    format!("Wearing {name}"),
+                    tf("oneclient.wardrobe.wear.wearing", &[&name]),
                 ),
-                Ok(None) => format!("Wearing {name}."),
-                Err(reason) => {
-                    format!("Wearing {name}, but it couldn't be saved to your library. {reason}")
-                }
+                Ok(None) => tf("oneclient.wardrobe.wear.wearing_done", &[&name]),
+                Err(reason) => tf("oneclient.wardrobe.wear.not_saved", &[&name, &reason]),
             })
         }
         WardrobeAction::AddSkinFile {
@@ -1189,9 +1184,9 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
         } => {
             let png = tokio::fs::read(path)
                 .await
-                .map_err(|err| format!("Couldn't read that file ({err})."))?;
+                .map_err(|err| tf("oneclient.wardrobe.skin.file_read_failed", &[&err]))?;
             if !png.starts_with(b"\x89PNG") {
-                return Err("Skins must be PNG images.".into());
+                return Err(t("oneclient.wardrobe.skin.not_png").into());
             }
             let variant = if *slim {
                 SkinVariant::Slim
@@ -1229,7 +1224,7 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
                     if matches!(err, oneclient_mc::McError::Minecraft(_))
                         || matches!(err.http_status(), Some(204 | 404))
                     {
-                        format!("Couldn't find a Minecraft player called {username}.")
+                        tf("oneclient.wardrobe.skin.player_not_found", &[&username])
                     } else {
                         mojang_read_message(err)
                     }
@@ -1238,7 +1233,7 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
                 .await
                 .map_err(mojang_read_message)?;
             let Some(hash) = profile.skin_url.as_deref().and_then(api::texture_hash) else {
-                return Err(format!("{exact} uses the default skin."));
+                return Err(tf("oneclient.wardrobe.skin.default_skin", &[&exact]));
             };
             let model = if profile.is_slim {
                 SkinModel::Slim
@@ -1248,13 +1243,13 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
             api::add_skin(account, &hash, model, Some(&exact))
                 .await
                 .map_err(plus_message)?;
-            Ok(format!("Saved {exact}'s skin."))
+            Ok(tf("oneclient.wardrobe.skin.saved_player", &[&exact]))
         }
         WardrobeAction::RenameSkin { id, old, name, .. } => {
             let skin = api::update_skin(account, *id, &serde_json::json!({ "name": name.trim() }))
                 .await
                 .map_err(plus_message)?;
-            Ok(format!("Renamed {old} to {}.", skin.name))
+            Ok(tf("oneclient.wardrobe.renamed", &[&old, &skin.name]))
         }
         WardrobeAction::FavoriteSkin {
             id, name, favorite, ..
@@ -1263,9 +1258,9 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
                 .await
                 .map_err(plus_message)?;
             Ok(if *favorite {
-                format!("Added {name} to favourites.")
+                tf("oneclient.wardrobe.favorite.added", &[&name])
             } else {
-                format!("Removed {name} from favourites.")
+                tf("oneclient.wardrobe.favorite.removed", &[&name])
             })
         }
         WardrobeAction::SkinArms {
@@ -1293,12 +1288,16 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
             api::update_skin(account, *id, &serde_json::json!({ "model": model }))
                 .await
                 .map_err(plus_message)?;
-            Ok(format!("{name} now uses {model} arms."))
+            Ok(if *slim {
+                tf("oneclient.wardrobe.skin.arms.slim", &[&name])
+            } else {
+                tf("oneclient.wardrobe.skin.arms.classic", &[&name])
+            })
         }
         WardrobeAction::DeleteSkin { id, name, .. } => {
             api::delete_skin(account, *id).await.map_err(plus_message)?;
             forget_recorded(account.id, *id).await;
-            Ok(format!("Deleted {name}."))
+            Ok(tf("oneclient.wardrobe.deleted", &[&name]))
         }
         WardrobeAction::ApplyOutfit { id, name, .. } => apply_outfit(account, *id, name).await,
         WardrobeAction::Checkout { products, .. } => checkout(account, products).await,
@@ -1306,18 +1305,14 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
             let product = api::store_product_id(*cosmetic)
                 .await
                 .map_err(plus_message)?
-                .ok_or_else(|| format!("{name} isn't purchasable yet."))?;
+                .ok_or_else(|| tf("oneclient.wardrobe.checkout.not_purchasable", &[&name]))?;
             checkout(account, &[product]).await
         }
         WardrobeAction::CreateOutfit { .. } => {
             let profile = mojang_profile(account).await?;
             let skin_id = record_current_skin(account, &profile, true)
                 .await
-                .map_err(|reason| {
-                    format!(
-                        "Couldn't save your current skin to your library, so the outfit wasn't saved. {reason}"
-                    )
-                })?;
+                .map_err(|reason| tf("oneclient.wardrobe.outfit.create_failed", &[&reason]))?;
             let cape_id = active_cape(&profile).map(|cape| cape.id.clone());
             let particle_color = api::fetch_player(account)
                 .await
@@ -1326,7 +1321,7 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
             let outfit = api::create_outfit(account, skin_id, cape_id.as_deref(), particle_color)
                 .await
                 .map_err(plus_message)?;
-            Ok(format!("Saved {}.", outfit.name))
+            Ok(tf("oneclient.wardrobe.outfit.saved", &[&outfit.name]))
         }
         WardrobeAction::RenameOutfit { id, old, name, .. } => {
             let update = api::OutfitUpdate {
@@ -1336,7 +1331,7 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
             let outfit = api::update_outfit(account, *id, &update)
                 .await
                 .map_err(plus_message)?;
-            Ok(format!("Renamed {old} to {}.", outfit.name))
+            Ok(tf("oneclient.wardrobe.renamed", &[&old, &outfit.name]))
         }
         WardrobeAction::FavoriteOutfit {
             id, name, favorite, ..
@@ -1349,23 +1344,23 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
                 .await
                 .map_err(plus_message)?;
             Ok(if *favorite {
-                format!("Added {name} to favourites.")
+                tf("oneclient.wardrobe.favorite.added", &[&name])
             } else {
-                format!("Removed {name} from favourites.")
+                tf("oneclient.wardrobe.favorite.removed", &[&name])
             })
         }
         WardrobeAction::DeleteOutfit { id, name, .. } => {
             api::delete_outfit(account, *id)
                 .await
                 .map_err(plus_message)?;
-            Ok(format!("Deleted {name}."))
+            Ok(tf("oneclient.wardrobe.deleted", &[&name]))
         }
         WardrobeAction::ParticleColor { color, .. } => {
             let id = api::list_outfits(account)
                 .await
                 .map_err(plus_message)?
                 .active_outfit_id
-                .ok_or_else(|| "Switch to an outfit to change your particle color.".to_string())?;
+                .ok_or_else(|| t("oneclient.wardrobe.particle.no_outfit").to_string())?;
             let update = api::OutfitUpdate {
                 particle_color: Some(*color),
                 ..Default::default()
@@ -1374,9 +1369,9 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
                 .await
                 .map_err(plus_message)?;
             Ok(if color.is_some() {
-                "Changed your particle color.".into()
+                t("oneclient.wardrobe.particle.changed").into()
             } else {
-                "Reset your particle color.".into()
+                t("oneclient.wardrobe.particle.reset").into()
             })
         }
     }
@@ -1384,7 +1379,7 @@ async fn run_action(account: &MinecraftAccount, action: &WardrobeAction) -> Resu
 
 async fn checkout(account: &MinecraftAccount, products: &[String]) -> Result<String, String> {
     if products.is_empty() {
-        return Err("Nothing purchasable in your cart yet.".into());
+        return Err(t("oneclient.wardrobe.checkout.empty").into());
     }
     let url = api::create_checkout(account, products)
         .await
@@ -1392,11 +1387,13 @@ async fn checkout(account: &MinecraftAccount, products: &[String]) -> Result<Str
             PlusError::Api { status: 409, body } if !body.trim().is_empty() => {
                 body.trim().to_string()
             }
-            PlusError::Api { status: 409, .. } => "You already own this item.".into(),
+            PlusError::Api { status: 409, .. } => {
+                t("oneclient.wardrobe.checkout.already_owned").into()
+            }
             other => plus_message(other),
         })?;
     crate::platform::open_url(&url);
-    Ok("Checkout opened in your browser.".into())
+    Ok(t("oneclient.wardrobe.checkout.opened").into())
 }
 
 async fn apply_outfit(account: &MinecraftAccount, id: i32, name: &str) -> Result<String, String> {
@@ -1408,17 +1405,16 @@ async fn apply_outfit(account: &MinecraftAccount, id: i32, name: &str) -> Result
 
     if applied.adopted {
         return match adopt_current_look(account, &profile, id, true).await {
-            Adoption::Saved => Ok(format!("Wearing {name}.")),
-            Adoption::SkinUnknown(reason) => Err(format!(
-                "Switched to {name}, but your current skin couldn't be saved into it. {reason}"
+            Adoption::Saved => Ok(tf("oneclient.wardrobe.wear.wearing_done", &[&name])),
+            Adoption::SkinUnknown(reason) => Err(tf(
+                "oneclient.wardrobe.outfit.adopt_skin_failed",
+                &[&name, &reason],
             )),
-            Adoption::Failed => Err(format!(
-                "Switched to {name}, but your current skin and cape couldn't be saved into it."
-            )),
+            Adoption::Failed => Err(tf("oneclient.wardrobe.outfit.adopt_failed", &[&name])),
         };
     }
     if applied.outfit.blank {
-        return Ok(format!("Wearing {name}."));
+        return Ok(tf("oneclient.wardrobe.wear.wearing_done", &[&name]));
     }
 
     let mut problems = Vec::new();
@@ -1444,9 +1440,9 @@ async fn apply_outfit(account: &MinecraftAccount, id: i32, name: &str) -> Result
             .await
             {
                 Ok(updated) => profile = updated,
-                Err(err) => problems.push(format!(
-                    "your Minecraft skin wasn't changed ({})",
-                    mojang_message(err)
+                Err(err) => problems.push(tf(
+                    "oneclient.wardrobe.outfit.problem.skin",
+                    &[&mojang_message(err)],
                 )),
             }
         }
@@ -1461,9 +1457,9 @@ async fn apply_outfit(account: &MinecraftAccount, id: i32, name: &str) -> Result
         };
         match result {
             Ok(updated) => profile = updated,
-            Err(err) => problems.push(format!(
-                "your Minecraft cape wasn't changed ({})",
-                mojang_message(err)
+            Err(err) => problems.push(tf(
+                "oneclient.wardrobe.outfit.problem.cape",
+                &[&mojang_message(err)],
             )),
         }
     }
@@ -1471,9 +1467,16 @@ async fn apply_outfit(account: &MinecraftAccount, id: i32, name: &str) -> Result
     remember_profile(account, profile).await;
 
     if problems.is_empty() {
-        Ok(format!("Wearing {name}."))
+        Ok(tf("oneclient.wardrobe.wear.wearing_done", &[&name]))
     } else {
         forget_profile(account.id);
-        Err(format!("Outfit applied, but {}.", problems.join(" and ")))
+        let problems = problems
+            .into_iter()
+            .reduce(|first, next| tf("oneclient.wardrobe.outfit.problem.and", &[&first, &next]))
+            .unwrap_or_default();
+        Err(tf(
+            "oneclient.wardrobe.outfit.applied_with_problems",
+            &[&problems],
+        ))
     }
 }

@@ -7,7 +7,8 @@ use crate::components::{
     ART_PREVIEW_EDGE, Button, DynamicArt, GALLERY_COVER_EDGE, Icon, IconType, LocalImage,
     TextInput, VersionArtGallery,
 };
-use crate::theme::colors;
+use crate::i18n::t;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const CARD_RADIUS: f32 = 12.;
@@ -120,7 +121,7 @@ pub fn details_body(
         .width(Size::fill())
         .spacing(18.)
         .child(field(
-            "Name",
+            t("oneclient.clusters.instance.details.name"),
             rect()
                 .vertical()
                 .width(Size::fill())
@@ -142,24 +143,29 @@ pub fn details_body(
                 .maybe_child(name_problem.map(|problem| {
                     label()
                         .text(problem.message())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::danger())
                         .into_element()
                 }))
                 .into_element(),
         ))
         .child(field(
-            "Description",
+            t("oneclient.clusters.instance.details.description"),
             TextInput::new(state.description)
-                .placeholder("What is this instance for?")
+                .placeholder(t(
+                    "oneclient.clusters.instance.details.description_placeholder",
+                ))
                 .multiline(true)
                 .width(Size::fill())
                 .height(Size::px(76.))
                 .into_element(),
         ))
-        .child(field("Tags", tag_field(state, &tags, tag_open)))
         .child(field(
-            "Background image",
+            t("oneclient.clusters.instance.details.tags"),
+            tag_field(state, &tags, tag_open),
+        ))
+        .child(field(
+            t("oneclient.clusters.instance.details.background"),
             cover_field(state, preview, version_art),
         ))
         .into_element()
@@ -230,8 +236,8 @@ fn preset_tags(state: DetailsState, tags: &[String]) -> Option<Element> {
             .spacing(6.)
             .child(
                 label()
-                    .text("Suggested")
-                    .font_size(11.)
+                    .text(t("oneclient.clusters.instance.details.suggested"))
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -273,7 +279,7 @@ impl Component for PresetChip {
             .spacing(6.)
             .height(Size::px(26.))
             .padding(Gaps::new_symmetric(0., 10.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(if hovered {
                 colors::component_bg_hover()
             } else {
@@ -306,7 +312,7 @@ impl Component for PresetChip {
                 label()
                     .text(preset)
                     .max_lines(1)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_secondary()),
             )
@@ -333,7 +339,7 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
                 .spacing(8.)
                 .height(Size::px(TAG_ROW_H))
                 .padding(Gaps::new_symmetric(0., 10.))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .background(colors::brand())
                 .cursor(CursorIcon::Pointer)
                 .on_press(move |_| {
@@ -349,7 +355,7 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
                     label()
                         .text(tag.clone())
                         .max_lines(1)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(Color::WHITE),
                 )
@@ -365,7 +371,7 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
                     rect().width(Size::px(132.)).child(
                         TextInput::new(tag_draft)
                             .compact()
-                            .placeholder("Add a tag")
+                            .placeholder(t("oneclient.clusters.instance.details.add_tag"))
                             .auto_focus(true)
                             .width(Size::fill())
                             .height(Size::px(TAG_ROW_H))
@@ -385,7 +391,7 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
                     Button::new()
                         .primary()
                         .icon()
-                        .alt("Add this tag")
+                        .alt(t("oneclient.clusters.instance.details.add_this_tag"))
                         .width(Size::px(TAG_ROW_H))
                         .height(Size::px(TAG_ROW_H))
                         .enabled(draft_valid)
@@ -397,7 +403,7 @@ fn chosen_tags(state: DetailsState, tags: &[String], open: bool) -> Element {
             Button::new()
                 .secondary()
                 .icon()
-                .alt("Add a tag")
+                .alt(t("oneclient.clusters.instance.details.add_tag"))
                 .width(Size::px(TAG_ROW_H))
                 .height(Size::px(TAG_ROW_H))
                 .on_press(move |_| {
@@ -425,8 +431,11 @@ fn cover_field(
     let pick = move |_| {
         spawn(async move {
             if let Some(handle) = rfd::AsyncFileDialog::new()
-                .set_title("Choose a background image")
-                .add_filter("Image", &["png", "jpg", "jpeg", "webp", "gif"])
+                .set_title(t("oneclient.clusters.instance.details.dialog.title"))
+                .add_filter(
+                    t("oneclient.clusters.instance.details.dialog.filter"),
+                    &["png", "jpg", "jpeg", "webp", "gif"],
+                )
                 .pick_file()
                 .await
             {
@@ -447,7 +456,7 @@ fn cover_field(
                 Ok(state) => state,
                 Err(err) => {
                     tracing::warn!(error = %err, "cannot reach the launcher state to pick gallery art");
-                    failed("The launcher is still starting up. Try again in a moment.");
+                    failed(t("oneclient.clusters.instance.details.gallery.not_ready"));
                     return;
                 }
             };
@@ -466,7 +475,9 @@ fn cover_field(
                 }
                 Err(err) => {
                     tracing::warn!(error = %err, "failed to cache the chosen gallery art");
-                    failed("That artwork could not be downloaded. Check your connection.");
+                    failed(t(
+                        "oneclient.clusters.instance.details.gallery.download_failed",
+                    ));
                 }
             }
         });
@@ -497,14 +508,14 @@ fn cover_field(
         .cross_align(Alignment::Center)
         .spacing(14.)
         .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(CARD_RADIUS))
+        .corner_radius(rounded(CARD_RADIUS))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
             rect()
                 .width(Size::px(PREVIEW_W))
                 .height(Size::px(PREVIEW_H))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .overflow(Overflow::Clip)
                 .border(border_all_color(1., colors::component_border()))
                 .center()
@@ -523,8 +534,8 @@ fn cover_field(
                 .spacing(8.)
                 .child(
                     label()
-                        .text("Shown behind the instance on the home page and on its card. PNG or JPG, 1280x720 or larger.")
-                        .font_size(12.)
+                        .text(t("oneclient.clusters.instance.details.background_hint"))
+                        .font_size(text_size(12.))
                         .line_height(1.4)
                         .color(colors::fg_secondary()),
                 )
@@ -538,14 +549,14 @@ fn cover_field(
                                 .secondary()
                                 .small()
                                 .on_press(pick)
-                                .text("Choose file"),
+                                .text(t("oneclient.clusters.instance.details.choose_file")),
                         )
                         .child(
                             Button::new()
                                 .secondary()
                                 .small()
                                 .on_press(move |_| gallery_open.set(true))
-                                .text("Browse gallery"),
+                                .text(t("oneclient.clusters.instance.details.browse_gallery")),
                         )
                         .maybe_child(has_cover.then(|| {
                             Button::new()
@@ -555,7 +566,7 @@ fn cover_field(
                                     cover.set(None);
                                     cleared.set(true);
                                 })
-                                .text("Use version art")
+                                .text(t("oneclient.clusters.instance.details.use_version_art"))
                                 .into_element()
                         })),
                 ),
@@ -572,7 +583,7 @@ pub fn field(title: &'static str, control: Element) -> Element {
         .child(
             label()
                 .text(title)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )

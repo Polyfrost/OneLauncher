@@ -7,8 +7,9 @@ use oneclient_events::Level;
 use crate::{
     components::{Button, ButtonVariant, Icon, IconType, OverlayPopup, ScrollArea, progress_track},
     hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
+    i18n::{t, tf},
     notifications::{InboxEntry, NotificationActionKind},
-    theme::colors,
+    theme::{colors, rounded, text_size},
     transfer::TransferStats,
     ui::{divider, relative_time},
     utils::{format_durations, format_size},
@@ -57,8 +58,8 @@ impl Component for NotificationPanel {
         if visible.is_empty() {
             rows.push(
                 label()
-                    .text("No notifications")
-                    .font_size(13.)
+                    .text(t("oneclient.components.notifications.empty"))
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary())
                     .into_element(),
             );
@@ -88,7 +89,7 @@ impl Component for NotificationPanel {
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
             .backdrop_blur(12.)
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .border(
                 Border::new()
                     .fill(colors::component_border())
@@ -104,8 +105,8 @@ impl Component for NotificationPanel {
             )))
             .child(
                 label()
-                    .text("Notifications")
-                    .font_size(18.)
+                    .text(t("oneclient.components.notifications.title"))
+                    .font_size(text_size(18.))
                     .font_weight(FontWeight::MEDIUM)
                     .a11y_role(AccessibilityRole::TitleBar),
             )
@@ -159,7 +160,7 @@ impl Component for NotifEntryRow {
             .spacing(13.)
             .cross_align(Alignment::Start)
             .padding(Gaps::new_all(8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .maybe(*hovered.read() && !has_actions, |el| {
                 el.background(colors::ghost_overlay_hover())
             })
@@ -175,7 +176,7 @@ impl Component for NotifEntryRow {
                 rect()
                     .width(Size::px(32.))
                     .height(Size::px(32.))
-                    .corner_radius(CornerRadius::new_all(6.))
+                    .corner_radius(rounded(6.))
                     .center()
                     .child(
                         Icon::new(icon_for(&entry))
@@ -224,11 +225,11 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
                 .child(
                     label()
                         .text(if is_expanded {
-                            "Hide tasks".to_string()
+                            t("oneclient.components.notifications.hide_tasks").to_string()
                         } else {
-                            format!("Show {count} tasks")
+                            tf("oneclient.components.notifications.show_tasks", &[&count])
                         })
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 ),
         );
@@ -241,8 +242,11 @@ fn tasks_section(entry: &InboxEntry, mut expanded: State<bool>) -> impl IntoElem
         if count > TASK_LIMIT {
             list = list.child(
                 label()
-                    .text(format!("+{} more", count - TASK_LIMIT))
-                    .font_size(10.)
+                    .text(tf(
+                        "oneclient.components.notifications.more",
+                        &[&(count - TASK_LIMIT)],
+                    ))
+                    .font_size(text_size(10.))
                     .color(colors::fg_secondary()),
             );
         }
@@ -264,7 +268,7 @@ fn task_row(task: &crate::notifications::TaskView) -> impl IntoElement {
         .child(
             label()
                 .text(task.label.clone())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .width(Size::flex(1.0))
                 .color(colors::fg_primary()),
@@ -273,14 +277,14 @@ fn task_row(task: &crate::notifications::TaskView) -> impl IntoElement {
             el.child(
                 label()
                     .text(format!("{}/{}", task.done_count, task.total_count))
-                    .font_size(10.)
+                    .font_size(text_size(10.))
                     .color(colors::fg_secondary()),
             )
         })
         .child(
             label()
                 .text(format!("{percent}%"))
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -324,12 +328,12 @@ fn phase_badge(phase: &str) -> impl IntoElement {
     rect()
         .center()
         .padding(Gaps::new_symmetric(1., 7.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .background(color.with_a(40))
         .child(
             label()
                 .text(phase.to_string())
-                .font_size(9.)
+                .font_size(text_size(9.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(color),
         )
@@ -354,7 +358,7 @@ fn row_body(
                 .child(
                     label()
                         .text(entry.title.clone())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(level_color(&entry.level))
                         .width(Size::flex(1.0)),
@@ -367,7 +371,7 @@ fn row_body(
                         .child(
                             label()
                                 .text(relative_time(entry.created_at))
-                                .font_size(10.)
+                                .font_size(text_size(10.))
                                 .color(colors::fg_secondary()),
                         )
                         .maybe(!entry.read, |el| {
@@ -375,7 +379,7 @@ fn row_body(
                                 rect()
                                     .width(Size::px(6.))
                                     .height(Size::px(6.))
-                                    .corner_radius(CornerRadius::new_all(3.))
+                                    .corner_radius(rounded(3.))
                                     .background(colors::brand()),
                             )
                         }),
@@ -384,7 +388,7 @@ fn row_body(
         .child(
             label()
                 .text(entry.body.clone())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .child(row_extra(entry, dispatch, confirm_link))
@@ -430,7 +434,7 @@ fn row_extra(
                     .small()
                     .secondary()
                     .width(Size::flex(1.0))
-                    .text("Dismiss")
+                    .text(t("oneclient.common.dismiss"))
                     .on_press(move |_| dismiss_dispatch.dismiss_notification(id)),
             );
 
@@ -459,9 +463,12 @@ fn row_extra(
 
 fn transfer_footer(stats: TransferStats) -> Element {
     let speed = format!("{}/s", format_size(stats.speed_bps as u64));
-    let eta = stats
-        .eta_secs
-        .map(|secs| format!("{} left", format_durations(secs as i64)));
+    let eta = stats.eta_secs.map(|secs| {
+        tf(
+            "oneclient.components.notifications.time_left",
+            &[&format_durations(secs as i64)],
+        )
+    });
 
     rect()
         .horizontal()
@@ -472,13 +479,13 @@ fn transfer_footer(stats: TransferStats) -> Element {
         .child(
             label()
                 .text(speed)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .color(colors::fg_secondary()),
         )
         .maybe_child(eta.map(|eta| {
             label()
                 .text(eta)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .color(colors::fg_secondary())
                 .into_element()
         }))
@@ -525,7 +532,7 @@ impl Component for Footer {
                     } else {
                         colors::fg_primary()
                     }))
-                    .text("Clear all"),
+                    .text(t("oneclient.components.notifications.clear_all")),
             )
     }
 }

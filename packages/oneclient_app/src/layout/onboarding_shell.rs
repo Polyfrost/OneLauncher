@@ -9,7 +9,8 @@ use crate::hooks::{
     OnboardingSelectionState, has_migration_data, onboarding_bundles_items, use_launcher,
     use_migration, use_onboarding_bundles, use_provide_onboarding_selection, use_settings_snapshot,
 };
-use crate::theme::colors;
+use crate::i18n::t;
+use crate::theme::{colors, text_size};
 use crate::view::onboarding::{default_selection, onboarding_step_index, onboarding_total};
 
 #[derive(PartialEq)]
@@ -28,6 +29,11 @@ impl Component for OnboardingShell {
             let fresh = use_launcher().needs_location;
             move || fresh
         });
+        let route = use_route::<Route>();
+        let chrome_opacity = use_state({
+            let welcome = matches!(route, Route::OnboardingWelcome {});
+            move || if welcome { 0. } else { 1. }
+        });
         use_provide_onboarding_selection(OnboardingSelectionState {
             selected,
             user_touched,
@@ -37,12 +43,12 @@ impl Component for OnboardingShell {
             import_folder,
             import_dedicated,
             picks_location,
+            chrome_opacity,
         });
 
         let migration_query = use_migration();
         let detected_migration = has_migration_data(&migration_query);
 
-        let route = use_route::<Route>();
         let choosing_location = *picks_location.read();
         let step_index = onboarding_step_index(&route, detected_migration, choosing_location);
 
@@ -65,6 +71,8 @@ impl Component for OnboardingShell {
             }
         });
 
+        let chrome = *chrome_opacity.read();
+
         rect()
             .vertical()
             .width(Size::fill())
@@ -80,20 +88,28 @@ impl Component for OnboardingShell {
                     .content(Content::Flex)
                     .layer(Layer::Relative(30))
                     .maybe_child((!reconsent).then(|| {
-                        progress_bar(
-                            step_index,
-                            onboarding_total(detected_migration, choosing_location),
-                        )
-                        .into_element()
+                        rect()
+                            .width(Size::fill())
+                            .opacity(chrome)
+                            .child(progress_bar(
+                                step_index,
+                                onboarding_total(detected_migration, choosing_location),
+                            ))
+                            .into_element()
                     }))
-                    .child(OnboardingNavbar)
+                    .child(
+                        rect()
+                            .width(Size::fill())
+                            .opacity(chrome)
+                            .child(OnboardingNavbar),
+                    )
                     .child(
                         rect()
                             .width(Size::fill())
                             .height(Size::flex(1.0))
                             .overflow(Overflow::Clip)
                             .child(Outlet::<Route>::new())
-                            .child(copyright()),
+                            .child(copyright(chrome)),
                     ),
             )
     }
@@ -114,14 +130,15 @@ fn progress_bar(step_index: usize, total: usize) -> impl IntoElement {
         )
 }
 
-fn copyright() -> impl IntoElement {
+fn copyright(opacity: f32) -> impl IntoElement {
     rect()
         .position(Position::new_absolute().bottom(16.).left(24.))
         .interactive(false)
+        .opacity(opacity)
         .child(
             label()
-                .text("Design © 2026 Polyfrost. All rights reserved.")
-                .font_size(11.)
+                .text(t("oneclient.layout.onboarding.copyright"))
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary()),
         )
 }

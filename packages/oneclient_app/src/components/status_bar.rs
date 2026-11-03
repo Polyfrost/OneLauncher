@@ -7,8 +7,9 @@ use oneclient_net::status::{self, ServiceStatus};
 
 use crate::components::{Icon, IconType};
 use crate::hooks::{try_default_account, use_current_account};
+use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 
 const BAR_HEIGHT: f32 = 34.;
 const AMBER: Color = Color::from_rgb(191, 122, 26);
@@ -47,15 +48,13 @@ impl Issue {
 
     fn message(self, c: &Conditions) -> String {
         match self {
-            Self::NoInternet => "No internet connection.".to_string(),
-            Self::SignedOut => format!(
-                "You have been signed out of {}. Sign in again to keep playing.",
-                c.signed_out_as.as_deref().unwrap_or("your account")
-            ),
-            Self::McAuthDown => {
-                "Minecraft authentication servers are unreachable. Logging in may fail.".to_string()
-            }
-            Self::PolyfrostDown => "Polyfrost services are experiencing issues.".to_string(),
+            Self::NoInternet => t("oneclient.components.status_bar.no_internet").to_string(),
+            Self::SignedOut => match c.signed_out_as.as_deref() {
+                Some(name) => tf("oneclient.components.status_bar.signed_out", &[&name]),
+                None => t("oneclient.components.status_bar.signed_out_unknown").to_string(),
+            },
+            Self::McAuthDown => t("oneclient.components.status_bar.mc_auth_down").to_string(),
+            Self::PolyfrostDown => t("oneclient.components.status_bar.polyfrost_down").to_string(),
         }
     }
 
@@ -178,7 +177,7 @@ impl Component for StatusBanner {
                 .center()
                 .width(Size::px(22.))
                 .height(Size::px(22.))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(if *close_hover.read() {
                     Color::WHITE.with_a(46)
                 } else {
@@ -205,7 +204,7 @@ impl Component for StatusBanner {
                 .center()
                 .height(Size::px(22.))
                 .padding(Gaps::new_symmetric(0., 8.))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(if *action_hover.read() {
                     Color::WHITE.with_a(46)
                 } else {
@@ -219,8 +218,8 @@ impl Component for StatusBanner {
                 })
                 .child(
                     label()
-                        .text("Sign in")
-                        .font_size(12.)
+                        .text(t("oneclient.components.status_bar.sign_in"))
+                        .font_size(text_size(12.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(Color::WHITE),
                 )
@@ -237,7 +236,7 @@ impl Component for StatusBanner {
             .child(
                 label()
                     .text(self.text.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(1)
                     .color(Color::WHITE),

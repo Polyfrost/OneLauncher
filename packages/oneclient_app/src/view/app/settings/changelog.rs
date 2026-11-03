@@ -9,7 +9,8 @@ use crate::hooks::{
     changelog_entries, changelog_error, changelog_is_loading, latest_changelog_version,
     use_changelog, use_dispatch, use_settings_snapshot,
 };
-use crate::theme::colors;
+use crate::i18n::{t, tf};
+use crate::theme::{colors, rounded, text_size};
 
 #[derive(PartialEq)]
 pub struct SettingsChangelog;
@@ -37,8 +38,8 @@ impl Component for SettingsChangelog {
             return settings_page()
                 .child(
                     label()
-                        .text("Loading changelog...")
-                        .font_size(14.)
+                        .text(t("oneclient.settings.changelog.loading"))
+                        .font_size(text_size(14.))
                         .color(colors::fg_secondary()),
                 )
                 .into_element();
@@ -48,8 +49,8 @@ impl Component for SettingsChangelog {
             return settings_page()
                 .child(
                     label()
-                        .text(format!("Couldn't load changelog: {error}"))
-                        .font_size(14.)
+                        .text(tf("oneclient.settings.changelog.load_failed", &[&error]))
+                        .font_size(text_size(14.))
                         .color(colors::fg_secondary()),
                 )
                 .into_element();
@@ -105,7 +106,7 @@ impl Component for ReleaseCard {
         let chevron_deg = swing.get().value();
 
         let title = if self.current {
-            format!("{} (Currently Installed)", self.version)
+            tf("oneclient.settings.changelog.current", &[&self.version])
         } else {
             self.version.clone()
         };
@@ -115,7 +116,7 @@ impl Component for ReleaseCard {
             .width(Size::fill())
             .spacing(8.)
             .padding(Gaps::new_symmetric(12., 16.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .child(
                 rect()
@@ -131,7 +132,7 @@ impl Component for ReleaseCard {
                     .child(
                         label()
                             .text(title)
-                            .font_size(18.)
+                            .font_size(text_size(18.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
@@ -144,8 +145,8 @@ impl Component for ReleaseCard {
             .maybe_child(is_open.then(|| {
                 if self.body.trim().is_empty() {
                     label()
-                        .text("No changes recorded for this version.")
-                        .font_size(12.)
+                        .text(t("oneclient.settings.changelog.empty"))
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary())
                         .into_element()
                 } else {

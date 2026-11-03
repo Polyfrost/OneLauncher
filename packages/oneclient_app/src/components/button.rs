@@ -5,7 +5,8 @@ use freya::prelude::*;
 
 use crate::{
     components::{Icon, IconTint, IconType, TooltipPlacement, tooltip::use_tooltip_anchor},
-    theme::colors,
+    i18n::t,
+    theme::{colors, rounded, text_size},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -102,7 +103,7 @@ impl Button {
 
         style.corner_radius = default_radius;
 
-        text_style.font_size = Some(font_size.into());
+        text_style.font_size = Some(text_size(font_size).into());
 
         Self {
             size,
@@ -153,7 +154,7 @@ impl Button {
         self.layout.height = height;
         self.layout.padding = padding;
         self.style.corner_radius = corner_radius;
-        self.text_style.font_size = Some(font_size.into());
+        self.text_style.font_size = Some(text_size(font_size).into());
 
         self
     }
@@ -434,28 +435,28 @@ fn size_layout(size: ButtonSize) -> (Gaps, CornerRadius, f32, Size, Size) {
     match size {
         ButtonSize::Small => (
             Gaps::new_symmetric(4., 8.),
-            CornerRadius::new_all(6.),
+            rounded(6.),
             12.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Medium => (
             Gaps::new_symmetric(6., 12.),
-            CornerRadius::new_all(8.),
+            rounded(8.),
             14.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Large => (
             Gaps::new_symmetric(8., 32.),
-            CornerRadius::new_all(10.),
+            rounded(10.),
             18.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Icon => (
             Gaps::new_all(6.),
-            CornerRadius::new_all(8.),
+            rounded(8.),
             14.,
             Size::px(32.),
             Size::px(32.),
@@ -471,7 +472,7 @@ pub fn link_button() -> Button {
                 .size(14.)
                 .color(colors::fg_primary()),
         )
-        .child(label().text("Open"))
+        .child(label().text(t("oneclient.common.open")))
 }
 
 pub fn open_folder_button(folder: std::path::PathBuf) -> Button {
@@ -483,7 +484,7 @@ pub fn sized_open_folder_button(folder: std::path::PathBuf, icon_size: f32) -> B
     Button::new()
         .secondary()
         .icon()
-        .tooltip("Open folder")
+        .tooltip(t("oneclient.components.button.open_folder"))
         .on_press(move |_| {
             std::fs::create_dir_all(&folder).ok();
             crate::platform::open_path(&folder.to_string_lossy());
@@ -498,14 +499,14 @@ pub fn copy_button(text: String, copied_body: &'static str, dispatch: crate::Act
             if let Err(err) = freya::text_edit::Clipboard::set(text.clone()) {
                 tracing::warn!("clipboard copy failed: {err:?}");
                 dispatch
-                    .notify("Copy failed")
-                    .body("Could not copy to the clipboard.")
+                    .notify(t("oneclient.components.button.copy_failed.title"))
+                    .body(t("oneclient.components.button.copy_failed.body"))
                     .error()
                     .toast_only()
                     .send();
             } else {
                 dispatch
-                    .notify("Copied to clipboard")
+                    .notify(t("oneclient.components.button.copied"))
                     .body(copied_body)
                     .info()
                     .icon(IconType::ClipboardCheck)
@@ -514,5 +515,5 @@ pub fn copy_button(text: String, copied_body: &'static str, dispatch: crate::Act
             }
         })
         .child(Icon::new(IconType::Copy01).size(14.))
-        .text("Copy")
+        .text(t("oneclient.common.copy"))
 }

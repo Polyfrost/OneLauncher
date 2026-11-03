@@ -1,7 +1,9 @@
+use std::borrow::Cow;
+
 use freya::prelude::*;
 use oneclient_content::packages::ProviderId;
 
-use crate::{AppAssets, theme::colors};
+use crate::{AppAssets, theme, theme::colors};
 
 #[derive(Clone, Copy, PartialEq)]
 pub struct IconTint(pub State<Color>);
@@ -50,9 +52,18 @@ impl Icon {
 
 impl Component for Icon {
     fn render(&self) -> impl IntoElement {
-        let path = self.icon.path();
-        let load = move || (path, AppAssets::get_bytes(path).unwrap_or_default());
-        let mut bytes = use_state(load);
+        let (path, size): (Cow<'static, str>, f32) = match theme::pixel_icon(self.icon.path()) {
+            Some((pixel, cells)) => (pixel.into(), theme::pixel_icon_size(self.size_px, cells)),
+            None => (self.icon.path().into(), self.size_px),
+        };
+        let load = {
+            let path = path.clone();
+            move || {
+                let bytes = AppAssets::get_bytes(&path).unwrap_or_default();
+                (path, bytes)
+            }
+        };
+        let mut bytes = use_state(load.clone());
         if bytes.peek().0 != path {
             bytes.set(load());
         }
@@ -65,8 +76,8 @@ impl Component for Icon {
 
         SvgViewer::new((path, bytes.peek().1.clone()))
             .show_loader(false)
-            .width(Size::px(self.size_px))
-            .height(Size::px(self.size_px))
+            .width(Size::px(size))
+            .height(Size::px(size))
             .color(color)
             .map(self.rotation, |svg, degrees| svg.rotation(degrees))
     }
@@ -138,9 +149,11 @@ pub enum IconType {
     Moon01,
     OnboardingAccount,
     OnboardingComplete,
+    OnboardingFolder,
     OnboardingLanguage,
+    OnboardingMigration,
     OnboardingPreferences,
-    OnboardingWelcome,
+    OnboardingTerms,
     PaintPour,
     ParagraphWrap,
     Pencil01,

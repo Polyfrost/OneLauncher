@@ -6,7 +6,8 @@ use oneclient_content::packages::types::GalleryImage;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{loaded_image, query_is_busy, use_cached_image};
-use crate::theme::colors;
+use crate::i18n::{t, tf};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color, flow_grid, grid_columns_for_width};
 
 const MAX_COL_W: f32 = 400.;
@@ -105,7 +106,7 @@ impl Component for GalleryTile {
             .vertical()
             .width(Size::flex(1.0))
             .max_width(Size::px(MAX_COL_W))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .overflow(Overflow::Clip)
             .background(colors::page_elevated())
             .border(
@@ -133,7 +134,7 @@ impl Component for GalleryTile {
                         .child(
                             label()
                                 .text(self.image.title.clone().unwrap_or_default())
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .max_lines(2)
                                 .color(colors::fg_secondary()),
                         ),
@@ -189,8 +190,8 @@ impl Component for GalleryViewer {
             // A full-size fetch separate from the tile's cached copy a failed fetch is not loading
             .maybe_child(query_is_busy(&query).then(|| {
                 label()
-                    .text("Loading image...")
-                    .font_size(13.)
+                    .text(t("oneclient.browser.package.gallery.loading"))
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary())
                     .into_element()
             }));
@@ -269,7 +270,7 @@ fn chevron_btn(
         .width(Size::px(44.))
         .height(Size::px(44.))
         .center()
-        .corner_radius(CornerRadius::new_all(22.));
+        .corner_radius(rounded(22.));
 
     if !enabled {
         return base
@@ -299,7 +300,7 @@ fn header_row(
     let title = image
         .title
         .clone()
-        .unwrap_or_else(|| format!("Image {}", idx + 1));
+        .unwrap_or_else(|| tf("oneclient.browser.package.gallery.image", &[&(idx + 1)]));
 
     rect()
         .horizontal()
@@ -314,7 +315,7 @@ fn header_row(
                 .child(
                     label()
                         .text(title)
-                        .font_size(15.)
+                        .font_size(text_size(15.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .color(colors::fg_primary()),
@@ -322,8 +323,11 @@ fn header_row(
                 .maybe(len > 1, |el| {
                     el.child(
                         label()
-                            .text(format!("{} of {len}", idx + 1))
-                            .font_size(11.)
+                            .text(tf(
+                                "oneclient.browser.package.gallery.position",
+                                &[&(idx + 1), &len],
+                            ))
+                            .font_size(text_size(11.))
                             .color(colors::fg_secondary()),
                     )
                 }),
@@ -332,7 +336,7 @@ fn header_row(
             Button::new()
                 .ghost()
                 .icon()
-                .tooltip("Close")
+                .tooltip(t("oneclient.common.close"))
                 .on_press(on_close)
                 .child(Icon::new(IconType::XClose).size(18.)),
         )

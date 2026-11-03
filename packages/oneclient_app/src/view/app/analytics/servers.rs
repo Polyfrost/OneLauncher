@@ -7,9 +7,10 @@ use crate::components::{
     ValueUnit, slice_color,
 };
 use crate::hooks::{loaded_image, use_cached_image};
-use crate::theme::colors;
+use crate::i18n::{t, tf};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
-use crate::utils::{format_duration, plural};
+use crate::utils::format_duration;
 
 use super::{card, card_header};
 
@@ -71,7 +72,7 @@ impl Component for ServersSection {
         let mut labels: Vec<String> = top.iter().map(server_label).collect();
         if !rest.is_empty() {
             values.push(rest.iter().map(|s| m.of(s)).sum());
-            labels.push("Other".to_string());
+            labels.push(t("oneclient.analytics.servers.other").to_string());
         }
 
         let details = (!self.servers.is_empty()).then(|| {
@@ -82,8 +83,14 @@ impl Component for ServersSection {
                 .child(
                     SegmentedControl::new(metric)
                         .height(30.)
-                        .segment(Segment::new(ServerMetric::Playtime).label("Playtime"))
-                        .segment(Segment::new(ServerMetric::Joins).label("Joins")),
+                        .segment(
+                            Segment::new(ServerMetric::Playtime)
+                                .label(t("oneclient.analytics.servers.playtime")),
+                        )
+                        .segment(
+                            Segment::new(ServerMetric::Joins)
+                                .label(t("oneclient.analytics.servers.joins")),
+                        ),
                 )
                 .child(
                     Button::new()
@@ -91,7 +98,7 @@ impl Component for ServersSection {
                         .small()
                         .on_press(move |_| show_all.set(true))
                         .child(Icon::new(IconType::Eye).size(12.))
-                        .text("Details"),
+                        .text(t("oneclient.analytics.servers.details")),
                 )
                 .into_element()
         });
@@ -100,13 +107,31 @@ impl Component for ServersSection {
             .width(Size::fill())
             .spacing(14.)
             .child(card_header(
-                "Servers",
+                t("oneclient.analytics.servers.title"),
                 format!(
-                    "{} server{} · {} join{}",
-                    self.servers.len(),
-                    plural(self.servers.len() as i64),
-                    total_joins,
-                    plural(total_joins),
+                    "{} · {}",
+                    if self.servers.len() == 1 {
+                        tf(
+                            "oneclient.analytics.servers.count.one",
+                            &[&self.servers.len()],
+                        )
+                    } else {
+                        tf(
+                            "oneclient.analytics.servers.count.other",
+                            &[&self.servers.len()],
+                        )
+                    },
+                    if total_joins == 1 {
+                        tf(
+                            "oneclient.analytics.servers.join_count.one",
+                            &[&total_joins],
+                        )
+                    } else {
+                        tf(
+                            "oneclient.analytics.servers.join_count.other",
+                            &[&total_joins],
+                        )
+                    },
                 ),
                 details,
             ))
@@ -168,7 +193,7 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueU
                 .cross_align(Alignment::Center)
                 .spacing(8.)
                 .padding(Gaps::new_symmetric(3., 6.))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(if is_active {
                     colors::component_bg()
                 } else {
@@ -178,13 +203,13 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueU
                     rect()
                         .width(Size::px(8.))
                         .height(Size::px(8.))
-                        .corner_radius(CornerRadius::new_all(2.))
+                        .corner_radius(rounded(2.))
                         .background(slice_color(i).with_a(if dim { 120 } else { 255 })),
                 )
                 .child(
                     label()
                         .text(name.clone())
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .width(Size::flex(1.0))
                         .color(colors::fg_primary()),
@@ -192,13 +217,13 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueU
                 .child(
                     label()
                         .text(format!("{pct:.0}%"))
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 )
                 .child(
                     label()
                         .text(unit.format(*value))
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),
@@ -240,7 +265,7 @@ impl Component for ServerDetailsPopup {
             .max_height(Size::window_percent(70.))
             .padding(20.)
             .spacing(14.)
-            .corner_radius(CornerRadius::new_all(14.))
+            .corner_radius(rounded(14.))
             .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .child(
@@ -257,19 +282,25 @@ impl Component for ServerDetailsPopup {
                             .spacing(2.)
                             .child(
                                 label()
-                                    .text("All servers")
-                                    .font_size(16.)
+                                    .text(t("oneclient.analytics.servers.all.title"))
+                                    .font_size(text_size(16.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
-                                    .text(format!(
-                                        "All {} server{} by playtime",
-                                        servers.len(),
-                                        plural(servers.len() as i64)
-                                    ))
-                                    .font_size(12.)
+                                    .text(if servers.len() == 1 {
+                                        tf(
+                                            "oneclient.analytics.servers.all.subtitle.one",
+                                            &[&servers.len()],
+                                        )
+                                    } else {
+                                        tf(
+                                            "oneclient.analytics.servers.all.subtitle.other",
+                                            &[&servers.len()],
+                                        )
+                                    })
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary()),
                             ),
                     )
@@ -293,7 +324,7 @@ impl Component for ServerDetailsPopup {
 /// IPs stay masked in the always-visible legend the details popup reveals them on hover
 fn server_label(s: &ServerStat) -> String {
     if s.is_ip {
-        return "Direct IP".to_string();
+        return t("oneclient.analytics.servers.direct_ip").to_string();
     }
     display_address(s)
 }
@@ -322,13 +353,13 @@ impl Component for ServerRow {
         let bar = rect()
             .width(Size::fill())
             .height(Size::px(4.))
-            .corner_radius(CornerRadius::new_all(2.))
+            .corner_radius(rounded(2.))
             .background(colors::component_bg())
             .child(
                 rect()
                     .width(Size::percent(frac * 100.))
                     .height(Size::fill())
-                    .corner_radius(CornerRadius::new_all(2.))
+                    .corner_radius(rounded(2.))
                     .background(colors::brand().with_a(if reveal { 255 } else { 150 })),
             );
 
@@ -337,7 +368,7 @@ impl Component for ServerRow {
             .width(Size::fill())
             .spacing(6.)
             .padding(Gaps::new_symmetric(8., 10.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(if is_hovered {
                 colors::component_bg_hover()
             } else {
@@ -361,7 +392,7 @@ impl Component for ServerRow {
                     .child(
                         label()
                             .text(address)
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary())
                             .width(Size::flex(1.0)),
@@ -369,13 +400,13 @@ impl Component for ServerRow {
                     .child(
                         label()
                             .text(format!("{}×", s.joins))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .child(
                         label()
                             .text(format_duration(s.total_secs))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     ),
@@ -412,7 +443,7 @@ impl Component for ServerIcon {
                 .width(Size::px(size))
                 .height(Size::px(size))
                 .aspect_ratio(AspectRatio::Min)
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .fallback(server_icon_placeholder(self.is_ip, size))
                 .into_element(),
             None => server_icon_placeholder(self.is_ip, size),
@@ -430,7 +461,7 @@ fn server_icon_placeholder(is_ip: bool, size: f32) -> Element {
         .center()
         .width(Size::px(size))
         .height(Size::px(size))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(colors::component_bg())
         .child(
             Icon::new(icon)

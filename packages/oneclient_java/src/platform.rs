@@ -202,9 +202,63 @@ pub async fn set_gpu_preference(_java_path: &std::path::Path, _preference: u8) {
 #[cfg(not(windows))]
 pub async fn forget_dedicated_gpu(_java_path: &std::path::Path) {}
 
+#[must_use]
+pub fn is_legacy_macos() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        static LEGACY: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        *LEGACY.get_or_init(|| {
+            let plist = std::fs::read_to_string("/System/Library/CoreServices/SystemVersion.plist")
+                .unwrap_or_default();
+            let legacy = plist_is_legacy_macos(&plist);
+            tracing::info!(legacy, "checked the macOS version");
+            legacy
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        false
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn plist_is_legacy_macos(plist: &str) -> bool {
+    let Some(version) = plist
+        .split_once("<key>ProductVersion</key>")
+        .and_then(|(_, rest)| rest.split_once("<string>"))
+        .and_then(|(_, rest)| rest.split_once("</string>"))
+        .map(|(version, _)| version.trim())
+    else {
+        return false;
+    };
+
+    let mut parts = version.split('.').map(|part| part.parse::<u32>().ok());
+    match (parts.next().flatten(), parts.next().flatten()) {
+        (Some(major), _) if major < 10 => true,
+        (Some(10), Some(minor)) => minor < 16,
+        _ => false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn plist(version: &str) -> String {
+        format!(
+            "<dict>\n\t<key>ProductName</key>\n\t<string>macOS</string>\n\t<key>ProductVersion</key>\n\t<string>{version}</string>\n</dict>"
+        )
+    }
+
+    #[test]
+    fn only_macos_10_is_legacy() {
+        assert!(plist_is_legacy_macos(&plist("10.15.7")));
+        assert!(plist_is_legacy_macos(&plist("10.14")));
+        assert!(!plist_is_legacy_macos(&plist("10.16")));
+        assert!(!plist_is_legacy_macos(&plist("11.7.10")));
+        assert!(!plist_is_legacy_macos(&plist("15.1")));
+        assert!(!plist_is_legacy_macos(""));
+    }
 
     #[test]
     fn bitness_matches_the_architecture() {

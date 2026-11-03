@@ -130,6 +130,15 @@ impl Component for AnimatedAppOutlet {
         let pointer_claims = key_claims.clone();
 
         let on_global_key = move |e: Event<KeyboardEventData>| {
+            if e.code == Code::KeyO
+                && e.modifiers.contains(Modifiers::ctrl_or_meta() | Modifiers::SHIFT)
+            {
+                if let Ok(dir) = oneclient_common::paths::logs_dir() {
+                    crate::platform::open_path(&dir.to_string_lossy());
+                }
+                return;
+            }
+
             if e.key != Key::Named(NamedKey::Escape) || key_claims.any() {
                 return;
             }

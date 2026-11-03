@@ -6,6 +6,7 @@ use oneclient_content::packages::PackageStore;
 use oneclient_events::Level;
 
 use crate::components::IconType;
+use crate::i18n::{t, tf};
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
     NotificationSpec, OptionalModsGroup, PackageUpdateGroup,
@@ -19,7 +20,7 @@ pub async fn cluster_display_name(
     PackageStore::get_cluster(cluster_id, &services.content())
         .await
         .map(|cluster| cluster.name)
-        .unwrap_or_else(|_| "Cluster".to_string())
+        .unwrap_or_else(|_| t("oneclient.install.cluster_fallback").to_string())
 }
 
 pub async fn package_update_group(
@@ -116,7 +117,7 @@ async fn cluster_update_summary(
         oneclient_content::packages::PackageStore::get_cluster(cluster_id, &services.content())
             .await
             .map(|c| c.name)
-            .unwrap_or_else(|_| "Cluster".to_string());
+            .unwrap_or_else(|_| t("oneclient.install.cluster_fallback").to_string());
 
     Some(ClusterUpdateSummary {
         cluster_id,
@@ -140,21 +141,33 @@ pub async fn cluster_update_notification(
     let (title, body) = if total == 0 {
         let offers = summary.optional.len();
         (
-            "Optional mods available",
-            format!(
-                "{offers} optional mod{} in {}",
-                if offers == 1 { "" } else { "s" },
-                summary.cluster_name
-            ),
+            t("oneclient.install.optional_available.title"),
+            if offers == 1 {
+                tf(
+                    "oneclient.install.optional_available.body.one",
+                    &[&offers, &summary.cluster_name],
+                )
+            } else {
+                tf(
+                    "oneclient.install.optional_available.body.other",
+                    &[&offers, &summary.cluster_name],
+                )
+            },
         )
     } else {
         (
-            "Cluster updated",
-            format!(
-                "{total} package{} changed in {}",
-                if total == 1 { "" } else { "s" },
-                summary.cluster_name
-            ),
+            t("oneclient.install.cluster_updated.title"),
+            if total == 1 {
+                tf(
+                    "oneclient.install.cluster_updated.body.one",
+                    &[&total, &summary.cluster_name],
+                )
+            } else {
+                tf(
+                    "oneclient.install.cluster_updated.body.other",
+                    &[&total, &summary.cluster_name],
+                )
+            },
         )
     };
 
@@ -165,7 +178,7 @@ pub async fn cluster_update_notification(
         icon: Some(IconType::DownloadCloud02),
         progress: None,
         actions: vec![NotificationAction {
-            label: "View changes".to_string(),
+            label: t("oneclient.install.view_changes").to_string(),
             kind: NotificationActionKind::OpenClusterUpdate(vec![summary]),
         }],
         toast_only: false,
@@ -220,23 +233,29 @@ pub fn install_body(
     missing: &[String],
     live_deferred: bool,
 ) -> String {
-    let mut body = format!("Added {name}");
-
-    if !dependencies.is_empty() {
-        body.push_str(&format!(
-            " with {} dependenc{}",
-            dependencies.len(),
-            if dependencies.len() == 1 { "y" } else { "ies" }
-        ));
-    }
-    body.push('.');
+    let mut body = match dependencies.len() {
+        0 => tf("oneclient.install.added", &[&name]),
+        1 => tf(
+            "oneclient.install.added_with_dependencies.one",
+            &[&name, &1],
+        ),
+        count => tf(
+            "oneclient.install.added_with_dependencies.other",
+            &[&name, &count],
+        ),
+    };
 
     if !missing.is_empty() {
-        body.push_str(&format!(" Could not add: {}.", missing.join(", ")));
+        body.push(' ');
+        body.push_str(&tf(
+            "oneclient.install.could_not_add",
+            &[&missing.join(", ")],
+        ));
     }
 
     if live_deferred {
-        body.push_str(" Minecraft is running, so it will be there at the next launch.");
+        body.push(' ');
+        body.push_str(t("oneclient.install.live_deferred"));
     }
 
     body
@@ -360,13 +379,16 @@ pub async fn install_package(
         })
     {
         tracing::warn!(dependency = %dependency.project.name, project = %project.name, "refusing to install flagged dependency");
-        let name = format!("{} (required by {})", dependency.project.name, project.name);
+        let name = tf(
+            "oneclient.install.required_by",
+            &[&dependency.project.name, &project.name],
+        );
         return Err(flagged_install(name, entry, cluster_id, &content).await);
     }
 
     let session = oneclient_events::GroupedProgressSession::start(
         &state.services.events,
-        format!("Installing {}", project.name),
+        tf("oneclient.install.installing", &[&project.name]),
     );
 
     let size = version.primary_file().map(|f| f.size).unwrap_or(0);
@@ -473,17 +495,15 @@ async fn install_datapack(
     world: String,
 ) -> PackageInstall {
     let Some(file) = version.primary_file() else {
-        return PackageInstall::failed(anyhow::anyhow!("This version has no file to download"));
+        return PackageInstall::failed(anyhow::anyhow!(t("oneclient.install.datapack.no_file")));
     };
     if !file.file_name.to_lowercase().ends_with(".zip") {
-        return PackageInstall::failed(anyhow::anyhow!(
-            "This version is a mod, not a data pack. Pick a .zip version instead"
-        ));
+        return PackageInstall::failed(anyhow::anyhow!(t("oneclient.install.datapack.not_zip")));
     }
 
     let session = oneclient_events::GroupedProgressSession::start(
         &state.services.events,
-        format!("Installing {}", project.name),
+        tf("oneclient.install.installing", &[&project.name]),
     );
     session.expect(oneclient_events::TaskCategory::Packages, 1, file.size);
     let child = session.child(
@@ -513,7 +533,12 @@ async fn install_datapack(
 
     PackageInstall {
         session_id: Some(session.detach()),
-        result: result.map(|()| format!("{} to {world}", project.name)),
+        result: result.map(|()| {
+            tf(
+                "oneclient.install.datapack.target",
+                &[&project.name, &world],
+            )
+        }),
         dependencies: Vec::new(),
         missing_dependencies: Vec::new(),
         live_deferred: false,

@@ -5,6 +5,7 @@ use freya::router::RouterContext;
 
 use crate::components::IconType;
 use crate::hooks::{use_dispatch, use_launcher, use_onboarding_selection};
+use crate::i18n::t;
 use crate::routes::Route;
 use crate::state::AppChannel;
 use crate::theme::colors;
@@ -93,8 +94,8 @@ impl Component for OnboardingLocation {
             .width(Size::fill())
             .spacing(16.)
             .child(step_heading(
-                "Where should OneClient live?",
-                "All your data including mods, worlds and game settings gets stored here. This can be changed later from Settings.",
+                t("oneclient.onboarding.location.title"),
+                t("oneclient.onboarding.location.subtitle"),
             ));
 
         content = if answered {
@@ -108,13 +109,15 @@ impl Component for OnboardingLocation {
             };
 
             content
-                .child(choice_row("Your folder", &folder, true, |()| {}))
+                .child(choice_row(
+                    t("oneclient.onboarding.location.your_folder"),
+                    &folder,
+                    true,
+                    |()| {},
+                ))
                 .child(
                     label()
-                        .text(
-                            "This is where OneClient is set up. Settings can move it once you are \
-                             through setup.",
-                        )
+                        .text(t("oneclient.onboarding.location.answered"))
                         .font_size(13.)
                         .max_lines(2)
                         .color(colors::fg_secondary()),
@@ -126,7 +129,7 @@ impl Component for OnboardingLocation {
                     .width(Size::fill())
                     .spacing(10.)
                     .child(choice_row(
-                        "This PC",
+                        t("oneclient.onboarding.location.this_pc"),
                         &default_dir,
                         chosen.is_none(),
                         move |()| {
@@ -136,11 +139,13 @@ impl Component for OnboardingLocation {
                         },
                     ))
                     .child(choice_row(
-                        "Another drive",
+                        t("oneclient.onboarding.location.another_drive"),
                         &chosen
                             .as_ref()
                             .map(|path| path.display().to_string())
-                            .unwrap_or_else(|| "Click to pick a folder…".to_string()),
+                            .unwrap_or_else(|| {
+                                t("oneclient.onboarding.location.pick_folder").to_string()
+                            }),
                         chosen.is_some(),
                         move |()| browse(picked, warning, error),
                     )),
@@ -158,11 +163,11 @@ impl Component for OnboardingLocation {
         }
 
         let next_label = if running {
-            "Setting up…"
+            t("oneclient.onboarding.location.setting_up")
         } else if answered && !settled {
-            "Try again"
+            t("oneclient.common.try_again")
         } else {
-            "Next"
+            t("oneclient.common.next")
         };
 
         onboarding_page(
@@ -186,7 +191,7 @@ fn browse(
 ) {
     spawn(async move {
         let Some(handle) = rfd::AsyncFileDialog::new()
-            .set_title("Choose where OneClient stores game data")
+            .set_title(t("oneclient.onboarding.location.picker_title"))
             .pick_folder()
             .await
         else {

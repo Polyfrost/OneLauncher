@@ -11,9 +11,9 @@ use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, DisableConfirmState, DisableDependentsOverlay,
     EssentialConfirmOverlay, EssentialGuardState, EventPump, LinkConfirmState, StartMaximizedState,
-    cli, constants, events, microsoft_java, platform, router, theme, use_provide_actions,
-    use_provide_disable_confirm, use_provide_essential_guard, use_provide_link_confirm,
-    use_provide_start_maximized, use_settings_snapshot,
+    cli, constants, events, microsoft_java, platform, router, theme, translations,
+    use_provide_actions, use_provide_disable_confirm, use_provide_essential_guard,
+    use_provide_link_confirm, use_provide_start_maximized, use_settings_snapshot,
 };
 use std::cell::Cell;
 use tokio::runtime::Builder;
@@ -99,6 +99,20 @@ impl App for OneClientApp {
         theme::colors::apply(appearance.theme, appearance.accent_color.as_deref());
         use_side_effect_with_deps(&(appearance.theme, appearance.accent_color), move |_| {
             *palette_revision.write() += 1;
+        });
+
+        let mut language_revision = use_state(|| 0u32);
+        translations::bind_revision(language_revision);
+        use_hook(move || {
+            let mut rx = translations::subscribe();
+            spawn(async move {
+                while rx.changed().await.is_ok() {
+                    *language_revision.write() += 1;
+                }
+            });
+        });
+        use_side_effect_with_deps(&appearance.language, |language| {
+            translations::select(language.clone());
         });
 
         rect()
@@ -207,6 +221,7 @@ fn main() {
     oneclient_app::platform::macos::loop_memory_collector();
 
     theme::colors::apply(settings.theme, settings.accent_color.as_deref());
+    translations::init(settings.language.clone());
 
     let start_maximized = settings.start_maximized;
     let show_tray_icon = settings.show_tray_icon;

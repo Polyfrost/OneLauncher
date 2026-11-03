@@ -8,6 +8,7 @@ use crate::components::{IconType, link_button, toggle};
 use crate::hooks::{
     BROWSER_COMPAT_DEFAULT, use_browser_compat, use_dispatch, use_settings_snapshot,
 };
+use crate::i18n::t;
 use crate::view::app::settings::{resettable, section_header, settings_row};
 use crate::view::console::open_log_console;
 
@@ -38,34 +39,38 @@ impl Component for SettingsDeveloper {
         let browser_compat = use_browser_compat();
 
         settings_page()
-            .child(section_header("BROWSER"))
+            .child(section_header(t(
+                "oneclient.settings.developer.section.browser",
+            )))
             .child(settings_row(
                 IconType::SearchMd,
-                "Compatible content only",
-                "Filter the content browser to the active cluster's version and loader.",
+                t("oneclient.settings.developer.compat_only.title"),
+                t("oneclient.settings.developer.compat_only.description"),
                 resettable(
                     toggle(browser_compat),
                     browser_compat,
                     BROWSER_COMPAT_DEFAULT,
                 ),
             ))
-            .child(section_header("DEV TOOLS"))
+            .child(section_header(t(
+                "oneclient.settings.developer.section.dev_tools",
+            )))
             .child(settings_row(
                 IconType::Sliders04,
-                "Log Debug Info",
-                "WARNING! This requires a restart to apply. Logs out debug info.",
+                t("oneclient.settings.developer.log_debug.title"),
+                t("oneclient.settings.developer.log_debug.description"),
                 resettable(toggle(log_debug), log_debug, defaults.log_debug),
             ))
             .child(settings_row(
                 IconType::Terminal,
-                "Log Console",
-                "Stream the launcher's logs in a separate window. Nothing is captured while it is closed.",
+                t("oneclient.settings.developer.log_console.title"),
+                t("oneclient.settings.developer.log_console.description"),
                 link_button().on_press(move |_| open_log_console()),
             ))
             .child(settings_row(
                 IconType::CodeSnippet02,
-                "Debug Page",
-                "View the debug page.",
+                t("oneclient.settings.developer.debug_page.title"),
+                t("oneclient.settings.developer.debug_page.description"),
                 link_button().on_press(move |_| {
                     let _ = RouterContext::get().push(Route::Debug {});
                 }),

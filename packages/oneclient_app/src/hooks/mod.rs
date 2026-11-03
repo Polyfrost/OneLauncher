@@ -31,7 +31,7 @@ pub use active_cluster::{
 
 pub use actions::{
     Actions, AlternativePick, ExternalImportJob, NotificationBuilder, PumpSignal, exporting,
-    modpack_job_running,
+    modpack_job_running, update_check_running,
 };
 pub(crate) use actions::listed;
 pub use queries::ALL_VERSIONS;
@@ -69,7 +69,7 @@ pub use queries::{
     use_bundle_overrides, use_bundle_updates, use_bundles_with_status, use_cached_image,
     use_cancel_microsoft_login, use_changelog, use_cluster, use_cluster_analytics,
     use_cluster_content, use_cluster_logs, use_cluster_mutation, use_cluster_profile,
-    use_cluster_screenshots, use_cluster_settings, use_clusters, use_current_account,
+    use_cluster_screenshots, use_cluster_settings, use_clusters, use_shared_groups, use_current_account,
     use_default_account, use_disable_warnings, use_discard_leftovers, use_finish_microsoft_login,
     use_game_profile, use_game_versions, use_global_analytics, use_java_majors, use_java_runtimes,
     use_leftovers, use_loader_versions, use_local_image, use_log_action, use_log_content,
@@ -83,6 +83,7 @@ pub use queries::{
     use_version_loaders, use_version_metadata, use_versions, version_list, versions_metadata,
     versions_total,
 };
+pub use queries::{GraphicsBackendQuery, use_graphics_backend};
 pub use queries::{
     add_world_datapacks, delete_world, delete_world_datapack, invalidate_world_contents,
     spawn_world_task, try_cluster_worlds, try_world_datapacks, try_world_size, use_cluster_worlds,

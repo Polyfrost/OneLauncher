@@ -14,6 +14,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::components::IconType;
+use crate::i18n::{t, tf};
 use crate::transfer::{TransferMeter, TransferStats};
 
 pub const MESSAGE_TOAST_TTL: Duration = Duration::from_secs(5);
@@ -411,20 +412,23 @@ impl GroupedTasks {
 
         if !downloads.is_empty() {
             let minecraft = downloads.iter().any(|child| child.category.is_minecraft());
-            let scope = if minecraft { "Minecraft" } else { "Packages" };
             let phase = downloads
                 .iter()
                 .filter(|child| child.category.is_minecraft() == minecraft)
                 .map(|child| child.phase)
                 .find(|phase| *phase != "Downloading")
                 .unwrap_or("Downloading");
-            return Some(format!("{phase} {scope}"));
+            return Some(if minecraft {
+                tf("oneclient.notifications.phase.minecraft", &[&phase])
+            } else {
+                tf("oneclient.notifications.phase.packages", &[&phase])
+            });
         }
         if let Some(stage) = self.children.values().find(|c| c.phase == importing) {
             return Some(stage.label.clone());
         }
         if self.children.values().any(|c| c.phase == exporting) {
-            return Some("Exporting Instance".to_string());
+            return Some(t("oneclient.notifications.exporting_instance").to_string());
         }
         None
     }
@@ -644,7 +648,7 @@ impl NotificationState {
                 let actions = message
                     .link
                     .map(|url| NotificationAction {
-                        label: "Open link".to_string(),
+                        label: t("oneclient.notifications.open_link").to_string(),
                         kind: NotificationActionKind::OpenUrl(url),
                     })
                     .into_iter()
@@ -984,7 +988,7 @@ impl NotificationState {
                 let entry_id = self.push_inbox(
                     inbox,
                     title.clone(),
-                    "Preparing...".to_string(),
+                    t("oneclient.notifications.preparing").to_string(),
                     Level::Info,
                     None,
                     true,
@@ -1092,7 +1096,7 @@ impl NotificationState {
                     if !had_progress {
                         self.forget_entry(inbox, entry_id);
                     } else if let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) {
-                        entry.body = "Complete".to_string();
+                        entry.body = t("oneclient.notifications.complete").to_string();
                         entry.progress = Some((1, 1));
                         entry.is_loading = false;
                         entry.read = false;
@@ -1179,7 +1183,7 @@ impl NotificationState {
         let tasks = group.task_list();
         let body = group
             .active_body()
-            .unwrap_or_else(|| "Preparing...".to_string());
+            .unwrap_or_else(|| t("oneclient.notifications.preparing").to_string());
         let title = group.title.clone();
 
         let completed: u64 = tasks.iter().map(|t| t.current.min(t.total)).sum();

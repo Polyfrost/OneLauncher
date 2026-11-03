@@ -6,6 +6,7 @@ use oneclient_core::settings::{AppTheme, LauncherSettings};
 use super::settings_page;
 use crate::components::{ColorPicker, Icon, IconType, toggle};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::view::app::settings::{resettable, settings_row, settings_row_disabled};
@@ -116,7 +117,7 @@ impl Component for SettingsAppearance {
             .child(
                 rect().padding(Gaps::new(8., 0., 0., 0.)).child(
                     label()
-                        .text("Looking to change your language?")
+                        .text(t("oneclient.settings.appearance.language_hint"))
                         .font_size(12.)
                         .color(colors::fg_primary()),
                 ),
@@ -250,8 +251,8 @@ fn accent_color_row(accent: State<Option<String>>, default: Option<String>) -> i
 
     settings_row(
         IconType::PaintPour,
-        "Accent color",
-        "The main color used across the launcher. This doesn't edit your theme.",
+        t("oneclient.settings.appearance.accent_color.title"),
+        t("oneclient.settings.appearance.accent_color.description"),
         resettable(
             ColorPicker::new(shown, move |picked: Color| {
                 let mut accent = accent;
@@ -267,8 +268,8 @@ fn accent_color_row(accent: State<Option<String>>, default: Option<String>) -> i
 fn custom_theme_row() -> impl IntoElement {
     settings_row_disabled(
         IconType::Colors,
-        "Custom theme",
-        "Create, edit, and import launcher themes",
+        t("oneclient.settings.appearance.custom_theme.title"),
+        t("oneclient.settings.appearance.custom_theme.description"),
         Icon::new(IconType::ChevronRight).size(18.).into_element(),
     )
 }
@@ -276,8 +277,8 @@ fn custom_theme_row() -> impl IntoElement {
 fn dynamic_background_row(enabled: State<bool>, default: bool) -> impl IntoElement {
     settings_row(
         IconType::Eye,
-        "Parallax background",
-        "Make the home screen background drift with your cursor. Turning it off keeps the background but disables the motion.",
+        t("oneclient.settings.appearance.parallax_background.title"),
+        t("oneclient.settings.appearance.parallax_background.description"),
         resettable(toggle(enabled), enabled, default),
     )
 }
@@ -285,8 +286,8 @@ fn dynamic_background_row(enabled: State<bool>, default: bool) -> impl IntoEleme
 fn animations_row(animations_on: State<bool>, default: bool) -> impl IntoElement {
     settings_row(
         IconType::Play,
-        "Animations",
-        "Whether all launcher animations and transitions should be enabled.",
+        t("oneclient.settings.appearance.animations.title"),
+        t("oneclient.settings.appearance.animations.description"),
         resettable(toggle(animations_on), animations_on, default),
     )
 }

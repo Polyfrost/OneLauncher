@@ -49,6 +49,11 @@ pub enum GameError {
     #[error("{0} is syncing from the shared folder; wait for it to finish before launching")]
     SharedDirectorySyncing(String),
 
+    #[error(
+        "the shared folder {0} is missing; pick a folder for this instance in its settings before launching"
+    )]
+    SharedFolderMissing(String),
+
     #[error("failed to spawn the game process: {0}")]
     Spawn(String),
 
@@ -56,6 +61,9 @@ pub enum GameError {
         "the wrapper command '{program}' could not be started: {reason}. Check the Wrapper Command setting."
     )]
     WrapperSpawn { program: String, reason: String },
+
+    #[error("start the game once on this version before changing this setting")]
+    OptionsOutdated,
 }
 
 impl GameError {

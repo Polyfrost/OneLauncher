@@ -1,0 +1,97 @@
+name: Crowdin
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'packages/oneclient_app/lang/en_us.json'
+      - 'crowdin.yml'
+      - '.github/crowdin/**'
+      - '.github/workflows/crowdin.yml'
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Task to run
+        type: choice
+        default: all
+        options:
+          - all
+          - sync
+          - publish
+
+concurrency:
+  group: crowdin
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Sync sources
+
+    if: >-
+      github.repository == 'Polyfrost/OneLauncher' && (github.event_name == 'push' ||
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all", "sync"]'), inputs.task)))
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Upload sources
+        uses: crowdin/github-action@959dc74ac104447731cba99a016f85d0ae719788 # v3.5.0
+        env:
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+        with:
+          upload_sources: true
+          upload_translations: false
+          download_translations: false
+
+  publish:
+    name: Publish translations to R2
+
+    needs: sync
+
+    if: >-
+      !cancelled() && needs.sync.result != 'failure' && github.repository == 'Polyfrost/OneLauncher' &&
+      (github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && contains(fromJSON('["all", "publish"]'), inputs.task)))
+
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      AWS_DEFAULT_REGION: auto
+      AWS_ENDPOINT_URL: ${{ vars.R2_ENDPOINT }}
+      R2_TARGET: s3://${{ vars.R2_BUCKET }}/oneclient/v1
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Fetch published manifest
+        run: aws s3 cp "$R2_TARGET/manifest.json" build/published/manifest.json || echo "::notice::No published manifest found"
+
+      - name: Build distribution
+        id: build
+        env:
+          CROWDIN_PROJECT_ID: ${{ secrets.CROWDIN_PROJECT_ID }}
+          CROWDIN_PERSONAL_TOKEN: ${{ secrets.CROWDIN_PERSONAL_TOKEN }}
+        run: >-
+          python3 .github/crowdin/build_distribution.py
+          --output build/distribution
+          --previous build/published/manifest.json
+
+      - name: Upload distribution
+        if: steps.build.outputs.changed == 'true'
+        run: |
+          aws s3 sync build/distribution/translations "$R2_TARGET/translations" --content-type application/json --cache-control "public, max-age=604800"
+          aws s3 cp build/distribution/manifest.json "$R2_TARGET/manifest.json" --content-type application/json --cache-control "public, max-age=3600"
+          aws s3 sync build/distribution/translations "$R2_TARGET/translations" --delete --size-only

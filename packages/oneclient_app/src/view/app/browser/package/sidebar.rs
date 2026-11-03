@@ -4,6 +4,7 @@ use oneclient_content::packages::ProviderId;
 use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSummary};
 
 use crate::components::{Button, Icon, IconType};
+use crate::i18n::{t, tf};
 use crate::utils::shorten;
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -73,7 +74,10 @@ pub(super) fn sidebar(
                                 .color(colors::fg_primary()),
                         )
                         .child(ProviderTag {
-                            text: format!("{} on {}", project.content_type, project.provider),
+                            text: tf(
+                                "oneclient.browser.package.sidebar.provider",
+                                &[&project.content_type, &project.provider],
+                            ),
                             provider: project.provider,
                             url: project.web_url(),
                             confirm,
@@ -99,9 +103,9 @@ pub(super) fn sidebar(
                                 )
                                 .child(
                                     label()
-                                        .text(format!(
-                                            "{} downloads",
-                                            abbreviate_number(project.downloads)
+                                        .text(tf(
+                                            "oneclient.browser.package.sidebar.downloads",
+                                            &[&abbreviate_number(project.downloads)],
                                         ))
                                         .font_size(11.)
                                         .color(colors::fg_secondary()),
@@ -133,20 +137,23 @@ pub(super) fn sidebar(
                 })
                 .child(Icon::new(IconType::Download01).size(14.))
                 .text(if installing && installer.add_to_cluster {
-                    "Adding...".to_string()
+                    t("oneclient.browser.package.sidebar.adding").to_string()
                 } else if installing {
-                    "Installing...".to_string()
+                    t("oneclient.browser.package.sidebar.installing").to_string()
                 } else if installer.add_to_cluster {
                     match &installer.cluster_name {
-                        Some(name) => format!("Add to {}", shorten(name, BUTTON_NAME_CHARS, "\u{2026}")),
-                        None => "Add to this instance".to_string(),
+                        Some(name) => tf(
+                            "oneclient.browser.package.sidebar.add_to",
+                            &[&shorten(name, BUTTON_NAME_CHARS, "\u{2026}")],
+                        ),
+                        None => t("oneclient.browser.package.sidebar.add_to_this").to_string(),
                     }
                 } else if installer.modpack {
-                    "Install...".to_string()
+                    t("oneclient.browser.package.sidebar.install_ellipsis").to_string()
                 } else if have_latest {
-                    "Latest installed".to_string()
+                    t("oneclient.browser.package.sidebar.latest_installed").to_string()
                 } else {
-                    "Install latest".to_string()
+                    t("oneclient.browser.package.sidebar.install_latest").to_string()
                 })
                 .into_element(),
         })
@@ -157,7 +164,7 @@ pub(super) fn sidebar(
                 .enabled(!installing && !waiting)
                 .on_press(move |_| prompt.set(true))
                 .child(Icon::new(IconType::Plus).size(14.))
-                .text("Add to an instance")
+                .text(t("oneclient.browser.package.sidebar.add_to_instance"))
                 .into_element()
         }))
         .maybe(
@@ -250,7 +257,7 @@ fn authors_card(project: &ProjectDetail, confirm: State<Option<String>>) -> impl
         vec![author_row(
             &ProjectMember {
                 name: project.author.clone(),
-                role: "Author".to_string(),
+                role: t("oneclient.browser.package.sidebar.author").to_string(),
                 url: None,
                 avatar_url: None,
             },
@@ -263,7 +270,7 @@ fn authors_card(project: &ProjectDetail, confirm: State<Option<String>>) -> impl
             .map(|m| author_row(m, confirm))
             .collect()
     };
-    card("Authors", rows)
+    card(t("oneclient.browser.package.sidebar.authors"), rows)
 }
 
 fn author_row(member: &ProjectMember, confirm: State<Option<String>>) -> Element {
@@ -342,26 +349,36 @@ impl Component for AuthorRow {
 fn details_card(project: &ProjectDetail) -> impl IntoElement {
     let mut rows: Vec<Element> = Vec::new();
     if !project.game_versions.is_empty() {
-        rows.push(pill_detail("Versions", &project.game_versions));
+        rows.push(pill_detail(
+            t("oneclient.browser.package.sidebar.versions"),
+            &project.game_versions,
+        ));
     }
     if !project.loaders.is_empty() {
         let loaders: Vec<String> = project.loaders.iter().map(|l| l.real_name()).collect();
-        rows.push(pill_detail("Loaders", &loaders));
+        rows.push(pill_detail(
+            t("oneclient.browser.package.sidebar.loaders"),
+            &loaders,
+        ));
     }
     if let Some(license) = &project.license {
-        rows.push(detail_row(IconType::Key01, "License", license));
+        rows.push(detail_row(
+            IconType::Key01,
+            t("oneclient.browser.package.sidebar.license"),
+            license,
+        ));
     }
     rows.push(detail_row(
         IconType::Calendar,
-        "Created",
+        t("oneclient.browser.package.sidebar.created"),
         &project.created.format("%Y-%m-%d").to_string(),
     ));
     rows.push(detail_row(
         IconType::ClockRewind,
-        "Updated",
+        t("oneclient.browser.package.sidebar.updated"),
         &project.updated.format("%Y-%m-%d").to_string(),
     ));
-    card("Details", rows)
+    card(t("oneclient.browser.package.sidebar.details"), rows)
 }
 
 fn detail_row(icon: IconType, key: &str, value: &str) -> Element {
@@ -404,7 +421,7 @@ fn links_card(links: &[(String, String)], confirm: State<Option<String>>) -> imp
         .iter()
         .map(|(lbl, url)| link_row(lbl.clone(), url.clone(), confirm))
         .collect();
-    card_spaced("Links", rows, 2.)
+    card_spaced(t("oneclient.browser.package.sidebar.links"), rows, 2.)
 }
 
 fn link_row(label_text: String, url: String, confirm: State<Option<String>>) -> Element {

@@ -7,6 +7,7 @@ use crate::components::{
     ART_PREVIEW_EDGE, Button, DynamicArt, Icon, IconType, OverlayPopup, ScrollArea,
 };
 use crate::hooks::{refresh_version_art_gallery, use_version_art_gallery};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -203,7 +204,7 @@ fn empty_state() -> Element {
         .spacing(12.)
         .child(
             label()
-                .text("The art gallery could not be loaded. Check your connection.")
+                .text(t("oneclient.components.version_art_gallery.error"))
                 .font_size(13.)
                 .color(colors::fg_secondary()),
         )
@@ -216,7 +217,7 @@ fn empty_state() -> Element {
                         refresh_version_art_gallery().await;
                     });
                 })
-                .text("Try again"),
+                .text(t("oneclient.common.try_again")),
         )
         .into_element()
 }
@@ -236,14 +237,14 @@ fn header(on_close: impl FnMut(Event<PressEventData>) + 'static) -> Element {
                 .spacing(5.)
                 .child(
                     label()
-                        .text("Art gallery")
+                        .text(t("oneclient.components.version_art_gallery.title"))
                         .font_size(20.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
-                        .text("Pick any of the official version artworks as the background for this instance.")
+                        .text(t("oneclient.components.version_art_gallery.description"))
                         .font_size(13.)
                         .line_height(1.35)
                         .color(colors::fg_secondary()),
@@ -253,7 +254,7 @@ fn header(on_close: impl FnMut(Event<PressEventData>) + 'static) -> Element {
             Button::new()
                 .ghost()
                 .icon()
-                .alt("Close")
+                .alt(t("oneclient.common.close"))
                 .on_press(on_close)
                 .child(Icon::new(IconType::XClose).size(16.)),
         )
@@ -267,8 +268,7 @@ fn footer(
     let (note, note_color) = match failure {
         Some(message) => (message, colors::danger()),
         None => (
-            "Choosing an artwork pins it to this instance, so it stays put if you change the version later."
-                .to_string(),
+            t("oneclient.components.version_art_gallery.pin_note").to_string(),
             colors::fg_secondary(),
         ),
     };
@@ -299,7 +299,12 @@ fn footer(
                 .max_lines(2)
                 .color(note_color),
         )
-        .child(Button::new().ghost().on_press(on_close).text("Cancel"))
+        .child(
+            Button::new()
+                .ghost()
+                .on_press(on_close)
+                .text(t("oneclient.common.cancel")),
+        )
         .into_element()
 }
 

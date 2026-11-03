@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, ScrollArea};
-use crate::theme::colors;
+use crate::i18n::{t, tf};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const LIST_HEIGHT: f32 = 300.;
@@ -84,13 +85,13 @@ pub fn settings_file_picker(choice: FileChoice) -> Vec<Element> {
 
     let list: Element = match files {
         None => label()
-            .text("Looking for settings files…")
-            .font_size(12.5)
+            .text(t("oneclient.components.settings_files.loading"))
+            .font_size(text_size(12.5))
             .color(colors::fg_secondary())
             .into_element(),
         Some(files) if files.is_empty() => label()
-            .text("This instance has no settings files yet.")
-            .font_size(12.5)
+            .text(t("oneclient.components.settings_files.empty"))
+            .font_size(text_size(12.5))
             .color(colors::fg_secondary())
             .into_element(),
         Some(files) => ScrollArea::new()
@@ -117,8 +118,11 @@ pub fn settings_file_picker(choice: FileChoice) -> Vec<Element> {
             .child(
                 rect().width(Size::flex(1.)).child(
                     label()
-                        .text(format!("{count} of {total} chosen"))
-                        .font_size(12.5)
+                        .text(tf(
+                            "oneclient.components.settings_files.chosen",
+                            &[&count, &total],
+                        ))
+                        .font_size(text_size(12.5))
                         .color(colors::fg_secondary()),
                 ),
             )
@@ -126,13 +130,13 @@ pub fn settings_file_picker(choice: FileChoice) -> Vec<Element> {
                 Button::new()
                     .ghost()
                     .on_press(move |_| chosen.set(None))
-                    .text("Select all"),
+                    .text(t("oneclient.components.settings_files.select_all")),
             )
             .child(
                 Button::new()
                     .ghost()
                     .on_press(move |_| chosen.set(Some(BTreeSet::new())))
-                    .text("Select none"),
+                    .text(t("oneclient.components.settings_files.select_none")),
             )
             .into_element(),
         list,
@@ -145,7 +149,7 @@ fn file_row(path: String, selected: bool, choice: FileChoice) -> Element {
         .width(Size::px(16.))
         .height(Size::px(16.))
         .center()
-        .corner_radius(CornerRadius::new_all(4.));
+        .corner_radius(rounded(4.));
     tick = if selected {
         tick.background(colors::brand()).child(
             Icon::new(IconType::Check)
@@ -161,13 +165,13 @@ fn file_row(path: String, selected: bool, choice: FileChoice) -> Element {
         .spacing(10.)
         .padding(Gaps::new(6., 8., 6., 8.))
         .cross_align(Alignment::Center)
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .on_press(move |_| choice.toggle(&toggled))
         .child(tick)
         .child(
             label()
                 .text(path)
-                .font_size(12.5)
+                .font_size(text_size(12.5))
                 .max_lines(1)
                 .text_overflow(TextOverflow::Ellipsis)
                 .color(colors::fg_primary()),

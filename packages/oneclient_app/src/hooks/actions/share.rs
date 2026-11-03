@@ -178,9 +178,7 @@ impl Actions {
         let Some(slot) = self.claim_export(cluster_id) else {
             self.set_share(
                 cluster_id,
-                ShareProgress::Failed(
-                    "This instance is busy right now. Try again once it's done.".into(),
-                ),
+                ShareProgress::Failed(t("oneclient.actions.share.busy").into()),
             );
             return;
         };
@@ -199,7 +197,7 @@ impl Actions {
 
             let shared = off_ui({
                 let state = state.clone();
-                let title = format!("Sharing {}", cluster.name);
+                let title = tf("oneclient.actions.share.sharing", &[&cluster.name]);
                 async move {
                     let session = GroupedProgressSession::start(&state.services.events, title);
                     let shared = async {
@@ -282,7 +280,7 @@ impl Actions {
                 Err(err) => {
                     tracing::warn!(error = %err, "could not stop sharing an instance");
                     actions
-                        .notify("Couldn't stop sharing")
+                        .notify(t("oneclient.actions.share.stop_failed"))
                         .body(err.to_string())
                         .error()
                         .send();
@@ -320,8 +318,8 @@ impl Actions {
 
     pub fn import_share(&self, input: String) {
         if ShareCode::parse(&input).is_none() {
-            self.notify("That isn't a share code")
-                .body("Share codes look like ABCD-EFGH. Check it and try again.")
+            self.notify(t("oneclient.actions.share.invalid_code.title"))
+                .body(t("oneclient.actions.share.invalid_code.body"))
                 .error()
                 .send();
             return;
@@ -344,7 +342,7 @@ impl Actions {
                 Err(err) => {
                     tracing::warn!(error = %err, "could not fetch a shared instance");
                     actions
-                        .notify("Couldn't open the share code")
+                        .notify(t("oneclient.actions.share.open_failed"))
                         .body(err.to_string())
                         .error()
                         .send();
@@ -405,7 +403,7 @@ impl Actions {
             .get(cluster_id)
             .await
             .map(|cluster| cluster.name)
-            .unwrap_or_else(|_| "This instance".to_string());
+            .unwrap_or_else(|_| t("oneclient.actions.share.this_instance").to_string());
 
         match update {
             ShareUpdate::Current => {}
@@ -418,34 +416,39 @@ impl Actions {
                 if let Err(err) = unlinked {
                     tracing::warn!(cluster_id, error = %err, "could not unlink an ended share");
                 }
-                self.notify(format!("{name} no longer gets updates"))
-                    .body("The person who shared it stopped sharing, or the code expired. Your copy stays as it is.")
+                self.notify(tf("oneclient.actions.share.ended.title", &[&name]))
+                    .body(t("oneclient.actions.share.ended.body"))
                     .send();
             }
             ShareUpdate::Available { link, changes, .. } => {
-                let mut body = format!(
-                    "The person who shared {name} updated it under {}.",
-                    link.code.pretty()
+                let mut body = tf(
+                    "oneclient.actions.share.update.body",
+                    &[&name, &link.code.pretty()],
                 );
                 for line in changes.describe() {
                     body.push(' ');
                     body.push_str(&line);
                 }
-                body.push_str(" Mods you added yourself stay.");
-                let prompt = Prompt::new(format!("Update {name}?"), body)
-                    .option(
-                        Choice::primary("share.update", "Update and play"),
-                        UpdateAnswer::Update,
-                    )
-                    .option(
-                        Choice::new("share.skip", "Play without updating"),
-                        UpdateAnswer::Skip,
-                    )
-                    .option(
-                        Choice::new("share.unlink", "Stop updates"),
-                        UpdateAnswer::Unlink,
-                    )
-                    .dismiss("Not now");
+                body.push(' ');
+                body.push_str(t("oneclient.actions.share.update.own_mods_stay"));
+                let prompt =
+                    Prompt::new(tf("oneclient.actions.share.update.title", &[&name]), body)
+                        .option(
+                            Choice::primary(
+                                "share.update",
+                                t("oneclient.actions.share.update.update"),
+                            ),
+                            UpdateAnswer::Update,
+                        )
+                        .option(
+                            Choice::new("share.skip", t("oneclient.actions.share.update.skip")),
+                            UpdateAnswer::Skip,
+                        )
+                        .option(
+                            Choice::new("share.unlink", t("oneclient.actions.share.update.unlink")),
+                            UpdateAnswer::Unlink,
+                        )
+                        .dismiss(t("oneclient.actions.share.update.later"));
                 let answer = match self.events().ask(prompt).await {
                     Ok(Some(chosen)) => chosen.value,
                     Ok(None) => UpdateAnswer::Skip,
@@ -480,7 +483,7 @@ impl Actions {
     ) {
         let applied = off_ui({
             let state = state.clone();
-            let title = format!("Updating {name}");
+            let title = tf("oneclient.actions.share.updating", &[&name]);
             async move {
                 let session = GroupedProgressSession::start(&state.services.events, title);
                 let applied = async {
@@ -507,15 +510,15 @@ impl Actions {
         crate::hooks::invalidate_cluster_queries().await;
         match applied {
             Ok(applied) if applied != cluster_id => {
-                self.notify(format!("{name} moved to a new Minecraft version"))
-                    .body("The update was installed as a new instance so your current one stays playable. Play the new one from your instances.")
+                self.notify(tf("oneclient.actions.share.moved.title", &[&name]))
+                    .body(t("oneclient.actions.share.moved.body"))
                     .send();
             }
             Ok(_) => {}
             Err(err) => {
                 tracing::warn!(cluster_id, error = %err, "could not update from the share code");
-                self.notify("Couldn't update the instance")
-                    .body(format!("{err} Playing your current copy."))
+                self.notify(t("oneclient.actions.share.update_failed.title"))
+                    .body(tf("oneclient.actions.share.update_failed.body", &[&err]))
                     .error()
                     .send();
             }
@@ -538,17 +541,24 @@ impl Actions {
             .inspect_err(|err| tracing::warn!("clipboard copy failed: {err:?}"))
             .is_ok();
         let mut body = if shared.updated {
-            format!("{cluster_name} is updated under {code}.")
+            tf(
+                "oneclient.actions.share.ready.updated",
+                &[&cluster_name, &code],
+            )
         } else {
-            format!("{cluster_name} is shared as {code}.")
+            tf(
+                "oneclient.actions.share.ready.shared",
+                &[&cluster_name, &code],
+            )
         };
         if copied {
-            body.push_str(" The code is copied.");
+            body.push(' ');
+            body.push_str(t("oneclient.actions.share.ready.copied"));
         }
         body.push_str(&export_details(&shared.report));
 
         let notification = self
-            .notify("Share code ready")
+            .notify(t("oneclient.actions.share.ready.title"))
             .body(body)
             .icon(IconType::Users01);
         if shared.report.missing.is_empty() {
@@ -563,7 +573,7 @@ impl Actions {
         if self.update_share(cluster_id, ShareProgress::Failed(reason.to_string())) {
             return;
         }
-        self.notify("Couldn't share the instance")
+        self.notify(t("oneclient.actions.share.share_failed"))
             .body(reason.to_string())
             .error()
             .send();
@@ -713,7 +723,7 @@ async fn collaborator_check(state: Arc<LauncherState>, cluster_id: ClusterId) ->
 }
 
 fn share_code(pretty: &str) -> Result<ShareCode, String> {
-    ShareCode::parse(pretty).ok_or_else(|| "That share code isn't valid.".to_string())
+    ShareCode::parse(pretty).ok_or_else(|| t("oneclient.actions.share.code_invalid").to_string())
 }
 
 pub async fn load_collaborators(code: String) -> Result<Vec<Collaborator>, String> {
@@ -812,8 +822,8 @@ fn source_label(source: Option<&str>) -> &'static str {
         Some("curseforge") => "CurseForge",
         Some("github") => "GitHub",
         Some("gitlab") => "GitLab",
-        Some("embedded") => "Inside the share",
-        _ => "Other website",
+        Some("embedded") => t("oneclient.actions.share.source.embedded"),
+        _ => t("oneclient.actions.share.source.other"),
     }
 }
 
@@ -859,20 +869,25 @@ fn export_details(report: &ShareExportReport) -> String {
         ));
     }
     if report.settings > 0 {
-        body.push_str(&format!(
-            " Included {}.",
-            count_label(report.settings, "%s settings file", "%s settings files")
+        body.push(' ');
+        body.push_str(&count_label(
+            report.settings,
+            t("oneclient.actions.share.exported.settings.one"),
+            t("oneclient.actions.share.exported.settings.other"),
         ));
     }
     if !report.skipped_settings.is_empty() {
-        body.push_str(&format!(
-            " Skipped {} that were too large: {}.",
-            count_label(
-                report.skipped_settings.len(),
-                "%s settings file",
-                "%s settings files"
-            ),
-            listed(&report.skipped_settings)
+        body.push(' ');
+        body.push_str(&tf(
+            "oneclient.actions.share.exported.skipped_settings",
+            &[
+                &count_label(
+                    report.skipped_settings.len(),
+                    t("oneclient.actions.share.settings_file.one"),
+                    t("oneclient.actions.share.settings_file.other"),
+                ),
+                &listed(&report.skipped_settings),
+            ],
         ));
     }
     if !report.missing.is_empty() {

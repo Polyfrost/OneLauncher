@@ -600,9 +600,9 @@ impl Component for ExportRow {
             .secondary()
             .on_press(move |_| choosing.set(true))
             .text(if *shared.read() {
-                "Configure..."
+                t("oneclient.cluster.settings.export.configure")
             } else {
-                "Share..."
+                t("oneclient.cluster.settings.export.share")
             });
 
         rect()
@@ -610,10 +610,8 @@ impl Component for ExportRow {
             .width(Size::fill())
             .child(settings_row(
                 IconType::Users01,
-                "Share Instance",
-                "Get a share code or save a .mrpack file friends can import: its mods, resource \
-                 packs, shaders, loader, Java version, cover and, if you choose, its settings. \
-                 Worlds stay here.",
+                t("oneclient.cluster.settings.export.title"),
+                t("oneclient.cluster.settings.export.description"),
                 button,
             ))
             .maybe_child(choosing.read().then(|| {
@@ -1589,8 +1587,8 @@ impl Component for CloudSyncRow {
         if !cloud.signed_in {
             return settings_row_disabled(
                 IconType::DownloadCloud02,
-                "Sync to Cloud",
-                "Sign in with a Microsoft account to keep this instance the same on all your computers.",
+                t("oneclient.cluster.settings.cloud_sync.title"),
+                t("oneclient.cluster.settings.cloud_sync.signed_out"),
                 toggle_controlled(false, (|()| {}).into()),
             )
             .into_element();
@@ -1599,22 +1597,22 @@ impl Component for CloudSyncRow {
         let on = status.is_some();
         let busy = matches!(status, Some(SyncStatus::Syncing));
         let description = match &status {
-            None => {
-                "Keep this instance's mods, loader and settings the same on every computer you \
-                     sign in on. Mods download from Modrinth or CurseForge. Worlds, screenshots \
-                     and logs stay on each computer."
-                    .to_string()
+            None => t("oneclient.cluster.settings.cloud_sync.off").to_string(),
+            Some(SyncStatus::Synced) => {
+                t("oneclient.cluster.settings.cloud_sync.synced").to_string()
             }
-            Some(SyncStatus::Synced) => "Synced with your other computers. Turning this off \
-                                         removes it from the cloud; copies elsewhere stay but \
-                                         stop syncing."
-                .to_string(),
-            Some(SyncStatus::Pending) => "Waiting to sync your latest changes.".to_string(),
-            Some(SyncStatus::Syncing) => "Syncing...".to_string(),
-            Some(SyncStatus::Conflict { .. }) => "Conflict: this instance changed here and on \
-                                                  another computer. Pick which copy to keep."
-                .to_string(),
-            Some(SyncStatus::Error { message }) => format!("Sync failed: {message}"),
+            Some(SyncStatus::Pending) => {
+                t("oneclient.cluster.settings.cloud_sync.pending").to_string()
+            }
+            Some(SyncStatus::Syncing) => {
+                t("oneclient.cluster.settings.cloud_sync.syncing").to_string()
+            }
+            Some(SyncStatus::Conflict { .. }) => {
+                t("oneclient.cluster.settings.cloud_sync.conflict").to_string()
+            }
+            Some(SyncStatus::Error { message }) => {
+                tf("oneclient.cluster.settings.cloud_sync.error", &[message])
+            }
         };
 
         let toggle = {
@@ -1640,7 +1638,7 @@ impl Component for CloudSyncRow {
                         .on_press(move |_| {
                             dispatch.resolve_cloud_conflict(cluster_id, name.clone())
                         })
-                        .text("Resolve")
+                        .text(t("oneclient.cluster.settings.cloud_sync.resolve"))
                         .into_element(),
                 )
             }
@@ -1651,7 +1649,7 @@ impl Component for CloudSyncRow {
                         .small()
                         .secondary()
                         .on_press(move |_| dispatch.sync_cluster_now(cluster_id))
-                        .text("Retry")
+                        .text(t("oneclient.common.retry"))
                         .into_element(),
                 )
             }
@@ -1663,7 +1661,7 @@ impl Component for CloudSyncRow {
                 .small()
                 .ghost()
                 .on_press(move |_| choosing.set(true))
-                .text("Settings files")
+                .text(t("oneclient.cluster.settings.cloud_sync.files"))
                 .into_element()
         });
 
@@ -1679,7 +1677,7 @@ impl Component for CloudSyncRow {
             .width(Size::fill())
             .child(settings_row(
                 IconType::DownloadCloud02,
-                "Sync to Cloud",
+                t("oneclient.cluster.settings.cloud_sync.title"),
                 description,
                 trailing,
             ))
@@ -1722,18 +1720,14 @@ impl Component for SyncFilesModal {
 
         let mut content = vec![
             label()
-                .text("Settings files to sync")
-                .font_size(18.)
+                .text(t("oneclient.cluster.settings.sync_files.title"))
+                .font_size(text_size(18.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary())
                 .into_element(),
             label()
-                .text(
-                    "Unticked files stay on this computer, and your other computers keep their \
-                     own copy. Use it for things like keybinds or video settings that differ per \
-                     computer. Your choice applies on every computer.",
-                )
-                .font_size(13.)
+                .text(t("oneclient.cluster.settings.sync_files.description"))
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary())
                 .into_element(),
         ];
@@ -1748,7 +1742,7 @@ impl Component for SyncFilesModal {
                     Button::new()
                         .ghost()
                         .on_press(move |_| cancel.call(()))
-                        .text("Cancel"),
+                        .text(t("oneclient.common.cancel")),
                 )
                 .child(
                     Button::new()
@@ -1757,7 +1751,7 @@ impl Component for SyncFilesModal {
                             dispatch.set_sync_left_out(cluster_id, choice.left_out());
                             save.call(());
                         })
-                        .text("Save"),
+                        .text(t("oneclient.common.save")),
                 )
                 .into_element(),
         );
@@ -1776,7 +1770,7 @@ impl Component for SyncFilesModal {
                             .max_width(Size::window_percent(92.))
                             .spacing(16.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .background(colors::page_elevated())
                             .border(border_all_color(1., colors::component_border()))
                             .children(content),

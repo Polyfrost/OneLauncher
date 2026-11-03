@@ -202,9 +202,9 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
         (
             ImportSource::Code,
             IconType::Users01,
-            "Import from a share code",
-            "Paste the code or link a friend got from Share in OneClient.",
-            "Codes look like ABCD-EFGH.",
+            t("oneclient.clusters.instance.steps.import_source.code.title"),
+            t("oneclient.clusters.instance.steps.import_source.code.blurb"),
+            t("oneclient.clusters.instance.steps.import_source.code.meta"),
         ),
         (
             ImportSource::Launcher,
@@ -236,7 +236,9 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
         .maybe_child(by_code.then(|| {
             TextInput::new(wizard.share_code)
                 .width(Size::fill())
-                .placeholder("ABCD-EFGH or a share link")
+                .placeholder(t(
+                    "oneclient.clusters.instance.steps.import_source.code.placeholder",
+                ))
                 .auto_focus(true)
                 .into_element()
         }))

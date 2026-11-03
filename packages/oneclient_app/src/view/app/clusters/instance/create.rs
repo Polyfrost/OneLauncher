@@ -80,7 +80,9 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
                 ImportSource::File => {
                     t("oneclient.clusters.instance.create.subtitle.file").to_string()
                 }
-                ImportSource::Code => "From a share code".to_string(),
+                ImportSource::Code => {
+                    t("oneclient.clusters.instance.create.subtitle.code").to_string()
+                }
                 ImportSource::Launcher => {
                     t("oneclient.clusters.instance.create.subtitle.launcher").to_string()
                 }
@@ -229,7 +231,9 @@ impl Component for CreateInstanceModal {
                 (false, _) if friend => {
                     t("oneclient.clusters.instance.create.choose_file").to_string()
                 }
-                (false, _) if by_code => "Open share".to_string(),
+                (false, _) if by_code => {
+                    t("oneclient.clusters.instance.create.open_share").to_string()
+                }
                 (true, ModpackOrigin::Browse) => {
                     t("oneclient.clusters.instance.create.browse_modpacks").to_string()
                 }

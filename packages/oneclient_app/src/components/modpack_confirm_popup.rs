@@ -493,11 +493,11 @@ fn shared_section(preview: &SharedPreview) -> Element {
     let unverified = preview.files.iter().filter(|file| !file.verified).count();
     let mut lines = vec![
         label()
-            .text(format!(
-                "Stays linked to {}. When the person who shared it updates it, you're asked before you play. Mods you add yourself stay.",
-                preview.code
+            .text(tf(
+                "oneclient.components.modpack_confirm.shared.linked",
+                &[&preview.code],
             ))
-            .font_size(12.)
+            .font_size(text_size(12.))
             .max_lines(4)
             .color(colors::fg_secondary())
             .into_element(),
@@ -505,11 +505,12 @@ fn shared_section(preview: &SharedPreview) -> Element {
     if unverified > 0 {
         lines.push(
             label()
-                .text(format!(
-                    "{} not from Modrinth or CurseForge. Only add instances from people you trust.",
-                    count_label(unverified, "file is", "files are")
+                .text(count_label(
+                    unverified,
+                    t("oneclient.components.modpack_confirm.shared.unverified.one"),
+                    t("oneclient.components.modpack_confirm.shared.unverified.other"),
                 ))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(3)
                 .color(colors::code_warn())
                 .into_element(),
@@ -518,11 +519,12 @@ fn shared_section(preview: &SharedPreview) -> Element {
     if preview.settings > 0 {
         lines.push(
             label()
-                .text(format!(
-                    "Comes with {}.",
-                    count_label(preview.settings, "settings file", "settings files")
+                .text(count_label(
+                    preview.settings,
+                    t("oneclient.components.modpack_confirm.shared.settings.one"),
+                    t("oneclient.components.modpack_confirm.shared.settings.other"),
                 ))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element(),
         );
@@ -542,21 +544,18 @@ fn shared_section(preview: &SharedPreview) -> Element {
                     label()
                         .text(file.name.clone())
                         .width(Size::flex(1.))
-                        .font_size(12.5)
+                        .font_size(text_size(12.5))
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .color(colors::fg_primary()),
                 )
-                .child(
-                    label()
-                        .text(file.source)
-                        .font_size(11.5)
-                        .color(if file.verified {
-                            colors::fg_secondary()
-                        } else {
-                            colors::code_warn()
-                        }),
-                )
+                .child(label().text(file.source).font_size(text_size(11.5)).color(
+                    if file.verified {
+                        colors::fg_secondary()
+                    } else {
+                        colors::code_warn()
+                    },
+                ))
                 .into_element()
         })
         .collect();
@@ -573,21 +572,21 @@ fn shared_section(preview: &SharedPreview) -> Element {
                 .width(Size::fill())
                 .spacing(6.)
                 .padding(Gaps::new_all(12.))
-                .corner_radius(CornerRadius::new_all(10.))
+                .corner_radius(rounded(10.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::component_border()))
                 .child(
                     label()
-                        .text("What's inside")
-                        .font_size(12.5)
+                        .text(t("oneclient.components.modpack_confirm.shared.inside"))
+                        .font_size(text_size(12.5))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .children(rows)
                 .maybe_child(preview.truncated.then(|| {
                     label()
-                        .text("And more.")
-                        .font_size(12.)
+                        .text(t("oneclient.components.modpack_confirm.shared.more"))
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary())
                         .into_element()
                 })),

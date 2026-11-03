@@ -309,6 +309,7 @@ impl Component for ClusterContentOutlet {
     }
 }
 
+#[expect(clippy::too_many_arguments)]
 fn cluster_header(
     title: String,
     subtitle: String,
@@ -365,7 +366,7 @@ fn cluster_header(
                         .icon()
                         .width(Size::px(ACTION_HEIGHT))
                         .height(Size::px(ACTION_HEIGHT))
-                        .tooltip("Share")
+                        .tooltip(t("oneclient.layout.cluster.share"))
                         .on_press(move |_| sharing.set(true))
                         .child(Icon::new(IconType::Share01).size(ACTION_ICON_SIZE)),
                 )

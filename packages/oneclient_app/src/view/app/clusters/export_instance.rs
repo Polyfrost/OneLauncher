@@ -15,6 +15,7 @@ use crate::i18n::{t, tf};
 use crate::state::{OwnerCheck, OwnerShare, ShareProgress, ShareReady};
 use crate::theme::{self, colors, rounded, text_size};
 use crate::ui::border_all_color;
+use crate::utils::count_label;
 
 const DIALOG_WIDTH: f32 = 560.;
 const CODE_FONT_SIZE: f32 = 52.;
@@ -267,7 +268,7 @@ impl Component for ExportInstanceModal {
 fn title(text: String) -> Element {
     label()
         .text(text)
-        .font_size(22.)
+        .font_size(text_size(22.))
         .font_weight(FontWeight::SEMI_BOLD)
         .color(colors::fg_primary())
         .into_element()
@@ -292,7 +293,7 @@ fn header(text: String, close: EventHandler<()>) -> Element {
 fn note(text: impl Into<String>, size: f32) -> Element {
     label()
         .text(text.into())
-        .font_size(size)
+        .font_size(text_size(size))
         .color(colors::fg_secondary())
         .into_element()
 }
@@ -344,7 +345,7 @@ fn owner_panel(check: &OwnerCheck, copied: State<Option<Copied>>) -> Option<Elem
                     .cross_align(Alignment::Center)
                     .spacing(8.)
                     .child(Spinner::new(14.))
-                    .child(note("Checking the share…", 13.))
+                    .child(note(t("oneclient.clusters.export.checking"), 13.))
                     .into_element(),
             );
         }
@@ -353,7 +354,7 @@ fn owner_panel(check: &OwnerCheck, copied: State<Option<Copied>>) -> Option<Elem
             status_line(
                 IconType::RefreshCw01,
                 colors::fg_secondary(),
-                "Couldn't check for changes.",
+                t("oneclient.clusters.export.status.unknown"),
             ),
         ),
         OwnerCheck::Shared(shared) => (&shared.ready, change_line(shared)),
@@ -362,7 +363,7 @@ fn owner_panel(check: &OwnerCheck, copied: State<Option<Copied>>) -> Option<Elem
             status_line(
                 IconType::Users01,
                 colors::brand(),
-                "You're a collaborator on this share.",
+                t("oneclient.clusters.export.status.collaborator"),
             ),
         ),
     };
@@ -370,8 +371,8 @@ fn owner_panel(check: &OwnerCheck, copied: State<Option<Copied>>) -> Option<Elem
     let mut code = rect().vertical().width(Size::flex(1.)).spacing(4.).child(
         label()
             .text(ready.code.clone())
-            .font_size(SHARED_CODE_FONT_SIZE)
-            .font_family(theme::MONO_FONT)
+            .font_size(text_size(SHARED_CODE_FONT_SIZE))
+            .font_family(theme::mono_font())
             .font_weight(FontWeight::SEMI_BOLD)
             .color(colors::fg_strong()),
     );
@@ -392,7 +393,7 @@ fn owner_panel(check: &OwnerCheck, copied: State<Option<Copied>>) -> Option<Elem
                     .cross_align(Alignment::Center)
                     .spacing(4.)
                     .padding(Gaps::new(16., 12., 16., 18.))
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(colors::component_bg())
                     .border(border_all_color(1., colors::component_border()))
                     .child(code)
@@ -401,14 +402,14 @@ fn owner_panel(check: &OwnerCheck, copied: State<Option<Copied>>) -> Option<Elem
                         Copied::Code,
                         copied,
                         IconType::Copy01,
-                        "Copy code",
+                        t("oneclient.clusters.export.copy_code"),
                     ))
                     .child(copy_icon(
                         ready.link.clone(),
                         Copied::Link,
                         copied,
                         IconType::Link03,
-                        "Copy link",
+                        t("oneclient.clusters.export.copy_link"),
                     )),
             )
             .child(status)
@@ -446,14 +447,17 @@ fn copy_icon(
 }
 
 fn expiry(date: &str, size: f32) -> Element {
+    let template = t("oneclient.clusters.export.works_until");
+    let (before, after) = template.split_once("%s").unwrap_or((template, ""));
     paragraph()
-        .font_size(size)
-        .span(Span::new("Works until ").color(colors::fg_secondary()))
+        .font_size(text_size(size))
+        .span(Span::new(before).color(colors::fg_secondary()))
         .span(
             Span::new(date.to_string())
                 .font_weight(FontWeight::BOLD)
                 .color(colors::fg_primary()),
         )
+        .span(Span::new(after).color(colors::fg_secondary()))
         .into_element()
 }
 
@@ -462,25 +466,29 @@ fn change_line(shared: &OwnerShare) -> Element {
         return status_line(
             IconType::AlertTriangle,
             colors::code_warn(),
-            "A collaborator updated this. Press Play to get their changes first.",
+            t("oneclient.clusters.export.status.behind"),
         );
     }
     match (shared.content_changed, shared.settings_changed) {
-        (false, false) => status_line(IconType::CheckCircle, colors::success(), "Up to date."),
+        (false, false) => status_line(
+            IconType::CheckCircle,
+            colors::success(),
+            t("oneclient.clusters.export.status.current"),
+        ),
         (true, false) => status_line(
             IconType::RefreshCw01,
             colors::brand(),
-            "Your mods changed since you last shared.",
+            t("oneclient.clusters.export.status.mods_changed"),
         ),
         (false, true) => status_line(
             IconType::RefreshCw01,
             colors::brand(),
-            "Your settings changed since you last shared.",
+            t("oneclient.clusters.export.status.settings_changed"),
         ),
         (true, true) => status_line(
             IconType::RefreshCw01,
             colors::brand(),
-            "Your mods and settings changed since you last shared.",
+            t("oneclient.clusters.export.status.both_changed"),
         ),
     }
 }
@@ -491,14 +499,28 @@ fn settings_row(picks: Picks) -> Element {
     let files = picks.files.files.read();
     let summary = match &*files {
         _ if !included => None,
-        None => Some("Looking for files…".to_string()),
-        Some(list) if list.is_empty() => Some("No settings files yet".to_string()),
+        None => Some(t("oneclient.clusters.export.settings.loading").to_string()),
+        Some(list) if list.is_empty() => {
+            Some(t("oneclient.clusters.export.settings.none").to_string())
+        }
         Some(_) => {
             let (chosen, total) = picks.files.counts();
             Some(if chosen == total {
-                format!("All {total} files")
+                count_label(
+                    total,
+                    t("oneclient.clusters.export.settings.all.one"),
+                    t("oneclient.clusters.export.settings.all.other"),
+                )
+            } else if total == 1 {
+                tf(
+                    "oneclient.clusters.export.settings.some.one",
+                    &[&chosen, &total],
+                )
             } else {
-                format!("{chosen} of {total} files")
+                tf(
+                    "oneclient.clusters.export.settings.some.other",
+                    &[&chosen, &total],
+                )
             })
         }
     };
@@ -511,10 +533,13 @@ fn settings_row(picks: Picks) -> Element {
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .spacing(8.)
-        .child(checkbox_labeled(picks.settings, "Include settings"))
+        .child(checkbox_labeled(
+            picks.settings,
+            t("oneclient.clusters.export.settings.include"),
+        ))
         .child(Hint {
             label: None,
-            text: "Configs, OneConfig and options.txt. Files that look like logins or tokens stay on this computer.",
+            text: t("oneclient.clusters.export.settings.hint"),
         })
         .child(rect().width(Size::flex(1.)))
         .maybe_child(summary.map(|summary| note(summary, 12.5)))
@@ -523,7 +548,7 @@ fn settings_row(picks: Picks) -> Element {
                 .ghost()
                 .small()
                 .on_press(move |_| picking.set(true))
-                .text("Choose…")
+                .text(t("oneclient.clusters.export.settings.choose"))
                 .into_element()
         }))
         .into_element()
@@ -541,13 +566,13 @@ fn share_header(name: &str, owner: &OwnerCheck, team: Team, close: EventHandler<
         .child(
             rect()
                 .width(Size::flex(1.))
-                .child(title(format!("Share {name}"))),
+                .child(title(tf("oneclient.clusters.export.share_title", &[&name]))),
         )
         .maybe_child(owns.then(|| {
             Button::new()
                 .ghost()
                 .icon()
-                .tooltip("Collaborators")
+                .tooltip(t("oneclient.clusters.export.team.title"))
                 .on_press(move |_| {
                     people.set(None);
                     message.set(None);
@@ -592,8 +617,8 @@ fn options_view(
     let mut elements = vec![share_header(name, owner, picks.team, close)];
     elements.push(owner_panel(owner, copied).unwrap_or_else(|| {
         Hint {
-            label: Some("How sharing works"),
-            text: "You get a code friends can import in OneClient. When you update the share, they get your changes the next time they play. Worlds are never included.",
+            label: Some(t("oneclient.clusters.export.how_sharing.label")),
+            text: t("oneclient.clusters.export.how_sharing.text"),
         }
         .into_element()
     }));
@@ -605,7 +630,7 @@ fn options_view(
         Button::new()
             .ghost()
             .on_press(move |_| saving.set(true))
-            .text("Save file…")
+            .text(t("oneclient.clusters.export.save_file_ellipsis"))
             .into_element(),
         Button::new()
             .enabled(!checking)
@@ -618,9 +643,9 @@ fn options_view(
                 (false, false) => share_dispatch.share_cluster(cluster_id, picks.options()),
             })
             .text(match (&shared_ready, settings_only) {
-                (None, _) => "Get share code",
-                (Some(_), true) => "Update settings",
-                (Some(_), false) => "Update share",
+                (None, _) => t("oneclient.clusters.export.get_code"),
+                (Some(_), true) => t("oneclient.clusters.export.update_settings"),
+                (Some(_), false) => t("oneclient.clusters.export.update_share"),
             })
             .into_element(),
     ];
@@ -630,7 +655,7 @@ fn options_view(
             .ghost()
             .foreground(colors::danger())
             .on_press(move |_| stop_dispatch.stop_sharing(cluster_id, ready.clone()))
-            .text("Stop sharing")
+            .text(t("oneclient.clusters.export.stop"))
             .into_element()
     });
     elements.push(footer(left, right));
@@ -652,22 +677,22 @@ fn save_view(
             ExportMode::OneClient,
             IconType::IconLogo,
             "OneClient",
-            Some("Recommended"),
-            "Bundles and modpacks stay linked and keep updating.",
+            Some(t("oneclient.clusters.export.oneclient.badge")),
+            t("oneclient.clusters.export.oneclient.blurb"),
         ),
         (
             ExportMode::Compatibility,
             IconType::Globe01,
-            "Other launchers",
+            t("oneclient.clusters.export.compatibility.title"),
             None,
-            "For the Modrinth App, Prism and others. Bundle mods are saved as plain mods.",
+            t("oneclient.clusters.export.compatibility.blurb"),
         ),
     ];
 
     let export = dispatch.clone();
     let close_export = close.clone();
     vec![
-        header(format!("Save {name} as a file"), close),
+        header(tf("oneclient.clusters.export.title", &[&name]), close),
         rect()
             .vertical()
             .width(Size::fill())
@@ -695,7 +720,7 @@ fn save_view(
                 Button::new()
                     .ghost()
                     .on_press(move |_| saving.set(false))
-                    .text("Back")
+                    .text(t("oneclient.common.back"))
                     .into_element(),
             ),
             vec![
@@ -706,7 +731,7 @@ fn save_view(
                         export.export_cluster(cluster_id, options);
                         close_export.call(());
                     })
-                    .text("Save file")
+                    .text(t("oneclient.clusters.export.confirm"))
                     .into_element(),
             ],
         ),
@@ -731,7 +756,7 @@ fn team_view(team: Team, owner: &OwnerCheck) -> Vec<Element> {
                 .spacing(8.)
                 .cross_align(Alignment::Center)
                 .child(Spinner::new(14.))
-                .child(note("Loading collaborators…", 12.5))
+                .child(note(t("oneclient.clusters.export.team.loading"), 12.5))
                 .into_element(),
         ],
         Some(people) if people.is_empty() => vec![
@@ -744,7 +769,7 @@ fn team_view(team: Team, owner: &OwnerCheck) -> Vec<Element> {
                         .size(28.)
                         .color(colors::fg_secondary()),
                 )
-                .child(note("Nobody else can update this share yet.", 13.))
+                .child(note(t("oneclient.clusters.export.team.empty"), 13.))
                 .into_element(),
         ],
         Some(people) => people
@@ -768,7 +793,7 @@ fn team_view(team: Team, owner: &OwnerCheck) -> Vec<Element> {
                                     .unwrap_or_else(|| person.uuid.to_string()),
                             )
                             .width(Size::flex(1.))
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
                             .color(colors::fg_primary()),
@@ -778,7 +803,7 @@ fn team_view(team: Team, owner: &OwnerCheck) -> Vec<Element> {
                             .ghost()
                             .foreground(colors::danger())
                             .on_press(move |_| team.remove(code.clone(), removed.clone()))
-                            .text("Remove"),
+                            .text(t("oneclient.common.remove")),
                     )
                     .into_element()
             })
@@ -799,11 +824,8 @@ fn team_view(team: Team, owner: &OwnerCheck) -> Vec<Element> {
     let add_code = code.clone();
     let submit_code = code;
     let mut elements = vec![
-        title("Collaborators".to_string()),
-        note(
-            "Collaborators can update this share from their own copy, and everyone with the code gets their changes after reviewing them. They need to import the code first. Only you can stop sharing or change who collaborates.",
-            13.,
-        ),
+        title(t("oneclient.clusters.export.team.title").to_string()),
+        note(t("oneclient.clusters.export.team.description"), 13.),
         list.into_element(),
         rect()
             .horizontal()
@@ -815,7 +837,7 @@ fn team_view(team: Team, owner: &OwnerCheck) -> Vec<Element> {
                 rect().width(Size::flex(1.)).child(
                     TextInput::new(team.username)
                         .width(Size::fill())
-                        .placeholder("Minecraft username")
+                        .placeholder(t("oneclient.clusters.export.team.username"))
                         .on_submit(move |_| team.add(submit_code.clone())),
                 ),
             )
@@ -823,7 +845,11 @@ fn team_view(team: Team, owner: &OwnerCheck) -> Vec<Element> {
                 Button::new()
                     .enabled(!busy)
                     .on_press(move |_| team.add(add_code.clone()))
-                    .text(if busy { "Adding…" } else { "Add" }),
+                    .text(if busy {
+                        t("oneclient.clusters.export.team.adding")
+                    } else {
+                        t("oneclient.common.add")
+                    }),
             )
             .into_element(),
     ];
@@ -839,7 +865,7 @@ fn team_view(team: Team, owner: &OwnerCheck) -> Vec<Element> {
         vec![
             Button::new()
                 .on_press(move |_| open.set(false))
-                .text("Done")
+                .text(t("oneclient.common.done"))
                 .into_element(),
         ],
     ));
@@ -849,11 +875,8 @@ fn team_view(team: Team, owner: &OwnerCheck) -> Vec<Element> {
 fn picker_view(picks: Picks) -> Vec<Element> {
     let mut picking = picks.picking;
     let mut elements = vec![
-        title("Choose settings files".to_string()),
-        note(
-            "Pick what people with the code get. Files that look like logins or tokens are never listed, and anything that still looks like a password or key is removed when you share.",
-            13.,
-        ),
+        title(t("oneclient.clusters.export.picker.title").to_string()),
+        note(t("oneclient.clusters.export.picker.description"), 13.),
     ];
     elements.extend(settings_file_picker(picks.files));
     elements.push(footer(
@@ -861,7 +884,7 @@ fn picker_view(picks: Picks) -> Vec<Element> {
         vec![
             Button::new()
                 .on_press(move |_| picking.set(false))
-                .text("Done")
+                .text(t("oneclient.common.done"))
                 .into_element(),
         ],
     ));
@@ -877,7 +900,7 @@ fn share_view(
     dispatch: &crate::hooks::Actions,
     close: EventHandler<()>,
 ) -> Vec<Element> {
-    let heading = title(format!("Share {name}"));
+    let heading = title(tf("oneclient.clusters.export.share_title", &[&name]));
     match progress {
         ShareProgress::Working => vec![
             heading,
@@ -888,12 +911,15 @@ fn share_view(
                 .center()
                 .spacing(12.)
                 .child(Spinner::new(24.))
-                .child(note("Packing the instance and uploading it…", 13.))
+                .child(note(t("oneclient.clusters.export.uploading"), 13.))
                 .into_element(),
-            footer(None, vec![done_button("Hide", close)]),
+            footer(
+                None,
+                vec![done_button(t("oneclient.clusters.export.hide"), close)],
+            ),
         ],
         ShareProgress::Ready(ready) => ready_view(
-            header(format!("Share {name}"), close),
+            header(tf("oneclient.clusters.export.share_title", &[&name]), close),
             cluster_id,
             ready,
             false,
@@ -901,7 +927,7 @@ fn share_view(
             dispatch,
         ),
         ShareProgress::Stopping(ready) => ready_view(
-            header(format!("Share {name}"), close),
+            header(tf("oneclient.clusters.export.share_title", &[&name]), close),
             cluster_id,
             ready,
             true,
@@ -913,9 +939,9 @@ fn share_view(
             status_line(
                 IconType::CheckCircle,
                 colors::success(),
-                "Sharing stopped. The code and link no longer work, and people who imported it keep their copy without updates.",
+                t("oneclient.clusters.export.stopped"),
             ),
-            footer(None, vec![done_button("Done", close)]),
+            footer(None, vec![done_button(t("oneclient.common.done"), close)]),
         ],
         ShareProgress::Failed(reason) => {
             let retry = dispatch.clone();
@@ -925,7 +951,7 @@ fn share_view(
                 status_line(
                     IconType::AlertTriangle,
                     colors::danger(),
-                    "Couldn't share the instance.",
+                    t("oneclient.clusters.export.failed"),
                 ),
                 note(reason, 13.),
                 footer(
@@ -934,11 +960,11 @@ fn share_view(
                         Button::new()
                             .ghost()
                             .on_press(move |_| close_cancel.call(()))
-                            .text("Close")
+                            .text(t("oneclient.common.close"))
                             .into_element(),
                         Button::new()
                             .on_press(move |_| retry.share_cluster(cluster_id, picks.options()))
-                            .text("Try again")
+                            .text(t("oneclient.common.try_again"))
                             .into_element(),
                     ],
                 ),
@@ -968,29 +994,20 @@ fn ready_view(
                 .width(Size::fill())
                 .padding(Gaps::new(28., 12., 28., 12.))
                 .center()
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::component_border()))
                 .child(
                     label()
                         .text(ready.code.clone())
-                        .font_size(CODE_FONT_SIZE)
-                        .font_family(theme::MONO_FONT)
+                        .font_size(text_size(CODE_FONT_SIZE))
+                        .font_family(theme::mono_font())
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_strong()),
                 ),
         );
     if let Some(expires) = &ready.expires {
-        code_box = code_box.child(
-            paragraph()
-                .font_size(13.)
-                .span(Span::new("Works until ").color(colors::fg_secondary()))
-                .span(
-                    Span::new(expires.clone())
-                        .font_weight(FontWeight::BOLD)
-                        .color(colors::fg_primary()),
-                ),
-        );
+        code_box = code_box.child(expiry(expires, 13.));
     }
 
     let mut elements = vec![
@@ -999,8 +1016,8 @@ fn ready_view(
             .spacing(6.)
             .child(heading)
             .child(Hint {
-                label: Some("How to import"),
-                text: "Send the code or link to a friend. In OneClient they choose New instance, Import, From a share code. They get your updates when they play.",
+                label: Some(t("oneclient.clusters.export.how_import.label")),
+                text: t("oneclient.clusters.export.how_import.text"),
             })
             .into_element(),
         code_box.into_element(),
@@ -1010,7 +1027,7 @@ fn ready_view(
         elements.push(status_line(
             IconType::AlertTriangle,
             colors::danger(),
-            "Some files couldn't be found and were left out.",
+            t("oneclient.clusters.export.incomplete"),
         ));
     }
 
@@ -1019,15 +1036,15 @@ fn ready_view(
             ready.code.clone(),
             Copied::Code,
             copied,
-            "Copy code",
-            "Code copied",
+            t("oneclient.clusters.export.copy_code"),
+            t("oneclient.clusters.export.code_copied"),
         ),
         copy_button(
             ready.link.clone(),
             Copied::Link,
             copied,
-            "Copy link",
-            "Link copied",
+            t("oneclient.clusters.export.copy_link"),
+            t("oneclient.clusters.export.link_copied"),
         ),
     ];
     elements.push(footer(
@@ -1038,9 +1055,9 @@ fn ready_view(
                 .enabled(!stopping)
                 .on_press(move |_| stop.stop_sharing(cluster_id, ready.clone()))
                 .text(if stopping {
-                    "Stopping…"
+                    t("oneclient.clusters.export.stopping")
                 } else {
-                    "Stop sharing"
+                    t("oneclient.clusters.export.stop")
                 })
                 .into_element(),
         ),
@@ -1092,7 +1109,7 @@ fn status_line(icon: IconType, color: Color, text: &str) -> Element {
             label()
                 .text(text.to_string())
                 .width(Size::flex(1.))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_primary()),
         )
         .into_element()

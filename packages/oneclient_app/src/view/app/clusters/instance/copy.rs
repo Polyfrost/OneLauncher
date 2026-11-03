@@ -136,7 +136,7 @@ pub fn footer_note(picks: &Picks) -> String {
                 t("oneclient.clusters.instance.copy.note.import_source.file").to_string()
             }
             ImportSource::Code => {
-                "You see what the shared instance contains before anything is installed.".to_string()
+                t("oneclient.clusters.instance.copy.note.import_source.code").to_string()
             }
             ImportSource::Launcher => {
                 t("oneclient.clusters.instance.copy.note.import_source.launcher").to_string()
@@ -206,7 +206,7 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
         },
         Step::ImportSource => match picks.import_source {
             ImportSource::File => t("oneclient.clusters.instance.copy.value.file").to_string(),
-            ImportSource::Code => "From a share code".to_string(),
+            ImportSource::Code => t("oneclient.clusters.instance.copy.value.code").to_string(),
             ImportSource::Launcher => {
                 t("oneclient.clusters.instance.copy.value.launcher").to_string()
             }

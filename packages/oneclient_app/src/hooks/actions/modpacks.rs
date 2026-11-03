@@ -24,6 +24,7 @@ use crate::notifications::{
     BlockedDownloads, ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView,
 };
 use crate::state::AppChannel;
+use crate::utils::count_label;
 
 const MAX_LISTED: usize = 3;
 
@@ -210,12 +211,10 @@ fn confirm_view(prepared: &PreparedModpack) -> ModpackConfirm {
     if let Some(shared) = &prepared.share
         && !shared.share.settings.is_empty()
     {
-        notices.push(format!(
-            "Comes with {} from the person who shared it. It gets its own game folder, so your other instances keep their settings.",
-            match shared.share.settings.len() {
-                1 => "1 settings file".to_string(),
-                n => format!("{n} settings files"),
-            }
+        notices.push(count_label(
+            shared.share.settings.len(),
+            t("oneclient.actions.modpacks.shared_settings.one"),
+            t("oneclient.actions.modpacks.shared_settings.other"),
         ));
     }
 

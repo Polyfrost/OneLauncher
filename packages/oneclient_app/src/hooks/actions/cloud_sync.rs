@@ -14,6 +14,7 @@ use tokio::sync::{OwnedMutexGuard, mpsc};
 use tokio::time::Instant;
 
 use super::{Actions, listed};
+use crate::i18n::{t, tf};
 use crate::launcher::{self, off_ui};
 use crate::state::{AppChannel, CloudSyncState};
 
@@ -257,29 +258,29 @@ impl Actions {
 
         let created = names(&report.created).await;
         if !created.is_empty() {
-            self.notify("Synced instances added")
-                .body(format!(
-                    "{} came from your other computers. Mods download from Modrinth or CurseForge the first time you play.",
-                    listed(created.into_iter())
+            self.notify(t("oneclient.actions.cloud_sync.added.title"))
+                .body(tf(
+                    "oneclient.actions.cloud_sync.added.body",
+                    &[&listed(created.into_iter())],
                 ))
                 .send();
         }
         let conflicts = names(&report.conflicts).await;
         if !conflicts.is_empty() {
-            self.notify("Sync conflict")
-                .body(format!(
-                    "{} changed here and on another computer. Open the instance settings to pick which copy to keep.",
-                    listed(conflicts.into_iter())
+            self.notify(t("oneclient.actions.cloud_sync.conflict.title"))
+                .body(tf(
+                    "oneclient.actions.cloud_sync.conflict.body",
+                    &[&listed(conflicts.into_iter())],
                 ))
                 .error()
                 .send();
         }
         let removed = names(&report.removed).await;
         if !removed.is_empty() {
-            self.notify("Stopped syncing")
-                .body(format!(
-                    "{} was removed from the cloud on another computer. The copy here is kept.",
-                    listed(removed.into_iter())
+            self.notify(t("oneclient.actions.cloud_sync.removed.title"))
+                .body(tf(
+                    "oneclient.actions.cloud_sync.removed.body",
+                    &[&listed(removed.into_iter())],
                 ))
                 .send();
         }
@@ -288,7 +289,7 @@ impl Actions {
         }
         if !report.failed.is_empty() {
             tracing::warn!(failed = ?report.failed, "some instances could not sync");
-            self.notify("Some instances couldn't sync")
+            self.notify(t("oneclient.actions.cloud_sync.some_failed"))
                 .body(
                     report
                         .failed
@@ -308,16 +309,17 @@ impl Actions {
             .get(new)
             .await
             .map(|cluster| cluster.name)
-            .unwrap_or_else(|_| "An instance".into());
+            .unwrap_or_else(|_| t("oneclient.actions.cloud_sync.replaced.unknown_new").into());
         let old_name = state
             .clusters
             .get(old)
             .await
             .map(|cluster| cluster.name)
-            .unwrap_or_else(|_| "the old one".into());
-        self.notify("Synced instance moved to a new version")
-            .body(format!(
-                "{name} uses another Minecraft version on your other computer, so the cloud copy was set up as a new instance. The old copy, {old_name}, is kept and no longer syncs."
+            .unwrap_or_else(|_| t("oneclient.actions.cloud_sync.replaced.unknown_old").into());
+        self.notify(t("oneclient.actions.cloud_sync.replaced.title"))
+            .body(tf(
+                "oneclient.actions.cloud_sync.replaced.body",
+                &[&name, &old_name],
             ))
             .send();
     }
@@ -381,7 +383,7 @@ impl Actions {
             .get(cluster_id)
             .await
             .map(|cluster| cluster.name)
-            .unwrap_or_else(|_| "This instance".into());
+            .unwrap_or_else(|_| t("oneclient.actions.cloud_sync.this_instance").into());
         match outcome {
             Ok(SyncOutcome::Pulled { .. } | SyncOutcome::Copied { .. }) => {
                 crate::hooks::invalidate_cluster_queries().await;
@@ -396,24 +398,20 @@ impl Actions {
                     .await;
             }
             Ok(SyncOutcome::Conflict { .. }) => {
-                self.notify("Sync conflict")
-                    .body(format!(
-                        "{name} changed here and on another computer. Open its settings to pick which copy to keep."
-                    ))
+                self.notify(t("oneclient.actions.cloud_sync.conflict.title"))
+                    .body(tf("oneclient.actions.cloud_sync.conflict.one", &[&name]))
                     .error()
                     .send();
             }
             Ok(SyncOutcome::RemovedFromCloud) => {
-                self.notify("Stopped syncing")
-                    .body(format!(
-                        "{name} was removed from the cloud on another computer. The copy here is kept."
-                    ))
+                self.notify(t("oneclient.actions.cloud_sync.removed.title"))
+                    .body(tf("oneclient.actions.cloud_sync.removed.body", &[&name]))
                     .send();
             }
             Ok(SyncOutcome::Unchanged | SyncOutcome::Pushed { .. } | SyncOutcome::Deferred) => {}
             Err(err @ LauncherError::SharingError(SharingError::Incomplete(_))) => {
                 crate::hooks::invalidate_cluster_queries().await;
-                self.notify(format!("{name} didn't fully sync"))
+                self.notify(tf("oneclient.actions.cloud_sync.incomplete", &[&name]))
                     .body(err.to_string())
                     .error()
                     .send();
@@ -489,7 +487,7 @@ impl Actions {
                 }
             };
             if state.games.is_active(cluster_id) {
-                actions.report_cloud_failure("Close the game first, then pick a copy again.");
+                actions.report_cloud_failure(t("oneclient.actions.cloud_sync.close_game_first"));
                 return;
             }
             actions
@@ -514,10 +512,8 @@ impl Actions {
             }
             if let Ok(SyncOutcome::Copied { .. }) = &outcome {
                 actions
-                    .notify("Kept both copies")
-                    .body(format!(
-                        "The cloud copy of {name} is now its own instance. Both keep syncing."
-                    ))
+                    .notify(t("oneclient.actions.cloud_sync.kept_both.title"))
+                    .body(tf("oneclient.actions.cloud_sync.kept_both.body", &[&name]))
                     .send();
             }
             actions.finish_cloud_sync(&state, cluster_id, outcome).await;
@@ -553,8 +549,8 @@ impl Actions {
         };
         let hold = engine.hold(cluster_id).await;
         if let Ok(SyncOutcome::Conflict { .. }) = &outcome {
-            self.notify("Launching this computer's copy")
-                .body("The cloud copy changed too. Pick which one to keep in the instance settings after you play.")
+            self.notify(t("oneclient.actions.cloud_sync.launch_local.title"))
+                .body(t("oneclient.actions.cloud_sync.launch_local.body"))
                 .send();
             self.refresh_cloud_sync().await;
         } else {
@@ -564,7 +560,7 @@ impl Actions {
     }
 
     fn report_cloud_failure(&self, message: &str) {
-        self.notify("Cloud sync failed")
+        self.notify(t("oneclient.actions.cloud_sync.failed"))
             .body(message.to_string())
             .error()
             .send();
@@ -573,22 +569,29 @@ impl Actions {
 
 fn conflict_prompt(name: &str) -> Prompt<Resolution> {
     Prompt::new(
-        format!("{name} changed in two places"),
-        "This instance changed here and on another computer since it last synced. Pick the copy \
-         to keep. Keeping both turns the cloud copy into its own instance. Worlds are never \
-         touched.",
+        tf("oneclient.actions.cloud_sync.prompt.title", &[&name]),
+        t("oneclient.actions.cloud_sync.prompt.body"),
     )
     .option(
-        Choice::primary("cloud_sync.keep_local", "Keep this computer's"),
+        Choice::primary(
+            "cloud_sync.keep_local",
+            t("oneclient.actions.cloud_sync.prompt.keep_local"),
+        ),
         Resolution::KeepLocal,
     )
     .option(
-        Choice::new("cloud_sync.keep_cloud", "Keep the cloud's"),
+        Choice::new(
+            "cloud_sync.keep_cloud",
+            t("oneclient.actions.cloud_sync.prompt.keep_cloud"),
+        ),
         Resolution::KeepCloud,
     )
     .option(
-        Choice::new("cloud_sync.keep_both", "Keep both"),
+        Choice::new(
+            "cloud_sync.keep_both",
+            t("oneclient.actions.cloud_sync.prompt.keep_both"),
+        ),
         Resolution::KeepBoth,
     )
-    .dismiss("Decide later")
+    .dismiss(t("oneclient.actions.cloud_sync.prompt.later"))
 }

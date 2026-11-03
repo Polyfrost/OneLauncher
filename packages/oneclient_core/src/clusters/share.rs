@@ -527,28 +527,12 @@ pub(super) async fn install_shared_instance(
     let content = state.services.content();
     let share = &shared.share;
 
-    let cluster = state.clusters.get(cluster_id).await?;
-    if share.dedicated_dir && !cluster.uses_dedicated_dir() {
-        state
-            .clusters
-            .set_dedicated_dir(cluster_id, true, false)
-            .await?;
-    }
-
     let overrides: Vec<_> = share
         .overrides
         .iter()
         .filter_map(|o| Some((o.bundle.clone(), o.package_id.clone(), o.override_type()?)))
         .collect();
     bundle_dao::save_overrides(&state.services.db, cluster_id, &overrides).await?;
-
-    if share.dedicated_dir && !state.clusters.get(cluster_id).await?.is_isolated() {
-        state
-            .clusters
-            .set_dedicated_dir(cluster_id, true, false)
-            .await
-            .ok();
-    }
 
     let mut report = ModpackInstallReport::default();
     if share.modpack.is_some() {

@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use bytes::Bytes;
 use futures_util::TryStreamExt;
-use reqwest::header::{CONTENT_LENGTH, IF_MATCH};
+use reqwest::header::{CONTENT_LENGTH, IF_MATCH, RETRY_AFTER};
 use reqwest::{Method, StatusCode};
 use tokio::io::AsyncWriteExt;
 
@@ -13,6 +13,9 @@ use crate::api::{client, token_for};
 use crate::{PlusError, REQUEST_TIMEOUT, base_url, plus_blocked};
 
 const TRANSFER_TIMEOUT: Duration = Duration::from_secs(60 * 60);
+pub const COMMIT_TIMEOUT: Duration = Duration::from_secs(5 * 60);
+const COMMIT_ATTEMPTS: u32 = 4;
+const MAX_RETRY_WAIT: Duration = Duration::from_secs(60);
 
 pub const INSTANCES_PATH: &str = "/v1/oneclient/shares";
 
@@ -20,6 +23,7 @@ pub const INSTANCES_PATH: &str = "/v1/oneclient/shares";
 pub struct Reply {
     pub status: StatusCode,
     pub body: Bytes,
+    pub retry_after: Option<Duration>,
 }
 
 impl Reply {
@@ -35,6 +39,63 @@ pub async fn call(
     path: &str,
     if_match: Option<&str>,
     body: Option<&serde_json::Value>,
+) -> Result<Reply, PlusError> {
+    send(account, method, path, if_match, body, REQUEST_TIMEOUT).await
+}
+
+pub async fn commit(
+    account: &MinecraftAccount,
+    path: &str,
+    body: &serde_json::Value,
+) -> Result<Reply, PlusError> {
+    let mut attempt = 1;
+    loop {
+        let sent = send(
+            Some(account),
+            Method::POST,
+            path,
+            None,
+            Some(body),
+            COMMIT_TIMEOUT,
+        )
+        .await;
+        let wait = match &sent {
+            Ok(reply)
+                if matches!(
+                    reply.status,
+                    StatusCode::TOO_MANY_REQUESTS
+                        | StatusCode::INTERNAL_SERVER_ERROR
+                        | StatusCode::SERVICE_UNAVAILABLE
+                ) =>
+            {
+                reply.retry_after
+            }
+            Err(PlusError::Request(err)) if err.is_timeout() || err.is_connect() => None,
+            _ => return sent,
+        };
+        if attempt >= COMMIT_ATTEMPTS {
+            return sent;
+        }
+        let wait = wait
+            .unwrap_or(Duration::from_secs(5 * u64::from(attempt)))
+            .min(MAX_RETRY_WAIT);
+        tracing::warn!(
+            attempt,
+            wait_secs = wait.as_secs(),
+            "the upload commit did not finish; retrying"
+        );
+        tokio::time::sleep(wait).await;
+        attempt += 1;
+    }
+}
+
+async fn send(
+    account: Option<&MinecraftAccount>,
+    method: Method,
+    path: &str,
+    if_match: Option<&str>,
+    body: Option<&serde_json::Value>,
+    timeout: Duration,
 ) -> Result<Reply, PlusError> {
     if plus_blocked() {
         return Err(PlusError::ConsentRequired);
@@ -52,7 +113,7 @@ pub async fn call(
         };
         let mut request = client()?
             .request(method.clone(), &url)
-            .timeout(REQUEST_TIMEOUT)
+            .timeout(timeout)
             .header("Accept", "application/json");
         if let Some(token) = &token {
             request = request.bearer_auth(token);
@@ -73,9 +134,15 @@ pub async fn call(
             stale = Some(token);
             continue;
         }
+        let retry_after = response
+            .headers()
+            .get(RETRY_AFTER)
+            .and_then(|value| value.to_str().ok()?.trim().parse().ok())
+            .map(Duration::from_secs);
         return Ok(Reply {
             status,
             body: response.bytes().await?,
+            retry_after,
         });
     }
 }

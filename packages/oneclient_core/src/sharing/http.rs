@@ -23,6 +23,7 @@ pub(crate) enum Remote {
     Plus(PlusError),
     Api(ApiError),
     Invalid(String),
+    Uncommitted(ShareCode, Box<Remote>),
 }
 
 impl From<PlusError> for Remote {
@@ -34,12 +35,16 @@ impl From<PlusError> for Remote {
 #[derive(Debug, Clone)]
 pub(crate) struct ApiError {
     pub status: u16,
+    pub code: String,
     pub message: String,
     pub revision: Option<u64>,
+    pub retry_after: Option<std::time::Duration>,
 }
 
 #[derive(Debug, Deserialize)]
 struct ErrorBody {
+    #[serde(default)]
+    error: String,
     #[serde(default)]
     message: String,
     #[serde(default)]
@@ -85,8 +90,24 @@ pub(crate) fn api_error(reply: &Reply) -> ApiError {
         .unwrap_or_else(|| String::from_utf8_lossy(&reply.body).trim().to_string());
     ApiError {
         status: reply.status.as_u16(),
+        code: body
+            .as_ref()
+            .map(|body| body.error.clone())
+            .unwrap_or_default(),
         message,
         revision: body.and_then(|body| body.revision),
+        retry_after: reply.retry_after,
+    }
+}
+
+pub(crate) fn coded_error(err: &ApiError) -> Option<SharingError> {
+    match err.code.as_str() {
+        "limit_reached" => Some(SharingError::Refused(err.message.clone())),
+        "secret_detected" => Some(SharingError::SecretFound(err.message.clone())),
+        "rate_limited" => Some(SharingError::Busy(
+            err.retry_after.map_or(60, |wait| wait.as_secs().max(1)),
+        )),
+        _ => None,
     }
 }
 
@@ -132,16 +153,16 @@ pub(crate) async fn push(
     let reserved: Reserved =
         parse(&instances::call(Some(account), method, path, if_match, Some(body)).await?)?;
     instances::upload_file(&reserved.upload.url, payload, size).await?;
-    let committed = instances::call(
-        Some(account),
-        Method::POST,
+    let uncommitted = |err| Remote::Uncommitted(reserved.id.clone(), Box::new(err));
+    let committed = instances::commit(
+        account,
         &format!("{}/commit", record_path(&reserved.id)),
-        None,
-        Some(&serde_json::json!({ "upload_id": reserved.upload.id })),
+        &serde_json::json!({ "upload_id": reserved.upload.id }),
     )
-    .await?;
+    .await
+    .map_err(|err| uncommitted(err.into()))?;
     if !committed.is_success() {
-        return Err(Remote::Api(api_error(&committed)));
+        return Err(uncommitted(Remote::Api(api_error(&committed))));
     }
     Ok(committed)
 }
@@ -221,12 +242,13 @@ impl HttpShareStore {
 
 fn sharing_error(err: Remote, code: Option<&ShareCode>, size: u64) -> SharingError {
     match err {
+        Remote::Uncommitted(_, err) => sharing_error(*err, code, size),
         Remote::Plus(PlusError::ConsentRequired) => SharingError::Unavailable(
             "sharing needs the Terms of Service and Privacy Policy accepted in settings".into(),
         ),
         Remote::Plus(err) => SharingError::Unavailable(err.to_string()),
         Remote::Invalid(message) => SharingError::Unavailable(message),
-        Remote::Api(err) => match (err.status, code) {
+        Remote::Api(err) => coded_error(&err).unwrap_or_else(|| match (err.status, code) {
             (404, Some(code)) => SharingError::NotFound(code.clone()),
             (410, Some(code)) => SharingError::Gone(code.clone()),
             (403, Some(code)) => SharingError::Forbidden(code.clone()),
@@ -240,7 +262,7 @@ fn sharing_error(err: Remote, code: Option<&ShareCode>, size: u64) -> SharingErr
                 "sign in with a Microsoft account to share instances".into(),
             ),
             _ => SharingError::Unavailable(err.message),
-        },
+        }),
     }
 }
 

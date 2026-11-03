@@ -32,6 +32,12 @@ pub enum SharingError {
     Corrupt(String),
     #[error("The sharing service is unavailable: {0}")]
     Unavailable(String),
+    #[error("{0}. Leave the settings file that holds it out, then try again.")]
+    SecretFound(String),
+    #[error("The server is busy. Try again in {0} seconds.")]
+    Busy(u64),
+    #[error("Some files couldn't be downloaded: {}. They'll be tried again next time.", .0.join(", "))]
+    Incomplete(Vec<String>),
     #[error(transparent)]
     Io(#[from] polyio::IOError),
     #[error(transparent)]

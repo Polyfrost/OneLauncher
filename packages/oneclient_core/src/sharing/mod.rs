@@ -15,6 +15,7 @@ use oneclient_events::GroupedProgressSession;
 pub use code::{APP_LINK_HOST, CODE_LENGTH, SHARE_LINK_BASE, SHARE_LINK_HOSTS, ShareCode};
 pub use http::HttpShareStore;
 pub use ledger::{LedgerEntry, PushState, ShareLedger};
+pub(crate) use linked::strip_linked;
 pub use linked::{
     LinkedLedger, LinkedShare, ShareChanges, ShareUpdate, apply_update, check_update,
     default_linked_ledger, link_import, unlink,

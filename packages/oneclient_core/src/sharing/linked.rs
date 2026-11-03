@@ -384,22 +384,14 @@ pub async fn apply_update(
         .collect();
     let user_added: HashSet<String> = before.difference(&owned).cloned().collect();
 
-    for hash in before.intersection(&owned) {
-        if bundle_dao::get_bundle_tracked(&state.services.db, cluster_id, hash)
-            .await?
-            .is_some()
-        {
-            continue;
-        }
-        remove_artifact_from_cluster(cluster_id, hash, false, &content).await?;
-    }
-    remove_stale_settings(state, cluster_id, &link.settings).await?;
-
-    let applied = Box::pin(apply_existing(
+    let (applied, failed) = Box::pin(apply_existing(
         state,
         cluster_id,
         &payload,
-        ClearContent::Nothing,
+        ClearContent::Linked {
+            owned: &owned,
+            settings: &link.settings,
+        },
     ))
     .await?;
     let excluded = if applied == cluster_id {
@@ -411,12 +403,41 @@ pub async fn apply_update(
     if applied == cluster_id {
         super::refresh_push_state(&ledger.owned_shares(), store.name(), cluster_id, &payload).await;
     }
-    record_link(
+    let recorded = record_link(
         state, ledger, applied, &link.code, &remote, &payload, &excluded,
     )
     .await?;
+    if !failed.is_empty() {
+        ledger
+            .upsert(LinkedShare {
+                revision: link.revision,
+                ..recorded
+            })
+            .await?;
+        return Err(SharingError::Incomplete(failed).into());
+    }
     tracing::info!(cluster_id = applied, code = %link.code, revision = remote.revision, "updated an instance from its share code");
     Ok(applied)
+}
+
+pub(crate) async fn strip_linked(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    owned: &HashSet<String>,
+    settings: &[String],
+) -> LauncherResult<()> {
+    let content = state.services.content();
+    for link in PackageStore::list_linked_artifacts(cluster_id, &content).await? {
+        if !owned.contains(&link.hash)
+            || bundle_dao::get_bundle_tracked(&state.services.db, cluster_id, &link.hash)
+                .await?
+                .is_some()
+        {
+            continue;
+        }
+        remove_artifact_from_cluster(cluster_id, &link.hash, false, &content).await?;
+    }
+    remove_stale_settings(state, cluster_id, settings).await
 }
 
 async fn remove_stale_settings(

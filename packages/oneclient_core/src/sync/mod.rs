@@ -20,15 +20,15 @@ use oneclient_content::packages::PackageStore;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
 
 pub use http::HttpSyncStore;
-pub use ledger::{SyncEntry, SyncLedger, SyncStatus};
+pub use ledger::{PendingPush, SyncEntry, SyncLedger, SyncStatus};
 pub use local::LocalSyncStore;
 pub use settings::SyncSettings;
 pub use store::{SyncAccount, SyncError, SyncRecord, SyncStore, SyncUpload};
 
 use crate::LauncherResult;
 use crate::clusters::{
-    ExportMode, ExportOptions, ModpackSource, SettingsChoice, create_modpack_instance,
-    export_cluster_with, install_modpack_instance, prepare_modpack,
+    ClusterError, ExportMode, ExportOptions, ModpackSource, PreparedModpack, SettingsChoice,
+    create_modpack_instance, export_cluster_with, install_modpack_instance, prepare_modpack,
 };
 use crate::sharing::{self, ShareCode, ShareMeta, SharingError};
 use crate::state::LauncherState;
@@ -72,6 +72,7 @@ pub enum SyncOutcome {
         revision: u64,
     },
     RemovedFromCloud,
+    Deferred,
 }
 
 impl SyncOutcome {
@@ -82,6 +83,7 @@ impl SyncOutcome {
                 revision: *revision,
             }),
             Self::RemovedFromCloud => None,
+            Self::Deferred => Some(SyncStatus::Pending),
             _ => Some(SyncStatus::Synced),
         }
     }
@@ -159,6 +161,8 @@ pub struct CloudSync {
     device: String,
     incoming: PathBuf,
     op: tokio::sync::Mutex<()>,
+    busy: Box<dyn Fn(i64) -> bool + Send + Sync>,
+    holds: std::sync::Mutex<HashMap<i64, Arc<tokio::sync::Mutex<()>>>>,
 }
 
 impl CloudSync {
@@ -176,7 +180,42 @@ impl CloudSync {
             device: device.into(),
             incoming: incoming.into(),
             op: tokio::sync::Mutex::new(()),
+            busy: Box::new(|_| false),
+            holds: std::sync::Mutex::default(),
         }
+    }
+
+    #[must_use]
+    pub fn with_busy(mut self, busy: impl Fn(i64) -> bool + Send + Sync + 'static) -> Self {
+        self.busy = Box::new(busy);
+        self
+    }
+
+    fn hold_lock(&self, cluster_id: i64) -> Arc<tokio::sync::Mutex<()>> {
+        self.holds
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .entry(cluster_id)
+            .or_default()
+            .clone()
+    }
+
+    pub async fn hold(&self, cluster_id: i64) -> tokio::sync::OwnedMutexGuard<()> {
+        self.hold_lock(cluster_id).lock_owned().await
+    }
+
+    fn try_apply(
+        &self,
+        state: &LauncherState,
+        cluster_id: i64,
+    ) -> Option<tokio::sync::OwnedMutexGuard<()>> {
+        if state.games.is_active(cluster_id)
+            || crate::clusters::is_resetting(cluster_id)
+            || (self.busy)(cluster_id)
+        {
+            return None;
+        }
+        self.hold_lock(cluster_id).try_lock_owned().ok()
     }
 
     pub fn from_defaults(auth: Arc<AuthService>) -> LauncherResult<Self> {
@@ -263,10 +302,7 @@ impl CloudSync {
             return Box::pin(self.sync_cluster(state, account, cluster_id)).await;
         }
         let snapshot = self.snapshot(state, cluster_id).await?;
-        let record = self
-            .store
-            .create(account, &snapshot.path, self.upload(&snapshot))
-            .await?;
+        let record = self.create(account, &snapshot).await?;
         self.remember(account, cluster_id, &record, snapshot.fingerprint)
             .await?;
         tracing::info!(cluster_id, remote = %record.id, "started syncing an instance");
@@ -297,16 +333,23 @@ impl CloudSync {
         cluster_id: i64,
     ) -> LauncherResult<()> {
         let _op = self.op.lock().await;
-        let removed = self.ledger.remove_cluster(cluster_id).await?;
+        let removed = self.ledger.bury_cluster(cluster_id).await?;
         let Some(account) = account else {
             return Ok(());
         };
         for entry in removed.iter().filter(|entry| entry.account == account.id) {
-            match self.store.delete(account, &entry.remote, None).await {
-                Ok(()) | Err(SyncError::NotFound(_) | SyncError::Deleted(_)) => {}
-                Err(err) => {
-                    tracing::warn!(cluster_id, remote = %entry.remote, error = %err, "could not remove a deleted instance from the cloud");
-                }
+            self.delete_buried(account, &entry.remote).await?;
+        }
+        Ok(())
+    }
+
+    async fn delete_buried(&self, account: &SyncAccount, remote: &ShareCode) -> LauncherResult<()> {
+        match self.store.delete(account, remote, None).await {
+            Ok(()) | Err(SyncError::NotFound(_) | SyncError::Deleted(_)) => {
+                self.ledger.unbury(account.id, remote).await?;
+            }
+            Err(err) => {
+                tracing::warn!(remote = %remote, error = %err, "could not remove a deleted instance from the cloud; trying again on the next sync");
             }
         }
         Ok(())
@@ -336,12 +379,16 @@ impl CloudSync {
         let records = self.store.list(account).await?;
         let mut report = SyncReport::default();
         let entries = self.ledger.for_account(account.id).await?;
-        let linked: HashSet<ShareCode> = entries.iter().map(|entry| entry.remote.clone()).collect();
+        let mut linked: HashSet<ShareCode> =
+            entries.iter().map(|entry| entry.remote.clone()).collect();
 
         for entry in entries {
             let cluster_id = entry.cluster_id;
-            if state.clusters.get(cluster_id).await.is_err() {
-                self.ledger.remove(account.id, cluster_id).await?;
+            if let Err(ClusterError::NotFound(_)) = state.clusters.get(cluster_id).await {
+                self.ledger.bury_cluster(cluster_id).await?;
+                continue;
+            }
+            if self.try_apply(state, cluster_id).is_none() {
                 continue;
             }
             let listed = records
@@ -366,9 +413,14 @@ impl CloudSync {
                 }) => report.replaced.push((old_cluster_id, cluster_id)),
                 Ok(SyncOutcome::Conflict { .. }) => report.conflicts.push(cluster_id),
                 Ok(SyncOutcome::RemovedFromCloud) => report.removed.push(cluster_id),
-                Ok(SyncOutcome::Copied { .. }) => {}
+                Ok(SyncOutcome::Copied { .. } | SyncOutcome::Deferred) => {}
                 Err(err) => report.failed.push((cluster_id, err.to_string())),
             }
+        }
+
+        for remote in self.ledger.buried(account.id).await? {
+            self.delete_buried(account, &remote).await?;
+            linked.insert(remote);
         }
 
         for record in records
@@ -430,18 +482,16 @@ impl CloudSync {
             Resolution::KeepCloud => Box::pin(self.pull(state, account, entry, &remote)).await,
             Resolution::KeepBoth => {
                 let snapshot = self.snapshot(state, cluster_id).await?;
-                let fresh = self
-                    .store
-                    .create(account, &snapshot.path, self.upload(&snapshot))
-                    .await?;
+                let fresh = self.create(account, &snapshot).await?;
                 self.remember(account, cluster_id, &fresh, snapshot.fingerprint)
                     .await?;
 
                 let (_dir, path, record) = Box::pin(self.download(account, &remote.id)).await?;
-                let copy = Box::pin(apply_new(state, &path)).await?;
+                let (copy, failed) = Box::pin(apply_new(state, &path)).await?;
                 self.adopt_settings(copy, &path).await?;
                 let fingerprint = self.snapshot(state, copy).await?.fingerprint;
-                self.remember(account, copy, &record, fingerprint).await?;
+                self.remember_install(account, copy, &record, fingerprint, failed, 0)
+                    .await?;
                 tracing::info!(
                     cluster_id,
                     copy,
@@ -507,12 +557,18 @@ impl CloudSync {
             }
             Err(err) => return Err(err.into()),
         };
+        let entry = &self.adopt_pending(account, entry, &remote).await?;
 
-        let snapshot = self.snapshot(state, cluster_id).await?;
-        let local_changed = snapshot.fingerprint != entry.fingerprint;
         let remote_changed = remote.revision != entry.revision;
+        let left_out = self.settings.left_out(cluster_id).await?;
+        let probe = probe(state, cluster_id, &left_out).await?;
+        if !remote_changed && probe == entry.probe {
+            return Ok(SyncOutcome::Unchanged);
+        }
+        let snapshot = Box::pin(take_snapshot(state, cluster_id, left_out)).await?;
+        let local_changed = snapshot.fingerprint != entry.fingerprint;
 
-        match (local_changed, remote_changed) {
+        let outcome = match (local_changed, remote_changed) {
             (false, false) => Ok(SyncOutcome::Unchanged),
             (true, false) => self.push(account, entry, entry.revision, snapshot).await,
             (false, true) => Box::pin(self.pull(state, account, entry, &remote)).await,
@@ -527,7 +583,14 @@ impl CloudSync {
                     revision: remote.revision,
                 })
             }
+        };
+        if matches!(
+            outcome,
+            Ok(SyncOutcome::Unchanged | SyncOutcome::Pushed { .. })
+        ) {
+            self.ledger.set_probe(account.id, cluster_id, probe).await?;
         }
+        outcome
     }
 
     async fn push(
@@ -560,6 +623,65 @@ impl CloudSync {
                 self.ledger.remove(account.id, entry.cluster_id).await?;
                 Ok(SyncOutcome::RemovedFromCloud)
             }
+            Err(err) => {
+                self.ledger
+                    .upsert(SyncEntry {
+                        pending: Some(PendingPush {
+                            sha512: snapshot.meta.sha512.clone(),
+                            fingerprint: snapshot.fingerprint.clone(),
+                        }),
+                        ..entry.clone()
+                    })
+                    .await?;
+                Err(err.into())
+            }
+        }
+    }
+
+    async fn adopt_pending(
+        &self,
+        account: &SyncAccount,
+        entry: &SyncEntry,
+        remote: &SyncRecord,
+    ) -> Result<SyncEntry, SyncError> {
+        match &entry.pending {
+            Some(pending)
+                if remote.revision != entry.revision && remote.meta.sha512 == pending.sha512 =>
+            {
+                self.remember(
+                    account,
+                    entry.cluster_id,
+                    remote,
+                    pending.fingerprint.clone(),
+                )
+                .await?;
+                Ok(SyncEntry {
+                    revision: remote.revision,
+                    fingerprint: pending.fingerprint.clone(),
+                    pending: None,
+                    ..entry.clone()
+                })
+            }
+            _ => Ok(entry.clone()),
+        }
+    }
+
+    async fn create(
+        &self,
+        account: &SyncAccount,
+        snapshot: &Snapshot,
+    ) -> LauncherResult<SyncRecord> {
+        match self
+            .store
+            .create(account, &snapshot.path, self.upload(snapshot))
+            .await
+        {
+            Ok(record) => Ok(record),
+            Err(SyncError::Uncommitted { id, error }) => {
+                self.ledger.bury(account.id, id.clone()).await?;
+                self.delete_buried(account, &id).await?;
+                Err((*error).into())
+            }
             Err(err) => Err(err.into()),
         }
     }
@@ -572,7 +694,10 @@ impl CloudSync {
         remote: &SyncRecord,
     ) -> LauncherResult<SyncOutcome> {
         let (_dir, path, record) = Box::pin(self.download(account, &remote.id)).await?;
-        let applied = Box::pin(apply_existing(
+        let Some(_apply) = self.try_apply(state, entry.cluster_id) else {
+            return Ok(SyncOutcome::Deferred);
+        };
+        let (applied, failed) = Box::pin(apply_existing(
             state,
             entry.cluster_id,
             &path,
@@ -584,8 +709,15 @@ impl CloudSync {
         if applied != entry.cluster_id {
             self.ledger.remove(account.id, entry.cluster_id).await?;
         }
-        self.remember(account, applied, &record, fingerprint)
-            .await?;
+        self.remember_install(
+            account,
+            applied,
+            &record,
+            fingerprint,
+            failed,
+            entry.revision,
+        )
+        .await?;
         if applied == entry.cluster_id {
             Ok(SyncOutcome::Pulled {
                 cluster_id: applied,
@@ -606,57 +738,13 @@ impl CloudSync {
         record: &SyncRecord,
     ) -> LauncherResult<i64> {
         let (_dir, path, record) = Box::pin(self.download(account, &record.id)).await?;
-        let target = if record.provisioned {
-            self.matching_provisioned(state, account, &record).await?
-        } else {
-            None
-        };
-        let cluster_id = match target {
-            Some(cluster_id) => {
-                Box::pin(apply_existing(
-                    state,
-                    cluster_id,
-                    &path,
-                    ClearContent::Synced,
-                ))
-                .await?
-            }
-            None => Box::pin(apply_new(state, &path)).await?,
-        };
+        let (cluster_id, failed) = Box::pin(apply_new(state, &path)).await?;
         self.adopt_settings(cluster_id, &path).await?;
         let fingerprint = self.snapshot(state, cluster_id).await?.fingerprint;
-        self.remember(account, cluster_id, &record, fingerprint)
+        self.remember_install(account, cluster_id, &record, fingerprint, failed, 0)
             .await?;
         tracing::info!(cluster_id, remote = %record.id, "set up a synced instance from the cloud");
         Ok(cluster_id)
-    }
-
-    async fn matching_provisioned(
-        &self,
-        state: &Arc<LauncherState>,
-        account: &SyncAccount,
-        record: &SyncRecord,
-    ) -> LauncherResult<Option<i64>> {
-        let linked: HashSet<i64> = self
-            .ledger
-            .for_account(account.id)
-            .await?
-            .into_iter()
-            .map(|entry| entry.cluster_id)
-            .collect();
-        Ok(state
-            .clusters
-            .list()
-            .await?
-            .into_iter()
-            .find(|cluster| {
-                !cluster.user_created
-                    && !linked.contains(&cluster.id)
-                    && cluster.kind == record.meta.kind
-                    && cluster.mc_version == record.meta.mc_version
-                    && cluster.mc_loader == record.meta.mc_loader
-            })
-            .map(|cluster| cluster.id))
     }
 
     async fn download(
@@ -692,8 +780,43 @@ impl CloudSync {
                 fingerprint,
                 status: SyncStatus::Synced,
                 synced_at: Some(Utc::now()),
+                pending: None,
+                probe: String::new(),
             })
             .await
+    }
+
+    async fn remember_install(
+        &self,
+        account: &SyncAccount,
+        cluster_id: i64,
+        record: &SyncRecord,
+        fingerprint: String,
+        failed: Vec<String>,
+        retry_from: u64,
+    ) -> LauncherResult<()> {
+        if failed.is_empty() {
+            return Ok(self
+                .remember(account, cluster_id, record, fingerprint)
+                .await?);
+        }
+        let err = SharingError::Incomplete(failed);
+        self.ledger
+            .upsert(SyncEntry {
+                account: account.id,
+                cluster_id,
+                remote: record.id.clone(),
+                revision: retry_from,
+                fingerprint,
+                status: SyncStatus::Error {
+                    message: err.to_string(),
+                },
+                synced_at: Some(Utc::now()),
+                pending: None,
+                probe: String::new(),
+            })
+            .await?;
+        Err(err.into())
     }
 
     fn upload<'a>(&'a self, snapshot: &'a Snapshot) -> SyncUpload<'a> {
@@ -731,29 +854,77 @@ async fn take_snapshot(
     })
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ClearContent {
-    Synced,
-    Nothing,
+async fn probe(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    left_out: &BTreeSet<String>,
+) -> LauncherResult<String> {
+    let cluster = state.clusters.get(cluster_id).await?;
+    let db = &state.services.db;
+    let mut parts = format!(
+        "{cluster:?}\n{left_out:?}\n{:?}\n{:?}\n{:?}\n",
+        PackageStore::list_linked_artifacts(cluster_id, &state.services.content()).await?,
+        bundle_dao::list_bundle_tracked(db, cluster_id).await?,
+        bundle_dao::list_overrides(db, cluster_id).await?,
+    );
+    for file in oneclient_content::modpacks::collect_settings(&cluster.game_dir()?)
+        .await?
+        .files
+    {
+        let hash = polyio::sha1_bytes(&polyio::read(&file.source).await?);
+        parts.push_str(&format!("{} {hash}\n", file.path));
+    }
+    for icon in [cluster.cover_file(), cluster.modpack_icon_file()]
+        .into_iter()
+        .flatten()
+    {
+        if let Ok(meta) = polyio::stat(&icon).await {
+            parts.push_str(&format!(
+                "{icon:?} {} {:?}\n",
+                meta.len(),
+                meta.modified().ok()
+            ));
+        }
+    }
+    Ok(polyio::sha1_bytes(parts.as_bytes()))
 }
 
-pub(crate) async fn apply_new(state: &Arc<LauncherState>, payload: &Path) -> LauncherResult<i64> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ClearContent<'a> {
+    Synced,
+    Linked {
+        owned: &'a HashSet<String>,
+        settings: &'a [String],
+    },
+}
+
+pub(crate) async fn apply_new(
+    state: &Arc<LauncherState>,
+    payload: &Path,
+) -> LauncherResult<(i64, Vec<String>)> {
     let prepared =
         prepare_modpack(state, &ModpackSource::File(payload.to_path_buf()), None).await?;
-    let cluster = create_modpack_instance(state, &prepared).await?;
-    let installed = install_modpack_instance(state, cluster.id, &prepared, None).await?;
+    install_new(state, &prepared).await
+}
+
+async fn install_new(
+    state: &Arc<LauncherState>,
+    prepared: &PreparedModpack,
+) -> LauncherResult<(i64, Vec<String>)> {
+    let cluster = create_modpack_instance(state, prepared).await?;
+    let installed = install_modpack_instance(state, cluster.id, prepared, None).await?;
     if !installed.report.failed.is_empty() {
         tracing::warn!(cluster_id = cluster.id, failed = ?installed.report.failed, "some synced content could not be installed");
     }
-    Ok(cluster.id)
+    Ok((cluster.id, installed.report.failed))
 }
 
 pub(crate) async fn apply_existing(
     state: &Arc<LauncherState>,
     cluster_id: i64,
     payload: &Path,
-    clear: ClearContent,
-) -> LauncherResult<i64> {
+    clear: ClearContent<'_>,
+) -> LauncherResult<(i64, Vec<String>)> {
     let prepared =
         prepare_modpack(state, &ModpackSource::File(payload.to_path_buf()), None).await?;
     let share = prepared
@@ -769,18 +940,20 @@ pub(crate) async fn apply_existing(
         || cluster.mc_loader != share.mc_loader
         || (cluster.kind != share.kind && share.modpack.is_none())
     {
-        let created = create_modpack_instance(state, &prepared).await?;
-        install_modpack_instance(state, created.id, &prepared, None).await?;
+        let created = install_new(state, &prepared).await?;
         tracing::info!(
             old = cluster_id,
-            new = created.id,
+            new = created.0,
             "the cloud copy uses another game version; installed it as a new instance and kept the old one"
         );
-        return Ok(created.id);
+        return Ok(created);
     }
 
-    if clear == ClearContent::Synced {
-        clear_synced_content(state, cluster_id).await?;
+    match clear {
+        ClearContent::Synced => clear_synced_content(state, cluster_id).await?,
+        ClearContent::Linked { owned, settings } => {
+            sharing::strip_linked(state, cluster_id, owned, settings).await?;
+        }
     }
     clear_shared_files(&cluster, payload).await?;
 
@@ -817,7 +990,7 @@ pub(crate) async fn apply_existing(
     if !installed.report.failed.is_empty() {
         tracing::warn!(cluster_id, failed = ?installed.report.failed, "some synced content could not be installed");
     }
-    Ok(cluster_id)
+    Ok((cluster_id, installed.report.failed))
 }
 
 async fn clear_shared_files(

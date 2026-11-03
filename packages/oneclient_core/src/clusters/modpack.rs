@@ -256,6 +256,16 @@ pub async fn create_modpack_instance(
     if prepared
         .share
         .as_ref()
+        .is_some_and(|shared| shared.share.dedicated_dir && !cluster.uses_dedicated_dir())
+    {
+        state
+            .clusters
+            .set_dedicated_dir(cluster.id, true, false)
+            .await?;
+    }
+    if prepared
+        .share
+        .as_ref()
         .is_some_and(|shared| shared.share.modpack.is_none())
     {
         return Ok(cluster);

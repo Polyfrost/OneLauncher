@@ -1372,6 +1372,7 @@ impl Component for CloudSyncRow {
         let dispatch = use_dispatch();
         let cloud = use_cloud_sync();
         let status = cloud.statuses.get(&cluster_id).cloned();
+        let mut choosing = use_state(|| false);
 
         if !cloud.signed_in {
             return settings_row_disabled(
@@ -1445,7 +1446,6 @@ impl Component for CloudSyncRow {
             _ => None,
         };
 
-        let mut choosing = use_state(|| false);
         let files = (on && !busy).then(|| {
             Button::new()
                 .small()

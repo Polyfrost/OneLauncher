@@ -10,7 +10,8 @@ use serde::Deserialize;
 
 use super::store::{SyncAccount, SyncError, SyncRecord, SyncStore, SyncUpload};
 use crate::sharing::http::{
-    Remote, RemoteRecord, api_error, download_record, parse, push, record_path, upload_body,
+    Remote, RemoteRecord, api_error, coded_error, download_record, parse, push, record_path,
+    upload_body,
 };
 use crate::sharing::{MAX_SHARE_BYTES, ShareCode, SharingError};
 
@@ -52,6 +53,7 @@ fn etag(revision: u64) -> String {
 
 fn sync_error(err: Remote, id: Option<&ShareCode>, size: u64) -> SyncError {
     match err {
+        Remote::Uncommitted(_, err) => sync_error(*err, id, size),
         Remote::Plus(PlusError::OfflineAccount) => SyncError::NotSignedIn,
         Remote::Plus(PlusError::ConsentRequired) => SyncError::Unavailable(
             "it needs the Terms of Service and Privacy Policy accepted in settings".into(),
@@ -61,26 +63,29 @@ fn sync_error(err: Remote, id: Option<&ShareCode>, size: u64) -> SyncError {
         }
         Remote::Plus(err) => SyncError::Unavailable(err.to_string()),
         Remote::Invalid(message) => SyncError::Unavailable(message),
-        Remote::Api(err) => match (err.status, id) {
-            (401, _) => SyncError::NotSignedIn,
-            (404, Some(id)) => SyncError::NotFound(id.clone()),
-            (410, Some(id)) => SyncError::Deleted(id.clone()),
-            (412, Some(id)) => SyncError::Conflict {
-                id: id.clone(),
-                revision: err.revision.unwrap_or_default(),
+        Remote::Api(err) => coded_error(&err).map_or_else(
+            || match (err.status, id) {
+                (401, _) => SyncError::NotSignedIn,
+                (404, Some(id)) => SyncError::NotFound(id.clone()),
+                (410, Some(id)) => SyncError::Deleted(id.clone()),
+                (412, Some(id)) => SyncError::Conflict {
+                    id: id.clone(),
+                    revision: err.revision.unwrap_or_default(),
+                },
+                (413, _) => SharingError::TooLarge {
+                    size,
+                    limit: MAX_SHARE_BYTES,
+                }
+                .into(),
+                (422, _) => SharingError::Corrupt(err.message).into(),
+                (428, _) => {
+                    tracing::error!("the sync server wanted a revision the client did not send");
+                    SyncError::Unavailable(err.message)
+                }
+                _ => SyncError::Unavailable(err.message),
             },
-            (413, _) => SharingError::TooLarge {
-                size,
-                limit: MAX_SHARE_BYTES,
-            }
-            .into(),
-            (422, _) => SharingError::Corrupt(err.message).into(),
-            (428, _) => {
-                tracing::error!("the sync server wanted a revision the client did not send");
-                SyncError::Unavailable(err.message)
-            }
-            _ => SyncError::Unavailable(err.message),
-        },
+            Into::into,
+        ),
     }
 }
 
@@ -169,7 +174,13 @@ impl SyncStore for HttpSyncStore {
             upload.meta.size,
         )
         .await
-        .map_err(|err| sync_error(err, None, upload.meta.size))?;
+        .map_err(|err| match err {
+            Remote::Uncommitted(id, err) => SyncError::Uncommitted {
+                id,
+                error: Box::new(sync_error(*err, None, upload.meta.size)),
+            },
+            err => sync_error(err, None, upload.meta.size),
+        })?;
         committed(&reply, None, upload.meta.size)
     }
 

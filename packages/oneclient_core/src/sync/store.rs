@@ -29,6 +29,11 @@ pub enum SyncError {
     NotSynced,
     #[error("Cloud sync is unavailable: {0}")]
     Unavailable(String),
+    #[error("{error}")]
+    Uncommitted {
+        id: ShareCode,
+        error: Box<SyncError>,
+    },
     #[error(transparent)]
     Sharing(#[from] SharingError),
     #[error(transparent)]

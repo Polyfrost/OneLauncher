@@ -2331,7 +2331,7 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     crate::microsoft_java::offer_for_pinned_cluster(actions, cluster_id).await;
     crate::loader_update::offer_before_launch(actions, cluster_id).await;
 
-    actions.sync_before_launch(&state, cluster_id).await;
+    let _cloud_hold = actions.sync_before_launch(&state, cluster_id).await;
     actions.share_update_before_launch(&state, cluster_id).await;
 
     let content = state.services.content();

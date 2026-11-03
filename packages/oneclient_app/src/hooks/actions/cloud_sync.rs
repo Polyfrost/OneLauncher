@@ -3,13 +3,14 @@ use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
 use freya::prelude::spawn_forever;
+use oneclient_core::sharing::SharingError;
 use oneclient_core::sync::{
     self, CloudSync, Resolution, SyncError, SyncOutcome, SyncReport, SyncStatus,
 };
 use oneclient_core::{LauncherError, LauncherResult, LauncherState};
 use oneclient_db::models::ClusterId;
 use oneclient_events::{Choice, Prompt};
-use tokio::sync::mpsc;
+use tokio::sync::{OwnedMutexGuard, mpsc};
 use tokio::time::Instant;
 
 use super::{Actions, listed};
@@ -44,7 +45,7 @@ pub fn cloud_engine() -> Option<Arc<CloudSync>> {
     let state = launcher::state().ok()?;
     ENGINE
         .get_or_init(|| match CloudSync::from_defaults(state.auth.clone()) {
-            Ok(engine) => Some(Arc::new(engine)),
+            Ok(engine) => Some(Arc::new(engine.with_busy(super::modpack_job_running))),
             Err(err) => {
                 tracing::warn!(error = %err, "cloud sync is unavailable");
                 None
@@ -157,7 +158,12 @@ impl Actions {
         match signal {
             CloudSignal::Changed(None) => {
                 for cluster_id in self.synced_clusters() {
-                    due.entry(cluster_id).or_insert(now + CHANGE_DEBOUNCE);
+                    if !matches!(
+                        self.cloud_status(cluster_id),
+                        Some(SyncStatus::Error { .. })
+                    ) {
+                        due.entry(cluster_id).or_insert(now + CHANGE_DEBOUNCE);
+                    }
                 }
             }
             CloudSignal::Changed(Some(cluster_id)) => {
@@ -231,7 +237,11 @@ impl Actions {
 
     async fn report_full_sync(&self, report: SyncReport) {
         let Ok(state) = launcher::state() else { return };
-        if !report.created.is_empty() || !report.pulled.is_empty() || !report.replaced.is_empty() {
+        if !report.created.is_empty()
+            || !report.pulled.is_empty()
+            || !report.replaced.is_empty()
+            || !report.failed.is_empty()
+        {
             crate::hooks::invalidate_cluster_queries().await;
             crate::hooks::invalidate_cluster_content_queries().await;
         }
@@ -400,7 +410,14 @@ impl Actions {
                     ))
                     .send();
             }
-            Ok(SyncOutcome::Unchanged | SyncOutcome::Pushed { .. }) => {}
+            Ok(SyncOutcome::Unchanged | SyncOutcome::Pushed { .. } | SyncOutcome::Deferred) => {}
+            Err(err @ LauncherError::SharingError(SharingError::Incomplete(_))) => {
+                crate::hooks::invalidate_cluster_queries().await;
+                self.notify(format!("{name} didn't fully sync"))
+                    .body(err.to_string())
+                    .error()
+                    .send();
+            }
             Err(err) if quiet(&err) => {}
             Err(err) => {
                 tracing::warn!(cluster_id, error = %err, "cloud sync failed");
@@ -511,21 +528,21 @@ impl Actions {
         &self,
         state: &Arc<LauncherState>,
         cluster_id: ClusterId,
-    ) {
-        if self.cloud_status(cluster_id).is_none() {
-            return;
-        }
-        let Ok(engine) = engine_or_err() else { return };
+    ) -> Option<OwnedMutexGuard<()>> {
+        self.cloud_status(cluster_id)?;
+        let engine = engine_or_err().ok()?;
         self.set_cloud_status(cluster_id, SyncStatus::Syncing);
-        let work = off_ui({
+        let work = tokio::spawn({
             let state = state.clone();
+            let engine = engine.clone();
             async move {
                 let account = sync::current_account(&state).await?;
                 engine.sync_cluster(&state, &account, cluster_id).await
             }
         });
         let outcome = match tokio::time::timeout(BEFORE_LAUNCH_LIMIT, work).await {
-            Ok(outcome) => outcome,
+            Ok(Ok(outcome)) => outcome,
+            Ok(Err(err)) => std::panic::resume_unwind(err.into_panic()),
             Err(_) => {
                 tracing::warn!(
                     cluster_id,
@@ -534,14 +551,16 @@ impl Actions {
                 Err(SyncError::Unavailable("it took too long".into()).into())
             }
         };
+        let hold = engine.hold(cluster_id).await;
         if let Ok(SyncOutcome::Conflict { .. }) = &outcome {
             self.notify("Launching this computer's copy")
                 .body("The cloud copy changed too. Pick which one to keep in the instance settings after you play.")
                 .send();
             self.refresh_cloud_sync().await;
-            return;
+        } else {
+            self.finish_cloud_sync(state, cluster_id, outcome).await;
         }
-        self.finish_cloud_sync(state, cluster_id, outcome).await;
+        Some(hold)
     }
 
     fn report_cloud_failure(&self, message: &str) {

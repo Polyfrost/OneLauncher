@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use chrono::{DateTime, Utc};
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -41,6 +42,22 @@ pub struct SyncEntry {
     pub status: SyncStatus,
     #[serde(default)]
     pub synced_at: Option<DateTime<Utc>>,
+    #[serde(default)]
+    pub pending: Option<PendingPush>,
+    #[serde(default)]
+    pub probe: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingPush {
+    pub sha512: String,
+    pub fingerprint: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct Tombstone {
+    account: Uuid,
+    remote: ShareCode,
 }
 
 #[derive(Debug, Clone)]
@@ -63,31 +80,16 @@ impl SyncLedger {
         &self.path
     }
 
+    fn graves(&self) -> PathBuf {
+        self.path.with_file_name("deleted.json")
+    }
+
     async fn load(&self) -> Result<Vec<SyncEntry>, SyncError> {
-        if !polyio::try_exists(&self.path).await? {
-            return Ok(Vec::new());
-        }
-        let bytes = polyio::read(&self.path).await?;
-        match serde_json::from_slice(&bytes) {
-            Ok(entries) => Ok(entries),
-            Err(err) => {
-                tracing::warn!(path = %self.path.display(), error = %err, "the sync ledger is unreadable; starting over");
-                Ok(Vec::new())
-            }
-        }
+        read(&self.path).await
     }
 
     async fn save(&self, entries: &[SyncEntry]) -> Result<(), SyncError> {
-        if let Some(parent) = self.path.parent() {
-            polyio::create_dir_all(parent).await?;
-        }
-        let staging = polyio::temp_sibling(&self.path);
-        polyio::write(&staging, serde_json::to_vec_pretty(entries)?).await?;
-        if let Err(err) = polyio::rename(&staging, &self.path).await {
-            polyio::remove_file(&staging).await.ok();
-            return Err(err.into());
-        }
-        Ok(())
+        write(&self.path, entries).await
     }
 
     pub async fn for_account(&self, account: Uuid) -> Result<Vec<SyncEntry>, SyncError> {
@@ -146,6 +148,27 @@ impl SyncLedger {
         Ok(())
     }
 
+    pub async fn set_probe(
+        &self,
+        account: Uuid,
+        cluster_id: i64,
+        probe: String,
+    ) -> Result<(), SyncError> {
+        let _guard = self.lock.lock().await;
+        let mut entries = self.load().await?;
+        let mut changed = false;
+        for entry in &mut entries {
+            if entry.account == account && entry.cluster_id == cluster_id && entry.probe != probe {
+                entry.probe.clone_from(&probe);
+                changed = true;
+            }
+        }
+        if changed {
+            self.save(&entries).await?;
+        }
+        Ok(())
+    }
+
     pub async fn remove(&self, account: Uuid, cluster_id: i64) -> Result<(), SyncError> {
         let _guard = self.lock.lock().await;
         let mut entries = self.load().await?;
@@ -157,15 +180,80 @@ impl SyncLedger {
         Ok(())
     }
 
-    pub async fn remove_cluster(&self, cluster_id: i64) -> Result<Vec<SyncEntry>, SyncError> {
+    pub async fn bury_cluster(&self, cluster_id: i64) -> Result<Vec<SyncEntry>, SyncError> {
         let _guard = self.lock.lock().await;
         let mut entries = self.load().await?;
         let (removed, kept): (Vec<_>, Vec<_>) = entries
             .drain(..)
             .partition(|entry| entry.cluster_id == cluster_id);
         if !removed.is_empty() {
+            let mut graves: Vec<Tombstone> = read(&self.graves()).await?;
+            graves.extend(removed.iter().map(|entry| Tombstone {
+                account: entry.account,
+                remote: entry.remote.clone(),
+            }));
+            write(&self.graves(), &graves).await?;
             self.save(&kept).await?;
         }
         Ok(removed)
     }
+
+    pub async fn bury(&self, account: Uuid, remote: ShareCode) -> Result<(), SyncError> {
+        let _guard = self.lock.lock().await;
+        let mut graves: Vec<Tombstone> = read(&self.graves()).await?;
+        let grave = Tombstone { account, remote };
+        if !graves.contains(&grave) {
+            graves.push(grave);
+            write(&self.graves(), &graves).await?;
+        }
+        Ok(())
+    }
+
+    pub async fn buried(&self, account: Uuid) -> Result<Vec<ShareCode>, SyncError> {
+        let _guard = self.lock.lock().await;
+        let graves: Vec<Tombstone> = read(&self.graves()).await?;
+        Ok(graves
+            .into_iter()
+            .filter(|grave| grave.account == account)
+            .map(|grave| grave.remote)
+            .collect())
+    }
+
+    pub async fn unbury(&self, account: Uuid, remote: &ShareCode) -> Result<(), SyncError> {
+        let _guard = self.lock.lock().await;
+        let mut graves: Vec<Tombstone> = read(&self.graves()).await?;
+        let before = graves.len();
+        graves.retain(|grave| !(grave.account == account && &grave.remote == remote));
+        if graves.len() != before {
+            write(&self.graves(), &graves).await?;
+        }
+        Ok(())
+    }
+}
+
+async fn read<T: DeserializeOwned>(path: &Path) -> Result<Vec<T>, SyncError> {
+    if !polyio::try_exists(path).await? {
+        return Ok(Vec::new());
+    }
+    let bytes = polyio::read(path).await?;
+    match serde_json::from_slice(&bytes) {
+        Ok(entries) => Ok(entries),
+        Err(err) => {
+            tracing::warn!(path = %path.display(), error = %err, "the sync ledger is unreadable; starting over");
+            Ok(Vec::new())
+        }
+    }
+}
+
+async fn write<T: Serialize>(path: &Path, entries: &[T]) -> Result<(), SyncError> {
+    if let Some(parent) = path.parent() {
+        polyio::create_dir_all(parent).await?;
+    }
+    let staging = polyio::temp_sibling(path);
+    polyio::write(&staging, serde_json::to_vec_pretty(entries)?).await?;
+    if let Err(err) = polyio::rename(&staging, path).await {
+        polyio::remove_file(&staging).await.ok();
+        return Err(err.into());
+    }
+    Ok(())
 }

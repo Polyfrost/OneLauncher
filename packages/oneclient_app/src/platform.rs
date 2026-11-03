@@ -416,7 +416,11 @@ pub mod frame {
             };
 
             let gpu = gpu_name.unwrap_or("an unknown GPU");
-            if *graphics_driver != "OpenGL" || gpu.contains("NVIDIA") || gpu.contains("Arc") {
+            let composes_frame = *graphics_driver != "OpenGL"
+                || gpu.contains("NVIDIA")
+                || gpu.contains("Arc")
+                || (gpu.contains(" RX ") && !gpu.contains("Vega"));
+            if composes_frame {
                 decorate(window, hwnd);
             } else if gpu.contains("Intel") {
                 install(hwnd, gpu);

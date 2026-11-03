@@ -18,6 +18,7 @@ pub struct LocalImage {
     cover: bool,
     skeleton: bool,
     picked: bool,
+    retained: bool,
 }
 
 impl LocalImage {
@@ -28,11 +29,17 @@ impl LocalImage {
             cover,
             skeleton: false,
             picked: false,
+            retained: false,
         }
     }
 
     pub fn picked(mut self, picked: bool) -> Self {
         self.picked = picked;
+        self
+    }
+
+    pub fn retained(mut self, retained: bool) -> Self {
+        self.retained = retained;
         self
     }
 
@@ -44,7 +51,7 @@ impl LocalImage {
 
 impl Component for LocalImage {
     fn render(&self) -> impl IntoElement {
-        let query = use_local_image(self.path.clone(), self.max_edge, self.picked);
+        let query = use_local_image(self.path.clone(), self.max_edge, self.picked, self.retained);
         let bytes: Option<Bytes> =
             settled_or_loading(&query).filter(|bytes: &Bytes| !bytes.is_empty());
 

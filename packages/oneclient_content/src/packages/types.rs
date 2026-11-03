@@ -113,6 +113,8 @@ pub struct ProjectMember {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GalleryImage {
     pub url: String,
+    #[serde(default)]
+    pub thumbnail_url: Option<String>,
     pub title: Option<String>,
     #[serde(default)]
     pub featured: bool,

@@ -109,10 +109,24 @@ impl ImageCacheStore {
             return Ok(bytes);
         }
 
+        let source = Self::source_path(url)?;
+
         // icon unpacked for a jar is already on disk
         let raw = match paths::local_image_path(url) {
             Some(source) => Bytes::from(polyio::read(&source).await?),
-            None => download(net, url).await?,
+            None => match polyio::read(&source).await {
+                Ok(original) => Bytes::from(original),
+                Err(_) => {
+                    let original = download(net, url).await?;
+                    if let Some(parent) = source.parent() {
+                        polyio::create_dir_all(parent).await?;
+                    }
+                    if let Err(err) = polyio::write_atomic(&source, &original).await {
+                        tracing::warn!("failed to persist original image for {url}: {err}");
+                    }
+                    original
+                }
+            },
         };
         let bytes = downscale_if_oversized(raw, max_edge).await;
 

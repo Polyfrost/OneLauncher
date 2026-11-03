@@ -78,8 +78,8 @@ pub struct ScrollAreaCtx {
     pub corrected_y: f32,
     pub viewport_w: f32,
     pub viewport_h: f32,
-    pub viewport_top: f32,
-    pub viewport_left: f32,
+    pub viewport_top: State<f32>,
+    pub viewport_left: State<f32>,
 }
 
 #[derive(Clone, Copy)]
@@ -478,8 +478,6 @@ impl ScrollArea {
         let (scrolled_x, scrolled_y) = controller.into();
         let vp_h = *viewport_h.read();
         let vp_w = *viewport_w.read();
-        let vp_top = *viewport_top.read();
-        let vp_left = *viewport_left.read();
         let ct_h = *content_h.read();
 
         let target_y = corrected_scroll(ct_h, vp_h, scrolled_y as f32);
@@ -526,8 +524,8 @@ impl ScrollArea {
             corrected_y,
             viewport_w: (vp_w - gutter).max(0.),
             viewport_h: vp_h,
-            viewport_top: vp_top,
-            viewport_left: vp_left,
+            viewport_top,
+            viewport_left,
         };
 
         if let Some(cb) = &self.on_ctx {

@@ -340,7 +340,13 @@ async fn a_crafted_share_cannot_write_outside_its_folder_or_reach_unknown_hosts(
     let prepared = prepare_modpack(&state, &ModpackSource::File(archive), None)
         .await
         .unwrap();
-    assert_eq!(prepared.summary().unverified, 1);
+    assert!(prepared.share.as_ref().unwrap().mods_checked);
+    assert_eq!(prepared.summary().unverified, 0);
+    let listed = prepared
+        .unlisted
+        .iter()
+        .any(|m| m.name == "fine.jar" && m.bundled);
+    assert_ne!(listed, prepared.mods_unconfirmed > 0);
     let cluster = create_modpack_instance(&state, &prepared).await.unwrap();
     let installed = install_modpack_instance(&state, cluster.id, &prepared, None)
         .await
@@ -443,6 +449,7 @@ fn bundle_content_is_counted_with_the_instances_own_mods() {
         ],
         notices: Vec::new(),
         substituted: false,
+        mods_checked: false,
     };
 
     let summary = shared.summary(&manifest);
@@ -450,6 +457,14 @@ fn bundle_content_is_counted_with_the_instances_own_mods() {
     assert_eq!(summary.resource_packs, 1);
     assert_eq!(summary.unverified, 3);
     assert_eq!(summary.download_bytes, 1050);
+
+    let checked = SharedCluster {
+        mods_checked: true,
+        ..shared
+    };
+    let summary = checked.summary(&manifest);
+    assert_eq!(summary.mods, 7);
+    assert_eq!(summary.unverified, 0);
 }
 
 #[tokio::test]

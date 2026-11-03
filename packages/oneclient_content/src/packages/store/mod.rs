@@ -11,7 +11,7 @@ pub use gc::{
     remove_unreferenced_files,
 };
 pub use link::{
-    LiveSync, drop_unmanaged_mod, link_or_copy, remove_entry, sharing_cluster_ids,
+    LiveSync, drop_unmanaged_mod, link_or_copy, remove_entry, sharing_cluster_ids, sharing_with,
     sweep_staging_files, try_link_materialized, try_unlink_materialized,
 };
 pub use paths::{artifact_absolute_path, cache_file_path, relative_cache_path};
@@ -273,7 +273,7 @@ impl PackageStore {
     ) -> ContentResult<Vec<LinkedArtifactInfo>> {
         let rows = artifact_dao::list_cluster_artifacts_detailed(&ctx.db, cluster_id).await?;
 
-        Ok(rows
+        let mut linked: Vec<LinkedArtifactInfo> = rows
             .into_iter()
             .map(|row| LinkedArtifactInfo {
                 hash: row.hash,
@@ -289,9 +289,41 @@ impl PackageStore {
                 display_version: row.display_version,
                 provider: row.provider.and_then(|p| ProviderId::from_repr(p as u8)),
                 published_at: row.published_at,
+                added_at: row.added_at,
                 seen_status: SeenStatus::from_repr(row.seen_status).unwrap_or_default(),
             })
-            .collect())
+            .collect();
+
+        for info in linked.iter_mut().filter(|info| info.added_at.is_none()) {
+            let Some(added_at) = Self::file_added_at(&info.hash, ctx).await else {
+                continue;
+            };
+            if artifact_dao::fill_cluster_artifact_added_at(
+                &ctx.db, cluster_id, &info.hash, &added_at,
+            )
+            .await
+            .is_ok()
+            {
+                info.added_at = Some(added_at);
+            }
+        }
+
+        Ok(linked)
+    }
+
+    async fn file_added_at(hash: &str, ctx: &ContentCtx) -> Option<String> {
+        let row = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+            .await
+            .ok()??;
+        let modified = std::fs::metadata(artifact_absolute_path(&row.path).ok()?)
+            .ok()?
+            .modified()
+            .ok()?;
+        Some(
+            chrono::DateTime::<chrono::Utc>::from(modified)
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string(),
+        )
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]
@@ -357,7 +389,7 @@ impl PackageStore {
         let disabled =
             artifact_dao::disable_cluster_artifacts(&ctx.db, cluster_id, hashes, bundle_overrides)
                 .await?;
-        let sharing = link::sharing_cluster_ids(&ctx.db).await?;
+        let sharing = link::sharing_with(&ctx.db, &cluster).await?;
 
         for link in disabled {
             let Some(artifact) = artifact_dao::get_artifact_by_hash(&ctx.db, &link.hash).await?
@@ -427,7 +459,7 @@ impl PackageStore {
         .await?;
 
         if link::shares_content(&cluster, content_type) {
-            let sharing = link::sharing_cluster_ids(&ctx.db).await?;
+            let sharing = link::sharing_with(&ctx.db, &cluster).await?;
             artifact_dao::set_enabled_for_hash(&ctx.db, hash, i64::from(enabled), &sharing).await?;
         }
 

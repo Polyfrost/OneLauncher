@@ -21,6 +21,7 @@ fn is_sidebar_route(route: &Route) -> bool {
     matches!(
         route,
         Route::SettingsAppearance {}
+            | Route::SettingsThemeEditor {}
             | Route::SettingsMinecraft {}
             | Route::SettingsAccounts {}
             | Route::SettingsLauncher {}
@@ -121,14 +122,23 @@ impl Component for AnimatedAppOutlet {
 
         let back_title = origin_route.read().title();
 
-        let platform = Platform::get();
-        let focused_node = platform.focused_accessibility_node;
-        let focused_id = platform.focused_accessibility_id;
+        let window = Platform::get().current_window();
+        let focused_node = window.focused_accessibility_node;
+        let focused_id = window.focused_accessibility_id;
 
         let key_claims = use_overlay_claims();
         let pointer_claims = key_claims.clone();
 
         let on_global_key = move |e: Event<KeyboardEventData>| {
+            if e.code == Code::KeyO
+                && e.modifiers.contains(Modifiers::ctrl_or_meta() | Modifiers::SHIFT)
+            {
+                if let Ok(dir) = oneclient_common::paths::logs_dir() {
+                    crate::platform::open_path(&dir.to_string_lossy());
+                }
+                return;
+            }
+
             if e.key != Key::Named(NamedKey::Escape) || key_claims.any() {
                 return;
             }
@@ -187,7 +197,7 @@ impl Component for AnimatedAppOutlet {
 
         use_side_effect_with_deps(&anim_finished, move |&finished| {
             if finished {
-                Platform::get().send(UserEvent::RequestRedraw);
+                Platform::get().current_window().request_redraw();
             }
         });
 

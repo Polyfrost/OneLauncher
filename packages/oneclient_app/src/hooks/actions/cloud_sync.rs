@@ -2,7 +2,7 @@ use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use oneclient_core::sharing::SharingError;
 use oneclient_core::sync::{
     self, CloudSync, Resolution, SyncError, SyncOutcome, SyncReport, SyncStatus,
@@ -96,7 +96,7 @@ impl Actions {
             return;
         }
         let actions = self.clone();
-        spawn_forever(async move { actions.run_cloud_sync(rx).await });
+        spawn_in_window(async move { actions.run_cloud_sync(rx).await });
     }
 
     async fn run_cloud_sync(self, mut rx: mpsc::UnboundedReceiver<CloudSignal>) {
@@ -345,7 +345,7 @@ impl Actions {
 
     pub fn set_sync_left_out(&self, cluster_id: ClusterId, left_out: BTreeSet<String>) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
             let engine = match engine_or_err() {
                 Ok(engine) => engine,
@@ -427,7 +427,7 @@ impl Actions {
 
     pub fn set_cloud_sync(&self, cluster_id: ClusterId, enabled: bool) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
             let engine = match engine_or_err() {
                 Ok(engine) => engine,
@@ -472,12 +472,12 @@ impl Actions {
 
     pub fn sync_cluster_now(&self, cluster_id: ClusterId) {
         let actions = self.clone();
-        spawn_forever(async move { actions.sync_cloud_cluster(cluster_id).await });
+        spawn_in_window(async move { actions.sync_cloud_cluster(cluster_id).await });
     }
 
     pub fn resolve_cloud_conflict(&self, cluster_id: ClusterId, name: String) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
             let Ok(engine) = engine_or_err() else { return };
             let resolution = match actions.events().ask(conflict_prompt(&name)).await {

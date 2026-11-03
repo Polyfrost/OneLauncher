@@ -1,9 +1,12 @@
 use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
 
-use crate::components::{Button, Icon, IconType};
+use crate::components::{
+    Button, Icon, IconType, OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, use_open_level,
+};
 use crate::hooks::use_overlay_claim;
-use crate::theme::colors;
+use crate::i18n::t;
+use crate::theme::{colors, rounded, text_size};
 
 const PANEL_W: f32 = 172.;
 const BUTTON_W: f32 = 34.;
@@ -78,7 +81,7 @@ impl Component for FilterMenu {
                 Button::new()
                     .secondary()
                     .icon()
-                    .tooltip("Sort and filter")
+                    .tooltip(t("oneclient.components.filter_menu.tooltip"))
                     .width(Size::px(BUTTON_W))
                     .height(Size::px(34.))
                     .on_press(move |e: Event<PressEventData>| {
@@ -106,6 +109,7 @@ struct FilterPanel {
 impl Component for FilterPanel {
     fn render(&self) -> impl IntoElement {
         use_overlay_claim();
+        use_open_level(OVERLAY_MAX_LEVEL);
 
         let backdrop_close = self.on_close.clone();
         let key_close = self.on_close.clone();
@@ -125,7 +129,7 @@ impl Component for FilterPanel {
             .padding(Gaps::new_all(8.))
             .opacity(progress)
             .offset_y((progress - 1.0) * 6.)
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::page_elevated().with_a(230))
             .backdrop_blur(12.)
             .border(crate::ui::border_all_color(1., colors::component_border()))
@@ -159,7 +163,7 @@ impl Component for FilterPanel {
             .layer(Layer::Overlay)
             .child(
                 rect()
-                    .layer(Layer::OverlayLevel(10))
+                    .layer(Layer::OverlayLevel(OVERLAY_BASE_LEVEL + 3))
                     .position(Position::new_global().top(0.).left(0.))
                     .width(Size::window_percent(100.))
                     .height(Size::window_percent(100.))
@@ -168,7 +172,7 @@ impl Component for FilterPanel {
             .child(
                 rect()
                     .width(Size::fill())
-                    .layer(Layer::OverlayLevel(12))
+                    .layer(Layer::OverlayLevel(OVERLAY_MAX_LEVEL))
                     .margin(Gaps::new(6., 0., 0., -(PANEL_W - BUTTON_W)))
                     .child(panel),
             )
@@ -178,7 +182,7 @@ impl Component for FilterPanel {
 fn section_label(text: &'static str) -> impl IntoElement {
     label()
         .text(text)
-        .font_size(10.)
+        .font_size(text_size(10.))
         .font_weight(FontWeight::SEMI_BOLD)
         .color(colors::fg_secondary())
 }
@@ -217,7 +221,7 @@ impl Component for ChoiceRow {
             .cross_align(Alignment::Center)
             .spacing(8.)
             .padding(Gaps::new_symmetric(5., 8.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(bg)
             .content(Content::Flex)
             .a11y_id(a11y_id)
@@ -231,7 +235,7 @@ impl Component for ChoiceRow {
             .child(
                 label()
                     .text(self.option.text.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .width(Size::flex(1.0))
                     .color(color),
             )

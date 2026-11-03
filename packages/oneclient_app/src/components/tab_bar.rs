@@ -1,11 +1,12 @@
 use freya::prelude::*;
 
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 
 pub struct TabItem {
     label: String,
     active: bool,
     count: Option<String>,
+    accent: Option<Color>,
     on_press: Option<EventHandler<Event<PressEventData>>>,
 }
 
@@ -15,6 +16,7 @@ impl TabItem {
             label: label.into(),
             active,
             count: None,
+            accent: None,
             on_press: None,
         }
     }
@@ -22,6 +24,11 @@ impl TabItem {
     #[allow(dead_code)]
     pub fn count_text(mut self, text: impl Into<String>) -> Self {
         self.count = Some(text.into());
+        self
+    }
+
+    pub fn accent(mut self, color: Color) -> Self {
+        self.accent = Some(color);
         self
     }
 
@@ -82,7 +89,7 @@ impl TabBar {
     }
 }
 
-fn tab_label(text: &str, font_size: f32, active: bool) -> impl IntoElement {
+fn tab_label(text: &str, font_size: f32, active: bool, accent: Option<Color>) -> impl IntoElement {
     const ACTIVE_WEIGHT: FontWeight = FontWeight::MEDIUM;
 
     rect()
@@ -91,7 +98,7 @@ fn tab_label(text: &str, font_size: f32, active: bool) -> impl IntoElement {
         .child(
             label()
                 .text(text.to_string())
-                .font_size(font_size)
+                .font_size(text_size(font_size))
                 .font_weight(ACTIVE_WEIGHT)
                 .max_lines(1)
                 .color(Color::TRANSPARENT)
@@ -110,18 +117,18 @@ fn tab_label(text: &str, font_size: f32, active: bool) -> impl IntoElement {
                 .child(
                     label()
                         .text(text.to_string())
-                        .font_size(font_size)
+                        .font_size(text_size(font_size))
                         .font_weight(if active {
                             ACTIVE_WEIGHT
                         } else {
                             FontWeight::NORMAL
                         })
                         .max_lines(1)
-                        .color(if active {
+                        .color(accent.unwrap_or(if active {
                             colors::fg_primary()
                         } else {
                             colors::fg_secondary()
-                        })
+                        }))
                         .text_align(TextAlign::Center),
                 ),
         )
@@ -131,12 +138,12 @@ fn count_pill(count: &str, font_size: f32) -> impl IntoElement {
     rect()
         .center()
         .padding(Gaps::new_symmetric(1., 6.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::component_bg())
         .child(
             label()
                 .text(count.to_string())
-                .font_size((font_size - 3.).max(8.))
+                .font_size(text_size((font_size - 3.).max(8.)))
                 .color(colors::fg_secondary()),
         )
 }
@@ -169,6 +176,7 @@ impl IntoElement for TabBar {
                     label: tab.label,
                     active: tab.active,
                     count: tab.count,
+                    accent: tab.accent,
                     font_size,
                     min_width,
                     on_press: tab.on_press,
@@ -184,6 +192,7 @@ struct TabButton {
     label: String,
     active: bool,
     count: Option<String>,
+    accent: Option<Color>,
     font_size: f32,
     min_width: Option<f32>,
     on_press: Option<EventHandler<Event<PressEventData>>>,
@@ -222,15 +231,15 @@ impl Component for TabButton {
                     rect()
                         .vertical()
                         .content(Content::Fit)
-                        .child(tab_label(&self.label, font_size, active))
+                        .child(tab_label(&self.label, font_size, active, self.accent))
                         .child(
                             rect()
                                 .height(Size::px(2.))
                                 .width(Size::fill_minimum())
                                 .margin(Gaps::new_symmetric(0., 4.0))
-                                .corner_radius(CornerRadius::new_all(2.))
+                                .corner_radius(rounded(2.))
                                 .background(if underline_on {
-                                    colors::fg_primary()
+                                    self.accent.unwrap_or_else(colors::fg_primary)
                                 } else {
                                     Color::TRANSPARENT
                                 }),

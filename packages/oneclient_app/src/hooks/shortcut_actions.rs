@@ -1,8 +1,9 @@
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use oneclient_db::models::ClusterId;
 
 use super::actions::Actions;
 use crate::components::IconType;
+use crate::i18n::{t, tf};
 use crate::launcher;
 use crate::shortcut::{self, ShortcutRequest};
 use crate::state::{AppChannel, LaunchBlock};
@@ -54,9 +55,10 @@ impl Actions {
     }
 
     pub fn report_missing_shortcut_target(&self, folder: &str) {
-        self.notify("Shortcut is out of date")
-            .body(format!(
-                "No version folder named \"{folder}\" is installed any more. The shortcut can be recreated from the version's page."
+        self.notify(t("oneclient.shortcut_actions.out_of_date.title"))
+            .body(tf(
+                "oneclient.shortcut_actions.out_of_date.body",
+                &[&folder],
             ))
             .error()
             .icon(IconType::LinkExternal01)
@@ -65,7 +67,7 @@ impl Actions {
 
     pub fn create_cluster_shortcut(&self, cluster_id: ClusterId) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
 
             let cluster = match state.clusters.get(cluster_id).await {
@@ -95,8 +97,11 @@ impl Actions {
                         .unwrap_or_else(|| cluster.name.clone());
 
                     actions
-                        .notify("Shortcut created")
-                        .body(format!("Saved as {name} in {}", dir.display()))
+                        .notify(t("oneclient.shortcut_actions.created.title"))
+                        .body(tf(
+                            "oneclient.shortcut_actions.created.body",
+                            &[&name, &dir.display()],
+                        ))
                         .icon(IconType::LinkExternal01)
                         .send();
                 }
@@ -108,7 +113,7 @@ impl Actions {
 
     fn report_shortcut_failure(&self, reason: &str) {
         tracing::error!("could not create a cluster shortcut: {reason}");
-        self.notify("Couldn't create the shortcut")
+        self.notify(t("oneclient.shortcut_actions.failed"))
             .body(reason.to_string())
             .error()
             .send();
@@ -116,7 +121,8 @@ impl Actions {
 }
 
 async fn pick_shortcut_dir() -> Option<std::path::PathBuf> {
-    let mut dialog = rfd::AsyncFileDialog::new().set_title("Where should the shortcut go?");
+    let mut dialog =
+        rfd::AsyncFileDialog::new().set_title(t("oneclient.shortcut_actions.pick_dir"));
     if let Some(desktop) = shortcut::default_dir() {
         dialog = dialog.set_directory(desktop);
     }

@@ -3,9 +3,10 @@ use freya::prelude::*;
 use oneclient_core::game::{Analytics, Persona};
 
 use crate::components::{Icon, IconType};
-use crate::theme::colors;
+use crate::i18n::{t, tf};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, columns_for, flow_grid};
-use crate::utils::{format_duration, plural};
+use crate::utils::format_duration;
 
 use super::card;
 
@@ -42,25 +43,46 @@ impl Component for TilesRow {
         };
 
         let hero = hero_tile(
-            "Total playtime",
+            t("oneclient.analytics.tiles.total_playtime"),
             format_duration(stats.total_secs),
-            format!(
-                "over {} session{}",
-                stats.session_count,
-                plural(stats.session_count as i64)
-            ),
+            if stats.session_count == 1 {
+                tf(
+                    "oneclient.analytics.tiles.over_sessions.one",
+                    &[&stats.session_count],
+                )
+            } else {
+                tf(
+                    "oneclient.analytics.tiles.over_sessions.other",
+                    &[&stats.session_count],
+                )
+            },
         );
 
         let mut rest = vec![
-            stat_tile("Sessions", stats.session_count.to_string()),
-            stat_tile("Avg / session", format_duration(avg_session)),
             stat_tile(
-                "Longest session",
+                t("oneclient.analytics.tiles.sessions"),
+                stats.session_count.to_string(),
+            ),
+            stat_tile(
+                t("oneclient.analytics.tiles.avg_session"),
+                format_duration(avg_session),
+            ),
+            stat_tile(
+                t("oneclient.analytics.tiles.longest_session"),
                 format_duration(stats.longest_session_secs),
             ),
-            stat_tile("Day streak", streak_value(stats.current_streak)),
-            stat_tile("Best streak", streak_value(stats.longest_streak)),
-            stat_tile("Days played", stats.active_days.to_string()),
+            stat_tile(
+                t("oneclient.analytics.tiles.day_streak"),
+                streak_value(stats.current_streak),
+            ),
+            stat_tile(
+                t("oneclient.analytics.tiles.best_streak"),
+                streak_value(stats.longest_streak),
+            ),
+            stat_tile(
+                t("oneclient.analytics.tiles.days_played"),
+                stats.active_days.to_string(),
+            ),
         ];
 
         let mut root = rect().vertical().width(Size::fill()).spacing(TILE_GAP);
@@ -114,7 +136,7 @@ impl Component for TilesRow {
 }
 
 fn streak_value(days: usize) -> String {
-    format!("{days}d")
+    tf("oneclient.analytics.tiles.streak_days", &[&days])
 }
 
 fn hero_tile(caption: &str, value: String, note: String) -> Element {
@@ -127,7 +149,7 @@ fn hero_tile(caption: &str, value: String, note: String) -> Element {
         .child(
             label()
                 .text(caption.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_secondary()),
         )
@@ -139,7 +161,7 @@ fn hero_tile(caption: &str, value: String, note: String) -> Element {
                 .child(
                     label()
                         .text(value)
-                        .font_size(30.)
+                        .font_size(text_size(30.))
                         .font_weight(FontWeight::BOLD)
                         .max_lines(1)
                         .color(colors::fg_primary()),
@@ -148,7 +170,7 @@ fn hero_tile(caption: &str, value: String, note: String) -> Element {
                     rect().margin(Gaps::new(0., 0., 5., 0.)).child(
                         label()
                             .text(note)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .color(colors::fg_secondary()),
                     ),
@@ -165,7 +187,7 @@ fn stat_tile(caption: &str, value: String) -> Element {
         .child(
             label()
                 .text(caption.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(1)
                 .width(Size::fill())
                 .color(colors::fg_secondary()),
@@ -173,7 +195,7 @@ fn stat_tile(caption: &str, value: String) -> Element {
         .child(
             label()
                 .text(value)
-                .font_size(24.)
+                .font_size(text_size(24.))
                 .font_weight(FontWeight::BOLD)
                 .max_lines(1)
                 .color(colors::fg_primary()),
@@ -199,7 +221,7 @@ fn persona_badge(persona: Persona) -> Element {
         .cross_align(Alignment::Center)
         .spacing(7.)
         .padding(Gaps::new_symmetric(6., 11.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -210,7 +232,7 @@ fn persona_badge(persona: Persona) -> Element {
         .child(
             label()
                 .text(persona.title().to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .max_lines(1)
                 .color(colors::fg_primary()),
@@ -218,7 +240,7 @@ fn persona_badge(persona: Persona) -> Element {
         .child(
             label()
                 .text(persona.description().to_string())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
         )

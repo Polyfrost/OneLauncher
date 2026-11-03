@@ -15,7 +15,7 @@ pub fn use_ipc_commands() {
         };
         let router = RouterContext::get();
 
-        spawn_forever(async move {
+        spawn_in_window(async move {
             while let Some(command) = inbox.recv().await {
                 match command {
                     IpcCommand::Focus => platform::focus_window(),

@@ -6,7 +6,7 @@ use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
 
 use crate::components::OVERLAY_MAX_LEVEL;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, clamp_to_window, window_logical_size};
 
 const SHOW_DELAY: Duration = Duration::from_millis(400);
@@ -216,7 +216,7 @@ struct TooltipBubble {
 }
 
 impl KeyExt for TooltipBubble {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -241,7 +241,7 @@ impl Component for TooltipBubble {
             .opacity(if placed { fade.read().value() } else { 0. })
             .max_width(Size::px(MAX_WIDTH))
             .padding(Gaps::new_symmetric(5., 9.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .on_sized(move |e: Event<SizedEventData>| {
@@ -256,7 +256,7 @@ impl Component for TooltipBubble {
             .child(
                 label()
                     .text(self.text.to_string())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(2)
                     .color(colors::fg_primary()),

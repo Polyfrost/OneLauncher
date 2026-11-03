@@ -5,6 +5,7 @@ use crate::hooks::{
     bundle_overrides_map, bundles_with_status_items, cluster_content_items, stale_hashes,
     use_bundle_overrides, use_bundles_with_status, use_cluster_content, use_package_updates,
 };
+use crate::i18n::t;
 use crate::layout::cluster_content;
 
 use super::cluster_not_found;
@@ -45,8 +46,8 @@ impl Component for ClusterShaders {
         cluster_content()
             .child(
                 PackageManager::new(
-                    "Shaders",
-                    "shaders",
+                    t("oneclient.cluster.shaders.title"),
+                    t("oneclient.cluster.package_manager.noun.shader.other"),
                     "shader",
                     ContentType::Shader,
                     self.cluster_id,

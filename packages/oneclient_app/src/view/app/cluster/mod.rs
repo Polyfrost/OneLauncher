@@ -31,7 +31,8 @@ pub use worlds::ClusterWorlds;
 
 use freya::prelude::*;
 
-use crate::theme::colors;
+use crate::i18n::t;
+use crate::theme::{colors, text_size};
 
 pub(crate) fn cluster_not_found() -> Element {
     rect()
@@ -40,8 +41,8 @@ pub(crate) fn cluster_not_found() -> Element {
         .center()
         .child(
             label()
-                .text("Cluster not found.")
-                .font_size(14.)
+                .text(t("oneclient.cluster.not_found"))
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

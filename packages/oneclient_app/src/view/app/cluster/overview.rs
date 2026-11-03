@@ -2,8 +2,9 @@ use freya::prelude::*;
 
 use crate::components::ScrollArea;
 use crate::hooks::{try_cluster_analytics, use_cluster_analytics};
+use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::ui::centered_note;
 use crate::view::app::{analytics_body, analytics_placeholder};
 
@@ -28,10 +29,10 @@ impl Component for ClusterOverview {
         let analytics = try_cluster_analytics(&query);
 
         let body: Element = match &analytics {
-            None => centered_note("Loading play history…"),
-            Some(a) if a.playtime.session_count == 0 => analytics_placeholder(
-                "No sessions recorded for this cluster yet. Launch it and come back!",
-            ),
+            None => centered_note(t("oneclient.cluster.overview.loading")),
+            Some(a) if a.playtime.session_count == 0 => {
+                analytics_placeholder(t("oneclient.cluster.overview.empty"))
+            }
             Some(a) => analytics_body(a),
         };
 
@@ -60,15 +61,15 @@ fn overview_header(name: &str) -> Element {
         .spacing(2.)
         .child(
             label()
-                .text("Overview")
-                .font_size(20.)
+                .text(t("oneclient.cluster.overview.title"))
+                .font_size(text_size(20.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
-                .text(format!("Play history & servers for {name}"))
-                .font_size(12.)
+                .text(tf("oneclient.cluster.overview.subtitle", &[&name]))
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

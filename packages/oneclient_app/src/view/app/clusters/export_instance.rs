@@ -11,8 +11,9 @@ use crate::hooks::{
     add_collaborator, load_collaborators, load_owner_check, load_setting_files,
     remove_collaborator, use_dispatch, use_share_progress,
 };
+use crate::i18n::{t, tf};
 use crate::state::{OwnerCheck, OwnerShare, ShareProgress, ShareReady};
-use crate::theme::{self, colors};
+use crate::theme::{self, colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_WIDTH: f32 = 560.;
@@ -253,7 +254,7 @@ impl Component for ExportInstanceModal {
                             .max_width(Size::window_percent(92.))
                             .spacing(16.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .background(colors::page_elevated())
                             .border(border_all_color(1., colors::component_border()))
                             .children(content),
@@ -683,6 +684,7 @@ fn save_view(
                             meta: String::new(),
                             selected: chosen == option,
                             on_press: (move |()| file_mode.set(option)).into(),
+                            trailing: None,
                         })
                     }),
             )

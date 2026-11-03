@@ -10,9 +10,10 @@ use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::disable::{self, PendingDisable};
-use crate::hooks::{invalidate_cluster_queries, use_disable_confirm};
+use crate::hooks::{Actions, invalidate_cluster_queries, use_disable_confirm, use_dispatch};
+use crate::i18n::t;
 use crate::launcher;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 480.;
@@ -26,11 +27,50 @@ pub struct DisableDependentsOverlay;
 impl Component for DisableDependentsOverlay {
     fn render(&self) -> impl IntoElement {
         let mut pending = use_disable_confirm();
+        let dispatch = use_dispatch();
         let Some(current) = pending.read().clone() else {
             return rect().into_element();
         };
 
         let confirmed = current.clone();
+
+        let mut buttons = rect()
+            .horizontal()
+            .width(Size::fill())
+            .main_align(Alignment::End)
+            .spacing(8.)
+            .child(
+                Button::new()
+                    .secondary()
+                    .on_press(move |_| pending.set(None))
+                    .text(t("oneclient.common.cancel")),
+            );
+
+        if !current.required.is_empty() {
+            let alone = current.clone();
+            let dispatch = dispatch.clone();
+            buttons = buttons.child(
+                Button::new()
+                    .secondary()
+                    .on_press(move |_| {
+                        apply(alone.clone(), true, dispatch.clone());
+                        pending.set(None);
+                    })
+                    .text(t(
+                        "oneclient.components.disable_dependents_popup.disable_anyway",
+                    )),
+            );
+        }
+
+        buttons = buttons.child(
+            Button::new()
+                .danger()
+                .on_press(move |_| {
+                    apply(confirmed.clone(), false, dispatch.clone());
+                    pending.set(None);
+                })
+                .text(disable::confirm_label(&current)),
+        );
 
         OverlayPopup::new()
             .on_close(move |_| pending.set(None))
@@ -46,7 +86,7 @@ impl Component for DisableDependentsOverlay {
                             .max_width(Size::window_percent(92.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -62,7 +102,7 @@ impl Component for DisableDependentsOverlay {
                                     .child(
                                         label()
                                             .text(disable::title(&current))
-                                            .font_size(16.)
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .max_lines(2)
                                             .width(Size::fill())
@@ -72,34 +112,13 @@ impl Component for DisableDependentsOverlay {
                             .child(
                                 label()
                                     .text(disable::summary(&current))
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(6)
                                     .width(Size::fill())
                                     .color(colors::fg_secondary()),
                             )
                             .child(lists(&current))
-                            .child(
-                                rect()
-                                    .horizontal()
-                                    .width(Size::fill())
-                                    .main_align(Alignment::End)
-                                    .spacing(8.)
-                                    .child(
-                                        Button::new()
-                                            .secondary()
-                                            .on_press(move |_| pending.set(None))
-                                            .text("Cancel"),
-                                    )
-                                    .child(
-                                        Button::new()
-                                            .danger()
-                                            .on_press(move |_| {
-                                                apply(confirmed.clone());
-                                                pending.set(None);
-                                            })
-                                            .text(disable::confirm_label(&current)),
-                                    ),
-                            ),
+                            .child(buttons),
                     ),
             )
             .into_element()
@@ -108,15 +127,20 @@ impl Component for DisableDependentsOverlay {
 
 /// Applied off the event handler: the write is a database round trip, and the
 /// modal has already closed on the user's answer.
-fn apply(pending: PendingDisable) {
-    spawn_forever(async move {
-        if let Err(err) = disable::apply(&pending).await {
+fn apply(pending: PendingDisable, alone: bool, dispatch: Actions) {
+    spawn_in_window(async move {
+        let result = if alone {
+            disable::apply_alone(&pending).await
+        } else {
+            disable::apply(&pending).await
+        };
+        if let Err(err) = result {
             tracing::warn!(%err, "failed to disable a package and its dependents");
             if let Ok(state) = launcher::state() {
                 state
                     .services
                     .events
-                    .notify("Could not disable")
+                    .notify(t("oneclient.components.disable_dependents_popup.failed"))
                     .body(err.to_string())
                     .error()
                     .send();
@@ -124,6 +148,7 @@ fn apply(pending: PendingDisable) {
             return;
         }
 
+        dispatch.acknowledge_disable_warnings(&pending.request.warned);
         invalidate_cluster_queries().await;
     });
 }
@@ -162,7 +187,7 @@ fn lists(pending: &PendingDisable) -> impl IntoElement {
 fn heading(text: String) -> impl IntoElement {
     label()
         .text(text)
-        .font_size(10.)
+        .font_size(text_size(10.))
         .font_weight(FontWeight::SEMI_BOLD)
         .max_lines(2)
         .width(Size::fill())
@@ -177,14 +202,14 @@ fn row(name: &str, icon: IconType, accent: Color) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .spacing(8.)
         .padding(Gaps::new_symmetric(7., 10.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .content(Content::Flex)
         .child(Icon::new(icon).size(13.).color(accent))
         .child(
             label()
                 .text(name.to_string())
-                .font_size(12.5)
+                .font_size(text_size(12.5))
                 .max_lines(1)
                 .width(Size::flex(1.0))
                 .color(colors::fg_primary()),

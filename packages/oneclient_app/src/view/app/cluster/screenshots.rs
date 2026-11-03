@@ -13,8 +13,9 @@ use crate::hooks::{
     use_cluster_screenshots, use_dispatch, use_screenshot_action, use_screenshot_folder_watch,
     use_selection, use_view_state,
 };
+use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, flow_grid, fmt_date, grid_columns_for_width};
 use crate::utils::{format_res, format_size};
 
@@ -165,29 +166,49 @@ impl Component for ClusterScreenshots {
                 let all = order.clone();
                 let every = !selected.is_empty() && selected.len() == order.len();
                 let (icon, text) = if every {
-                    (IconType::XClose, "Unselect all")
+                    (
+                        IconType::XClose,
+                        t("oneclient.cluster.package_manager.select.unselect_all"),
+                    )
                 } else {
-                    (IconType::Check, "Select all")
+                    (
+                        IconType::Check,
+                        t("oneclient.cluster.package_manager.select.select_all"),
+                    )
                 };
                 let own = if selected.contains(&path) {
-                    (IconType::XClose, "Unselect")
+                    (
+                        IconType::XClose,
+                        t("oneclient.cluster.package_manager.select.unselect"),
+                    )
                 } else {
-                    (IconType::Check, "Select")
+                    (
+                        IconType::Check,
+                        t("oneclient.cluster.package_manager.select.select"),
+                    )
                 };
                 let mut multi = ContextMenu::new(x, y)
-                    .title(format!("{} selected", selected.len()))
+                    .title(tf(
+                        "oneclient.cluster.package_manager.select.count",
+                        &[&selected.len()],
+                    ))
                     .action(own.0, own.1, move |()| selection.toggle(path.clone()))
                     .separator()
                     .action(icon, text, move |()| selection.toggle_all(&all));
                 if !selected.is_empty() && !every {
-                    multi = multi.action(IconType::XClose, "Clear selection", move |()| {
-                        selection.clear()
-                    });
+                    multi = multi.action(
+                        IconType::XClose,
+                        t("oneclient.cluster.package_manager.select.clear"),
+                        move |()| selection.clear(),
+                    );
                 }
                 if !selected.is_empty() {
                     multi = multi.separator().danger_action(
                         IconType::Trash01,
-                        format!("Delete {}", selected.len()),
+                        tf(
+                            "oneclient.cluster.package_manager.select.delete_count",
+                            &[&selected.len()],
+                        ),
                         move |()| confirm_delete.set(true),
                     );
                 }
@@ -244,8 +265,11 @@ fn toolbar_row(
         right = right
             .child(
                 label()
-                    .text(format!("{count} selected"))
-                    .font_size(12.)
+                    .text(tf(
+                        "oneclient.cluster.package_manager.select.count",
+                        &[&count],
+                    ))
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -253,7 +277,11 @@ fn toolbar_row(
                     .secondary()
                     .small()
                     .on_press(move |_| selection.toggle_all(&all_paths))
-                    .text(if every { "Unselect all" } else { "Select all" }),
+                    .text(if every {
+                        t("oneclient.cluster.package_manager.select.unselect_all")
+                    } else {
+                        t("oneclient.cluster.package_manager.select.select_all")
+                    }),
             )
             .maybe_child((count > 0 && !every).then(|| {
                 Button::new()
@@ -261,7 +289,7 @@ fn toolbar_row(
                     .small()
                     .enabled(count > 0)
                     .on_press(move |_| selection.clear())
-                    .text("Deselect all")
+                    .text(t("oneclient.cluster.screenshots.deselect_all"))
                     .into_element()
             }))
             .child(
@@ -271,14 +299,17 @@ fn toolbar_row(
                     .enabled(count > 0)
                     .on_press(move |_| confirm_delete.set(true))
                     .child(Icon::new(IconType::Trash01).size(14.))
-                    .text(format!("Delete ({count})")),
+                    .text(tf(
+                        "oneclient.cluster.package_manager.select.delete",
+                        &[&count],
+                    )),
             )
             .child(
                 Button::new()
                     .ghost()
                     .small()
                     .on_press(move |_| selection.exit())
-                    .text("Cancel"),
+                    .text(t("oneclient.common.cancel")),
             );
     } else {
         right = right
@@ -295,7 +326,7 @@ fn toolbar_row(
                     .enabled(!shots.is_empty())
                     .on_press(move |_| selection.enter())
                     .child(Icon::new(IconType::Pencil01).size(14.))
-                    .text("Select"),
+                    .text(t("oneclient.cluster.package_manager.select.select")),
             );
     }
 
@@ -307,8 +338,8 @@ fn toolbar_row(
         .child(
             rect().width(Size::flex(1.0)).child(
                 label()
-                    .text("Screenshots")
-                    .font_size(20.)
+                    .text(t("oneclient.cluster.screenshots.title"))
+                    .font_size(text_size(20.))
                     .font_weight(FontWeight::SEMI_BOLD)
                     .color(colors::fg_primary()),
             ),
@@ -325,11 +356,11 @@ fn empty_state(loading: bool) -> impl IntoElement {
         .child(
             label()
                 .text(if loading {
-                    "Loading screenshots..."
+                    t("oneclient.cluster.screenshots.loading")
                 } else {
-                    "No screenshots yet. Press F2 in-game to capture one."
+                    t("oneclient.cluster.screenshots.empty")
                 })
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -356,23 +387,27 @@ fn confirm_panel(
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             label()
-                                .text(format!(
-                                    "Move {count} screenshot{} to trash?",
-                                    if count == 1 { "" } else { "s" }
-                                ))
-                                .font_size(16.)
+                                .text(if count == 1 {
+                                    tf("oneclient.cluster.screenshots.delete.title.one", &[&count])
+                                } else {
+                                    tf(
+                                        "oneclient.cluster.screenshots.delete.title.other",
+                                        &[&count],
+                                    )
+                                })
+                                .font_size(text_size(16.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
                         .child(
                             label()
-                                .text("They can be restored from your system trash.")
-                                .font_size(12.)
+                                .text(t("oneclient.cluster.screenshots.delete.body"))
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         )
                         .child(
@@ -385,14 +420,14 @@ fn confirm_panel(
                                     Button::new()
                                         .secondary()
                                         .on_press(move |_| cancel.set(false))
-                                        .text("Cancel"),
+                                        .text(t("oneclient.common.cancel")),
                                 )
                                 .child(
                                     Button::new()
                                         .danger()
                                         .on_press(move |_| on_confirm())
                                         .child(Icon::new(IconType::Trash01).size(14.))
-                                        .text("Delete"),
+                                        .text(t("oneclient.common.delete")),
                                 ),
                         ),
                 ),
@@ -405,10 +440,15 @@ fn res_badge(res: Option<(u32, u32)>) -> Option<Element> {
         rect()
             .position(Position::new_absolute().bottom(6.).right(6.))
             .padding(Gaps::new_symmetric(2., 6.))
-            .corner_radius(CornerRadius::new_all(5.))
+            .corner_radius(rounded(5.))
             .background(Color::from_argb(170, 0, 0, 0))
             .layer(Layer::Relative(3))
-            .child(label().text(text).font_size(9.).color(Color::WHITE))
+            .child(
+                label()
+                    .text(text)
+                    .font_size(text_size(9.))
+                    .color(Color::WHITE),
+            )
             .into_element()
     })
 }
@@ -418,7 +458,7 @@ fn preview_box(path: PathBuf, height: f32, res: Option<(u32, u32)>) -> impl Into
         .width(Size::fill())
         .height(Size::px(height))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::component_bg())
         .child(LocalImage::new(path, THUMB_EDGE, true).skeleton(true))
         .maybe_child(res_badge(res))
@@ -456,7 +496,7 @@ impl Component for ScreenshotTile {
             .vertical()
             .width(Size::flex(1.0))
             .max_width(Size::px(MAX_COL_W))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::card())
             .overflow(Overflow::Clip)
             .border(border_all_color(1., border_color).alignment(BorderAlignment::Inner))
@@ -483,7 +523,7 @@ impl Component for ScreenshotTile {
                     .child(
                         label()
                             .text(info.name.clone())
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
@@ -496,7 +536,7 @@ impl Component for ScreenshotTile {
                                 format_size(info.size_bytes),
                                 fmt_date(info.created)
                             ))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -524,7 +564,7 @@ impl Component for ScreenshotRow {
         let thumb = rect()
             .width(Size::px(64.))
             .height(Size::px(40.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .overflow(Overflow::Clip)
             .background(colors::component_bg())
             .child(LocalImage::new(info.path.clone(), THUMB_EDGE, true).skeleton(true));
@@ -536,7 +576,7 @@ impl Component for ScreenshotRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_symmetric(8., 10.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(if *hovered.read() {
                 colors::component_bg_hover()
             } else {
@@ -564,7 +604,7 @@ impl Component for ScreenshotRow {
                 rect().width(Size::flex(1.0)).child(
                     label()
                         .text(info.name.clone())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .max_lines(1)
                         .width(Size::fill())
                         .color(colors::fg_primary()),
@@ -573,20 +613,20 @@ impl Component for ScreenshotRow {
             .maybe_child(info.resolution.map(|res| {
                 label()
                     .text(format_res(res))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary())
                     .into_element()
             }))
             .child(
                 label()
                     .text(format_size(info.size_bytes))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(fmt_date(info.created))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary()),
             )
     }

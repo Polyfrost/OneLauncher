@@ -39,7 +39,8 @@ use crate::components::{Button, Icon, IconType, set_enabled_action};
 use crate::hooks::{
     ClusterAction, loaded_image, mutation_is_running, use_cached_image, use_cluster_mutation,
 };
-use crate::theme::colors;
+use crate::i18n::t;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -51,8 +52,8 @@ pub(crate) enum InstallSource {
 impl InstallSource {
     fn label(self) -> &'static str {
         match self {
-            Self::Manual => "Installed",
-            Self::Bundled => "Bundled",
+            Self::Manual => t("oneclient.browser.common.source.installed"),
+            Self::Bundled => t("oneclient.browser.common.source.bundled"),
         }
     }
 
@@ -127,8 +128,7 @@ impl Installed {
     }
 
     pub fn conflicts_with_bundle(&self, version_id: &str) -> bool {
-        self.source == InstallSource::Bundled
-            && self.bundled_version.as_deref() != Some(version_id)
+        self.source == InstallSource::Bundled && self.bundled_version.as_deref() != Some(version_id)
     }
 
     /// Counts linked artifacts only a bundle pin the cluster never downloaded is not a second copy
@@ -269,7 +269,11 @@ impl Component for EnableButton {
                 .primary()
                 .width(Size::fill())
                 .child(Icon::new(IconType::CheckCircle).size(14.))
-                .text(if running { "Enabling..." } else { "Enable" })
+                .text(if running {
+                    t("oneclient.browser.common.enabling_ellipsis")
+                } else {
+                    t("oneclient.browser.common.enable")
+                })
                 .into_element(),
             EnableVariant::Card { height } => rect()
                 .on_press(|e: Event<PressEventData>| e.stop_propagation())
@@ -290,15 +294,23 @@ impl Component for EnableButton {
                         )
                         .child(
                             label()
-                                .text(if running { "Enabling" } else { "Enable" })
-                                .font_size(11.)
+                                .text(if running {
+                                    t("oneclient.browser.common.enabling")
+                                } else {
+                                    t("oneclient.browser.common.enable")
+                                })
+                                .font_size(text_size(11.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .max_lines(1)
                                 .color(colors::fg_primary()),
                         ),
                 )
                 .into_element(),
-            EnableVariant::VersionRow => button.secondary().small().text("Enable").into_element(),
+            EnableVariant::VersionRow => button
+                .secondary()
+                .small()
+                .text(t("oneclient.browser.common.enable"))
+                .into_element(),
         }
     }
 }
@@ -310,9 +322,12 @@ pub(crate) fn installed_badge(installed: InstallSource, font_size: f32) -> impl 
 /// Which of several installed versions the game actually loads
 pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
     let (text, color) = if active {
-        ("Active", colors::brand())
+        (t("oneclient.browser.common.active"), colors::brand())
     } else {
-        ("Inactive", colors::fg_secondary())
+        (
+            t("oneclient.browser.common.inactive"),
+            colors::fg_secondary(),
+        )
     };
 
     // No icon three pills in a row all wearing a tick reads as decoration
@@ -320,9 +335,15 @@ pub(crate) fn activity_badge(active: bool) -> impl IntoElement {
         .horizontal()
         .cross_align(Alignment::Center)
         .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .background(color.with_a(38))
-        .child(label().text(text).font_size(11.).max_lines(1).color(color))
+        .child(
+            label()
+                .text(text)
+                .font_size(text_size(11.))
+                .max_lines(1)
+                .color(color),
+        )
 }
 
 fn badge(
@@ -338,7 +359,7 @@ fn badge(
         .cross_align(Alignment::Center)
         .spacing(4.)
         .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .background(background)
         .map(border, |el, border| el.border(border_all_color(1., border)))
         .child(
@@ -349,7 +370,7 @@ fn badge(
         .child(
             label()
                 .text(installed.label())
-                .font_size(font_size)
+                .font_size(text_size(font_size))
                 .max_lines(1)
                 .color(color),
         )
@@ -380,7 +401,7 @@ impl Thumbnail {
 }
 
 impl KeyExt for Thumbnail {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -399,7 +420,7 @@ impl Component for Thumbnail {
                 .width(Size::px(size))
                 .height(Size::px(size))
                 .aspect_ratio(AspectRatio::Min)
-                .corner_radius(CornerRadius::new_all(radius))
+                .corner_radius(rounded(radius))
                 .fallback(placeholder)
                 .into_element(),
             None => placeholder,
@@ -412,7 +433,7 @@ fn thumbnail_placeholder(size: f32, radius: f32, icon_ratio: f32) -> Element {
         .center()
         .width(Size::px(size))
         .height(Size::px(size))
-        .corner_radius(CornerRadius::new_all(radius))
+        .corner_radius(rounded(radius))
         .background(colors::component_bg())
         .child(
             Icon::new(IconType::DotsGrid)
@@ -455,7 +476,7 @@ impl PackageBanner {
 }
 
 impl KeyExt for PackageBanner {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -515,7 +536,7 @@ impl Component for PackageBanner {
                                 .width(Size::px(icon))
                                 .height(Size::px(icon))
                                 .aspect_ratio(AspectRatio::Min)
-                                .corner_radius(CornerRadius::new_all(10.))
+                                .corner_radius(rounded(10.))
                                 .fallback(icon_placeholder.clone()),
                         )
                         .layer(Layer::Relative(5))
@@ -557,6 +578,7 @@ mod tests {
             display_version: None,
             provider: Some(ProviderId::Modrinth),
             published_at: None,
+            added_at: None,
             seen_status: oneclient_core::SeenStatus::Seen,
         }
     }

@@ -3,8 +3,9 @@ use oneclient_auth::MinecraftAccount;
 
 use crate::components::{Avatar, Button, Icon, IconType, use_microsoft_login};
 use crate::hooks::{try_default_account, use_current_account};
+use crate::i18n::t;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::view::onboarding::{
     onboarding_illustration, onboarding_nav, onboarding_page, step_heading,
 };
@@ -25,8 +26,8 @@ impl Component for OnboardingAccount {
             .width(Size::fill())
             .spacing(24.)
             .child(step_heading(
-                "Account",
-                "Before you continue, we require you to own a copy of Minecraft: Java Edition.",
+                t("oneclient.onboarding.account.title"),
+                t("oneclient.onboarding.account.subtitle"),
             ))
             .child(match &account {
                 Some(account) => account_preview(account).into_element(),
@@ -78,14 +79,14 @@ fn account_preview(account: &MinecraftAccount) -> impl IntoElement {
                         .child(
                             label()
                                 .text(account.username.clone())
-                                .font_size(16.)
+                                .font_size(text_size(16.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
                         .child(
                             label()
                                 .text(account.id.to_string())
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         ),
                 ),
@@ -110,9 +111,9 @@ fn sign_in_card(
                 .on_press(on_add)
                 .child(Icon::new(IconType::Globe01).size(16.))
                 .text(if pending {
-                    "Signing in..."
+                    t("oneclient.onboarding.account.signing_in")
                 } else {
-                    "Add Account"
+                    t("oneclient.onboarding.account.add")
                 }),
         )
         .maybe_child(error.map(|message| {
@@ -125,7 +126,12 @@ fn sign_in_card(
                         .size(13.)
                         .color(colors::danger()),
                 )
-                .child(label().text(message).font_size(12.).color(colors::danger()))
+                .child(
+                    label()
+                        .text(message)
+                        .font_size(text_size(12.))
+                        .color(colors::danger()),
+                )
                 .into_element()
         }))
         .into_element()

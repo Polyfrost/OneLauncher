@@ -7,8 +7,9 @@ use crate::components::{Button, Icon, IconType, TabBar, TabItem};
 use crate::hooks::{
     use_bisect, use_cluster, use_dispatch, use_game_snapshot, use_launcher, use_version_metadata,
 };
+use crate::i18n::t;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::ui::entrance_motion_layer;
 use crate::view::app::ExportInstanceModal;
 use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken};
@@ -37,16 +38,16 @@ pub enum ClusterViewShellTab {
 impl ClusterViewShellTab {
     fn label(&self) -> &'static str {
         match self {
-            Self::Overview => "Overview",
-            Self::Logs => "Logs",
-            Self::GameLog => "Live Log",
-            Self::Screenshots => "Screenshots",
-            Self::Mods => "Mods",
-            Self::Shaders => "Shaders",
-            Self::Textures => "Textures",
-            Self::Worlds => "Worlds",
-            Self::DataPacks => "Data packs",
-            Self::Settings => "Settings",
+            Self::Overview => t("oneclient.layout.cluster.tab.overview"),
+            Self::Logs => t("oneclient.layout.cluster.tab.logs"),
+            Self::GameLog => t("oneclient.layout.cluster.tab.live_log"),
+            Self::Screenshots => t("oneclient.layout.cluster.tab.screenshots"),
+            Self::Mods => t("oneclient.layout.cluster.tab.mods"),
+            Self::Shaders => t("oneclient.layout.cluster.tab.shaders"),
+            Self::Textures => t("oneclient.layout.cluster.tab.textures"),
+            Self::Worlds => t("oneclient.layout.cluster.tab.worlds"),
+            Self::DataPacks => t("oneclient.layout.cluster.tab.data_packs"),
+            Self::Settings => t("oneclient.layout.cluster.tab.settings"),
         }
     }
 
@@ -283,7 +284,7 @@ impl Component for ClusterContentOutlet {
 
         use_side_effect_with_deps(&anim_finished, move |&finished| {
             if finished {
-                Platform::get().send(UserEvent::RequestRedraw);
+                Platform::get().current_window().request_redraw();
             }
         });
 
@@ -336,14 +337,14 @@ fn cluster_header(
                 .child(
                     label()
                         .text(title)
-                        .font_size(28.)
+                        .font_size(text_size(28.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_secondary()),
                 ),
@@ -375,7 +376,7 @@ fn cluster_header(
                             .icon()
                             .width(Size::px(ACTION_HEIGHT))
                             .height(Size::px(ACTION_HEIGHT))
-                            .tooltip("Stop game")
+                            .tooltip(t("oneclient.layout.cluster.stop_game"))
                             .on_press(move |_| kill_dispatch.kill_cluster(cluster_id))
                             .child(Icon::new(IconType::Square).size(ACTION_ICON_SIZE)),
                     )
@@ -419,6 +420,9 @@ fn cluster_tabs(
     let tab_items = tabs.into_iter().flatten().map(|tab| {
         let route = tab.route(cluster_id);
         let mut item = TabItem::new(tab.label(), tab == active);
+        if tab == ClusterViewShellTab::GameLog {
+            item = item.accent(colors::brand());
+        }
         if let Some(route) = route {
             item = item.on_press(move |_| {
                 let _ = RouterContext::get().push(route.clone());
@@ -447,7 +451,7 @@ fn cluster_tabs(
                 .width(Size::auto())
                 .height(Size::fill())
                 .spacing(22.)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .tabs(tab_items),
         )
 }

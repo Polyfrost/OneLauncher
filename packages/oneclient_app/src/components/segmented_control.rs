@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::tooltip::use_tooltip_anchor;
 use crate::components::{Icon, IconType, TooltipPlacement};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(PartialEq, Clone)]
@@ -122,7 +122,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentedControl<T> {
             .cross_align(Alignment::Center)
             .spacing(2.)
             .padding(Gaps::new_all(3.))
-            .corner_radius(CornerRadius::new_all(9.))
+            .corner_radius(rounded(9.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .children(self.segments.iter().map(move |seg| {
@@ -183,7 +183,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
             .height(Size::fill())
             .cross_align(Alignment::Center)
             .spacing(6.)
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .a11y_id(a11y_id)
             .a11y_focusable(!disabled)
             .a11y_role(AccessibilityRole::Button)
@@ -218,7 +218,7 @@ impl<T: Copy + PartialEq + 'static> Component for SegmentButton<T> {
             .maybe_child(self.label.clone().map(|text| {
                 label()
                     .text(text)
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .font_weight(if is_selected {
                         FontWeight::MEDIUM
                     } else {

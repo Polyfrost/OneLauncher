@@ -15,12 +15,13 @@ use crate::components::{
 };
 use crate::hooks::wardrobe::{WardrobeAction, use_transactions};
 use crate::hooks::{query_error, query_is_loading, settled_or_loading};
-use crate::theme::colors;
+use crate::i18n::{t, tf};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 fn panel_box() -> Rect {
     rect()
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .overflow(Overflow::Clip)
@@ -28,7 +29,7 @@ fn panel_box() -> Rect {
 
 fn wardrobe_panel() -> Rect {
     rect()
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
 }
@@ -44,7 +45,7 @@ fn centered(text: &str) -> Element {
                 .text(text.to_string())
                 .width(Size::fill())
                 .text_align(TextAlign::Center)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -60,7 +61,7 @@ fn centered_block(text: &str) -> Element {
                 .text(text.to_string())
                 .width(Size::fill())
                 .text_align(TextAlign::Center)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -71,7 +72,7 @@ fn status_text(status: &Option<String>) -> Option<Element> {
         label()
             .text(text.clone())
             .width(Size::fill())
-            .font_size(12.)
+            .font_size(text_size(12.))
             .color(colors::fg_secondary())
             .into_element()
     })
@@ -192,9 +193,9 @@ impl Component for OutfitSwitcher {
             !data.busy && loaded && !outfits.is_empty() && (active.is_none() || outfits.len() > 1);
         let text = match active {
             Some(outfit) => outfit.name.clone(),
-            None if !loaded => "Loading outfits...".into(),
-            None if outfits.is_empty() => "No saved outfits".into(),
-            None => "No outfit selected".into(),
+            None if !loaded => t("oneclient.wardrobe.preview.outfits_loading").into(),
+            None if outfits.is_empty() => t("oneclient.wardrobe.preview.no_outfits").into(),
+            None => t("oneclient.wardrobe.preview.no_outfit_selected").into(),
         };
         let account = data.account;
 
@@ -235,7 +236,7 @@ impl Component for OutfitSwitcher {
                 Button::new()
                     .secondary()
                     .icon()
-                    .tooltip("Previous outfit")
+                    .tooltip(t("oneclient.wardrobe.preview.previous_outfit"))
                     .enabled(can_cycle)
                     .on_press(move |_| previous.call(()))
                     .child(Icon::new(IconType::ArrowLeft).size(14.)),
@@ -246,7 +247,7 @@ impl Component for OutfitSwitcher {
                     .height(Size::fill())
                     .center()
                     .padding(Gaps::new_symmetric(0., 10.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(colors::component_bg())
                     .border(border_all_color(1., colors::component_border()))
                     .child(
@@ -254,7 +255,7 @@ impl Component for OutfitSwitcher {
                             .text(text)
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(if active.is_some() {
                                 colors::fg_primary()
@@ -267,7 +268,7 @@ impl Component for OutfitSwitcher {
                 Button::new()
                     .secondary()
                     .icon()
-                    .tooltip("Next outfit")
+                    .tooltip(t("oneclient.wardrobe.preview.next_outfit"))
                     .enabled(can_cycle)
                     .on_press(move |_| next.call(()))
                     .child(Icon::new(IconType::ArrowRight).size(14.)),
@@ -276,7 +277,7 @@ impl Component for OutfitSwitcher {
                 Button::new()
                     .secondary()
                     .icon()
-                    .tooltip("New outfit from current look")
+                    .tooltip(t("oneclient.wardrobe.preview.new_outfit"))
                     .enabled(!data.busy && loaded)
                     .on_press(move |_| create.call(()))
                     .child(Icon::new(IconType::Plus).size(14.)),
@@ -303,19 +304,25 @@ impl Component for PreviewPanel {
             _ => None,
         };
         let heading: Option<(String, String)> = match &picked {
-            Some(Selection::MojangCape(id)) => data
-                .mojang_cape(id)
-                .map(|cape| (cape.alias.clone(), "Minecraft cape".to_string())),
-            Some(Selection::Outfit(id)) => data
-                .outfit(*id)
-                .map(|outfit| (outfit.name.clone(), "Outfit".to_string())),
+            Some(Selection::MojangCape(id)) => data.mojang_cape(id).map(|cape| {
+                (
+                    cape.alias.clone(),
+                    t("oneclient.wardrobe.minecraft_cape").to_string(),
+                )
+            }),
+            Some(Selection::Outfit(id)) => data.outfit(*id).map(|outfit| {
+                (
+                    outfit.name.clone(),
+                    t("oneclient.wardrobe.preview.outfit").to_string(),
+                )
+            }),
             Some(Selection::Skin(id)) => data.skin(*id).map(|skin| {
                 (
                     skin.name.clone(),
                     if skin.model == SkinModel::Slim {
-                        "Slim skin".to_string()
+                        t("oneclient.wardrobe.preview.slim_skin").to_string()
                     } else {
-                        "Classic skin".to_string()
+                        t("oneclient.wardrobe.preview.classic_skin").to_string()
                     },
                 )
             }),
@@ -373,13 +380,13 @@ impl Component for PreviewPanel {
                     .width(Size::fill())
                     .padding(Gaps::new_all(10.))
                     .spacing(8.)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(colors::component_bg())
                     .border(border_all_color(1., colors::component_border()))
                     .child(
                         label()
-                            .text("Variants")
-                            .font_size(12.)
+                            .text(t("oneclient.wardrobe.preview.variants"))
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .child(chip_rows(chips))
@@ -411,14 +418,14 @@ impl Component for PreviewPanel {
                     .padding(Gaps::new_all(10.))
                     .spacing(8.)
                     .cross_align(Alignment::Center)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(colors::component_bg())
                     .border(border_all_color(1., colors::component_border()))
                     .child(
                         label()
-                            .text("Particle color")
+                            .text(t("oneclient.wardrobe.preview.particle_color"))
                             .width(Size::flex(1.))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .maybe_child(current.is_some().then(|| {
@@ -427,7 +434,7 @@ impl Component for PreviewPanel {
                             .small()
                             .enabled(!data.busy)
                             .on_press(move |_| set(None))
-                            .text("Reset")
+                            .text(t("oneclient.common.reset"))
                     }))
                     .child(
                         ColorPicker::new(shown, |_| {}).on_close(move |picked: Color| {
@@ -457,7 +464,7 @@ impl Component for PreviewPanel {
                         label()
                             .text(title)
                             .max_lines(1)
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -465,7 +472,7 @@ impl Component for PreviewPanel {
                         label()
                             .text(subtitle)
                             .max_lines(1)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     ),
             );
@@ -576,7 +583,7 @@ impl Component for VariantChip {
             .height(Size::px(28.))
             .padding(Gaps::new_symmetric(0., 10.))
             .main_align(Alignment::Center)
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(if self.selected {
                 colors::brand()
             } else {
@@ -598,7 +605,7 @@ impl Component for VariantChip {
                 label()
                     .text(self.text.clone())
                     .max_lines(1)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(if self.selected {
                         colors::fg_primary()
@@ -626,7 +633,7 @@ impl Component for CartPane {
         let status = shared.status.read().clone();
 
         let body = if items.is_empty() {
-            centered("Your cart is empty.")
+            centered(t("oneclient.wardrobe.cart.empty"))
         } else {
             let priced = items
                 .iter()
@@ -674,7 +681,7 @@ impl Component for CartPane {
                         .children(rows),
                 )
                 .child(totals_row(
-                    "Subtotal",
+                    t("oneclient.wardrobe.cart.subtotal"),
                     if priced {
                         money(subtotal)
                     } else {
@@ -685,18 +692,18 @@ impl Component for CartPane {
                 ))
                 .maybe_child((discount > 0.).then(|| {
                     totals_row(
-                        "Discounts",
+                        t("oneclient.wardrobe.cart.discounts"),
                         format!("-{}", money(discount)),
                         colors::success(),
                         false,
                     )
                 }))
                 .child(totals_row(
-                    "Total",
+                    t("oneclient.wardrobe.cart.total"),
                     if !priced {
                         "—".into()
                     } else if total <= 0. {
-                        "FREE".into()
+                        t("oneclient.wardrobe.price.free").into()
                     } else {
                         money(total)
                     },
@@ -711,10 +718,11 @@ impl Component for CartPane {
                         .enabled(!busy)
                         .on_press(move |_| checkout.call(()))
                         .child(Icon::new(IconType::LinkExternal01).size(14.))
-                        .text(format!(
-                            "Checkout {count} item{}",
-                            if count == 1 { "" } else { "s" }
-                        )),
+                        .text(if count == 1 {
+                            tf("oneclient.wardrobe.cart.checkout.one", &[&count])
+                        } else {
+                            tf("oneclient.wardrobe.cart.checkout.other", &[&count])
+                        }),
                 )
                 .into_element()
         };
@@ -734,9 +742,9 @@ impl Component for CartPane {
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text("Cart")
+                            .text(t("oneclient.wardrobe.cart.title"))
                             .width(Size::flex(1.0))
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -744,7 +752,7 @@ impl Component for CartPane {
                         Button::new()
                             .secondary()
                             .icon()
-                            .tooltip("Close")
+                            .tooltip(t("oneclient.common.close"))
                             .on_press(move |_| close.call(()))
                             .child(Icon::new(IconType::XClose).size(14.)),
                     ),
@@ -768,13 +776,13 @@ fn totals_row(text: &str, value: String, color: Color, large: bool) -> Element {
             label()
                 .text(text.to_string())
                 .width(Size::flex(1.0))
-                .font_size(if large { 18. } else { 12. })
+                .font_size(text_size(if large { 18. } else { 12. }))
                 .color(colors::fg_primary()),
         )
         .child(
             label()
                 .text(value)
-                .font_size(if large { 22. } else { 12. })
+                .font_size(text_size(if large { 22. } else { 12. }))
                 .font_weight(if large {
                     FontWeight::MEDIUM
                 } else {
@@ -808,7 +816,7 @@ impl Component for CartRow {
                 rect()
                     .width(Size::px(58.))
                     .height(Size::px(58.))
-                    .corner_radius(CornerRadius::new_all(5.))
+                    .corner_radius(rounded(5.))
                     .background(colors::page())
                     .overflow(Overflow::Clip)
                     .child(CoverThumb {
@@ -826,7 +834,7 @@ impl Component for CartRow {
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -840,7 +848,7 @@ impl Component for CartRow {
                                     .max_lines(2)
                                     .text_overflow(TextOverflow::Ellipsis)
                                     .width(Size::fill())
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                             }),
                     ),
@@ -857,15 +865,18 @@ impl Component for CartRow {
                     ))
                     .maybe_child(item.discounted().then(|| {
                         label()
-                            .text(format!("SAVE {}%", item.discount_percent.unwrap_or(0)))
-                            .font_size(12.)
+                            .text(tf(
+                                "oneclient.wardrobe.badge.save",
+                                &[&item.discount_percent.unwrap_or(0)],
+                            ))
+                            .font_size(text_size(12.))
                             .color(colors::success())
                     }))
                     .child(
                         Button::new()
                             .ghost()
                             .icon()
-                            .tooltip("Remove")
+                            .tooltip(t("oneclient.common.remove"))
                             .on_press(move |_| remove.call(()))
                             .child(Icon::new(IconType::Trash01).size(14.)),
                     ),
@@ -889,7 +900,7 @@ impl Component for StoreDetailPanel {
             return panel_box()
                 .width(Size::fill())
                 .height(Size::fill())
-                .child(centered("Select a cosmetic to preview it."))
+                .child(centered(t("oneclient.wardrobe.preview.select_prompt")))
                 .into_element();
         };
         let variant = data.shop_variant(&item);
@@ -899,9 +910,9 @@ impl Component for StoreDetailPanel {
         let mut picks = shared.store_picks;
 
         let badge = if owned {
-            Some(("OWNED", colors::success()))
+            Some((t("oneclient.wardrobe.badge.owned"), colors::success()))
         } else if is_new(&item.created_at) {
-            Some(("NEW", colors::brand()))
+            Some((t("oneclient.wardrobe.badge.new"), colors::brand()))
         } else {
             None
         };
@@ -962,14 +973,14 @@ impl Component for StoreDetailPanel {
             .child(
                 label()
                     .text(type_label(item.kind))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(item.name.clone())
                     .width(Size::fill())
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -986,10 +997,15 @@ impl Component for StoreDetailPanel {
                     .children(tags.into_iter().map(|tag| {
                         rect()
                             .padding(Gaps::new_symmetric(3., 8.))
-                            .corner_radius(CornerRadius::new_all(5.))
+                            .corner_radius(rounded(5.))
                             .background(colors::component_bg())
                             .border(border_all_color(1., colors::component_border()))
-                            .child(label().text(tag).font_size(11.).color(colors::fg_primary()))
+                            .child(
+                                label()
+                                    .text(tag)
+                                    .font_size(text_size(11.))
+                                    .color(colors::fg_primary()),
+                            )
                             .into_element()
                     }))
             }))
@@ -1001,7 +1017,7 @@ impl Component for StoreDetailPanel {
                         label()
                             .text(text)
                             .width(Size::fill())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                     }),
             );
@@ -1022,12 +1038,12 @@ impl Component for StoreDetailPanel {
                             .position(Position::new_absolute().top(12.).left(12.))
                             .layer(Layer::Relative(1))
                             .padding(Gaps::new_symmetric(3., 8.))
-                            .corner_radius(CornerRadius::new_all(5.))
+                            .corner_radius(rounded(5.))
                             .background(color)
                             .child(
                                 label()
                                     .text(text)
-                                    .font_size(11.)
+                                    .font_size(text_size(11.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::fg_primary()),
                             )
@@ -1050,8 +1066,8 @@ impl Component for StoreDetailPanel {
                     .maybe_child(status_text(&status))
                     .child(if owned {
                         label()
-                            .text("You already own this cosmetic.")
-                            .font_size(12.)
+                            .text(t("oneclient.wardrobe.preview.already_owned"))
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                             .into_element()
                     } else {
@@ -1066,7 +1082,11 @@ impl Component for StoreDetailPanel {
                                     .maybe_child(
                                         (!in_cart).then(|| Icon::new(IconType::Plus).size(14.)),
                                     )
-                                    .text(if in_cart { "In cart" } else { "Add to cart" }),
+                                    .text(if in_cart {
+                                        t("oneclient.wardrobe.action.in_cart")
+                                    } else {
+                                        t("oneclient.wardrobe.action.add_to_cart")
+                                    }),
                             )
                             .child(
                                 Button::new()
@@ -1074,7 +1094,7 @@ impl Component for StoreDetailPanel {
                                     .enabled(!data.busy && data.plus.is_some())
                                     .on_press(move |_| buy.call(()))
                                     .child(Icon::new(IconType::LinkExternal01).size(14.))
-                                    .text("Buy now"),
+                                    .text(t("oneclient.wardrobe.action.buy_now")),
                             )
                             .into_element()
                     }),
@@ -1107,7 +1127,7 @@ impl Component for BundleDetailPanel {
                 products: vec![product],
             }),
             None => {
-                let message = format!("{} isn't purchasable yet.", bundle.name);
+                let message = tf("oneclient.wardrobe.not_purchasable", &[&bundle.name]);
                 EventHandler::new(move |()| status_state.set(Some(message.clone())))
             }
         };
@@ -1123,7 +1143,7 @@ impl Component for BundleDetailPanel {
                 rect()
                     .width(Size::fill())
                     .height(Size::px(200.))
-                    .corner_radius(CornerRadius::new_all(5.))
+                    .corner_radius(rounded(5.))
                     .background(colors::page())
                     .overflow(Overflow::Clip)
                     .child(CoverThumb {
@@ -1132,15 +1152,15 @@ impl Component for BundleDetailPanel {
             )
             .child(
                 label()
-                    .text("Bundle")
-                    .font_size(12.)
+                    .text(t("oneclient.wardrobe.preview.bundle"))
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(bundle.name.clone())
                     .width(Size::fill())
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -1158,7 +1178,7 @@ impl Component for BundleDetailPanel {
                         label()
                             .text(text)
                             .width(Size::fill())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                     }),
             )
@@ -1171,7 +1191,7 @@ impl Component for BundleDetailPanel {
                     .enabled(!self.data.busy)
                     .on_press(move |_| buy.call(()))
                     .child(Icon::new(IconType::LinkExternal01).size(14.))
-                    .text("Buy now"),
+                    .text(t("oneclient.wardrobe.action.buy_now")),
             )
             .into_element()
     }
@@ -1190,8 +1210,12 @@ impl Component for HistoryList {
 
         let body = match (&transactions, &error) {
             (None, Some(error)) => centered_block(error),
-            (None, None) if query_is_loading(&query) => centered_block("Loading transactions..."),
-            (Some(list), _) if list.is_empty() => centered_block("No transactions yet."),
+            (None, None) if query_is_loading(&query) => {
+                centered_block(t("oneclient.wardrobe.history.loading"))
+            }
+            (Some(list), _) if list.is_empty() => {
+                centered_block(t("oneclient.wardrobe.history.empty"))
+            }
             (Some(list), _) => rect()
                 .vertical()
                 .width(Size::fill())
@@ -1205,7 +1229,7 @@ impl Component for HistoryList {
                         .cross_align(Alignment::Center)
                         .padding(Gaps::new_symmetric(10., 13.))
                         .spacing(13.)
-                        .corner_radius(CornerRadius::new_all(8.))
+                        .corner_radius(rounded(8.))
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             rect()
@@ -1213,15 +1237,15 @@ impl Component for HistoryList {
                                 .width(Size::flex(1.0))
                                 .child(
                                     label()
-                                        .text(format!("Order #{}", tx.id))
-                                        .font_size(14.)
+                                        .text(tf("oneclient.wardrobe.history.order", &[&tx.id]))
+                                        .font_size(text_size(14.))
                                         .font_weight(FontWeight::MEDIUM)
                                         .color(colors::fg_primary()),
                                 )
                                 .child(
                                     label()
                                         .text(provider_name(&tx.provider))
-                                        .font_size(12.)
+                                        .font_size(text_size(12.))
                                         .color(colors::fg_secondary()),
                                 ),
                         )
@@ -1235,21 +1259,21 @@ impl Component for HistoryList {
                             };
                             label()
                                 .text(text)
-                                .font_size(14.)
+                                .font_size(text_size(14.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(colors::fg_primary())
                         }))
                         .child(
                             label()
                                 .text(status)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(color),
                         )
                         .into_element()
                 }))
                 .into_element(),
-            _ => centered_block("Loading transactions..."),
+            _ => centered_block(t("oneclient.wardrobe.history.loading")),
         };
 
         panel_box()
@@ -1264,22 +1288,40 @@ fn provider_name(provider: &str) -> String {
     match provider {
         "stripe" => "Stripe".into(),
         "paynow" => "PayNow".into(),
-        "ingame" => "In-game".into(),
-        "admin_grant" => "Admin grant".into(),
-        _ => "Unknown".into(),
+        "ingame" => t("oneclient.wardrobe.history.provider.ingame").into(),
+        "admin_grant" => t("oneclient.wardrobe.history.provider.admin_grant").into(),
+        _ => t("oneclient.wardrobe.history.unknown").into(),
     }
 }
 
 fn status_style(status: &str) -> (String, Color) {
     let muted = colors::fg_secondary();
     match status {
-        "completed" => ("Completed".into(), colors::success()),
-        "pending" => ("Pending".into(), colors::code_warn()),
-        "failed" => ("Failed".into(), colors::danger()),
-        "refunded" => ("Refunded".into(), muted),
-        "partially_refunded" => ("Partially refunded".into(), muted),
-        "chargeback" => ("Chargeback".into(), muted),
-        _ => ("Unknown".into(), muted),
+        "completed" => (
+            t("oneclient.wardrobe.history.status.completed").into(),
+            colors::success(),
+        ),
+        "pending" => (
+            t("oneclient.wardrobe.history.status.pending").into(),
+            colors::code_warn(),
+        ),
+        "failed" => (
+            t("oneclient.wardrobe.history.status.failed").into(),
+            colors::danger(),
+        ),
+        "refunded" => (
+            t("oneclient.wardrobe.history.status.refunded").into(),
+            muted,
+        ),
+        "partially_refunded" => (
+            t("oneclient.wardrobe.history.status.partially_refunded").into(),
+            muted,
+        ),
+        "chargeback" => (
+            t("oneclient.wardrobe.history.status.chargeback").into(),
+            muted,
+        ),
+        _ => (t("oneclient.wardrobe.history.unknown").into(), muted),
     }
 }
 
@@ -1324,7 +1366,7 @@ impl Component for AddSkinPanel {
                 SkinSource::Username => {
                     let username = username.read().trim().to_string();
                     if username.is_empty() {
-                        message.set(Some("Enter a Minecraft username.".into()));
+                        message.set(Some(t("oneclient.wardrobe.add_skin.error.username").into()));
                         return;
                     }
                     WardrobeAction::AddSkinUsername { account, username }
@@ -1332,7 +1374,7 @@ impl Component for AddSkinPanel {
                 SkinSource::Url => {
                     let url = url.read().trim().to_string();
                     if !url.starts_with("http://") && !url.starts_with("https://") {
-                        message.set(Some("Enter a link to a PNG skin.".into()));
+                        message.set(Some(t("oneclient.wardrobe.add_skin.error.url").into()));
                         return;
                     }
                     WardrobeAction::AddSkinUrl {
@@ -1344,7 +1386,7 @@ impl Component for AddSkinPanel {
                 }
                 SkinSource::File => {
                     let Some(path) = file.read().clone() else {
-                        message.set(Some("Choose a PNG file.".into()));
+                        message.set(Some(t("oneclient.wardrobe.add_skin.error.file").into()));
                         return;
                     };
                     WardrobeAction::AddSkinFile {
@@ -1369,13 +1411,13 @@ impl Component for AddSkinPanel {
         body = match picked {
             SkinSource::Username => body.child(
                 TextInput::new(username)
-                    .placeholder("Minecraft username")
+                    .placeholder(t("oneclient.wardrobe.add_skin.username_placeholder"))
                     .compact()
                     .width(Size::fill()),
             ),
             SkinSource::Url => body.child(
                 TextInput::new(url)
-                    .placeholder("Link to a PNG skin")
+                    .placeholder(t("oneclient.wardrobe.add_skin.url_placeholder"))
                     .compact()
                     .width(Size::fill()),
             ),
@@ -1398,8 +1440,11 @@ impl Component for AddSkinPanel {
                                 .on_press(move |_| {
                                     spawn(async move {
                                         if let Some(handle) = rfd::AsyncFileDialog::new()
-                                            .set_title("Choose a skin")
-                                            .add_filter("PNG image", &["png"])
+                                            .set_title(t("oneclient.wardrobe.add_skin.dialog"))
+                                            .add_filter(
+                                                t("oneclient.wardrobe.add_skin.png_filter"),
+                                                &["png"],
+                                            )
                                             .pick_file()
                                             .await
                                         {
@@ -1408,15 +1453,17 @@ impl Component for AddSkinPanel {
                                     });
                                 })
                                 .child(Icon::new(IconType::Folder).size(14.))
-                                .text("Choose file"),
+                                .text(t("oneclient.wardrobe.add_skin.choose_file")),
                         )
                         .child(
                             label()
-                                .text(chosen.unwrap_or_else(|| "No file chosen".into()))
+                                .text(chosen.unwrap_or_else(|| {
+                                    t("oneclient.wardrobe.add_skin.no_file").into()
+                                }))
                                 .width(Size::flex(1.0))
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         ),
                 )
@@ -1427,20 +1474,20 @@ impl Component for AddSkinPanel {
             body = body
                 .child(
                     TextInput::new(name)
-                        .placeholder("Name (optional)")
+                        .placeholder(t("oneclient.wardrobe.add_skin.name_placeholder"))
                         .compact()
                         .width(Size::fill()),
                 )
                 .child(
                     SegmentedControl::new(slim)
-                        .segment(Segment::new(false).label("Classic"))
-                        .segment(Segment::new(true).label("Slim")),
+                        .segment(Segment::new(false).label(t("oneclient.wardrobe.skins.classic")))
+                        .segment(Segment::new(true).label(t("oneclient.wardrobe.skins.slim"))),
                 );
         }
 
         let note = match picked {
-            SkinSource::Username => "Saves that player's skin to your library.",
-            _ => "Adding a skin uploads it to Minecraft and puts it on.",
+            SkinSource::Username => t("oneclient.wardrobe.add_skin.note.username"),
+            _ => t("oneclient.wardrobe.add_skin.note.upload"),
         };
 
         wardrobe_panel()
@@ -1457,9 +1504,9 @@ impl Component for AddSkinPanel {
                     .cross_align(Alignment::Center)
                     .child(
                         label()
-                            .text("Add skin")
+                            .text(t("oneclient.wardrobe.skins.add"))
                             .width(Size::flex(1.0))
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -1467,7 +1514,7 @@ impl Component for AddSkinPanel {
                         Button::new()
                             .secondary()
                             .icon()
-                            .tooltip("Close")
+                            .tooltip(t("oneclient.common.close"))
                             .on_press(move |_| close.call(()))
                             .child(Icon::new(IconType::XClose).size(14.)),
                     ),
@@ -1477,17 +1524,17 @@ impl Component for AddSkinPanel {
                     .segment(
                         Segment::new(SkinSource::Username)
                             .icon(IconType::Users01)
-                            .label("Username"),
+                            .label(t("oneclient.wardrobe.add_skin.source.username")),
                     )
                     .segment(
                         Segment::new(SkinSource::Url)
                             .icon(IconType::Link03)
-                            .label("URL"),
+                            .label(t("oneclient.wardrobe.add_skin.source.url")),
                     )
                     .segment(
                         Segment::new(SkinSource::File)
                             .icon(IconType::Folder)
-                            .label("File"),
+                            .label(t("oneclient.wardrobe.add_skin.source.file")),
                     ),
             )
             .child(body)
@@ -1495,7 +1542,7 @@ impl Component for AddSkinPanel {
                 label()
                     .text(message.read().clone().unwrap_or_else(|| note.to_string()))
                     .width(Size::fill())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .maybe_child(status_text(&shared.status.read().clone()))
@@ -1506,7 +1553,7 @@ impl Component for AddSkinPanel {
                     .enabled(!self.busy)
                     .on_press(move |_| submit.call(()))
                     .child(Icon::new(IconType::Plus).size(14.))
-                    .text("Add skin"),
+                    .text(t("oneclient.wardrobe.skins.add")),
             )
     }
 }

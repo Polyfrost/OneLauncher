@@ -12,9 +12,10 @@ use oneclient_events::Level;
 use crate::{
     components::{Button, ButtonSize, Icon, IconType, TooltipPlacement, progress_track},
     hooks::{use_dispatch, use_link_confirm, use_notifications_snapshot},
+    i18n::t,
     motion::use_animations_enabled,
     notifications::{InboxEntry, NotificationActionKind},
-    theme::colors,
+    theme::{colors, rounded, text_size},
     ui::divider,
 };
 
@@ -104,7 +105,7 @@ struct ToastCard {
 }
 
 impl KeyExt for ToastCard {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -154,10 +155,10 @@ impl Component for ToastCard {
                 return;
             }
             let handle = spawn(async move {
-                let platform = Platform::get();
+                let window = Platform::get().current_window();
                 loop {
                     wall_pct.set(remaining_pct(*from_pct.peek(), *run_start.peek()));
-                    platform.send(UserEvent::RequestRedraw);
+                    window.request_redraw();
                     tokio::time::sleep(TTL_STEP).await;
                 }
             });
@@ -255,7 +256,7 @@ fn toast_shell(entry: &InboxEntry) -> Rect {
     rect()
         .width(Size::px(TOAST_W))
         .background(colors::component_bg())
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .overflow(Overflow::Clip)
         .border(
             Border::new()
@@ -270,7 +271,7 @@ fn icon_badge(entry: &InboxEntry) -> impl IntoElement {
     rect()
         .width(Size::px(32.))
         .height(Size::px(32.))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .center()
         .child(Icon::new(entry.icon.unwrap_or(icon)).size(24.).color(color))
 }
@@ -290,14 +291,14 @@ fn header(entry: &InboxEntry) -> impl IntoElement {
         .child(
             label()
                 .text(entry.title.clone())
-                .font_size(16.)
+                .font_size(text_size(16.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(title_color),
         )
         .child(
             label()
                 .text(entry.body.clone())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(body_color),
         )
 }
@@ -315,7 +316,7 @@ fn ttl_bar(entry: &InboxEntry, pct: f32) -> impl IntoElement {
             rect()
                 .width(Size::percent(pct.clamp(0.0, 100.0)))
                 .height(Size::px(4.))
-                .corner_radius(CornerRadius::new_all(60.))
+                .corner_radius(rounded(60.))
                 .background(color),
         )
 }
@@ -329,7 +330,7 @@ fn close_button(dispatch: crate::Actions, id: u64) -> impl IntoElement {
                 .size(ButtonSize::Icon)
                 .width(Size::px(28.))
                 .height(Size::px(28.))
-                .tooltip("Dismiss")
+                .tooltip(t("oneclient.common.dismiss"))
                 .tooltip_placement(TooltipPlacement::Left)
                 .on_press(move |_| dispatch.dismiss_toast(id))
                 .child(
@@ -399,7 +400,7 @@ fn action_row(
     let review_label = action
         .as_ref()
         .map(|a| a.label.clone())
-        .unwrap_or_else(|| "Review".to_string());
+        .unwrap_or_else(|| t("oneclient.components.toasts.review").to_string());
     let review_kind = action.map(|a| a.kind);
     let review_icon = match review_kind {
         Some(NotificationActionKind::OpenUrl(_)) => IconType::LinkExternal01,
@@ -419,7 +420,7 @@ fn action_row(
                 .width(Size::flex(1.0))
                 .on_press(move |_| dismiss.dismiss_toast(id))
                 .child(Icon::new(IconType::XClose).size(16.))
-                .text("Dismiss"),
+                .text(t("oneclient.common.dismiss")),
         )
         .child(
             Button::new()
@@ -459,14 +460,14 @@ fn progress_card(entry: &InboxEntry) -> Rect {
                     .child(
                         label()
                             .text(entry.title.clone())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
                     .child(
                         label()
                             .text(entry.body.clone())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .child(

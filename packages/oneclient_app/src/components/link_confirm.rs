@@ -4,7 +4,8 @@ use crate::components::{
     Button, CodeBlock, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup, copy_button,
 };
 use crate::hooks::{use_dispatch, use_link_confirm};
-use crate::theme::colors;
+use crate::i18n::t;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(PartialEq)]
@@ -21,13 +22,13 @@ impl Component for ConfirmLinkOverlay {
         let open_url = url.clone();
         let (title, body) = if is_first_party(&url) {
             (
-                "Leave the launcher?",
-                "This will open the page in your web browser.",
+                t("oneclient.components.link_confirm.first_party.title"),
+                t("oneclient.components.link_confirm.first_party.body"),
             )
         } else {
             (
-                "Open external link?",
-                "This link was provided by a third party. Only open it if you trust the source.",
+                t("oneclient.components.link_confirm.external.title"),
+                t("oneclient.components.link_confirm.external.body"),
             )
         };
 
@@ -46,7 +47,7 @@ impl Component for ConfirmLinkOverlay {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -62,7 +63,7 @@ impl Component for ConfirmLinkOverlay {
                                     .child(
                                         label()
                                             .text(title)
-                                            .font_size(16.)
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),
@@ -70,7 +71,7 @@ impl Component for ConfirmLinkOverlay {
                             .child(
                                 label()
                                     .text(body)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary()),
                             )
                             .child(
@@ -86,14 +87,14 @@ impl Component for ConfirmLinkOverlay {
                                     .spacing(8.)
                                     .child(copy_button(
                                         url.clone(),
-                                        "Link copied to your clipboard.",
+                                        t("oneclient.components.link_confirm.copied"),
                                         dispatch,
                                     ))
                                     .child(
                                         Button::new()
                                             .secondary()
                                             .on_press(move |_| pending.set(None))
-                                            .text("Cancel"),
+                                            .text(t("oneclient.common.cancel")),
                                     )
                                     .child(
                                         Button::new()
@@ -103,7 +104,7 @@ impl Component for ConfirmLinkOverlay {
                                                 pending.set(None);
                                             })
                                             .child(Icon::new(IconType::LinkExternal01).size(14.))
-                                            .text("Open link"),
+                                            .text(t("oneclient.components.link_confirm.open")),
                                     ),
                             ),
                     ),

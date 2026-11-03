@@ -437,6 +437,7 @@ async fn run_forge_processors(
                 data,
             )?);
         oneclient_common::process::no_window(command.as_std_mut());
+        oneclient_common::process::strip_appimage_env(command.as_std_mut());
 
         let output = command.output().await?;
 

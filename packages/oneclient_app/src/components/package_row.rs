@@ -9,12 +9,13 @@ use crate::essential::EssentialPackage;
 use freya::query::UseMutation;
 
 use crate::hooks::{
-    ClusterAction, ClusterMutation, EssentialGuardKind, Guarded, PendingEssential,
+    Actions, ClusterAction, ClusterMutation, EssentialGuardKind, Guarded, PendingEssential,
     disable_warnings, loaded_image, use_cached_image, use_cluster_mutation, use_disable_confirm,
-    use_disable_warnings, use_essential_guard,
+    use_disable_warnings, use_dispatch, use_essential_guard,
 };
+use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
@@ -25,7 +26,6 @@ pub(crate) const GRID_MIN_W: f32 = 290.;
 const GRID_CARD_PADDING: f32 = 14.;
 const BADGE_STRIP_H: f32 = 20.;
 const BADGE_STRIP_LIFT: f32 = 2.;
-const TAG_LETTER_SPACING: f32 = 0.6;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -72,12 +72,18 @@ pub struct PackageEntry {
     pub shadowed: bool,
     /// The user's own copy, older than the bundle's the loader picks over it
     pub outranked: bool,
+    /// Other copies of this mod the loader ignores, folded into this row
+    pub copies: Vec<PackageEntry>,
     /// Recency badge state cleared once the user views the list
     pub seen_status: SeenStatus,
     pub essential: Option<&'static EssentialPackage>,
     pub bisect_role: Option<BisectRole>,
     pub locked: bool,
     pub modpack: Option<String>,
+    /// RFC 3339 so string order matches time order
+    pub added_at: Option<String>,
+    /// When the installed version was released RFC 3339
+    pub published_at: Option<String>,
 }
 
 impl PackageEntry {
@@ -124,6 +130,7 @@ pub struct PackageRow {
     selected: bool,
     selecting: bool,
     on_select: EventHandler<()>,
+    on_copies: Option<EventHandler<()>>,
     key: DiffKey,
 }
 
@@ -138,6 +145,7 @@ impl PackageRow {
             selected: false,
             selecting: false,
             on_select: (|()| {}).into(),
+            on_copies: None,
             key: DiffKey::None,
         }
     }
@@ -149,6 +157,11 @@ impl PackageRow {
 
     pub fn on_context(mut self, on_context: impl Into<EventHandler<(f32, f32)>>) -> Self {
         self.on_context = on_context.into();
+        self
+    }
+
+    pub fn on_copies(mut self, on_copies: impl Into<EventHandler<()>>) -> Self {
+        self.on_copies = Some(on_copies.into());
         self
     }
 
@@ -166,7 +179,7 @@ impl PackageRow {
 }
 
 impl KeyExt for PackageRow {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -194,6 +207,7 @@ impl Component for PackageRow {
             let item = item.clone();
             let warnings = disable_warnings(&warnings_query);
             let pending_disable = use_disable_confirm();
+            let dispatch = use_dispatch();
             (move |()| {
                 let Some(action) = action.clone() else {
                     return;
@@ -208,6 +222,7 @@ impl Component for PackageRow {
                         warnings.clone(),
                         guard,
                         pending_disable,
+                        dispatch.clone(),
                     );
                     return;
                 }
@@ -217,6 +232,7 @@ impl Component for PackageRow {
         };
 
         let on_context = Some(self.on_context.clone());
+        let on_copies = self.on_copies.clone().filter(|_| !item.copies.is_empty());
 
         let (card, radius) = match layout {
             CardLayout::List => (
@@ -227,6 +243,7 @@ impl Component for PackageRow {
                     icon,
                     on_toggle,
                     on_context.clone(),
+                    on_copies,
                 ),
                 8.,
             ),
@@ -239,6 +256,7 @@ impl Component for PackageRow {
                     on_toggle,
                     true,
                     on_context.clone(),
+                    on_copies,
                     hovered,
                 ),
                 6.,
@@ -252,7 +270,7 @@ impl Component for PackageRow {
                 .width(Size::percent(100.))
                 .height(Size::percent(100.))
                 .layer(Layer::Relative(16))
-                .corner_radius(CornerRadius::new_all(radius))
+                .corner_radius(rounded(radius))
                 .maybe(self.selected, |el| {
                     el.background(colors::brand().with_a(28)).border(
                         border_all_color(2., colors::brand()).alignment(BorderAlignment::Inner),
@@ -315,6 +333,7 @@ pub(crate) fn disable_request(
         name,
         roots,
         bundles,
+        warned: Vec::new(),
     }
 }
 
@@ -366,7 +385,7 @@ pub(crate) fn disable_warning_body(
         Some(warnings) if bundled => warnings.body_for(&item.package_id).map(str::to_string),
         _ => item
             .essential
-            .map(|package| package.disable_body.to_string()),
+            .map(|package| (package.disable_body)().to_string()),
     }
 }
 
@@ -379,7 +398,7 @@ pub(crate) fn run_guarded(
     cluster: UseMutation<ClusterMutation>,
     mut guard: State<Option<PendingEssential>>,
 ) {
-    let Some(body) = guard_body(targets, &name, warnings) else {
+    let Some((body, _)) = guard_body(targets, &name, warnings) else {
         cluster.mutate(action);
         return;
     };
@@ -392,16 +411,26 @@ pub(crate) fn run_guarded(
 }
 
 pub(crate) fn guard_disable(
-    request: DisableRequest,
+    mut request: DisableRequest,
     targets: &[&PackageEntry],
     warnings: Option<oneclient_core::DisableWarnings>,
     mut guard: State<Option<PendingEssential>>,
     pending_disable: State<Option<disable::PendingDisable>>,
+    dispatch: Actions,
 ) {
-    let Some(body) = guard_body(targets, &request.name, warnings) else {
-        disable::request(request, pending_disable);
+    let acknowledged = crate::launcher::state()
+        .map(|state| state.settings.read().acknowledged_disable_warnings.clone())
+        .unwrap_or_default();
+    let targets: Vec<&PackageEntry> = targets
+        .iter()
+        .copied()
+        .filter(|p| !acknowledged.contains(&p.package_id))
+        .collect();
+    let Some((body, warned)) = guard_body(&targets, &request.name, warnings) else {
+        disable::request(request, pending_disable, dispatch);
         return;
     };
+    request.warned = warned;
     guard.set(Some(PendingEssential {
         name: request.name.clone(),
         body,
@@ -414,22 +443,22 @@ fn guard_body(
     targets: &[&PackageEntry],
     name: &str,
     warnings: Option<oneclient_core::DisableWarnings>,
-) -> Option<String> {
+) -> Option<(String, Vec<String>)> {
     let warned: Vec<(&PackageEntry, String)> = targets
         .iter()
         .filter_map(|p| Some((*p, disable_warning_body(p, warnings.clone())?)))
         .collect();
-    match warned.as_slice() {
-        [] => None,
-        [(p, body)] if p.name == name => Some(body.clone()),
-        _ => Some(
-            warned
-                .iter()
-                .map(|(p, body)| format!("**{}**\n\n{body}", p.name))
-                .collect::<Vec<_>>()
-                .join("\n\n"),
-        ),
-    }
+    let body = match warned.as_slice() {
+        [] => return None,
+        [(p, body)] if p.name == name => body.clone(),
+        _ => warned
+            .iter()
+            .map(|(p, body)| format!("**{}**\n\n{body}", p.name))
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+    };
+    let ids = warned.iter().map(|(p, _)| p.package_id.clone()).collect();
+    Some((body, ids))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -445,7 +474,7 @@ pub fn package_context_menu(
 ) -> ContextMenu {
     let mut menu = ContextMenu::new(x, y).title(item.name.clone()).action(
         IconType::Check,
-        "Select",
+        t("oneclient.components.package_row.select"),
         on_select,
     );
 
@@ -453,50 +482,66 @@ pub fn package_context_menu(
         let provider = item.provider;
         let package_id = item.package_id.clone();
         let package_type = package_type.to_string();
-        menu = menu.action(IconType::LinkExternal01, "View in browser", move |()| {
-            let _ = RouterContext::get().push(Route::BrowserPackage {
-                cluster_id,
-                package_type: package_type.clone(),
-                package_id: format!("{}:{}", provider as u8, package_id),
-                add_to_cluster: false,
-            });
-        });
+        menu = menu.action(
+            IconType::LinkExternal01,
+            t("oneclient.components.package_row.view_in_browser"),
+            move |()| {
+                let _ = RouterContext::get().push(Route::BrowserPackage {
+                    cluster_id,
+                    package_type: package_type.clone(),
+                    package_id: format!("{}:{}", provider as u8, package_id),
+                    add_to_cluster: false,
+                });
+            },
+        );
     }
 
     if let Some(url) = item.github_url.clone() {
-        menu = menu.action(IconType::LinkExternal01, "View in browser", move |()| {
-            crate::platform::open_url(&url);
-        });
+        menu = menu.action(
+            IconType::LinkExternal01,
+            t("oneclient.components.package_row.view_in_browser"),
+            move |()| {
+                crate::platform::open_url(&url);
+            },
+        );
     }
 
     if let Some(hash) = item.hash.clone() {
         menu = menu.action(
             IconType::Folder,
-            "View in folder",
+            t("oneclient.components.package_row.view_in_folder"),
             EventHandler::new_current(move |()| reveal_in_store(hash.clone())),
         );
     }
 
     if let Some(on_bundled) = on_bundled.filter(|_| item.in_bundle() && item.installed) {
         menu = if item.deleted {
-            menu.separator()
-                .action(IconType::RefreshCcw02, "Restore", on_bundled)
+            menu.separator().action(
+                IconType::RefreshCcw02,
+                t("oneclient.components.package_row.restore"),
+                on_bundled,
+            )
         } else {
-            menu.separator()
-                .danger_action(IconType::Trash01, "Delete", on_bundled)
+            menu.separator().danger_action(
+                IconType::Trash01,
+                t("oneclient.common.delete"),
+                on_bundled,
+            )
         };
     }
 
     if item.installed && !item.in_bundle() {
         let hash = item.hash.clone();
         let name = item.name.clone();
-        menu = menu
-            .separator()
-            .danger_action(IconType::Trash01, "Delete", move |()| {
+        menu = menu.separator().danger_action(
+            IconType::Trash01,
+            t("oneclient.common.delete"),
+            move |()| {
                 if let Some(hash) = &hash {
                     on_delete.call((name.clone(), hash.clone()));
                 }
-            });
+            },
+        );
     }
 
     menu
@@ -520,7 +565,9 @@ fn list_card(
     icon: impl IntoElement,
     on_toggle: EventHandler<()>,
     on_context: Option<EventHandler<(f32, f32)>>,
+    on_copies: Option<EventHandler<()>>,
 ) -> Element {
+    let copies = item.copies.len();
     rect()
         .horizontal()
         .width(Size::fill())
@@ -528,11 +575,12 @@ fn list_card(
         .cross_align(Alignment::Center)
         .spacing(12.)
         .padding(Gaps::new_all(10.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::card())
         .content(Content::Flex)
         .on_secondary_down(on_secondary(on_context.clone()))
         .child(package_info(item, package_type, cluster_id, icon))
+        .maybe_child(on_copies.map(|on_press| copies_button(copies, on_press)))
         .child(meta_size(item.size))
         .child(toggle_controlled(item.enabled, on_toggle).disabled(item.locked))
         .maybe_child(on_context.map(kebab_button))
@@ -548,6 +596,7 @@ pub(crate) fn grid_card(
     on_toggle: EventHandler<()>,
     navigable: bool, // if true, it takes the user to the mod page
     on_context: Option<EventHandler<(f32, f32)>>,
+    on_copies: Option<EventHandler<()>>,
     mut hovered: State<bool>,
 ) -> Element {
     let enabled = item.enabled;
@@ -583,7 +632,7 @@ pub(crate) fn grid_card(
                 .child(
                     label()
                         .text(title)
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -602,7 +651,7 @@ pub(crate) fn grid_card(
     let description = (!item.description.is_empty()).then(|| {
         label()
             .text(item.description.clone())
-            .font_size(11.)
+            .font_size(text_size(11.))
             .line_height(1.45)
             .max_lines(2)
             .text_overflow(TextOverflow::Ellipsis)
@@ -616,7 +665,9 @@ pub(crate) fn grid_card(
         || item.outranked
         || item.bisect_role.is_some()
         || item.modpack.is_some()
-        || item.recency_badge().is_some();
+        || item.recency_badge().is_some()
+        || on_copies.is_some();
+    let copies = item.copies.len();
     let floating = badged.then(|| {
         rect()
             .horizontal()
@@ -629,6 +680,7 @@ pub(crate) fn grid_card(
             .main_align(Alignment::End)
             .cross_align(Alignment::Center)
             .spacing(4.)
+            .maybe_child(on_copies.map(|on_press| copies_button(copies, on_press)))
             .maybe_child(item.modpack.as_deref().map(modpack_badge))
             .maybe_child(item.is_outdated().then(outdated_badge))
             .maybe_child(item.shadowed.then(shadowed_badge))
@@ -644,7 +696,7 @@ pub(crate) fn grid_card(
         .height(Size::fill())
         .spacing(9.)
         .padding(Gaps::new_all(GRID_CARD_PADDING))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(bg.with_a(alpha))
         .border(border_all_color(1., border))
         .content(Content::Flex)
@@ -707,12 +759,21 @@ fn grid_meta(
     } else if item.is_remote() {
         meta_text(item.provider.to_string(), muted)
     } else {
-        meta_text("Local file".to_string(), muted)
+        meta_text(
+            t("oneclient.components.package_row.local_file").to_string(),
+            muted,
+        )
     };
 
     let mut parts: Vec<Element> = Vec::new();
     if !item.author.is_empty() {
-        parts.push(meta_text(format!("by {}", item.author), muted));
+        parts.push(meta_text(
+            tf(
+                "oneclient.components.package_row.by_author",
+                &[&item.author],
+            ),
+            muted,
+        ));
     }
     if let Some(version) = &item.version {
         parts.push(meta_text(version.clone(), muted));
@@ -778,7 +839,7 @@ impl Component for SourceLink {
 pub(crate) fn meta_text(text: String, color: Color) -> Element {
     label()
         .text(text)
-        .font_size(11.)
+        .font_size(text_size(11.))
         .max_lines(1)
         .color(color)
         .into_element()
@@ -802,7 +863,7 @@ impl Component for KebabButton {
             .center()
             .width(Size::px(26.))
             .height(Size::px(26.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(if *hovered.read() {
                 colors::ghost_overlay_hover()
             } else {
@@ -897,7 +958,7 @@ fn package_info(
                         .child(
                             label()
                                 .text(title)
-                                .font_size(15.)
+                                .font_size(text_size(15.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
@@ -930,8 +991,11 @@ fn package_info(
                 .maybe(!item.author.is_empty(), |el| {
                     el.child(
                         label()
-                            .text(format!("by {}", item.author))
-                            .font_size(10.)
+                            .text(tf(
+                                "oneclient.components.package_row.by_author",
+                                &[&item.author],
+                            ))
+                            .font_size(text_size(10.))
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
@@ -942,7 +1006,7 @@ fn package_info(
                     el.child(
                         label()
                             .text(item.description.clone())
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(2)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
@@ -973,7 +1037,7 @@ pub(crate) fn remote_icon(
             .width(Size::px(size))
             .height(Size::px(size))
             .aspect_ratio(AspectRatio::Min)
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .fallback(icon_box(IconType::DotsGrid, size))
             .into_element(),
 
@@ -987,7 +1051,7 @@ pub(crate) fn icon_box(icon: IconType, size: f32) -> Element {
         .center()
         .width(Size::px(size))
         .height(Size::px(size))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .child(
             Icon::new(icon)
@@ -1002,7 +1066,7 @@ pub(crate) fn meta_size(size: u64) -> impl IntoElement {
         .maybe_child((size > 0).then(|| {
             label()
                 .text(format_size(size))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary())
         }))
         .into_element()
@@ -1023,41 +1087,72 @@ pub fn github_badge() -> Element {
 }
 
 fn outdated_badge() -> Element {
-    status_tag("Update available", colors::brand())
+    status_tag(
+        t("oneclient.components.package_row.update_available"),
+        colors::brand(),
+    )
+}
+
+fn copies_button(ignored: usize, on_press: EventHandler<()>) -> Element {
+    rect()
+        .cursor(CursorIcon::Pointer)
+        .on_press(move |e: Event<PressEventData>| {
+            e.stop_propagation();
+            on_press.call(());
+        })
+        .child(accent_badge(
+            Icon::new(IconType::Copy01)
+                .size(12.)
+                .color(colors::brand())
+                .into_element(),
+            tf("oneclient.components.package_row.copies", &[&(ignored + 1)]),
+            colors::brand(),
+        ))
+        .into_element()
 }
 
 fn shadowed_badge() -> Element {
-    status_tag("Using your copy", colors::brand())
+    pill(
+        None,
+        t("oneclient.components.package_row.shadowed").to_string(),
+        colors::brand(),
+    )
 }
 
 fn outranked_badge() -> Element {
-    status_tag("Using bundle's newer copy", colors::brand())
+    pill(
+        None,
+        t("oneclient.components.package_row.outranked").to_string(),
+        colors::brand(),
+    )
 }
 
 fn new_badge() -> Element {
-    status_tag("New", colors::success())
+    status_tag(t("oneclient.components.package_row.new"), colors::success())
 }
 
 fn updated_badge() -> Element {
-    status_tag("Updated", colors::success())
+    status_tag(
+        t("oneclient.components.package_row.updated"),
+        colors::success(),
+    )
 }
 
 fn status_tag(text: impl Into<String>, accent: Color) -> Element {
     rect()
-        .corner_radius(CornerRadius::new_all(4.))
+        .corner_radius(rounded(4.))
         .background(colors::component_bg())
         .child(
             rect()
-                .padding(Gaps::new(1., 6., 3., 6. + TAG_LETTER_SPACING))
-                .corner_radius(CornerRadius::new_all(4.))
+                .padding(Gaps::new(1., 6., 2., 6.))
+                .corner_radius(rounded(4.))
                 .background(accent.with_a(38))
                 .border(border_all_color(1., accent.with_a(96)))
                 .child(
                     label()
-                        .text(text.into().to_uppercase())
-                        .font_size(9.)
-                        .font_weight(FontWeight::BOLD)
-                        .letter_spacing(TAG_LETTER_SPACING)
+                        .text(text.into())
+                        .font_size(text_size(10.))
+                        .font_weight(FontWeight::SEMI_BOLD)
                         .color(accent),
                 ),
         )
@@ -1080,7 +1175,7 @@ fn local_badge() -> Element {
             .size(12.)
             .color(colors::fg_secondary())
             .into_element(),
-        "Local file".to_string(),
+        t("oneclient.components.package_row.local_file").to_string(),
     )
 }
 
@@ -1098,14 +1193,14 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
         .cross_align(Alignment::Center)
         .spacing(4.)
         .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .border(border_all_color(1., colors::component_border()))
         .background(colors::component_bg())
         .maybe_child(icon)
         .child(
             label()
                 .text(text)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(accent),
         )

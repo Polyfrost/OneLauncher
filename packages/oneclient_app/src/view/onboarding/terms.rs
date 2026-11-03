@@ -10,9 +10,10 @@ use crate::hooks::{
     TermsQuery, has_migration_data, terms_document, terms_error, terms_is_loading, use_dispatch,
     use_migration, use_onboarding_selection, use_settings_snapshot, use_terms,
 };
+use crate::i18n::t;
 use crate::platform::open_url;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_page, step_heading};
 
@@ -89,15 +90,14 @@ impl Component for OnboardingTerms {
             .spacing(16.)
             .child(step_heading(
                 if returning {
-                    "Terms & Privacy updated"
+                    t("oneclient.onboarding.terms.updated.title")
                 } else {
-                    "Terms & Privacy"
+                    t("oneclient.onboarding.terms.title")
                 },
                 if returning {
-                    "We've updated these since you last accepted. Review and accept to carry on \
-                     where you left off."
+                    t("oneclient.onboarding.terms.updated.subtitle")
                 } else {
-                    "Please read and accept these before continuing."
+                    t("oneclient.onboarding.terms.subtitle")
                 },
             ))
             .maybe_child(tabs)
@@ -132,7 +132,7 @@ impl Component for OnboardingTerms {
             .width(Size::fill())
             .height(Size::fill())
             .child(onboarding_page(
-                onboarding_illustration(IconType::File02),
+                onboarding_illustration(IconType::OnboardingTerms),
                 content,
                 nav,
             ))
@@ -146,7 +146,7 @@ fn panel(child: impl IntoElement) -> impl IntoElement {
         .width(Size::fill())
         .height(Size::px(220.))
         .content(Content::Flex)
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(child)
@@ -160,8 +160,8 @@ fn loading_body() -> Element {
             .center()
             .child(
                 label()
-                    .text("Loading the Terms of Service and Privacy Policy...")
-                    .font_size(13.)
+                    .text(t("oneclient.onboarding.terms.loading"))
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             ),
     )
@@ -170,8 +170,8 @@ fn loading_body() -> Element {
 
 fn tab_switcher(tab: State<LegalTab>) -> Element {
     SegmentedControl::new(tab)
-        .segment(Segment::new(LegalTab::Terms).label("Terms"))
-        .segment(Segment::new(LegalTab::Privacy).label("Privacy"))
+        .segment(Segment::new(LegalTab::Terms).label(t("oneclient.onboarding.terms.tab.terms")))
+        .segment(Segment::new(LegalTab::Privacy).label(t("oneclient.onboarding.terms.tab.privacy")))
         .into_element()
 }
 
@@ -218,25 +218,22 @@ fn fallback_body(error: Option<&str>, query: UseQuery<TermsQuery>) -> Element {
             )
             .child(
                 label()
-                    .text("Couldn't load the Terms of Service or Privacy Policy.")
-                    .font_size(14.)
+                    .text(t("oneclient.onboarding.terms.load_failed.title"))
+                    .font_size(text_size(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
             .child(
                 label()
-                    .text(
-                        "Open them in your browser using the links below, or try again once \
-                         you're back online.",
-                    )
-                    .font_size(12.)
+                    .text(t("oneclient.onboarding.terms.load_failed.description"))
+                    .font_size(text_size(12.))
                     .text_align(TextAlign::Center)
                     .color(colors::fg_secondary()),
             )
             .maybe_child(error.map(|err| {
                 label()
                     .text(err.to_string())
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .max_lines(2)
                     .color(colors::fg_secondary().with_a(160))
             }))
@@ -247,7 +244,7 @@ fn fallback_body(error: Option<&str>, query: UseQuery<TermsQuery>) -> Element {
                     .on_press(move |_| {
                         query.invalidate();
                     })
-                    .text("Retry")
+                    .text(t("oneclient.common.retry"))
                     .child(Icon::new(IconType::RefreshCw01).size(14.)),
             ),
     )
@@ -259,8 +256,14 @@ fn link_row(terms_url: String, privacy_url: String) -> impl IntoElement {
         .horizontal()
         .width(Size::fill())
         .spacing(10.)
-        .child(external_link_button("Terms of Service", terms_url))
-        .child(external_link_button("Privacy Policy", privacy_url))
+        .child(external_link_button(
+            t("oneclient.onboarding.terms.link.terms"),
+            terms_url,
+        ))
+        .child(external_link_button(
+            t("oneclient.onboarding.terms.link.privacy"),
+            privacy_url,
+        ))
         .into_element()
 }
 
@@ -295,7 +298,7 @@ fn terms_nav(
                 .on_press(move |_| {
                     let _ = RouterContext::get().replace(route.clone());
                 })
-                .text("Back")
+                .text(t("oneclient.common.back"))
                 .into_element()
         }))
         .child(
@@ -303,7 +306,7 @@ fn terms_nav(
                 .secondary()
                 .width(Size::px(140.))
                 .on_press(move |_| on_decline())
-                .text("Decline")
+                .text(t("oneclient.onboarding.terms.decline"))
                 .child(Icon::new(IconType::X).size(16.)),
         )
         .child(
@@ -312,7 +315,7 @@ fn terms_nav(
                 .width(Size::px(140.))
                 .enabled(accept_enabled)
                 .on_press(move |_| on_accept())
-                .text("Accept")
+                .text(t("oneclient.onboarding.terms.accept"))
                 .child(Icon::new(IconType::Check).size(16.)),
         )
         .into_element()
@@ -336,7 +339,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(border_all_color(1., colors::danger()))
                         .child(
@@ -351,31 +354,24 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                                 )
                                 .child(
                                     label()
-                                        .text("Continue without accepting?")
-                                        .font_size(16.)
+                                        .text(t("oneclient.onboarding.terms.decline_modal.title"))
+                                        .font_size(text_size(16.))
                                         .font_weight(FontWeight::SEMI_BOLD)
                                         .color(colors::fg_primary()),
                                 ),
                         )
                         .child(
                             label()
-                                .text(
-                                    "This will disable access to world hosting, \
-                                     all social features, the OneClient nametag indicator, \
-                                     and more.",
-                                )
-                                .font_size(12.)
+                                .text(t("oneclient.onboarding.terms.decline_modal.description"))
+                                .font_size(text_size(12.))
                                 .width(Size::fill())
                                 .max_lines(4)
                                 .color(colors::fg_secondary()),
                         )
                         .child(
                             label()
-                                .text(
-                                    "You can accept later under Settings > Launcher. That takes \
-                                     effect after a restart.",
-                                )
-                                .font_size(11.)
+                                .text(t("oneclient.onboarding.terms.decline_modal.note"))
+                                .font_size(text_size(11.))
                                 .width(Size::fill())
                                 .max_lines(3)
                                 .color(colors::fg_secondary().with_a(180)),
@@ -390,13 +386,13 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                                     Button::new()
                                         .secondary()
                                         .on_press(move |_| confirming.set(false))
-                                        .text("Cancel"),
+                                        .text(t("oneclient.common.cancel")),
                                 )
                                 .child(
                                     Button::new()
                                         .danger()
                                         .on_press(move |_| on_confirm())
-                                        .text("Decline"),
+                                        .text(t("oneclient.onboarding.terms.decline")),
                                 ),
                         ),
                 ),

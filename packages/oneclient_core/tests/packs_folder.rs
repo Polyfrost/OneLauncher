@@ -231,7 +231,7 @@ async fn packs_survive_hand_edits_and_dedicated_clusters_keep_their_own() {
         .unwrap();
     let leaving = state.clusters.get(leaving.id).await.unwrap();
     let leaving_dir = leaving.dir().unwrap();
-    oneclient_core::game::leave_shared_folder(&state.services, &leaving, &leaving_dir)
+    oneclient_core::game::leave_shared_folder(&state.services, &leaving, &leaving_dir, None)
         .await
         .unwrap();
     materialize_content(&state.services, &leaving, &leaving_dir, false)

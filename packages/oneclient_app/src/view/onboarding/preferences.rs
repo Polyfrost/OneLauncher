@@ -2,8 +2,9 @@ use freya::prelude::*;
 
 use crate::components::{IconType, toggle};
 use crate::hooks::{use_dispatch, use_onboarding_selection, use_settings_snapshot};
+use crate::i18n::t;
 use crate::routes::Route;
-use crate::view::app::settings::settings_row;
+use crate::view::app::settings::{settings_row, theme_cards};
 use crate::view::onboarding::{
     onboarding_illustration, onboarding_nav, onboarding_page, step_heading,
 };
@@ -31,6 +32,7 @@ impl Component for OnboardingPreferences {
         });
 
         let mut first = use_state(|| true);
+        let persist = dispatch.clone();
         use_side_effect(move || {
             let parallax = *parallax_on.read();
             let animations = *animations_on.read();
@@ -38,10 +40,10 @@ impl Component for OnboardingPreferences {
                 first.set(false);
                 return;
             }
-            let mut next = settings.clone();
-            next.dynamic_background_enabled = parallax;
-            next.animations_enabled = animations;
-            dispatch.set_settings(next);
+            persist.edit_settings(|settings| {
+                settings.dynamic_background_enabled = parallax;
+                settings.animations_enabled = animations;
+            });
         });
 
         let content = rect()
@@ -49,9 +51,10 @@ impl Component for OnboardingPreferences {
             .width(Size::fill())
             .spacing(20.)
             .child(step_heading(
-                "Accessibility",
-                "Tune the launcher to your comfort. You can change these later in settings.",
+                t("oneclient.onboarding.preferences.title"),
+                t("oneclient.onboarding.preferences.subtitle"),
             ))
+            .child(theme_cards(&settings.theme, dispatch))
             .child(
                 rect()
                     .vertical()
@@ -59,14 +62,14 @@ impl Component for OnboardingPreferences {
                     .spacing(8.)
                     .child(settings_row(
                         IconType::Play,
-                        "Animations",
-                        "Whether all launcher animations and transitions should be enabled.",
+                        t("oneclient.onboarding.preferences.animations.title"),
+                        t("oneclient.onboarding.preferences.animations.description"),
                         toggle(animations_on),
                     ))
                     .child(settings_row(
                         IconType::Eye,
-                        "Parallax background",
-                        "Make the background drift with your cursor. Turning it off disables the motion.",
+                        t("oneclient.onboarding.preferences.parallax.title"),
+                        t("oneclient.onboarding.preferences.parallax.description"),
                         toggle(parallax_on),
                     )),
             )

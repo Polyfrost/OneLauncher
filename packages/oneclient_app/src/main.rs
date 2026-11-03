@@ -11,9 +11,9 @@ use oneclient_app::state::{AppChannel, AppState, LauncherInit};
 use oneclient_app::{
     Actions, ConfirmLinkOverlay, DisableConfirmState, DisableDependentsOverlay,
     EssentialConfirmOverlay, EssentialGuardState, EventPump, LinkConfirmState, StartMaximizedState,
-    cli, constants, events, microsoft_java, platform, router, theme, use_provide_actions,
-    use_provide_disable_confirm, use_provide_essential_guard, use_provide_link_confirm,
-    use_provide_start_maximized, use_settings_snapshot,
+    cli, constants, events, microsoft_java, platform, router, theme, translations,
+    use_provide_actions, use_provide_disable_confirm, use_provide_essential_guard,
+    use_provide_link_confirm, use_provide_start_maximized, use_settings_snapshot,
 };
 use std::cell::Cell;
 use tokio::runtime::Builder;
@@ -29,7 +29,7 @@ impl App for OneClientApp {
     fn render(&self) -> impl IntoElement {
         let needs_location = self.needs_location;
 
-        // Radio state is `!Send` so every writer runs on the UI thread `spawn_forever`
+        // Radio state is `!Send` so every writer runs on the UI thread `spawn_in_window`
         let station = use_init_radio_station::<AppState, AppChannel>(move || AppState {
             launcher: LauncherInit {
                 needs_location,
@@ -46,7 +46,7 @@ impl App for OneClientApp {
             let (events_bus, events_rx) = oneclient_events::EventBus::channel();
             let actions = Actions::new(station, signals_tx, events_bus.clone());
 
-            spawn_forever(
+            spawn_in_window(
                 EventPump {
                     events: events_rx,
                     signals: signals_rx,
@@ -58,7 +58,7 @@ impl App for OneClientApp {
             if !needs_location {
                 let startup = actions.clone();
                 let rescue_bus = events_bus.clone();
-                spawn_forever(async move {
+                spawn_in_window(async move {
                     match events::start_launcher(station, events_bus).await {
                         // Must follow startup `sync_bundles` needs the launcher handle and firing
                         // it early leaves `syncing_bundles` stuck disabling every launch button
@@ -102,14 +102,36 @@ impl App for OneClientApp {
         let mut palette_revision = use_state(|| 0u32);
         theme::colors::bind_revision(palette_revision);
         let appearance = use_settings_snapshot().settings;
-        theme::colors::apply(appearance.theme, appearance.accent_color.as_deref());
-        use_side_effect_with_deps(&(appearance.theme, appearance.accent_color), move |_| {
+        let platform = Platform::get().current_window();
+        let system_dark = *platform.preferred_theme.read() == PreferredTheme::Dark;
+        let scale_factor = *platform.scale_factor.read() as f32;
+        let theme_id = theme::system_aware(&appearance.theme, system_dark).to_string();
+        theme::colors::apply(&theme_id, appearance.accent_color.as_deref());
+        theme::set_scale_factor(scale_factor);
+        let deps = (theme_id, appearance.accent_color, scale_factor.to_bits());
+        use_side_effect_with_deps(&deps, move |_| {
             *palette_revision.write() += 1;
+        });
+
+        let mut language_revision = use_state(|| 0u32);
+        translations::bind_revision(language_revision);
+        use_hook(move || {
+            let mut rx = translations::subscribe();
+            spawn(async move {
+                while rx.changed().await.is_ok() {
+                    *language_revision.write() += 1;
+                }
+            });
+        });
+        use_side_effect_with_deps(&appearance.language, |language| {
+            translations::select(language.clone());
         });
 
         rect()
             .width(Size::fill())
             .height(Size::fill())
+            .font_family(theme::font())
+            .font_size(theme::text_size(16.))
             .child(ConfirmLinkOverlay)
             .child(DisableDependentsOverlay)
             .child(EssentialConfirmOverlay)
@@ -118,11 +140,6 @@ impl App for OneClientApp {
 }
 
 fn main() {
-    #[cfg(target_os = "linux")]
-    unsafe {
-        gtk_sys::gtk_disable_setlocale();
-    }
-
     let cli = cli::parse();
 
     let mut builder = Builder::new_multi_thread();
@@ -212,7 +229,8 @@ fn main() {
     #[cfg(target_os = "macos")]
     oneclient_app::platform::macos::loop_memory_collector();
 
-    theme::colors::apply(settings.theme, settings.accent_color.as_deref());
+    theme::colors::apply(&settings.theme, settings.accent_color.as_deref());
+    translations::init(settings.language.clone());
 
     let start_maximized = settings.start_maximized;
     let show_tray_icon = settings.show_tray_icon;
@@ -280,7 +298,7 @@ fn main() {
         launch_config = launch_config.with_plugin(platform::frame::FramePlugin);
     }
 
-    if show_tray_icon && platform::tray::available() {
+    if show_tray_icon {
         launch_config = launch_config.with_tray(platform::tray::build, platform::tray::handle);
     }
 

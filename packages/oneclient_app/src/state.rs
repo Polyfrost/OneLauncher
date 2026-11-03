@@ -7,7 +7,7 @@ use std::sync::Arc;
 use freya::radio::RadioChannel;
 use oneclient_common::domain::ProviderId;
 use oneclient_content::packages::release_migration::ReleaseMigrationPlan;
-use oneclient_core::clusters::Cluster;
+use oneclient_core::clusters::{Cluster, DirTarget};
 use oneclient_core::relocate::{RelocationOutcome, RelocationPlan};
 use oneclient_core::settings::LauncherSettings;
 use oneclient_events::LaunchStage;
@@ -123,7 +123,6 @@ pub enum ReleasePlanState {
 pub struct ReleaseMigrationPrompt {
     pub key: String,
     pub target: Cluster,
-    pub target_dedicated: bool,
     pub java_major: Option<u32>,
     pub sources: Vec<Cluster>,
     pub selected: i64,
@@ -137,6 +136,12 @@ impl ReleaseMigrationPrompt {
         self.sources
             .iter()
             .find(|cluster| cluster.id == self.selected)
+    }
+
+    #[must_use]
+    pub fn can_copy_configs(&self) -> bool {
+        self.source()
+            .is_some_and(|source| !source.shares_dir_with(&self.target))
     }
 
     #[must_use]
@@ -353,26 +358,29 @@ pub struct GameState {
     /// Launches started from the UI but not yet answered by core which takes a few
     /// hundred ms every click in that window otherwise spawns its own game
     pending: HashSet<i64>,
-    shared_syncs: HashSet<i64>,
+    shared_syncs: HashMap<i64, Vec<DirTarget>>,
+    update_checks: HashSet<i64>,
 }
 
 impl GameState {
-    pub fn set_shared_sync(&mut self, cluster_id: i64, syncing: bool) {
-        if syncing {
-            self.shared_syncs.insert(cluster_id);
-        } else {
-            self.shared_syncs.remove(&cluster_id);
-        }
+    pub fn start_shared_sync(&mut self, cluster_id: i64, folders: Vec<DirTarget>) {
+        self.shared_syncs.insert(cluster_id, folders);
+    }
+
+    pub fn end_shared_sync(&mut self, cluster_id: i64) {
+        self.shared_syncs.remove(&cluster_id);
     }
 
     #[must_use]
     pub fn is_syncing_shared(&self, cluster_id: i64) -> bool {
-        self.shared_syncs.contains(&cluster_id)
+        self.shared_syncs.contains_key(&cluster_id)
     }
 
     #[must_use]
-    pub fn any_shared_sync(&self) -> bool {
-        !self.shared_syncs.is_empty()
+    pub fn shared_sync_touches(&self, folder: &DirTarget) -> bool {
+        self.shared_syncs
+            .values()
+            .any(|folders| folders.contains(folder))
     }
 
     #[must_use]
@@ -396,11 +404,32 @@ impl GameState {
 
     /// Returns false if a launch is already in flight the re-entrancy guard
     pub fn begin_launch(&mut self, cluster_id: i64) -> bool {
-        if self.block_for(cluster_id).is_some() {
+        if self.block_for(cluster_id).is_some() || self.is_checking_updates(cluster_id) {
             return false;
         }
         self.pending.insert(cluster_id);
         true
+    }
+
+    pub fn begin_update_check(&mut self, cluster_id: i64) -> bool {
+        if self.block_for(cluster_id).is_some() || self.any_update_check() {
+            return false;
+        }
+        self.update_checks.insert(cluster_id)
+    }
+
+    pub fn finish_update_check(&mut self, cluster_id: i64) {
+        self.update_checks.remove(&cluster_id);
+    }
+
+    #[must_use]
+    pub fn any_update_check(&self) -> bool {
+        !self.update_checks.is_empty()
+    }
+
+    #[must_use]
+    pub fn is_checking_updates(&self, cluster_id: i64) -> bool {
+        self.update_checks.contains(&cluster_id)
     }
 
     fn block_for(&self, cluster_id: i64) -> Option<LaunchBlock> {
@@ -502,6 +531,20 @@ mod tests {
         assert!(game.begin_launch(1));
         game.finish_launch(1);
         assert!(game.begin_launch(1));
+    }
+
+    #[test]
+    fn an_update_check_and_a_launch_hold_each_other_off() {
+        let mut game = GameState::default();
+
+        assert!(game.begin_update_check(1));
+        assert!(!game.begin_update_check(1));
+        assert!(!game.begin_update_check(3));
+        assert!(!game.begin_launch(1));
+        assert!(game.begin_launch(2));
+        game.finish_update_check(1);
+        assert!(game.begin_launch(1));
+        assert!(!game.begin_update_check(1));
     }
 
     #[test]
@@ -729,19 +772,25 @@ mod tests {
         let shared = cluster(1);
         let dedicated = Cluster {
             kind: oneclient_db::models::ClusterKind::Vanilla,
+            dir_target: DirTarget::Dedicated,
             ..cluster(2)
         };
-        let clusters = [shared, dedicated];
+        let elsewhere = Cluster {
+            dir_target: DirTarget::Shared(Some("Friends".to_string())),
+            ..cluster(4)
+        };
+        let clusters = [shared, dedicated, elsewhere];
 
-        game.set_shared_sync(3, true);
+        game.start_shared_sync(3, vec![DirTarget::Shared(None), DirTarget::Dedicated]);
         assert!(shared_dir_taken(&game, &clusters, 1));
         assert!(!shared_dir_taken(&game, &clusters, 2));
+        assert!(!shared_dir_taken(&game, &clusters, 4));
         assert_eq!(
             launch_button_state(&game, 3, false, false),
             ("Syncing", false)
         );
 
-        game.set_shared_sync(3, false);
+        game.end_shared_sync(3);
         assert!(!shared_dir_taken(&game, &clusters, 1));
     }
 }

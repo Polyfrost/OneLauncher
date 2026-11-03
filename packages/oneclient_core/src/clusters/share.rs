@@ -36,6 +36,7 @@ pub struct SharedCluster {
     pub bundled: Vec<(ContentType, u64)>,
     pub notices: Vec<String>,
     pub substituted: bool,
+    pub mods_checked: bool,
 }
 
 impl SharedCluster {
@@ -62,7 +63,12 @@ impl SharedCluster {
         for content_type in &self.extras.embedded {
             count_content(&mut summary, *content_type);
         }
-        summary.unverified = self.extras.embedded.len();
+        summary.unverified = self
+            .extras
+            .embedded
+            .iter()
+            .filter(|content_type| !self.mods_checked || **content_type != ContentType::Mod)
+            .count();
         if self.share.kind.is_isolated() || self.share.dedicated_dir {
             summary.other_files += self.extras.other_files;
         }
@@ -644,6 +650,8 @@ async fn apply_shared_settings(
     }
 
     if !cluster.is_isolated()
+        && share.dedicated_dir != cluster.uses_dedicated_dir()
+        && cluster.shared_group().is_none()
         && let Err(err) = state
             .clusters
             .set_dedicated_dir(cluster.id, share.dedicated_dir, false)

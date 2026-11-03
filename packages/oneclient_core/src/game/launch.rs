@@ -114,6 +114,9 @@ async fn start(
     }
 
     let existing = state.clusters.get(cluster_id).await?;
+    if let Some(group) = existing.missing_shared_group() {
+        return Err(GameError::SharedFolderMissing(group).into());
+    }
 
     let game_dir = existing.game_dir()?;
     let dedicated = existing.uses_dedicated_dir();
@@ -289,7 +292,13 @@ async fn start(
             .await?
     };
 
-    match game_files_missing(&version_info, &java.os_arch, updated) {
+    // Stats every library and the asset tree, the same work `plan_downloads`
+    // already keeps off the runtime threads. `block_in_place` because
+    // `VersionInfo` is not `Clone` and the sweep only reads it
+    let missing = tokio::task::block_in_place(|| {
+        game_files_missing(&version_info, &java.os_arch, updated)
+    });
+    match missing {
         Ok(true) => {
             tracing::info!(cluster_id, "missing game files; repairing");
             let _ = state
@@ -1032,6 +1041,7 @@ fn shell_quote(arg: &str) -> String {
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     command.env_remove("_JAVA_OPTIONS");
+    oneclient_common::process::strip_appimage_env(command.as_std_mut());
     #[cfg(all(unix, not(target_os = "macos")))]
     command.env("LC_ALL", "C.UTF-8");
 
@@ -1065,6 +1075,7 @@ async fn run_hook(hook: Option<&str>, cwd: &Path) -> Option<String> {
     command.stderr(Stdio::piped());
     command.stdin(Stdio::null());
     oneclient_common::process::no_window(command.as_std_mut());
+    oneclient_common::process::strip_appimage_env(command.as_std_mut());
 
     let mut child = match command.spawn() {
         Ok(child) => child,

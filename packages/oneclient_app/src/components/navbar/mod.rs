@@ -7,6 +7,7 @@ pub use onboarding_navbar::OnboardingNavbar;
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType};
+use crate::i18n::t;
 
 pub(super) fn navbar_button(foreground: Option<Color>) -> Button {
     Button::new()
@@ -44,19 +45,19 @@ pub fn window_controls_with(foreground: Option<Color>) -> impl IntoElement {
         .layer(Layer::OverlayLevel(15))
         .child(
             navbar_button(foreground)
-                .tooltip("Minimize")
+                .tooltip(t("oneclient.components.navbar.minimize"))
                 .child(Icon::new(IconType::Minus))
                 .on_press(minimize),
         )
         .child(
             navbar_button(foreground)
-                .tooltip("Maximize")
+                .tooltip(t("oneclient.components.navbar.maximize"))
                 .child(Icon::new(IconType::Maximize01).size(20.))
                 .on_press(maximize),
         )
         .child(
             navbar_button(foreground)
-                .tooltip("Close")
+                .tooltip(t("oneclient.common.close"))
                 .child(Icon::new(IconType::X))
                 .on_press(close),
         )

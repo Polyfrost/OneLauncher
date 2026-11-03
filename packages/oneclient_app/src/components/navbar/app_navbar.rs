@@ -4,6 +4,7 @@ use freya::{
     router::{RouterContext, use_route},
 };
 
+use crate::theme::{rounded, text_size};
 use crate::{
     Route,
     components::{Avatar, Icon, IconType},
@@ -11,6 +12,7 @@ use crate::{
         settled_or_loading, try_default_account, use_active_cluster_id, use_browser_type,
         use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
     },
+    i18n::t,
     theme,
     utils::default_cluster,
 };
@@ -125,13 +127,7 @@ struct NavbarLogo {
 
 impl Component for NavbarLogo {
     fn render(&self) -> impl IntoElement {
-        let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
-
-        SvgViewer::new(("logo.svg", bytes.read().cloned()))
-            .show_loader(false)
-            .height(Size::px(44.))
-            .width(Size::px(214.))
-            .color(primary_color(self.over_art))
+        theme::wordmark(214., 44., primary_color(self.over_art))
     }
 }
 
@@ -153,13 +149,13 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
         .child(NavLink {
             active: route == Route::Home {},
             target: NavTarget::Route(Route::Home {}),
-            nav_label: "Home",
+            nav_label: t("oneclient.components.navbar.home"),
             over_art,
         })
         .child(NavLink {
             active: route == Route::Clusters {},
             target: NavTarget::Route(Route::Clusters {}),
-            nav_label: "Versions",
+            nav_label: t("oneclient.components.navbar.versions"),
             over_art,
         })
         .child(NavLink {
@@ -171,13 +167,13 @@ fn navbar_center(is_small: bool) -> impl IntoElement {
                 }
             ),
             target: NavTarget::Route(browse_target),
-            nav_label: "Browse",
+            nav_label: t("oneclient.components.navbar.browse"),
             over_art,
         })
         .child(NavLink {
             active: route == Route::Wardrobe {},
             target: NavTarget::Route(Route::Wardrobe {}),
-            nav_label: "Wardrobe",
+            nav_label: t("oneclient.components.navbar.wardrobe"),
             over_art,
         })
 }
@@ -242,7 +238,7 @@ impl Component for NavLink {
             .cross_align(Alignment::Center)
             .height(Size::px(36.))
             .width(Size::px(nav_label.len() as f32 * 10. + 34.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(background)
             .maybe(active, |el| {
                 el.border(
@@ -270,7 +266,7 @@ impl Component for NavLink {
             .child(
                 label()
                     .text(nav_label)
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(if active {
                         FontWeight::MEDIUM
                     } else {
@@ -318,20 +314,20 @@ impl Component for NavbarRight {
             .spacing(8.)
             .child(
                 super::navbar_button(foreground)
-                    .tooltip("Stats")
+                    .tooltip(t("oneclient.components.navbar.stats"))
                     .child(Icon::new(IconType::LineChartUp01).size(20.))
                     .on_press(open_stats),
             )
             .child(
                 super::navbar_button(foreground)
-                    .tooltip("Notifications")
+                    .tooltip(t("oneclient.components.navbar.notifications"))
                     .child(notification_bell(unread))
                     .on_press(open_notifications),
             )
             .child(
                 super::navbar_button(foreground)
                     .overflow(Overflow::None)
-                    .tooltip("Control Center")
+                    .tooltip(t("oneclient.components.navbar.control_center"))
                     .padding(0.0)
                     .on_press(open_control_center)
                     .child(avatar_with_gear(account_uuid)),
@@ -351,7 +347,7 @@ fn avatar_with_gear(uuid: String) -> impl IntoElement {
                 .position(Position::new_absolute().bottom(-7.).right(-7.))
                 .width(Size::px(16.))
                 .height(Size::px(16.))
-                .corner_radius(CornerRadius::from(7.))
+                .corner_radius(rounded(7.))
                 .background(theme::colors::page_elevated())
                 .border(
                     Border::new()
@@ -379,7 +375,7 @@ fn notification_bell(unread: usize) -> impl IntoElement {
                 .position(Position::new_absolute().top(-4.).right(-4.))
                 .width(Size::px(16.))
                 .height(Size::px(16.))
-                .corner_radius(CornerRadius::from(8.))
+                .corner_radius(rounded(8.))
                 .background(theme::colors::danger())
                 .layer(Layer::Relative(3))
                 .center()
@@ -390,7 +386,7 @@ fn notification_bell(unread: usize) -> impl IntoElement {
                         } else {
                             unread.to_string()
                         })
-                        .font_size(10.)
+                        .font_size(text_size(10.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(theme::colors::fg_primary()),
                 )

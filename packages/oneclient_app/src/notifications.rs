@@ -1,9 +1,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::time::{Duration, Instant};
 
-use oneclient_content::modpacks::{BlockedFile, ModpackSummary};
+use oneclient_content::modpacks::{BlockedFile, ModpackSummary, UnlistedMod};
 use oneclient_content::packages::ProviderId;
 use oneclient_core::BrowserPackageUpdate;
+use oneclient_core::UnpublishedFile;
 use oneclient_core::clusters::{FlaggedModpack, FlaggedPackMod};
 use oneclient_db::models::{ClusterId, OptionalModStatus};
 use oneclient_events::{
@@ -14,6 +15,7 @@ use tokio::sync::oneshot;
 use uuid::Uuid;
 
 use crate::components::IconType;
+use crate::i18n::{t, tf};
 use crate::transfer::{TransferMeter, TransferStats};
 
 pub const MESSAGE_TOAST_TTL: Duration = Duration::from_secs(5);
@@ -85,7 +87,24 @@ pub struct ModpackConfirm {
     pub summary: ModpackSummary,
     pub import: Option<ModpackImportView>,
     pub flagged: Option<FlaggedModpack>,
+    pub unlisted: Vec<UnlistedMod>,
+    pub mods_unchecked: bool,
+    pub mods_unconfirmed: usize,
     pub shared: Option<SharedPreview>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnpublishedImport {
+    pub instances: Vec<UnpublishedInstance>,
+    pub others: usize,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct UnpublishedInstance {
+    pub name: String,
+    pub game: String,
+    pub mods: Vec<UnpublishedFile>,
+    pub unconfirmed: usize,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -310,6 +329,7 @@ pub struct NotificationSnapshot {
     pub blocked_downloads: Option<BlockedDownloads>,
     pub open_cluster: Option<ClusterId>,
     pub modpack_confirm: Option<ModpackConfirm>,
+    pub unpublished_import: Option<UnpublishedImport>,
     pub active_toast_entry_ids: Vec<u64>,
 }
 
@@ -335,6 +355,7 @@ pub struct NotificationState {
     blocked_queue: VecDeque<BlockedDownloads>,
     open_cluster: Option<ClusterId>,
     modpack_confirm: Option<ModpackConfirm>,
+    unpublished_import: Option<UnpublishedImport>,
     /// Resumes the launch that opened the update modal
     /// Held here not by the launch task
     /// because every way the modal can end goes through this state
@@ -427,20 +448,23 @@ impl GroupedTasks {
 
         if !downloads.is_empty() {
             let minecraft = downloads.iter().any(|child| child.category.is_minecraft());
-            let scope = if minecraft { "Minecraft" } else { "Packages" };
             let phase = downloads
                 .iter()
                 .filter(|child| child.category.is_minecraft() == minecraft)
                 .map(|child| child.phase)
                 .find(|phase| *phase != "Downloading")
                 .unwrap_or("Downloading");
-            return Some(format!("{phase} {scope}"));
+            return Some(if minecraft {
+                tf("oneclient.notifications.phase.minecraft", &[&phase])
+            } else {
+                tf("oneclient.notifications.phase.packages", &[&phase])
+            });
         }
         if let Some(stage) = self.children.values().find(|c| c.phase == importing) {
             return Some(stage.label.clone());
         }
         if self.children.values().any(|c| c.phase == exporting) {
-            return Some("Exporting Instance".to_string());
+            return Some(t("oneclient.notifications.exporting_instance").to_string());
         }
         None
     }
@@ -464,6 +488,7 @@ impl NotificationState {
             blocked_downloads: self.blocked_downloads.clone(),
             open_cluster: self.open_cluster,
             modpack_confirm: self.modpack_confirm.clone(),
+            unpublished_import: self.unpublished_import.clone(),
             active_toast_entry_ids: self.active_toasts.iter().map(|t| t.entry_id).collect(),
         }
     }
@@ -524,6 +549,24 @@ impl NotificationState {
 
     pub fn close_modpack_confirm(&mut self) {
         self.modpack_confirm = None;
+    }
+
+    pub fn open_unpublished_import(
+        &mut self,
+        mut instances: Vec<UnpublishedInstance>,
+        others: usize,
+    ) {
+        match &mut self.unpublished_import {
+            Some(open) => {
+                open.instances.append(&mut instances);
+                open.others += others;
+            }
+            None => self.unpublished_import = Some(UnpublishedImport { instances, others }),
+        }
+    }
+
+    pub fn close_unpublished_import(&mut self) {
+        self.unpublished_import = None;
     }
 
     pub fn request_open_cluster(&mut self, cluster_id: ClusterId) {
@@ -660,7 +703,7 @@ impl NotificationState {
                 let actions = message
                     .link
                     .map(|url| NotificationAction {
-                        label: "Open link".to_string(),
+                        label: t("oneclient.notifications.open_link").to_string(),
                         kind: NotificationActionKind::OpenUrl(url),
                     })
                     .into_iter()
@@ -1000,7 +1043,7 @@ impl NotificationState {
                 let entry_id = self.push_inbox(
                     inbox,
                     title.clone(),
-                    "Preparing...".to_string(),
+                    t("oneclient.notifications.preparing").to_string(),
                     Level::Info,
                     None,
                     true,
@@ -1108,7 +1151,7 @@ impl NotificationState {
                     if !had_progress {
                         self.forget_entry(inbox, entry_id);
                     } else if let Some(entry) = inbox.iter_mut().find(|e| e.id == entry_id) {
-                        entry.body = "Complete".to_string();
+                        entry.body = t("oneclient.notifications.complete").to_string();
                         entry.progress = Some((1, 1));
                         entry.is_loading = false;
                         entry.read = false;
@@ -1195,7 +1238,7 @@ impl NotificationState {
         let tasks = group.task_list();
         let body = group
             .active_body()
-            .unwrap_or_else(|| "Preparing...".to_string());
+            .unwrap_or_else(|| t("oneclient.notifications.preparing").to_string());
         let title = group.title.clone();
 
         let completed: u64 = tasks.iter().map(|t| t.current.min(t.total)).sum();

@@ -4,12 +4,13 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use freya::radio::RadioStation;
 use oneclient_events::{Event, EventReceiver, GameEvent, LaunchStage, ProgressEvent, Signal};
 use tokio::sync::mpsc;
 
 use crate::hooks::PumpSignal;
+use crate::i18n::t;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
 use crate::state::{AppChannel, AppState, LoginProgress, StorageScanProgress};
 
@@ -267,10 +268,10 @@ impl EventPump {
         }
 
         if folded.clusters {
-            spawn_forever(async move { crate::hooks::invalidate_cluster_queries().await });
+            spawn_in_window(async move { crate::hooks::invalidate_cluster_queries().await });
         }
         if folded.java {
-            spawn_forever(async move { crate::hooks::invalidate_java_queries().await });
+            spawn_in_window(async move { crate::hooks::invalidate_java_queries().await });
         }
 
         folded
@@ -365,6 +366,7 @@ pub async fn start_launcher(
     );
 
     oneclient_net::status::start(state.services.requester.clone());
+    crate::translations::start(state.services.requester.clone());
     oneclient_polyplus::start(std::sync::Arc::clone(&state.auth));
     oneclient_core::run_startup_tasks(&state);
 
@@ -426,7 +428,7 @@ pub fn report_startup_failure(station: &RadioStation<AppState, AppChannel>, err:
         inbox,
         Event::Notification(oneclient_events::Notification::Message(
             oneclient_events::Message {
-                title: "Launcher failed to start".into(),
+                title: t("oneclient.events.launcher_failed").into(),
                 body: message,
                 level: oneclient_events::Level::Error,
                 link: None,

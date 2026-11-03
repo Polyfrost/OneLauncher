@@ -127,6 +127,15 @@ pub fn is_launcher_managed(executable: &Path) -> bool {
     managed_install_root(executable).is_ok_and(|root| root.is_some())
 }
 
+#[must_use]
+pub(crate) fn installed_vendor(executable: &Path) -> Option<crate::vendors::JavaVendor> {
+    let root = managed_install_root(executable).ok()??;
+    root.file_name()?
+        .to_str()?
+        .starts_with(crate::vendors::MOJANG_INSTALL_PREFIX)
+        .then_some(crate::vendors::JavaVendor::Mojang)
+}
+
 #[cfg(unix)]
 pub(crate) fn restore_executable_bits(executable: &Path) {
     use std::os::unix::fs::PermissionsExt;
@@ -189,7 +198,7 @@ pub async fn remove_installed_package(executable: &Path) -> JavaResult<bool> {
 }
 
 #[tracing::instrument(level = "debug")]
-fn resolve_installed_executable(extract_root: &Path, package: &JavaPackage) -> PathBuf {
+pub(crate) fn resolve_installed_executable(extract_root: &Path, package: &JavaPackage) -> PathBuf {
     let mut base_path = extract_root.to_path_buf();
 
     if let Ok(entries) = std::fs::read_dir(extract_root) {
@@ -354,6 +363,24 @@ mod tests {
         assert!(!is_launcher_managed(&theirs));
 
         std::fs::remove_dir_all(&elsewhere).unwrap();
+    }
+
+    #[test]
+    fn a_mojang_install_keeps_its_vendor_whatever_the_jvm_reports() {
+        let java_dir = java_dir();
+        let bin = java_dir
+            .join("mojang-java-runtime-delta-21.0.7")
+            .join("bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        let mojang = bin.join("java");
+        std::fs::write(&mojang, b"").unwrap();
+        let (_, zulu) = install_runtime(&java_dir);
+
+        assert_eq!(
+            installed_vendor(&mojang),
+            Some(crate::vendors::JavaVendor::Mojang)
+        );
+        assert_eq!(installed_vendor(&zulu), None);
     }
 
     #[test]

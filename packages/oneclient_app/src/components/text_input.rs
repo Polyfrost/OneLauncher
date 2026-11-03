@@ -1,7 +1,8 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
-use crate::theme::colors;
+use crate::i18n::t;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::clamp_to_window;
 
 const GAP_VERT: f32 = 8.0;
@@ -10,10 +11,10 @@ const GAP_HORI: f32 = 12.0;
 const EXPANDED_WIDTH: f32 = 440.;
 const EXPANDED_HEIGHT: f32 = 180.;
 
-fn text_input(value: impl Into<Writable<String>>) -> Input {
+fn text_input(value: impl Into<WritableSetter<String>>) -> Input {
     Input::new(value)
         .padding(Gaps::new_symmetric(GAP_VERT, GAP_HORI))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .focus_background(colors::component_bg_pressed())
         .border_fill(colors::component_border())
@@ -72,7 +73,7 @@ impl TextInput {
             elements: Vec::new(),
             key: DiffKey::None,
         }
-        .font_size(14.)
+        .font_size(text_size(14.))
     }
 
     pub fn enabled(mut self, enabled: impl Into<bool>) -> Self {
@@ -101,7 +102,7 @@ impl TextInput {
         self.input = self
             .input
             .padding(Gaps::new_symmetric(GAP_VERT / 2., GAP_HORI / 1.5));
-        self.font_size(12.)
+        self.font_size(text_size(12.))
     }
 
     pub fn multiline(mut self, multiline: bool) -> Self {
@@ -150,25 +151,25 @@ impl TextInput {
 }
 
 impl ChildrenExt for TextInput {
-    fn get_children(&mut self) -> &mut Vec<Element> {
+    fn children_mut(&mut self) -> &mut Vec<Element> {
         &mut self.elements
     }
 }
 
 impl KeyExt for TextInput {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
 
 impl LayoutExt for TextInput {
-    fn get_layout(&mut self) -> &mut LayoutData {
+    fn layout_mut(&mut self) -> &mut LayoutData {
         &mut self.layout
     }
 }
 
 impl TextStyleExt for TextInput {
-    fn get_text_style_data(&mut self) -> &mut TextStyleData {
+    fn text_style_data_mut(&mut self) -> &mut TextStyleData {
         &mut self.text_style
     }
 }
@@ -177,7 +178,7 @@ impl ContainerExt for TextInput {}
 impl ContainerWithContentExt for TextInput {}
 
 impl StyleExt for TextInput {
-    fn get_style(&mut self) -> &mut StyleState {
+    fn style_mut(&mut self) -> &mut StyleState {
         &mut self.style
     }
 }
@@ -216,7 +217,7 @@ impl Component for TextInput {
                 el.on_sized(move |e: Event<SizedEventData>| area.set_if_modified(e.area))
             });
 
-        card.get_style().clone_from(&self.style);
+        card.style_mut().clone_from(&self.style);
 
         let mut input = self.input.clone();
         if self.multiline
@@ -243,7 +244,7 @@ impl Component for TextInput {
                 .on_close(move |_| expanded.set(false))
                 .child(
                     rect()
-                        .corner_radius(CornerRadius::new_all(8.))
+                        .corner_radius(rounded(8.))
                         .shadow(Shadow::from((
                             0.,
                             8.,
@@ -273,7 +274,7 @@ impl Component for TextInput {
                             .width(Size::px(22.))
                             .height(Size::px(22.))
                             .padding(3.)
-                            .tooltip("Expand")
+                            .tooltip(t("oneclient.components.text_input.expand"))
                             .on_press(move |e: Event<PressEventData>| {
                                 e.stop_propagation();
                                 expanded.set(true);

@@ -2,8 +2,9 @@ use std::collections::HashSet;
 
 use freya::prelude::*;
 
-use crate::components::{Button, Icon, IconType, OverlayPopup, toggle_controlled};
+use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, toggle_controlled};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
@@ -92,23 +93,23 @@ impl Component for BundleChoicesPopup {
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 label()
-                                    .text("Choose your bundles")
+                                    .text(t("oneclient.components.bundle_choices_popup.title"))
                                     .font_size(17.)
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
-                                    .text(format!(
-                                        "{} has optional bundles you have not chosen yet. Turn on the ones you want, turning one off removes its mods.",
-                                        choices.cluster_name
+                                    .text(tf(
+                                        "oneclient.components.bundle_choices_popup.description",
+                                        &[&choices.cluster_name],
                                     ))
                                     .font_size(12.5)
                                     .max_lines(4)
                                     .color(colors::fg_secondary()),
                             )
                             .child(
-                                ScrollView::new()
+                                ScrollArea::new()
                                     .width(Size::fill())
                                     .height(Size::Inner)
                                     .max_height(Size::px(LIST_MAX_H))
@@ -127,7 +128,9 @@ impl Component for BundleChoicesPopup {
                                                 chosen.set(HashSet::new());
                                                 later.close_bundle_choices(None);
                                             })
-                                            .text("Ask me later"),
+                                            .text(t(
+                                                "oneclient.components.bundle_choices_popup.later",
+                                            )),
                                     )
                                     .child(
                                         Button::new()
@@ -146,7 +149,9 @@ impl Component for BundleChoicesPopup {
                                                 dispatch.close_bundle_choices(Some(picked));
                                             })
                                             .child(Icon::new(IconType::Check).size(15.))
-                                            .text("Confirm & launch"),
+                                            .text(t(
+                                                "oneclient.components.bundle_choices_popup.confirm",
+                                            )),
                                     ),
                             ),
                     ),

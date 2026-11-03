@@ -3,6 +3,7 @@ use std::path::PathBuf;
 use freya::prelude::spawn_forever;
 
 use crate::hooks::Actions;
+use crate::i18n::{t, tf};
 use crate::launcher::off_ui_blocking;
 
 pub fn database_path() -> Option<PathBuf> {
@@ -26,7 +27,7 @@ pub fn open_data_folder() {
 pub fn restore_latest(actions: &Actions) {
     let Some(path) = database_path() else { return };
     let Some(snapshot) = snapshots().into_iter().next() else {
-        set_error(actions, "There are no snapshots to restore.".to_owned());
+        set_error(actions, t("oneclient.recovery.no_snapshots").to_owned());
         return;
     };
 
@@ -34,7 +35,7 @@ pub fn restore_latest(actions: &Actions) {
     spawn_forever(async move {
         match off_ui_blocking(move || oneclient_db::backup::restore(&path, &snapshot)).await {
             Ok(_) => retry(&actions),
-            Err(err) => set_error(&actions, format!("Couldn't restore the snapshot: {err}")),
+            Err(err) => set_error(&actions, tf("oneclient.recovery.restore_failed", &[&err])),
         }
     });
 }
@@ -46,7 +47,7 @@ pub fn reset(actions: &Actions) {
     spawn_forever(async move {
         match off_ui_blocking(move || oneclient_db::backup::reset(&path)).await {
             Ok(_) => retry(&actions),
-            Err(err) => set_error(&actions, format!("Couldn't reset the database: {err}")),
+            Err(err) => set_error(&actions, tf("oneclient.recovery.reset_failed", &[&err])),
         }
     });
 }

@@ -5,6 +5,7 @@ use crate::components::{Button, Dropdown, Icon, IconType};
 use crate::hooks::{
     query_is_loading, try_cluster_worlds, use_cluster_worlds, use_datapack_world, use_dispatch,
 };
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::view::app::cluster::dialog;
 
@@ -59,9 +60,9 @@ impl Component for WorldInstallPrompt {
             }
             None => label()
                 .text(if query_is_loading(&worlds_query) {
-                    "Loading worlds..."
+                    t("oneclient.browser.world_prompt.loading")
                 } else {
-                    "This version has no worlds yet. Create one in game first."
+                    t("oneclient.browser.world_prompt.none")
                 })
                 .font_size(12.)
                 .color(colors::fg_secondary())
@@ -86,22 +87,22 @@ impl Component for WorldInstallPrompt {
         };
 
         dialog(
-            "Install into which world?".to_string(),
-            "Data packs only apply to the world they are added to.".to_string(),
+            t("oneclient.browser.world_prompt.title").to_string(),
+            t("oneclient.browser.world_prompt.description").to_string(),
             Some(control),
             move || pending.set(None),
             [
                 Button::new()
                     .secondary()
                     .on_press(move |_| pending.set(None))
-                    .text("Cancel")
+                    .text(t("oneclient.common.cancel"))
                     .into_element(),
                 Button::new()
                     .primary()
                     .enabled(world.is_some())
                     .on_press(install)
                     .child(Icon::new(IconType::Download01).size(14.))
-                    .text("Install")
+                    .text(t("oneclient.common.install"))
                     .into_element(),
             ],
         )

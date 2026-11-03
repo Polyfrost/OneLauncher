@@ -1046,8 +1046,11 @@ async fn keeps_disabled_locally(
     if !global {
         return Ok(true);
     }
-    let sharing = artifact_dao::list_clusters_linking(&ctx.db, hash).await?;
-    Ok(sharing.iter().all(|id| *id == cluster.id))
+    let sharing = crate::packages::store::sharing_with(&ctx.db, cluster).await?;
+    let linking = artifact_dao::list_clusters_linking(&ctx.db, hash).await?;
+    Ok(linking
+        .iter()
+        .all(|id| *id == cluster.id || !sharing.contains(id)))
 }
 
 async fn import_embedded(

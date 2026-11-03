@@ -6,6 +6,7 @@ use oneclient_content::packages::types::GalleryImage;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::{loaded_image, query_is_busy, use_cached_image};
+use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color, flow_grid, grid_columns_for_width};
 
@@ -189,7 +190,7 @@ impl Component for GalleryViewer {
             // A full-size fetch separate from the tile's cached copy a failed fetch is not loading
             .maybe_child(query_is_busy(&query).then(|| {
                 label()
-                    .text("Loading image...")
+                    .text(t("oneclient.browser.package.gallery.loading"))
                     .font_size(13.)
                     .color(colors::fg_secondary())
                     .into_element()
@@ -299,7 +300,7 @@ fn header_row(
     let title = image
         .title
         .clone()
-        .unwrap_or_else(|| format!("Image {}", idx + 1));
+        .unwrap_or_else(|| tf("oneclient.browser.package.gallery.image", &[&(idx + 1)]));
 
     rect()
         .horizontal()
@@ -322,7 +323,10 @@ fn header_row(
                 .maybe(len > 1, |el| {
                     el.child(
                         label()
-                            .text(format!("{} of {len}", idx + 1))
+                            .text(tf(
+                                "oneclient.browser.package.gallery.position",
+                                &[&(idx + 1), &len],
+                            ))
                             .font_size(11.)
                             .color(colors::fg_secondary()),
                     )
@@ -332,7 +336,7 @@ fn header_row(
             Button::new()
                 .ghost()
                 .icon()
-                .tooltip("Close")
+                .tooltip(t("oneclient.common.close"))
                 .on_press(on_close)
                 .child(Icon::new(IconType::XClose).size(18.)),
         )

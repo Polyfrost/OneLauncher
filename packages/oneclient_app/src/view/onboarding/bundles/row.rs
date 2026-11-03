@@ -3,6 +3,7 @@ use oneclient_content::packages::ProviderId;
 
 use crate::components::{Icon, IconType, github_badge, provider_badge};
 use crate::hooks::{loaded_image, use_cached_image};
+use crate::i18n::tf;
 use crate::theme::colors;
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
@@ -73,7 +74,10 @@ impl Component for OnboardingModCard {
                     .maybe(!self.author.is_empty(), |el| {
                         el.child(
                             label()
-                                .text(format!("by {}", self.author))
+                                .text(tf(
+                                    "oneclient.onboarding.bundles.mod.author",
+                                    &[&self.author],
+                                ))
                                 .font_size(10.)
                                 .max_lines(1)
                                 .width(Size::fill())

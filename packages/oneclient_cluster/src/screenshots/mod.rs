@@ -35,7 +35,11 @@ fn is_image(name: &str) -> bool {
 fn ensure_in_clusters(path: &Path) -> ClusterResult<PathBuf> {
     polyio::ensure_under(
         path,
-        [paths::clusters_dir()?, paths::shared_minecraft_dir()?],
+        [
+            paths::clusters_dir()?,
+            paths::shared_minecraft_dir()?,
+            paths::shared_groups_dir()?,
+        ],
     )?
     .ok_or_else(|| ScreenshotsError::InvalidPath(path.display().to_string()).into())
 }

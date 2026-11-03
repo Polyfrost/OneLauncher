@@ -3,7 +3,7 @@ use freya::{
     prelude::*,
 };
 
-use crate::{theme::colors, ui};
+use crate::{i18n::t, theme::colors, ui};
 
 const WIDTH: f32 = 40.;
 const HANDLE_SIZE: f32 = 16.;
@@ -108,7 +108,11 @@ impl Component for Switch {
             .ease(Ease::Out)
         });
 
-        let text = if on { "On" } else { "Off" };
+        let text = if on {
+            t("oneclient.common.on")
+        } else {
+            t("oneclient.common.off")
+        };
 
         rect()
             .horizontal()

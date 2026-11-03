@@ -11,6 +11,7 @@ use crate::components::{
     warning_list,
 };
 use crate::hooks::{use_cached_image, use_dispatch, use_notifications_snapshot};
+use crate::i18n::{t, tf};
 use crate::notifications::{ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView};
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -123,10 +124,26 @@ fn track_height(mut target: State<f32>) -> impl FnMut(Event<SizedEventData>) {
 
 fn content_line(summary: &ModpackSummary) -> String {
     let parts: Vec<String> = [
-        (summary.mods, "mod", "mods"),
-        (summary.resource_packs, "resource pack", "resource packs"),
-        (summary.shaders, "shader", "shaders"),
-        (summary.other_files, "other file", "other files"),
+        (
+            summary.mods,
+            t("oneclient.components.modpack_confirm.content.mods.one"),
+            t("oneclient.components.modpack_confirm.content.mods.other"),
+        ),
+        (
+            summary.resource_packs,
+            t("oneclient.components.modpack_confirm.content.resource_packs.one"),
+            t("oneclient.components.modpack_confirm.content.resource_packs.other"),
+        ),
+        (
+            summary.shaders,
+            t("oneclient.components.modpack_confirm.content.shaders.one"),
+            t("oneclient.components.modpack_confirm.content.shaders.other"),
+        ),
+        (
+            summary.other_files,
+            t("oneclient.components.modpack_confirm.content.other_files.one"),
+            t("oneclient.components.modpack_confirm.content.other_files.other"),
+        ),
     ]
     .into_iter()
     .filter(|(count, _, _)| *count > 0)
@@ -134,7 +151,7 @@ fn content_line(summary: &ModpackSummary) -> String {
     .collect();
 
     if parts.is_empty() {
-        "Configs and settings only".to_string()
+        t("oneclient.components.modpack_confirm.content.configs_only").to_string()
     } else {
         parts.join(", ")
     }
@@ -144,27 +161,30 @@ fn notes(summary: &ModpackSummary) -> Vec<(String, Color)> {
     let mut notes = Vec::new();
     if summary.optional > 0 {
         notes.push((
-            format!(
-                "{} optional. They are installed turned off, so you can switch them on in the Mods tab.",
-                count_label(summary.optional, "file is", "files are")
+            count_label(
+                summary.optional,
+                t("oneclient.components.modpack_confirm.note.optional.one"),
+                t("oneclient.components.modpack_confirm.note.optional.other"),
             ),
             colors::fg_secondary(),
         ));
     }
     if summary.manual > 0 {
         notes.push((
-            format!(
-                "{} must be downloaded by hand from CurseForge. The launcher will show you which ones.",
-                count_label(summary.manual, "file", "files")
+            count_label(
+                summary.manual,
+                t("oneclient.components.modpack_confirm.note.manual.one"),
+                t("oneclient.components.modpack_confirm.note.manual.other"),
             ),
             colors::code_warn(),
         ));
     }
     if summary.unresolved > 0 {
         notes.push((
-            format!(
-                "{} could not be found on Modrinth or CurseForge and will be skipped.",
-                count_label(summary.unresolved, "file", "files")
+            count_label(
+                summary.unresolved,
+                t("oneclient.components.modpack_confirm.note.unresolved.one"),
+                t("oneclient.components.modpack_confirm.note.unresolved.other"),
             ),
             colors::danger(),
         ));
@@ -199,29 +219,35 @@ fn fact(name: &'static str, value: String) -> Element {
 fn intro(confirm: &ModpackConfirm) -> (String, String) {
     match &confirm.import {
         None => (
-            format!("Add {}?", confirm.pack_name),
-            format!(
-                "From {}. It is added as a new instance with its own folder.",
-                confirm.source
+            tf(
+                "oneclient.components.modpack_confirm.intro.new.title",
+                &[&confirm.pack_name],
+            ),
+            tf(
+                "oneclient.components.modpack_confirm.intro.new.body",
+                &[&confirm.source],
             ),
         ),
         Some(import) => {
             let detail = match &import.previous_version {
-                Some(version) if !version.trim().is_empty() => format!(
-                    "This replaces version {version} of the pack in {}. Mods you skipped or removed stay that way.",
-                    import.cluster_name
+                Some(version) if !version.trim().is_empty() => tf(
+                    "oneclient.components.modpack_confirm.intro.replace_version",
+                    &[version, &import.cluster_name],
                 ),
-                Some(_) => format!(
-                    "This replaces the copy of the pack already in {}. Mods you skipped or removed stay that way.",
-                    import.cluster_name
+                Some(_) => tf(
+                    "oneclient.components.modpack_confirm.intro.replace",
+                    &[&import.cluster_name],
                 ),
-                None => format!(
-                    "Its mods are added next to the ones already in {}. Mods the instance already has are not added twice, and config files you edited are kept.",
-                    import.cluster_name
+                None => tf(
+                    "oneclient.components.modpack_confirm.intro.merge",
+                    &[&import.cluster_name],
                 ),
             };
             (
-                format!("Add {} to {}?", confirm.pack_name, import.cluster_name),
+                tf(
+                    "oneclient.components.modpack_confirm.intro.import.title",
+                    &[&confirm.pack_name, &import.cluster_name],
+                ),
                 detail,
             )
         }
@@ -237,26 +263,35 @@ fn dialog(
 ) -> impl IntoElement {
     let summary = &confirm.summary;
     let version = if confirm.version.trim().is_empty() {
-        "Not stated by the pack".to_string()
+        t("oneclient.components.modpack_confirm.version_unknown").to_string()
     } else {
         confirm.version.clone()
     };
 
     let mut facts = vec![
-        fact("Instance", confirm.instance_name.clone()),
-        fact("Version", version),
+        fact(
+            t("oneclient.components.modpack_confirm.fact.instance"),
+            confirm.instance_name.clone(),
+        ),
+        fact(
+            t("oneclient.components.modpack_confirm.fact.version"),
+            version,
+        ),
         fact(
             "Minecraft",
             format!("{} · {}", confirm.mc_version, confirm.loader),
         ),
-        fact("Content", content_line(summary)),
+        fact(
+            t("oneclient.components.modpack_confirm.fact.content"),
+            content_line(summary),
+        ),
     ];
     if summary.download_bytes > 0 {
         facts.push(fact(
-            "Download",
-            format!(
-                "Up to {}, less for files the launcher already has",
-                format_size(summary.download_bytes)
+            t("oneclient.components.modpack_confirm.fact.download"),
+            tf(
+                "oneclient.components.modpack_confirm.fact.download_size",
+                &[&format_size(summary.download_bytes)],
             ),
         ));
     }
@@ -328,12 +363,16 @@ fn dialog(
         }
     });
     let add_button = match (warned, importing) {
-        (true, true) => add_button.danger().text("Add anyway"),
-        (true, false) => add_button.danger().text("Install anyway"),
+        (true, true) => add_button
+            .danger()
+            .text(t("oneclient.components.modpack_confirm.add_anyway")),
+        (true, false) => add_button
+            .danger()
+            .text(t("oneclient.components.modpack_confirm.install_anyway")),
         (false, _) => add_button
             .primary()
             .child(Icon::new(IconType::Plus).size(15.))
-            .text("Add"),
+            .text(t("oneclient.components.modpack_confirm.add")),
     };
 
     rect()
@@ -440,7 +479,7 @@ fn dialog(
                             Button::new()
                                 .ghost()
                                 .on_press(move |_| cancel.cancel_modpack())
-                                .text("Cancel"),
+                                .text(t("oneclient.common.cancel")),
                         )
                         .child(add_button),
                 ),
@@ -449,11 +488,6 @@ fn dialog(
 
 fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> impl IntoElement {
     let current = *existing.read();
-    let version = if pack.version.trim().is_empty() {
-        String::new()
-    } else {
-        format!(" (version {})", pack.version)
-    };
     let mut replace = existing;
     let mut keep_both = existing;
     rect()
@@ -466,10 +500,17 @@ fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> i
         .border(border_all_color(1., colors::component_border()))
         .child(
             label()
-                .text(format!(
-                    "This instance already has {}{version}. If it is the same pack, replace it so its old mods are removed. If it is a different pack, keep both.",
-                    pack.name
-                ))
+                .text(if pack.version.trim().is_empty() {
+                    tf(
+                        "oneclient.components.modpack_confirm.existing.body",
+                        &[&pack.name],
+                    )
+                } else {
+                    tf(
+                        "oneclient.components.modpack_confirm.existing.body_version",
+                        &[&pack.name, &pack.version],
+                    )
+                })
                 .font_size(12.)
                 .max_lines(4)
                 .color(colors::fg_primary()),
@@ -479,12 +520,12 @@ fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> i
                 .horizontal()
                 .spacing(8.)
                 .child(choice_button(
-                    "Replace",
+                    t("oneclient.components.modpack_confirm.existing.replace"),
                     current == ExistingPack::Replace,
                     move || replace.set(ExistingPack::Replace),
                 ))
                 .child(choice_button(
-                    "Keep both",
+                    t("oneclient.components.modpack_confirm.existing.keep_both"),
                     current == ExistingPack::KeepBoth,
                     move || keep_both.set(ExistingPack::KeepBoth),
                 )),
@@ -508,7 +549,7 @@ fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoE
                 )
                 .child(
                     label()
-                        .text("Flagged modpack")
+                        .text(t("oneclient.components.modpack_confirm.flagged_pack.title"))
                         .font_size(14.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
@@ -516,8 +557,9 @@ fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoE
         )
         .child(
             label()
-                .text(format!(
-                    "{pack_name} is flagged as a problematic modpack. Installing it is not recommended."
+                .text(tf(
+                    "oneclient.components.modpack_confirm.flagged_pack.body",
+                    &[&pack_name],
                 ))
                 .font_size(12.)
                 .max_lines(3)
@@ -586,7 +628,11 @@ fn flagged_section(
                 )
                 .child(
                     label()
-                        .text(count_label(count, "flagged mod", "flagged mods"))
+                        .text(count_label(
+                            count,
+                            t("oneclient.components.modpack_confirm.flagged.title.one"),
+                            t("oneclient.components.modpack_confirm.flagged.title.other"),
+                        ))
                         .font_size(14.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
@@ -594,25 +640,21 @@ fn flagged_section(
         )
         .child(
             label()
-                .text("These mods are known to cause problems. Skipped mods are not installed, now or when you add this pack again.")
+                .text(t("oneclient.components.modpack_confirm.flagged.body"))
                 .font_size(12.)
                 .max_lines(3)
                 .color(colors::fg_secondary()),
         )
-        .child(
-            rect()
-                .vertical()
-                .width(Size::fill())
-                .spacing(10.)
-                .children(import.flagged.iter().map(|flagged| {
-                    FlaggedCard {
-                        flagged: flagged.clone(),
-                        mc_version: mc_version.to_string(),
-                        choices,
-                    }
-                    .into_element()
-                })),
-        )
+        .child(rect().vertical().width(Size::fill()).spacing(10.).children(
+            import.flagged.iter().map(|flagged| {
+                FlaggedCard {
+                    flagged: flagged.clone(),
+                    mc_version: mc_version.to_string(),
+                    choices,
+                }
+                .into_element()
+            }),
+        ))
 }
 
 #[derive(PartialEq)]
@@ -663,12 +705,12 @@ impl Component for FlaggedCard {
                             .color(colors::fg_primary()),
                     )
                     .child(choice_button(
-                        "Skip",
+                        t("oneclient.components.modpack_confirm.flagged.skip"),
                         choice == FlaggedChoice::Skip,
                         move || choose(skip_id.clone(), FlaggedChoice::Skip),
                     ))
                     .child(choice_button(
-                        "Keep",
+                        t("oneclient.components.modpack_confirm.flagged.keep"),
                         choice == FlaggedChoice::Keep,
                         move || choose(keep_id.clone(), FlaggedChoice::Keep),
                     )),
@@ -682,7 +724,9 @@ impl Component for FlaggedCard {
             card = card
                 .child(
                     label()
-                        .text("Or use one of these instead:")
+                        .text(t(
+                            "oneclient.components.modpack_confirm.flagged.alternatives",
+                        ))
                         .font_size(12.)
                         .color(colors::fg_secondary()),
                 )
@@ -730,11 +774,12 @@ impl Component for AlternativeChoice {
         let icon_query = use_cached_image(self.alternative.icon_url.clone(), 256);
         let icon = remote_icon(self.alternative.icon_url.as_deref(), &icon_query, ALT_ICON);
         let installable = self.alternative.version_id.is_some();
-        let version = self
-            .alternative
-            .version_number
-            .clone()
-            .unwrap_or_else(|| format!("No version for {}", self.mc_version));
+        let version = self.alternative.version_number.clone().unwrap_or_else(|| {
+            tf(
+                "oneclient.components.flagged_install_popup.no_version",
+                &[&self.mc_version],
+            )
+        });
 
         let mut choices = self.choices;
         let package_id = self.package_id.clone();
@@ -749,9 +794,11 @@ impl Component for AlternativeChoice {
             button
                 .primary()
                 .child(Icon::new(IconType::Check).size(14.))
-                .text("Selected")
+                .text(t("oneclient.components.modpack_confirm.flagged.selected"))
         } else {
-            button.secondary().text("Use instead")
+            button.secondary().text(t(
+                "oneclient.components.modpack_confirm.flagged.use_instead",
+            ))
         };
 
         rect()

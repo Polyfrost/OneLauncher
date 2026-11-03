@@ -3,6 +3,7 @@ use oneclient_core::clusters::Cluster;
 
 use crate::components::cluster_menu::open_menu_at;
 use crate::components::{ART_PREVIEW_EDGE, ClusterContextMenu, ClusterMenuTarget, DynamicArt};
+use crate::i18n::tf;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 use crate::utils::{GridSelection, ReleaseLine, line_art_key, line_title};
@@ -178,7 +179,10 @@ impl Component for VersionCard {
                     .background(Color::from_af32rgb(0.66, 11, 16, 19))
                     .child(
                         label()
-                            .text(format!("{} instances", self.count))
+                            .text(tf(
+                                "oneclient.components.version_card.instances",
+                                &[&self.count],
+                            ))
                             .font_size(11.)
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::on_media()),

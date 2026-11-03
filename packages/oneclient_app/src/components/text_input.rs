@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::clamp_to_window;
 
@@ -273,7 +274,7 @@ impl Component for TextInput {
                             .width(Size::px(22.))
                             .height(Size::px(22.))
                             .padding(3.)
-                            .tooltip("Expand")
+                            .tooltip(t("oneclient.components.text_input.expand"))
                             .on_press(move |e: Event<PressEventData>| {
                                 e.stop_propagation();
                                 expanded.set(true);

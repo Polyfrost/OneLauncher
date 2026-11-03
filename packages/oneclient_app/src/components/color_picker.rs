@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, TextInput};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::{EDGE_MARGIN, border_all_color, clamp_to_window, window_logical_size};
 
@@ -192,7 +193,7 @@ impl Component for ColorPicker {
                 .cross_align(Alignment::Center)
                 .child(
                     label()
-                        .text("Color Picker")
+                        .text(t("oneclient.components.color_picker.title"))
                         .font_size(14.)
                         .color(colors::fg_primary()),
                 )
@@ -200,7 +201,7 @@ impl Component for ColorPicker {
                     Button::new()
                         .ghost()
                         .icon()
-                        .alt("Close")
+                        .alt(t("oneclient.common.close"))
                         .on_press({
                             let mut close = close.clone();
                             move |_| close()

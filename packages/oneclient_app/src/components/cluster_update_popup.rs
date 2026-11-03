@@ -7,6 +7,7 @@ use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TabBar
 use crate::hooks::{
     package_meta_batch, use_dispatch, use_notifications_snapshot, use_package_meta_batch,
 };
+use crate::i18n::{t, tf};
 use crate::notifications::{ClusterUpdateItem, ClusterUpdateSummary};
 use crate::routes::Route;
 use crate::theme::colors;
@@ -35,19 +36,19 @@ impl UpdateTab {
 
     fn label(self) -> &'static str {
         match self {
-            UpdateTab::Updates => "Updated",
-            UpdateTab::Additions => "Added",
-            UpdateTab::Removals => "Removed",
-            UpdateTab::Optional => "Optional",
+            UpdateTab::Updates => t("oneclient.components.cluster_update_popup.tab.updated"),
+            UpdateTab::Additions => t("oneclient.components.cluster_update_popup.tab.added"),
+            UpdateTab::Removals => t("oneclient.components.cluster_update_popup.tab.removed"),
+            UpdateTab::Optional => t("oneclient.components.cluster_update_popup.tab.optional"),
         }
     }
 
     fn empty_text(self) -> &'static str {
         match self {
-            UpdateTab::Updates => "Nothing was updated.",
-            UpdateTab::Additions => "Nothing was added.",
-            UpdateTab::Removals => "Nothing was removed.",
-            UpdateTab::Optional => "Nothing optional was offered.",
+            UpdateTab::Updates => t("oneclient.components.cluster_update_popup.empty.updated"),
+            UpdateTab::Additions => t("oneclient.components.cluster_update_popup.empty.added"),
+            UpdateTab::Removals => t("oneclient.components.cluster_update_popup.empty.removed"),
+            UpdateTab::Optional => t("oneclient.components.cluster_update_popup.empty.optional"),
         }
     }
 
@@ -195,14 +196,21 @@ fn content(
     };
 
     let subtitle = match &single {
-        Some((_, name)) => format!(
-            "{total} change{} synced to {name}.",
-            if total == 1 { "" } else { "s" }
+        Some((_, name)) if total == 1 => tf(
+            "oneclient.components.cluster_update_popup.single.one",
+            &[name],
         ),
-        None => format!(
-            "{total} change{} across {} clusters.",
-            if total == 1 { "" } else { "s" },
-            summaries.len()
+        Some((_, name)) => tf(
+            "oneclient.components.cluster_update_popup.single.other",
+            &[&total, name],
+        ),
+        None if total == 1 => tf(
+            "oneclient.components.cluster_update_popup.multi.one",
+            &[&summaries.len()],
+        ),
+        None => tf(
+            "oneclient.components.cluster_update_popup.multi.other",
+            &[&total, &summaries.len()],
         ),
     };
 
@@ -250,7 +258,7 @@ fn content(
                 .spacing(3.)
                 .child(
                     label()
-                        .text("Changes applied")
+                        .text(t("oneclient.components.cluster_update_popup.title"))
                         .font_size(17.)
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
@@ -281,14 +289,14 @@ fn content(
                     Button::new()
                         .ghost()
                         .on_press(move |_| dismiss.close_cluster_update())
-                        .text("Dismiss"),
+                        .text(t("oneclient.common.dismiss")),
                 )
                 .maybe_child(single.map(|(cluster_id, _)| {
                     let open = dispatch.clone();
                     Button::new()
                         .primary()
                         .on_press(move |_| open_cluster(&open, cluster_id))
-                        .text("Open cluster")
+                        .text(t("oneclient.components.cluster_update_popup.open_cluster"))
                         .child(Icon::new(IconType::ArrowRight).size(15.))
                         .into_element()
                 })),

@@ -1,10 +1,9 @@
 use freya::prelude::*;
 
 use crate::components::{Dropdown, TextInput, validate_memory};
+use crate::i18n::t;
 use crate::theme::colors;
 use crate::utils::{format_memory_gb, memory_presets_mb};
-
-const CUSTOM_LABEL: &str = "Custom";
 
 /// Presets picker with an input for memory allocation
 pub fn memory_field(
@@ -20,7 +19,7 @@ pub fn memory_field(
             .ok()
             .filter(|mb| presets.contains(mb))
             .map(format_memory_gb)
-            .unwrap_or_else(|| CUSTOM_LABEL.to_string()),
+            .unwrap_or_else(|| t("oneclient.components.memory_field.custom").to_string()),
     };
 
     let mut options: Vec<String> = vec![unset_label.to_string()];

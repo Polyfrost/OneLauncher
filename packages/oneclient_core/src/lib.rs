@@ -45,9 +45,10 @@ pub use game::{
 pub use images::ImageCacheStore;
 pub use migration::launchers::{
     ExternalDetection, ExternalImportReport, ExternalInstance, ExternalLauncher, FlaggedImportMod,
-    ImportAlternative, ImportChoices, InstanceArchive, ScreenedInstance, alternative_version_id,
-    detect_all as detect_external_launchers, detect_folder as detect_external_folder,
-    discard_instance_archive, import_instance as import_external_instance, is_instance_archive,
+    ImportAlternative, ImportChoices, InstanceArchive, ScreenedInstance, UnpublishedCheck,
+    UnpublishedFile, alternative_version_id, detect_all as detect_external_launchers,
+    detect_folder as detect_external_folder, discard_instance_archive, find_unpublished_mods,
+    import_instance as import_external_instance, instance_mods_stamp, is_instance_archive,
     open_instance_archive, same_folder as same_external_folder,
     screen_instances as screen_external_instances, sweep_instance_archives,
 };

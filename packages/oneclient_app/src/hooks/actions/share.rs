@@ -12,6 +12,7 @@ use super::Actions;
 use crate::components::IconType;
 use crate::i18n::{t, tf};
 use crate::launcher::{self, off_ui};
+use crate::utils::count_label;
 
 const MAX_LISTED: usize = 3;
 
@@ -210,10 +211,6 @@ async fn pick_export_file(cluster_name: &str) -> Option<PathBuf> {
     Some(path)
 }
 
-fn count_label(count: usize, one: &str, many: &str) -> String {
-    format!("{count} {}", if count == 1 { one } else { many })
-}
-
 fn listed(names: &[String]) -> String {
     let shown = names
         .iter()
@@ -244,8 +241,8 @@ mod tests {
 
     #[test]
     fn counts_read_naturally() {
-        assert_eq!(count_label(1, "file", "files"), "1 file");
-        assert_eq!(count_label(4, "file", "files"), "4 files");
+        assert_eq!(count_label(1, "%s file", "%s files"), "1 file");
+        assert_eq!(count_label(4, "%s file", "%s files"), "4 files");
     }
 
     #[test]

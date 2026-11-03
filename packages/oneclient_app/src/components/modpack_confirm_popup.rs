@@ -1,18 +1,21 @@
 use std::collections::HashMap;
 
 use freya::prelude::*;
-use oneclient_content::modpacks::ModpackSummary;
+use oneclient_content::modpacks::{ModpackSummary, UnlistedMod};
 use oneclient_content::packages::ResolvedAlternative;
 use oneclient_core::clusters::{ExistingPack, FlaggedModpack, FlaggedPackMod};
 
 use super::flagged_install_popup::explanation_panel;
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, remote_icon};
+use crate::components::{
+    Button, Icon, IconType, OverlayPopup, ScrollArea, caution_card, remote_icon, warning_card,
+    warning_list,
+};
 use crate::hooks::{use_cached_image, use_dispatch, use_notifications_snapshot};
-use crate::i18n::{format_placeholders, t, tf};
+use crate::i18n::{t, tf};
 use crate::notifications::{ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView};
 use crate::theme::colors;
 use crate::ui::border_all_color;
-use crate::utils::format_size;
+use crate::utils::{count_label, format_size};
 
 const DIALOG_W: f32 = 500.;
 const DIALOG_PAD: f32 = 22.;
@@ -119,10 +122,6 @@ fn track_height(mut target: State<f32>) -> impl FnMut(Event<SizedEventData>) {
     }
 }
 
-fn count_label(count: usize, one: &str, many: &str) -> String {
-    format_placeholders(if count == 1 { one } else { many }, &[&count])
-}
-
 fn content_line(summary: &ModpackSummary) -> String {
     let parts: Vec<String> = [
         (
@@ -178,16 +177,6 @@ fn notes(summary: &ModpackSummary) -> Vec<(String, Color)> {
                 t("oneclient.components.modpack_confirm.note.manual.other"),
             ),
             colors::code_warn(),
-        ));
-    }
-    if summary.unverified > 0 {
-        notes.push((
-            count_label(
-                summary.unverified,
-                t("oneclient.components.modpack_confirm.note.unverified.one"),
-                t("oneclient.components.modpack_confirm.note.unverified.other"),
-            ),
-            colors::danger(),
         ));
     }
     if summary.unresolved > 0 {
@@ -343,6 +332,30 @@ fn dialog(
         .flagged
         .as_ref()
         .map(|flagged| flagged_pack_section(&confirm.pack_name, flagged).into_element());
+    let unlisted =
+        (!confirm.unlisted.is_empty()).then(|| unlisted_section(&confirm.unlisted).into_element());
+    let unverified =
+        (summary.unverified > 0).then(|| unverified_card(summary.unverified).into_element());
+    let unchecked = if confirm.mods_unchecked {
+        Some(caution_card(
+            t("oneclient.components.modpack_confirm.unchecked.title"),
+            t("oneclient.components.modpack_confirm.unchecked.body"),
+        ))
+    } else if confirm.mods_unconfirmed > 0 {
+        Some(caution_card(
+            count_label(
+                confirm.mods_unconfirmed,
+                t("oneclient.components.modpack_confirm.unconfirmed.title.one"),
+                t("oneclient.components.modpack_confirm.unconfirmed.title.other"),
+            ),
+            t("oneclient.components.modpack_confirm.unconfirmed.body"),
+        ))
+    } else {
+        None
+    }
+    .map(IntoElement::into_element);
+    let warned =
+        flagged_pack.is_some() || unlisted.is_some() || unverified.is_some() || unchecked.is_some();
     let add_button = Button::new().on_press(move |_| {
         if importing {
             add.confirm_modpack_import(choices.read().clone(), *existing.read());
@@ -350,7 +363,7 @@ fn dialog(
             add.confirm_modpack();
         }
     });
-    let add_button = match (flagged_pack.is_some(), importing) {
+    let add_button = match (warned, importing) {
         (true, true) => add_button
             .danger()
             .text(t("oneclient.components.modpack_confirm.add_anyway")),
@@ -421,6 +434,9 @@ fn dialog(
                                 .spacing(SECTION_GAP)
                                 .on_sized(track_height(measured.content_h))
                                 .maybe_child(flagged_pack)
+                                .maybe_child(unlisted)
+                                .maybe_child(unverified)
+                                .maybe_child(unchecked)
                                 .child(
                                     rect()
                                         .vertical()
@@ -556,6 +572,40 @@ fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoE
                 .clone()
                 .map(|markdown| explanation_panel(markdown).into_element()),
         )
+}
+
+fn unlisted_section(mods: &[UnlistedMod]) -> impl IntoElement {
+    warning_card(
+        count_label(
+            mods.len(),
+            t("oneclient.components.modpack_confirm.unlisted.title.one"),
+            t("oneclient.components.modpack_confirm.unlisted.title.other"),
+        ),
+        t("oneclient.components.modpack_confirm.unlisted.body"),
+    )
+    .child(warning_list(mods.iter().map(|unlisted| {
+        let origin = if unlisted.bundled {
+            t("oneclient.components.modpack_confirm.unlisted.bundled")
+        } else {
+            t("oneclient.components.modpack_confirm.unlisted.external")
+        };
+        (unlisted.name.clone(), Some(origin.to_string()))
+    })))
+}
+
+fn unverified_card(count: usize) -> impl IntoElement {
+    warning_card(
+        count_label(
+            count,
+            t("oneclient.components.modpack_confirm.unverified.title.one"),
+            t("oneclient.components.modpack_confirm.unverified.title.other"),
+        ),
+        count_label(
+            count,
+            t("oneclient.components.modpack_confirm.unverified.body.one"),
+            t("oneclient.components.modpack_confirm.unverified.body.other"),
+        ),
+    )
 }
 
 fn flagged_section(

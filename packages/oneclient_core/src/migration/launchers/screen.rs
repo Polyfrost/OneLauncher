@@ -4,9 +4,8 @@ use std::sync::Arc;
 
 use oneclient_content::ContentCtx;
 use oneclient_content::packages::{
-    BadMod, BadModList, ContentType, FileIdentity, ProjectDetail, ProviderId,
-    ProviderVersionLookup, ResolvedAlternative, fetch_explanation, fetch_improvements,
-    resolve_alternatives,
+    BadMod, BadModList, FileIdentity, ProjectDetail, ProviderId, ProviderVersionLookup,
+    ResolvedAlternative, fetch_explanation, fetch_improvements, resolve_alternatives,
 };
 use oneclient_db::models::ClusterRow;
 
@@ -15,7 +14,7 @@ use crate::clusters::modpack::kind_for;
 use crate::state::LauncherState;
 
 use super::ExternalInstance;
-use super::import::{LocalContent, scan_folders};
+use super::import::{ModJar, hash_mod_files, list_mod_files, mod_files_stamp, scan_mod_jars};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlaggedImportMod {
@@ -33,12 +32,27 @@ pub struct ImportAlternative {
     pub already_installed: bool,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct UnpublishedFile {
+    pub name: String,
+    pub enabled: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ScreenedInstance {
     pub game_dir: PathBuf,
     pub name: String,
     pub mc_version: String,
     pub flagged: Vec<FlaggedImportMod>,
+    pub unpublished: Vec<UnpublishedFile>,
+    pub unconfirmed: usize,
+    pub mods_stamp: u64,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct UnpublishedCheck {
+    pub mods: Vec<UnpublishedFile>,
+    pub unconfirmed: usize,
 }
 
 #[tracing::instrument(skip_all, fields(instances = instances.len()))]
@@ -61,42 +75,33 @@ async fn screen_instance(
     list: &BadModList,
     content: &ContentCtx,
 ) -> ScreenedInstance {
+    let files = list_mod_files(&instance.game_dir).await;
     let mut screened = ScreenedInstance {
         game_dir: instance.game_dir.clone(),
         name: instance.name.clone(),
         mc_version: instance.mc_version.clone(),
         flagged: Vec::new(),
+        unpublished: Vec::new(),
+        unconfirmed: 0,
+        mods_stamp: mod_files_stamp(&files),
     };
-    if !instance.loader.is_modded() || list.bad_mods.is_empty() {
+    if !instance.loader.is_modded() {
         return screened;
     }
 
-    let mut seen = HashSet::new();
-    let mods: Vec<LocalContent> = scan_folders(&instance.game_dir, &[ContentType::Mod], true)
-        .await
-        .files
-        .into_iter()
-        .filter(|file| seen.insert(file.hash.clone()))
-        .collect();
-    if mods.is_empty() {
+    let jars = hash_mod_files(files).await;
+    if jars.is_empty() {
         return screened;
     }
+    let (found, complete) = identify(&jars, content).await;
+    let check = check_result(&jars, &found, complete);
+    screened.unpublished = check.mods;
+    screened.unconfirmed = check.unconfirmed;
 
-    let identities: Vec<FileIdentity> = mods
-        .iter()
-        .map(|file| FileIdentity {
-            cf_fingerprint: file.cf_fingerprint,
-            ..FileIdentity::from_sha1(&file.hash)
-        })
-        .collect();
-    let found = content
-        .providers
-        .lookup_versions(&identities, content)
-        .await
-        .unwrap_or_else(|err| {
-            tracing::warn!(%err, "could not identify mods, screening by hash only");
-            HashMap::new()
-        });
+    let mods: Vec<&ModJar> = jars.iter().filter(|jar| !jar.name.contains('/')).collect();
+    if list.bad_mods.is_empty() || mods.is_empty() {
+        return screened;
+    }
     let projects = fetch_projects(&found, content).await;
     let target = screening_target(instance);
 
@@ -130,11 +135,83 @@ async fn screen_instance(
     screened
 }
 
+#[tracing::instrument(skip_all, fields(instance = %instance.name))]
+pub async fn find_unpublished_mods(
+    state: &Arc<LauncherState>,
+    instance: &ExternalInstance,
+) -> UnpublishedCheck {
+    if !instance.loader.is_modded() {
+        return UnpublishedCheck::default();
+    }
+    let jars = scan_mod_jars(&instance.game_dir).await;
+    if jars.is_empty() {
+        return UnpublishedCheck::default();
+    }
+    let content = state.services.content();
+    let (found, complete) = identify(&jars, &content).await;
+    check_result(&jars, &found, complete)
+}
+
+pub async fn instance_mods_stamp(instance: &ExternalInstance) -> u64 {
+    mod_files_stamp(&list_mod_files(&instance.game_dir).await)
+}
+
+fn check_result(
+    jars: &[ModJar],
+    found: &ProviderVersionLookup,
+    complete: bool,
+) -> UnpublishedCheck {
+    let unknown = unpublished(jars, found);
+    if complete {
+        UnpublishedCheck {
+            mods: unknown,
+            unconfirmed: 0,
+        }
+    } else {
+        UnpublishedCheck {
+            mods: Vec::new(),
+            unconfirmed: unknown.len(),
+        }
+    }
+}
+
+async fn identify(jars: &[ModJar], content: &ContentCtx) -> (ProviderVersionLookup, bool) {
+    let identities: Vec<FileIdentity> = jars
+        .iter()
+        .map(|jar| FileIdentity {
+            cf_fingerprint: jar.cf_fingerprint,
+            ..FileIdentity::from_sha1(&jar.hash)
+        })
+        .collect();
+    let (found, complete) = content
+        .providers
+        .lookup_versions_checked(&identities, content)
+        .await
+        .unwrap_or_else(|err| {
+            tracing::warn!(%err, "could not identify mods, screening by hash only");
+            (HashMap::new(), false)
+        });
+    if !complete {
+        tracing::warn!("a mod site could not be asked, so unpublished mods are not reported");
+    }
+    (found, complete)
+}
+
+fn unpublished(jars: &[ModJar], found: &ProviderVersionLookup) -> Vec<UnpublishedFile> {
+    jars.iter()
+        .filter(|jar| !found.contains_key(&jar.hash))
+        .map(|jar| UnpublishedFile {
+            name: jar.name.clone(),
+            enabled: jar.enabled,
+        })
+        .collect()
+}
+
 fn mark_installed(
     entry: &BadMod,
     alternatives: Vec<ResolvedAlternative>,
-    flagged: &LocalContent,
-    mods: &[LocalContent],
+    flagged: &ModJar,
+    mods: &[&ModJar],
     found: &ProviderVersionLookup,
 ) -> Vec<ImportAlternative> {
     let own = found
@@ -211,7 +288,7 @@ async fn fetch_projects(
     projects
 }
 
-fn file_name(file: &LocalContent) -> String {
+fn file_name(file: &ModJar) -> String {
     file.path
         .file_name()
         .map(|name| name.to_string_lossy().into_owned())
@@ -237,5 +314,46 @@ fn screening_target(instance: &ExternalInstance) -> ClusterRow {
         description: None,
         tags: String::new(),
         cover_path: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn jar(name: &str, enabled: bool) -> ModJar {
+        ModJar {
+            path: PathBuf::from(name),
+            name: name.to_string(),
+            enabled,
+            hash: format!("sha-{name}"),
+            cf_fingerprint: None,
+        }
+    }
+
+    #[test]
+    fn unknown_mods_are_only_called_unpublished_when_every_site_answered() {
+        let jars = [jar("a.jar", true), jar("b.jar", false)];
+        let found = ProviderVersionLookup::new();
+
+        let complete = check_result(&jars, &found, true);
+        assert_eq!(complete.unconfirmed, 0);
+        assert_eq!(
+            complete.mods,
+            [
+                UnpublishedFile {
+                    name: "a.jar".to_string(),
+                    enabled: true
+                },
+                UnpublishedFile {
+                    name: "b.jar".to_string(),
+                    enabled: false
+                },
+            ]
+        );
+
+        let partial = check_result(&jars, &found, false);
+        assert!(partial.mods.is_empty());
+        assert_eq!(partial.unconfirmed, 2);
     }
 }

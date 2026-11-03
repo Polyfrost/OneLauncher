@@ -9,7 +9,7 @@ use freya::prelude::*;
 use crate::components::{Button, Icon, IconType};
 use crate::i18n::t;
 
-pub(super) fn navbar_button(foreground: Option<Color>) -> Button {
+pub(crate) fn navbar_button(foreground: Option<Color>) -> Button {
     Button::new()
         .ghost()
         .foreground(foreground)

@@ -6,7 +6,7 @@ use freya::{
 
 use crate::{
     Route,
-    components::{Avatar, Icon, IconType},
+    components::{Avatar, Icon, IconType, NavbarLobbyButton},
     hooks::{
         settled_or_loading, try_default_account, use_active_cluster_id, use_browser_type,
         use_clusters, use_current_account, use_dispatch, use_notifications_snapshot,
@@ -317,6 +317,7 @@ impl Component for NavbarRight {
             .main_align(Alignment::End)
             .cross_align(Alignment::Center)
             .spacing(8.)
+            .child(NavbarLobbyButton { foreground })
             .child(
                 super::navbar_button(foreground)
                     .tooltip(t("oneclient.components.navbar.stats"))

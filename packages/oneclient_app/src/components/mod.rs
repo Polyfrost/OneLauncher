@@ -29,6 +29,7 @@ mod instance_row;
 mod java_install_manager;
 mod java_prompt;
 mod link_confirm;
+mod lobby;
 mod local_image;
 mod log_viewer;
 mod markdown;
@@ -65,6 +66,9 @@ mod version_art_gallery;
 mod version_card;
 
 pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
+pub use lobby::{
+    LobbyHeroChip, LobbyLaunchButton, LobbyPanel, NavbarLobbyButton, use_lobby, use_provide_lobby,
+};
 pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use asset_image::AssetImage;

@@ -7,12 +7,14 @@ use crate::hooks::use_player_skin;
 
 const AVATAR_SIZE: f32 = 32.;
 const FACE: f32 = 8.;
+const UPSCALE: f32 = 16.;
 const HEAD_FACE: (f32, f32) = (8., 8.);
 const HEAD_OVERLAY: (f32, f32) = (40., 8.);
 
 #[derive(PartialEq, Clone)]
 pub struct Avatar {
     uuid: String,
+    size: f32,
     layout: LayoutData,
 }
 
@@ -20,8 +22,14 @@ impl Avatar {
     pub fn new(uuid: impl Into<String>) -> Self {
         Self {
             uuid: uuid.into(),
+            size: AVATAR_SIZE,
             layout: LayoutData::default(),
         }
+    }
+
+    pub fn size(mut self, size: f32) -> Self {
+        self.size = size;
+        self
     }
 }
 
@@ -51,18 +59,20 @@ impl Component for Avatar {
             }
         };
 
+        let radius = self.size / 4.;
+
         rect()
-            .width(Size::px(AVATAR_SIZE))
-            .height(Size::px(AVATAR_SIZE))
-            .corner_radius(CornerRadius::from(8.))
+            .width(Size::px(self.size))
+            .height(Size::px(self.size))
+            .corner_radius(CornerRadius::from(radius))
             .center()
             .maybe_child(head.map(|holder| {
                 image(holder)
                     .width(Size::fill())
                     .height(Size::fill())
                     .aspect_ratio(AspectRatio::None)
-                    .sampling_mode(SamplingMode::Nearest)
-                    .corner_radius(CornerRadius::from(8.))
+                    .sampling_mode(SamplingMode::Trilinear)
+                    .corner_radius(CornerRadius::from(radius))
             }))
     }
 }
@@ -72,9 +82,11 @@ fn compose_head(skin_bytes: &Bytes) -> Option<ImageHandle> {
     let skin = SkImage::from_encoded(data)?;
     let skin = skin.make_raster_image(None, None).unwrap_or(skin);
 
-    let mut surface = raster_n32_premul((FACE as i32, FACE as i32))?;
+    let edge = (FACE * UPSCALE) as i32;
+    let mut surface = raster_n32_premul((edge, edge))?;
     {
         let canvas = surface.canvas();
+        canvas.scale((UPSCALE, UPSCALE));
         let paint = Paint::default();
 
         canvas.draw_image(&skin, (-HEAD_FACE.0, -HEAD_FACE.1), Some(&paint));

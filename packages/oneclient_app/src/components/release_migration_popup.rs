@@ -1217,7 +1217,7 @@ fn footer(
                 .max_lines(2)
                 .color(colors::fg_secondary()),
         )
-        .maybe_child(prompt.target_dedicated.then(|| {
+        .maybe_child(prompt.can_copy_configs().then(|| {
             checkbox_labeled(
                 copy_configs,
                 t("oneclient.components.release_migration.copy_configs"),

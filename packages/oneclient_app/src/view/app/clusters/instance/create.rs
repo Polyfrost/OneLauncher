@@ -40,6 +40,12 @@ fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
         bundles: (picks.kind == ClusterKind::OneClient && picks.bundles.loaded)
             .then(|| picks.bundles.taken()),
         dedicated: picks.kind == ClusterKind::OneClient && picks.folder == FolderChoice::Dedicated,
+        shared_group: match &picks.folder {
+            FolderChoice::Custom(group) if picks.kind == ClusterKind::OneClient => {
+                Some(group.clone())
+            }
+            _ => None,
+        },
     })
 }
 
@@ -197,7 +203,7 @@ impl Component for CreateInstanceModal {
             body: steps::body(wizard, &picks),
             scrolls_itself: matches!(
                 picks.step,
-                Step::Version | Step::Import | Step::ImportReview
+                Step::Folder | Step::Version | Step::Import | Step::ImportReview
             ),
             note: footer_note(&picks),
             secondary_label: if first {

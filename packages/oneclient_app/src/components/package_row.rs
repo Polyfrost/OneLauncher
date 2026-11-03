@@ -9,9 +9,9 @@ use crate::essential::EssentialPackage;
 use freya::query::UseMutation;
 
 use crate::hooks::{
-    ClusterAction, ClusterMutation, EssentialGuardKind, Guarded, PendingEssential,
+    Actions, ClusterAction, ClusterMutation, EssentialGuardKind, Guarded, PendingEssential,
     disable_warnings, loaded_image, use_cached_image, use_cluster_mutation, use_disable_confirm,
-    use_disable_warnings, use_essential_guard,
+    use_disable_warnings, use_dispatch, use_essential_guard,
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
@@ -26,7 +26,6 @@ pub(crate) const GRID_MIN_W: f32 = 290.;
 const GRID_CARD_PADDING: f32 = 14.;
 const BADGE_STRIP_H: f32 = 20.;
 const BADGE_STRIP_LIFT: f32 = 2.;
-const TAG_LETTER_SPACING: f32 = 0.6;
 
 #[derive(Clone, Copy, PartialEq)]
 pub enum CardLayout {
@@ -204,6 +203,7 @@ impl Component for PackageRow {
             let item = item.clone();
             let warnings = disable_warnings(&warnings_query);
             let pending_disable = use_disable_confirm();
+            let dispatch = use_dispatch();
             (move |()| {
                 let Some(action) = action.clone() else {
                     return;
@@ -218,6 +218,7 @@ impl Component for PackageRow {
                         warnings.clone(),
                         guard,
                         pending_disable,
+                        dispatch.clone(),
                     );
                     return;
                 }
@@ -328,6 +329,7 @@ pub(crate) fn disable_request(
         name,
         roots,
         bundles,
+        warned: Vec::new(),
     }
 }
 
@@ -392,7 +394,7 @@ pub(crate) fn run_guarded(
     cluster: UseMutation<ClusterMutation>,
     mut guard: State<Option<PendingEssential>>,
 ) {
-    let Some(body) = guard_body(targets, &name, warnings) else {
+    let Some((body, _)) = guard_body(targets, &name, warnings) else {
         cluster.mutate(action);
         return;
     };
@@ -405,16 +407,26 @@ pub(crate) fn run_guarded(
 }
 
 pub(crate) fn guard_disable(
-    request: DisableRequest,
+    mut request: DisableRequest,
     targets: &[&PackageEntry],
     warnings: Option<oneclient_core::DisableWarnings>,
     mut guard: State<Option<PendingEssential>>,
     pending_disable: State<Option<disable::PendingDisable>>,
+    dispatch: Actions,
 ) {
-    let Some(body) = guard_body(targets, &request.name, warnings) else {
-        disable::request(request, pending_disable);
+    let acknowledged = crate::launcher::state()
+        .map(|state| state.settings.read().acknowledged_disable_warnings.clone())
+        .unwrap_or_default();
+    let targets: Vec<&PackageEntry> = targets
+        .iter()
+        .copied()
+        .filter(|p| !acknowledged.contains(&p.package_id))
+        .collect();
+    let Some((body, warned)) = guard_body(&targets, &request.name, warnings) else {
+        disable::request(request, pending_disable, dispatch);
         return;
     };
+    request.warned = warned;
     guard.set(Some(PendingEssential {
         name: request.name.clone(),
         body,
@@ -427,22 +439,22 @@ fn guard_body(
     targets: &[&PackageEntry],
     name: &str,
     warnings: Option<oneclient_core::DisableWarnings>,
-) -> Option<String> {
+) -> Option<(String, Vec<String>)> {
     let warned: Vec<(&PackageEntry, String)> = targets
         .iter()
         .filter_map(|p| Some((*p, disable_warning_body(p, warnings.clone())?)))
         .collect();
-    match warned.as_slice() {
-        [] => None,
-        [(p, body)] if p.name == name => Some(body.clone()),
-        _ => Some(
-            warned
-                .iter()
-                .map(|(p, body)| format!("**{}**\n\n{body}", p.name))
-                .collect::<Vec<_>>()
-                .join("\n\n"),
-        ),
-    }
+    let body = match warned.as_slice() {
+        [] => return None,
+        [(p, body)] if p.name == name => body.clone(),
+        _ => warned
+            .iter()
+            .map(|(p, body)| format!("**{}**\n\n{body}", p.name))
+            .collect::<Vec<_>>()
+            .join("\n\n"),
+    };
+    let ids = warned.iter().map(|(p, _)| p.package_id.clone()).collect();
+    Some((body, ids))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1128,16 +1140,15 @@ fn status_tag(text: impl Into<String>, accent: Color) -> Element {
         .background(colors::component_bg())
         .child(
             rect()
-                .padding(Gaps::new(1., 6., 3., 6. + TAG_LETTER_SPACING))
+                .padding(Gaps::new(1., 6., 2., 6.))
                 .corner_radius(CornerRadius::new_all(4.))
                 .background(accent.with_a(38))
                 .border(border_all_color(1., accent.with_a(96)))
                 .child(
                     label()
-                        .text(text.into().to_uppercase())
-                        .font_size(9.)
-                        .font_weight(FontWeight::BOLD)
-                        .letter_spacing(TAG_LETTER_SPACING)
+                        .text(text.into())
+                        .font_size(10.)
+                        .font_weight(FontWeight::SEMI_BOLD)
                         .color(accent),
                 ),
         )

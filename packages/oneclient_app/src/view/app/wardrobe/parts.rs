@@ -482,7 +482,6 @@ impl Component for WardrobeCard {
             .content(Content::Flex)
             .corner_radius(CornerRadius::new_all(12.))
             .background(colors::page_elevated())
-            .border(hairline(outline))
             .overflow(Overflow::Clip)
             .opacity(if enabled { 1. } else { 0.5 })
             .cursor(if enabled {
@@ -615,6 +614,16 @@ impl Component for WardrobeCard {
                             .font_weight(FontWeight::MEDIUM)
                             .color(strip_color),
                     ),
+            )
+            .child(
+                rect()
+                    .position(Position::new_absolute().top(0.).left(0.))
+                    .layer(Layer::Relative(1))
+                    .width(Size::percent(100.))
+                    .height(Size::percent(100.))
+                    .corner_radius(CornerRadius::new_all(12.))
+                    .border(hairline(outline))
+                    .interactive(false),
             )
             .maybe_child(self.badge.as_ref().map(|badge| {
                 rect()
@@ -1052,6 +1061,7 @@ impl Component for CoverThumb {
                 .width(Size::fill())
                 .height(Size::fill())
                 .aspect_ratio(AspectRatio::Min)
+                .image_cover(ImageCover::Center)
                 .into_element(),
             None => rect()
                 .width(Size::fill())

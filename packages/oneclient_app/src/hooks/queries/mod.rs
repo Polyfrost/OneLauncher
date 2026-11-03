@@ -69,7 +69,9 @@ pub use cluster_content::{
     cluster_content_items, use_cluster_content, use_migratable_routes, use_mods_folder_sync,
     use_shadowed_mods,
 };
-pub use clusters::{GraphicsBackendQuery, use_cluster, use_clusters, use_graphics_backend};
+pub use clusters::{
+    GraphicsBackendQuery, use_cluster, use_clusters, use_graphics_backend, use_shared_groups,
+};
 pub use disable_warnings::{DisableWarningsQuery, disable_warnings, use_disable_warnings};
 pub use external_launchers::{external_launchers, use_external_launchers};
 pub use import_screening::{import_screening, retry_import_screening, use_import_screening};

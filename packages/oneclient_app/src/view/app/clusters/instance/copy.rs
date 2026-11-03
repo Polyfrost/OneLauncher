@@ -84,13 +84,17 @@ pub fn footer_note(picks: &Picks) -> String {
                 t("oneclient.clusters.instance.copy.note.type.import").to_string()
             }
         },
-        Step::Folder => match picks.folder {
+        Step::Folder => match &picks.folder {
             FolderChoice::Shared => {
                 t("oneclient.clusters.instance.copy.note.folder.shared").to_string()
             }
             FolderChoice::Dedicated => {
                 t("oneclient.clusters.instance.copy.note.folder.dedicated").to_string()
             }
+            FolderChoice::Custom(group) => tf(
+                "oneclient.clusters.instance.copy.note.folder.custom",
+                &[group],
+            ),
         },
         Step::Loader => match (&picks.versions.chosen, picks.loader.chosen) {
             (Some(version), None) => {
@@ -176,11 +180,12 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
             TypeChoice::Modpack => t("oneclient.clusters.instance.copy.value.modpack").to_string(),
             TypeChoice::Import => t("oneclient.clusters.instance.copy.value.import").to_string(),
         },
-        Step::Folder => match picks.folder {
+        Step::Folder => match &picks.folder {
             FolderChoice::Shared => t("oneclient.clusters.instance.copy.value.shared").to_string(),
             FolderChoice::Dedicated => {
                 t("oneclient.clusters.instance.copy.value.dedicated").to_string()
             }
+            FolderChoice::Custom(group) => group.clone(),
         },
         Step::Loader => picks.loader_label(),
         Step::Version => {

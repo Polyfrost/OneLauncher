@@ -256,7 +256,6 @@ impl Actions {
         self.write_release_migration(move |prompt| {
             *prompt = Some(ReleaseMigrationPrompt {
                 key: offer.release.key(),
-                target_dedicated: offer.target.uses_dedicated_dir(),
                 target: offer.target,
                 java_major,
                 sources,
@@ -419,7 +418,6 @@ impl Actions {
             actions.write_release_migration(move |prompt| {
                 *prompt = Some(ReleaseMigrationPrompt {
                     key: release.key(),
-                    target_dedicated: target.uses_dedicated_dir(),
                     target,
                     java_major: None,
                     sources: vec![source],
@@ -518,6 +516,9 @@ impl Actions {
     }
 
     pub fn open_manual_migration(&self, target_cluster_id: i64, source_cluster_id: i64) {
+        if self.refuse_during_update_check(target_cluster_id) {
+            return;
+        }
         self.set_release_migration_checking(target_cluster_id, true);
         self.set_release_migration_checking(source_cluster_id, true);
         let actions = self.clone();
@@ -676,6 +677,9 @@ impl Actions {
         let mut taken = None;
         self.write_release_migration(|prompt| taken = prompt.take());
         let Some(prompt) = taken else { return };
+        if self.refuse_during_update_check(prompt.target.id) {
+            return;
+        }
         match prompt.origin {
             PromptOrigin::Fake => {
                 self.notify(t("oneclient.actions.release_migration.fake.title"))
@@ -732,7 +736,9 @@ impl Actions {
         let waitlisted = !prompt.is_cross_loader();
 
         let actions = self.clone();
+        let write = super::ClusterWrite::take(prompt.target.id);
         spawn_forever(async move {
+            let _write = write;
             let Ok(state) = launcher::state() else { return };
             let content = state.services.content();
             let source = prompt.source().filter(|_| copy_configs_too).cloned();

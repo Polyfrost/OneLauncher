@@ -62,6 +62,9 @@ impl Actions {
                 .send();
             return;
         }
+        if self.refuse_during_update_check(cluster_id) {
+            return;
+        }
         if super::external_import::import_running() {
             self.notify(t("oneclient.actions.share.blocked.importing.title"))
                 .body(t("oneclient.actions.share.blocked.importing.body"))

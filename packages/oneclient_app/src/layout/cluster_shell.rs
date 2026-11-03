@@ -400,6 +400,9 @@ fn cluster_tabs(
     let tab_items = tabs.into_iter().flatten().map(|tab| {
         let route = tab.route(cluster_id);
         let mut item = TabItem::new(tab.label(), tab == active);
+        if tab == ClusterViewShellTab::GameLog {
+            item = item.accent(colors::brand());
+        }
         if let Some(route) = route {
             item = item.on_press(move |_| {
                 let _ = RouterContext::get().push(route.clone());

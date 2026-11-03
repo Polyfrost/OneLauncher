@@ -10,7 +10,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
 use crate::disable::{self, PendingDisable};
-use crate::hooks::{invalidate_cluster_queries, use_disable_confirm};
+use crate::hooks::{Actions, invalidate_cluster_queries, use_disable_confirm, use_dispatch};
 use crate::i18n::t;
 use crate::launcher;
 use crate::theme::colors;
@@ -27,6 +27,7 @@ pub struct DisableDependentsOverlay;
 impl Component for DisableDependentsOverlay {
     fn render(&self) -> impl IntoElement {
         let mut pending = use_disable_confirm();
+        let dispatch = use_dispatch();
         let Some(current) = pending.read().clone() else {
             return rect().into_element();
         };
@@ -47,11 +48,12 @@ impl Component for DisableDependentsOverlay {
 
         if !current.required.is_empty() {
             let alone = current.clone();
+            let dispatch = dispatch.clone();
             buttons = buttons.child(
                 Button::new()
                     .secondary()
                     .on_press(move |_| {
-                        apply(alone.clone(), true);
+                        apply(alone.clone(), true, dispatch.clone());
                         pending.set(None);
                     })
                     .text(t(
@@ -64,7 +66,7 @@ impl Component for DisableDependentsOverlay {
             Button::new()
                 .danger()
                 .on_press(move |_| {
-                    apply(confirmed.clone(), false);
+                    apply(confirmed.clone(), false, dispatch.clone());
                     pending.set(None);
                 })
                 .text(disable::confirm_label(&current)),
@@ -125,7 +127,7 @@ impl Component for DisableDependentsOverlay {
 
 /// Applied off the event handler: the write is a database round trip, and the
 /// modal has already closed on the user's answer.
-fn apply(pending: PendingDisable, alone: bool) {
+fn apply(pending: PendingDisable, alone: bool, dispatch: Actions) {
     spawn_forever(async move {
         let result = if alone {
             disable::apply_alone(&pending).await
@@ -146,6 +148,7 @@ fn apply(pending: PendingDisable, alone: bool) {
             return;
         }
 
+        dispatch.acknowledge_disable_warnings(&pending.request.warned);
         invalidate_cluster_queries().await;
     });
 }

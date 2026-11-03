@@ -80,16 +80,15 @@ impl Component for ActiveClusterPanel {
         let (title, subtitle) = if cluster.user_created && cluster.kind != ClusterKind::OneClient {
             (cluster.name.clone(), version)
         } else {
-            let subtitle = match metadata {
-                Some(m) => format!("OneClient · {}", m.name),
-                None => "OneClient".to_string(),
-            };
+            let mut parts = vec!["OneClient".to_string()];
             let title = if cluster.user_created {
+                parts.push(version);
                 cluster.name.clone()
             } else {
                 version
             };
-            (title, subtitle)
+            parts.extend(metadata.map(|m| m.name.clone()));
+            (title, parts.join(" · "))
         };
         let cluster_id = cluster.id;
         let syncing = launch_syncing(&launcher, cluster.uses_bundles());

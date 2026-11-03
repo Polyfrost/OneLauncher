@@ -243,7 +243,7 @@ fn launcher_section(
                         )),
                         corner: None,
                         selected: false,
-                        checkbox: false,
+                        checkbox: true,
                         on_press: (move |()| {}).into(),
                     }))
                     .into_element();

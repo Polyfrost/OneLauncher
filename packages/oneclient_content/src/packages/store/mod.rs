@@ -273,7 +273,7 @@ impl PackageStore {
     ) -> ContentResult<Vec<LinkedArtifactInfo>> {
         let rows = artifact_dao::list_cluster_artifacts_detailed(&ctx.db, cluster_id).await?;
 
-        Ok(rows
+        let mut linked: Vec<LinkedArtifactInfo> = rows
             .into_iter()
             .map(|row| LinkedArtifactInfo {
                 hash: row.hash,
@@ -292,7 +292,38 @@ impl PackageStore {
                 added_at: row.added_at,
                 seen_status: SeenStatus::from_repr(row.seen_status).unwrap_or_default(),
             })
-            .collect())
+            .collect();
+
+        for info in linked.iter_mut().filter(|info| info.added_at.is_none()) {
+            let Some(added_at) = Self::file_added_at(&info.hash, ctx).await else {
+                continue;
+            };
+            if artifact_dao::fill_cluster_artifact_added_at(
+                &ctx.db, cluster_id, &info.hash, &added_at,
+            )
+            .await
+            .is_ok()
+            {
+                info.added_at = Some(added_at);
+            }
+        }
+
+        Ok(linked)
+    }
+
+    async fn file_added_at(hash: &str, ctx: &ContentCtx) -> Option<String> {
+        let row = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+            .await
+            .ok()??;
+        let modified = std::fs::metadata(artifact_absolute_path(&row.path).ok()?)
+            .ok()?
+            .modified()
+            .ok()?;
+        Some(
+            chrono::DateTime::<chrono::Utc>::from(modified)
+                .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                .to_string(),
+        )
     }
 
     #[tracing::instrument(level = "debug", skip(ctx))]

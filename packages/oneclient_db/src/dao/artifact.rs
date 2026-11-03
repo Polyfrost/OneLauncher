@@ -114,10 +114,10 @@ pub async fn copy_global_links(
         r#"
 		INSERT OR IGNORE INTO cluster_artifacts (
 			cluster_id, hash, cluster_file_name, enabled, bundle_name,
-			bundle_version_id, package_id, installed_at, seen_status
+			bundle_version_id, package_id, installed_at, seen_status, added_at
 		)
 		SELECT ?, hash, cluster_file_name, enabled, bundle_name,
-			bundle_version_id, package_id, installed_at, seen_status
+			bundle_version_id, package_id, installed_at, seen_status, added_at
 		FROM (
 			SELECT ca.*, ROW_NUMBER() OVER (
 				PARTITION BY ca.hash ORDER BY ca.enabled DESC, ca.cluster_file_name
@@ -149,10 +149,10 @@ pub async fn give_global_links(
         r#"
 		INSERT OR IGNORE INTO cluster_artifacts (
 			cluster_id, hash, cluster_file_name, enabled, bundle_name,
-			bundle_version_id, package_id, installed_at, seen_status
+			bundle_version_id, package_id, installed_at, seen_status, added_at
 		)
 		SELECT s.value, ca.hash, ca.cluster_file_name, ca.enabled, ca.bundle_name,
-			ca.bundle_version_id, ca.package_id, ca.installed_at, ca.seen_status
+			ca.bundle_version_id, ca.package_id, ca.installed_at, ca.seen_status, ca.added_at
 		FROM cluster_artifacts ca
 		JOIN artifacts a ON a.hash = ca.hash
 		JOIN json_each(?) s
@@ -743,6 +743,24 @@ pub async fn list_cluster_artifacts_detailed(
     )
     .fetch_all(pool)
     .await
+}
+
+pub async fn fill_cluster_artifact_added_at(
+    pool: &SqlitePool,
+    cluster_id: i64,
+    hash: &str,
+    added_at: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "UPDATE cluster_artifacts SET added_at = ? \
+         WHERE cluster_id = ? AND hash = ? AND added_at IS NULL",
+    )
+    .bind(added_at)
+    .bind(cluster_id)
+    .bind(hash)
+    .execute(pool)
+    .await?;
+    Ok(())
 }
 
 pub async fn get_cluster_artifact(

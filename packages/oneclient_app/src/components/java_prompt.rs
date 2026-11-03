@@ -5,7 +5,7 @@ use oneclient_java::{JAVA_CHOICE_DOWNLOAD, JAVA_CHOICE_FOLDER, JavaVendor};
 use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(PartialEq)]
@@ -87,7 +87,7 @@ impl Component for JavaPromptOverlay {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -103,7 +103,7 @@ impl Component for JavaPromptOverlay {
                                     .child(
                                         label()
                                             .text(prompt.title.clone())
-                                            .font_size(16.)
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),
@@ -111,7 +111,7 @@ impl Component for JavaPromptOverlay {
                             .child(
                                 label()
                                     .text(prompt.question.clone())
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(4)
                                     .width(Size::fill())
                                     .color(colors::fg_secondary()),

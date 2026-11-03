@@ -26,7 +26,7 @@ use crate::hooks::{
     use_game_snapshot, use_launcher, use_provide_active_cluster, use_provide_browser_compat,
     use_provide_browser_state, use_provide_browser_type, use_provide_datapack_world, use_splash,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::utils::home_cluster;
 use oneclient_events::LaunchStage;
 use std::collections::HashMap;
@@ -144,7 +144,7 @@ impl Component for LaunchErrorDialog {
                             .vertical()
                             .width(Size::px(560.))
                             .background(colors::page_elevated())
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .padding(Gaps::new_all(24.))
                             .spacing(16.)
                             .border(crate::ui::border_all_color(1., colors::component_border()))
@@ -162,7 +162,7 @@ impl Component for LaunchErrorDialog {
                                     .child(
                                         label()
                                             .text(t("oneclient.layout.game_error.title"))
-                                            .font_size(18.)
+                                            .font_size(text_size(18.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),
@@ -170,7 +170,7 @@ impl Component for LaunchErrorDialog {
                             .child(
                                 label()
                                     .text(t("oneclient.layout.game_error.description"))
-                                    .font_size(13.)
+                                    .font_size(text_size(13.))
                                     .color(colors::fg_secondary()),
                             )
                             .child(
@@ -204,6 +204,7 @@ impl Component for LaunchErrorDialog {
 pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
     let alpha = alpha.clamp(0., 1.);
     let scale = |a: u8| (f32::from(a) * alpha).round() as u8;
+    let top = if colors::is_light() { 215 } else { 100 };
 
     rect()
         .width(Size::fill())
@@ -217,7 +218,7 @@ pub(crate) fn appshell_overlay(alpha: f32) -> Rect {
                 .width(Size::fill())
                 .background(
                     LinearGradient::new()
-                        .stop((colors::shade().with_a(scale(100)), 0.))
+                        .stop((colors::shade().with_a(scale(top)), 0.))
                         .stop((colors::page().with_a(scale(255)), 95.0)),
                 ),
         )

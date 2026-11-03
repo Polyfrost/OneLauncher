@@ -12,7 +12,7 @@ use crate::hooks::{
 };
 use crate::i18n::t;
 use crate::layout::cluster_content;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::view::app::cluster::logs::{Confirm, LevelFilter, confirm_overlay, viewer_header};
 
 use super::cluster_not_found;
@@ -121,7 +121,7 @@ fn not_running() -> Element {
         .child(
             label()
                 .text(t("oneclient.cluster.process_logs.not_running"))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

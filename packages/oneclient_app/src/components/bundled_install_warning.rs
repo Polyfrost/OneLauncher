@@ -4,7 +4,7 @@ use oneclient_content::packages::ProviderId;
 use crate::components::{Button, Icon, IconType, OverlayPopup};
 use crate::hooks::use_dispatch;
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(Clone, PartialEq)]
@@ -64,7 +64,7 @@ impl Component for BundledInstallWarning {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -82,7 +82,7 @@ impl Component for BundledInstallWarning {
                                             .text(t(
                                                 "oneclient.components.bundled_install_warning.title",
                                             ))
-                                            .font_size(16.)
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),
@@ -90,7 +90,7 @@ impl Component for BundledInstallWarning {
                             .child(
                                 label()
                                     .text(body)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(8)
                                     .width(Size::fill())
                                     .color(colors::fg_secondary()),

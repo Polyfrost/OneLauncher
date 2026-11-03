@@ -8,7 +8,7 @@ use crate::components::{
 };
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_duration;
 
@@ -193,7 +193,7 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueU
                 .cross_align(Alignment::Center)
                 .spacing(8.)
                 .padding(Gaps::new_symmetric(3., 6.))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(if is_active {
                     colors::component_bg()
                 } else {
@@ -203,13 +203,13 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueU
                     rect()
                         .width(Size::px(8.))
                         .height(Size::px(8.))
-                        .corner_radius(CornerRadius::new_all(2.))
+                        .corner_radius(rounded(2.))
                         .background(slice_color(i).with_a(if dim { 120 } else { 255 })),
                 )
                 .child(
                     label()
                         .text(name.clone())
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .width(Size::flex(1.0))
                         .color(colors::fg_primary()),
@@ -217,13 +217,13 @@ fn legend(values: &[i64], labels: &[String], active: Option<usize>, unit: ValueU
                 .child(
                     label()
                         .text(format!("{pct:.0}%"))
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 )
                 .child(
                     label()
                         .text(unit.format(*value))
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),
@@ -265,7 +265,7 @@ impl Component for ServerDetailsPopup {
             .max_height(Size::window_percent(70.))
             .padding(20.)
             .spacing(14.)
-            .corner_radius(CornerRadius::new_all(14.))
+            .corner_radius(rounded(14.))
             .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .child(
@@ -283,7 +283,7 @@ impl Component for ServerDetailsPopup {
                             .child(
                                 label()
                                     .text(t("oneclient.analytics.servers.all.title"))
-                                    .font_size(16.)
+                                    .font_size(text_size(16.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
@@ -300,7 +300,7 @@ impl Component for ServerDetailsPopup {
                                             &[&servers.len()],
                                         )
                                     })
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary()),
                             ),
                     )
@@ -353,13 +353,13 @@ impl Component for ServerRow {
         let bar = rect()
             .width(Size::fill())
             .height(Size::px(4.))
-            .corner_radius(CornerRadius::new_all(2.))
+            .corner_radius(rounded(2.))
             .background(colors::component_bg())
             .child(
                 rect()
                     .width(Size::percent(frac * 100.))
                     .height(Size::fill())
-                    .corner_radius(CornerRadius::new_all(2.))
+                    .corner_radius(rounded(2.))
                     .background(colors::brand().with_a(if reveal { 255 } else { 150 })),
             );
 
@@ -368,7 +368,7 @@ impl Component for ServerRow {
             .width(Size::fill())
             .spacing(6.)
             .padding(Gaps::new_symmetric(8., 10.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(if is_hovered {
                 colors::component_bg_hover()
             } else {
@@ -392,7 +392,7 @@ impl Component for ServerRow {
                     .child(
                         label()
                             .text(address)
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary())
                             .width(Size::flex(1.0)),
@@ -400,13 +400,13 @@ impl Component for ServerRow {
                     .child(
                         label()
                             .text(format!("{}×", s.joins))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .child(
                         label()
                             .text(format_duration(s.total_secs))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     ),
@@ -443,7 +443,7 @@ impl Component for ServerIcon {
                 .width(Size::px(size))
                 .height(Size::px(size))
                 .aspect_ratio(AspectRatio::Min)
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .fallback(server_icon_placeholder(self.is_ip, size))
                 .into_element(),
             None => server_icon_placeholder(self.is_ip, size),
@@ -461,7 +461,7 @@ fn server_icon_placeholder(is_ip: bool, size: f32) -> Element {
         .center()
         .width(Size::px(size))
         .height(Size::px(size))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(colors::component_bg())
         .child(
             Icon::new(icon)

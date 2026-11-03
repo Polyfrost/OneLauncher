@@ -13,7 +13,7 @@ use crate::hooks::{
 use crate::i18n::t;
 use crate::platform::open_url;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_page, step_heading};
 
@@ -132,7 +132,7 @@ impl Component for OnboardingTerms {
             .width(Size::fill())
             .height(Size::fill())
             .child(onboarding_page(
-                onboarding_illustration(IconType::File02),
+                onboarding_illustration(IconType::OnboardingTerms),
                 content,
                 nav,
             ))
@@ -146,7 +146,7 @@ fn panel(child: impl IntoElement) -> impl IntoElement {
         .width(Size::fill())
         .height(Size::px(220.))
         .content(Content::Flex)
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(child)
@@ -161,7 +161,7 @@ fn loading_body() -> Element {
             .child(
                 label()
                     .text(t("oneclient.onboarding.terms.loading"))
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             ),
     )
@@ -219,21 +219,21 @@ fn fallback_body(error: Option<&str>, query: UseQuery<TermsQuery>) -> Element {
             .child(
                 label()
                     .text(t("oneclient.onboarding.terms.load_failed.title"))
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
             .child(
                 label()
                     .text(t("oneclient.onboarding.terms.load_failed.description"))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .text_align(TextAlign::Center)
                     .color(colors::fg_secondary()),
             )
             .maybe_child(error.map(|err| {
                 label()
                     .text(err.to_string())
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .max_lines(2)
                     .color(colors::fg_secondary().with_a(160))
             }))
@@ -339,7 +339,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(border_all_color(1., colors::danger()))
                         .child(
@@ -355,7 +355,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                                 .child(
                                     label()
                                         .text(t("oneclient.onboarding.terms.decline_modal.title"))
-                                        .font_size(16.)
+                                        .font_size(text_size(16.))
                                         .font_weight(FontWeight::SEMI_BOLD)
                                         .color(colors::fg_primary()),
                                 ),
@@ -363,7 +363,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                         .child(
                             label()
                                 .text(t("oneclient.onboarding.terms.decline_modal.description"))
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .width(Size::fill())
                                 .max_lines(4)
                                 .color(colors::fg_secondary()),
@@ -371,7 +371,7 @@ fn decline_modal(confirming: State<bool>, on_confirm: impl FnMut() + 'static) ->
                         .child(
                             label()
                                 .text(t("oneclient.onboarding.terms.decline_modal.note"))
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .width(Size::fill())
                                 .max_lines(3)
                                 .color(colors::fg_secondary().with_a(180)),

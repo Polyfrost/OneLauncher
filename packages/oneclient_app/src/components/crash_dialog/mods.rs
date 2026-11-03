@@ -11,7 +11,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::state::MissingModInstall;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::view::app::cluster::package_manager::use_content_meta;
 
 use super::{CARD_PADDING, CARD_SPACING, card};
@@ -156,7 +156,7 @@ impl Component for CrashModRows {
             .child(
                 label()
                     .text(t("oneclient.components.crash_dialog.mods.title"))
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .max_lines(1)
                     .color(colors::danger()),
             )
@@ -175,7 +175,7 @@ impl Component for CrashModRows {
                         "oneclient.components.crash_dialog.mods.more",
                         &[&self.hidden],
                     ))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .max_lines(1)
                     .color(colors::fg_secondary()),
             );
@@ -287,7 +287,7 @@ impl Component for CrashModRow {
             .child(
                 label()
                     .text(self.name.clone())
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .font_weight(FontWeight::MEDIUM)
                     .max_width(Size::px(NAME_MAX_W))
                     .max_lines(1)
@@ -299,7 +299,7 @@ impl Component for CrashModRow {
             title = title.child(
                 label()
                     .text(version.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .max_width(Size::px(VERSION_MAX_W))
                     .max_lines(1)
                     .text_overflow(TextOverflow::Ellipsis)
@@ -325,7 +325,7 @@ impl Component for CrashModRow {
             .child(
                 label()
                     .text(note)
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .max_width(Size::px(NOTE_MAX_W))
                     .max_lines(1)
                     .text_overflow(TextOverflow::Ellipsis)

@@ -3,7 +3,11 @@ use freya::{
     prelude::*,
 };
 
-use crate::{i18n::t, theme::colors, ui};
+use crate::{
+    i18n::t,
+    theme::{colors, rounded, text_size},
+    ui,
+};
 
 const WIDTH: f32 = 40.;
 const HANDLE_SIZE: f32 = 16.;
@@ -129,14 +133,14 @@ impl Component for Switch {
             .child(
                 label()
                     .text(text)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(
                 rect()
                     .width(Size::px(WIDTH))
                     .height(Size::px(22.))
-                    .corner_radius(CornerRadius::new_all(11.))
+                    .corner_radius(rounded(11.))
                     .padding(Gaps::new_all(3.))
                     .main_align(knob_align)
                     .cross_align(Alignment::Center)
@@ -150,7 +154,7 @@ impl Component for Switch {
                         rect()
                             .width(Size::px(HANDLE_SIZE))
                             .height(Size::px(HANDLE_SIZE))
-                            .corner_radius(CornerRadius::new_all(8.))
+                            .corner_radius(rounded(8.))
                             .background(if disabled {
                                 colors::fg_secondary()
                             } else if on {

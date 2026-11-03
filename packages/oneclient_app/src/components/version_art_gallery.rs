@@ -8,7 +8,7 @@ use crate::components::{
 };
 use crate::hooks::{refresh_version_art_gallery, use_version_art_gallery};
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_WIDTH: f32 = 880.;
@@ -98,7 +98,7 @@ impl Component for VersionArtGallery {
                             .max_width(Size::window_percent(94.))
                             .max_height(Size::window_percent(92.))
                             .content(Content::Flex)
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .overflow(Overflow::Clip)
                             .background(colors::page_elevated())
                             .border(border_all_color(1., colors::component_border()))
@@ -160,7 +160,7 @@ impl Component for GalleryTile {
         rect()
             .width(Size::px(TILE_W))
             .height(Size::px(TILE_H))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .overflow(Overflow::Clip)
             .opacity(opacity)
             .a11y_id(a11y_id)
@@ -185,7 +185,7 @@ impl Component for GalleryTile {
                     .width(Size::fill())
                     .height(Size::fill())
                     .layer(Layer::Relative(3))
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .border(border_all_color(2., border_color).alignment(BorderAlignment::Inner))
                     .center()
                     .maybe_child(self.busy.then(|| Spinner::new(22.).into_element())),
@@ -205,7 +205,7 @@ fn empty_state() -> Element {
         .child(
             label()
                 .text(t("oneclient.components.version_art_gallery.error"))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .child(
@@ -238,14 +238,14 @@ fn header(on_close: impl FnMut(Event<PressEventData>) + 'static) -> Element {
                 .child(
                     label()
                         .text(t("oneclient.components.version_art_gallery.title"))
-                        .font_size(20.)
+                        .font_size(text_size(20.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(t("oneclient.components.version_art_gallery.description"))
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .line_height(1.35)
                         .color(colors::fg_secondary()),
                 ),
@@ -294,7 +294,7 @@ fn footer(
             label()
                 .text(note)
                 .width(Size::flex(1.0))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .line_height(1.35)
                 .max_lines(2)
                 .color(note_color),

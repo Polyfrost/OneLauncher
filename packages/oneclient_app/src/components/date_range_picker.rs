@@ -3,7 +3,7 @@ use freya::prelude::*;
 
 use crate::components::{Icon, IconType, OverlayPopup};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, clamp_to_window};
 use crate::utils::format_day;
 
@@ -84,7 +84,7 @@ impl Component for DateRangePicker {
                     .cross_align(Alignment::Center)
                     .spacing(6.)
                     .padding(Gaps::new_symmetric(0., 10.))
-                    .corner_radius(CornerRadius::new_all(9.))
+                    .corner_radius(rounded(9.))
                     .background(if hovering() {
                         colors::component_bg_hover()
                     } else {
@@ -118,7 +118,7 @@ impl Component for DateRangePicker {
                     .child(
                         label()
                             .text(trigger_text)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .color(colors::fg_primary()),
                     ),
@@ -138,7 +138,7 @@ impl Component for DateRangePicker {
                     .vertical()
                     .spacing(8.)
                     .padding(12.)
-                    .corner_radius(CornerRadius::new_all(10.))
+                    .corner_radius(rounded(10.))
                     .border(border_all_color(1., colors::component_border()))
                     .background(colors::page_elevated())
                     .on_sized(move |e: Event<SizedEventData>| {
@@ -196,7 +196,7 @@ fn month_header(
         .child(
             label()
                 .text(format!("{} {}", month_name(shown.month0()), shown.year()))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .width(Size::flex(1.0))
                 .text_align(TextAlign::Center)
@@ -216,7 +216,7 @@ fn arrow(
         .width(Size::px(24.))
         .height(Size::px(24.))
         .center()
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(colors::component_bg())
         .maybe(enabled, |el| {
             el.cursor(CursorIcon::Pointer)
@@ -245,7 +245,7 @@ fn weekday_header() -> Element {
             rect().width(Size::px(CELL)).center().child(
                 label()
                     .text(day.to_string())
-                    .font_size(10.)
+                    .font_size(text_size(10.))
                     .color(colors::fg_secondary()),
             ),
         );
@@ -337,7 +337,7 @@ impl<F: FnMut(NaiveDate) + Clone + 'static> Component for DayCell<F> {
             .width(Size::px(CELL))
             .height(Size::px(CELL - 2.))
             .center()
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(background)
             .maybe(enabled, |el| {
                 el.cursor(CursorIcon::Pointer)
@@ -351,7 +351,7 @@ impl<F: FnMut(NaiveDate) + Clone + 'static> Component for DayCell<F> {
             .child(
                 label()
                     .text(day.day().to_string())
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(color),
             )
     }
@@ -379,7 +379,7 @@ fn footer(
         .child(
             label()
                 .text(hint)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .max_lines(2)
                 .width(Size::flex(1.0))
                 .color(colors::fg_secondary()),
@@ -387,7 +387,7 @@ fn footer(
         .maybe_child(has_range.then(|| {
             rect()
                 .padding(Gaps::new_symmetric(4., 8.))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(colors::component_bg())
                 .cursor(CursorIcon::Pointer)
                 .a11y_role(AccessibilityRole::Button)
@@ -398,7 +398,7 @@ fn footer(
                 .child(
                     label()
                         .text(t("oneclient.common.reset"))
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 )
                 .into_element()

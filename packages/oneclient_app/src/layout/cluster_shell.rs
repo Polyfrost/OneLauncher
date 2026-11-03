@@ -9,7 +9,7 @@ use crate::hooks::{
 };
 use crate::i18n::t;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::ui::entrance_motion_layer;
 use crate::view::app::{launch_button_state, launch_syncing, use_shared_dir_taken};
 
@@ -327,14 +327,14 @@ fn cluster_header(
                 .child(
                     label()
                         .text(title)
-                        .font_size(28.)
+                        .font_size(text_size(28.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_secondary()),
                 ),
@@ -431,7 +431,7 @@ fn cluster_tabs(
                 .width(Size::auto())
                 .height(Size::fill())
                 .spacing(22.)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .tabs(tab_items),
         )
 }

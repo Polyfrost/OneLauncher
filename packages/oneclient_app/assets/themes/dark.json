@@ -1,0 +1,14 @@
+{
+  "name": "PolyGlass Dark",
+  "colors": {
+    "light": false,
+    "page": "#11171C",
+    "page_elevated": "#151C22",
+    "card": "#1A2229",
+    "component": "#1A2229",
+    "border": "#FFFFFF1A",
+    "text": "#D5DBFF",
+    "text_secondary": "#757883",
+    "accent": "#2B4BFF"
+  }
+}

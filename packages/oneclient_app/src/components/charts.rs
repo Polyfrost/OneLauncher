@@ -2,7 +2,7 @@ use freya::engine::prelude::{Paint, PaintStyle, PathBuilder, SkColor, SkRect};
 use freya::prelude::*;
 
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, rounded_px, text_size};
 use crate::utils::format_duration;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -213,7 +213,7 @@ impl Component for PieChart {
                             .child(
                                 label()
                                     .text(center_value)
-                                    .font_size(16.)
+                                    .font_size(text_size(16.))
                                     .font_weight(FontWeight::BOLD)
                                     .max_lines(1)
                                     .width(Size::fill())
@@ -223,7 +223,7 @@ impl Component for PieChart {
                             .child(
                                 label()
                                     .text(center_name)
-                                    .font_size(10.)
+                                    .font_size(text_size(10.))
                                     .max_lines(2)
                                     .width(Size::fill())
                                     .text_align(TextAlign::Center)
@@ -380,7 +380,12 @@ impl Component for BarChart {
                         rect()
                             .width(Size::fill())
                             .height(Size::px(h))
-                            .corner_radius(CornerRadius::new(4., 4., 0., 0.))
+                            .corner_radius(CornerRadius::new(
+                                rounded_px(4.),
+                                rounded_px(4.),
+                                0.,
+                                0.,
+                            ))
                             .background(color),
                     ),
             );
@@ -403,7 +408,7 @@ impl Component for BarChart {
                     .child(
                         label()
                             .text(if shown { text.clone() } else { String::new() })
-                            .font_size(10.)
+                            .font_size(text_size(10.))
                             .max_lines(1)
                             .color(colors::fg_secondary()),
                     ),
@@ -510,7 +515,7 @@ fn y_axis(max: i64, unit: ValueUnit, height: f32) -> Element {
     let tick = |text: String| {
         label()
             .text(text)
-            .font_size(9.)
+            .font_size(text_size(9.))
             .max_lines(1)
             .width(Size::fill())
             .text_align(TextAlign::Right)
@@ -541,26 +546,26 @@ fn readout(name: String, value: String) -> Element {
                 .cross_align(Alignment::Center)
                 .spacing(6.)
                 .padding(Gaps::new_symmetric(3., 8.))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(colors::component_bg())
                 .border(crate::ui::border_all_color(1., colors::component_border()))
                 .child(
                     rect()
                         .width(Size::px(8.))
                         .height(Size::px(8.))
-                        .corner_radius(CornerRadius::new_all(2.))
+                        .corner_radius(rounded(2.))
                         .background(colors::brand()),
                 )
                 .child(
                     label()
                         .text(name)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 )
                 .child(
                     label()
                         .text(value)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),

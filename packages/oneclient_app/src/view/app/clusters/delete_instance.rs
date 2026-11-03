@@ -7,7 +7,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_WIDTH: f32 = 420.;
@@ -71,33 +71,33 @@ impl Component for DeleteInstanceModal {
                             .max_width(Size::window_percent(92.))
                             .spacing(16.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .background(colors::page_elevated())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 label()
                                     .text(t("oneclient.clusters.delete.title"))
-                                    .font_size(18.)
+                                    .font_size(text_size(18.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
                                     .text(warning)
-                                    .font_size(13.)
+                                    .font_size(text_size(13.))
                                     .color(colors::fg_secondary()),
                             )
                             .maybe_child(provisioned.then(|| {
                                 label()
                                     .text(t("oneclient.clusters.delete.provisioned"))
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                                     .into_element()
                             }))
                             .maybe_child(running.then(|| {
                                 label()
                                     .text(t("oneclient.clusters.delete.running"))
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                                     .into_element()
                             }))

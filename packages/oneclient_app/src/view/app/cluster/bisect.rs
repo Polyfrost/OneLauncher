@@ -12,7 +12,7 @@ use crate::hooks::{
     use_bisect_mutation, use_cluster_content, use_game_snapshot,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::app::settings::settings_row;
 
@@ -57,7 +57,7 @@ impl Component for BisectBanner {
                 Button::new()
                     .primary()
                     .height(Size::px(34.))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .on_press(move |_| question_hidden.set(false))
                     .text(t("oneclient.cluster.bisect.banner.answer"))
                     .into_element(),
@@ -68,7 +68,7 @@ impl Component for BisectBanner {
                 Button::new()
                     .primary()
                     .height(Size::px(34.))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .enabled(idle)
                     .on_press(move |_| {
                         mutation.mutate(BisectAction::Finish {
@@ -85,7 +85,7 @@ impl Component for BisectBanner {
                 Button::new()
                     .primary()
                     .height(Size::px(34.))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .enabled(idle)
                     .tooltip(t("oneclient.cluster.bisect.banner.restart.tooltip"))
                     .on_press(move |_| mutation.mutate(BisectAction::Restart { cluster_id }))
@@ -104,7 +104,7 @@ impl Component for BisectBanner {
                 Button::new()
                     .primary()
                     .height(Size::px(34.))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .enabled(idle)
                     .on_press(move |_| {
                         mutation.mutate(BisectAction::Finish {
@@ -121,7 +121,7 @@ impl Component for BisectBanner {
                 Button::new()
                     .secondary()
                     .height(Size::px(34.))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .enabled(idle)
                     .tooltip(t("oneclient.cluster.bisect.banner.undo.tooltip"))
                     .on_press(move |_| mutation.mutate(BisectAction::Undo { cluster_id }))
@@ -135,7 +135,7 @@ impl Component for BisectBanner {
                 Button::new()
                     .secondary()
                     .height(Size::px(34.))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .enabled(idle)
                     .on_press(move |_| {
                         mutation.mutate(BisectAction::Finish {
@@ -172,7 +172,7 @@ impl Component for BisectBanner {
             .width(Size::fill())
             .spacing(10.)
             .padding(Gaps::new_all(14.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::page_elevated())
             .border(border_all_color(1., accent.with_a(120)))
             .child(
@@ -201,20 +201,20 @@ impl Component for BisectBanner {
                             .child(
                                 label()
                                     .text(title)
-                                    .font_size(14.)
+                                    .font_size(text_size(14.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
                                     .text(body)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary()),
                             )
                             .maybe_child(note.map(|note| {
                                 label()
                                     .text(note)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::brand())
                                     .into_element()
@@ -222,7 +222,7 @@ impl Component for BisectBanner {
                             .maybe_child(warning.map(|warning| {
                                 label()
                                     .text(warning)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::danger())
                                     .into_element()
@@ -423,7 +423,7 @@ impl Component for BisectQuestion {
                     .cross_align(Alignment::Center)
                     .spacing(10.)
                     .padding(Gaps::new_symmetric(8., 10.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(if selected {
                         colors::brand().with_a(40)
                     } else {
@@ -454,7 +454,7 @@ impl Component for BisectQuestion {
                     .child(
                         label()
                             .text(name)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
                             .color(colors::fg_primary()),
@@ -622,7 +622,7 @@ impl Component for BisectQuestion {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -639,7 +639,7 @@ impl Component for BisectQuestion {
                                     .child(
                                         label()
                                             .text(title)
-                                            .font_size(16.)
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),
@@ -647,7 +647,7 @@ impl Component for BisectQuestion {
                             .child(
                                 label()
                                     .text(body)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary()),
                             )
                             .child(content),
@@ -729,7 +729,7 @@ fn confirm_question(
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
@@ -746,7 +746,7 @@ fn confirm_question(
                                 .child(
                                     label()
                                         .text(title)
-                                        .font_size(16.)
+                                        .font_size(text_size(16.))
                                         .font_weight(FontWeight::SEMI_BOLD)
                                         .color(colors::fg_primary()),
                                 ),
@@ -754,7 +754,7 @@ fn confirm_question(
                         .child(
                             label()
                                 .text(body)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         )
                         .child(content),
@@ -885,7 +885,7 @@ fn steps_list<const N: usize>(steps: [String; N]) -> Element {
                     label()
                         .text(format!("{}.", index + 1))
                         .width(Size::px(14.))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
@@ -893,7 +893,7 @@ fn steps_list<const N: usize>(steps: [String; N]) -> Element {
                     label()
                         .text(step)
                         .width(Size::flex(1.))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_primary()),
                 )
                 .into_element()

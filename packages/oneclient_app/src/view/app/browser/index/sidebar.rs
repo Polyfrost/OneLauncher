@@ -2,7 +2,7 @@ use super::*;
 
 use crate::components::ScrollArea;
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::utils::capitalize;
 
@@ -49,7 +49,7 @@ impl Component for CategorySidebar {
             .child(
                 label()
                     .text(t("oneclient.browser.index.categories"))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .font_weight(FontWeight::MEDIUM)
                     .letter_spacing(1.4)
                     .color(colors::fg_secondary()),
@@ -100,7 +100,7 @@ impl Component for CategoryRow {
             .height(Size::px(29.))
             .cross_align(Alignment::Center)
             .padding(Gaps::new_symmetric(0., 10.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .maybe(selected, |el| {
                 el.background(colors::brand().with_a(40))
                     .border(border_all_color(1., colors::brand().with_a(115)))
@@ -118,7 +118,7 @@ impl Component for CategoryRow {
             .child(
                 label()
                     .text(capitalize(&self.name))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .max_lines(1)
                     .font_weight(if selected {
                         FontWeight::MEDIUM

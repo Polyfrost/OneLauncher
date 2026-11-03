@@ -4,7 +4,7 @@ use super::settings_page;
 use crate::components::{Icon, IconType};
 use crate::hooks::{Actions, use_dispatch, use_settings_snapshot};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::translations;
 use crate::view::app::settings::section_header;
 
@@ -39,7 +39,7 @@ fn language_row(code: Option<String>, is_selected: bool, dispatch: Actions) -> i
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .cursor(CursorIcon::Pointer)
         .on_press(move |_| {
@@ -54,14 +54,14 @@ fn language_row(code: Option<String>, is_selected: bool, dispatch: Actions) -> i
                 .child(
                     label()
                         .text(native)
-                        .font_size(16.)
+                        .font_size(text_size(16.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .maybe_child((!english.is_empty()).then(|| {
                     label()
                         .text(english)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary())
                         .into_element()
                 })),
@@ -72,7 +72,7 @@ fn language_row(code: Option<String>, is_selected: bool, dispatch: Actions) -> i
                     "oneclient.onboarding.language.localized",
                     &[&percentage],
                 ))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary())
                 .into_element()
         }))

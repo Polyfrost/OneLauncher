@@ -15,7 +15,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
@@ -270,7 +270,7 @@ impl Component for PackageRow {
                 .width(Size::percent(100.))
                 .height(Size::percent(100.))
                 .layer(Layer::Relative(16))
-                .corner_radius(CornerRadius::new_all(radius))
+                .corner_radius(rounded(radius))
                 .maybe(self.selected, |el| {
                     el.background(colors::brand().with_a(28)).border(
                         border_all_color(2., colors::brand()).alignment(BorderAlignment::Inner),
@@ -575,7 +575,7 @@ fn list_card(
         .cross_align(Alignment::Center)
         .spacing(12.)
         .padding(Gaps::new_all(10.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::card())
         .content(Content::Flex)
         .on_secondary_down(on_secondary(on_context.clone()))
@@ -632,7 +632,7 @@ pub(crate) fn grid_card(
                 .child(
                     label()
                         .text(title)
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -651,7 +651,7 @@ pub(crate) fn grid_card(
     let description = (!item.description.is_empty()).then(|| {
         label()
             .text(item.description.clone())
-            .font_size(11.)
+            .font_size(text_size(11.))
             .line_height(1.45)
             .max_lines(2)
             .text_overflow(TextOverflow::Ellipsis)
@@ -696,7 +696,7 @@ pub(crate) fn grid_card(
         .height(Size::fill())
         .spacing(9.)
         .padding(Gaps::new_all(GRID_CARD_PADDING))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(bg.with_a(alpha))
         .border(border_all_color(1., border))
         .content(Content::Flex)
@@ -839,7 +839,7 @@ impl Component for SourceLink {
 pub(crate) fn meta_text(text: String, color: Color) -> Element {
     label()
         .text(text)
-        .font_size(11.)
+        .font_size(text_size(11.))
         .max_lines(1)
         .color(color)
         .into_element()
@@ -863,7 +863,7 @@ impl Component for KebabButton {
             .center()
             .width(Size::px(26.))
             .height(Size::px(26.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(if *hovered.read() {
                 colors::ghost_overlay_hover()
             } else {
@@ -958,7 +958,7 @@ fn package_info(
                         .child(
                             label()
                                 .text(title)
-                                .font_size(15.)
+                                .font_size(text_size(15.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
@@ -995,7 +995,7 @@ fn package_info(
                                 "oneclient.components.package_row.by_author",
                                 &[&item.author],
                             ))
-                            .font_size(10.)
+                            .font_size(text_size(10.))
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
@@ -1006,7 +1006,7 @@ fn package_info(
                     el.child(
                         label()
                             .text(item.description.clone())
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(2)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
@@ -1037,7 +1037,7 @@ pub(crate) fn remote_icon(
             .width(Size::px(size))
             .height(Size::px(size))
             .aspect_ratio(AspectRatio::Min)
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .fallback(icon_box(IconType::DotsGrid, size))
             .into_element(),
 
@@ -1051,7 +1051,7 @@ pub(crate) fn icon_box(icon: IconType, size: f32) -> Element {
         .center()
         .width(Size::px(size))
         .height(Size::px(size))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .child(
             Icon::new(icon)
@@ -1066,7 +1066,7 @@ pub(crate) fn meta_size(size: u64) -> impl IntoElement {
         .maybe_child((size > 0).then(|| {
             label()
                 .text(format_size(size))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary())
         }))
         .into_element()
@@ -1140,18 +1140,18 @@ fn updated_badge() -> Element {
 
 fn status_tag(text: impl Into<String>, accent: Color) -> Element {
     rect()
-        .corner_radius(CornerRadius::new_all(4.))
+        .corner_radius(rounded(4.))
         .background(colors::component_bg())
         .child(
             rect()
                 .padding(Gaps::new(1., 6., 2., 6.))
-                .corner_radius(CornerRadius::new_all(4.))
+                .corner_radius(rounded(4.))
                 .background(accent.with_a(38))
                 .border(border_all_color(1., accent.with_a(96)))
                 .child(
                     label()
                         .text(text.into())
-                        .font_size(10.)
+                        .font_size(text_size(10.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(accent),
                 ),
@@ -1193,14 +1193,14 @@ pub(crate) fn pill(icon: Option<Element>, text: String, accent: Color) -> Elemen
         .cross_align(Alignment::Center)
         .spacing(4.)
         .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .border(border_all_color(1., colors::component_border()))
         .background(colors::component_bg())
         .maybe_child(icon)
         .child(
             label()
                 .text(text)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(accent),
         )

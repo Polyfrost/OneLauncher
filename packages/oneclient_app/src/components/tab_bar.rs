@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 
 pub struct TabItem {
     label: String,
@@ -98,7 +98,7 @@ fn tab_label(text: &str, font_size: f32, active: bool, accent: Option<Color>) ->
         .child(
             label()
                 .text(text.to_string())
-                .font_size(font_size)
+                .font_size(text_size(font_size))
                 .font_weight(ACTIVE_WEIGHT)
                 .max_lines(1)
                 .color(Color::TRANSPARENT)
@@ -117,7 +117,7 @@ fn tab_label(text: &str, font_size: f32, active: bool, accent: Option<Color>) ->
                 .child(
                     label()
                         .text(text.to_string())
-                        .font_size(font_size)
+                        .font_size(text_size(font_size))
                         .font_weight(if active {
                             ACTIVE_WEIGHT
                         } else {
@@ -138,12 +138,12 @@ fn count_pill(count: &str, font_size: f32) -> impl IntoElement {
     rect()
         .center()
         .padding(Gaps::new_symmetric(1., 6.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::component_bg())
         .child(
             label()
                 .text(count.to_string())
-                .font_size((font_size - 3.).max(8.))
+                .font_size(text_size((font_size - 3.).max(8.)))
                 .color(colors::fg_secondary()),
         )
 }
@@ -237,7 +237,7 @@ impl Component for TabButton {
                                 .height(Size::px(2.))
                                 .width(Size::fill_minimum())
                                 .margin(Gaps::new_symmetric(0., 4.0))
-                                .corner_radius(CornerRadius::new_all(2.))
+                                .corner_radius(rounded(2.))
                                 .background(if underline_on {
                                     self.accent.unwrap_or_else(colors::fg_primary)
                                 } else {

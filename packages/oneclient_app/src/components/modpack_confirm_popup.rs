@@ -13,7 +13,7 @@ use crate::components::{
 use crate::hooks::{use_cached_image, use_dispatch, use_notifications_snapshot};
 use crate::i18n::{t, tf};
 use crate::notifications::{ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::utils::{count_label, format_size};
 
@@ -202,14 +202,14 @@ fn fact(name: &'static str, value: String) -> Element {
             label()
                 .text(name)
                 .width(Size::px(FACT_LABEL_W))
-                .font_size(12.5)
+                .font_size(text_size(12.5))
                 .color(colors::fg_secondary()),
         )
         .child(
             label()
                 .text(value)
                 .width(Size::flex(1.))
-                .font_size(12.5)
+                .font_size(text_size(12.5))
                 .max_lines(2)
                 .color(colors::fg_primary()),
         )
@@ -313,7 +313,7 @@ fn dialog(
         .map(|(text, warn)| {
             label()
                 .text(text.clone())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(4)
                 .color(if *warn {
                     colors::code_warn()
@@ -383,7 +383,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -409,7 +409,7 @@ fn dialog(
                         .child(
                             label()
                                 .text(title)
-                                .font_size(17.)
+                                .font_size(text_size(17.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .max_lines(2)
                                 .color(colors::fg_primary()),
@@ -417,7 +417,7 @@ fn dialog(
                         .child(
                             label()
                                 .text(subtitle)
-                                .font_size(12.5)
+                                .font_size(text_size(12.5))
                                 .max_lines(3)
                                 .color(colors::fg_secondary()),
                         ),
@@ -443,7 +443,7 @@ fn dialog(
                                         .width(Size::fill())
                                         .spacing(8.)
                                         .padding(Gaps::new_all(12.))
-                                        .corner_radius(CornerRadius::new_all(10.))
+                                        .corner_radius(rounded(10.))
                                         .background(colors::component_bg())
                                         .border(border_all_color(1., colors::component_border()))
                                         .children(facts),
@@ -457,7 +457,7 @@ fn dialog(
                                         .map(|(text, color)| {
                                             label()
                                                 .text(text)
-                                                .font_size(12.)
+                                                .font_size(text_size(12.))
                                                 .max_lines(3)
                                                 .color(color)
                                                 .into_element()
@@ -496,7 +496,7 @@ fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> i
         .width(Size::fill())
         .spacing(8.)
         .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -512,7 +512,7 @@ fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> i
                         &[&pack.name, &pack.version],
                     )
                 })
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(4)
                 .color(colors::fg_primary()),
         )
@@ -551,7 +551,7 @@ fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoE
                 .child(
                     label()
                         .text(t("oneclient.components.modpack_confirm.flagged_pack.title"))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),
@@ -562,7 +562,7 @@ fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoE
                     "oneclient.components.modpack_confirm.flagged_pack.body",
                     &[&pack_name],
                 ))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(3)
                 .color(colors::fg_secondary()),
         )
@@ -635,7 +635,7 @@ fn flagged_section(
                             t("oneclient.components.modpack_confirm.flagged.title.one"),
                             t("oneclient.components.modpack_confirm.flagged.title.other"),
                         ))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),
@@ -643,7 +643,7 @@ fn flagged_section(
         .child(
             label()
                 .text(t("oneclient.components.modpack_confirm.flagged.body"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(3)
                 .color(colors::fg_secondary()),
         )
@@ -687,7 +687,7 @@ impl Component for FlaggedCard {
             .width(Size::fill())
             .spacing(8.)
             .padding(Gaps::new_all(12.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .child(
@@ -701,7 +701,7 @@ impl Component for FlaggedCard {
                         label()
                             .text(self.flagged.name.clone())
                             .width(Size::flex(1.))
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .max_lines(1)
                             .color(colors::fg_primary()),
@@ -729,7 +729,7 @@ impl Component for FlaggedCard {
                         .text(t(
                             "oneclient.components.modpack_confirm.flagged.alternatives",
                         ))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 )
                 .children(self.flagged.alternatives.iter().enumerate().map(
@@ -811,7 +811,7 @@ impl Component for AlternativeChoice {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_symmetric(0., 8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::card())
             .border(border_all_color(1., colors::component_border()))
             .child(icon)
@@ -823,7 +823,7 @@ impl Component for AlternativeChoice {
                     .child(
                         label()
                             .text(self.alternative.name.clone())
-                            .font_size(12.5)
+                            .font_size(text_size(12.5))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .max_lines(1)
                             .color(colors::fg_primary()),
@@ -831,7 +831,7 @@ impl Component for AlternativeChoice {
                     .child(
                         label()
                             .text(version)
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(1)
                             .color(colors::fg_secondary()),
                     ),

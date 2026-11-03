@@ -13,7 +13,7 @@ use crate::{
         use_remove_account, use_settings_snapshot,
     },
     i18n::{t, tf},
-    theme::colors,
+    theme::{colors, rounded, text_size},
     ui::{border_all_color, divider},
 };
 
@@ -59,7 +59,7 @@ impl Component for ControlPanel {
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
             .backdrop_blur(12.)
-            .corner_radius(CornerRadius::new_all(14.))
+            .corner_radius(rounded(14.))
             .border(
                 Border::new()
                     .fill(colors::component_border())
@@ -103,7 +103,7 @@ impl Component for ControlPanel {
 fn section_label(text: &'static str) -> impl IntoElement {
     label()
         .text(text)
-        .font_size(11.)
+        .font_size(text_size(11.))
         .letter_spacing(0.8)
         .font_weight(FontWeight::SEMI_BOLD)
         .color(colors::fg_secondary())
@@ -187,7 +187,7 @@ impl Component for AccountHeader {
                     .child(
                         label()
                             .text(username)
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .color(colors::fg_primary()),
@@ -195,7 +195,7 @@ impl Component for AccountHeader {
                     .child(
                         label()
                             .text(subtitle)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .color(subtitle_color),
                     ),
@@ -206,7 +206,7 @@ impl Component for AccountHeader {
                     .cross_align(Alignment::Center)
                     .spacing(6.)
                     .padding(Gaps::new_symmetric(6., 8.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(Color::RED.with_a(0))
                     .maybe(*hovered.read(), |el| {
                         el.background(colors::ghost_overlay_hover())
@@ -219,7 +219,7 @@ impl Component for AccountHeader {
                     .child(
                         label()
                             .text(action_label)
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .color(colors::fg_secondary()),
                     )
                     .child(
@@ -257,7 +257,7 @@ impl Component for NavRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_symmetric(0., 8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(Color::RED.with_a(0))
             .maybe(*hovered.read(), |el| {
                 el.background(colors::ghost_overlay_hover())
@@ -271,7 +271,7 @@ impl Component for NavRow {
             .child(
                 label()
                     .text(self.row_label)
-                    .font_size(15.)
+                    .font_size(text_size(15.))
                     .width(Size::flex(1.0))
                     .color(colors::fg_primary()),
             )
@@ -395,7 +395,7 @@ impl Component for QuickTile {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(background)
             .maybe(!enabled, |el| el.opacity(0.45))
             .maybe(!on || !enabled, |el| {
@@ -421,7 +421,7 @@ impl Component for QuickTile {
                     .child(
                         label()
                             .text(self.title)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .color(title_color),
@@ -433,7 +433,7 @@ impl Component for QuickTile {
                             } else {
                                 t("oneclient.common.off")
                             })
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(sub_color),
                     ),
             )
@@ -521,7 +521,7 @@ impl Component for PanelFooter {
                                         .max_width(Size::window_percent(90.))
                                         .spacing(14.)
                                         .padding(Gaps::new_all(20.))
-                                        .corner_radius(CornerRadius::new_all(14.))
+                                        .corner_radius(rounded(14.))
                                         .background(colors::page_elevated())
                                         .border(border_all_color(
                                             1.,
@@ -542,7 +542,7 @@ impl Component for PanelFooter {
                                                         .text(t(
                                                             "oneclient.components.control_center.sign_out_confirm.title",
                                                         ))
-                                                        .font_size(16.)
+                                                        .font_size(text_size(16.))
                                                         .font_weight(FontWeight::SEMI_BOLD)
                                                         .color(colors::fg_primary()),
                                                 ),
@@ -553,7 +553,7 @@ impl Component for PanelFooter {
                                                     "oneclient.components.control_center.sign_out_confirm.body",
                                                     &[&username],
                                                 ))
-                                                .font_size(12.)
+                                                .font_size(text_size(12.))
                                                 .max_lines(4)
                                                 .width(Size::fill())
                                                 .color(colors::fg_secondary()),
@@ -628,7 +628,7 @@ impl Component for FooterAction {
             .spacing(8.)
             .height(Size::px(34.))
             .padding(Gaps::new_symmetric(0., 8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(Color::RED.with_a(0))
             .maybe(*hovered.read(), |el| {
                 el.background(colors::ghost_overlay_hover())
@@ -642,7 +642,7 @@ impl Component for FooterAction {
             .child(
                 label()
                     .text(self.text)
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .max_lines(1)
                     .color(self.color),
             )

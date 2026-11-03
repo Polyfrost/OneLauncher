@@ -1,0 +1,16 @@
+<svg width="300" height="270" viewBox="0 0 300 270" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect x="64" y="4" width="168" height="212" rx="30" fill="url(#terms_back)"/>
+<rect x="18" y="30" width="180" height="230" rx="34" fill="url(#terms_tile)"/>
+<rect x="48" y="72" width="96" height="14" rx="7" fill="white" fill-opacity="0.9"/>
+<rect x="48" y="104" width="124" height="10" rx="5" fill="white" fill-opacity="0.45"/>
+<rect x="48" y="126" width="110" height="10" rx="5" fill="white" fill-opacity="0.45"/>
+<rect x="48" y="148" width="72" height="10" rx="5" fill="white" fill-opacity="0.45"/>
+<circle cx="224" cy="196" r="62" fill="url(#terms_badge)"/>
+<circle cx="224" cy="196" r="61.25" stroke="white" stroke-opacity="0.1" stroke-width="1.5"/>
+<path d="M196 197L215 216L252 178" stroke="white" stroke-width="13" stroke-linecap="round" stroke-linejoin="round"/>
+<defs>
+<linearGradient id="terms_back" x1="110" y1="4" x2="190" y2="216" gradientUnits="userSpaceOnUse"><stop stop-color="#EAF6FF"/><stop offset="1" stop-color="#C6E1F5"/></linearGradient>
+<linearGradient id="terms_tile" x1="40" y1="30" x2="190" y2="250" gradientUnits="userSpaceOnUse"><stop stop-color="#7A64FF"/><stop offset="0.637" stop-color="#415EFF"/><stop offset="1" stop-color="#2B4BFF"/></linearGradient>
+<linearGradient id="terms_badge" x1="170" y1="134" x2="280" y2="258" gradientUnits="userSpaceOnUse"><stop stop-color="#FF94C2"/><stop offset="1" stop-color="#EE5C56"/></linearGradient>
+</defs>
+</svg>

@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, TextInput};
 use crate::layout::{SettingsShell, SettingsTab};
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 
 #[derive(PartialEq)]
 pub struct SettingsFeedback;
@@ -19,14 +19,14 @@ impl Component for SettingsFeedback {
                     .child(
                         label()
                             .text("Help us improve OneClient")
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
                     .child(
                         label()
                             .text("Tell us what's working, what isn't, and what you'd like to see next.")
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_primary()),
                     ),
             )

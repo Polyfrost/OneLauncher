@@ -11,7 +11,7 @@ use crate::components::{Button, Icon, IconType, OVERLAY_BASE_LEVEL, OverlayPopup
 use crate::hooks::{use_dispatch, use_link_confirm};
 use crate::i18n::{t, tf};
 use crate::theme;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::utils::format_durations;
 
 mod markup;
@@ -86,7 +86,7 @@ impl Component for CrashDialog {
                             .content(Content::Flex)
                             .overflow(Overflow::Clip)
                             .background(colors::page_elevated())
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .padding(Gaps::new_all(DIALOG_PADDING))
                             .spacing(DIALOG_SPACING)
                             .border(crate::ui::border_all_color(1., colors::component_border()))
@@ -114,7 +114,7 @@ fn header(crash: &GameCrash) -> impl IntoElement {
         .child(
             label()
                 .text(crash.title.clone())
-                .font_size(18.)
+                .font_size(text_size(18.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .width(Size::fill())
                 .max_lines(2)
@@ -136,7 +136,7 @@ fn subtitle(crash: &GameCrash) -> impl IntoElement {
 
     label()
         .text(parts.join("  ·  "))
-        .font_size(12.)
+        .font_size(text_size(12.))
         .width(Size::fill())
         .max_lines(2)
         .color(colors::fg_secondary())
@@ -280,7 +280,7 @@ fn card() -> Rect {
         .vertical()
         .width(Size::fill())
         .padding(Gaps::new_all(CARD_PADDING))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .border(crate::ui::border_all_color(1., colors::component_border()))
 }
@@ -307,7 +307,7 @@ fn cause_card(cause: &str) -> Element {
         .child(
             label()
                 .text(cause.to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .width(Size::fill())
                 .color(colors::fg_primary()),
         )
@@ -320,14 +320,14 @@ fn suspects_card(crash: &GameCrash) -> Element {
         .child(
             label()
                 .text(t("oneclient.components.crash_dialog.suspects.title"))
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::danger()),
         )
         .child(
             label()
                 .text(crash.suspects.join(", "))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .width(Size::fill())
                 .max_lines(SUSPECT_MAX_LINES as usize)
                 .color(colors::fg_primary()),
@@ -335,7 +335,7 @@ fn suspects_card(crash: &GameCrash) -> Element {
         .child(
             label()
                 .text(t("oneclient.components.crash_dialog.suspects.hint"))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .width(Size::fill())
                 .max_lines(1)
                 .color(colors::fg_secondary()),
@@ -364,7 +364,7 @@ fn fixes_section(crash: &GameCrash, confirm: State<Option<String>>) -> Element {
                     "oneclient.components.crash_dialog.suggestions",
                     &[&cards.len()],
                 ))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_secondary()),
         )
@@ -379,7 +379,7 @@ fn fix_card(fix: &CrashFix, game_dir: Option<&str>, confirm: State<Option<String
     let mut fix = card().spacing(CARD_SPACING).child(
         label()
             .text(fix.kind.clone())
-            .font_size(10.)
+            .font_size(text_size(10.))
             .font_weight(FontWeight::SEMI_BOLD)
             .color(colors::brand()),
     );
@@ -424,15 +424,15 @@ fn fix_line(line: &str, content_w: f32) -> Element {
         .width(Size::px(content_w))
         .height(Size::px(FIX_LINE_H))
         .max_lines(1)
-        .font_size(13.);
+        .font_size(text_size(13.));
 
     for segment in segments(line) {
         let span = Span::new(segment.text);
         text = text.span(match segment.style {
             SegmentStyle::Plain => span.color(colors::fg_primary()),
             SegmentStyle::Code => span
-                .font_family(theme::MONO_FONT)
-                .font_size(12.)
+                .font_family(theme::mono_font())
+                .font_size(text_size(12.))
                 .color(colors::code_info()),
             SegmentStyle::Link => span
                 .color(colors::code_info())
@@ -462,7 +462,7 @@ fn discord_card(mut confirm: State<Option<String>>) -> impl IntoElement {
         .spacing(12.)
         .content(Content::Flex)
         .padding(Gaps::new_all(14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(DISCORD_BG)
         .border(crate::ui::border_all_color(1., DISCORD_BORDER))
         .child(
@@ -478,7 +478,7 @@ fn discord_card(mut confirm: State<Option<String>>) -> impl IntoElement {
                 .child(
                     label()
                         .text(t("oneclient.components.crash_dialog.discord.title"))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .width(Size::fill())
@@ -487,7 +487,7 @@ fn discord_card(mut confirm: State<Option<String>>) -> impl IntoElement {
                 .child(
                     label()
                         .text(t("oneclient.components.crash_dialog.discord.body"))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .max_lines(1)
                         .width(Size::fill())
                         .color(colors::fg_secondary()),
@@ -516,8 +516,8 @@ fn excerpt_box(crash: &GameCrash) -> Element {
         .map(|line| {
             label()
                 .text(line)
-                .font_family(theme::MONO_FONT)
-                .font_size(12.)
+                .font_family(theme::mono_font())
+                .font_size(text_size(12.))
                 .width(Size::px(content_w))
                 .max_lines(1)
                 .color(colors::fg_primary())
@@ -527,7 +527,7 @@ fn excerpt_box(crash: &GameCrash) -> Element {
 
     clip_box(height)
         .background(colors::page())
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .padding(Gaps::new_all(CARD_PADDING))
         .child(
             ScrollArea::new()

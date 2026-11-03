@@ -20,7 +20,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::centered_note;
 use crate::view::app::clusters::{
     ClusterPickerButton, DeleteInstanceModal, EditInstanceModal, ExportInstanceModal,
@@ -361,7 +361,7 @@ fn reset_button(overridden: bool, on_reset: EventHandler<()>) -> impl IntoElemen
         } else {
             t("oneclient.cluster.settings.override.global")
         })
-        .corner_radius(CornerRadius::new_all(7.))
+        .corner_radius(rounded(7.))
         .maybe(overridden, |el| el.on_press(move |_| on_reset.call(())))
         .enabled(overridden)
         .child(Icon::new(IconType::RefreshCcw02).size(15.).color(color))
@@ -1234,7 +1234,7 @@ impl Component for JavaRow {
         let control: Element = if runtimes.is_empty() {
             label()
                 .text(t("oneclient.cluster.settings.java.none"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
@@ -1464,7 +1464,7 @@ impl Component for MigrateFromRow {
                 } else {
                     t("oneclient.cluster.settings.migrate.no_partners")
                 })
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
@@ -1517,7 +1517,7 @@ impl Component for LoaderRow {
         let control: Element = if versions.is_empty() {
             label()
                 .text(t("oneclient.cluster.settings.loader.none"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {

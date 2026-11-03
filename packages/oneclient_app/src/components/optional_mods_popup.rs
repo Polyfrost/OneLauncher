@@ -16,7 +16,7 @@ use crate::i18n::{t, tf};
 use crate::notifications::{
     ClusterUpdateItem, OptionalModRef, OptionalModsGroup, OptionalModsOutcome,
 };
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 720.;
@@ -155,7 +155,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -231,14 +231,14 @@ fn content(
                 .child(
                     label()
                         .text(t("oneclient.components.optional_mods_popup.title"))
-                        .font_size(17.)
+                        .font_size(text_size(17.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.5)
+                        .font_size(text_size(12.5))
                         .max_lines(4)
                         .color(colors::fg_secondary()),
                 ),
@@ -406,12 +406,12 @@ fn cluster_header(name: &str, first: bool) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .padding(Gaps::new_symmetric(6., 8.))
         .margin(Gaps::new(if first { 0. } else { 8. }, 0., 3., 0.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .child(
             label()
                 .text(name.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .max_lines(1)
                 .width(Size::fill())

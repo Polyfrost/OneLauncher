@@ -13,7 +13,7 @@ use crate::{
         use_accounts, use_current_account, use_dispatch, use_set_default_account,
     },
     i18n::t,
-    theme::colors,
+    theme::{colors, rounded, text_size},
     ui::divider,
 };
 
@@ -70,7 +70,7 @@ impl Component for AccountPanel {
             rows = rows.child(
                 label()
                     .text(t("oneclient.components.account_switcher.empty"))
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             );
         } else {
@@ -93,7 +93,7 @@ impl Component for AccountPanel {
             .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
             .background(colors::page_elevated().with_a(220))
             .backdrop_blur(12.)
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .border(
                 Border::new()
                     .fill(colors::component_border())
@@ -117,7 +117,7 @@ impl Component for AccountPanel {
                     .child(
                         label()
                             .text(t("oneclient.components.account_switcher.title"))
-                            .font_size(18.)
+                            .font_size(text_size(18.))
                             .font_weight(FontWeight::MEDIUM)
                             .a11y_role(AccessibilityRole::TitleBar),
                     ),
@@ -146,7 +146,7 @@ impl Component for BackToControlCenter {
             .width(Size::px(28.))
             .height(Size::px(28.))
             .center()
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(Color::RED.with_a(0))
             .maybe(*hovered.read(), |el| {
                 el.background(colors::ghost_overlay_hover())
@@ -220,7 +220,7 @@ impl Component for AccountRow {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_all(8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .maybe(*hovered.read() && !active, |el| {
                 el.background(colors::ghost_overlay_hover())
             })
@@ -240,7 +240,7 @@ impl Component for AccountRow {
                     .child(
                         label()
                             .text(username)
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .color(colors::fg_primary()),
@@ -249,7 +249,7 @@ impl Component for AccountRow {
                         el.child(
                             label()
                                 .text(t("oneclient.components.account_switcher.active"))
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .color(colors::fg_secondary()),
                         )
                     }),

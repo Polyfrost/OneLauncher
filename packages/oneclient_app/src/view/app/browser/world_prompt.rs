@@ -6,7 +6,7 @@ use crate::hooks::{
     query_is_loading, try_cluster_worlds, use_cluster_worlds, use_datapack_world, use_dispatch,
 };
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::view::app::cluster::dialog;
 
 #[derive(PartialEq)]
@@ -64,7 +64,7 @@ impl Component for WorldInstallPrompt {
                 } else {
                     t("oneclient.browser.world_prompt.none")
                 })
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element(),
         };

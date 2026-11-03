@@ -33,7 +33,7 @@ use crate::hooks::{
     use_current_account,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::ui::centered_note;
 use crate::view::app::cluster::confirm_dialog;
 
@@ -1123,7 +1123,7 @@ impl Component for WardrobeBody {
                                 label()
                                     .text(t("oneclient.wardrobe.title"))
                                     .width(Size::flex(1.0))
-                                    .font_size(24.)
+                                    .font_size(text_size(24.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
@@ -1325,7 +1325,7 @@ impl Header {
                 .child(
                     label()
                         .text(t("oneclient.wardrobe.history.title"))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -2210,7 +2210,7 @@ fn shop_card(ctx: &GridCtx, item: &StoreItem) -> Element {
         .maybe_child((variants.len() > 1).then(|| {
             label()
                 .text(tf("oneclient.wardrobe.variants", &[&variants.len()]))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary())
         }))
         .into_element();

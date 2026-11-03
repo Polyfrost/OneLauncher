@@ -2,7 +2,7 @@ use freya::animation::{AnimNum, Function, OnCreation, OnFinish, use_animation};
 use freya::prelude::*;
 
 use super::{Icon, IconType};
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 
 const SPIN_TIME: u64 = 900;
 
@@ -46,7 +46,7 @@ pub fn centered_spinner(message: &str) -> Element {
         .child(
             label()
                 .text(message.to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

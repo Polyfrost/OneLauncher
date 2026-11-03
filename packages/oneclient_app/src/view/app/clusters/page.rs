@@ -19,7 +19,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{
     border_all_color, fixed_grid, grid_columns_for_width, last_played_label, window_logical_size,
 };
@@ -182,7 +182,7 @@ impl Component for Clusters {
                         .child(
                             label()
                                 .text(t("oneclient.clusters.page.syncing"))
-                                .font_size(16.)
+                                .font_size(text_size(16.))
                                 .color(colors::fg_secondary()),
                         ),
                 )
@@ -473,7 +473,7 @@ impl Component for Clusters {
                                     .append_children(nothing_shown.then(|| {
                                         label()
                                             .text(t("oneclient.clusters.page.no_matches"))
-                                            .font_size(13.)
+                                            .font_size(text_size(13.))
                                             .color(colors::fg_secondary())
                                             .into_element()
                                     })),
@@ -562,14 +562,14 @@ pub(crate) fn section_header(title: &str, caption: &str) -> Element {
         .child(
             label()
                 .text(title.to_string())
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
                 .text(caption.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -592,7 +592,7 @@ pub(crate) fn toolbar(
                 .width(Size::auto())
                 .height(Size::fill())
                 .spacing(24.)
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .tabs(tabs),
         )
         .child(rect().width(Size::flex(1.0)))
@@ -693,7 +693,7 @@ fn line_picker(
                         "oneclient.clusters.page.instances_on",
                         &[&siblings.len(), &line_title(line, siblings)],
                     ))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_secondary()),
             )
@@ -814,7 +814,7 @@ impl Component for Sidebar {
             .height(Size::fill())
             .vertical()
             .content(Content::Flex)
-            .corner_radius(CornerRadius::new_all(20.))
+            .corner_radius(rounded(20.))
             .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .overflow(Overflow::Clip)
@@ -849,14 +849,14 @@ impl Component for Sidebar {
                                     .child(
                                         label()
                                             .text(self.title.clone())
-                                            .font_size(24.)
+                                            .font_size(text_size(24.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_strong()),
                                     )
                                     .child(
                                         label()
                                             .text(self.subtitle.clone())
-                                            .font_size(13.)
+                                            .font_size(text_size(13.))
                                             .color(colors::fg_secondary()),
                                     ),
                             )
@@ -865,7 +865,7 @@ impl Component for Sidebar {
                             .append_children(self.description.clone().map(|text| {
                                 label()
                                     .text(text)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                                     .into_element()
                             })),
@@ -928,12 +928,12 @@ fn sidebar_art(art: DynamicArt, type_label: &str, height: f32) -> Element {
                 .position(Position::new_absolute().top(14.).left(14.))
                 .layer(Layer::Relative(4))
                 .padding(Gaps::new_symmetric(5., 10.))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .background(Color::from_af32rgb(0.66, 11, 16, 19))
                 .child(
                     label()
                         .text(type_label.to_string())
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::on_media()),
                 ),
@@ -955,13 +955,13 @@ fn meta_list(meta: &[(&'static str, String)]) -> Element {
                 .child(
                     label()
                         .text(key.to_string())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .color(colors::fg_secondary()),
                 )
                 .child(
                     label()
                         .text(value.clone())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -1013,14 +1013,14 @@ fn page_header(mut show_create: State<bool>) -> impl IntoElement {
                 .child(
                     label()
                         .text(t("oneclient.clusters.page.title"))
-                        .font_size(32.)
+                        .font_size(text_size(32.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_strong()),
                 )
                 .child(
                     label()
                         .text(t("oneclient.clusters.page.description"))
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .color(colors::fg_secondary()),
                 ),
         )
@@ -1040,19 +1040,19 @@ fn sidebar_error(width: f32) -> Element {
         .vertical()
         .padding(16.)
         .spacing(8.)
-        .corner_radius(CornerRadius::new_all(20.))
+        .corner_radius(rounded(20.))
         .border(border_all_color(1., colors::component_border()))
         .background(colors::component_bg())
         .child(
             label()
                 .text(t("oneclient.clusters.page.error.title"))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .child(
             label()
                 .text(t("oneclient.clusters.page.error.hint"))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

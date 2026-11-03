@@ -147,7 +147,7 @@ mod tests {
 
     #[test]
     fn one_bad_field_does_not_cost_the_user_their_library() {
-        let raw = r#"{"max_concurrent_requests":"25","theme":"minecraft-dark","log_debug":true,"data_dir":"D:\\OneClient"}"#;
+        let raw = r#"{"max_concurrent_requests":"25","theme":42,"log_debug":true,"data_dir":"D:\\OneClient"}"#;
         let settings = salvage(raw);
 
         assert_eq!(
@@ -156,7 +156,7 @@ mod tests {
             "the location has to survive whatever else is wrong with the file"
         );
         assert!(settings.log_debug);
-        assert_eq!(settings.theme, super::super::launcher::AppTheme::Dark);
+        assert_eq!(settings.theme, "dark");
         assert_eq!(settings.max_concurrent_requests, 25);
     }
 

@@ -6,7 +6,7 @@ use crate::components::{
 };
 use crate::hooks::use_overlay_claim;
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 
 const PANEL_W: f32 = 172.;
 const BUTTON_W: f32 = 34.;
@@ -129,7 +129,7 @@ impl Component for FilterPanel {
             .padding(Gaps::new_all(8.))
             .opacity(progress)
             .offset_y((progress - 1.0) * 6.)
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::page_elevated().with_a(230))
             .backdrop_blur(12.)
             .border(crate::ui::border_all_color(1., colors::component_border()))
@@ -182,7 +182,7 @@ impl Component for FilterPanel {
 fn section_label(text: &'static str) -> impl IntoElement {
     label()
         .text(text)
-        .font_size(10.)
+        .font_size(text_size(10.))
         .font_weight(FontWeight::SEMI_BOLD)
         .color(colors::fg_secondary())
 }
@@ -221,7 +221,7 @@ impl Component for ChoiceRow {
             .cross_align(Alignment::Center)
             .spacing(8.)
             .padding(Gaps::new_symmetric(5., 8.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(bg)
             .content(Content::Flex)
             .a11y_id(a11y_id)
@@ -235,7 +235,7 @@ impl Component for ChoiceRow {
             .child(
                 label()
                     .text(self.option.text.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .width(Size::flex(1.0))
                     .color(color),
             )

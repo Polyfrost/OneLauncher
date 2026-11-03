@@ -8,7 +8,7 @@ use crate::components::{Button, Icon, IconType, JavaInstallManager, OverlayPopup
 use crate::hooks::{Actions, java_runtimes, use_dispatch, use_java_runtimes};
 use crate::i18n::t;
 use crate::invalidate_java_queries;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::app::settings::section_header;
 
@@ -133,12 +133,12 @@ fn runtimes_table(
         return rect()
             .width(Size::fill())
             .padding(Gaps::new_symmetric(16., 16.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .child(
                 label()
                     .text(t("oneclient.settings.java.empty"))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .into_element();
@@ -147,7 +147,7 @@ fn runtimes_table(
     let mut table = rect()
         .vertical()
         .width(Size::fill())
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .overflow(Overflow::Clip)
@@ -175,7 +175,7 @@ fn table_header() -> impl IntoElement {
             .child(
                 label()
                     .text(text)
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_secondary()),
             )
@@ -202,7 +202,7 @@ fn table_header() -> impl IntoElement {
             rect().width(Size::flex(1.0)).child(
                 label()
                     .text(t("oneclient.settings.java.table.path"))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_secondary()),
             ),
@@ -236,7 +236,7 @@ impl Component for RuntimeRow {
                 .child(
                     label()
                         .text(text)
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .color(colors::fg_primary()),
                 )
                 .into_element()
@@ -284,7 +284,7 @@ impl Component for RuntimeRow {
                             .child(
                                 label()
                                     .text(runtime.absolute_path.clone())
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(1)
                                     .color(colors::fg_secondary())
                                     .into_element(),
@@ -345,19 +345,19 @@ fn confirm_remove_modal(
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::page_elevated())
                         .child(
                             label()
                                 .text(t("oneclient.settings.java.remove.title"))
-                                .font_size(16.)
+                                .font_size(text_size(16.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
                         .child(
                             label()
                                 .text(consequence)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .max_lines(4)
                                 .width(Size::fill())
                                 .color(colors::fg_secondary()),
@@ -365,7 +365,7 @@ fn confirm_remove_modal(
                         .child(
                             label()
                                 .text(path)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .max_lines(3)
                                 .width(Size::fill())
                                 .color(colors::fg_secondary()),

@@ -27,7 +27,7 @@ use crate::hooks::{
     use_shared_groups,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note, divider, fixed_grid, note};
 use crate::utils::bundle_display_name;
 use oneclient_events::{Choice, Prompt};
@@ -512,7 +512,7 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_all(16.))
-        .corner_radius(CornerRadius::new_all(CARD_RADIUS))
+        .corner_radius(rounded(CARD_RADIUS))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -526,7 +526,7 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
                             "oneclient.clusters.instance.steps.loader_version.title",
                             &[&chosen.name()],
                         ))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -535,7 +535,7 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
                         .text(t(
                             "oneclient.clusters.instance.steps.loader_version.description",
                         ))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .line_height(1.4)
                         .color(colors::fg_secondary()),
                 ),
@@ -601,7 +601,7 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                 .child(
                     label()
                         .text(t("oneclient.clusters.instance.steps.version.show"))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 )
                 .child(

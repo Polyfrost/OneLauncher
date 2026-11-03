@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, TooltipPlacement};
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 fn page_window(current: usize, total: usize, window: usize) -> (usize, usize) {
@@ -81,13 +81,13 @@ impl Component for Pagination {
                     .center()
                     .width(Size::px(32.))
                     .height(Size::px(32.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(colors::component_bg_pressed())
                     .border(border_all_color(1., colors::brand()))
                     .child(
                         label()
                             .text(format!("{}", target + 1))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
@@ -104,7 +104,7 @@ impl Component for Pagination {
                 .child(
                     label()
                         .text(format!("{}", target + 1))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .font_weight(FontWeight::NORMAL)
                         .max_lines(1)
                         .color(colors::fg_secondary()),
@@ -120,7 +120,7 @@ impl Component for Pagination {
                 .child(
                     label()
                         .text("...")
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 )
                 .into_element()

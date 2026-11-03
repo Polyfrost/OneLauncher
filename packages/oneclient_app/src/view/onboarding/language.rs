@@ -7,7 +7,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::translations;
 use crate::ui::border_all_color;
 use crate::view::onboarding::{
@@ -50,7 +50,7 @@ impl Component for OnboardingLanguage {
             .child(
                 label()
                     .text(t("oneclient.onboarding.language.choose"))
-                    .font_size(18.)
+                    .font_size(text_size(18.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -93,7 +93,7 @@ fn language_row(
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .padding(Gaps::new_symmetric(14., 20.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(background)
         .maybe(active, |el| {
             el.border(border_all_color(1., colors::brand()))
@@ -112,7 +112,7 @@ fn language_row(
             rect().width(Size::flex(1.0)).child(
                 label()
                     .text(name)
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             ),
@@ -123,7 +123,7 @@ fn language_row(
                     "oneclient.onboarding.language.localized",
                     &[&percentage],
                 ))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(if active {
                     colors::fg_primary()
                 } else {

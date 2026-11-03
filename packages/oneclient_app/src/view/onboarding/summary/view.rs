@@ -5,7 +5,7 @@ use crate::components::{ART_PREVIEW_EDGE, Button, DynamicArt, Icon, IconType, Sc
 use crate::hooks::ClusterBundles;
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{onboarding_illustration, onboarding_slide, step_heading};
 
@@ -13,6 +13,7 @@ pub(super) struct SummaryView<'a> {
     pub items: &'a [ClusterBundles],
     pub selected: &'a std::collections::HashSet<String>,
     pub language: &'a str,
+    pub theme: String,
     pub reduce_motion: bool,
     pub parallax: bool,
     pub account_name: String,
@@ -32,6 +33,7 @@ pub(super) fn summary_view(
         items,
         selected,
         language,
+        theme,
         reduce_motion,
         parallax,
         account_name,
@@ -115,6 +117,10 @@ pub(super) fn summary_view(
                     t("oneclient.onboarding.summary.accessibility.title"),
                     None,
                     vec![
+                        summary_line(
+                            t("oneclient.onboarding.summary.accessibility.theme"),
+                            &theme,
+                        ),
                         summary_line(
                             t("oneclient.onboarding.summary.accessibility.animations"),
                             if reduce_motion {
@@ -227,13 +233,13 @@ fn failure_notice(reason: &str) -> Element {
         .width(Size::fill())
         .spacing(4.)
         .padding(Gaps::new_all(14.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::danger().with_a(26))
         .border(border_all_color(1., colors::danger().with_a(128)))
         .child(
             label()
                 .text(t("oneclient.onboarding.summary.failure.title"))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
@@ -243,7 +249,7 @@ fn failure_notice(reason: &str) -> Element {
                     "oneclient.onboarding.summary.failure.description",
                     &[&reason.trim_end_matches('.')],
                 ))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -275,14 +281,14 @@ fn summary_section(title: &str, note: Option<&str>, rows: Vec<Element>) -> impl 
         .child(
             label()
                 .text(title.to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_secondary()),
         )
         .maybe_child(note.map(|text| {
             label()
                 .text(text.to_string())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary())
                 .into_element()
         }))
@@ -291,7 +297,7 @@ fn summary_section(title: &str, note: Option<&str>, rows: Vec<Element>) -> impl 
                 .vertical()
                 .width(Size::fill())
                 .spacing(2.)
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::page_elevated())
                 .border(border_all_color(1., colors::component_border()))
                 .padding(Gaps::new_symmetric(6., 4.))
@@ -311,14 +317,14 @@ fn summary_line(label_text: &str, value: &str) -> Element {
             rect().width(Size::flex(1.0)).child(
                 label()
                     .text(label_text.to_string())
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .color(colors::fg_primary()),
             ),
         )
         .child(
             label()
                 .text(value.to_string())
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )

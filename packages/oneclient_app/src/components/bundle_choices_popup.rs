@@ -5,7 +5,7 @@ use freya::prelude::*;
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, toggle_controlled};
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 460.;
@@ -43,12 +43,12 @@ impl Component for BundleChoicesPopup {
                     .content(Content::Flex)
                     .cross_align(Alignment::Center)
                     .padding(Gaps::new_symmetric(8., 10.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(colors::component_bg())
                     .child(
                         label()
                             .text(title.clone())
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .max_lines(1)
                             .width(Size::flex(1.0))
                             .color(colors::fg_primary()),
@@ -88,13 +88,13 @@ impl Component for BundleChoicesPopup {
                             .max_height(Size::window_percent(85.))
                             .padding(Gaps::new_all(22.))
                             .spacing(14.)
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
                                 label()
                                     .text(t("oneclient.components.bundle_choices_popup.title"))
-                                    .font_size(17.)
+                                    .font_size(text_size(17.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
@@ -104,7 +104,7 @@ impl Component for BundleChoicesPopup {
                                         "oneclient.components.bundle_choices_popup.description",
                                         &[&choices.cluster_name],
                                     ))
-                                    .font_size(12.5)
+                                    .font_size(text_size(12.5))
                                     .max_lines(4)
                                     .color(colors::fg_secondary()),
                             )

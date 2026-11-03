@@ -6,7 +6,7 @@ use freya::prelude::*;
 use crate::{
     components::{Icon, IconTint, IconType, TooltipPlacement, tooltip::use_tooltip_anchor},
     i18n::t,
-    theme::colors,
+    theme::{colors, rounded, text_size},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -103,7 +103,7 @@ impl Button {
 
         style.corner_radius = default_radius;
 
-        text_style.font_size = Some(font_size.into());
+        text_style.font_size = Some(text_size(font_size).into());
 
         Self {
             size,
@@ -154,7 +154,7 @@ impl Button {
         self.layout.height = height;
         self.layout.padding = padding;
         self.style.corner_radius = corner_radius;
-        self.text_style.font_size = Some(font_size.into());
+        self.text_style.font_size = Some(text_size(font_size).into());
 
         self
     }
@@ -435,28 +435,28 @@ fn size_layout(size: ButtonSize) -> (Gaps, CornerRadius, f32, Size, Size) {
     match size {
         ButtonSize::Small => (
             Gaps::new_symmetric(4., 8.),
-            CornerRadius::new_all(6.),
+            rounded(6.),
             12.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Medium => (
             Gaps::new_symmetric(6., 12.),
-            CornerRadius::new_all(8.),
+            rounded(8.),
             14.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Large => (
             Gaps::new_symmetric(8., 32.),
-            CornerRadius::new_all(10.),
+            rounded(10.),
             18.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Icon => (
             Gaps::new_all(6.),
-            CornerRadius::new_all(8.),
+            rounded(8.),
             14.,
             Size::px(32.),
             Size::px(32.),

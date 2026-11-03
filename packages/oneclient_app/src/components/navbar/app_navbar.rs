@@ -4,6 +4,7 @@ use freya::{
     router::{RouterContext, use_route},
 };
 
+use crate::theme::{rounded, text_size};
 use crate::{
     Route,
     components::{Avatar, Icon, IconType},
@@ -126,13 +127,7 @@ struct NavbarLogo {
 
 impl Component for NavbarLogo {
     fn render(&self) -> impl IntoElement {
-        let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
-
-        SvgViewer::new(("logo.svg", bytes.read().cloned()))
-            .show_loader(false)
-            .height(Size::px(44.))
-            .width(Size::px(214.))
-            .color(primary_color(self.over_art))
+        theme::wordmark(214., 44., primary_color(self.over_art))
     }
 }
 
@@ -243,7 +238,7 @@ impl Component for NavLink {
             .cross_align(Alignment::Center)
             .height(Size::px(36.))
             .width(Size::px(nav_label.len() as f32 * 10. + 34.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(background)
             .maybe(active, |el| {
                 el.border(
@@ -271,7 +266,7 @@ impl Component for NavLink {
             .child(
                 label()
                     .text(nav_label)
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(if active {
                         FontWeight::MEDIUM
                     } else {
@@ -352,7 +347,7 @@ fn avatar_with_gear(uuid: String) -> impl IntoElement {
                 .position(Position::new_absolute().bottom(-7.).right(-7.))
                 .width(Size::px(16.))
                 .height(Size::px(16.))
-                .corner_radius(CornerRadius::from(7.))
+                .corner_radius(rounded(7.))
                 .background(theme::colors::page_elevated())
                 .border(
                     Border::new()
@@ -380,7 +375,7 @@ fn notification_bell(unread: usize) -> impl IntoElement {
                 .position(Position::new_absolute().top(-4.).right(-4.))
                 .width(Size::px(16.))
                 .height(Size::px(16.))
-                .corner_radius(CornerRadius::from(8.))
+                .corner_radius(rounded(8.))
                 .background(theme::colors::danger())
                 .layer(Layer::Relative(3))
                 .center()
@@ -391,7 +386,7 @@ fn notification_bell(unread: usize) -> impl IntoElement {
                         } else {
                             unread.to_string()
                         })
-                        .font_size(10.)
+                        .font_size(text_size(10.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(theme::colors::fg_primary()),
                 )

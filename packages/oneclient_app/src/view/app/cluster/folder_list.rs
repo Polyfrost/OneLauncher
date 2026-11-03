@@ -14,7 +14,7 @@ use crate::hooks::{
     loaded_image, settled_or_loading, use_cached_image, use_clusters, use_game_snapshot,
 };
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, rounded_px, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 
 use super::package_manager::{CARD_SPACING, GRID_MAX_COLS, notice_bar};
@@ -65,7 +65,7 @@ pub(super) fn matches_search(needle: &str, fields: &[&str]) -> bool {
 
 pub(super) fn toolbar_panel(leading: Option<Element>, controls: Vec<Element>) -> Element {
     let mut top_corners = CornerRadius::new_all(0.);
-    top_corners.fill_top(12.);
+    top_corners.fill_top(rounded_px(12.));
 
     rect()
         .vertical()
@@ -128,7 +128,7 @@ pub(super) fn toolbar_action(icon: IconType, text: &str) -> Button {
     Button::new()
         .primary()
         .height(Size::px(CONTROL_H))
-        .font_size(12.)
+        .font_size(text_size(12.))
         .child(Icon::new(icon).size(15.))
         .text(text.to_string())
 }
@@ -161,7 +161,7 @@ pub(super) fn content_box(
     });
 
     let mut bottom_corners = CornerRadius::new_all(0.);
-    bottom_corners.fill_bottom(12.);
+    bottom_corners.fill_bottom(rounded_px(12.));
 
     let empty = if count == 0 { empty } else { None };
 
@@ -209,7 +209,7 @@ impl Component for CachedIcon {
                 .width(Size::px(self.size))
                 .height(Size::px(self.size))
                 .aspect_ratio(AspectRatio::Min)
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .fallback(icon_box(self.fallback, self.size))
                 .into_element(),
             None => icon_box(self.fallback, self.size),
@@ -249,7 +249,7 @@ impl Component for FolderCard {
                 .cross_align(Alignment::Center)
                 .spacing(12.)
                 .padding(Gaps::new_all(10.))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .background(colors::card())
                 .content(Content::Flex)
                 .on_secondary_down(on_secondary(on_context.clone()))
@@ -275,7 +275,7 @@ impl Component for FolderCard {
                             .child(
                                 label()
                                     .text(self.title.clone())
-                                    .font_size(14.)
+                                    .font_size(text_size(14.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
@@ -289,7 +289,7 @@ impl Component for FolderCard {
                 let description = self.description.clone().map(|text| {
                     label()
                         .text(text)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .line_height(1.45)
                         .max_lines(2)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -304,7 +304,7 @@ impl Component for FolderCard {
                     .height(Size::fill())
                     .spacing(9.)
                     .padding(Gaps::new_all(14.))
-                    .corner_radius(CornerRadius::new_all(6.))
+                    .corner_radius(rounded(6.))
                     .background(if hovering {
                         colors::component_bg_hover()
                     } else {
@@ -368,7 +368,7 @@ impl FolderCard {
                             .child(
                                 label()
                                     .text(self.title.clone())
-                                    .font_size(15.)
+                                    .font_size(text_size(15.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
@@ -386,7 +386,7 @@ impl FolderCard {
                     .maybe_child(self.description.clone().map(|text| {
                         label()
                             .text(text)
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(2)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
@@ -403,7 +403,7 @@ pub(super) fn card_icon(icon: &CardIcon, size: f32) -> Element {
         CardIcon::Image(path) => rect()
             .width(Size::px(size))
             .height(Size::px(size))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .overflow(Overflow::Clip)
             .background(colors::component_bg())
             .child(LocalImage::new(path.clone(), IMAGE_EDGE, true).skeleton(true))
@@ -468,20 +468,20 @@ pub(crate) fn dialog(
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             label()
                                 .text(title)
-                                .font_size(16.)
+                                .font_size(text_size(16.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
                         .child(
                             label()
                                 .text(body)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         )
                         .maybe_child(control)

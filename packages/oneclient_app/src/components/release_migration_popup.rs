@@ -21,7 +21,7 @@ use crate::hooks::{
 use crate::i18n::{t, tf};
 use crate::routes::Route;
 use crate::state::{ReleaseMigrationPrompt, ReleasePlanState};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
@@ -224,7 +224,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .max_height(Size::window_percent(92.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(18.))
+        .corner_radius(rounded(18.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -306,7 +306,7 @@ fn art_panel(
                         .child(
                             label()
                                 .text(cluster_title(target))
-                                .font_size(32.)
+                                .font_size(text_size(32.))
                                 .font_weight(FontWeight::BOLD)
                                 .max_lines(1)
                                 .color(Color::WHITE),
@@ -314,7 +314,7 @@ fn art_panel(
                         .maybe_child((!runtime.is_empty()).then(|| {
                             label()
                                 .text(runtime.join(" · "))
-                                .font_size(13.)
+                                .font_size(text_size(13.))
                                 .margin(Gaps::new(12., 0., 0., 0.))
                                 .color(colors::on_art())
                         }))
@@ -405,14 +405,14 @@ fn summary_row(name: &str, value: String, name_color: Color) -> impl IntoElement
         .child(
             label()
                 .text(name.to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .width(Size::flex(1.))
                 .color(name_color),
         )
         .child(
             label()
                 .text(value)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(Color::WHITE),
         )
@@ -466,7 +466,7 @@ fn content_panel(
                         .child(
                             label()
                                 .text(t("oneclient.components.release_migration.title"))
-                                .font_size(21.)
+                                .font_size(text_size(21.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .width(Size::flex(1.))
                                 .max_lines(1)
@@ -487,7 +487,7 @@ fn content_panel(
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .max_lines(2)
                         .margin(Gaps::new(4., 0., 0., 0.))
                         .color(colors::fg_secondary()),
@@ -527,7 +527,7 @@ fn source_picker(prompt: &ReleaseMigrationPrompt, dispatch: crate::Actions) -> i
         .child(
             label()
                 .text(t("oneclient.components.release_migration.migrate_from"))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .child(
@@ -604,7 +604,7 @@ fn tab_row(
                         } else {
                             t("oneclient.components.release_migration.select_all")
                         })
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
@@ -616,7 +616,7 @@ fn tab_pill(text: String, active: bool, mut on_press: impl FnMut() + 'static) ->
         .height(Size::px(34.))
         .padding(Gaps::new_symmetric(0., 13.))
         .center()
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(if active {
             colors::brand()
         } else {
@@ -635,7 +635,7 @@ fn tab_pill(text: String, active: bool, mut on_press: impl FnMut() + 'static) ->
         .child(
             label()
                 .text(text)
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(if active {
                     colors::on_brand()
@@ -825,7 +825,7 @@ fn package_list(
                             "oneclient.components.release_migration.waitlist",
                             &[mc_version, &WAITLIST_DAYS],
                         ))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .max_lines(1)
                         .margin(Gaps::new(0., 12., 6., 12.))
                         .color(colors::fg_secondary()),
@@ -934,7 +934,7 @@ fn section_header(
         .spacing(10.)
         .margin(Gaps::new(if after_content { 10. } else { 0. }, 0., 6., 0.))
         .padding(Gaps::new_symmetric(0., 12.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::ghost_overlay())
         .border(border_all_color(1., colors::component_border()).alignment(BorderAlignment::Inner))
         .cursor(CursorIcon::Pointer)
@@ -943,14 +943,14 @@ fn section_header(
         .child(
             label()
                 .text(title)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
                 .text(subtitle.unwrap_or_default())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .width(Size::flex(1.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
@@ -991,7 +991,7 @@ impl Component for DependencyRow {
             Some((url, bytes)) => rect()
                 .width(Size::px(ROW_ICON))
                 .height(Size::px(ROW_ICON))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .overflow(Overflow::Clip)
                 .child(
                     ImageViewer::new((url, bytes))
@@ -1022,7 +1022,7 @@ impl Component for DependencyRow {
                     .child(
                         label()
                             .text(self.name.clone())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
@@ -1035,7 +1035,7 @@ impl Component for DependencyRow {
                                 provider_label(self.provider),
                                 self.version_name
                             ))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .width(Size::fill())
                             .color(colors::fg_secondary()),
@@ -1044,13 +1044,13 @@ impl Component for DependencyRow {
             .maybe_child((self.size > 0).then(|| {
                 label()
                     .text(format_size(self.size))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary())
             }))
             .child(
                 label()
                     .text(self.required_by.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .width(Size::px(REQUIRED_BY_W))
                     .max_lines(1)
                     .text_align(TextAlign::End)
@@ -1088,7 +1088,7 @@ impl Component for SkippedRow {
             Some((url, bytes)) => rect()
                 .width(Size::px(SKIPPED_ICON))
                 .height(Size::px(SKIPPED_ICON))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .overflow(Overflow::Clip)
                 .child(
                     ImageViewer::new((url, bytes))
@@ -1116,7 +1116,7 @@ impl Component for SkippedRow {
             .child(
                 label()
                     .text(self.name.clone())
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .width(Size::px(SKIPPED_NAME_W))
                     .max_lines(1)
@@ -1125,7 +1125,7 @@ impl Component for SkippedRow {
             .child(
                 label()
                     .text(self.reason.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .width(Size::flex(1.))
                     .max_lines(1)
                     .color(colors::fg_secondary()),
@@ -1141,7 +1141,7 @@ fn list_message(text: String) -> impl IntoElement {
         .child(
             label()
                 .text(text)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
 }
@@ -1212,7 +1212,7 @@ fn footer(
         .child(
             label()
                 .text(summary)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .width(Size::flex(1.))
                 .max_lines(2)
                 .color(colors::fg_secondary()),
@@ -1272,7 +1272,7 @@ impl Component for MigrationRow {
             Some((url, bytes)) => rect()
                 .width(Size::px(ROW_ICON))
                 .height(Size::px(ROW_ICON))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .overflow(Overflow::Clip)
                 .child(
                     ImageViewer::new((url, bytes))
@@ -1295,7 +1295,7 @@ impl Component for MigrationRow {
             .cross_align(Alignment::Center)
             .spacing(14.)
             .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(if *hovered.read() {
                 colors::ghost_overlay()
             } else {
@@ -1321,7 +1321,7 @@ impl Component for MigrationRow {
                     .child(
                         label()
                             .text(self.name.clone())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
@@ -1337,7 +1337,7 @@ impl Component for MigrationRow {
                                     &[&provider, &self.package.version_name],
                                 )
                             })
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .width(Size::fill())
                             .color(colors::fg_secondary()),
@@ -1346,7 +1346,7 @@ impl Component for MigrationRow {
             .maybe_child((self.package.size > 0).then(|| {
                 label()
                     .text(format_size(self.package.size))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary())
             }))
             .child(check_box(selected))
@@ -1358,7 +1358,7 @@ fn placeholder_icon() -> impl IntoElement {
         .width(Size::px(ROW_ICON))
         .height(Size::px(ROW_ICON))
         .center()
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .border(border_all_color(1., colors::component_border()).alignment(BorderAlignment::Inner))
         .child(
             Icon::new(IconType::DotsGrid)
@@ -1372,7 +1372,7 @@ fn check_box(checked: bool) -> impl IntoElement {
         .width(Size::px(CHECK_SIZE))
         .height(Size::px(CHECK_SIZE))
         .center()
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(if checked {
             colors::brand()
         } else {

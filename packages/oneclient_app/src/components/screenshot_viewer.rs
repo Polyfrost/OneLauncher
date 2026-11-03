@@ -11,7 +11,7 @@ use crate::hooks::{
     Actions, ScreenshotAction, UseScreenshotAction, use_dispatch, use_screenshot_action,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::fmt_date;
 use crate::utils::{format_res, format_size};
 
@@ -277,7 +277,7 @@ fn chevron_btn(
         .width(Size::px(44.))
         .height(Size::px(44.))
         .center()
-        .corner_radius(CornerRadius::new_all(22.));
+        .corner_radius(rounded(22.));
 
     if !enabled {
         return base
@@ -334,14 +334,14 @@ fn header_row(
                 .child(
                     label()
                         .text(info.name.clone())
-                        .font_size(15.)
+                        .font_size(text_size(15.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(meta)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .color(colors::fg_secondary()),
                 ),
         )

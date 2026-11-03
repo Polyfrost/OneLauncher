@@ -17,7 +17,7 @@ use crate::components::{
 use crate::hooks::{latest_changelog_version, use_changelog, use_settings_snapshot};
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::use_dispatch;
 
 const SIDEBAR_WIDTH_PX: f32 = 225.;
@@ -491,7 +491,7 @@ fn content_header(title: String, search: State<String>, mut width: State<f32>) -
         .child(
             label()
                 .text(title)
-                .font_size(30.)
+                .font_size(text_size(30.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .max_lines(1)
                 .width(Size::flex(1.0))
@@ -526,7 +526,7 @@ fn search_box(mut search: State<String>, width: f32) -> impl IntoElement {
     base.trailing(
         rect()
             .padding(Gaps::new_symmetric(2., 2.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(Color::TRANSPARENT)
             .cursor(CursorIcon::Pointer)
             .on_press(move |_| search.set(String::new()))
@@ -572,12 +572,12 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
             rect()
                 .width(Size::fill())
                 .padding(Gaps::new_symmetric(10., 14.))
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::page_elevated())
                 .child(
                     label()
                         .text(t("oneclient.layout.settings.search.empty"))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 )
                 .into_element(),
@@ -591,7 +591,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
             .child(
                 label()
                     .text(t("oneclient.layout.settings.search.results"))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_secondary()),
             )
@@ -611,7 +611,7 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                 .cross_align(Alignment::Center)
                 .spacing(12.)
                 .padding(Gaps::new_symmetric(12., 16.))
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::page_elevated())
                 .cursor(CursorIcon::Pointer)
                 .on_press(move |_| {
@@ -628,14 +628,14 @@ fn search_results(query: &SearchQuery, mut search: State<String>) -> Vec<Element
                         .child(
                             label()
                                 .text(title)
-                                .font_size(14.)
+                                .font_size(text_size(14.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(colors::fg_primary()),
                         )
                         .child(
                             label()
                                 .text(desc)
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .max_lines(2)
                                 .color(colors::fg_secondary()),
                         ),
@@ -685,7 +685,7 @@ fn sidebar(active: SettingsTab, changelog_unread: bool) -> impl IntoElement {
                             rect().padding(Gaps::new(0., 0., 2., 6.)).child(
                                 label()
                                     .text(group.label)
-                                    .font_size(11.)
+                                    .font_size(text_size(11.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::fg_secondary()),
                             ),
@@ -788,7 +788,7 @@ impl Component for SidebarInfo {
                 .vertical()
                 .width(Size::fill())
                 .spacing(4.)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .padding(Gaps::new(15., 0., 0., 0.))
                 .color(colors::fg_secondary())
                 .children(
@@ -838,7 +838,7 @@ impl Component for SidebarItem {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(CornerRadius::new_all(7.))
+            .corner_radius(rounded(7.))
             .background(background)
             .a11y_id(a11y_id)
             .a11y_focusable(true)
@@ -871,7 +871,7 @@ impl Component for SidebarItem {
                     .child(
                         label()
                             .text(tab.label())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .color(colors::fg_primary()),
                     )
                     .maybe_child(has_dot.then(notification_dot)),
@@ -883,6 +883,6 @@ fn notification_dot() -> impl IntoElement {
     rect()
         .width(Size::px(4.))
         .height(Size::px(4.))
-        .corner_radius(CornerRadius::new_all(2.))
+        .corner_radius(rounded(2.))
         .background(colors::brand())
 }

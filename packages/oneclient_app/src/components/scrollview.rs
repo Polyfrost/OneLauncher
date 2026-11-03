@@ -2,7 +2,7 @@
 use freya::prelude::*;
 use freya::torin::geometry::Point2D;
 
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 
 const LAZY_OVERSCAN: i64 = 3;
 const SCROLLBAR_GUTTER: f32 = 14.;
@@ -500,7 +500,7 @@ impl ScrollArea {
         let show_v = show_scrollbar && vp_h > 0. && vp_h < ct_h;
 
         let (scrollbar_x, scrollbar_width) = scrollbar_pos_and_size(content_w, vp_w, corrected_x);
-        let show_h = horizontal && vp_w > 0. && vp_w < content_w;
+        let show_h = show_scrollbar && horizontal && vp_w > 0. && vp_w < content_w;
 
         let pressing_v = use_memo(move || drag_start.read().is_some());
         let pressing_h = use_memo(move || drag_start_x.read().is_some());
@@ -857,7 +857,7 @@ impl Component for ScrollThumb {
                 rect()
                     .width(bar_w)
                     .height(bar_h)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(color.with_a(160)),
             )
     }

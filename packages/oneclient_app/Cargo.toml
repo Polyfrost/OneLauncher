@@ -31,6 +31,7 @@ oneclient_macro = { workspace = true, features = ["freya"] }
 accesskit.workspace = true
 polyio.workspace = true
 rust-embed.workspace = true
+serde.workspace = true
 serde_json.workspace = true
 
 tracing.workspace = true

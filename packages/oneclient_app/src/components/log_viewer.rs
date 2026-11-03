@@ -5,6 +5,7 @@ use freya::text_edit::Clipboard;
 use regex::Regex;
 
 use crate::components::{Icon, IconType, ScrollArea, ScrollAreaCtx, corrected_scroll};
+use crate::i18n::t;
 use crate::theme::{self, colors, rounded, text_size};
 
 const LINE_H: f32 = 16.;
@@ -289,7 +290,7 @@ fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
         }))
         .child(
             label()
-                .text("Auto-scroll")
+                .text(t("oneclient.components.log_viewer.auto_scroll"))
                 .font_size(text_size(11.))
                 .color(if on {
                     colors::brand()

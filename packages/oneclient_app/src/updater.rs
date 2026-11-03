@@ -1,10 +1,11 @@
 use std::cell::Cell;
 
-use cargo_packager_updater::{Config, Update, check_update};
+use cargo_packager_updater::{Config, Update, WindowsConfig, check_update};
 use oneclient_events::{Choice, EventBus, Prompt};
 use uuid::Uuid;
 
 use crate::constants::{RELEASES_URL, UPDATER_ENDPOINT, UPDATER_PUBKEY};
+use crate::i18n::{t, tf};
 
 pub const UPDATE_CHOICE_INSTALL: &str = "update.install";
 
@@ -14,14 +15,14 @@ enum UpdateAnswer {
 
 fn update_prompt(version: &str) -> Prompt<UpdateAnswer> {
     Prompt::new(
-        "Update available",
-        format!("OneClient {version} is ready to install. Download and install it now?"),
+        t("oneclient.updater.available.title"),
+        tf("oneclient.updater.prompt.body", &[&version]),
     )
     .option(
-        Choice::primary(UPDATE_CHOICE_INSTALL, "Install"),
+        Choice::primary(UPDATE_CHOICE_INSTALL, t("oneclient.updater.prompt.install")),
         UpdateAnswer::Install,
     )
-    .dismiss("Not now")
+    .dismiss(t("oneclient.updater.prompt.not_now"))
 }
 
 const PROGRESS_STEP: u64 = 256 * 1024;
@@ -55,7 +56,7 @@ async fn run_simulated_update() -> anyhow::Result<()> {
     }
 
     let progress_id = Uuid::new_v4();
-    let label = format!("Downloading OneClient {FAKE_VERSION}");
+    let label = tf("oneclient.updater.downloading", &[&FAKE_VERSION]);
 
     let mut downloaded = 0u64;
     events.progress(progress_id, &label, downloaded, FAKE_TOTAL);
@@ -67,8 +68,8 @@ async fn run_simulated_update() -> anyhow::Result<()> {
 
     events.finish_progress(
         progress_id,
-        "Finished Downloading",
-        format!("OneClient {FAKE_VERSION} is ready. Restart to apply."),
+        t("oneclient.updater.finished.title"),
+        tf("oneclient.updater.finished.body", &[&FAKE_VERSION]),
     );
 
     Ok(())
@@ -101,9 +102,10 @@ async fn run_check(auto_install: bool, events: EventBus) -> anyhow::Result<()> {
 
 fn notify_manual_update(events: &EventBus, version: &str) {
     events
-        .notify("Update available")
-        .body(format!(
-            "OneClient {version} is available. Download the latest package from {RELEASES_URL} to update."
+        .notify(t("oneclient.updater.available.title"))
+        .body(tf(
+            "oneclient.updater.manual.body",
+            &[&version, &RELEASES_URL],
         ))
         .link(RELEASES_URL)
         .send();
@@ -143,6 +145,12 @@ fn check_for_update() -> anyhow::Result<Option<Update>> {
     let config = Config {
         endpoints: vec![UPDATER_ENDPOINT.parse()?],
         pubkey: UPDATER_PUBKEY.into(),
+        // The NSIS installer recreates the desktop and start menu shortcuts on every passive
+        // install unless told not to, which brings back a shortcut the user deleted
+        windows: Some(WindowsConfig {
+            installer_args: Some(vec!["/NS".into()]),
+            ..Default::default()
+        }),
         ..Default::default()
     };
 
@@ -152,7 +160,7 @@ fn check_for_update() -> anyhow::Result<Option<Update>> {
 async fn download_and_install(update: Update, events: EventBus) -> anyhow::Result<()> {
     let progress_id = Uuid::new_v4();
     let version = update.version.clone();
-    let label = format!("Downloading OneClient {version}");
+    let label = tf("oneclient.updater.downloading", &[&version]);
 
     events.progress(progress_id, &label, 0, 0);
 
@@ -185,8 +193,8 @@ async fn download_and_install(update: Update, events: EventBus) -> anyhow::Resul
         // Converts the same download card into its finished state rather than adding a second
         events.finish_progress(
             progress_id,
-            "Finished Downloading",
-            format!("OneClient {version} is ready. Restart to apply."),
+            t("oneclient.updater.finished.title"),
+            tf("oneclient.updater.finished.body", &[&version]),
         );
         Ok(())
     })

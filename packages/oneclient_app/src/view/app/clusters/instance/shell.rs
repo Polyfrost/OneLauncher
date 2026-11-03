@@ -1,6 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea};
+use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
@@ -73,18 +74,30 @@ pub fn shell(parts: Shell) -> Element {
                                 .child(header(eyebrow, title, subtitle, on_close))
                                 .child(if scrolls_itself {
                                     rect()
+                                        .key("body-fixed")
                                         .width(Size::fill())
                                         .height(Size::flex(1.0))
                                         .padding(Gaps::new(0., PANE_PADDING, 8., PANE_PADDING))
                                         .child(body)
                                         .into_element()
                                 } else {
-                                    ScrollArea::new()
+                                    rect()
+                                        .key("body-scroll")
                                         .width(Size::fill())
                                         .height(Size::flex(1.0))
-                                        .padding(Gaps::new(0., PANE_PADDING, 8., PANE_PADDING))
-                                        .scrollbar_gutter(true)
-                                        .child(body)
+                                        .child(
+                                            ScrollArea::new()
+                                                .width(Size::fill())
+                                                .height(Size::fill())
+                                                .padding(Gaps::new(
+                                                    0.,
+                                                    PANE_PADDING,
+                                                    8.,
+                                                    PANE_PADDING,
+                                                ))
+                                                .scrollbar_gutter(true)
+                                                .child(body),
+                                        )
                                         .into_element()
                                 })
                                 .child(footer(
@@ -146,7 +159,7 @@ fn header(
             Button::new()
                 .ghost()
                 .icon()
-                .alt("Close")
+                .alt(t("oneclient.common.close"))
                 .on_press(move |_| on_close.call(()))
                 .child(Icon::new(IconType::XClose).size(16.)),
         )

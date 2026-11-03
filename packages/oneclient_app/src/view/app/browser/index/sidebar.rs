@@ -1,6 +1,7 @@
 use super::*;
 
 use crate::components::ScrollArea;
+use crate::i18n::t;
 use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::utils::capitalize;
@@ -47,7 +48,7 @@ impl Component for CategorySidebar {
             .spacing(8.)
             .child(
                 label()
-                    .text("CATEGORIES")
+                    .text(t("oneclient.browser.index.categories"))
                     .font_size(text_size(11.))
                     .font_weight(FontWeight::MEDIUM)
                     .letter_spacing(1.4)

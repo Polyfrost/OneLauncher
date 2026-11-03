@@ -3,6 +3,7 @@ use freya::prelude::*;
 use super::settings_page;
 use crate::components::{IconType, TextInput};
 use crate::hooks::{use_dispatch, use_settings_snapshot};
+use crate::i18n::t;
 use crate::view::app::settings::{resettable, section_header, settings_row};
 
 fn normalize(value: &str) -> Option<String> {
@@ -58,14 +59,16 @@ impl Component for SettingsApis {
         });
 
         settings_page()
-            .child(section_header("PROVIDERS"))
+            .child(section_header(t(
+                "oneclient.settings.apis.section.providers",
+            )))
             .child(settings_row(
                 IconType::Key01,
                 "Modrinth",
-                "Personal access token used for Modrinth requests.",
+                t("oneclient.settings.apis.modrinth_key.description"),
                 resettable(
                     TextInput::new(modrinth_key)
-                        .placeholder("Optional")
+                        .placeholder(t("oneclient.common.optional"))
                         .width(Size::px(220.)),
                     modrinth_key,
                     String::new(),
@@ -74,23 +77,25 @@ impl Component for SettingsApis {
             .child(settings_row(
                 IconType::Key01,
                 "CurseForge",
-                "API key used for CurseForge requests.",
+                t("oneclient.settings.apis.curseforge_key.description"),
                 resettable(
                     TextInput::new(curseforge_key)
-                        .placeholder("Default")
+                        .placeholder(t("oneclient.common.default"))
                         .width(Size::px(220.)),
                     curseforge_key,
                     String::new(),
                 ),
             ))
-            .child(section_header("ADVANCED"))
+            .child(section_header(t(
+                "oneclient.settings.apis.section.advanced",
+            )))
             .child(settings_row(
                 IconType::Globe01,
-                "Custom API Endpoint",
-                "Override the default OneClient backend endpoint.",
+                t("oneclient.settings.apis.custom_endpoint.title"),
+                t("oneclient.settings.apis.custom_endpoint.description"),
                 resettable(
                     TextInput::new(custom_api_endpoint)
-                        .placeholder("Default")
+                        .placeholder(t("oneclient.common.default"))
                         .width(Size::px(220.)),
                     custom_api_endpoint,
                     String::new(),
@@ -98,11 +103,11 @@ impl Component for SettingsApis {
             ))
             .child(settings_row(
                 IconType::Globe01,
-                "Custom Meta URL Base",
-                "Override the default bundles and versions data host.",
+                t("oneclient.settings.apis.meta_url_base.title"),
+                t("oneclient.settings.apis.meta_url_base.description"),
                 resettable(
                     TextInput::new(custom_meta_url_base)
-                        .placeholder("Default")
+                        .placeholder(t("oneclient.common.default"))
                         .width(Size::px(220.)),
                     custom_meta_url_base,
                     String::new(),

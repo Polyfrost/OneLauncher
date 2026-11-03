@@ -1,4 +1,5 @@
 use crate::components::clean_line;
+use crate::i18n::t;
 
 const MAX_LINE_COLS: usize = 400;
 const ELLIPSIS: &str = "...";
@@ -19,7 +20,7 @@ pub(super) fn display_line(raw: &str) -> String {
 }
 
 pub(super) fn resolve_placeholders(text: &str, game_dir: Option<&str>) -> String {
-    let dir = game_dir.unwrap_or("your game folder");
+    let dir = game_dir.unwrap_or(t("oneclient.components.crash_dialog.game_folder_fallback"));
 
     text.replace("%profileroot%", dir)
         .replace("%gameroot%", dir)

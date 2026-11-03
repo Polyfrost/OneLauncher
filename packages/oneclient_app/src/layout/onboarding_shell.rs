@@ -9,6 +9,7 @@ use crate::hooks::{
     OnboardingSelectionState, has_migration_data, onboarding_bundles_items, use_launcher,
     use_migration, use_onboarding_bundles, use_provide_onboarding_selection, use_settings_snapshot,
 };
+use crate::i18n::t;
 use crate::theme::{colors, text_size};
 use crate::view::onboarding::{default_selection, onboarding_step_index, onboarding_total};
 
@@ -136,7 +137,7 @@ fn copyright(opacity: f32) -> impl IntoElement {
         .opacity(opacity)
         .child(
             label()
-                .text("Design © 2026 Polyfrost. All rights reserved.")
+                .text(t("oneclient.layout.onboarding.copyright"))
                 .font_size(text_size(11.))
                 .color(colors::fg_secondary()),
         )

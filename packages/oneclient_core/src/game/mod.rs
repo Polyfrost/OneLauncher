@@ -1,6 +1,7 @@
 mod analytics;
 mod error;
 pub mod fabric;
+mod game_options;
 pub mod gpu;
 mod heal;
 mod launch;
@@ -29,6 +30,7 @@ pub use crashdata::CrashData;
 pub use diagnosis::{CrashDiagnosis, diagnose, suspected_mods};
 pub use error::GameError;
 pub use fabric::{mods_folder_argument, uses_cluster_mods_folder};
+pub use game_options::{read_graphics_backend, write_graphics_backend};
 pub use heal::clear_zeroed_files;
 pub use launch::{LaunchedGame, crash_mod_issues, is_running, launch_cluster, repair_cluster};
 pub use mod_problems::{ModProblem, ModProblemKind, ModRef};

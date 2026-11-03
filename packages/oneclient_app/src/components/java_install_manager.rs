@@ -17,6 +17,7 @@ fn providers() -> Vec<(JavaVendor, &'static str)> {
         (JavaVendor::Adoptium, "Eclipse Temurin"),
         (JavaVendor::Corretto, "Amazon Corretto"),
         (JavaVendor::Liberica, "BellSoft Liberica"),
+        (JavaVendor::Mojang, "Mojang"),
     ]
 }
 

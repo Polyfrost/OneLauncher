@@ -5,6 +5,7 @@ use super::model::{
     FolderChoice, ImportMode, ImportSource, ModpackOrigin, Step, TypeChoice, Wizard,
 };
 use crate::i18n::{t, tf};
+use crate::utils::count_label;
 
 pub fn heading(picks: &Picks) -> (&'static str, String) {
     match picks.step {
@@ -158,9 +159,9 @@ pub fn footer_note(picks: &Picks) -> String {
             None => t("oneclient.clusters.instance.copy.note.import_review.checking").to_string(),
             Some(_) => match review_parts(picks).as_slice() {
                 [] => t("oneclient.clusters.instance.copy.note.import_review.none").to_string(),
-                parts => format!(
-                    "Mods: {}. Accounts are not imported; sign in here.",
-                    parts.join(", ")
+                parts => tf(
+                    "oneclient.clusters.instance.copy.note.import_review.parts",
+                    &[&parts.join(", ")],
                 ),
             },
         },
@@ -237,13 +238,25 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
 
 fn review_parts(picks: &Picks) -> Vec<String> {
     [
-        (picks.flagged_count(), "flagged"),
-        (picks.unpublished_count(), "unpublished"),
-        (picks.unconfirmed_count(), "unconfirmed"),
+        (
+            picks.flagged_count(),
+            t("oneclient.clusters.instance.copy.value.flagged.one"),
+            t("oneclient.clusters.instance.copy.value.flagged.other"),
+        ),
+        (
+            picks.unpublished_count(),
+            t("oneclient.clusters.instance.copy.value.unpublished.one"),
+            t("oneclient.clusters.instance.copy.value.unpublished.other"),
+        ),
+        (
+            picks.unconfirmed_count(),
+            t("oneclient.clusters.instance.copy.value.unconfirmed.one"),
+            t("oneclient.clusters.instance.copy.value.unconfirmed.other"),
+        ),
     ]
     .into_iter()
-    .filter(|(count, _)| *count > 0)
-    .map(|(count, what)| format!("{count} {what}"))
+    .filter(|(count, _, _)| *count > 0)
+    .map(|(count, one, many)| count_label(count, one, many))
     .collect()
 }
 

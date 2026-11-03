@@ -5,6 +5,7 @@ use crate::components::{
     Button, OVERLAY_BASE_LEVEL, OverlayPopup, caution_card, warning_card, warning_list,
 };
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
+use crate::i18n::{t, tf};
 use crate::notifications::{UnpublishedImport, UnpublishedInstance};
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -54,9 +55,9 @@ pub(crate) fn unpublished_rows(
 ) -> impl Iterator<Item = (String, Option<String>)> + '_ {
     mods.iter().map(|file| {
         let note = if file.enabled {
-            "Local file"
+            t("oneclient.components.unpublished_import.local_file")
         } else {
-            "Disabled"
+            t("oneclient.components.unpublished_import.disabled")
         };
         (file.name.clone(), Some(note.to_string()))
     })
@@ -69,11 +70,15 @@ fn dialog(
     mut on_import_all: impl FnMut() + 'static,
 ) -> impl IntoElement {
     let total = import.instances.len() + import.others;
-    let (title, whose) = match (import.instances.as_slice(), total) {
-        ([only], 1) => (format!("Import {}?", only.name), "its"),
-        _ => (
-            format!("Import {}?", count_label(total, "instance", "instances")),
-            "their",
+    let title = match (import.instances.as_slice(), total) {
+        ([only], 1) => tf(
+            "oneclient.components.unpublished_import.title.named",
+            &[&only.name],
+        ),
+        _ => count_label(
+            total,
+            t("oneclient.components.unpublished_import.title.one"),
+            t("oneclient.components.unpublished_import.title.other"),
         ),
     };
     let subtitle = if import
@@ -81,29 +86,34 @@ fn dialog(
         .iter()
         .any(|instance| !instance.mods.is_empty())
     {
-        format!(
-            "Some of {whose} mods are not on Modrinth or CurseForge. Check them before you import."
+        count_label(
+            total,
+            t("oneclient.components.unpublished_import.subtitle.unpublished.one"),
+            t("oneclient.components.unpublished_import.subtitle.unpublished.other"),
         )
     } else {
-        format!("OneClient could not check {whose} mods. Check them before you import.")
+        count_label(
+            total,
+            t("oneclient.components.unpublished_import.subtitle.unchecked.one"),
+            t("oneclient.components.unpublished_import.subtitle.unchecked.other"),
+        )
     };
 
     let others = (import.others > 0).then(|| {
-        let text = if import.others == 1 {
-            "Only import the other one".to_string()
-        } else {
-            format!("Only import the other {}", import.others)
-        };
         Button::new()
             .secondary()
             .on_press(move |_| on_import_others())
-            .text(text)
+            .text(count_label(
+                import.others,
+                t("oneclient.components.unpublished_import.import_others.one"),
+                t("oneclient.components.unpublished_import.import_others.other"),
+            ))
             .into_element()
     });
     let all_text = if import.others > 0 {
-        "Import all"
+        t("oneclient.components.unpublished_import.import_all")
     } else {
-        "Import anyway"
+        t("oneclient.components.unpublished_import.import_anyway")
     };
 
     rect()
@@ -167,7 +177,7 @@ fn dialog(
                     Button::new()
                         .ghost()
                         .on_press(move |_| on_cancel())
-                        .text("Cancel"),
+                        .text(t("oneclient.common.cancel")),
                 )
                 .maybe_child(others)
                 .child(
@@ -181,28 +191,42 @@ fn dialog(
 
 fn instance_card(instance: &UnpublishedInstance) -> Element {
     if instance.unconfirmed > 0 {
+        let title = if instance.unconfirmed == 1 {
+            tf(
+                "oneclient.components.unpublished_import.unconfirmed.title.one",
+                &[&instance.name, &instance.unconfirmed],
+            )
+        } else {
+            tf(
+                "oneclient.components.unpublished_import.unconfirmed.title.other",
+                &[&instance.name, &instance.unconfirmed],
+            )
+        };
         return caution_card(
-            format!(
-                "{}: couldn't confirm {}",
-                instance.name,
-                count_label(instance.unconfirmed, "mod", "mods")
-            ),
-            format!(
-                "{}. OneClient could not reach Modrinth or CurseForge, so it could not confirm these mods are published there. Only import it if you trust where it came from.",
-                instance.game
+            title,
+            tf(
+                "oneclient.components.unpublished_import.unconfirmed.body",
+                &[&instance.game],
             ),
         )
         .into_element();
     }
+    let title = if instance.mods.len() == 1 {
+        tf(
+            "oneclient.components.unpublished_import.unpublished.title.one",
+            &[&instance.name, &instance.mods.len()],
+        )
+    } else {
+        tf(
+            "oneclient.components.unpublished_import.unpublished.title.other",
+            &[&instance.name, &instance.mods.len()],
+        )
+    };
     warning_card(
-        format!(
-            "{}: {} not on Modrinth or CurseForge",
-            instance.name,
-            count_label(instance.mods.len(), "mod", "mods")
-        ),
-        format!(
-            "{}. Nobody has checked these mods, and they could contain malware. Only import instances from people you trust.",
-            instance.game
+        title,
+        tf(
+            "oneclient.components.unpublished_import.unpublished.body",
+            &[&instance.game],
         ),
     )
     .child(warning_list(unpublished_rows(&instance.mods)))

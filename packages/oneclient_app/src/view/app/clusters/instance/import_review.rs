@@ -168,11 +168,12 @@ fn instance_section(
     let unpublished = if screened.unconfirmed > 0 {
         Some(
             caution_card(
-                format!(
-                    "Couldn't confirm {}",
-                    count_label(screened.unconfirmed, "mod", "mods")
+                count_label(
+                    screened.unconfirmed,
+                    t("oneclient.clusters.instance.import_review.unconfirmed.title.one"),
+                    t("oneclient.clusters.instance.import_review.unconfirmed.title.other"),
                 ),
-                "OneClient could not reach Modrinth or CurseForge, so it could not confirm these mods are published there. Only import it if you trust where it came from.",
+                t("oneclient.clusters.instance.import_review.unconfirmed.body"),
             )
             .into_element(),
         )
@@ -224,18 +225,19 @@ fn instance_section(
 }
 
 fn unpublished_card(mods: &[UnpublishedFile]) -> impl IntoElement {
-    let list = warning_list(unpublished_rows(mods));
-    let them = if mods.len() == 1 { "it" } else { "them" };
     warning_card(
-        format!(
-            "{} not on Modrinth or CurseForge",
-            count_label(mods.len(), "mod is", "mods are")
+        count_label(
+            mods.len(),
+            t("oneclient.clusters.instance.import_review.unpublished.title.one"),
+            t("oneclient.clusters.instance.import_review.unpublished.title.other"),
         ),
-        format!(
-            "Nobody has checked {them}, and {them} could contain malware. Only import instances from people you trust."
+        count_label(
+            mods.len(),
+            t("oneclient.clusters.instance.import_review.unpublished.body.one"),
+            t("oneclient.clusters.instance.import_review.unpublished.body.other"),
         ),
     )
-    .child(list)
+    .child(warning_list(unpublished_rows(mods)))
 }
 
 fn flagged_card(

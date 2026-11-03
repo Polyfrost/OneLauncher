@@ -199,7 +199,10 @@ impl Actions {
                         continue;
                     }
                     session.get_or_insert_with(|| {
-                        GroupedProgressSession::start(&state.services.events, "Checking mods")
+                        GroupedProgressSession::start(
+                            &state.services.events,
+                            t("oneclient.actions.external_import.checking"),
+                        )
                     });
                     let check = find_unpublished_mods(&state, &instance).await;
                     if !check.mods.is_empty() || check.unconfirmed > 0 {
@@ -589,8 +592,8 @@ impl Drop for HeldForCheck {
         };
         discard_workdir_set(jobs.into_iter().filter_map(|job| job.workdir).collect());
         self.actions
-            .notify("Import stopped")
-            .body("Something went wrong while checking the mods, so nothing was imported. Try importing again.")
+            .notify(t("oneclient.actions.external_import.stopped.title"))
+            .body(t("oneclient.actions.external_import.stopped.check_failed"))
             .error()
             .send();
     }

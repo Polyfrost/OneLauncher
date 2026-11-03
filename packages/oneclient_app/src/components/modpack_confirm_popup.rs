@@ -338,16 +338,17 @@ fn dialog(
         (summary.unverified > 0).then(|| unverified_card(summary.unverified).into_element());
     let unchecked = if confirm.mods_unchecked {
         Some(caution_card(
-            "Couldn't check the mods",
-            "OneClient could not read this pack's mods, so it could not tell whether they are published on Modrinth or CurseForge. Only continue if you trust where this file came from.",
+            t("oneclient.components.modpack_confirm.unchecked.title"),
+            t("oneclient.components.modpack_confirm.unchecked.body"),
         ))
     } else if confirm.mods_unconfirmed > 0 {
         Some(caution_card(
-            format!(
-                "Couldn't confirm {}",
-                count_label(confirm.mods_unconfirmed, "mod", "mods")
+            count_label(
+                confirm.mods_unconfirmed,
+                t("oneclient.components.modpack_confirm.unconfirmed.title.one"),
+                t("oneclient.components.modpack_confirm.unconfirmed.title.other"),
             ),
-            "OneClient could not reach Modrinth or CurseForge, so it could not confirm these mods are published there. Only continue if you trust where this file came from.",
+            t("oneclient.components.modpack_confirm.unconfirmed.body"),
         ))
     } else {
         None
@@ -575,17 +576,18 @@ fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoE
 
 fn unlisted_section(mods: &[UnlistedMod]) -> impl IntoElement {
     warning_card(
-        format!(
-            "{} not on Modrinth or CurseForge",
-            count_label(mods.len(), "mod", "mods")
+        count_label(
+            mods.len(),
+            t("oneclient.components.modpack_confirm.unlisted.title.one"),
+            t("oneclient.components.modpack_confirm.unlisted.title.other"),
         ),
-        "Nobody has checked these mods, and they could contain malware. Only install this pack if you trust the person who gave it to you.",
+        t("oneclient.components.modpack_confirm.unlisted.body"),
     )
     .child(warning_list(mods.iter().map(|unlisted| {
         let origin = if unlisted.bundled {
-            "Packed in the file"
+            t("oneclient.components.modpack_confirm.unlisted.bundled")
         } else {
-            "Downloaded from another site"
+            t("oneclient.components.modpack_confirm.unlisted.external")
         };
         (unlisted.name.clone(), Some(origin.to_string()))
     })))
@@ -593,15 +595,15 @@ fn unlisted_section(mods: &[UnlistedMod]) -> impl IntoElement {
 
 fn unverified_card(count: usize) -> impl IntoElement {
     warning_card(
-        format!(
-            "{} not from Modrinth or CurseForge",
-            count_label(count, "file", "files")
+        count_label(
+            count,
+            t("oneclient.components.modpack_confirm.unverified.title.one"),
+            t("oneclient.components.modpack_confirm.unverified.title.other"),
         ),
-        format!(
-            "{} packed inside this file, so nobody has checked {}. {} could contain malware. Only import files from people you trust.",
-            if count == 1 { "It comes" } else { "They come" },
-            if count == 1 { "it" } else { "them" },
-            if count == 1 { "It" } else { "They" },
+        count_label(
+            count,
+            t("oneclient.components.modpack_confirm.unverified.body.one"),
+            t("oneclient.components.modpack_confirm.unverified.body.other"),
         ),
     )
 }

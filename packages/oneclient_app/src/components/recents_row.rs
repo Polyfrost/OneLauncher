@@ -46,16 +46,14 @@ pub struct RecentsRow;
 impl Component for RecentsRow {
     fn render(&self) -> impl IntoElement {
         let clusters_query = use_clusters();
-        let platform = Platform::get();
-        let root_size = platform.root_size;
-        let scale_factor = platform.scale_factor;
+        let root_size = Platform::get().current_window().root_size;
 
         let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
         let sorted: Vec<Cluster> = sort_clusters_for_home(clusters);
 
         let slots =
-            recent_card_slots_for_window(root_size.read().width, *scale_factor.read() as f32);
+            recent_card_slots_for_width(root_size.read().width - theme::HOME_PADDING_PX * 2.);
 
         // Budget off cluster count not slot count an offset-only change makes the layout
         // engine reuse a card's cached area freezing survivors at pre-resize widths
@@ -122,7 +120,7 @@ struct ClusterCard {
 }
 
 impl KeyExt for ClusterCard {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -568,15 +566,6 @@ impl Component for OtherVersionsTile {
                     ),
             )
     }
-}
-
-fn recent_card_slots_for_window(window_width_px: f32, scale_factor: f32) -> usize {
-    let scale = if scale_factor > 0. && scale_factor.is_finite() {
-        scale_factor
-    } else {
-        1.
-    };
-    recent_card_slots_for_width(window_width_px / scale - theme::HOME_PADDING_PX * 2.)
 }
 
 /// `n` cards occupy `n` gaps (n-1 between cards one before the tile) so `n * (MIN + GAP) + MORE`

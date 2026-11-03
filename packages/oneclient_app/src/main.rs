@@ -28,7 +28,7 @@ impl App for OneClientApp {
     fn render(&self) -> impl IntoElement {
         let needs_location = self.needs_location;
 
-        // Radio state is `!Send` so every writer runs on the UI thread `spawn_forever`
+        // Radio state is `!Send` so every writer runs on the UI thread `spawn_in_window`
         let station = use_init_radio_station::<AppState, AppChannel>(move || AppState {
             launcher: LauncherInit {
                 needs_location,
@@ -44,7 +44,7 @@ impl App for OneClientApp {
             let (events_bus, events_rx) = oneclient_events::EventBus::channel();
             let actions = Actions::new(station, signals_tx, events_bus.clone());
 
-            spawn_forever(
+            spawn_in_window(
                 EventPump {
                     events: events_rx,
                     signals: signals_rx,
@@ -56,7 +56,7 @@ impl App for OneClientApp {
             if !needs_location {
                 let startup = actions.clone();
                 let rescue_bus = events_bus.clone();
-                spawn_forever(async move {
+                spawn_in_window(async move {
                     match events::start_launcher(station, events_bus).await {
                         // Must follow startup `sync_bundles` needs the launcher handle and firing
                         // it early leaves `syncing_bundles` stuck disabling every launch button
@@ -96,7 +96,7 @@ impl App for OneClientApp {
         let mut palette_revision = use_state(|| 0u32);
         theme::colors::bind_revision(palette_revision);
         let appearance = use_settings_snapshot().settings;
-        let platform = Platform::get();
+        let platform = Platform::get().current_window();
         let system_dark = *platform.preferred_theme.read() == PreferredTheme::Dark;
         let scale_factor = *platform.scale_factor.read() as f32;
         let theme_id = theme::system_aware(&appearance.theme, system_dark).to_string();
@@ -134,11 +134,6 @@ impl App for OneClientApp {
 }
 
 fn main() {
-    #[cfg(target_os = "linux")]
-    unsafe {
-        gtk_sys::gtk_disable_setlocale();
-    }
-
     let cli = cli::parse();
 
     let mut builder = Builder::new_multi_thread();
@@ -296,7 +291,7 @@ fn main() {
         launch_config = launch_config.with_plugin(platform::frame::FramePlugin);
     }
 
-    if show_tray_icon && platform::tray::available() {
+    if show_tray_icon {
         launch_config = launch_config.with_tray(platform::tray::build, platform::tray::handle);
     }
 

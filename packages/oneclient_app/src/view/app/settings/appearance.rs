@@ -96,7 +96,8 @@ impl Component for SettingsAppearance {
 }
 
 fn theme_section(selected: &str, dispatch: Actions) -> impl IntoElement {
-    let system_dark = *Platform::get().preferred_theme.read() == PreferredTheme::Dark;
+    let system_dark =
+        *Platform::get().current_window().preferred_theme.read() == PreferredTheme::Dark;
     let active = resolve_theme(system_aware(selected, system_dark));
 
     rect()
@@ -108,7 +109,8 @@ fn theme_section(selected: &str, dispatch: Actions) -> impl IntoElement {
 }
 
 pub(crate) fn theme_cards(selected: &str, dispatch: Actions) -> impl IntoElement {
-    let system_dark = *Platform::get().preferred_theme.read() == PreferredTheme::Dark;
+    let system_dark =
+        *Platform::get().current_window().preferred_theme.read() == PreferredTheme::Dark;
     let active = resolve_theme(system_aware(selected, system_dark));
     let (dark, light) = (resolve_theme("dark"), resolve_theme("light"));
 

@@ -455,7 +455,7 @@ impl ScrollArea {
         let internal = use_scroll_controller(ScrollConfig::default);
         let mut controller = self.controller.unwrap_or(internal);
 
-        let scale_factor = Platform::get().scale_factor;
+        let scale_factor = Platform::get().current_window().scale_factor;
 
         let mut viewport_h = use_state(|| 0f32);
         let mut viewport_w = use_state(|| 0f32);

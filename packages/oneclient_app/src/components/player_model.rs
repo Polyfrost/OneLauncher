@@ -385,14 +385,17 @@ impl Component for PlayerModel {
         let tint = self.particle_color.map(|color| color as u32);
         let draw_player = player.clone();
 
-        let render_cb = RenderCallback::new(move |ctx| {
+        let render_cb = RenderCallback::new(move |ctx: &mut FillRenderContext| {
+            let RenderTarget::Background { canvas, .. } = &ctx.target else {
+                return;
+            };
             let (w, h) = (ctx.size.width, ctx.size.height);
             if w <= 0.0 || h <= 0.0 {
                 return;
             }
 
             draw_player.borrow_mut().paint(
-                ctx.canvas,
+                canvas,
                 Frame {
                     yaw: cur_yaw,
                     pitch: cur_pitch,
@@ -400,7 +403,7 @@ impl Component for PlayerModel {
                     target_y,
                     seconds: now,
                     size: (w, h),
-                    scale: ctx.canvas.local_to_device_as_3x3().scale_x(),
+                    scale: canvas.local_to_device_as_3x3().scale_x(),
                     tint,
                 },
             );
@@ -437,7 +440,7 @@ impl Component for PlayerModel {
                 yaw.set(yaw0 - dx * DRAG_SENSITIVITY);
                 pitch.set((pitch0 + dy * DRAG_SENSITIVITY).clamp(-PITCH_LIMIT, PITCH_LIMIT));
 
-                Platform::get().send(UserEvent::RequestRedraw);
+                Platform::get().current_window().request_redraw();
             })
             // Global so a release outside the widget still ends the drag
             .on_global_pointer_up(move |_: Event<PointerEventData>| {

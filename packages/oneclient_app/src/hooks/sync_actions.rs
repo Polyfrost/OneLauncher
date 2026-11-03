@@ -1,6 +1,6 @@
 use std::cmp::Ordering;
 
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use freya::radio::RadioStation;
 use oneclient_cluster::SyncReport;
 use oneclient_content::packages::fabric_version;
@@ -19,7 +19,7 @@ use crate::state::{AppChannel, AppState};
 impl Actions {
     pub fn sync_from_shared_dir(&self, cluster_id: ClusterId, from: Option<String>) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
 
             let newer = newer_shared_versions(&state, cluster_id, from.as_deref()).await;

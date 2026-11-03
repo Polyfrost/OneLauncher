@@ -979,7 +979,7 @@ struct DependencyRow {
 }
 
 impl KeyExt for DependencyRow {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -1076,7 +1076,7 @@ struct SkippedRow {
 }
 
 impl KeyExt for SkippedRow {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -1255,7 +1255,7 @@ impl PartialEq for MigrationRow {
 }
 
 impl KeyExt for MigrationRow {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }

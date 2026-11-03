@@ -680,6 +680,7 @@ impl CfMod {
                 .into_iter()
                 .map(|s| GalleryImage {
                     url: s.url,
+                    thumbnail_url: s.thumbnail_url.filter(|t| !t.is_empty()),
                     title: s.title.filter(|t| !t.is_empty()),
                     featured: false,
                 })

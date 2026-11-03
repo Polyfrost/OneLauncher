@@ -460,7 +460,11 @@ fn preview_box(path: PathBuf, height: f32, res: Option<(u32, u32)>) -> impl Into
         .overflow(Overflow::Clip)
         .corner_radius(rounded(10.))
         .background(colors::component_bg())
-        .child(LocalImage::new(path, THUMB_EDGE, true).skeleton(true))
+        .child(
+            LocalImage::new(path, THUMB_EDGE, true)
+                .skeleton(true)
+                .retained(true),
+        )
         .maybe_child(res_badge(res))
         .margin(1.)
         .into_element()
@@ -567,7 +571,11 @@ impl Component for ScreenshotRow {
             .corner_radius(rounded(6.))
             .overflow(Overflow::Clip)
             .background(colors::component_bg())
-            .child(LocalImage::new(info.path.clone(), THUMB_EDGE, true).skeleton(true));
+            .child(
+                LocalImage::new(info.path.clone(), THUMB_EDGE, true)
+                    .skeleton(true)
+                    .retained(true),
+            );
 
         rect()
             .horizontal()

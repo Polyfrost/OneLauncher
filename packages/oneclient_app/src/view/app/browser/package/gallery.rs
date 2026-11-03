@@ -80,6 +80,8 @@ impl KeyExt for GalleryTile {
 
 impl Component for GalleryTile {
     fn render(&self) -> impl IntoElement {
+        let thumbnail_query = use_cached_image(self.image.thumbnail_url.clone(), TILE_EDGE);
+        let thumbnail = loaded_image(self.image.thumbnail_url.as_deref(), &thumbnail_query);
         let query = use_cached_image(Some(self.image.url.clone()), TILE_EDGE);
         let loaded = loaded_image(Some(&self.image.url), &query);
 
@@ -92,12 +94,23 @@ impl Component for GalleryTile {
             .center()
             .overflow(Overflow::Clip)
             .background(colors::component_bg())
-            .maybe_child(loaded.map(|(url, bytes)| {
+            .maybe_child(thumbnail.map(|(url, bytes)| {
                 ImageViewer::new((url, bytes))
                     .width(Size::fill())
                     .height(Size::fill())
                     .aspect_ratio(AspectRatio::Max)
                     .image_cover(ImageCover::Center)
+                    .fallback(broken_image(32.))
+                    .into_element()
+            }))
+            .maybe_child(loaded.map(|(url, bytes)| {
+                ImageViewer::new((url, bytes))
+                    .position(Position::new_absolute().top(0.).left(0.))
+                    .width(Size::percent(100.))
+                    .height(Size::percent(100.))
+                    .aspect_ratio(AspectRatio::Max)
+                    .image_cover(ImageCover::Center)
+                    .loading_placeholder(rect().into_element())
                     .fallback(broken_image(32.))
                     .into_element()
             }));

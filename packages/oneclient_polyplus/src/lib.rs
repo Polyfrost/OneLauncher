@@ -12,6 +12,7 @@ use oneclient_auth::MinecraftAccount;
 use oneclient_common::constants;
 
 pub mod api;
+pub mod party;
 
 const MOJANG_JOIN_URL: &str = "https://sessionserver.mojang.com/session/minecraft/join";
 
@@ -211,6 +212,7 @@ async fn run_session(
 
     *connected = true;
     tracing::info!("[plus] playtime websocket connected for {}", account.id);
+    party::connected();
 
     let account_id = account.id;
     pump(&mut websocket, PING_INTERVAL, account_id, || async move {
@@ -253,6 +255,7 @@ where
                 tracing::info!("[plus] playtime websocket closed by the server: {code:?} {reason}");
                 break;
             }
+            Event::Message(Some(Message::Text(text))) => party::dispatch(&text),
             Event::Message(Some(_)) => {}
             Event::Message(None) => break,
         }

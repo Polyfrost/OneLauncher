@@ -66,9 +66,7 @@ mod version_art_gallery;
 mod version_card;
 
 pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
-pub use lobby::{
-    LobbyHeroChip, LobbyLaunchButton, LobbyPanel, NavbarLobbyButton, use_lobby, use_provide_lobby,
-};
+pub use lobby::{LobbyHeroChip, LobbyPanel, NavbarLobbyButton, use_provide_lobby};
 pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use asset_image::AssetImage;

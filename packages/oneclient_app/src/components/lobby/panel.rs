@@ -1,19 +1,25 @@
+use std::time::Instant;
+
 use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
+use oneclient_polyplus::party::{
+    self, InvitePolicy, LocationKind, MAX_PARTY_SIZE, Party, PartyInvite, PartyMember,
+};
+use uuid::Uuid;
 
-use super::dialogs::{Confirm, ConfirmDialog, InviteDialog, JoinDialog};
+use super::dialogs::{Confirm, ConfirmDialog, InviteDialog};
 use super::{
-    Lobby, LobbyState, ME, Member, MemberStatus, display_name, player_uuid, use_lobby, use_my_name,
-    use_my_uuid,
+    LobbyState, act, can_invite, is_full, is_leader, online_count, sorted_members, successor,
+    use_lobby, use_my_uuid, use_player_name,
 };
 use crate::components::cluster_menu::open_menu_at;
 use crate::components::{
-    Avatar, Button, ButtonVariant, ContextMenu, Icon, IconType, OverlayPopup, ScrollArea, Segment,
-    SegmentedControl, toggle_controlled,
+    Avatar, Button, ButtonVariant, ContextMenu, Icon, IconType, OverlayPopup, ScrollArea,
+    toggle_controlled,
 };
-use crate::hooks::{settled_or_loading, use_active_cluster_id, use_clusters, use_dispatch};
+use crate::hooks::use_dispatch;
 use crate::i18n::{t, tf};
-use crate::theme::{self, colors};
+use crate::theme::colors;
 use crate::ui::{border_all_color, divider, relative_time};
 
 const PANEL_WIDTH: f32 = 380.;
@@ -22,7 +28,6 @@ const PANEL_TOP: f32 = 72.;
 #[derive(Clone, PartialEq)]
 pub(super) enum Dialog {
     Invite,
-    Join,
     Confirm(Confirm),
 }
 
@@ -60,18 +65,15 @@ impl Component for PanelCard {
             AnimNum::new(0., 1.).time(200).ease(Ease::Out)
         });
         let progress = intro.read().value();
-        let lobby = use_lobby().read().lobby.clone();
+        let party = use_lobby().read().party.clone();
 
-        let body = match lobby {
-            Some(lobby) => InLobby {
-                lobby,
+        let body = match party {
+            Some(party) => InLobby {
+                party,
                 dialog: self.dialog,
             }
             .into_element(),
-            None => NoLobby {
-                dialog: self.dialog,
-            }
-            .into_element(),
+            None => NoLobby.into_element(),
         };
 
         rect()
@@ -106,7 +108,7 @@ fn section_label(text: impl Into<String>) -> Label {
         .color(colors::fg_secondary())
 }
 
-fn section_header(title: &'static str, count: Option<String>, trailing: Option<String>) -> Rect {
+fn section_header(title: &'static str, count: Option<String>) -> Rect {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -118,14 +120,6 @@ fn section_header(title: &'static str, count: Option<String>, trailing: Option<S
         .maybe_child(count.map(|count| {
             section_label(count)
                 .color(colors::fg_secondary_hover())
-                .into_element()
-        }))
-        .child(rect().width(Size::flex(1.0)))
-        .maybe_child(trailing.map(|text| {
-            label()
-                .text(text)
-                .font_size(12.)
-                .color(colors::fg_secondary())
                 .into_element()
         }))
 }
@@ -173,25 +167,36 @@ fn header(title: String, subtitle: Option<String>, settings: Option<Element>) ->
         )
 }
 
-#[derive(PartialEq)]
-struct NoLobby {
-    dialog: State<Option<Dialog>>,
+fn since(at: chrono::DateTime<chrono::Utc>) -> String {
+    let elapsed = (chrono::Utc::now() - at).to_std().unwrap_or_default();
+    relative_time(Instant::now().checked_sub(elapsed).unwrap_or_else(Instant::now))
 }
+
+#[derive(PartialEq)]
+struct NoLobby;
 
 impl Component for NoLobby {
     fn render(&self) -> impl IntoElement {
-        let mut state = use_lobby();
+        let state = use_lobby();
         let dispatch = use_dispatch();
-        let mut dialog = self.dialog;
+        let snapshot = state.read().clone();
 
         let create = move |_| {
-            state.write().lobby = Some(Lobby::hosted());
-            dispatch
-                .notify(t("oneclient.components.lobby.toast.created"))
-                .info()
-                .icon(IconType::Users01)
-                .toast_only()
-                .send();
+            let dispatch_done = dispatch.clone();
+            act(
+                state,
+                dispatch.clone(),
+                |account| async move { party::create(&account).await },
+                move |lobby: &mut LobbyState, party| {
+                    lobby.party = Some(party);
+                    dispatch_done
+                        .notify(t("oneclient.components.lobby.toast.created"))
+                        .info()
+                        .icon(IconType::Users01)
+                        .toast_only()
+                        .send();
+                },
+            );
         };
 
         rect()
@@ -233,68 +238,67 @@ impl Component for NoLobby {
                     )
                     .child(
                         label()
-                            .text(t("oneclient.components.lobby.empty.body"))
+                            .text(
+                                snapshot
+                                    .error
+                                    .clone()
+                                    .unwrap_or_else(|| {
+                                        t("oneclient.components.lobby.empty.body").to_string()
+                                    }),
+                            )
                             .width(Size::fill())
                             .max_lines(3)
                             .text_align(TextAlign::Center)
                             .font_size(12.)
-                            .color(colors::fg_secondary()),
+                            .color(if snapshot.error.is_some() {
+                                colors::code_warn()
+                            } else {
+                                colors::fg_secondary()
+                            }),
                     )
                     .child(
-                        rect()
-                            .horizontal()
-                            .spacing(8.)
+                        Button::new()
+                            .primary()
                             .margin(Gaps::new(4., 0., 0., 0.))
-                            .child(
-                                Button::new()
-                                    .primary()
-                                    .on_press(create)
-                                    .child(Icon::new(IconType::Plus).size(14.))
-                                    .text(t("oneclient.components.lobby.empty.create")),
-                            )
-                            .child(
-                                Button::new()
-                                    .secondary()
-                                    .on_press(move |_| dialog.set(Some(Dialog::Join)))
-                                    .child(Icon::new(IconType::Key01).size(14.))
-                                    .text(t("oneclient.components.lobby.empty.join")),
-                            ),
+                            .enabled(!snapshot.busy && snapshot.error.is_none())
+                            .on_press(create)
+                            .child(Icon::new(IconType::Plus).size(14.))
+                            .text(t("oneclient.components.lobby.empty.create")),
                     ),
             )
+            .children(incoming(&snapshot.incoming, false))
     }
 }
 
 #[derive(PartialEq)]
 struct InLobby {
-    lobby: Lobby,
+    party: Party,
     dialog: State<Option<Dialog>>,
 }
 
 impl Component for InLobby {
     fn render(&self) -> impl IntoElement {
-        let me = use_my_name();
+        let me = use_my_uuid();
+        let snapshot = use_lobby().read().clone();
         let mut show_settings = use_state(|| false);
-        let lobby = &self.lobby;
+        let party = &self.party;
         let mut dialog = self.dialog;
+        let leads = is_leader(party, me);
+        let leader_name = use_player_name(party.leader);
+        let next = successor(party, me);
+        let next_name = use_player_name(next.unwrap_or_default());
 
-        let title = if lobby.is_leader() {
+        let title = if leads {
             t("oneclient.components.lobby.your_lobby").to_string()
         } else {
-            tf(
-                "oneclient.components.lobby.someones_lobby",
-                &[&display_name(lobby.leader, &me)],
-            )
+            tf("oneclient.components.lobby.someones_lobby", &[&leader_name])
         };
         let subtitle = tf(
             "oneclient.components.lobby.summary",
-            &[
-                &lobby.members.len(),
-                &lobby.max_players,
-                &lobby.ready_count(),
-            ],
+            &[&party.members.len(), &MAX_PARTY_SIZE, &online_count(party)],
         );
 
-        let settings_button = lobby.is_leader().then(|| {
+        let settings_button = leads.then(|| {
             Button::new()
                 .variant(if *show_settings.read() {
                     ButtonVariant::Secondary
@@ -308,7 +312,9 @@ impl Component for InLobby {
                 .into_element()
         });
 
-        let can_invite = lobby.can_invite() && !lobby.is_full();
+        let invitable = can_invite(party, me) && !is_full(party);
+        let outgoing = snapshot.party_outgoing();
+        let leave = Confirm::leave(leads, next.map(|_| next_name), &leader_name);
 
         rect()
             .vertical()
@@ -320,13 +326,13 @@ impl Component for InLobby {
                     .width(Size::fill())
                     .max_height(Size::window_percent(58.))
                     .spacing(14.)
-                    .children((*show_settings.read() && lobby.is_leader()).then(|| {
+                    .children((*show_settings.read() && leads).then(|| {
                         LobbySettings {
-                            lobby: lobby.clone(),
+                            policy: party.settings.invite_policy,
+                            busy: snapshot.busy,
                         }
                         .into_element()
                     }))
-                    .child(InstanceRow)
                     .child(
                         rect()
                             .vertical()
@@ -334,52 +340,55 @@ impl Component for InLobby {
                             .spacing(4.)
                             .child(section_header(
                                 t("oneclient.components.lobby.players"),
-                                Some(format!("{}/{}", lobby.members.len(), lobby.max_players)),
-                                None,
+                                Some(format!("{}/{MAX_PARTY_SIZE}", party.members.len())),
                             ))
-                            .children(lobby.sorted_members().into_iter().map(|member| {
+                            .children(sorted_members(party, me).into_iter().map(|member| {
                                 MemberRow {
                                     member,
-                                    leader: lobby.leader,
-                                    viewer_leads: lobby.is_leader(),
+                                    leader: party.leader,
+                                    me,
+                                    viewer_leads: leads,
                                     dialog,
                                 }
                                 .into_element()
                             }))
-                            .maybe_child(can_invite.then(|| {
+                            .maybe_child(invitable.then(|| {
                                 InviteSlot {
                                     on_press: (move |()| dialog.set(Some(Dialog::Invite))).into(),
                                 }
                                 .into_element()
                             })),
                     )
-                    .children((!lobby.invites.is_empty()).then(|| pending(lobby, &me)))
-                    .child(invite_code(lobby.code)),
+                    .children((!outgoing.is_empty()).then(|| pending(&outgoing)))
+                    .children(incoming(&snapshot.incoming, true)),
             )
             .child(divider())
-            .child(footer(lobby, &me, dialog))
+            .child(footer(
+                party,
+                me,
+                &leader_name,
+                leave,
+                snapshot.busy,
+                dialog,
+            ))
     }
 }
 
 #[derive(PartialEq)]
 struct LobbySettings {
-    lobby: Lobby,
+    policy: InvitePolicy,
+    busy: bool,
 }
 
 impl Component for LobbySettings {
     fn render(&self) -> impl IntoElement {
-        let mut state = use_lobby();
-        let max = use_state(|| self.lobby.max_players);
-        let min_allowed = self.lobby.smallest_allowed_max();
-
-        use_side_effect_with_deps(&*max.read(), move |max| {
-            if let Some(lobby) = state.write().lobby.as_mut() {
-                lobby.max_players = *max;
-            }
-        });
-
-        let members_can_invite = self.lobby.members_can_invite;
-        let public = self.lobby.public;
+        let state = use_lobby();
+        let dispatch = use_dispatch();
+        let next = match self.policy {
+            InvitePolicy::Leader => InvitePolicy::Members,
+            InvitePolicy::Members => InvitePolicy::Leader,
+        };
+        let busy = self.busy;
 
         rect()
             .vertical()
@@ -392,168 +401,81 @@ impl Component for LobbySettings {
             .child(section_label(t(
                 "oneclient.components.lobby.settings.title",
             )))
-            .child(setting_row(
-                t("oneclient.components.lobby.settings.members_invite"),
-                toggle_controlled(
-                    members_can_invite,
-                    (move |()| {
-                        if let Some(lobby) = state.write().lobby.as_mut() {
-                            lobby.members_can_invite = !lobby.members_can_invite;
-                        }
-                    })
-                    .into(),
-                )
-                .into_element(),
-            ))
-            .child(setting_row(
-                t("oneclient.components.lobby.settings.public"),
-                toggle_controlled(
-                    public,
-                    (move |()| {
-                        if let Some(lobby) = state.write().lobby.as_mut() {
-                            lobby.public = !lobby.public;
-                        }
-                    })
-                    .into(),
-                )
-                .into_element(),
-            ))
-            .child(setting_row(
-                t("oneclient.components.lobby.settings.max_players"),
-                SegmentedControl::new(max)
-                    .height(28.)
-                    .segments(super::MAX_PLAYER_CHOICES.into_iter().map(|choice| {
-                        Segment::new(choice)
-                            .label(choice.to_string())
-                            .disabled(choice < min_allowed)
-                    }))
-                    .into_element(),
-            ))
-    }
-}
-
-fn setting_row(text: &'static str, control: Element) -> Element {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .child(
-            label()
-                .text(text)
-                .width(Size::flex(1.0))
-                .font_size(13.)
-                .color(colors::fg_primary()),
-        )
-        .child(control)
-        .into_element()
-}
-
-#[derive(PartialEq)]
-struct InstanceRow;
-
-impl Component for InstanceRow {
-    fn render(&self) -> impl IntoElement {
-        let clusters = settled_or_loading(&use_clusters()).unwrap_or_default();
-        let active = *use_active_cluster_id().read();
-        let lobby = use_lobby().read().lobby.clone();
-        let me = use_my_name();
-
-        let name = active
-            .and_then(|id| clusters.iter().find(|cluster| cluster.id == id))
-            .or_else(|| clusters.first())
-            .map_or_else(
-                || t("oneclient.components.lobby.instance.none").to_string(),
-                |cluster| {
-                    if cluster.user_created {
-                        cluster.name.clone()
-                    } else {
-                        format!("{} {}", cluster.mc_version, cluster.mc_loader)
-                    }
-                },
-            );
-
-        let hint = match lobby {
-            Some(lobby) if !lobby.is_leader() => tf(
-                "oneclient.components.lobby.instance.picked_by",
-                &[&display_name(lobby.leader, &me)],
-            ),
-            _ => t("oneclient.components.lobby.instance.synced").to_string(),
-        };
-
-        rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(4.)
-            .child(section_header(
-                t("oneclient.components.lobby.instance.title"),
-                None,
-                None,
-            ))
             .child(
                 rect()
                     .horizontal()
                     .width(Size::fill())
                     .content(Content::Flex)
                     .cross_align(Alignment::Center)
-                    .spacing(10.)
-                    .padding(Gaps::new_all(10.))
-                    .corner_radius(CornerRadius::new_all(10.))
-                    .background(colors::card())
-                    .border(border_all_color(1., colors::component_border()))
                     .child(
-                        rect()
-                            .width(Size::px(36.))
-                            .height(Size::px(36.))
-                            .corner_radius(CornerRadius::new_all(9.))
-                            .background(colors::brand().with_a(40))
-                            .center()
-                            .child(
-                                Icon::new(IconType::Rocket02)
-                                    .size(18.)
-                                    .color(colors::brand()),
-                            ),
-                    )
-                    .child(
-                        rect()
-                            .vertical()
+                        label()
+                            .text(t("oneclient.components.lobby.settings.members_invite"))
                             .width(Size::flex(1.0))
-                            .spacing(2.)
-                            .child(
-                                label()
-                                    .text(name)
-                                    .font_size(13.)
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .max_lines(1)
-                                    .text_overflow(TextOverflow::Ellipsis)
-                                    .color(colors::fg_primary()),
-                            )
-                            .child(
-                                label()
-                                    .text(hint)
-                                    .font_size(11.)
-                                    .max_lines(1)
-                                    .text_overflow(TextOverflow::Ellipsis)
-                                    .color(colors::fg_secondary()),
-                            ),
-                    ),
+                            .font_size(13.)
+                            .color(colors::fg_primary()),
+                    )
+                    .child(toggle_controlled(
+                        self.policy == InvitePolicy::Members,
+                        (move |()| {
+                            if busy {
+                                return;
+                            }
+                            act(
+                                state,
+                                dispatch.clone(),
+                                move |account| async move {
+                                    party::set_invite_policy(&account, next).await
+                                },
+                                |lobby: &mut LobbyState, party| lobby.party = Some(party),
+                            );
+                        })
+                        .into(),
+                    )),
             )
     }
 }
 
-fn status_text(status: MemberStatus) -> (&'static str, Color) {
-    match status {
-        MemberStatus::Ready => (
-            t("oneclient.components.lobby.status.ready"),
+fn presence(member: &PartyMember) -> (String, Color) {
+    if !member.online {
+        return (
+            t("oneclient.components.lobby.presence.offline").to_string(),
+            colors::fg_secondary(),
+        );
+    }
+    let Some(state) = &member.state else {
+        return (
+            t("oneclient.components.lobby.presence.online").to_string(),
+            colors::success(),
+        );
+    };
+    let location = &state.location;
+    match location.kind {
+        LocationKind::Menu => (
+            t("oneclient.components.lobby.presence.menu").to_string(),
             colors::success(),
         ),
-        MemberStatus::Syncing(_) => (
-            t("oneclient.components.lobby.status.syncing"),
-            colors::code_warn(),
+        LocationKind::Singleplayer => (
+            t("oneclient.components.lobby.presence.singleplayer").to_string(),
+            colors::code_info(),
         ),
-        MemberStatus::NotReady => (
-            t("oneclient.components.lobby.status.not_ready"),
-            colors::fg_secondary(),
+        LocationKind::Server => (
+            location
+                .display
+                .as_deref()
+                .filter(|display| !display.trim().is_empty())
+                .map_or_else(
+                    || t("oneclient.components.lobby.presence.server").to_string(),
+                    |display| tf("oneclient.components.lobby.presence.playing", &[&display]),
+                ),
+            colors::code_info(),
+        ),
+        LocationKind::HostedWorld => (
+            t("oneclient.components.lobby.presence.hosting").to_string(),
+            colors::code_info(),
+        ),
+        LocationKind::Other => (
+            t("oneclient.components.lobby.presence.online").to_string(),
+            colors::success(),
         ),
     }
 }
@@ -573,51 +495,30 @@ fn tag(text: &'static str, color: Color) -> Element {
         .into_element()
 }
 
-fn progress_bar(percent: u8) -> Element {
-    rect()
-        .width(Size::px(64.))
-        .height(Size::px(4.))
-        .corner_radius(CornerRadius::new_all(2.))
-        .background(colors::component_bg_pressed())
-        .child(
-            rect()
-                .width(Size::percent(f32::from(percent.min(100))))
-                .height(Size::fill())
-                .corner_radius(CornerRadius::new_all(2.))
-                .background(colors::code_warn()),
-        )
-        .into_element()
-}
-
 #[derive(PartialEq)]
 struct MemberRow {
-    member: Member,
-    leader: &'static str,
+    member: PartyMember,
+    leader: Uuid,
+    me: Option<Uuid>,
     viewer_leads: bool,
     dialog: State<Option<Dialog>>,
 }
 
 impl Component for MemberRow {
     fn render(&self) -> impl IntoElement {
-        let mut state = use_lobby();
-        let me = use_my_name();
-        let me_uuid = use_my_uuid();
-        let dispatch = use_dispatch();
         let menu = use_state(|| None::<(f32, f32)>);
         let mut dialog = self.dialog;
 
-        let id = self.member.id;
-        let is_me = id == ME;
-        let name = display_name(id, &me);
-        let (status_label, status_color) = status_text(self.member.status);
+        let player = self.member.player;
+        let name = use_player_name(player);
+        let is_me = self.me == Some(player);
+        let (status_label, status_color) = presence(&self.member);
         let manageable = self.viewer_leads && !is_me;
 
         let context = (*menu.read()).map(|(x, y)| {
             let mut menu = menu;
             let promote_name = name.clone();
             let kick_name = name.clone();
-            let profile_name = name.clone();
-            let dispatch = dispatch.clone();
             ContextMenu::new(x, y)
                 .title(name.clone())
                 .on_close(move |()| menu.set(None))
@@ -627,24 +528,9 @@ impl Component for MemberRow {
                     move |()| {
                         menu.set(None);
                         dialog.set(Some(Dialog::Confirm(Confirm::promote(
-                            id,
+                            player,
                             promote_name.clone(),
                         ))));
-                    },
-                )
-                .action(
-                    IconType::Users01,
-                    t("oneclient.components.lobby.member.profile"),
-                    move |()| {
-                        menu.set(None);
-                        dispatch
-                            .notify(tf(
-                                "oneclient.components.lobby.toast.profile",
-                                &[&profile_name],
-                            ))
-                            .info()
-                            .toast_only()
-                            .send();
                     },
                 )
                 .separator()
@@ -653,49 +539,14 @@ impl Component for MemberRow {
                     t("oneclient.components.lobby.member.kick"),
                     move |()| {
                         menu.set(None);
-                        dialog.set(Some(Dialog::Confirm(Confirm::kick(id, kick_name.clone()))));
+                        dialog.set(Some(Dialog::Confirm(Confirm::kick(
+                            player,
+                            kick_name.clone(),
+                        ))));
                     },
                 )
                 .into_element()
         });
-
-        let trailing: Option<Element> = if is_me {
-            Some(
-                rect()
-                    .horizontal()
-                    .cross_align(Alignment::Center)
-                    .spacing(8.)
-                    .child(
-                        label()
-                            .text(t("oneclient.components.lobby.member.ready_toggle"))
-                            .font_size(12.)
-                            .color(colors::fg_secondary()),
-                    )
-                    .child(toggle_controlled(
-                        self.member.status == MemberStatus::Ready,
-                        (move |()| {
-                            if let Some(lobby) = state.write().lobby.as_mut() {
-                                let ready = lobby.my_status() != MemberStatus::Ready;
-                                lobby.set_ready(ready);
-                            }
-                        })
-                        .into(),
-                    ))
-                    .into_element(),
-            )
-        } else if manageable {
-            Some(
-                Button::new()
-                    .ghost()
-                    .icon()
-                    .tooltip(t("oneclient.components.lobby.member.more"))
-                    .on_press(open_menu_at(menu))
-                    .child(Icon::new(IconType::DotsVertical).size(18.))
-                    .into_element(),
-            )
-        } else {
-            None
-        };
 
         rect()
             .horizontal()
@@ -710,7 +561,8 @@ impl Component for MemberRow {
             .maybe(manageable, |el| el.on_secondary_down(open_menu_at(menu)))
             .child(
                 rect()
-                    .child(Avatar::new(player_uuid(id, &me_uuid)).size(32.))
+                    .opacity(if self.member.online { 1. } else { 0.6 })
+                    .child(Avatar::new(player.to_string()).size(32.))
                     .child(
                         rect()
                             .position(Position::new_absolute().bottom(-3.).right(-3.))
@@ -741,7 +593,7 @@ impl Component for MemberRow {
                                     .text_overflow(TextOverflow::Ellipsis)
                                     .color(colors::fg_primary()),
                             )
-                            .maybe_child((id == self.leader).then(|| {
+                            .maybe_child((player == self.leader).then(|| {
                                 tag(
                                     t("oneclient.components.lobby.member.leader"),
                                     colors::brand(),
@@ -755,37 +607,24 @@ impl Component for MemberRow {
                             })),
                     )
                     .child(
-                        rect()
-                            .horizontal()
-                            .cross_align(Alignment::Center)
-                            .spacing(6.)
-                            .child(
-                                label()
-                                    .text(status_label)
-                                    .font_size(11.)
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .color(status_color),
-                            )
-                            .maybe_child(match self.member.status {
-                                MemberStatus::Syncing(percent) => Some(
-                                    rect()
-                                        .horizontal()
-                                        .cross_align(Alignment::Center)
-                                        .spacing(6.)
-                                        .child(progress_bar(percent))
-                                        .child(
-                                            label()
-                                                .text(format!("{percent}%"))
-                                                .font_size(11.)
-                                                .color(colors::fg_secondary()),
-                                        )
-                                        .into_element(),
-                                ),
-                                _ => None,
-                            }),
+                        label()
+                            .text(status_label)
+                            .font_size(11.)
+                            .font_weight(FontWeight::MEDIUM)
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .color(status_color),
                     ),
             )
-            .maybe_child(trailing)
+            .maybe_child(manageable.then(|| {
+                Button::new()
+                    .ghost()
+                    .icon()
+                    .tooltip(t("oneclient.components.lobby.member.more"))
+                    .on_press(open_menu_at(menu))
+                    .child(Icon::new(IconType::DotsVertical).size(18.))
+                    .into_element()
+            }))
             .maybe_child(context)
     }
 }
@@ -834,30 +673,18 @@ impl Component for InviteSlot {
     }
 }
 
-fn pending(lobby: &Lobby, me: &str) -> Element {
+fn pending(invites: &[PartyInvite]) -> Element {
     rect()
         .vertical()
         .width(Size::fill())
         .spacing(4.)
         .child(section_header(
             t("oneclient.components.lobby.pending"),
-            Some(lobby.invites.len().to_string()),
-            None,
+            Some(invites.len().to_string()),
         ))
-        .children(lobby.invites.iter().map(|invite| {
+        .children(invites.iter().map(|invite| {
             PendingRow {
-                id: invite.id,
-                name: display_name(invite.id, me),
-                by: if invite.by == ME {
-                    t("oneclient.components.lobby.invited_by_you").to_string()
-                } else {
-                    tf(
-                        "oneclient.components.lobby.invited_by",
-                        &[&display_name(invite.by, me)],
-                    )
-                },
-                when: relative_time(invite.sent),
-                cancellable: lobby.is_leader() || invite.by == ME,
+                invite: invite.clone(),
             }
             .into_element()
         }))
@@ -866,64 +693,30 @@ fn pending(lobby: &Lobby, me: &str) -> Element {
 
 #[derive(PartialEq)]
 struct PendingRow {
-    id: &'static str,
-    name: String,
-    by: String,
-    when: String,
-    cancellable: bool,
+    invite: PartyInvite,
 }
 
 impl Component for PendingRow {
     fn render(&self) -> impl IntoElement {
-        let mut state = use_lobby();
+        let state = use_lobby();
+        let busy = state.read().busy;
         let dispatch = use_dispatch();
-        let me_uuid = use_my_uuid();
-        let id = self.id;
-        let name = self.name.clone();
+        let recipient = self.invite.recipient;
+        let id = self.invite.id;
+        let name = use_player_name(recipient);
 
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .content(Content::Flex)
-            .cross_align(Alignment::Center)
-            .spacing(10.)
-            .padding(Gaps::new_symmetric(6., 8.))
-            .child(
-                rect()
-                    .opacity(0.6)
-                    .child(Avatar::new(player_uuid(id, &me_uuid)).size(32.)),
-            )
-            .child(
-                rect()
-                    .vertical()
-                    .width(Size::flex(1.0))
-                    .spacing(2.)
-                    .child(
-                        label()
-                            .text(self.name.clone())
-                            .font_size(13.)
-                            .font_weight(FontWeight::MEDIUM)
-                            .max_lines(1)
-                            .color(colors::fg_primary()),
-                    )
-                    .child(
-                        label()
-                            .text(format!("{} · {}", self.by, self.when))
-                            .font_size(11.)
-                            .max_lines(1)
-                            .text_overflow(TextOverflow::Ellipsis)
-                            .color(colors::fg_secondary()),
-                    ),
-            )
-            .maybe_child(self.cancellable.then(|| {
-                Button::new()
-                    .ghost()
-                    .small()
-                    .on_press(move |_| {
-                        if let Some(lobby) = state.write().lobby.as_mut() {
-                            lobby.cancel_invite(id);
-                        }
-                        dispatch
+        let cancel = {
+            let name = name.clone();
+            move |_| {
+                let dispatch_done = dispatch.clone();
+                let name = name.clone();
+                act(
+                    state,
+                    dispatch.clone(),
+                    move |account| async move { party::cancel_invite(&account, id).await },
+                    move |lobby: &mut LobbyState, ()| {
+                        lobby.drop_invite(id);
+                        dispatch_done
                             .notify(tf(
                                 "oneclient.components.lobby.toast.invite_cancelled",
                                 &[&name],
@@ -931,98 +724,189 @@ impl Component for PendingRow {
                             .info()
                             .toast_only()
                             .send();
-                    })
-                    .text(t("oneclient.common.cancel"))
-                    .into_element()
-            }))
+                    },
+                );
+            }
+        };
+
+        invite_row(
+            recipient,
+            name,
+            format!(
+                "{} · {}",
+                t("oneclient.components.lobby.invited_by_you"),
+                since(self.invite.created_at)
+            ),
+            Button::new()
+                .ghost()
+                .small()
+                .enabled(!busy)
+                .on_press(cancel)
+                .text(t("oneclient.common.cancel"))
+                .into_element(),
+        )
     }
 }
 
-fn invite_code(code: &'static str) -> Element {
-    InviteCode { code }.into_element()
+fn invite_row(player: Uuid, name: String, sub: String, trailing: Element) -> Element {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(10.)
+        .padding(Gaps::new_symmetric(6., 8.))
+        .child(
+            rect()
+                .opacity(0.6)
+                .child(Avatar::new(player.to_string()).size(32.)),
+        )
+        .child(
+            rect()
+                .vertical()
+                .width(Size::flex(1.0))
+                .spacing(2.)
+                .child(
+                    label()
+                        .text(name)
+                        .font_size(13.)
+                        .font_weight(FontWeight::MEDIUM)
+                        .max_lines(1)
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    label()
+                        .text(sub)
+                        .font_size(11.)
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
+                        .color(colors::fg_secondary()),
+                ),
+        )
+        .child(trailing)
+        .into_element()
 }
 
-#[derive(PartialEq)]
-struct InviteCode {
-    code: &'static str,
-}
-
-impl Component for InviteCode {
-    fn render(&self) -> impl IntoElement {
-        let dispatch = use_dispatch();
-        let code = self.code;
-
+fn incoming(invites: &[PartyInvite], in_party: bool) -> Option<Element> {
+    (!invites.is_empty()).then(|| {
         rect()
             .vertical()
             .width(Size::fill())
             .spacing(4.)
             .child(section_header(
-                t("oneclient.components.lobby.code.title"),
-                None,
-                None,
+                t("oneclient.components.lobby.incoming.title"),
+                Some(invites.len().to_string()),
             ))
-            .child(
-                rect()
-                    .horizontal()
-                    .width(Size::fill())
-                    .content(Content::Flex)
-                    .cross_align(Alignment::Center)
-                    .spacing(8.)
-                    .child(
-                        rect()
-                            .width(Size::flex(1.0))
-                            .height(Size::px(32.))
-                            .padding(Gaps::new_symmetric(0., 12.))
-                            .main_align(Alignment::Center)
-                            .corner_radius(CornerRadius::new_all(8.))
-                            .background(colors::component_bg())
-                            .border(border_all_color(1., colors::component_border()))
-                            .child(
-                                label()
-                                    .text(code)
-                                    .font_family(theme::MONO_FONT)
-                                    .font_size(13.)
-                                    .letter_spacing(1.)
-                                    .color(colors::fg_primary()),
-                            ),
-                    )
-                    .child(
-                        Button::new()
-                            .secondary()
-                            .icon()
-                            .tooltip(t("oneclient.common.copy"))
-                            .on_press(move |_| {
-                                if freya::text_edit::Clipboard::set(code.to_string()).is_ok() {
-                                    dispatch
-                                        .notify(t("oneclient.components.lobby.toast.code_copied"))
-                                        .info()
-                                        .icon(IconType::ClipboardCheck)
-                                        .toast_only()
-                                        .send();
-                                } else {
-                                    dispatch
-                                        .notify(t("oneclient.components.button.copy_failed.title"))
-                                        .body(t("oneclient.components.button.copy_failed.body"))
-                                        .error()
-                                        .toast_only()
-                                        .send();
-                                }
-                            })
-                            .child(Icon::new(IconType::Copy01).size(14.)),
-                    ),
-            )
+            .children(invites.iter().map(|invite| {
+                IncomingRow {
+                    invite: invite.clone(),
+                    in_party,
+                }
+                .into_element()
+            }))
             .into_element()
+    })
+}
+
+#[derive(PartialEq)]
+struct IncomingRow {
+    invite: PartyInvite,
+    in_party: bool,
+}
+
+impl Component for IncomingRow {
+    fn render(&self) -> impl IntoElement {
+        let state = use_lobby();
+        let busy = state.read().busy;
+        let dispatch = use_dispatch();
+        let sender = self.invite.sender;
+        let id = self.invite.id;
+        let leave_current = self.in_party;
+        let name = use_player_name(sender);
+
+        let accept = {
+            let dispatch = dispatch.clone();
+            let name = name.clone();
+            move |_| {
+                let dispatch_done = dispatch.clone();
+                let name = name.clone();
+                act(
+                    state,
+                    dispatch.clone(),
+                    move |account| async move { party::accept(&account, id, leave_current).await },
+                    move |lobby: &mut LobbyState, party| {
+                        lobby.party = Some(party);
+                        lobby.incoming.clear();
+                        dispatch_done
+                            .notify(tf("oneclient.components.lobby.toast.joined", &[&name]))
+                            .info()
+                            .icon(IconType::Users01)
+                            .toast_only()
+                            .send();
+                    },
+                );
+            }
+        };
+        let decline = move |_| {
+            act(
+                state,
+                dispatch.clone(),
+                move |account| async move { party::decline(&account, id).await },
+                move |lobby: &mut LobbyState, ()| lobby.drop_invite(id),
+            );
+        };
+
+        invite_row(
+            sender,
+            name,
+            format!(
+                "{} · {}",
+                tf(
+                    "oneclient.components.lobby.incoming.size",
+                    &[&self.invite.party_size, &MAX_PARTY_SIZE]
+                ),
+                since(self.invite.created_at)
+            ),
+            rect()
+                .horizontal()
+                .spacing(6.)
+                .child(
+                    Button::new()
+                        .ghost()
+                        .small()
+                        .enabled(!busy)
+                        .on_press(decline)
+                        .text(t("oneclient.components.lobby.incoming.decline")),
+                )
+                .child(
+                    Button::new()
+                        .primary()
+                        .small()
+                        .enabled(!busy)
+                        .on_press(accept)
+                        .text(t("oneclient.components.lobby.incoming.accept")),
+                )
+                .into_element(),
+        )
     }
 }
 
-fn footer(lobby: &Lobby, me: &str, dialog: State<Option<Dialog>>) -> Element {
+fn footer(
+    party: &Party,
+    me: Option<Uuid>,
+    leader_name: &str,
+    leave: Confirm,
+    busy: bool,
+    dialog: State<Option<Dialog>>,
+) -> Element {
     let mut dialog = dialog;
-    let invite = if lobby.can_invite() {
+    let full = is_full(party);
+    let invite = if can_invite(party, me) {
         Button::new()
             .primary()
             .width(Size::fill())
-            .enabled(!lobby.is_full())
-            .tooltip(if lobby.is_full() {
+            .enabled(!full && !busy)
+            .tooltip(if full {
                 t("oneclient.components.lobby.full")
             } else {
                 t("oneclient.components.lobby.invite_players")
@@ -1035,7 +919,7 @@ fn footer(lobby: &Lobby, me: &str, dialog: State<Option<Dialog>>) -> Element {
         label()
             .text(tf(
                 "oneclient.components.lobby.only_leader_invites",
-                &[&display_name(lobby.leader, me)],
+                &[&leader_name],
             ))
             .width(Size::fill())
             .text_align(TextAlign::Center)
@@ -1044,8 +928,7 @@ fn footer(lobby: &Lobby, me: &str, dialog: State<Option<Dialog>>) -> Element {
             .into_element()
     };
 
-    let leave = Confirm::leave(lobby, me);
-    let disband = Confirm::disband(lobby.members.len());
+    let disband = Confirm::disband(party.members.len());
 
     rect()
         .vertical()
@@ -1062,14 +945,16 @@ fn footer(lobby: &Lobby, me: &str, dialog: State<Option<Dialog>>) -> Element {
                     Button::new()
                         .secondary()
                         .width(Size::flex(1.0))
+                        .enabled(!busy)
                         .on_press(move |_| dialog.set(Some(Dialog::Confirm(leave.clone()))))
                         .child(Icon::new(IconType::LogOut01).size(14.))
                         .text(t("oneclient.components.lobby.leave")),
                 )
-                .maybe_child(lobby.is_leader().then(|| {
+                .maybe_child(is_leader(party, me).then(|| {
                     Button::new()
                         .secondary()
                         .width(Size::flex(1.0))
+                        .enabled(!busy)
                         .foreground(colors::danger())
                         .on_press(move |_| dialog.set(Some(Dialog::Confirm(disband.clone()))))
                         .child(
@@ -1099,35 +984,12 @@ impl Component for DialogHost {
                 on_close: close.into(),
             }
             .into_element(),
-            Some(Dialog::Join) => JoinDialog {
-                on_close: close.into(),
-            }
-            .into_element(),
             Some(Dialog::Confirm(confirm)) => ConfirmDialog {
                 confirm,
                 on_close: close.into(),
             }
             .into_element(),
             None => rect().into_element(),
-        }
-    }
-}
-
-pub(super) fn apply_confirm(state: &mut State<LobbyState>, confirm: &Confirm) {
-    let mut guard = state.write();
-    match confirm.kind {
-        super::dialogs::ConfirmKind::Kick(id) => {
-            if let Some(lobby) = guard.lobby.as_mut() {
-                lobby.kick(id);
-            }
-        }
-        super::dialogs::ConfirmKind::Promote(id) => {
-            if let Some(lobby) = guard.lobby.as_mut() {
-                lobby.promote(id);
-            }
-        }
-        super::dialogs::ConfirmKind::Leave | super::dialogs::ConfirmKind::Disband => {
-            guard.lobby = None;
         }
     }
 }

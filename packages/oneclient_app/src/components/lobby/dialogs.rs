@@ -1,19 +1,22 @@
 use freya::prelude::*;
+use oneclient_polyplus::party;
+use uuid::Uuid;
 
-use super::panel::apply_confirm;
-use super::{FRIENDS, Friend, Lobby, Presence, display_name, use_lobby, use_my_name};
+use super::{
+    FriendView, LobbyState, act, is_full, use_friends, use_lobby, use_my_uuid,
+};
 use crate::components::{
     Avatar, Button, Icon, IconType, OVERLAY_MAX_LEVEL, OverlayPopup, TextInput,
 };
-use crate::hooks::use_dispatch;
+use crate::hooks::{Actions, use_dispatch};
 use crate::i18n::{t, tf};
-use crate::theme::{self, colors};
+use crate::theme::colors;
 use crate::ui::border_all_color;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum ConfirmKind {
-    Kick(&'static str),
-    Promote(&'static str),
+    Kick(Uuid),
+    Promote(Uuid),
     Leave,
     Disband,
 }
@@ -29,9 +32,9 @@ pub struct Confirm {
 }
 
 impl Confirm {
-    pub fn kick(id: &'static str, name: String) -> Self {
+    pub fn kick(player: Uuid, name: String) -> Self {
         Self {
-            kind: ConfirmKind::Kick(id),
+            kind: ConfirmKind::Kick(player),
             title: tf("oneclient.components.lobby.confirm.kick.title", &[&name]),
             body: tf("oneclient.components.lobby.confirm.kick.body", &[&name]),
             action: t("oneclient.components.lobby.member.kick"),
@@ -40,9 +43,9 @@ impl Confirm {
         }
     }
 
-    pub fn promote(id: &'static str, name: String) -> Self {
+    pub fn promote(player: Uuid, name: String) -> Self {
         Self {
-            kind: ConfirmKind::Promote(id),
+            kind: ConfirmKind::Promote(player),
             title: t("oneclient.components.lobby.confirm.promote.title").to_string(),
             body: tf("oneclient.components.lobby.confirm.promote.body", &[&name]),
             action: t("oneclient.components.lobby.member.make_leader"),
@@ -51,16 +54,16 @@ impl Confirm {
         }
     }
 
-    pub fn leave(lobby: &Lobby, me: &str) -> Self {
-        let body = match (lobby.is_leader(), lobby.successor()) {
+    pub fn leave(leads: bool, successor: Option<String>, leader: &str) -> Self {
+        let body = match (leads, successor) {
             (true, Some(next)) => tf(
                 "oneclient.components.lobby.confirm.leave.body_leader",
-                &[&display_name(next, me)],
+                &[&next],
             ),
             (true, None) => t("oneclient.components.lobby.confirm.leave.body_alone").to_string(),
             (false, _) => tf(
                 "oneclient.components.lobby.confirm.leave.body_member",
-                &[&display_name(lobby.leader, me)],
+                &[&leader],
             ),
         };
         Self {
@@ -85,6 +88,54 @@ impl Confirm {
             danger: true,
             toast: t("oneclient.components.lobby.toast.disbanded").to_string(),
         }
+    }
+}
+
+fn run_confirm(state: State<LobbyState>, dispatch: Actions, confirm: Confirm) {
+    let toast = confirm.toast.clone();
+    let notify = dispatch.clone();
+    let announce = move || {
+        notify
+            .notify(toast)
+            .info()
+            .icon(IconType::Users01)
+            .toast_only()
+            .send();
+    };
+    match confirm.kind {
+        ConfirmKind::Kick(player) => act(
+            state,
+            dispatch,
+            move |account| async move { party::kick(&account, player).await },
+            move |_: &mut LobbyState, ()| announce(),
+        ),
+        ConfirmKind::Promote(player) => act(
+            state,
+            dispatch,
+            move |account| async move { party::transfer_leader(&account, player).await },
+            move |lobby: &mut LobbyState, party| {
+                lobby.party = Some(party);
+                announce();
+            },
+        ),
+        ConfirmKind::Leave => act(
+            state,
+            dispatch,
+            |account| async move { party::leave(&account).await },
+            move |lobby: &mut LobbyState, ()| {
+                lobby.party = None;
+                announce();
+            },
+        ),
+        ConfirmKind::Disband => act(
+            state,
+            dispatch,
+            |account| async move { party::disband(&account).await },
+            move |lobby: &mut LobbyState, ()| {
+                lobby.party = None;
+                announce();
+            },
+        ),
     }
 }
 
@@ -154,20 +205,14 @@ pub struct ConfirmDialog {
 
 impl Component for ConfirmDialog {
     fn render(&self) -> impl IntoElement {
-        let mut state = use_lobby();
+        let state = use_lobby();
         let dispatch = use_dispatch();
         let confirm = self.confirm.clone();
         let on_close = self.on_close.clone();
         let cancel = self.on_close.clone();
 
         let run = move |_| {
-            apply_confirm(&mut state, &confirm);
-            dispatch
-                .notify(confirm.toast.clone())
-                .info()
-                .icon(IconType::Users01)
-                .toast_only()
-                .send();
+            run_confirm(state, dispatch.clone(), confirm.clone());
             on_close.call(());
         };
 
@@ -177,7 +222,10 @@ impl Component for ConfirmDialog {
             (IconType::Key01, colors::brand())
         };
 
-        let action = Button::new().on_press(run).text(self.confirm.action);
+        let action = Button::new()
+            .enabled(!state.read().busy)
+            .on_press(run)
+            .text(self.confirm.action);
         let action = if self.confirm.danger {
             action.danger()
         } else {
@@ -215,33 +263,6 @@ impl Component for ConfirmDialog {
     }
 }
 
-fn presence_text(presence: Presence) -> (String, Color) {
-    match presence {
-        Presence::Online => (
-            t("oneclient.components.lobby.presence.online").to_string(),
-            colors::success(),
-        ),
-        Presence::Playing(server) => (
-            tf("oneclient.components.lobby.presence.playing", &[&server]),
-            colors::code_info(),
-        ),
-        Presence::Offline { hours_ago } if hours_ago < 24 => (
-            tf(
-                "oneclient.components.lobby.presence.offline_hours",
-                &[&hours_ago],
-            ),
-            colors::fg_secondary(),
-        ),
-        Presence::Offline { hours_ago } => (
-            tf(
-                "oneclient.components.lobby.presence.offline_days",
-                &[&(hours_ago / 24)],
-            ),
-            colors::fg_secondary(),
-        ),
-    }
-}
-
 #[derive(PartialEq)]
 pub struct InviteDialog {
     pub on_close: EventHandler<()>,
@@ -250,32 +271,52 @@ pub struct InviteDialog {
 impl Component for InviteDialog {
     fn render(&self) -> impl IntoElement {
         let query = use_state(String::new);
-        let Some(lobby) = use_lobby().read().lobby.clone() else {
+        let me = use_my_uuid();
+        let friends = use_friends(me.unwrap_or_default());
+        let snapshot = use_lobby().read().clone();
+        let Some(party) = snapshot.party.clone() else {
             return rect().into_element();
         };
+        let full = is_full(&party);
 
-        let needle = query.read().trim().to_lowercase();
-        let matches: Vec<Friend> = FRIENDS
-            .iter()
-            .filter(|friend| friend.name.to_lowercase().contains(&needle))
-            .copied()
-            .collect();
-
-        let mut list = rect().vertical().width(Size::fill()).spacing(2.);
-        for friend in &matches {
-            list = list.child(FriendRow {
-                friend: *friend,
-                in_lobby: lobby.has(friend.id),
-                invited: lobby.is_invited(friend.id),
-                full: lobby.is_full(),
-            });
-        }
-        if matches.is_empty() && !needle.is_empty() {
-            list = list.child(UnknownPlayerRow {
-                name: query.read().trim().to_string(),
-                full: lobby.is_full(),
-            });
-        }
+        let reader = friends.read();
+        let list: Element = match (reader.state().ok(), reader.state().err()) {
+            (Some(friends), _) => {
+                let needle = query.read().trim().to_lowercase();
+                let matches: Vec<&FriendView> = friends
+                    .iter()
+                    .filter(|friend| friend.name.to_lowercase().contains(&needle))
+                    .collect();
+                if matches.is_empty() {
+                    hint(if friends.is_empty() {
+                        t("oneclient.components.lobby.invite.no_friends")
+                    } else {
+                        t("oneclient.components.lobby.invite.no_match")
+                    })
+                } else {
+                    matches
+                        .into_iter()
+                        .fold(
+                            rect().vertical().width(Size::fill()).spacing(2.),
+                            |list, friend| {
+                                list.child(FriendRow {
+                                    friend: friend.clone(),
+                                    in_party: party
+                                        .members
+                                        .iter()
+                                        .any(|member| member.player == friend.player),
+                                    invited: snapshot.is_invited(friend.player),
+                                    full,
+                                    busy: snapshot.busy,
+                                })
+                            },
+                        )
+                        .into_element()
+                }
+            }
+            (None, Some(err)) => hint_text(err.clone(), colors::code_warn()),
+            (None, None) => hint(t("oneclient.components.lobby.invite.loading")),
+        };
 
         modal(
             440.,
@@ -297,58 +338,57 @@ impl Component for InviteDialog {
                         ),
                 )
                 .child(list)
-                .child(
-                    rect()
-                        .vertical()
-                        .width(Size::fill())
-                        .spacing(6.)
-                        .child(
-                            label()
-                                .text(t("oneclient.components.lobby.invite.share_code"))
-                                .font_size(11.)
-                                .letter_spacing(0.8)
-                                .font_weight(FontWeight::SEMI_BOLD)
-                                .color(colors::fg_secondary()),
-                        )
-                        .child(
-                            label()
-                                .text(lobby.code)
-                                .font_family(theme::MONO_FONT)
-                                .font_size(14.)
-                                .letter_spacing(1.)
-                                .color(colors::fg_primary()),
-                        )
-                        .maybe_child(lobby.is_full().then(|| {
-                            label()
-                                .text(t("oneclient.components.lobby.full"))
-                                .width(Size::fill())
-                                .max_lines(2)
-                                .font_size(12.)
-                                .color(colors::code_warn())
-                                .into_element()
-                        })),
-                ),
+                .maybe_child(full.then(|| hint_text(
+                    t("oneclient.components.lobby.full").to_string(),
+                    colors::code_warn(),
+                ))),
         )
     }
 }
 
+fn hint(text: &'static str) -> Element {
+    hint_text(text.to_string(), colors::fg_secondary())
+}
+
+fn hint_text(text: String, color: Color) -> Element {
+    label()
+        .text(text)
+        .width(Size::fill())
+        .max_lines(3)
+        .text_align(TextAlign::Center)
+        .padding(Gaps::new_symmetric(12., 0.))
+        .font_size(12.)
+        .color(color)
+        .into_element()
+}
+
 #[derive(PartialEq)]
 struct FriendRow {
-    friend: Friend,
-    in_lobby: bool,
+    friend: FriendView,
+    in_party: bool,
     invited: bool,
     full: bool,
+    busy: bool,
 }
 
 impl Component for FriendRow {
     fn render(&self) -> impl IntoElement {
-        let mut state = use_lobby();
+        let state = use_lobby();
         let dispatch = use_dispatch();
-        let friend = self.friend;
-        let (presence, presence_color) = presence_text(friend.presence);
-        let offline = matches!(friend.presence, Presence::Offline { .. });
+        let friend = self.friend.clone();
+        let (presence, presence_color) = if friend.online {
+            (
+                t("oneclient.components.lobby.presence.online"),
+                colors::success(),
+            )
+        } else {
+            (
+                t("oneclient.components.lobby.presence.offline"),
+                colors::fg_secondary(),
+            )
+        };
 
-        let trailing = if self.in_lobby {
+        let trailing = if self.in_party {
             label()
                 .text(t("oneclient.components.lobby.invite.in_lobby"))
                 .font_size(12.)
@@ -363,191 +403,71 @@ impl Component for FriendRow {
                 .text(t("oneclient.components.lobby.invite.invited"))
                 .into_element()
         } else {
+            let player = friend.player;
+            let name = friend.name.clone();
             Button::new()
                 .primary()
                 .small()
-                .enabled(!self.full)
+                .enabled(!self.full && !self.busy)
                 .on_press(move |_| {
-                    if let Some(lobby) = state.write().lobby.as_mut() {
-                        lobby.invite(friend.id);
-                    }
-                    dispatch
-                        .notify(tf(
-                            "oneclient.components.lobby.toast.invited",
-                            &[&friend.name],
-                        ))
-                        .info()
-                        .icon(IconType::Users01)
-                        .toast_only()
-                        .send();
+                    let done = dispatch.clone();
+                    let name = name.clone();
+                    act(
+                        state,
+                        dispatch.clone(),
+                        move |account| async move { party::invite(&account, player).await },
+                        move |lobby: &mut LobbyState, invite| {
+                            if !lobby.outgoing.iter().any(|known| known.id == invite.id) {
+                                lobby.outgoing.push(invite);
+                            }
+                            done.notify(tf("oneclient.components.lobby.toast.invited", &[&name]))
+                                .info()
+                                .icon(IconType::Users01)
+                                .toast_only()
+                                .send();
+                        },
+                    );
                 })
-                .text(if offline {
-                    t("oneclient.components.lobby.invite.invite_anyway")
-                } else {
+                .text(if friend.online {
                     t("oneclient.components.lobby.invite.invite")
+                } else {
+                    t("oneclient.components.lobby.invite.invite_anyway")
                 })
                 .into_element()
         };
 
-        player_row(
-            friend.uuid.to_string(),
-            friend.name.to_string(),
-            presence,
-            presence_color,
-            trailing,
-        )
-    }
-}
-
-#[derive(PartialEq)]
-struct UnknownPlayerRow {
-    name: String,
-    full: bool,
-}
-
-impl Component for UnknownPlayerRow {
-    fn render(&self) -> impl IntoElement {
-        let dispatch = use_dispatch();
-        let name = self.name.clone();
-
-        player_row(
-            uuid::Uuid::nil().to_string(),
-            self.name.clone(),
-            t("oneclient.components.lobby.invite.not_friend").to_string(),
-            colors::fg_secondary(),
-            Button::new()
-                .primary()
-                .small()
-                .enabled(!self.full)
-                .on_press(move |_| {
-                    dispatch
-                        .notify(tf("oneclient.components.lobby.toast.invited", &[&name]))
-                        .info()
-                        .icon(IconType::Users01)
-                        .toast_only()
-                        .send();
-                })
-                .text(t("oneclient.components.lobby.invite.send"))
-                .into_element(),
-        )
-    }
-}
-
-fn player_row(
-    uuid: String,
-    name: String,
-    sub: String,
-    sub_color: Color,
-    trailing: Element,
-) -> Element {
-    rect()
-        .horizontal()
-        .width(Size::fill())
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .spacing(10.)
-        .padding(Gaps::new_symmetric(6., 8.))
-        .corner_radius(CornerRadius::new_all(8.))
-        .child(Avatar::new(uuid).size(32.))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .spacing(2.)
-                .child(
-                    label()
-                        .text(name)
-                        .font_size(13.)
-                        .font_weight(FontWeight::MEDIUM)
-                        .max_lines(1)
-                        .text_overflow(TextOverflow::Ellipsis)
-                        .color(colors::fg_primary()),
-                )
-                .child(
-                    label()
-                        .text(sub)
-                        .font_size(11.)
-                        .max_lines(1)
-                        .color(sub_color),
-                ),
-        )
-        .child(trailing)
-        .into_element()
-}
-
-#[derive(PartialEq)]
-pub struct JoinDialog {
-    pub on_close: EventHandler<()>,
-}
-
-impl Component for JoinDialog {
-    fn render(&self) -> impl IntoElement {
-        let mut state = use_lobby();
-        let dispatch = use_dispatch();
-        let me = use_my_name();
-        let code = use_state(String::new);
-        let on_close = self.on_close.clone();
-
-        let valid = code.read().trim().len() >= 4;
-        let mut join = move || {
-            let lobby = Lobby::joined();
-            let leader = display_name(lobby.leader, &me);
-            state.write().lobby = Some(lobby);
-            dispatch
-                .notify(tf("oneclient.components.lobby.toast.joined", &[&leader]))
-                .info()
-                .icon(IconType::Users01)
-                .toast_only()
-                .send();
-            on_close.call(());
-        };
-        let mut submit = join.clone();
-
-        modal(
-            400.,
-            self.on_close.clone(),
-            rect()
-                .child(modal_title(
-                    None,
-                    t("oneclient.components.lobby.join.title").to_string(),
-                    Some(self.on_close.clone()),
-                ))
-                .child(
-                    label()
-                        .text(t("oneclient.components.lobby.join.body"))
-                        .width(Size::fill())
-                        .max_lines(3)
-                        .font_size(12.)
-                        .color(colors::fg_secondary()),
-                )
-                .child(
-                    TextInput::new(code)
-                        .auto_focus(true)
-                        .placeholder("OC-XXXX-XXX")
-                        .leading(
-                            Icon::new(IconType::Key01)
-                                .size(16.)
-                                .color(colors::fg_secondary()),
-                        )
-                        .on_submit(move |value: String| {
-                            if value.trim().len() >= 4 {
-                                submit();
-                            }
-                        }),
-                )
-                .child(
-                    rect()
-                        .horizontal()
-                        .width(Size::fill())
-                        .main_align(Alignment::End)
-                        .child(
-                            Button::new()
-                                .primary()
-                                .enabled(valid)
-                                .on_press(move |_| join())
-                                .text(t("oneclient.components.lobby.join.action")),
-                        ),
-                ),
-        )
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .content(Content::Flex)
+            .cross_align(Alignment::Center)
+            .spacing(10.)
+            .padding(Gaps::new_symmetric(6., 8.))
+            .corner_radius(CornerRadius::new_all(8.))
+            .child(Avatar::new(friend.player.to_string()).size(32.))
+            .child(
+                rect()
+                    .vertical()
+                    .width(Size::flex(1.0))
+                    .spacing(2.)
+                    .child(
+                        label()
+                            .text(friend.name.clone())
+                            .font_size(13.)
+                            .font_weight(FontWeight::MEDIUM)
+                            .max_lines(1)
+                            .text_overflow(TextOverflow::Ellipsis)
+                            .color(colors::fg_primary()),
+                    )
+                    .child(
+                        label()
+                            .text(presence)
+                            .font_size(11.)
+                            .max_lines(1)
+                            .color(presence_color),
+                    ),
+            )
+            .child(trailing)
+            .into_element()
     }
 }

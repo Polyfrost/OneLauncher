@@ -253,7 +253,7 @@ async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -> Result<St
     Ok(token)
 }
 
-async fn send_authorized(
+pub(crate) async fn send_authorized(
     account: &MinecraftAccount,
     method: Method,
     path: &str,
@@ -294,7 +294,7 @@ async fn send_authorized(
     }
 }
 
-async fn json_authorized<T: DeserializeOwned>(
+pub(crate) async fn json_authorized<T: DeserializeOwned>(
     account: &MinecraftAccount,
     method: Method,
     path: &str,

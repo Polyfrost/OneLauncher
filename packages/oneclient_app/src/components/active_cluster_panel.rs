@@ -2,7 +2,7 @@ use freya::animation::*;
 use freya::prelude::*;
 use freya::router::RouterContext;
 
-use crate::components::{Button, Icon, IconType, LobbyHeroChip, LobbyLaunchButton, use_lobby};
+use crate::components::{Button, Icon, IconType, LobbyHeroChip};
 use oneclient_common::parse_mc_version;
 use oneclient_core::clusters::ClusterKind;
 
@@ -26,7 +26,6 @@ impl Component for ActiveClusterPanel {
         let dispatch = use_dispatch();
         let game = use_game_snapshot();
         let launcher = use_launcher();
-        let in_lobby = use_lobby().read().lobby.is_some();
 
         let clusters = settled_or_loading(&clusters_query).unwrap_or_default();
 
@@ -126,26 +125,11 @@ impl Component for ActiveClusterPanel {
                     .spacing(8.)
                     .cross_align(Alignment::Center)
                     .margin(Gaps::new(8., 0., 0., 0.))
-                    .child(if in_lobby {
-                        LobbyLaunchButton {
-                            cluster_id,
-                            can_launch: launch_button_state(
-                                &game,
-                                cluster_id,
-                                syncing,
-                                shared_dir_taken,
-                            )
-                            .1,
-                        }
-                        .into_element()
-                    } else {
-                        launch_button(
-                            cluster_id,
-                            dispatch,
-                            launch_button_state(&game, cluster_id, syncing, shared_dir_taken),
-                        )
-                        .into_element()
-                    })
+                    .child(launch_button(
+                        cluster_id,
+                        dispatch,
+                        launch_button_state(&game, cluster_id, syncing, shared_dir_taken),
+                    ))
                     .child(cluster_settings_button(cluster_id)),
             )
             .child(LobbyHeroChip)

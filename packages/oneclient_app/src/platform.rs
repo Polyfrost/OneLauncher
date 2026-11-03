@@ -415,11 +415,12 @@ pub mod frame {
                 return;
             };
 
-            match gpu_name.filter(|gpu| {
-                *graphics_driver == "OpenGL" && gpu.contains("Intel") && !gpu.contains("Arc")
-            }) {
-                Some(gpu) => install(hwnd, gpu),
-                None => decorate(window, hwnd),
+            let composes_frame =
+                gpu_name.is_some_and(|gpu| gpu.contains("NVIDIA") || gpu.contains("Arc"));
+            if *graphics_driver == "OpenGL" && !composes_frame {
+                install(hwnd, gpu_name.unwrap_or("an unknown GPU"));
+            } else {
+                decorate(window, hwnd);
             }
         }
     }

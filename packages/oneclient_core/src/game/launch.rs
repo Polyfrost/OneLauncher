@@ -407,6 +407,14 @@ async fn start(
         jvm_args.push(arg);
     }
 
+    let crash_dir = cluster.dir()?.join("crash-reports");
+    polyio::create_dir_all(&crash_dir).await.ok();
+    let error_file = crash_dir.join("hs_err_pid").display().to_string();
+    jvm_args.insert(
+        0,
+        format!("-XX:ErrorFile={}%p.log", error_file.replace('%', "%%")),
+    );
+
     let mut mc_args = arguments::minecraft_arguments(
         arg_map.get(&ArgumentType::Game).map(Vec::as_slice),
         version_info.minecraft_arguments.as_deref(),

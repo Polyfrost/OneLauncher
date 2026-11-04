@@ -142,6 +142,14 @@ fn search_index() -> Vec<SearchItem> {
             route: Route::SettingsApis {},
         },
         SearchItem {
+            id: "apis.custom_plus_endpoint",
+            icon: IconType::Globe01,
+            title: t("oneclient.settings.apis.custom_plus_endpoint.title"),
+            description: t("oneclient.settings.apis.custom_plus_endpoint.description"),
+            keywords: &["endpoint", "poly+", "plus", "chat", "staging", "url"],
+            route: Route::SettingsApis {},
+        },
+        SearchItem {
             id: "minecraft.force_fullscreen",
             icon: IconType::Maximize01,
             title: t("oneclient.settings.minecraft.force_fullscreen.title"),

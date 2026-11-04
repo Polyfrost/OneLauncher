@@ -1,5 +1,5 @@
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -24,6 +24,7 @@ const RECONNECT_DELAY: Duration = Duration::from_secs(15);
 const MAX_RECONNECT_DELAY: Duration = Duration::from_secs(300);
 
 static STARTED: AtomicBool = AtomicBool::new(false);
+static BASE_URL: RwLock<Option<String>> = RwLock::new(None);
 
 #[derive(Debug, thiserror::Error)]
 pub enum PlusError {
@@ -124,7 +125,7 @@ pub fn start(auth: Arc<oneclient_auth::AuthService>) {
 }
 
 pub fn plus_blocked() -> bool {
-    oneclient_common::consent::blocks_url(base_url())
+    oneclient_common::consent::blocks_url(&base_url())
 }
 
 fn build_client() -> Result<reqwest::Client, reqwest::Error> {
@@ -143,19 +144,23 @@ fn build_client() -> Result<reqwest::Client, reqwest::Error> {
     builder.no_hickory_dns().build()
 }
 
-pub fn base_url() -> &'static str {
-    static URL: std::sync::OnceLock<String> = std::sync::OnceLock::new();
-    URL.get_or_init(|| {
-        let local = cfg!(debug_assertions)
-            .then(|| std::env::var("ONECLIENT_PLUS_URL").ok())
-            .flatten()
-            .filter(|url| !url.trim().is_empty());
-        local
-            .as_deref()
-            .unwrap_or(constants::PLUS_BACKEND_URL)
-            .trim_end_matches('/')
-            .to_string()
-    })
+pub fn set_base_url(url: &str) {
+    if let Ok(mut current) = BASE_URL.write() {
+        *current = Some(url.to_string());
+    }
+}
+
+pub fn base_url() -> String {
+    let local = cfg!(debug_assertions)
+        .then(|| std::env::var("ONECLIENT_PLUS_URL").ok())
+        .flatten()
+        .filter(|url| !url.trim().is_empty());
+    local
+        .or_else(|| BASE_URL.read().ok().and_then(|url| url.clone()))
+        .as_deref()
+        .unwrap_or(constants::PLUS_BACKEND_URL)
+        .trim_end_matches('/')
+        .to_string()
 }
 
 async fn session(auth: &oneclient_auth::AuthService, client: &reqwest::Client) -> Outcome {
@@ -201,8 +206,11 @@ async fn run_session(
 ) -> Result<(), PlusError> {
     let token = login(client, account).await?;
 
+    let session_url = base_url();
+    let session_url = session_url.as_str();
+
     let mut websocket = client
-        .get(format!("{}/websocket", base_url()))
+        .get(format!("{session_url}/websocket"))
         .bearer_auth(&token)
         .upgrade()
         .send()
@@ -216,7 +224,7 @@ async fn run_session(
 
     let account_id = account.id;
     pump(&mut websocket, PING_INTERVAL, account_id, || async move {
-        plus_blocked() || account_changed(auth, account_id).await
+        plus_blocked() || base_url() != session_url || account_changed(auth, account_id).await
     })
     .await
 }
@@ -399,6 +407,14 @@ mod tests {
 
         pumped.expect("pump should treat a server close as a clean end");
         assert_eq!(pings.load(Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn base_url_follows_the_pushed_setting() {
+        set_base_url("https://plus-staging.example.test/");
+        assert_eq!(base_url(), "https://plus-staging.example.test");
+        set_base_url(constants::PLUS_BACKEND_URL);
+        assert_eq!(base_url(), constants::PLUS_BACKEND_URL);
     }
 
     #[test]

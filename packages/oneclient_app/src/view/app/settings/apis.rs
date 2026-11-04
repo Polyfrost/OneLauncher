@@ -39,6 +39,10 @@ impl Component for SettingsApis {
             let v = settings.custom_meta_url_base.clone().unwrap_or_default();
             move || v
         });
+        let custom_plus_endpoint = use_state({
+            let v = settings.custom_plus_endpoint.clone().unwrap_or_default();
+            move || v
+        });
 
         let mut first = use_state(|| true);
         use_side_effect(move || {
@@ -46,6 +50,7 @@ impl Component for SettingsApis {
             let curseforge = curseforge_key.read().clone();
             let endpoint = custom_api_endpoint.read().clone();
             let meta_url_base = custom_meta_url_base.read().clone();
+            let plus_endpoint = custom_plus_endpoint.read().clone();
             if *first.peek() {
                 first.set(false);
                 return;
@@ -55,6 +60,7 @@ impl Component for SettingsApis {
                 settings.curseforge_api_key = normalize(&curseforge);
                 settings.custom_api_endpoint = normalize(&endpoint);
                 settings.custom_meta_url_base = normalize(&meta_url_base);
+                settings.custom_plus_endpoint = normalize(&plus_endpoint);
             });
         });
 
@@ -110,6 +116,18 @@ impl Component for SettingsApis {
                         .placeholder(t("oneclient.common.default"))
                         .width(Size::px(220.)),
                     custom_meta_url_base,
+                    String::new(),
+                ),
+            ))
+            .child(settings_row(
+                IconType::Globe01,
+                t("oneclient.settings.apis.custom_plus_endpoint.title"),
+                t("oneclient.settings.apis.custom_plus_endpoint.description"),
+                resettable(
+                    TextInput::new(custom_plus_endpoint)
+                        .placeholder(t("oneclient.common.default"))
+                        .width(Size::px(220.)),
+                    custom_plus_endpoint,
                     String::new(),
                 ),
             ))

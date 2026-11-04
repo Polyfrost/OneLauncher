@@ -1766,6 +1766,8 @@
   "oneclient.settings.apis.curseforge_key.description": "API key used for CurseForge requests.",
   "oneclient.settings.apis.custom_endpoint.description": "Override the default OneClient backend endpoint.",
   "oneclient.settings.apis.custom_endpoint.title": "Custom API Endpoint",
+  "oneclient.settings.apis.custom_plus_endpoint.description": "Override the Poly+ backend used for chat, friends and cosmetics.",
+  "oneclient.settings.apis.custom_plus_endpoint.title": "Custom Poly+ Endpoint",
   "oneclient.settings.apis.meta_url_base.description": "Override the default bundles and versions data host.",
   "oneclient.settings.apis.meta_url_base.title": "Custom Meta URL Base",
   "oneclient.settings.apis.modrinth_key.description": "Personal access token used for Modrinth requests.",

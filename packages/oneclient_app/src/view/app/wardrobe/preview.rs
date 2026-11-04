@@ -16,12 +16,12 @@ use crate::components::{
 use crate::hooks::wardrobe::{WardrobeAction, use_transactions};
 use crate::hooks::{query_error, query_is_loading, settled_or_loading};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 fn panel_box() -> Rect {
     rect()
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .overflow(Overflow::Clip)
@@ -29,7 +29,7 @@ fn panel_box() -> Rect {
 
 fn wardrobe_panel() -> Rect {
     rect()
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
 }
@@ -45,7 +45,7 @@ fn centered(text: &str) -> Element {
                 .text(text.to_string())
                 .width(Size::fill())
                 .text_align(TextAlign::Center)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -61,7 +61,7 @@ fn centered_block(text: &str) -> Element {
                 .text(text.to_string())
                 .width(Size::fill())
                 .text_align(TextAlign::Center)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -72,7 +72,7 @@ fn status_text(status: &Option<String>) -> Option<Element> {
         label()
             .text(text.clone())
             .width(Size::fill())
-            .font_size(12.)
+            .font_size(text_size(12.))
             .color(colors::fg_secondary())
             .into_element()
     })
@@ -247,7 +247,7 @@ impl Component for OutfitSwitcher {
                     .height(Size::fill())
                     .center()
                     .padding(Gaps::new_symmetric(0., 10.))
-                    .corner_radius(CornerRadius::new_all(8.))
+                    .corner_radius(rounded(8.))
                     .background(colors::component_bg())
                     .border(border_all_color(1., colors::component_border()))
                     .child(
@@ -255,7 +255,7 @@ impl Component for OutfitSwitcher {
                             .text(text)
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(if active.is_some() {
                                 colors::fg_primary()
@@ -380,13 +380,13 @@ impl Component for PreviewPanel {
                     .width(Size::fill())
                     .padding(Gaps::new_all(10.))
                     .spacing(8.)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(colors::component_bg())
                     .border(border_all_color(1., colors::component_border()))
                     .child(
                         label()
                             .text(t("oneclient.wardrobe.preview.variants"))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .child(chip_rows(chips))
@@ -418,14 +418,14 @@ impl Component for PreviewPanel {
                     .padding(Gaps::new_all(10.))
                     .spacing(8.)
                     .cross_align(Alignment::Center)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(colors::component_bg())
                     .border(border_all_color(1., colors::component_border()))
                     .child(
                         label()
                             .text(t("oneclient.wardrobe.preview.particle_color"))
                             .width(Size::flex(1.))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     )
                     .maybe_child(current.is_some().then(|| {
@@ -464,7 +464,7 @@ impl Component for PreviewPanel {
                         label()
                             .text(title)
                             .max_lines(1)
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -472,7 +472,7 @@ impl Component for PreviewPanel {
                         label()
                             .text(subtitle)
                             .max_lines(1)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     ),
             );
@@ -583,7 +583,7 @@ impl Component for VariantChip {
             .height(Size::px(28.))
             .padding(Gaps::new_symmetric(0., 10.))
             .main_align(Alignment::Center)
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(if self.selected {
                 colors::brand()
             } else {
@@ -605,7 +605,7 @@ impl Component for VariantChip {
                 label()
                     .text(self.text.clone())
                     .max_lines(1)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(if self.selected {
                         colors::fg_primary()
@@ -744,7 +744,7 @@ impl Component for CartPane {
                         label()
                             .text(t("oneclient.wardrobe.cart.title"))
                             .width(Size::flex(1.0))
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -776,13 +776,13 @@ fn totals_row(text: &str, value: String, color: Color, large: bool) -> Element {
             label()
                 .text(text.to_string())
                 .width(Size::flex(1.0))
-                .font_size(if large { 18. } else { 12. })
+                .font_size(text_size(if large { 18. } else { 12. }))
                 .color(colors::fg_primary()),
         )
         .child(
             label()
                 .text(value)
-                .font_size(if large { 22. } else { 12. })
+                .font_size(text_size(if large { 22. } else { 12. }))
                 .font_weight(if large {
                     FontWeight::MEDIUM
                 } else {
@@ -816,7 +816,7 @@ impl Component for CartRow {
                 rect()
                     .width(Size::px(58.))
                     .height(Size::px(58.))
-                    .corner_radius(CornerRadius::new_all(5.))
+                    .corner_radius(rounded(5.))
                     .background(colors::page())
                     .overflow(Overflow::Clip)
                     .child(CoverThumb {
@@ -834,7 +834,7 @@ impl Component for CartRow {
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
                             .width(Size::fill())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -848,7 +848,7 @@ impl Component for CartRow {
                                     .max_lines(2)
                                     .text_overflow(TextOverflow::Ellipsis)
                                     .width(Size::fill())
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                             }),
                     ),
@@ -869,7 +869,7 @@ impl Component for CartRow {
                                 "oneclient.wardrobe.badge.save",
                                 &[&item.discount_percent.unwrap_or(0)],
                             ))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::success())
                     }))
                     .child(
@@ -973,14 +973,14 @@ impl Component for StoreDetailPanel {
             .child(
                 label()
                     .text(type_label(item.kind))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(item.name.clone())
                     .width(Size::fill())
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -997,10 +997,15 @@ impl Component for StoreDetailPanel {
                     .children(tags.into_iter().map(|tag| {
                         rect()
                             .padding(Gaps::new_symmetric(3., 8.))
-                            .corner_radius(CornerRadius::new_all(5.))
+                            .corner_radius(rounded(5.))
                             .background(colors::component_bg())
                             .border(border_all_color(1., colors::component_border()))
-                            .child(label().text(tag).font_size(11.).color(colors::fg_primary()))
+                            .child(
+                                label()
+                                    .text(tag)
+                                    .font_size(text_size(11.))
+                                    .color(colors::fg_primary()),
+                            )
                             .into_element()
                     }))
             }))
@@ -1012,7 +1017,7 @@ impl Component for StoreDetailPanel {
                         label()
                             .text(text)
                             .width(Size::fill())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                     }),
             );
@@ -1033,12 +1038,12 @@ impl Component for StoreDetailPanel {
                             .position(Position::new_absolute().top(12.).left(12.))
                             .layer(Layer::Relative(1))
                             .padding(Gaps::new_symmetric(3., 8.))
-                            .corner_radius(CornerRadius::new_all(5.))
+                            .corner_radius(rounded(5.))
                             .background(color)
                             .child(
                                 label()
                                     .text(text)
-                                    .font_size(11.)
+                                    .font_size(text_size(11.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::fg_primary()),
                             )
@@ -1062,7 +1067,7 @@ impl Component for StoreDetailPanel {
                     .child(if owned {
                         label()
                             .text(t("oneclient.wardrobe.preview.already_owned"))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                             .into_element()
                     } else {
@@ -1138,7 +1143,7 @@ impl Component for BundleDetailPanel {
                 rect()
                     .width(Size::fill())
                     .height(Size::px(200.))
-                    .corner_radius(CornerRadius::new_all(5.))
+                    .corner_radius(rounded(5.))
                     .background(colors::page())
                     .overflow(Overflow::Clip)
                     .child(CoverThumb {
@@ -1148,14 +1153,14 @@ impl Component for BundleDetailPanel {
             .child(
                 label()
                     .text(t("oneclient.wardrobe.preview.bundle"))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(bundle.name.clone())
                     .width(Size::fill())
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -1173,7 +1178,7 @@ impl Component for BundleDetailPanel {
                         label()
                             .text(text)
                             .width(Size::fill())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary())
                     }),
             )
@@ -1224,7 +1229,7 @@ impl Component for HistoryList {
                         .cross_align(Alignment::Center)
                         .padding(Gaps::new_symmetric(10., 13.))
                         .spacing(13.)
-                        .corner_radius(CornerRadius::new_all(8.))
+                        .corner_radius(rounded(8.))
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             rect()
@@ -1233,14 +1238,14 @@ impl Component for HistoryList {
                                 .child(
                                     label()
                                         .text(tf("oneclient.wardrobe.history.order", &[&tx.id]))
-                                        .font_size(14.)
+                                        .font_size(text_size(14.))
                                         .font_weight(FontWeight::MEDIUM)
                                         .color(colors::fg_primary()),
                                 )
                                 .child(
                                     label()
                                         .text(provider_name(&tx.provider))
-                                        .font_size(12.)
+                                        .font_size(text_size(12.))
                                         .color(colors::fg_secondary()),
                                 ),
                         )
@@ -1254,14 +1259,14 @@ impl Component for HistoryList {
                             };
                             label()
                                 .text(text)
-                                .font_size(14.)
+                                .font_size(text_size(14.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(colors::fg_primary())
                         }))
                         .child(
                             label()
                                 .text(status)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(color),
                         )
@@ -1458,7 +1463,7 @@ impl Component for AddSkinPanel {
                                 .width(Size::flex(1.0))
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         ),
                 )
@@ -1501,7 +1506,7 @@ impl Component for AddSkinPanel {
                         label()
                             .text(t("oneclient.wardrobe.skins.add"))
                             .width(Size::flex(1.0))
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -1537,7 +1542,7 @@ impl Component for AddSkinPanel {
                 label()
                     .text(message.read().clone().unwrap_or_else(|| note.to_string()))
                     .width(Size::fill())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .maybe_child(status_text(&shared.status.read().clone()))

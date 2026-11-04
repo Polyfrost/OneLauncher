@@ -13,7 +13,7 @@ use crate::hooks::{
     use_microsoft_login_status,
 };
 use crate::platform;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(Clone)]
@@ -203,13 +203,13 @@ pub(crate) fn login_dialog(
                         .cross_align(Alignment::Center)
                         .spacing(18.)
                         .padding(Gaps::new_all(28.))
-                        .corner_radius(CornerRadius::new_all(16.))
+                        .corner_radius(rounded(16.))
                         .background(colors::page_elevated())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             label()
                                 .text(t("oneclient.components.microsoft_login.title"))
-                                .font_size(18.)
+                                .font_size(text_size(18.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
@@ -259,7 +259,7 @@ fn dialog_divider() -> impl IntoElement {
         .child(
             label()
                 .text(t("oneclient.components.microsoft_login.or"))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary()),
         )
         .child(
@@ -282,7 +282,12 @@ fn status_row(status: Option<LoginProgress>, error: Option<String>) -> impl Into
                     .size(13.)
                     .color(colors::danger()),
             )
-            .child(label().text(error).font_size(12.).color(colors::danger()))
+            .child(
+                label()
+                    .text(error)
+                    .font_size(text_size(12.))
+                    .color(colors::danger()),
+            )
             .into_element();
     }
 
@@ -305,7 +310,7 @@ fn status_row(status: Option<LoginProgress>, error: Option<String>) -> impl Into
         .child(
             label()
                 .text(text)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -315,7 +320,7 @@ fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
     let mut steps = rect().vertical().width(Size::fill()).spacing(6.).child(
         label()
             .text(t("oneclient.components.microsoft_login.what_you_can_do"))
-            .font_size(12.)
+            .font_size(text_size(12.))
             .font_weight(FontWeight::SEMI_BOLD)
             .color(colors::fg_primary()),
     );
@@ -329,13 +334,13 @@ fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
                 .child(
                     label()
                         .text(format!("{}.", index + 1))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 )
                 .child(
                     label()
                         .text(step)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         );
@@ -346,13 +351,13 @@ fn guidance_block(guidance: AuthErrorGuidance) -> impl IntoElement {
         .width(Size::fill())
         .spacing(10.)
         .padding(Gaps::new_all(14.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
             label()
                 .text(guidance.what_happened)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_primary()),
         )
         .child(steps)
@@ -368,7 +373,7 @@ fn browser_dialog_body(auth_url: String) -> impl IntoElement {
         .child(
             label()
                 .text(t("oneclient.components.microsoft_login.opened_browser"))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .child(
@@ -391,7 +396,7 @@ fn device_code_dialog_body(code: String, verification_uri: String) -> impl IntoE
         .child(
             label()
                 .text(t("oneclient.components.microsoft_login.enter_code"))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .child(
@@ -399,13 +404,13 @@ fn device_code_dialog_body(code: String, verification_uri: String) -> impl IntoE
                 .width(Size::fill())
                 .center()
                 .padding(Gaps::new_symmetric(20., 16.))
-                .corner_radius(CornerRadius::new_all(14.))
+                .corner_radius(rounded(14.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::brand()))
                 .child(
                     label()
                         .text(code)
-                        .font_size(48.)
+                        .font_size(text_size(48.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 ),

@@ -18,7 +18,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui;
 use crate::utils::format_size;
 
@@ -170,7 +170,8 @@ impl Component for ClusterLogs {
             if !valid {
                 let pick = files
                     .iter()
-                    .find(|f| f.name == "latest.log")
+                    .find(|f| matches!(f.kind, LogKind::Game { .. }))
+                    .or_else(|| files.iter().find(|f| f.name == "latest.log"))
                     .or_else(|| files.first());
 
                 if let Some(file) = pick {
@@ -306,7 +307,7 @@ fn top_bar(
         .child(
             label()
                 .text(size_text)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
         )
@@ -474,7 +475,7 @@ impl Component for LogPicker {
                     .content(Content::Flex)
                     .spacing(8.)
                     .padding(Gaps::new_symmetric(0., 12.))
-                    .corner_radius(CornerRadius::new_all(9.))
+                    .corner_radius(rounded(9.))
                     .background(colors::component_bg())
                     .a11y_id(a11y_id)
                     .a11y_focusable(true)
@@ -496,7 +497,7 @@ impl Component for LogPicker {
                         rect().width(Size::flex(1.0)).child(
                             label()
                                 .text(label_text)
-                                .font_size(13.)
+                                .font_size(text_size(13.))
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
                                 .color(colors::fg_primary()),
@@ -531,7 +532,7 @@ impl Component for LogPicker {
                             .vertical()
                             .spacing(4.)
                             .padding(6.)
-                            .corner_radius(CornerRadius::new_all(10.))
+                            .corner_radius(rounded(10.))
                             .border(ui::border_all_color(1., colors::component_border()))
                             .background(colors::page_elevated())
                             .overflow(Overflow::Clip)
@@ -563,7 +564,7 @@ impl Component for LogPicker {
                                     } else {
                                         t("oneclient.cluster.logs.picker.no_matches")
                                     })
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .width(Size::fill())
                                     .text_align(TextAlign::Center)
                                     .padding(Gaps::new_symmetric(12., 0.))
@@ -607,7 +608,7 @@ impl Component for PickerRow {
             .content(Content::Flex)
             .spacing(8.)
             .padding(Gaps::new_symmetric(6., 8.))
-            .corner_radius(CornerRadius::new_all(7.))
+            .corner_radius(rounded(7.))
             .a11y_id(a11y_id)
             .a11y_focusable(true)
             .a11y_role(AccessibilityRole::Button)
@@ -628,7 +629,7 @@ impl Component for PickerRow {
                     .child(
                         label()
                             .text(file.name.clone())
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .max_lines(1)
                             .color(colors::fg_primary()),
                     )
@@ -639,7 +640,7 @@ impl Component for PickerRow {
                                 kind_badge(file.kind),
                                 format_size(file.size_bytes)
                             ))
-                            .font_size(10.)
+                            .font_size(text_size(10.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -744,7 +745,7 @@ pub fn confirm_overlay(
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(ui::border_all_color(1., colors::component_border()))
                         .child(
@@ -762,7 +763,7 @@ pub fn confirm_overlay(
                                 .child(
                                     label()
                                         .text(title)
-                                        .font_size(16.)
+                                        .font_size(text_size(16.))
                                         .font_weight(FontWeight::SEMI_BOLD)
                                         .color(colors::fg_primary()),
                                 ),
@@ -770,7 +771,7 @@ pub fn confirm_overlay(
                         .child(
                             label()
                                 .text(body)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .max_lines(6)
                                 .width(Size::fill())
                                 .color(colors::fg_secondary()),

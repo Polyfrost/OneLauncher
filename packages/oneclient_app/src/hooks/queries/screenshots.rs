@@ -1,6 +1,7 @@
 use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
+use std::time::Duration;
 
 use bytes::Bytes;
 use freya::query::{
@@ -12,6 +13,8 @@ use oneclient_core::{LauncherError, ScreenshotInfo};
 use tokio::sync::Semaphore;
 
 use crate::launcher::off_ui_blocking;
+
+const RETAINED_IMAGE_TIME: Duration = Duration::from_secs(10 * 60);
 
 static LOCAL_IMAGE_SEMAPHORE: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
@@ -96,11 +99,26 @@ pub fn use_cluster_screenshots(cluster_id: i64) -> UseQuery<ClusterScreenshotsQu
     ))
 }
 
-pub fn use_local_image(path: PathBuf, max_edge: u32, picked: bool) -> UseQuery<LocalImageQuery> {
-    use_query(Query::new(
-        LocalImageKeys { path, max_edge },
-        LocalImageQuery { picked },
-    ))
+pub fn use_local_image(
+    path: PathBuf,
+    max_edge: u32,
+    picked: bool,
+    retained: bool,
+) -> UseQuery<LocalImageQuery> {
+    let keep_for = if retained {
+        RETAINED_IMAGE_TIME
+    } else {
+        Duration::ZERO
+    };
+
+    use_query(
+        Query::new(
+            LocalImageKeys { path, max_edge },
+            LocalImageQuery { picked },
+        )
+        .stale_time(keep_for)
+        .clean_time(keep_for),
+    )
 }
 
 pub fn use_screenshot_folder_watch(

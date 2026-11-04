@@ -40,7 +40,7 @@ impl Default for MarkdownStyle {
             paragraph_size: 16.,
             code_font_size: 14.,
             table_font_size: 14.,
-            code_font_family: Cow::Borrowed(crate::theme::MONO_FONT),
+            code_font_family: Cow::Owned(crate::theme::mono_font()),
         }
     }
 }
@@ -83,13 +83,13 @@ impl Markdown {
 }
 
 impl KeyExt for Markdown {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
 
 impl LayoutExt for Markdown {
-    fn get_layout(&mut self) -> &mut LayoutData {
+    fn layout_mut(&mut self) -> &mut LayoutData {
         &mut self.layout
     }
 }

@@ -9,7 +9,7 @@
 
 use std::time::Duration;
 
-use freya::prelude::{State, WritableUtils, spawn_forever};
+use freya::prelude::{State, WritableUtils, spawn_in_window};
 use oneclient_content::bundles::on_user_disable_artifact;
 pub use oneclient_content::packages::DisableRoot;
 use oneclient_content::packages::PackageStore;
@@ -63,7 +63,7 @@ pub struct PendingDisable {
 /// The entry point every "turn this off" control uses.
 ///
 /// The resolve is a database round trip and sometimes a provider one, so it
-/// runs off the event handler. `spawn_forever` rather than `spawn`: the row
+/// runs off the event handler. `spawn_in_window` rather than `spawn`: the row
 /// that was pressed is free to scroll out of the list, and its scope going with
 /// it must not cancel the answer.
 pub fn request(
@@ -71,7 +71,7 @@ pub fn request(
     mut pending: State<Option<PendingDisable>>,
     dispatch: Actions,
 ) {
-    spawn_forever(async move {
+    spawn_in_window(async move {
         let warned = request.warned.clone();
         match resolve(request).await {
             // Nothing else was affected, so it is already off.

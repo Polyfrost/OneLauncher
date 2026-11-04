@@ -3,18 +3,20 @@ use std::path::Path;
 
 use freya::prelude::*;
 use oneclient_content::packages::ResolvedAlternative;
-use oneclient_core::{FlaggedImportMod, ScreenedInstance};
+use oneclient_core::{FlaggedImportMod, ScreenedInstance, UnpublishedFile};
 
 use super::cards::{SelectCard, marker};
 use super::data::Picks;
 use super::model::{DecisionKey, ModDecision, Wizard, decision_for};
 use crate::components::{
-    Button, Icon, IconType, ScrollArea, centered_spinner, explanation_panel, remote_icon,
+    Button, Icon, IconType, ScrollArea, caution_card, centered_spinner, explanation_panel,
+    remote_icon, unpublished_rows, warning_card, warning_list,
 };
 use crate::hooks::{retry_import_screening, use_cached_image};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
+use crate::utils::count_label;
 
 const OPTION_H: f32 = 48.;
 const OPTION_ICON: f32 = 28.;
@@ -39,7 +41,11 @@ pub fn review_step(wizard: Wizard, picks: &Picks) -> Element {
 
     let flagged: Vec<&ScreenedInstance> = screened
         .iter()
-        .filter(|screened| !screened.flagged.is_empty())
+        .filter(|screened| {
+            !screened.flagged.is_empty()
+                || !screened.unpublished.is_empty()
+                || screened.unconfirmed > 0
+        })
         .collect();
     if flagged.is_empty() {
         return all_clear();
@@ -73,7 +79,7 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
         .child(
             label()
                 .text(t("oneclient.clusters.instance.import_review.failed.title"))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
@@ -83,7 +89,7 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
                     "oneclient.clusters.instance.import_review.failed.description",
                 ))
                 .width(Size::fill())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .text_align(TextAlign::Center)
                 .color(colors::fg_secondary()),
         )
@@ -91,7 +97,7 @@ fn not_checked(wizard: Wizard, error: String) -> Element {
             label()
                 .text(error)
                 .width(Size::fill())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(2)
                 .text_overflow(TextOverflow::Ellipsis)
                 .text_align(TextAlign::Center)
@@ -129,7 +135,7 @@ fn all_clear() -> Element {
         .child(
             label()
                 .text(t("oneclient.clusters.instance.import_review.none.title"))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
@@ -139,7 +145,7 @@ fn all_clear() -> Element {
                     "oneclient.clusters.instance.import_review.none.description",
                 ))
                 .width(Size::fill())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .text_align(TextAlign::Center)
                 .color(colors::fg_secondary()),
         )
@@ -152,11 +158,28 @@ fn instance_section(
     screened: &ScreenedInstance,
 ) -> Element {
     let count = match screened.flagged.len() {
+        0 => String::new(),
         1 => t("oneclient.clusters.instance.import_review.count.one").to_string(),
         n => tf(
             "oneclient.clusters.instance.import_review.count.other",
             &[&n],
         ),
+    };
+    let unpublished = if screened.unconfirmed > 0 {
+        Some(
+            caution_card(
+                count_label(
+                    screened.unconfirmed,
+                    t("oneclient.clusters.instance.import_review.unconfirmed.title.one"),
+                    t("oneclient.clusters.instance.import_review.unconfirmed.title.other"),
+                ),
+                t("oneclient.clusters.instance.import_review.unconfirmed.body"),
+            )
+            .into_element(),
+        )
+    } else {
+        (!screened.unpublished.is_empty())
+            .then(|| unpublished_card(&screened.unpublished).into_element())
     };
 
     rect()
@@ -174,7 +197,7 @@ fn instance_section(
                     label()
                         .width(Size::flex(1.0))
                         .text(screened.name.clone())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::MEDIUM)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -183,10 +206,11 @@ fn instance_section(
                 .child(
                     label()
                         .text(count)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         )
+        .maybe_child(unpublished)
         .children(screened.flagged.iter().map(|flagged| {
             let current = decision_for(decisions, &screened.game_dir, flagged);
             flagged_card(
@@ -198,6 +222,22 @@ fn instance_section(
             )
         }))
         .into_element()
+}
+
+fn unpublished_card(mods: &[UnpublishedFile]) -> impl IntoElement {
+    warning_card(
+        count_label(
+            mods.len(),
+            t("oneclient.clusters.instance.import_review.unpublished.title.one"),
+            t("oneclient.clusters.instance.import_review.unpublished.title.other"),
+        ),
+        count_label(
+            mods.len(),
+            t("oneclient.clusters.instance.import_review.unpublished.body.one"),
+            t("oneclient.clusters.instance.import_review.unpublished.body.other"),
+        ),
+    )
+    .child(warning_list(unpublished_rows(mods)))
 }
 
 fn flagged_card(
@@ -240,7 +280,7 @@ fn flagged_card(
         .width(Size::fill())
         .spacing(12.)
         .padding(Gaps::new_all(14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -263,7 +303,7 @@ fn flagged_card(
                         .child(
                             label()
                                 .text(flagged.name.clone())
-                                .font_size(13.)
+                                .font_size(text_size(13.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
@@ -272,7 +312,7 @@ fn flagged_card(
                         .child(
                             label()
                                 .text(file_line)
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .max_lines(1)
                                 .text_overflow(TextOverflow::Ellipsis)
                                 .color(colors::fg_secondary()),
@@ -387,7 +427,7 @@ impl Component for AlternativeOption {
                 .width(Size::fill())
                 .height(Size::px(OPTION_H))
                 .padding(Gaps::new_symmetric(0., 12.))
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::component_border()))
                 .child(content)
@@ -444,7 +484,7 @@ fn option_content(
                 .child(
                     label()
                         .text(title)
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -457,7 +497,7 @@ fn option_content(
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .color(colors::fg_secondary()),

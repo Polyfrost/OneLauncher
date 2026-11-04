@@ -1,6 +1,6 @@
 use freya::prelude::*;
 
-use crate::components::window_controls;
+use crate::components::{Icon, IconType, window_controls};
 use crate::theme::{self, colors};
 
 #[derive(PartialEq)]
@@ -34,11 +34,14 @@ impl Component for OnboardingNavbar {
 }
 
 fn logo() -> impl IntoElement {
-    let bytes = use_memo(|| crate::AppAssets::get_bytes("logo.svg").unwrap_or_default());
-
-    SvgViewer::new(("logo.svg", bytes.read().cloned()))
-        .show_loader(false)
-        .height(Size::px(36.))
-        .width(Size::px(170.))
-        .color(colors::fg_primary())
+    rect()
+        .horizontal()
+        .cross_align(Alignment::Center)
+        .spacing(18.)
+        .child(
+            Icon::new(IconType::IconLogo)
+                .size(32.)
+                .color(colors::fg_primary()),
+        )
+        .child(theme::wordmark(170., 36., colors::fg_primary()))
 }

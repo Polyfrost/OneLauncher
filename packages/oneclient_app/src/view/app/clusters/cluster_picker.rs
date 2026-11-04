@@ -11,7 +11,7 @@ use crate::components::{
 };
 use crate::hooks::{settled_or_loading, use_clusters};
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::utils::{ReleaseLine, sort_clusters_for_home, split_clusters};
 
@@ -53,7 +53,7 @@ impl Component for ClusterPickerButton {
                     .height(Size::px(self.height))
                     .spacing(8.)
                     .padding(Gaps::new_symmetric(0., 10.))
-                    .corner_radius(CornerRadius::new_all(6.))
+                    .corner_radius(rounded(6.))
                     .background(if *hovered.read() {
                         colors::ghost_overlay_hover()
                     } else {
@@ -72,7 +72,7 @@ impl Component for ClusterPickerButton {
                     .child(
                         label()
                             .text(self.label.clone())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .width(Size::flex(1.))
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
@@ -186,7 +186,7 @@ impl Component for ClusterPickerModal {
         } else if sections.is_empty() {
             label()
                 .text(t("oneclient.clusters.picker.empty"))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
@@ -267,7 +267,7 @@ impl Component for ClusterPickerModal {
                             .max_height(Size::window_percent(85.))
                             .padding(Gaps::new(8., DIALOG_PADDING_X, 22., DIALOG_PADDING_X))
                             .spacing(14.)
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .background(colors::page())
                             .border(border_all_color(1., colors::component_border()))
                             .on_press(|e: Event<PressEventData>| e.stop_propagation())

@@ -9,7 +9,7 @@ use crate::hooks::{
     use_essential_guard,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const BODY_MAX_H: f32 = 400.;
@@ -61,7 +61,7 @@ impl Component for EssentialConfirmOverlay {
                             .max_width(Size::window_percent(90.))
                             .spacing(14.)
                             .padding(Gaps::new_all(20.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .child(
@@ -77,7 +77,7 @@ impl Component for EssentialConfirmOverlay {
                                     .child(
                                         label()
                                             .text(title)
-                                            .font_size(16.)
+                                            .font_size(text_size(16.))
                                             .font_weight(FontWeight::SEMI_BOLD)
                                             .color(colors::fg_primary()),
                                     ),
@@ -99,13 +99,11 @@ impl Component for EssentialConfirmOverlay {
                                                     Guarded::Mutate(action) => {
                                                         cluster.mutate(action)
                                                     }
-                                                    Guarded::Disable(request) => {
-                                                        disable::request(
-                                                            request,
-                                                            pending_disable,
-                                                            dispatch.clone(),
-                                                        )
-                                                    }
+                                                    Guarded::Disable(request) => disable::request(
+                                                        request,
+                                                        pending_disable,
+                                                        dispatch.clone(),
+                                                    ),
                                                 }
                                                 pending.set(None);
                                             })
@@ -151,7 +149,7 @@ impl Component for WarningBody {
                         rect()
                             .width(Size::fill())
                             .padding(Gaps::new_all(12.))
-                            .corner_radius(CornerRadius::new_all(8.))
+                            .corner_radius(rounded(8.))
                             .background(colors::component_bg())
                             .border(border_all_color(1., colors::component_border()))
                             .child(Markdown::new(self.body.clone()).width(Size::fill()).style(

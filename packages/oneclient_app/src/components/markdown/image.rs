@@ -190,19 +190,19 @@ impl ScaledImage {
 }
 
 impl KeyExt for ScaledImage {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
 
 impl LayoutExt for ScaledImage {
-    fn get_layout(&mut self) -> &mut LayoutData {
+    fn layout_mut(&mut self) -> &mut LayoutData {
         &mut self.element.layout
     }
 }
 
 impl AccessibilityExt for ScaledImage {
-    fn get_accessibility_data(&mut self) -> &mut AccessibilityData {
+    fn accessibility_data_mut(&mut self) -> &mut AccessibilityData {
         &mut self.element.accessibility
     }
 }

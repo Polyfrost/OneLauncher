@@ -10,7 +10,7 @@ use crate::components::{
 };
 use crate::hooks::{ClusterAction, VERSIONS_PAGE_SIZE};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::utils::format_size;
 
@@ -22,7 +22,7 @@ pub(super) fn loading_body() -> impl IntoElement {
         .child(
             label()
                 .text(t("oneclient.browser.package.loading"))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -82,7 +82,7 @@ impl Component for MarkdownPanel {
         rect()
             .width(Size::fill())
             .padding(Gaps::new_all(20.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .border(border_all_color(1., colors::component_border()))
             .child(
@@ -128,7 +128,7 @@ pub(super) fn versions_panel(
             .child(
                 label()
                     .text(t("oneclient.browser.package.versions.none"))
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .into_element()
@@ -184,7 +184,7 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
             .center()
             .width(Size::px(32.))
             .height(Size::px(32.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .maybe(enabled, |el| {
@@ -216,7 +216,7 @@ fn version_pager(current: usize, total_pages: usize, page: State<usize>) -> impl
                     "oneclient.browser.package.versions.page",
                     &[&(current + 1), &total_pages],
                 ))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .child(nav(
@@ -271,7 +271,7 @@ fn version_row(
         .spacing(12.)
         .content(Content::Flex)
         .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(release_badge(v.release_type))
@@ -283,7 +283,7 @@ fn version_row(
                 .child(
                     label()
                         .text(v.name.clone())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .max_lines(1)
                         .color(colors::fg_primary()),
@@ -296,7 +296,7 @@ fn version_row(
                                 "oneclient.browser.package.versions.requires",
                                 &[&requires.join(", ")],
                             ))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(2)
                             .color(colors::fg_secondary()),
                     )
@@ -304,7 +304,7 @@ fn version_row(
                 .child(
                     label()
                         .text(stats)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .color(colors::fg_secondary()),
                 ),
@@ -398,12 +398,12 @@ fn release_badge(release_type: ReleaseType) -> impl IntoElement {
         .center()
         .width(Size::px(28.))
         .height(Size::px(28.))
-        .corner_radius(CornerRadius::new_all(7.))
+        .corner_radius(rounded(7.))
         .background(color.with_a(40))
         .child(
             label()
                 .text(text)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::BOLD)
                 .color(color),
         )

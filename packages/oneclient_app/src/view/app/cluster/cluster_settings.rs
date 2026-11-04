@@ -6,22 +6,25 @@ use freya::query::MutationStateData;
 use oneclient_common::Patch;
 use oneclient_common::domain::{GameLoader, GraphicsBackend};
 use oneclient_core::settings::{GameSettingsProfile, PackageUpdateMode, ProfileUpdate, Resolution};
+use oneclient_core::sync::SyncStatus;
 use oneclient_java::JavaRuntime;
 
 use crate::components::{
-    Button, Dropdown, Icon, IconType, ScrollArea, TextInput, memory_field, toggle, validate_number,
+    Button, Dropdown, FileChoice, Icon, IconType, OverlayPopup, ScrollArea, TextInput,
+    memory_field, settings_file_picker, toggle, toggle_controlled, validate_number,
 };
 use crate::hooks::{
-    ClusterAction, java_runtimes, loader_versions, mutation_is_running, query_error,
-    settled_or_loading, try_game_profile, use_cluster_mutation, use_clusters, use_dispatch,
-    use_game_profile, use_game_snapshot, use_graphics_backend, use_java_runtimes, use_launcher,
-    use_loader_versions, use_migratable_routes, use_release_migration_checking,
-    use_settings_snapshot, use_shared_groups,
+    ClusterAction, java_runtimes, load_is_shared, load_setting_files, load_sync_left_out,
+    loader_versions, mutation_is_running, query_error, settled_or_loading, try_game_profile,
+    use_cloud_sync, use_cluster_mutation, use_clusters, use_dispatch, use_game_profile,
+    use_game_snapshot, use_graphics_backend, use_java_runtimes, use_launcher, use_loader_versions,
+    use_migratable_routes, use_release_migration_checking, use_settings_snapshot,
+    use_shared_groups,
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
-use crate::theme::colors;
-use crate::ui::centered_note;
+use crate::theme::{colors, rounded, text_size};
+use crate::ui::{border_all_color, centered_note};
 use crate::view::app::clusters::{
     ClusterPickerButton, DeleteInstanceModal, EditInstanceModal, ExportInstanceModal,
     InstanceFacts, ResetInstanceModal,
@@ -36,6 +39,8 @@ use super::cluster_not_found;
 use super::imported_modpacks::ImportedModpacksSection;
 use super::modpack_settings::{ModpackRepairRow, ModpackUpdateRow};
 use crate::hooks::use_cluster;
+
+const SYNC_FILES_WIDTH: f32 = 560.;
 
 #[derive(PartialEq)]
 pub struct ClusterSettings {
@@ -246,6 +251,13 @@ impl Component for ClusterSettings {
                         "oneclient.cluster.settings.section.sharing",
                     )))
                     .child(
+                        CloudSyncRow {
+                            cluster_id,
+                            name: cluster.name.clone(),
+                        }
+                        .into_element(),
+                    )
+                    .child(
                         ExportRow {
                             cluster_id,
                             name: cluster.name.clone(),
@@ -361,7 +373,7 @@ fn reset_button(overridden: bool, on_reset: EventHandler<()>) -> impl IntoElemen
         } else {
             t("oneclient.cluster.settings.override.global")
         })
-        .corner_radius(CornerRadius::new_all(7.))
+        .corner_radius(rounded(7.))
         .maybe(overridden, |el| el.on_press(move |_| on_reset.call(())))
         .enabled(overridden)
         .child(Icon::new(IconType::RefreshCcw02).size(15.).color(color))
@@ -575,12 +587,23 @@ impl Component for ExportRow {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
         let mut choosing = use_state(|| false);
+        let mut shared = use_state(|| false);
+        use_side_effect(move || {
+            if *choosing.read() {
+                return;
+            }
+            spawn(async move { shared.set(load_is_shared(cluster_id).await) });
+        });
 
         let button = Button::new()
             .small()
             .secondary()
             .on_press(move |_| choosing.set(true))
-            .text(t("oneclient.cluster.settings.export.button"));
+            .text(if *shared.read() {
+                t("oneclient.cluster.settings.export.configure")
+            } else {
+                t("oneclient.cluster.settings.export.share")
+            });
 
         rect()
             .vertical()
@@ -685,7 +708,7 @@ impl Component for ResetInstanceRow {
                         let on_reset = on_reset.clone();
                         let (done_tx, done_rx) = tokio::sync::oneshot::channel();
                         // Detached like `mutate` so leaving the page can't cut the reset short
-                        spawn_forever(async move {
+                        spawn_in_window(async move {
                             mutation
                                 .mutate_async(ClusterAction::ResetInstance { cluster_id })
                                 .await;
@@ -831,7 +854,7 @@ impl Component for DirTargetRow {
             }
             // The new folder starts empty, so offer to bring the shared worlds and settings along
             let dispatch = dispatch.clone();
-            spawn_forever(async move {
+            spawn_in_window(async move {
                 let reader = mutation.mutate_async(action).await;
                 if matches!(
                     &*reader.state(),
@@ -1234,7 +1257,7 @@ impl Component for JavaRow {
         let control: Element = if runtimes.is_empty() {
             label()
                 .text(t("oneclient.cluster.settings.java.none"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
@@ -1464,7 +1487,7 @@ impl Component for MigrateFromRow {
                 } else {
                     t("oneclient.cluster.settings.migrate.no_partners")
                 })
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
@@ -1517,7 +1540,7 @@ impl Component for LoaderRow {
         let control: Element = if versions.is_empty() {
             label()
                 .text(t("oneclient.cluster.settings.loader.none"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else {
@@ -1543,5 +1566,216 @@ impl Component for LoaderRow {
             control,
         )
         .into_element()
+    }
+}
+
+#[derive(PartialEq)]
+struct CloudSyncRow {
+    cluster_id: i64,
+    name: String,
+}
+
+impl Component for CloudSyncRow {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let name = self.name.clone();
+        let dispatch = use_dispatch();
+        let cloud = use_cloud_sync();
+        let status = cloud.statuses.get(&cluster_id).cloned();
+        let mut choosing = use_state(|| false);
+
+        if !cloud.signed_in {
+            return settings_row_disabled(
+                IconType::DownloadCloud02,
+                t("oneclient.cluster.settings.cloud_sync.title"),
+                t("oneclient.cluster.settings.cloud_sync.signed_out"),
+                toggle_controlled(false, (|()| {}).into()),
+            )
+            .into_element();
+        }
+
+        let on = status.is_some();
+        let busy = matches!(status, Some(SyncStatus::Syncing));
+        let description = match &status {
+            None => t("oneclient.cluster.settings.cloud_sync.off").to_string(),
+            Some(SyncStatus::Synced) => {
+                t("oneclient.cluster.settings.cloud_sync.synced").to_string()
+            }
+            Some(SyncStatus::Pending) => {
+                t("oneclient.cluster.settings.cloud_sync.pending").to_string()
+            }
+            Some(SyncStatus::Syncing) => {
+                t("oneclient.cluster.settings.cloud_sync.syncing").to_string()
+            }
+            Some(SyncStatus::Conflict { .. }) => {
+                t("oneclient.cluster.settings.cloud_sync.conflict").to_string()
+            }
+            Some(SyncStatus::Error { message }) => {
+                tf("oneclient.cluster.settings.cloud_sync.error", &[message])
+            }
+        };
+
+        let toggle = {
+            let dispatch = dispatch.clone();
+            toggle_controlled(
+                on,
+                (move |()| {
+                    if !busy {
+                        dispatch.set_cloud_sync(cluster_id, !on);
+                    }
+                })
+                .into(),
+            )
+        };
+
+        let action = match &status {
+            Some(SyncStatus::Conflict { .. }) => {
+                let dispatch = dispatch.clone();
+                Some(
+                    Button::new()
+                        .small()
+                        .secondary()
+                        .on_press(move |_| {
+                            dispatch.resolve_cloud_conflict(cluster_id, name.clone())
+                        })
+                        .text(t("oneclient.cluster.settings.cloud_sync.resolve"))
+                        .into_element(),
+                )
+            }
+            Some(SyncStatus::Error { .. }) => {
+                let dispatch = dispatch.clone();
+                Some(
+                    Button::new()
+                        .small()
+                        .secondary()
+                        .on_press(move |_| dispatch.sync_cluster_now(cluster_id))
+                        .text(t("oneclient.common.retry"))
+                        .into_element(),
+                )
+            }
+            _ => None,
+        };
+
+        let files = (on && !busy).then(|| {
+            Button::new()
+                .small()
+                .ghost()
+                .on_press(move |_| choosing.set(true))
+                .text(t("oneclient.cluster.settings.cloud_sync.files"))
+                .into_element()
+        });
+
+        let trailing = rect()
+            .horizontal()
+            .cross_align(Alignment::Center)
+            .spacing(10.)
+            .maybe_child(files)
+            .maybe_child(action)
+            .child(toggle);
+
+        rect()
+            .width(Size::fill())
+            .child(settings_row(
+                IconType::DownloadCloud02,
+                t("oneclient.cluster.settings.cloud_sync.title"),
+                description,
+                trailing,
+            ))
+            .maybe_child(choosing.read().then(|| {
+                SyncFilesModal {
+                    cluster_id,
+                    on_close: (move |()| choosing.set(false)).into(),
+                }
+                .into_element()
+            }))
+            .into_element()
+    }
+}
+
+#[derive(PartialEq)]
+struct SyncFilesModal {
+    cluster_id: i64,
+    on_close: EventHandler<()>,
+}
+
+impl Component for SyncFilesModal {
+    fn render(&self) -> impl IntoElement {
+        let cluster_id = self.cluster_id;
+        let dispatch = use_dispatch();
+        let choice = FileChoice::use_new();
+        use_hook(move || {
+            let mut files = choice.files;
+            spawn(async move {
+                let listed = load_setting_files(cluster_id).await;
+                let left_out = load_sync_left_out(cluster_id).await;
+                files.set(Some(listed));
+                choice.leave_out(&left_out);
+            });
+        });
+
+        let close = self.on_close.clone();
+        let cancel = self.on_close.clone();
+        let save = self.on_close.clone();
+        let loaded = choice.files.read().is_some();
+
+        let mut content = vec![
+            label()
+                .text(t("oneclient.cluster.settings.sync_files.title"))
+                .font_size(text_size(18.))
+                .font_weight(FontWeight::SEMI_BOLD)
+                .color(colors::fg_primary())
+                .into_element(),
+            label()
+                .text(t("oneclient.cluster.settings.sync_files.description"))
+                .font_size(text_size(13.))
+                .color(colors::fg_secondary())
+                .into_element(),
+        ];
+        content.extend(settings_file_picker(choice));
+        content.push(
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .main_align(Alignment::End)
+                .spacing(8.)
+                .child(
+                    Button::new()
+                        .ghost()
+                        .on_press(move |_| cancel.call(()))
+                        .text(t("oneclient.common.cancel")),
+                )
+                .child(
+                    Button::new()
+                        .enabled(loaded)
+                        .on_press(move |_| {
+                            dispatch.set_sync_left_out(cluster_id, choice.left_out());
+                            save.call(());
+                        })
+                        .text(t("oneclient.common.save")),
+                )
+                .into_element(),
+        );
+
+        OverlayPopup::new()
+            .on_close(move |()| close.call(()))
+            .child(
+                rect()
+                    .width(Size::window_percent(100.))
+                    .height(Size::window_percent(100.))
+                    .center()
+                    .child(
+                        rect()
+                            .vertical()
+                            .width(Size::px(SYNC_FILES_WIDTH))
+                            .max_width(Size::window_percent(92.))
+                            .spacing(16.)
+                            .padding(Gaps::new_all(20.))
+                            .corner_radius(rounded(16.))
+                            .background(colors::page_elevated())
+                            .border(border_all_color(1., colors::component_border()))
+                            .children(content),
+                    ),
+            )
+            .into_element()
     }
 }

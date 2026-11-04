@@ -27,7 +27,7 @@ use crate::hooks::{
     use_shared_groups,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, centered_note, divider, fixed_grid, note};
 use crate::utils::bundle_display_name;
 use oneclient_events::{Choice, Prompt};
@@ -200,6 +200,13 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
             t("oneclient.clusters.instance.steps.import_source.file.meta"),
         ),
         (
+            ImportSource::Code,
+            IconType::Users01,
+            t("oneclient.clusters.instance.steps.import_source.code.title"),
+            t("oneclient.clusters.instance.steps.import_source.code.blurb"),
+            t("oneclient.clusters.instance.steps.import_source.code.meta"),
+        ),
+        (
             ImportSource::Launcher,
             IconType::FolderDownload,
             t("oneclient.clusters.instance.steps.import_source.launcher.title"),
@@ -208,6 +215,7 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
         ),
     ];
 
+    let by_code = picks.import_source == ImportSource::Code;
     rect()
         .vertical()
         .width(Size::fill())
@@ -224,6 +232,15 @@ fn import_source_step(wizard: Wizard, picks: &Picks) -> Element {
                 on_press: (move |()| chosen.set(source)).into(),
                 trailing: None,
             })
+        }))
+        .maybe_child(by_code.then(|| {
+            TextInput::new(wizard.share_code)
+                .width(Size::fill())
+                .placeholder(t(
+                    "oneclient.clusters.instance.steps.import_source.code.placeholder",
+                ))
+                .auto_focus(true)
+                .into_element()
         }))
         .into_element()
 }
@@ -380,7 +397,7 @@ impl Component for FolderStep {
                         let group = group.clone();
                         let mut folder = folder;
                         let picked = selected == FolderChoice::Custom(group.clone());
-                        spawn_forever(async move {
+                        spawn_in_window(async move {
                             let linked = match oneclient_common::paths::shared_group_dir(Some(&group)) {
                                 Ok(dir) => polyio::symlink_metadata(dir)
                                     .await
@@ -512,7 +529,7 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_all(16.))
-        .corner_radius(CornerRadius::new_all(CARD_RADIUS))
+        .corner_radius(rounded(CARD_RADIUS))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -526,7 +543,7 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
                             "oneclient.clusters.instance.steps.loader_version.title",
                             &[&chosen.name()],
                         ))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -535,7 +552,7 @@ fn loader_version_card(mut wizard: Wizard, picks: &Picks, chosen: LoaderChoice) 
                         .text(t(
                             "oneclient.clusters.instance.steps.loader_version.description",
                         ))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .line_height(1.4)
                         .color(colors::fg_secondary()),
                 ),
@@ -601,7 +618,7 @@ fn version_controls(mut wizard: Wizard, picks: &Picks) -> Element {
                 .child(
                     label()
                         .text(t("oneclient.clusters.instance.steps.version.show"))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 )
                 .child(

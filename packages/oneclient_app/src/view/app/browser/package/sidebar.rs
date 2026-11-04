@@ -5,9 +5,9 @@ use oneclient_content::packages::types::{ProjectDetail, ProjectMember, VersionSu
 
 use crate::components::{Button, Icon, IconType};
 use crate::i18n::{t, tf};
-use crate::utils::shorten;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
+use crate::utils::shorten;
 
 const BUTTON_NAME_CHARS: usize = 22;
 
@@ -49,7 +49,7 @@ pub(super) fn sidebar(
             rect()
                 .vertical()
                 .width(Size::fill())
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .overflow(Overflow::Clip)
                 .background(colors::page_elevated())
                 .border(border_all_color(1., colors::component_border()))
@@ -68,7 +68,7 @@ pub(super) fn sidebar(
                         .child(
                             label()
                                 .text(project.name.clone())
-                                .font_size(18.)
+                                .font_size(text_size(18.))
                                 .font_weight(FontWeight::BOLD)
                                 .max_lines(2)
                                 .color(colors::fg_primary()),
@@ -86,7 +86,7 @@ pub(super) fn sidebar(
                             el.child(
                                 label()
                                     .text(project.summary.clone())
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .max_lines(4)
                                     .color(colors::fg_secondary()),
                             )
@@ -107,7 +107,7 @@ pub(super) fn sidebar(
                                             "oneclient.browser.package.sidebar.downloads",
                                             &[&abbreviate_number(project.downloads)],
                                         ))
-                                        .font_size(11.)
+                                        .font_size(text_size(11.))
                                         .color(colors::fg_secondary()),
                                 ),
                         ),
@@ -205,7 +205,7 @@ impl Component for ProviderTag {
             .child(
                 label()
                     .text(self.text.clone())
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(if interactive {
                         colors::code_info()
                     } else {
@@ -217,7 +217,7 @@ impl Component for ProviderTag {
                 el.a11y_id(a11y_id)
                     .a11y_focusable(true)
                     .a11y_role(AccessibilityRole::Link)
-                    .corner_radius(CornerRadius::new_all(6.))
+                    .corner_radius(rounded(6.))
                     .maybe(focused, |el| {
                         el.border(border_all_color(1., colors::brand()))
                     })
@@ -238,13 +238,13 @@ fn card_spaced(title: &str, rows: Vec<Element>, spacing: f32) -> impl IntoElemen
         .width(Size::fill())
         .spacing(spacing)
         .padding(Gaps::new_all(16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(
             label()
                 .text(title.to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::BOLD)
                 .color(colors::fg_primary()),
         )
@@ -308,7 +308,7 @@ impl Component for AuthorRow {
             .width(Size::fill())
             .cross_align(Alignment::Center)
             .spacing(8.)
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .padding(Gaps::new_all(4.))
             .maybe(interactive, |el| {
                 let url = url.clone().unwrap_or_default();
@@ -329,7 +329,7 @@ impl Component for AuthorRow {
                     .child(
                         label()
                             .text(self.name.clone())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .color(colors::fg_primary()),
                     )
@@ -337,7 +337,7 @@ impl Component for AuthorRow {
                         el.child(
                             label()
                                 .text(self.role.clone())
-                                .font_size(10.)
+                                .font_size(text_size(10.))
                                 .max_lines(1)
                                 .color(colors::fg_secondary()),
                         )
@@ -396,7 +396,7 @@ fn detail_row(icon: IconType, key: &str, value: &str) -> Element {
                 .child(
                     label()
                         .text(key.to_string())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         )
@@ -407,7 +407,7 @@ fn detail_row(icon: IconType, key: &str, value: &str) -> Element {
                 .child(
                     label()
                         .text(value.to_string())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .max_lines(3)
                         .width(Size::fill())
                         .color(colors::fg_primary()),
@@ -454,7 +454,7 @@ impl Component for LinkRow {
             .width(Size::fill())
             .cross_align(Alignment::Center)
             .spacing(8.)
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .padding(Gaps::new_symmetric(2., 4.))
             .a11y_id(a11y_id)
             .a11y_focusable(true)
@@ -472,7 +472,7 @@ impl Component for LinkRow {
             .child(
                 label()
                     .text(self.label_text.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::code_info()),
             )
     }

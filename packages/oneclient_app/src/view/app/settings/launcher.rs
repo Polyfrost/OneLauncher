@@ -16,7 +16,7 @@ use crate::hooks::{
     use_discard_leftovers, use_dispatch, use_launcher, use_leftovers, use_settings_snapshot,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, note, path_block};
 
 #[derive(PartialEq)]
@@ -395,7 +395,7 @@ fn confirm_move(
         .max_width(Size::window_percent(90.))
         .spacing(14.)
         .padding(Gaps::new_all(20.))
-        .corner_radius(CornerRadius::new_all(14.))
+        .corner_radius(rounded(14.))
         .background(colors::page_elevated())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -407,7 +407,7 @@ fn confirm_move(
                 .child(
                     label()
                         .text(t("oneclient.settings.launcher.move.title"))
-                        .font_size(16.)
+                        .font_size(text_size(16.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),
@@ -432,7 +432,7 @@ fn confirm_move(
                         &[&format_bytes(planned.bytes)],
                     ),
                 })
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         );
 
@@ -444,7 +444,7 @@ fn confirm_move(
         .child(
             label()
                 .text(t("oneclient.settings.launcher.move.explanation"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(4)
                 .color(colors::fg_secondary()),
         )

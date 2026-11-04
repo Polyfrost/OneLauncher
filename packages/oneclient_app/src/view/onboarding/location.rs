@@ -8,7 +8,7 @@ use crate::hooks::{use_dispatch, use_launcher, use_onboarding_selection};
 use crate::i18n::t;
 use crate::routes::Route;
 use crate::state::AppChannel;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::ui::note;
 use crate::view::onboarding::{
     choice_row, onboarding_illustration, onboarding_nav_action, onboarding_page, step_heading,
@@ -63,7 +63,7 @@ impl Component for OnboardingLocation {
             waiting.set(true);
             error.set(None);
 
-            spawn_forever(async move {
+            spawn_in_window(async move {
                 if !answered {
                     if let Err(message) = oneclient_core::settings::data_dir::apply(chosen).await {
                         error.set(Some(message));
@@ -118,7 +118,7 @@ impl Component for OnboardingLocation {
                 .child(
                     label()
                         .text(t("oneclient.onboarding.location.answered"))
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .max_lines(2)
                         .color(colors::fg_secondary()),
                 )
@@ -171,7 +171,7 @@ impl Component for OnboardingLocation {
         };
 
         onboarding_page(
-            onboarding_illustration(IconType::Folder),
+            onboarding_illustration(IconType::OnboardingFolder),
             content.into_element(),
             onboarding_nav_action(
                 Some(Route::OnboardingWelcome {}),

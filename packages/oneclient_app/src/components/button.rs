@@ -6,7 +6,7 @@ use freya::prelude::*;
 use crate::{
     components::{Icon, IconTint, IconType, TooltipPlacement, tooltip::use_tooltip_anchor},
     i18n::t,
-    theme::colors,
+    theme::{colors, rounded, text_size},
 };
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -103,7 +103,7 @@ impl Button {
 
         style.corner_radius = default_radius;
 
-        text_style.font_size = Some(font_size.into());
+        text_style.font_size = Some(text_size(font_size).into());
 
         Self {
             size,
@@ -154,7 +154,7 @@ impl Button {
         self.layout.height = height;
         self.layout.padding = padding;
         self.style.corner_radius = corner_radius;
-        self.text_style.font_size = Some(font_size.into());
+        self.text_style.font_size = Some(text_size(font_size).into());
 
         self
     }
@@ -245,19 +245,19 @@ impl Button {
 }
 
 impl ChildrenExt for Button {
-    fn get_children(&mut self) -> &mut Vec<Element> {
+    fn children_mut(&mut self) -> &mut Vec<Element> {
         &mut self.elements
     }
 }
 
 impl KeyExt for Button {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
 
 impl LayoutExt for Button {
-    fn get_layout(&mut self) -> &mut LayoutData {
+    fn layout_mut(&mut self) -> &mut LayoutData {
         &mut self.layout
     }
 }
@@ -267,7 +267,7 @@ impl ContainerExt for Button {}
 impl DecorationExt for Button {}
 
 impl StyleExt for Button {
-    fn get_style(&mut self) -> &mut StyleState {
+    fn style_mut(&mut self) -> &mut StyleState {
         &mut self.style
     }
 }
@@ -334,7 +334,7 @@ impl Component for Button {
             .text_style(self.text_style.clone())
             .children(self.elements.clone());
 
-        rect.get_style().clone_from(&self.style);
+        rect.style_mut().clone_from(&self.style);
 
         rect = rect.background(background).color(foreground);
 
@@ -435,28 +435,28 @@ fn size_layout(size: ButtonSize) -> (Gaps, CornerRadius, f32, Size, Size) {
     match size {
         ButtonSize::Small => (
             Gaps::new_symmetric(4., 8.),
-            CornerRadius::new_all(6.),
+            rounded(6.),
             12.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Medium => (
             Gaps::new_symmetric(6., 12.),
-            CornerRadius::new_all(8.),
+            rounded(8.),
             14.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Large => (
             Gaps::new_symmetric(8., 32.),
-            CornerRadius::new_all(10.),
+            rounded(10.),
             18.,
             Size::auto(),
             Size::auto(),
         ),
         ButtonSize::Icon => (
             Gaps::new_all(6.),
-            CornerRadius::new_all(8.),
+            rounded(8.),
             14.,
             Size::px(32.),
             Size::px(32.),

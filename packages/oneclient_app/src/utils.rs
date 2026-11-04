@@ -10,7 +10,7 @@ use oneclient_core::clusters::Cluster;
 use oneclient_common::MEMORY_HEADROOM_GB;
 pub use oneclient_common::total_ram_mb;
 
-use crate::i18n::{t, tf};
+use crate::i18n::{format_placeholders, t, tf};
 
 pub type ClusterGroups = BTreeMap<ReleaseLine, Vec<Cluster>>;
 
@@ -299,6 +299,10 @@ pub fn abbreviate_number(n: u64) -> String {
     } else {
         n.to_string()
     }
+}
+
+pub fn count_label(count: usize, one: &str, many: &str) -> String {
+    format_placeholders(if count == 1 { one } else { many }, &[&count])
 }
 
 pub fn shorten(text: &str, max_chars: usize, ellipsis: &str) -> String {

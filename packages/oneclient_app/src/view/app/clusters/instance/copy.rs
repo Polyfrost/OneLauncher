@@ -5,6 +5,7 @@ use super::model::{
     FolderChoice, ImportMode, ImportSource, ModpackOrigin, Step, TypeChoice, Wizard,
 };
 use crate::i18n::{t, tf};
+use crate::utils::count_label;
 
 pub fn heading(picks: &Picks) -> (&'static str, String) {
     match picks.step {
@@ -134,6 +135,9 @@ pub fn footer_note(picks: &Picks) -> String {
             ImportSource::File => {
                 t("oneclient.clusters.instance.copy.note.import_source.file").to_string()
             }
+            ImportSource::Code => {
+                t("oneclient.clusters.instance.copy.note.import_source.code").to_string()
+            }
             ImportSource::Launcher => {
                 t("oneclient.clusters.instance.copy.note.import_source.launcher").to_string()
             }
@@ -151,23 +155,18 @@ pub fn footer_note(picks: &Picks) -> String {
             1 => t("oneclient.clusters.instance.copy.note.import.one").to_string(),
             n => tf("oneclient.clusters.instance.copy.note.import.other", &[&n]),
         },
-        Step::ImportReview => match (&picks.import_screening, picks.flagged_count()) {
-            (None, _) if picks.import_screening_error.is_some() => {
+        Step::ImportReview => match &picks.import_screening {
+            None if picks.import_screening_error.is_some() => {
                 t("oneclient.clusters.instance.copy.note.import_review.unchecked").to_string()
             }
-            (None, _) => {
-                t("oneclient.clusters.instance.copy.note.import_review.checking").to_string()
-            }
-            (Some(_), 0) => {
-                t("oneclient.clusters.instance.copy.note.import_review.none").to_string()
-            }
-            (Some(_), 1) => {
-                t("oneclient.clusters.instance.copy.note.import_review.one").to_string()
-            }
-            (Some(_), n) => tf(
-                "oneclient.clusters.instance.copy.note.import_review.other",
-                &[&n],
-            ),
+            None => t("oneclient.clusters.instance.copy.note.import_review.checking").to_string(),
+            Some(_) => match review_parts(picks).as_slice() {
+                [] => t("oneclient.clusters.instance.copy.note.import_review.none").to_string(),
+                parts => tf(
+                    "oneclient.clusters.instance.copy.note.import_review.parts",
+                    &[&parts.join(", ")],
+                ),
+            },
         },
     }
 }
@@ -207,6 +206,7 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
         },
         Step::ImportSource => match picks.import_source {
             ImportSource::File => t("oneclient.clusters.instance.copy.value.file").to_string(),
+            ImportSource::Code => t("oneclient.clusters.instance.copy.value.code").to_string(),
             ImportSource::Launcher => {
                 t("oneclient.clusters.instance.copy.value.launcher").to_string()
             }
@@ -219,17 +219,15 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
             0 => t("oneclient.clusters.instance.copy.value.none_selected").to_string(),
             n => tf("oneclient.clusters.instance.copy.value.selected", &[&n]),
         },
-        Step::ImportReview => match (&picks.import_screening, picks.flagged_count()) {
-            (None, _) if picks.import_screening_error.is_some() => {
+        Step::ImportReview => match &picks.import_screening {
+            None if picks.import_screening_error.is_some() => {
                 t("oneclient.clusters.instance.copy.value.not_checked").to_string()
             }
-            (None, _) => t("oneclient.clusters.instance.copy.value.checking").to_string(),
-            (Some(_), 0) => t("oneclient.clusters.instance.copy.value.nothing_flagged").to_string(),
-            (Some(_), 1) => t("oneclient.clusters.instance.copy.value.flagged.one").to_string(),
-            (Some(_), n) => tf(
-                "oneclient.clusters.instance.copy.value.flagged.other",
-                &[&n],
-            ),
+            None => t("oneclient.clusters.instance.copy.value.checking").to_string(),
+            Some(_) => match review_parts(picks).as_slice() {
+                [] => t("oneclient.clusters.instance.copy.value.nothing_flagged").to_string(),
+                parts => parts.join(", "),
+            },
         },
         Step::Customize => match wizard.details.tags.read().len() {
             0 => t("oneclient.clusters.instance.copy.value.optional").to_string(),
@@ -242,6 +240,30 @@ pub fn step_value(wizard: Wizard, picks: &Picks, step: Step) -> String {
     }
 }
 
+fn review_parts(picks: &Picks) -> Vec<String> {
+    [
+        (
+            picks.flagged_count(),
+            t("oneclient.clusters.instance.copy.value.flagged.one"),
+            t("oneclient.clusters.instance.copy.value.flagged.other"),
+        ),
+        (
+            picks.unpublished_count(),
+            t("oneclient.clusters.instance.copy.value.unpublished.one"),
+            t("oneclient.clusters.instance.copy.value.unpublished.other"),
+        ),
+        (
+            picks.unconfirmed_count(),
+            t("oneclient.clusters.instance.copy.value.unconfirmed.one"),
+            t("oneclient.clusters.instance.copy.value.unconfirmed.other"),
+        ),
+    ]
+    .into_iter()
+    .filter(|(count, _, _)| *count > 0)
+    .map(|(count, one, many)| count_label(count, one, many))
+    .collect()
+}
+
 pub fn is_ready(picks: &Picks) -> bool {
     match picks.step {
         Step::Type | Step::Folder | Step::Bundles | Step::Modpack => true,
@@ -251,7 +273,11 @@ pub fn is_ready(picks: &Picks) -> bool {
                 && (picks.choice == TypeChoice::Scratch || picks.loader.chosen.is_some())
         }
         Step::Customize => validate_instance_name(&picks.name).is_ok(),
-        Step::ImportSource | Step::ImportMode => true,
+        Step::ImportSource => {
+            picks.import_source != ImportSource::Code
+                || oneclient_core::sharing::ShareCode::parse(&picks.share_code).is_some()
+        }
+        Step::ImportMode => true,
         Step::Import => picks.import_count > 0,
         Step::ImportReview => {
             picks.import_count > 0

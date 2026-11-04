@@ -261,7 +261,7 @@ impl PackageProvider for CurseForgeProvider {
         let response: CfData<Response> = fetch_json(
             &ctx.net,
             Method::POST,
-            &api_url(&format!("/mods/fingerprints/{CURSEFORGE_GAME_ID}")),
+            &api_url(&format!("/fingerprints/{CURSEFORGE_GAME_ID}")),
             Some(body),
         )
         .await?;
@@ -276,7 +276,7 @@ impl PackageProvider for CurseForgeProvider {
             let fp = m.file.file_fingerprint;
 
             for (identity, expected_fp) in &with_fingerprint {
-                if *expected_fp == fp || file_sha1.as_deref() == Some(identity.sha1.as_str()) {
+                if is_same_file(file_sha1.as_deref(), fp, &identity.sha1, *expected_fp) {
                     out.insert(identity.sha1.clone(), version.clone());
                 }
             }
@@ -680,6 +680,7 @@ impl CfMod {
                 .into_iter()
                 .map(|s| GalleryImage {
                     url: s.url,
+                    thumbnail_url: s.thumbnail_url.filter(|t| !t.is_empty()),
                     title: s.title.filter(|t| !t.is_empty()),
                     featured: false,
                 })
@@ -790,6 +791,18 @@ impl From<CfFile> for VersionDetail {
     }
 }
 
+fn is_same_file(
+    file_sha1: Option<&str>,
+    file_fingerprint: u32,
+    sha1: &str,
+    fingerprint: u32,
+) -> bool {
+    match file_sha1.filter(|file_sha1| !file_sha1.is_empty()) {
+        Some(file_sha1) => file_sha1 == sha1,
+        None => file_fingerprint == fingerprint,
+    }
+}
+
 fn cf_class_id(t: ContentType) -> u32 {
     match t {
         ContentType::Mod => 6,
@@ -861,6 +874,16 @@ fn cf_loader_type(loader: GameLoader) -> Option<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_fingerprint_match_needs_the_sha1_to_agree() {
+        assert!(is_same_file(Some("aaa"), 7, "aaa", 7));
+        assert!(is_same_file(Some("aaa"), 1, "aaa", 7));
+        assert!(!is_same_file(Some("bbb"), 7, "aaa", 7));
+        assert!(is_same_file(Some(""), 7, "aaa", 7));
+        assert!(is_same_file(None, 7, "aaa", 7));
+        assert!(!is_same_file(None, 1, "aaa", 7));
+    }
 
     /// relationType is a bare number
     /// a mismap quietly turns required libraries into optional ones

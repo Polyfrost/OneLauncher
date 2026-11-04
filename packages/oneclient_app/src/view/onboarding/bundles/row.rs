@@ -4,7 +4,7 @@ use oneclient_content::packages::ProviderId;
 use crate::components::{Icon, IconType, github_badge, provider_badge};
 use crate::hooks::{loaded_image, use_cached_image};
 use crate::i18n::tf;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{ImageFallbackExt, border_all_color};
 use crate::utils::format_size;
 
@@ -34,7 +34,7 @@ impl Component for OnboardingModCard {
                 .width(Size::px(44.))
                 .height(Size::px(44.))
                 .aspect_ratio(AspectRatio::Min)
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .fallback(icon_box(self.placeholder_icon()))
                 .into_element(),
 
@@ -65,7 +65,7 @@ impl Component for OnboardingModCard {
                     .child(
                         label()
                             .text(self.name.clone())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
@@ -78,7 +78,7 @@ impl Component for OnboardingModCard {
                                     "oneclient.onboarding.bundles.mod.author",
                                     &[&self.author],
                                 ))
-                                .font_size(10.)
+                                .font_size(text_size(10.))
                                 .max_lines(1)
                                 .width(Size::fill())
                                 .color(colors::fg_secondary().with_a(alpha)),
@@ -94,7 +94,7 @@ impl Component for OnboardingModCard {
         let description = (!self.description.is_empty()).then(|| {
             label()
                 .text(self.description.clone())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(3)
                 .width(Size::fill())
                 .color(colors::fg_secondary().with_a(alpha))
@@ -107,7 +107,7 @@ impl Component for OnboardingModCard {
             .height(Size::fill())
             .spacing(8.)
             .padding(Gaps::new_all(12.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(bg)
             .border(border_all_color(1.5, border))
             .content(Content::Flex)
@@ -130,7 +130,7 @@ impl Component for OnboardingModCard {
                     .maybe_child((size > 0).then(|| {
                         label()
                             .text(format_size(size))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(colors::fg_secondary().with_a(alpha))
                             .into_element()
                     })),
@@ -153,7 +153,7 @@ fn icon_box(icon: IconType) -> impl IntoElement {
         .center()
         .width(Size::px(44.))
         .height(Size::px(44.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .child(Icon::new(icon).size(20.).color(colors::fg_secondary()))
         .into_element()
@@ -167,7 +167,7 @@ pub(super) fn empty_hint(text: &str) -> impl IntoElement {
         .child(
             label()
                 .text(text.to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

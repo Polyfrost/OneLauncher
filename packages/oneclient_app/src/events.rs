@@ -4,7 +4,7 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use freya::radio::RadioStation;
 use oneclient_events::{Event, EventReceiver, GameEvent, LaunchStage, ProgressEvent, Signal};
 use tokio::sync::mpsc;
@@ -143,7 +143,10 @@ impl EventPump {
 
         for event in batch {
             match event {
-                Event::Signal(Signal::ClustersChanged) => folded.clusters = true,
+                Event::Signal(Signal::ClustersChanged) => {
+                    folded.clusters = true;
+                    crate::hooks::cloud_sync_signal(crate::hooks::CloudSignal::Changed(None));
+                }
                 Event::Signal(Signal::JavaChanged) => folded.java = true,
                 Event::Signal(Signal::SyncComplete) => {
                     sync_complete = true;
@@ -151,6 +154,9 @@ impl EventPump {
                 }
                 Event::Game(GameEvent::Stage { cluster_id, stage }) => {
                     folded.saw_stage = true;
+                    if stage == LaunchStage::Exited {
+                        crate::hooks::cloud_sync_signal(crate::hooks::CloudSignal::Exited(cluster_id));
+                    }
                     if stage.is_busy() {
                         folded.launched.push(cluster_id);
                     }
@@ -262,10 +268,10 @@ impl EventPump {
         }
 
         if folded.clusters {
-            spawn_forever(async move { crate::hooks::invalidate_cluster_queries().await });
+            spawn_in_window(async move { crate::hooks::invalidate_cluster_queries().await });
         }
         if folded.java {
-            spawn_forever(async move { crate::hooks::invalidate_java_queries().await });
+            spawn_in_window(async move { crate::hooks::invalidate_java_queries().await });
         }
 
         folded
@@ -360,6 +366,7 @@ pub async fn start_launcher(
     );
 
     oneclient_net::status::start(state.services.requester.clone());
+    crate::translations::start(state.services.requester.clone());
     oneclient_polyplus::start(std::sync::Arc::clone(&state.auth));
     oneclient_core::run_startup_tasks(&state);
 

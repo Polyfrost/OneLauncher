@@ -23,7 +23,7 @@ use crate::notifications::{
     OptionalModsGroup,
 };
 use crate::routes::Route;
-use crate::theme::{self, colors};
+use crate::theme::{self, colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 type SqlResult = Option<Result<ConsoleQueryResult, String>>;
@@ -54,14 +54,14 @@ impl Component for Debug {
                             .child(
                                 label()
                                     .text("Debug")
-                                    .font_size(32.)
+                                    .font_size(text_size(32.))
                                     .font_weight(FontWeight::BOLD)
                                     .color(colors::fg_primary()),
                             )
                             .child(
                                 label()
                                     .text("The end user won't really be looking at this page.")
-                                    .font_size(13.)
+                                    .font_size(text_size(13.))
                                     .color(colors::fg_secondary()),
                             ),
                     )
@@ -151,7 +151,7 @@ impl Component for ClusterList {
             return list.child(
                 label()
                     .text("No clusters in the database.")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             );
         }
@@ -173,7 +173,7 @@ impl Component for ClusterList {
                     .main_align(Alignment::SpaceBetween)
                     .spacing(12.)
                     .padding(Gaps::new_symmetric(10., 14.))
-                    .corner_radius(CornerRadius::new_all(10.))
+                    .corner_radius(rounded(10.))
                     .background(colors::page_elevated())
                     .child(
                         rect()
@@ -181,7 +181,7 @@ impl Component for ClusterList {
                             .child(
                                 label()
                                     .text(cluster.name.clone())
-                                    .font_size(14.)
+                                    .font_size(text_size(14.))
                                     .color(colors::fg_primary()),
                             )
                             .child(
@@ -190,7 +190,7 @@ impl Component for ClusterList {
                                         "#{cluster_id} · {} · {}{loader_version} · {:?}",
                                         cluster.mc_version, cluster.mc_loader, cluster.stage
                                     ))
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary()),
                             ),
                     )
@@ -344,7 +344,7 @@ impl Component for ClusterUpdateSimulator {
             .child(
                 label()
                     .text("Builds the same notification the bundle sync sends: one \"View changes\" action carrying every changed cluster, opened into the changes modal. Anything listed under Optional also raises the \"Optional mods available\" prompt, exactly as the real sync does. Optional mods are not installed, so they are independent of Added rather than a subset of it.")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -409,7 +409,7 @@ impl Component for ClusterUpdateSimulator {
             .child(
                 label()
                     .text("Presets: every shape the notification and modal can take.")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .children(cluster_update_preset_rows(&dispatch))
@@ -663,7 +663,7 @@ impl Component for ReleaseMigrationSimulator {
             .child(
                 label()
                     .text("\"Simulate\" opens the real migration modal with the chosen cluster as the new release and the real compatibility check against every other cluster with the same loader; closing it changes nothing. \"Fake Plan\" skips the check and fills the same modal with made-up packages, so the UI can be reviewed when no cluster has anything to migrate. \"Queue as New Version\" adds the chosen version to the pending list exactly as a new manifest entry would, then runs the startup check, so the real one-time flow can be tested.")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -675,7 +675,7 @@ impl Component for ReleaseMigrationSimulator {
                     .child(
                         label()
                             .text("Target")
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .color(colors::fg_secondary()),
                     )
                     .child(
@@ -739,7 +739,7 @@ impl Component for LauncherUpdateSimulator {
             .child(
                 label()
                     .text("Drives the real auto-update UX (prompt → download progress → \"restart to apply\") against a fake release, with no network or disk. \"Simulate Manual Update Toast\" shows the notify-only toast that non-AppImage Linux installs get. \"Check for Updates Now\" runs the real check against the release feed.")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -854,7 +854,7 @@ impl Component for StatusBarSimulator {
             .child(
                 label()
                     .text("Forces what the connectivity prober reports, so the real status bar renders its banner. Dismissing a banner is remembered until the issue clears.")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .child(row)
@@ -878,7 +878,7 @@ impl Component for StatusBarSimulator {
                     .child(
                         label()
                             .text(state_text)
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -929,7 +929,7 @@ impl Component for AuthGuidancePreview {
             .child(
                 label()
                     .text("Opens the real Microsoft sign-in popup exactly as users see it, in the chosen error state.")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -1005,7 +1005,7 @@ impl Component for SessionExpirySimulator {
             .child(
                 label()
                     .text(description)
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -1027,7 +1027,7 @@ impl Component for SessionExpirySimulator {
             .child(
                 label()
                     .text("Invalidate keeps the account looking fine until the next launch, where Microsoft answers invalid_grant.")
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary()),
             )
             .into_element()
@@ -1160,7 +1160,7 @@ impl Component for CorruptionSimulator {
                         .child(
                             label()
                                 .text(hint)
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .max_lines(1)
                                 .color(colors::fg_secondary()),
                         ),
@@ -1177,7 +1177,7 @@ impl Component for CorruptionSimulator {
             .child(
                 label()
                     .text("Damages the real installation so the repair paths can be exercised. Everything here is repairable by \"Verify Files\" in cluster settings, or by launching - which is the point.")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -1189,7 +1189,7 @@ impl Component for CorruptionSimulator {
                     .child(
                         label()
                             .text("Cluster (for mods)")
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .color(colors::fg_secondary()),
                     )
                     .child(
@@ -1208,7 +1208,7 @@ impl Component for CorruptionSimulator {
             .child(
                 label()
                     .text("Modals: the real prompts, built by the code that raises them for real.")
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -1455,7 +1455,7 @@ impl Component for SqlConsole {
                 TextInput::new(query)
                     .multiline(true)
                     .placeholder("SELECT * FROM …")
-                    .font_family(theme::MONO_FONT)
+                    .font_family(theme::mono_font())
                     .width(Size::fill())
                     .height(Size::px(140.))
                     .on_submit(move |_| run_sql(query, result, running)),
@@ -1480,7 +1480,7 @@ impl Component for SqlConsole {
                             } else {
                                 "Ctrl+Enter"
                             })
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -1515,25 +1515,25 @@ fn sql_result(state: &SqlResult) -> Element {
     match state {
         None => label()
             .text("No query run yet.")
-            .font_size(13.)
+            .font_size(text_size(13.))
             .color(colors::fg_secondary())
             .into_element(),
         Some(Err(err)) => rect()
             .width(Size::fill())
             .padding(Gaps::new_symmetric(10., 14.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::danger()))
             .child(
                 label()
                     .text(err.clone())
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::danger()),
             )
             .into_element(),
         Some(Ok(res)) if !res.is_select => label()
             .text(format!("OK, {} row(s) affected.", res.rows_affected))
-            .font_size(13.)
+            .font_size(text_size(13.))
             .color(colors::success())
             .into_element(),
         Some(Ok(res)) => sql_table(res),
@@ -1544,7 +1544,7 @@ fn sql_table(res: &ConsoleQueryResult) -> Element {
     if res.columns.is_empty() {
         return label()
             .text("0 rows returned.")
-            .font_size(13.)
+            .font_size(text_size(13.))
             .color(colors::fg_secondary())
             .into_element();
     }
@@ -1553,7 +1553,7 @@ fn sql_table(res: &ConsoleQueryResult) -> Element {
     let mut table = rect()
         .vertical()
         .width(Size::fill())
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .border(border_all_color(1., colors::component_border()))
         .child(header);
 
@@ -1568,7 +1568,7 @@ fn sql_table(res: &ConsoleQueryResult) -> Element {
         .child(
             label()
                 .text(format!("{} row(s)", res.rows.len()))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .child(table)
@@ -1595,7 +1595,7 @@ fn table_row(cells: &[String], header: bool) -> Element {
                 .child(
                     label()
                         .text(cell.clone())
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .max_lines(1)
                         .font_weight(if header {
                             FontWeight::SEMI_BOLD
@@ -1624,7 +1624,7 @@ fn split_csv(raw: &str) -> Vec<String> {
 fn divider() -> impl IntoElement {
     crate::ui::divider()
         .margin(Gaps::new_symmetric(8., 0.))
-        .corner_radius(CornerRadius::new_all(1.))
+        .corner_radius(rounded(1.))
         .into_element()
 }
 
@@ -1636,7 +1636,7 @@ fn section(title: &'static str, rows: Vec<Element>) -> impl IntoElement {
         .child(
             label()
                 .text(title)
-                .font_size(22.)
+                .font_size(text_size(22.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
@@ -1651,12 +1651,12 @@ fn toggle_row(title: &'static str, on: State<bool>) -> Element {
         .cross_align(Alignment::Center)
         .main_align(Alignment::SpaceBetween)
         .padding(Gaps::new_symmetric(10., 14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::page_elevated())
         .child(
             label()
                 .text(title)
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_primary()),
         )
         .child(toggle(on))

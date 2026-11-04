@@ -14,7 +14,7 @@ use crate::i18n::{t, tf};
 
 type MetaMap = HashMap<String, oneclient_content::packages::CachedPackageMeta>;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, fixed_grid};
 use crate::utils::bundle_display_name;
 use crate::view::onboarding::{
@@ -77,7 +77,7 @@ fn fps_warning_banner() -> impl IntoElement {
     let mut text = paragraph();
     for (run, bold, underlined) in &fps_warning_runs() {
         let mut span = Span::new(*run)
-            .font_size(12.)
+            .font_size(text_size(12.))
             .font_weight(if *bold {
                 FontWeight::BOLD
             } else {
@@ -92,7 +92,7 @@ fn fps_warning_banner() -> impl IntoElement {
 
     rect()
         .width(Size::fill())
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .border(border_all_color(1., colors::code_warn()))
         .padding(Gaps::new_all(8.))
         .child(text)
@@ -328,7 +328,7 @@ impl Component for OnboardingBundles {
                             .width(Size::fill())
                             .height(Size::flex(1.0))
                             .content(Content::Flex)
-                            .corner_radius(CornerRadius::new_all(12.))
+                            .corner_radius(rounded(12.))
                             .background(colors::page_elevated())
                             .border(border_all_color(1., colors::component_border()))
                             .padding(Gaps::new_all(12.))
@@ -368,7 +368,7 @@ fn opt_in_card(
     let mut card = rect().vertical().width(Size::fill()).spacing(10.).child(
         label()
             .text(tf("oneclient.onboarding.bundles.opt_in.question", &[&name]))
-            .font_size(15.)
+            .font_size(text_size(15.))
             .font_weight(FontWeight::SEMI_BOLD)
             .color(colors::fg_primary()),
     );
@@ -448,7 +448,7 @@ fn opt_in_card(
                 .child(
                     label()
                         .text(tf("oneclient.onboarding.bundles.opt_in.versions", &[&name]))
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .color(colors::fg_secondary()),
                 )
                 .child(rect().vertical().spacing(8.).children(rows)),
@@ -507,7 +507,7 @@ fn extras_section(
         .child(
             label()
                 .text(t("oneclient.onboarding.bundles.extras"))
-                .font_size(15.)
+                .font_size(text_size(15.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )

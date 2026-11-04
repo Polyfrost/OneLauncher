@@ -16,7 +16,7 @@ use crate::components::{
 use crate::hooks::{ClusterAction, Selection, use_cluster_mutation, use_dispatch};
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, rounded_px, text_size};
 use crate::ui::border_all_color;
 use crate::{Actions, utils};
 
@@ -26,14 +26,18 @@ pub(super) enum SortMode {
     NameDesc,
     SizeAsc,
     SizeDesc,
+    AddedDesc,
+    UpdatedDesc,
 }
 
 impl SortMode {
-    const ALL: [SortMode; 4] = [
+    const ALL: [SortMode; 6] = [
         SortMode::NameAsc,
         SortMode::NameDesc,
         SortMode::SizeAsc,
         SortMode::SizeDesc,
+        SortMode::AddedDesc,
+        SortMode::UpdatedDesc,
     ];
 
     fn key(self) -> &'static str {
@@ -42,6 +46,8 @@ impl SortMode {
             SortMode::NameDesc => "name_desc",
             SortMode::SizeAsc => "size_asc",
             SortMode::SizeDesc => "size_desc",
+            SortMode::AddedDesc => "added_desc",
+            SortMode::UpdatedDesc => "updated_desc",
         }
     }
 
@@ -55,6 +61,8 @@ impl SortMode {
             SortMode::NameDesc => t("oneclient.cluster.package_manager.sort.name_desc"),
             SortMode::SizeAsc => t("oneclient.cluster.package_manager.sort.size_asc"),
             SortMode::SizeDesc => t("oneclient.cluster.package_manager.sort.size_desc"),
+            SortMode::AddedDesc => t("oneclient.cluster.package_manager.sort.added_desc"),
+            SortMode::UpdatedDesc => t("oneclient.cluster.package_manager.sort.updated_desc"),
         }
     }
 
@@ -65,6 +73,13 @@ impl SortMode {
             SortMode::NameDesc => rows.sort_by_key(|p| std::cmp::Reverse(title(p))),
             SortMode::SizeAsc => rows.sort_by_key(|p| p.size),
             SortMode::SizeDesc => rows.sort_by_key(|p| std::cmp::Reverse(p.size)),
+            // Undated rows (not installed, or added before dates were kept) sink to the bottom
+            SortMode::AddedDesc => {
+                rows.sort_by_key(|p| (std::cmp::Reverse(p.added_at.clone()), title(p)))
+            }
+            SortMode::UpdatedDesc => {
+                rows.sort_by_key(|p| (std::cmp::Reverse(p.published_at.clone()), title(p)))
+            }
             _ => rows.sort_by_key(title),
         }
     }
@@ -197,7 +212,7 @@ impl Bulk {
             Button::new()
                 .secondary()
                 .height(Size::px(34.))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .child(Icon::new(icon).size(15.))
                 .text(text)
         };
@@ -208,7 +223,7 @@ impl Bulk {
                     "oneclient.cluster.package_manager.select.count",
                     &[&self.count],
                 ))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(1)
                 .color(colors::fg_secondary())
                 .into_element(),
@@ -332,6 +347,7 @@ impl Component for FilterTabs {
 
         ScrollArea::new()
             .horizontal(*chips_w.read())
+            .show_scrollbar(false)
             .width(self.width.clone())
             .height(Size::px(TABS_ROW_H))
             .child(
@@ -386,7 +402,7 @@ pub(super) fn toolbar_bar(
     });
 
     let mut top_corners = CornerRadius::new_all(0.);
-    top_corners.fill_top(12.);
+    top_corners.fill_top(rounded_px(12.));
 
     let measured = *toolbar_width.read();
     let stacked = measured > 0. && measured < TOOLBAR_STACK_W;
@@ -433,24 +449,11 @@ pub(super) fn toolbar_bar(
             move || package_list_text(&export, content_type),
         ));
     }
-    let selection = bulk.selection;
-    controls.push(
-        Button::new()
-            .secondary()
-            .height(Size::px(34.))
-            .font_size(12.)
-            .enabled(!bulk.order.is_empty())
-            .tooltip(t("oneclient.cluster.package_manager.select.tooltip"))
-            .on_press(move |_| selection.enter())
-            .child(Icon::new(IconType::Check).size(15.))
-            .text(t("oneclient.cluster.package_manager.select.select"))
-            .into_element(),
-    );
     controls.push(
         Button::new()
             .primary()
             .height(Size::px(34.))
-            .font_size(12.)
+            .font_size(text_size(12.))
             .on_press(move |_| {
                 if local_tab {
                     import_from_file(cluster_id, content_type, dispatch.clone());
@@ -604,7 +607,7 @@ impl Component for CategoryChip {
             .height(Size::px(32.))
             .center()
             .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(background)
             .border(crate::ui::border_all_color(
                 1.,
@@ -624,7 +627,7 @@ impl Component for CategoryChip {
             .child(
                 label()
                     .text(self.label.clone())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(1)
                     .color(if selected {
@@ -696,7 +699,7 @@ pub(crate) fn notice_bar(text: String) -> Element {
         .spacing(10.)
         .margin(Gaps::new(0., 0., 8., 0.))
         .padding(Gaps::new_symmetric(9., 12.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::brand().with_a(30))
         .border(crate::ui::border_all_color(1., colors::brand().with_a(90)))
         .child(
@@ -707,7 +710,7 @@ pub(crate) fn notice_bar(text: String) -> Element {
         .child(
             label()
                 .text(text)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .width(Size::flex(1.0))
                 .color(colors::fg_secondary()),
         )
@@ -850,7 +853,7 @@ impl Component for SectionHeader {
             .cross_align(Alignment::Center)
             .spacing(8.)
             .padding(Gaps::new_symmetric(0., 12.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(if interactive && *hovered.read() {
                 colors::ghost_overlay_hover()
             } else {
@@ -866,14 +869,14 @@ impl Component for SectionHeader {
             .child(
                 label()
                     .text(self.label)
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .font_weight(FontWeight::SEMI_BOLD)
                     .color(colors::fg_primary()),
             )
             .child(
                 label()
                     .text(self.count.to_string())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
     }
@@ -1065,7 +1068,7 @@ impl Component for ContentBox {
                                 .max_width(Size::window_percent(90.))
                                 .spacing(CARD_SPACING)
                                 .padding(Gaps::new_all(20.))
-                                .corner_radius(CornerRadius::new_all(14.))
+                                .corner_radius(rounded(14.))
                                 .background(colors::page_elevated())
                                 .border(border_all_color(1., colors::component_border()))
                                 .child(
@@ -1074,14 +1077,14 @@ impl Component for ContentBox {
                                             "oneclient.cluster.package_manager.copies.title",
                                             &[&(item.copies.len() + 1), &item.name],
                                         ))
-                                        .font_size(16.)
+                                        .font_size(text_size(16.))
                                         .font_weight(FontWeight::SEMI_BOLD)
                                         .color(colors::fg_strong()),
                                 )
                                 .child(
                                     label()
                                         .text(t("oneclient.cluster.package_manager.copies.body"))
-                                        .font_size(12.)
+                                        .font_size(text_size(12.))
                                         .color(colors::fg_secondary()),
                                 )
                                 .children(rows),
@@ -1145,7 +1148,7 @@ impl Component for ContentBox {
         });
 
         let mut bottom_corners = CornerRadius::new_all(0.);
-        bottom_corners.fill_bottom(12.);
+        bottom_corners.fill_bottom(rounded_px(12.));
 
         // File drops are handled window-wide by the app shell so this box does not claim them
         rect()
@@ -1185,14 +1188,14 @@ pub(crate) fn empty_shell(icon: IconType) -> Rect {
 pub(crate) fn empty_title(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
-        .font_size(14.)
+        .font_size(text_size(14.))
         .color(colors::fg_secondary())
 }
 
 pub(crate) fn empty_hint(text: impl Into<String>) -> impl IntoElement {
     label()
         .text(text.into())
-        .font_size(12.)
+        .font_size(text_size(12.))
         .color(colors::fg_secondary())
 }
 

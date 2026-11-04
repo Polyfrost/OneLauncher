@@ -64,6 +64,7 @@ pub struct Picks {
     pub choice: TypeChoice,
     pub modpack_origin: ModpackOrigin,
     pub import_source: ImportSource,
+    pub share_code: String,
     pub import_count: usize,
     pub import_mode: ImportMode,
     pub import_screening: Option<Vec<ScreenedInstance>>,
@@ -87,6 +88,22 @@ impl Picks {
             .sum()
     }
 
+    pub fn unpublished_count(&self) -> usize {
+        self.import_screening
+            .iter()
+            .flatten()
+            .map(|screened| screened.unpublished.len())
+            .sum()
+    }
+
+    pub fn unconfirmed_count(&self) -> usize {
+        self.import_screening
+            .iter()
+            .flatten()
+            .map(|screened| screened.unconfirmed)
+            .sum()
+    }
+
     pub fn import_jobs(&self, chosen: &[ExternalInstance]) -> Vec<ExternalImportJob> {
         chosen
             .iter()
@@ -100,6 +117,7 @@ impl Picks {
                     .iter()
                     .flatten()
                     .find(|screened| screened.game_dir == instance.game_dir);
+                job.reviewed = screened.map(|screened| screened.mods_stamp);
                 for flagged in screened.iter().flat_map(|screened| &screened.flagged) {
                     match decision_for(&self.import_decisions, &instance.game_dir, flagged) {
                         ModDecision::Keep => {}
@@ -459,6 +477,7 @@ pub fn resolve(w: Wizard) -> Picks {
         choice,
         modpack_origin: *w.modpack_origin.read(),
         import_source,
+        share_code: w.share_code.read().clone(),
         import_count: w.import_chosen.read().len(),
         import_mode,
         import_screening,

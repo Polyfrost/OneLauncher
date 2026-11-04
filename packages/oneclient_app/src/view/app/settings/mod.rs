@@ -9,12 +9,14 @@ mod language;
 mod launcher;
 mod minecraft;
 mod storage;
+mod theme_editor;
 
 use freya::prelude::*;
 
 pub use accounts::SettingsAccounts;
 pub use apis::SettingsApis;
 pub use appearance::SettingsAppearance;
+pub(crate) use appearance::theme_cards;
 pub use changelog::SettingsChangelog;
 pub use developer::SettingsDeveloper;
 pub use java::SettingsJava;
@@ -22,11 +24,12 @@ pub use language::SettingsLanguage;
 pub use launcher::SettingsLauncher;
 pub use minecraft::SettingsMinecraft;
 pub use storage::SettingsStorage;
+pub use theme_editor::SettingsThemeEditor;
 
 use crate::{
     components::{Button, Icon, IconType},
     i18n::t,
-    theme::colors,
+    theme::{colors, rounded, text_size},
     ui::border_all_color,
 };
 
@@ -40,7 +43,7 @@ pub fn section_header(text: &'static str) -> impl IntoElement {
         .child(
             label()
                 .text(text)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_secondary()),
         )
@@ -99,7 +102,7 @@ fn settings_row_inner(
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(if danger {
             colors::danger().with_a(26)
         } else {
@@ -117,14 +120,14 @@ fn settings_row_inner(
                 .child(
                     label()
                         .text(title)
-                        .font_size(16.)
+                        .font_size(text_size(16.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(description)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         )

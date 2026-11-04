@@ -5,7 +5,9 @@ use oneclient_core::LauncherState;
 
 use crate::Actions;
 use crate::components::IconType;
-use crate::hooks::{use_dispatch, use_launcher, use_pending_launch, use_settings_snapshot};
+use crate::hooks::{
+    use_dispatch, use_launcher, use_pending_launch, use_pending_share, use_settings_snapshot,
+};
 use crate::i18n::{t, tf};
 use crate::launcher;
 use crate::routes::Route;
@@ -18,12 +20,23 @@ impl Component for PendingLaunchDriver {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let waiting = use_pending_launch().is_some();
+        let sharing = use_pending_share().is_some();
         let ready = use_launcher().ready;
         let onboarded = use_settings_snapshot().settings.seen_onboarding;
 
         let router = RouterContext::get();
 
         let armed = waiting && ready && onboarded;
+        let share_armed = sharing && ready && onboarded;
+        let share_dispatch = dispatch.clone();
+        use_side_effect_with_deps(&share_armed, move |&armed| {
+            if !armed {
+                return;
+            }
+            if let Some(code) = share_dispatch.take_pending_share() {
+                share_dispatch.import_share(code);
+            }
+        });
         use_side_effect_with_deps(&armed, move |&armed| {
             if !armed {
                 return;

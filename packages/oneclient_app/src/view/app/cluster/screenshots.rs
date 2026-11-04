@@ -15,7 +15,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, flow_grid, fmt_date, grid_columns_for_width};
 use crate::utils::{format_res, format_size};
 
@@ -269,7 +269,7 @@ fn toolbar_row(
                         "oneclient.cluster.package_manager.select.count",
                         &[&count],
                     ))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary()),
             )
             .child(
@@ -339,7 +339,7 @@ fn toolbar_row(
             rect().width(Size::flex(1.0)).child(
                 label()
                     .text(t("oneclient.cluster.screenshots.title"))
-                    .font_size(20.)
+                    .font_size(text_size(20.))
                     .font_weight(FontWeight::SEMI_BOLD)
                     .color(colors::fg_primary()),
             ),
@@ -360,7 +360,7 @@ fn empty_state(loading: bool) -> impl IntoElement {
                 } else {
                     t("oneclient.cluster.screenshots.empty")
                 })
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -387,7 +387,7 @@ fn confirm_panel(
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
@@ -400,14 +400,14 @@ fn confirm_panel(
                                         &[&count],
                                     )
                                 })
-                                .font_size(16.)
+                                .font_size(text_size(16.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
                         .child(
                             label()
                                 .text(t("oneclient.cluster.screenshots.delete.body"))
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         )
                         .child(
@@ -440,10 +440,15 @@ fn res_badge(res: Option<(u32, u32)>) -> Option<Element> {
         rect()
             .position(Position::new_absolute().bottom(6.).right(6.))
             .padding(Gaps::new_symmetric(2., 6.))
-            .corner_radius(CornerRadius::new_all(5.))
+            .corner_radius(rounded(5.))
             .background(Color::from_argb(170, 0, 0, 0))
             .layer(Layer::Relative(3))
-            .child(label().text(text).font_size(9.).color(Color::WHITE))
+            .child(
+                label()
+                    .text(text)
+                    .font_size(text_size(9.))
+                    .color(Color::WHITE),
+            )
             .into_element()
     })
 }
@@ -453,9 +458,13 @@ fn preview_box(path: PathBuf, height: f32, res: Option<(u32, u32)>) -> impl Into
         .width(Size::fill())
         .height(Size::px(height))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::component_bg())
-        .child(LocalImage::new(path, THUMB_EDGE, true).skeleton(true))
+        .child(
+            LocalImage::new(path, THUMB_EDGE, true)
+                .skeleton(true)
+                .retained(true),
+        )
         .maybe_child(res_badge(res))
         .margin(1.)
         .into_element()
@@ -491,7 +500,7 @@ impl Component for ScreenshotTile {
             .vertical()
             .width(Size::flex(1.0))
             .max_width(Size::px(MAX_COL_W))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::card())
             .overflow(Overflow::Clip)
             .border(border_all_color(1., border_color).alignment(BorderAlignment::Inner))
@@ -518,7 +527,7 @@ impl Component for ScreenshotTile {
                     .child(
                         label()
                             .text(info.name.clone())
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .width(Size::fill())
@@ -531,7 +540,7 @@ impl Component for ScreenshotTile {
                                 format_size(info.size_bytes),
                                 fmt_date(info.created)
                             ))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -559,10 +568,14 @@ impl Component for ScreenshotRow {
         let thumb = rect()
             .width(Size::px(64.))
             .height(Size::px(40.))
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .overflow(Overflow::Clip)
             .background(colors::component_bg())
-            .child(LocalImage::new(info.path.clone(), THUMB_EDGE, true).skeleton(true));
+            .child(
+                LocalImage::new(info.path.clone(), THUMB_EDGE, true)
+                    .skeleton(true)
+                    .retained(true),
+            );
 
         rect()
             .horizontal()
@@ -571,7 +584,7 @@ impl Component for ScreenshotRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_symmetric(8., 10.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(if *hovered.read() {
                 colors::component_bg_hover()
             } else {
@@ -599,7 +612,7 @@ impl Component for ScreenshotRow {
                 rect().width(Size::flex(1.0)).child(
                     label()
                         .text(info.name.clone())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .max_lines(1)
                         .width(Size::fill())
                         .color(colors::fg_primary()),
@@ -608,20 +621,20 @@ impl Component for ScreenshotRow {
             .maybe_child(info.resolution.map(|res| {
                 label()
                     .text(format_res(res))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary())
                     .into_element()
             }))
             .child(
                 label()
                     .text(format_size(info.size_bytes))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(fmt_date(info.created))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::fg_secondary()),
             )
     }

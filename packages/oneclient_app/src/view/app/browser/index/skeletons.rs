@@ -2,14 +2,14 @@ use super::*;
 
 use freya::animation::{AnimNum, Ease, Function, OnCreation, OnFinish, use_animation};
 
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
 
 fn skeleton_block(width: Size, height: f32) -> impl IntoElement {
     rect()
         .width(width)
         .height(Size::px(height))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(colors::component_bg())
         .into_element()
 }
@@ -36,7 +36,7 @@ impl Component for SkeletonCard {
             .vertical()
             .width(Size::flex(1.0))
             .height(Size::px(CARD_H))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .overflow(Overflow::Clip)
@@ -82,7 +82,7 @@ impl Component for SkeletonListRow {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_all(10.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .opacity(pulse)

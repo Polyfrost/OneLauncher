@@ -1,52 +1,21 @@
 use std::time::Duration;
 
 use freya::prelude::*;
-use oneclient_core::settings::{AppTheme, LauncherSettings};
+use freya::router::RouterContext;
+use oneclient_core::settings::LauncherSettings;
 
 use super::settings_page;
-use crate::components::{ColorPicker, Icon, IconType, toggle};
+use crate::components::{ColorPicker, IconType, link_button, toggle};
 use crate::hooks::{Actions, use_debounced, use_dispatch, use_settings_snapshot};
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::routes::Route;
+use crate::theme::{
+    SYSTEM_THEME,
+    colors::{self, Palette},
+    resolve_theme, rounded, system_aware, text_size, themes,
+};
 use crate::ui::border_all_color;
-use crate::view::app::settings::{resettable, settings_row, settings_row_disabled};
-
-#[derive(Clone, Copy)]
-struct ThemePreview {
-    background: Color,
-    accent: Color,
-    light: bool,
-}
-
-fn themes() -> [ThemePreview; 5] {
-    [
-        ThemePreview {
-            background: Color::from_rgb(17, 23, 28),
-            accent: Color::from_rgb(43, 75, 255),
-            light: false,
-        },
-        ThemePreview {
-            background: Color::from_rgb(0, 0, 0),
-            accent: Color::from_rgb(111, 143, 255),
-            light: false,
-        },
-        ThemePreview {
-            background: Color::from_rgb(40, 42, 54),
-            accent: Color::from_rgb(121, 112, 169),
-            light: false,
-        },
-        ThemePreview {
-            background: Color::from_rgb(244, 250, 255),
-            accent: Color::from_rgb(57, 87, 255),
-            light: true,
-        },
-        ThemePreview {
-            background: Color::from_rgb(255, 255, 255),
-            accent: Color::from_rgb(192, 195, 210),
-            light: true,
-        },
-    ]
-}
+use crate::view::app::settings::{resettable, settings_row};
 
 #[derive(PartialEq)]
 pub struct SettingsAppearance;
@@ -99,7 +68,7 @@ impl Component for SettingsAppearance {
         });
 
         settings_page()
-            .child(theme_section(settings.theme, dispatch.clone()))
+            .child(theme_section(&settings.theme, dispatch.clone()))
             .child(
                 rect()
                     .vertical()
@@ -118,7 +87,7 @@ impl Component for SettingsAppearance {
                 rect().padding(Gaps::new(8., 0., 0., 0.)).child(
                     label()
                         .text(t("oneclient.settings.appearance.language_hint"))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_primary()),
                 ),
             )
@@ -126,37 +95,68 @@ impl Component for SettingsAppearance {
     }
 }
 
-fn theme_section(selected: AppTheme, dispatch: Actions) -> impl IntoElement {
-    let list = themes();
-    let selected_index = AppTheme::ALL
-        .iter()
-        .position(|theme| *theme == selected)
-        .unwrap_or_default();
-    let current = list[selected_index];
+fn theme_section(selected: &str, dispatch: Actions) -> impl IntoElement {
+    let system_dark =
+        *Platform::get().current_window().preferred_theme.read() == PreferredTheme::Dark;
+    let active = resolve_theme(system_aware(selected, system_dark));
 
     rect()
         .horizontal()
         .spacing(16.)
-        .child(big_preview(current))
-        .child(
-            rect()
-                .vertical()
-                .spacing(16.)
-                .child(rect().horizontal().spacing(16.).children(
-                    (0..3).map(|i| theme_card(list[i], i, selected_index, dispatch.clone())),
-                ))
-                .child(rect().horizontal().spacing(16.).children(
-                    (3..5).map(|i| theme_card(list[i], i, selected_index, dispatch.clone())),
-                )),
-        )
+        .child(big_preview(active.colors))
+        .child(theme_cards(selected, dispatch))
         .into_element()
 }
 
-fn big_preview(theme: ThemePreview) -> impl IntoElement {
+pub(crate) fn theme_cards(selected: &str, dispatch: Actions) -> impl IntoElement {
+    let system_dark =
+        *Platform::get().current_window().preferred_theme.read() == PreferredTheme::Dark;
+    let active = resolve_theme(system_aware(selected, system_dark));
+    let (dark, light) = (resolve_theme("dark"), resolve_theme("light"));
+
+    let system = ThemeCard {
+        id: SYSTEM_THEME.to_string(),
+        name: "System".to_string(),
+        background: LinearGradient::new()
+            .angle(-90.)
+            .stop((dark.colors.page.0, 0.))
+            .stop((dark.colors.page.0, 50.))
+            .stop((light.colors.page.0, 50.))
+            .stop((light.colors.page.0, 100.))
+            .into(),
+        preview: dark.colors,
+        radius_scale: dark.radius_scale,
+        selected: selected == SYSTEM_THEME,
+    };
+    let cards: Vec<ThemeCard> = std::iter::once(system)
+        .chain(themes().iter().map(|theme| ThemeCard {
+            id: theme.id.clone(),
+            name: theme.name.clone(),
+            background: theme.colors.page.0.into(),
+            preview: theme.colors,
+            radius_scale: theme.radius_scale,
+            selected: selected != SYSTEM_THEME && theme.id == active.id,
+        }))
+        .collect();
+
+    rect()
+        .vertical()
+        .spacing(16.)
+        .children(cards.chunks(3).map(|row| {
+            rect()
+                .horizontal()
+                .spacing(16.)
+                .children(row.iter().map(|card| theme_card(card, dispatch.clone())))
+                .into_element()
+        }))
+        .into_element()
+}
+
+fn big_preview(theme: Palette) -> impl IntoElement {
     rect()
         .width(Size::px(296.))
         .height(Size::px(183.))
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::page())
         .border(border_all_color(3., Color::from_argb(26, 255, 255, 255)))
         .center()
@@ -165,26 +165,30 @@ fn big_preview(theme: ThemePreview) -> impl IntoElement {
                 .vertical()
                 .width(Size::px(168.))
                 .height(Size::px(123.))
-                .corner_radius(CornerRadius::new_all(8.))
-                .background(theme.background)
+                .corner_radius(rounded(8.))
+                .background(theme.page.0)
                 .border(border_all_color(1., colors::component_border()))
                 .padding(20.)
                 .spacing(20.)
-                .child(mock_line(108., theme.accent))
+                .child(mock_line(108., theme.accent.0))
                 .child(mock_line(84., line_tint(theme)))
-                .child(split_bar(theme.accent, 96.)),
+                .child(split_bar(theme.accent.0, 96.)),
         )
         .into_element()
 }
 
-fn theme_card(
-    theme: ThemePreview,
-    index: usize,
-    selected_index: usize,
-    dispatch: Actions,
-) -> Element {
-    let is_selected = selected_index == index;
-    let border_color = if is_selected {
+struct ThemeCard {
+    id: String,
+    name: String,
+    background: Fill,
+    preview: Palette,
+    radius_scale: f32,
+    selected: bool,
+}
+
+fn theme_card(card: &ThemeCard, dispatch: Actions) -> Element {
+    let id = card.id.clone();
+    let border_color = if card.selected {
         colors::brand()
     } else {
         colors::component_border()
@@ -192,19 +196,42 @@ fn theme_card(
 
     rect()
         .vertical()
-        .width(Size::px(126.))
-        .height(Size::px(78.))
-        .corner_radius(CornerRadius::new_all(8.))
-        .background(theme.background)
-        .border(border_all_color(1., border_color))
-        .padding(8.)
-        .spacing(20.)
+        .spacing(6.)
         .cursor(CursorIcon::Pointer)
         .on_press(move |_| {
-            dispatch.edit_settings(|settings| settings.theme = AppTheme::ALL[index]);
+            dispatch.edit_settings(|settings| settings.theme = id.clone());
         })
-        .child(mock_line(108., line_tint(theme)))
-        .child(split_bar(theme.accent, 96.))
+        .child(
+            rect()
+                .vertical()
+                .width(Size::px(126.))
+                .height(Size::px(78.))
+                .corner_radius(CornerRadius::new_all(8. * card.radius_scale))
+                .background(card.background.clone())
+                .border(border_all_color(1., border_color))
+                .padding(8.)
+                .spacing(20.)
+                .child(mock_line(108., line_tint(card.preview)))
+                .child(split_bar(card.preview.accent.0, 96.)),
+        )
+        .child(
+            label()
+                .text(card.name.clone())
+                .width(Size::px(126.))
+                .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
+                .font_size(text_size(12.))
+                .font_weight(if card.selected {
+                    FontWeight::MEDIUM
+                } else {
+                    FontWeight::NORMAL
+                })
+                .color(if card.selected {
+                    colors::fg_primary()
+                } else {
+                    colors::fg_secondary()
+                }),
+        )
         .into_element()
 }
 
@@ -212,7 +239,7 @@ fn mock_line(width: f32, color: Color) -> impl IntoElement {
     rect()
         .width(Size::px(width))
         .height(Size::px(10.))
-        .corner_radius(CornerRadius::new_all(4.))
+        .corner_radius(rounded(4.))
         .background(color)
         .into_element()
 }
@@ -222,19 +249,19 @@ fn split_bar(accent: Color, width: f32) -> impl IntoElement {
         .horizontal()
         .width(Size::px(width))
         .height(Size::px(16.))
-        .corner_radius(CornerRadius::new_all(4.))
+        .corner_radius(rounded(4.))
         .background(accent.with_a(128))
         .child(
             rect()
                 .width(Size::px(width / 3.))
                 .height(Size::fill())
-                .corner_radius(CornerRadius::new_all(4.))
+                .corner_radius(rounded(4.))
                 .background(accent),
         )
         .into_element()
 }
 
-fn line_tint(theme: ThemePreview) -> Color {
+fn line_tint(theme: Palette) -> Color {
     if theme.light {
         Color::from_argb(38, 0, 0, 0)
     } else {
@@ -266,11 +293,13 @@ fn accent_color_row(accent: State<Option<String>>, default: Option<String>) -> i
 }
 
 fn custom_theme_row() -> impl IntoElement {
-    settings_row_disabled(
+    settings_row(
         IconType::Colors,
         t("oneclient.settings.appearance.custom_theme.title"),
         t("oneclient.settings.appearance.custom_theme.description"),
-        Icon::new(IconType::ChevronRight).size(18.).into_element(),
+        link_button().on_press(|_| {
+            let _ = RouterContext::get().push(Route::SettingsThemeEditor {});
+        }),
     )
 }
 

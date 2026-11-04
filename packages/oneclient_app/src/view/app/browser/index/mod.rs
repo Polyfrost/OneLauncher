@@ -29,7 +29,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::grid_columns_for_width;
 use crate::view::app::cluster::supports_datapacks;
 use crate::view::app::clusters::ClusterPickerButton;
@@ -195,7 +195,7 @@ struct BrowserBody {
 }
 
 impl KeyExt for BrowserBody {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -533,7 +533,7 @@ fn header(
                             "oneclient.browser.index.title",
                             &[&type_title(package_type)],
                         ))
-                        .font_size(32.)
+                        .font_size(text_size(32.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 )
@@ -583,18 +583,18 @@ fn target_pill(verb: &'static str, name: &str) -> impl IntoElement {
         .height(Size::px(30.))
         .spacing(6.)
         .padding(Gaps::new_symmetric(0., 10.))
-        .corner_radius(CornerRadius::new_all(6.))
+        .corner_radius(rounded(6.))
         .background(colors::ghost_overlay())
         .child(
             label()
                 .text(verb)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .child(
             label()
                 .text(name.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(1)
                 .color(colors::fg_primary()),
         )
@@ -631,7 +631,7 @@ fn results_toolbar(
         .child(
             label()
                 .text(summary)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_primary().with_a(140)),
         )
         .child(rect().width(Size::flex(1.0)))

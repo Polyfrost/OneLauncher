@@ -10,7 +10,7 @@ use crate::hooks::{
     use_changelog, use_dispatch, use_settings_snapshot,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 
 #[derive(PartialEq)]
 pub struct SettingsChangelog;
@@ -39,7 +39,7 @@ impl Component for SettingsChangelog {
                 .child(
                     label()
                         .text(t("oneclient.settings.changelog.loading"))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .color(colors::fg_secondary()),
                 )
                 .into_element();
@@ -50,7 +50,7 @@ impl Component for SettingsChangelog {
                 .child(
                     label()
                         .text(tf("oneclient.settings.changelog.load_failed", &[&error]))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .color(colors::fg_secondary()),
                 )
                 .into_element();
@@ -116,7 +116,7 @@ impl Component for ReleaseCard {
             .width(Size::fill())
             .spacing(8.)
             .padding(Gaps::new_symmetric(12., 16.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .child(
                 rect()
@@ -132,7 +132,7 @@ impl Component for ReleaseCard {
                     .child(
                         label()
                             .text(title)
-                            .font_size(18.)
+                            .font_size(text_size(18.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
@@ -146,7 +146,7 @@ impl Component for ReleaseCard {
                 if self.body.trim().is_empty() {
                     label()
                         .text(t("oneclient.settings.changelog.empty"))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary())
                         .into_element()
                 } else {

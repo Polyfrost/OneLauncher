@@ -1,18 +1,23 @@
 use std::collections::HashMap;
 
 use freya::prelude::*;
-use oneclient_content::modpacks::ModpackSummary;
+use oneclient_content::modpacks::{ModpackSummary, UnlistedMod};
 use oneclient_content::packages::ResolvedAlternative;
 use oneclient_core::clusters::{ExistingPack, FlaggedModpack, FlaggedPackMod};
 
 use super::flagged_install_popup::explanation_panel;
-use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, remote_icon};
+use crate::components::{
+    Button, Icon, IconType, OverlayPopup, ScrollArea, caution_card, remote_icon, warning_card,
+    warning_list,
+};
 use crate::hooks::{use_cached_image, use_dispatch, use_notifications_snapshot};
-use crate::i18n::{format_placeholders, t, tf};
-use crate::notifications::{ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView};
-use crate::theme::colors;
+use crate::i18n::{t, tf};
+use crate::notifications::{
+    ExistingPackView, FlaggedChoice, ModpackConfirm, ModpackImportView, SharedPreview,
+};
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
-use crate::utils::format_size;
+use crate::utils::{count_label, format_size};
 
 const DIALOG_W: f32 = 500.;
 const DIALOG_PAD: f32 = 22.;
@@ -77,9 +82,7 @@ impl Component for ConfirmDialog {
         let footer_h = use_state(|| 0f32);
         let content_h = use_state(|| 0f32);
 
-        let platform = Platform::get();
-        let scale = (*platform.scale_factor.read() as f32).max(1.);
-        let window_h = platform.root_size.read().height / scale;
+        let window_h = Platform::get().current_window().root_size.read().height;
         let room = window_h * WINDOW_SHARE
             - 2. * DIALOG_PAD
             - 2. * SECTION_GAP
@@ -117,10 +120,6 @@ fn track_height(mut target: State<f32>) -> impl FnMut(Event<SizedEventData>) {
             target.set(h);
         }
     }
-}
-
-fn count_label(count: usize, one: &str, many: &str) -> String {
-    format_placeholders(if count == 1 { one } else { many }, &[&count])
 }
 
 fn content_line(summary: &ModpackSummary) -> String {
@@ -180,16 +179,6 @@ fn notes(summary: &ModpackSummary) -> Vec<(String, Color)> {
             colors::code_warn(),
         ));
     }
-    if summary.unverified > 0 {
-        notes.push((
-            count_label(
-                summary.unverified,
-                t("oneclient.components.modpack_confirm.note.unverified.one"),
-                t("oneclient.components.modpack_confirm.note.unverified.other"),
-            ),
-            colors::danger(),
-        ));
-    }
     if summary.unresolved > 0 {
         notes.push((
             count_label(
@@ -213,14 +202,14 @@ fn fact(name: &'static str, value: String) -> Element {
             label()
                 .text(name)
                 .width(Size::px(FACT_LABEL_W))
-                .font_size(12.5)
+                .font_size(text_size(12.5))
                 .color(colors::fg_secondary()),
         )
         .child(
             label()
                 .text(value)
                 .width(Size::flex(1.))
-                .font_size(12.5)
+                .font_size(text_size(12.5))
                 .max_lines(2)
                 .color(colors::fg_primary()),
         )
@@ -324,7 +313,7 @@ fn dialog(
         .map(|(text, warn)| {
             label()
                 .text(text.clone())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(4)
                 .color(if *warn {
                     colors::code_warn()
@@ -343,6 +332,31 @@ fn dialog(
         .flagged
         .as_ref()
         .map(|flagged| flagged_pack_section(&confirm.pack_name, flagged).into_element());
+    let unlisted =
+        (!confirm.unlisted.is_empty()).then(|| unlisted_section(&confirm.unlisted).into_element());
+    let unverified =
+        (summary.unverified > 0).then(|| unverified_card(summary.unverified).into_element());
+    let unchecked = if confirm.mods_unchecked {
+        Some(caution_card(
+            t("oneclient.components.modpack_confirm.unchecked.title"),
+            t("oneclient.components.modpack_confirm.unchecked.body"),
+        ))
+    } else if confirm.mods_unconfirmed > 0 {
+        Some(caution_card(
+            count_label(
+                confirm.mods_unconfirmed,
+                t("oneclient.components.modpack_confirm.unconfirmed.title.one"),
+                t("oneclient.components.modpack_confirm.unconfirmed.title.other"),
+            ),
+            t("oneclient.components.modpack_confirm.unconfirmed.body"),
+        ))
+    } else {
+        None
+    }
+    .map(IntoElement::into_element);
+    let warned =
+        flagged_pack.is_some() || unlisted.is_some() || unverified.is_some() || unchecked.is_some();
+    let shared_section = confirm.shared.as_ref().map(shared_section);
     let add_button = Button::new().on_press(move |_| {
         if importing {
             add.confirm_modpack_import(choices.read().clone(), *existing.read());
@@ -350,7 +364,7 @@ fn dialog(
             add.confirm_modpack();
         }
     });
-    let add_button = match (flagged_pack.is_some(), importing) {
+    let add_button = match (warned, importing) {
         (true, true) => add_button
             .danger()
             .text(t("oneclient.components.modpack_confirm.add_anyway")),
@@ -370,7 +384,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -396,7 +410,7 @@ fn dialog(
                         .child(
                             label()
                                 .text(title)
-                                .font_size(17.)
+                                .font_size(text_size(17.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .max_lines(2)
                                 .color(colors::fg_primary()),
@@ -404,7 +418,7 @@ fn dialog(
                         .child(
                             label()
                                 .text(subtitle)
-                                .font_size(12.5)
+                                .font_size(text_size(12.5))
                                 .max_lines(3)
                                 .color(colors::fg_secondary()),
                         ),
@@ -421,13 +435,16 @@ fn dialog(
                                 .spacing(SECTION_GAP)
                                 .on_sized(track_height(measured.content_h))
                                 .maybe_child(flagged_pack)
+                                .maybe_child(unlisted)
+                                .maybe_child(unverified)
+                                .maybe_child(unchecked)
                                 .child(
                                     rect()
                                         .vertical()
                                         .width(Size::fill())
                                         .spacing(8.)
                                         .padding(Gaps::new_all(12.))
-                                        .corner_radius(CornerRadius::new_all(10.))
+                                        .corner_radius(rounded(10.))
                                         .background(colors::component_bg())
                                         .border(border_all_color(1., colors::component_border()))
                                         .children(facts),
@@ -441,12 +458,13 @@ fn dialog(
                                         .map(|(text, color)| {
                                             label()
                                                 .text(text)
-                                                .font_size(12.)
+                                                .font_size(text_size(12.))
                                                 .max_lines(3)
                                                 .color(color)
                                                 .into_element()
                                         }),
                                 )
+                                .maybe_child(shared_section)
                                 .children(import_notes)
                                 .maybe_child(existing_section)
                                 .maybe_child(flagged_section),
@@ -471,6 +489,112 @@ fn dialog(
         )
 }
 
+fn shared_section(preview: &SharedPreview) -> Element {
+    let unverified = preview.files.iter().filter(|file| !file.verified).count();
+    let mut lines = vec![
+        label()
+            .text(tf(
+                "oneclient.components.modpack_confirm.shared.linked",
+                &[&preview.code],
+            ))
+            .font_size(text_size(12.))
+            .max_lines(4)
+            .color(colors::fg_secondary())
+            .into_element(),
+    ];
+    if unverified > 0 {
+        lines.push(
+            label()
+                .text(count_label(
+                    unverified,
+                    t("oneclient.components.modpack_confirm.shared.unverified.one"),
+                    t("oneclient.components.modpack_confirm.shared.unverified.other"),
+                ))
+                .font_size(text_size(12.))
+                .max_lines(3)
+                .color(colors::code_warn())
+                .into_element(),
+        );
+    }
+    if preview.settings > 0 {
+        lines.push(
+            label()
+                .text(count_label(
+                    preview.settings,
+                    t("oneclient.components.modpack_confirm.shared.settings.one"),
+                    t("oneclient.components.modpack_confirm.shared.settings.other"),
+                ))
+                .font_size(text_size(12.))
+                .color(colors::fg_secondary())
+                .into_element(),
+        );
+    }
+
+    let rows: Vec<Element> = preview
+        .files
+        .iter()
+        .map(|file| {
+            rect()
+                .horizontal()
+                .width(Size::fill())
+                .content(Content::Flex)
+                .cross_align(Alignment::Center)
+                .spacing(10.)
+                .child(
+                    label()
+                        .text(file.name.clone())
+                        .width(Size::flex(1.))
+                        .font_size(text_size(12.5))
+                        .max_lines(1)
+                        .text_overflow(TextOverflow::Ellipsis)
+                        .color(colors::fg_primary()),
+                )
+                .child(label().text(file.source).font_size(text_size(11.5)).color(
+                    if file.verified {
+                        colors::fg_secondary()
+                    } else {
+                        colors::code_warn()
+                    },
+                ))
+                .into_element()
+        })
+        .collect();
+
+    let mut section = rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(8.)
+        .children(lines);
+    if !rows.is_empty() {
+        section = section.child(
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(6.)
+                .padding(Gaps::new_all(12.))
+                .corner_radius(rounded(10.))
+                .background(colors::component_bg())
+                .border(border_all_color(1., colors::component_border()))
+                .child(
+                    label()
+                        .text(t("oneclient.components.modpack_confirm.shared.inside"))
+                        .font_size(text_size(12.5))
+                        .font_weight(FontWeight::SEMI_BOLD)
+                        .color(colors::fg_primary()),
+                )
+                .children(rows)
+                .maybe_child(preview.truncated.then(|| {
+                    label()
+                        .text(t("oneclient.components.modpack_confirm.shared.more"))
+                        .font_size(text_size(12.))
+                        .color(colors::fg_secondary())
+                        .into_element()
+                })),
+        );
+    }
+    section.into_element()
+}
+
 fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> impl IntoElement {
     let current = *existing.read();
     let mut replace = existing;
@@ -480,7 +604,7 @@ fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> i
         .width(Size::fill())
         .spacing(8.)
         .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -496,7 +620,7 @@ fn existing_section(pack: &ExistingPackView, existing: State<ExistingPack>) -> i
                         &[&pack.name, &pack.version],
                     )
                 })
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(4)
                 .color(colors::fg_primary()),
         )
@@ -535,7 +659,7 @@ fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoE
                 .child(
                     label()
                         .text(t("oneclient.components.modpack_confirm.flagged_pack.title"))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),
@@ -546,7 +670,7 @@ fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoE
                     "oneclient.components.modpack_confirm.flagged_pack.body",
                     &[&pack_name],
                 ))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(3)
                 .color(colors::fg_secondary()),
         )
@@ -556,6 +680,40 @@ fn flagged_pack_section(pack_name: &str, flagged: &FlaggedModpack) -> impl IntoE
                 .clone()
                 .map(|markdown| explanation_panel(markdown).into_element()),
         )
+}
+
+fn unlisted_section(mods: &[UnlistedMod]) -> impl IntoElement {
+    warning_card(
+        count_label(
+            mods.len(),
+            t("oneclient.components.modpack_confirm.unlisted.title.one"),
+            t("oneclient.components.modpack_confirm.unlisted.title.other"),
+        ),
+        t("oneclient.components.modpack_confirm.unlisted.body"),
+    )
+    .child(warning_list(mods.iter().map(|unlisted| {
+        let origin = if unlisted.bundled {
+            t("oneclient.components.modpack_confirm.unlisted.bundled")
+        } else {
+            t("oneclient.components.modpack_confirm.unlisted.external")
+        };
+        (unlisted.name.clone(), Some(origin.to_string()))
+    })))
+}
+
+fn unverified_card(count: usize) -> impl IntoElement {
+    warning_card(
+        count_label(
+            count,
+            t("oneclient.components.modpack_confirm.unverified.title.one"),
+            t("oneclient.components.modpack_confirm.unverified.title.other"),
+        ),
+        count_label(
+            count,
+            t("oneclient.components.modpack_confirm.unverified.body.one"),
+            t("oneclient.components.modpack_confirm.unverified.body.other"),
+        ),
+    )
 }
 
 fn flagged_section(
@@ -585,7 +743,7 @@ fn flagged_section(
                             t("oneclient.components.modpack_confirm.flagged.title.one"),
                             t("oneclient.components.modpack_confirm.flagged.title.other"),
                         ))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 ),
@@ -593,7 +751,7 @@ fn flagged_section(
         .child(
             label()
                 .text(t("oneclient.components.modpack_confirm.flagged.body"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(3)
                 .color(colors::fg_secondary()),
         )
@@ -637,7 +795,7 @@ impl Component for FlaggedCard {
             .width(Size::fill())
             .spacing(8.)
             .padding(Gaps::new_all(12.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::component_bg())
             .border(border_all_color(1., colors::component_border()))
             .child(
@@ -651,7 +809,7 @@ impl Component for FlaggedCard {
                         label()
                             .text(self.flagged.name.clone())
                             .width(Size::flex(1.))
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .max_lines(1)
                             .color(colors::fg_primary()),
@@ -679,7 +837,7 @@ impl Component for FlaggedCard {
                         .text(t(
                             "oneclient.components.modpack_confirm.flagged.alternatives",
                         ))
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 )
                 .children(self.flagged.alternatives.iter().enumerate().map(
@@ -761,7 +919,7 @@ impl Component for AlternativeChoice {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_symmetric(0., 8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(colors::card())
             .border(border_all_color(1., colors::component_border()))
             .child(icon)
@@ -773,7 +931,7 @@ impl Component for AlternativeChoice {
                     .child(
                         label()
                             .text(self.alternative.name.clone())
-                            .font_size(12.5)
+                            .font_size(text_size(12.5))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .max_lines(1)
                             .color(colors::fg_primary()),
@@ -781,7 +939,7 @@ impl Component for AlternativeChoice {
                     .child(
                         label()
                             .text(version)
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(1)
                             .color(colors::fg_secondary()),
                     ),

@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Button, Icon, IconType, OverlayPopup, TextInput};
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{EDGE_MARGIN, border_all_color, clamp_to_window, window_logical_size};
 
 const POPUP_WIDTH: f32 = 280.;
@@ -137,7 +137,7 @@ impl Component for ColorPicker {
             .cross_align(Alignment::Center)
             .spacing(12.)
             .padding(Gaps::new_symmetric(8., 16.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(current)
             .border(border_all_color(1., colors::component_border()))
             .cursor(CursorIcon::Pointer)
@@ -157,7 +157,7 @@ impl Component for ColorPicker {
             .child(
                 label()
                     .text(colors::format_hex(current))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(on_current),
             );
 
@@ -194,7 +194,7 @@ impl Component for ColorPicker {
                 .child(
                     label()
                         .text(t("oneclient.components.color_picker.title"))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .color(colors::fg_primary()),
                 )
                 .child(
@@ -229,7 +229,7 @@ impl Component for ColorPicker {
                     rect()
                         .width(Size::fill())
                         .height(Size::fill())
-                        .corner_radius(CornerRadius::new_all(8.))
+                        .corner_radius(rounded(8.))
                         .overflow(Overflow::Clip)
                         .background(
                             LinearGradient::new()
@@ -257,7 +257,7 @@ impl Component for ColorPicker {
                         .interactive(false)
                         .width(Size::px(SV_HANDLE))
                         .height(Size::px(SV_HANDLE))
-                        .corner_radius(CornerRadius::new_all(SV_HANDLE))
+                        .corner_radius(rounded(SV_HANDLE))
                         .background(current)
                         .border(
                             Border::new()
@@ -288,7 +288,7 @@ impl Component for ColorPicker {
                     rect()
                         .width(Size::fill())
                         .height(Size::fill())
-                        .corner_radius(CornerRadius::new_all(8.))
+                        .corner_radius(rounded(8.))
                         .background(
                             LinearGradient::new()
                                 .angle(-90.)
@@ -312,7 +312,7 @@ impl Component for ColorPicker {
                         .interactive(false)
                         .width(Size::px(HUE_HANDLE))
                         .height(Size::px(HUE_HANDLE))
-                        .corner_radius(CornerRadius::new_all(HUE_HANDLE))
+                        .corner_radius(rounded(HUE_HANDLE))
                         .background(Color::WHITE)
                         .shadow(handle_shadow()),
                 );
@@ -326,7 +326,7 @@ impl Component for ColorPicker {
                     rect()
                         .width(Size::px(SWATCH_SIZE))
                         .height(Size::px(SWATCH_SIZE))
-                        .corner_radius(CornerRadius::new_all(8.))
+                        .corner_radius(rounded(8.))
                         .background(current)
                         .border(border_all_color(1., colors::component_border())),
                 )
@@ -336,7 +336,7 @@ impl Component for ColorPicker {
                         .leading(
                             label()
                                 .text("#")
-                                .font_size(14.)
+                                .font_size(text_size(14.))
                                 .color(colors::fg_secondary())
                                 .into_element(),
                         )
@@ -367,7 +367,7 @@ impl Component for ColorPicker {
                         .vertical()
                         .spacing(14.)
                         .padding(POPUP_PADDING)
-                        .corner_radius(CornerRadius::new_all(16.))
+                        .corner_radius(rounded(16.))
                         .background(colors::page_elevated())
                         .border(border_all_color(1., colors::component_border()))
                         .shadow(Shadow::from((

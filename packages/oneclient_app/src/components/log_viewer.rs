@@ -6,7 +6,7 @@ use regex::Regex;
 
 use crate::components::{Icon, IconType, ScrollArea, ScrollAreaCtx, corrected_scroll};
 use crate::i18n::t;
-use crate::theme::{self, colors};
+use crate::theme::{self, colors, rounded, text_size};
 
 const LINE_H: f32 = 16.;
 const BODY_PAD_TOP: f32 = 10.;
@@ -208,7 +208,7 @@ impl Component for LogViewer {
             .height(Size::fill())
             .overflow(Overflow::Clip)
             .background(colors::page_elevated())
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .maybe_child(
                 (!self.title.is_empty() || streaming)
                     .then(|| toolbar(self.title.clone(), streaming, auto_scroll)),
@@ -253,7 +253,7 @@ fn toolbar(title: String, streaming: bool, auto_scroll: State<bool>) -> impl Int
         .child(
             label()
                 .text(title)
-                .font_size(18.)
+                .font_size(text_size(18.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary()),
         )
@@ -275,7 +275,7 @@ fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .spacing(6.)
         .padding(Gaps::new_symmetric(5., 10.))
-        .corner_radius(CornerRadius::new_all(7.))
+        .corner_radius(rounded(7.))
         .background(if on {
             colors::brand().with_a(40)
         } else {
@@ -291,7 +291,7 @@ fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
         .child(
             label()
                 .text(t("oneclient.components.log_viewer.auto_scroll"))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(if on {
                     colors::brand()
                 } else {
@@ -305,8 +305,8 @@ fn auto_scroll_toggle(mut auto_scroll: State<bool>) -> impl IntoElement {
 struct PosGeom {
     count: usize,
     num_col_w: f32,
-    viewport_top_px: f32,
-    viewport_left_px: f32,
+    viewport_top: State<f32>,
+    viewport_left: State<f32>,
     corrected_x: f32,
     corrected_y: f32,
 }
@@ -317,12 +317,12 @@ fn pos_at_screen(
     screen_x: f32,
     screen_y: f32,
 ) -> (usize, usize) {
-    let region_y = screen_y - geom.viewport_top_px;
+    let region_y = screen_y - *geom.viewport_top.peek();
     let band_y = region_y - geom.corrected_y - BODY_PAD_TOP;
     let line = ((band_y / LINE_H).floor() as i64).clamp(0, (geom.count as i64 - 1).max(0)) as usize;
 
     let text_origin_x = ROW_PAD_X + geom.num_col_w + NUM_GAP;
-    let local_x = screen_x - geom.viewport_left_px - geom.corrected_x - text_origin_x;
+    let local_x = screen_x - *geom.viewport_left.peek() - geom.corrected_x - text_origin_x;
     let raw_col = (local_x / CHAR_W).round().max(0.) as usize;
     let len = lines.get(line).map(|l| visual_len(l)).unwrap_or(0);
     (line, raw_col.min(len))
@@ -358,8 +358,8 @@ fn scroll_body(args: BodyArgs) -> Element {
     let corrected_y = ctx.corrected_y;
     let corrected_x = ctx.corrected_x;
     let viewport_h = ctx.viewport_h;
-    let viewport_top_px = ctx.viewport_top;
-    let viewport_left_px = ctx.viewport_left;
+    let viewport_top = ctx.viewport_top;
+    let viewport_left = ctx.viewport_left;
     let body_w = content_w.max(ctx.viewport_w);
 
     let selection = match (*sel_anchor.read(), *sel_focus.read()) {
@@ -370,8 +370,8 @@ fn scroll_body(args: BodyArgs) -> Element {
     let geom = PosGeom {
         count,
         num_col_w,
-        viewport_top_px,
-        viewport_left_px,
+        viewport_top,
+        viewport_left,
         corrected_x,
         corrected_y,
     };
@@ -399,7 +399,7 @@ fn scroll_body(args: BodyArgs) -> Element {
         sel_focus.set(Some(pos));
 
         const EDGE: f32 = 24.;
-        let region_y = cursor_y - viewport_top_px;
+        let region_y = cursor_y - *viewport_top.peek();
         let (_, cur_scroll) = scroll.into();
         let delta = if region_y < EDGE {
             (EDGE - region_y).min(EDGE)
@@ -520,8 +520,8 @@ fn log_line_row(
         .max_lines(1)
         .width(Size::fill())
         .height(Size::px(LINE_H))
-        .font_family(theme::MONO_FONT)
-        .font_size(LINE_FONT_SIZE);
+        .font_family(theme::mono_font())
+        .font_size(text_size(LINE_FONT_SIZE));
     for (text, color) in &parsed.spans {
         message = message.span(Span::new(text.clone()).color(*color));
     }
@@ -535,7 +535,7 @@ fn log_line_row(
             )
             .width(Size::px((c1 - c0) as f32 * CHAR_W))
             .height(Size::px(LINE_H))
-            .corner_radius(CornerRadius::new_all(2.))
+            .corner_radius(rounded(2.))
             .background(colors::selection_bg())
             .into_element()
     });
@@ -552,8 +552,8 @@ fn log_line_row(
             rect().width(Size::px(num_col_w)).child(
                 label()
                     .text(format!("{}", index + 1))
-                    .font_family(theme::MONO_FONT)
-                    .font_size(LINE_FONT_SIZE)
+                    .font_family(theme::mono_font())
+                    .font_size(text_size(LINE_FONT_SIZE))
                     .text_align(TextAlign::Right)
                     .width(Size::fill())
                     .color(colors::code_muted()),

@@ -407,6 +407,14 @@ async fn start(
         jvm_args.push(arg);
     }
 
+    let crash_dir = cluster.dir()?.join("crash-reports");
+    polyio::create_dir_all(&crash_dir).await.ok();
+    let error_file = crash_dir.join("hs_err_pid").display().to_string();
+    jvm_args.insert(
+        0,
+        format!("-XX:ErrorFile={}%p.log", error_file.replace('%', "%%")),
+    );
+
     let mut mc_args = arguments::minecraft_arguments(
         arg_map.get(&ArgumentType::Game).map(Vec::as_slice),
         version_info.minecraft_arguments.as_deref(),
@@ -1041,6 +1049,7 @@ fn shell_quote(arg: &str) -> String {
 
 fn apply_env(command: &mut Command, profile: &GameSettingsProfile) {
     command.env_remove("_JAVA_OPTIONS");
+    oneclient_common::process::strip_appimage_env(command.as_std_mut());
     #[cfg(all(unix, not(target_os = "macos")))]
     command.env("LC_ALL", "C.UTF-8");
 
@@ -1074,6 +1083,7 @@ async fn run_hook(hook: Option<&str>, cwd: &Path) -> Option<String> {
     command.stderr(Stdio::piped());
     command.stdin(Stdio::null());
     oneclient_common::process::no_window(command.as_std_mut());
+    oneclient_common::process::strip_appimage_env(command.as_std_mut());
 
     let mut child = match command.spawn() {
         Ok(child) => child,

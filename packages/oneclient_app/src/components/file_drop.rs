@@ -22,7 +22,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::launcher::off_ui;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::app::ClusterPickerButton;
 
@@ -218,7 +218,7 @@ impl Component for DropVeil {
                     .padding(Gaps::new_symmetric(22., 28.))
                     .max_width(Size::px(360.))
                     .offset_y((1. - progress) * 12.)
-                    .corner_radius(CornerRadius::new_all(16.))
+                    .corner_radius(rounded(16.))
                     .background(colors::card())
                     .border(border_all_color(1., colors::brand().with_a(120)))
                     .shadow(Shadow::from((
@@ -232,14 +232,14 @@ impl Component for DropVeil {
                     .child(
                         label()
                             .text(t("oneclient.components.file_drop.drop_title"))
-                            .font_size(15.)
+                            .font_size(text_size(15.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
                     .child(
                         label()
                             .text(t("oneclient.components.file_drop.drop_subtitle"))
-                            .font_size(12.5)
+                            .font_size(text_size(12.5))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -251,7 +251,7 @@ fn icon_badge(icon: IconType, size: f32, icon_size: f32) -> impl IntoElement {
         .width(Size::px(size))
         .height(Size::px(size))
         .center()
-        .corner_radius(CornerRadius::new_all(size / 2.))
+        .corner_radius(rounded(size / 2.))
         .background(colors::brand().with_a(46))
         .child(Icon::new(icon).size(icon_size).color(colors::brand()))
 }
@@ -324,7 +324,7 @@ impl Component for DropPrompt {
                             .max_width(Size::window_percent(94.))
                             .padding(Gaps::new_all(22.))
                             .spacing(16.)
-                            .corner_radius(CornerRadius::new_all(16.))
+                            .corner_radius(rounded(16.))
                             .background(colors::card())
                             .border(border_all_color(1., colors::component_border()))
                             .shadow(Shadow::from((
@@ -359,14 +359,14 @@ fn dialog_header(title: String, subtitle: String) -> impl IntoElement {
                 .child(
                     label()
                         .text(title)
-                        .font_size(17.)
+                        .font_size(text_size(17.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.5)
+                        .font_size(text_size(12.5))
                         .max_lines(2)
                         .color(colors::fg_secondary()),
                 ),
@@ -549,7 +549,7 @@ fn field(title: &'static str, control: impl IntoElement) -> impl IntoElement {
         .child(
             label()
                 .text(title)
-                .font_size(11.5)
+                .font_size(text_size(11.5))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_secondary()),
         )
@@ -587,7 +587,7 @@ fn world_field(
             t("oneclient.components.file_drop.destination_world"),
             label()
                 .text(t("oneclient.components.file_drop.no_worlds"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element();
@@ -632,7 +632,7 @@ fn file_field(
         rect()
             .width(Size::fill())
             .padding(Gaps::new_all(6.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::page())
             .border(border_all_color(1., colors::component_border()))
             .child(
@@ -668,7 +668,7 @@ fn file_row(
             .into_element(),
         None => label()
             .text(t("oneclient.components.file_drop.needs_loader"))
-            .font_size(12.)
+            .font_size(text_size(12.))
             .max_lines(1)
             .color(colors::fg_secondary())
             .into_element(),
@@ -690,7 +690,7 @@ fn file_row(
         .child(
             label()
                 .text(file_name(path))
-                .font_size(12.5)
+                .font_size(text_size(12.5))
                 .max_lines(1)
                 .text_overflow(TextOverflow::Ellipsis)
                 .width(Size::flex(1.0))

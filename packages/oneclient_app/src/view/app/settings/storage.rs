@@ -9,7 +9,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::state::StorageScanProgress;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 
 /// Rows narrower than this would render as a sliver so they get a floor
 const MIN_BAR_FRACTION: f32 = 0.015;
@@ -111,7 +111,7 @@ fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_symmetric(20., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(
             rect()
@@ -121,20 +121,17 @@ fn hero(report: &StorageReport, refresh: Element) -> impl IntoElement {
                 .child(
                     label()
                         .text(format_bytes(report.total_bytes))
-                        .font_size(28.)
+                        .font_size(text_size(28.))
                         .font_weight(FontWeight::BOLD)
                         .color(colors::fg_primary()),
                 )
-                .child(
-                    label()
-                        .text(subtitle)
-                        .font_size(12.)
-                        .color(if reclaimable > 0 {
-                            colors::brand()
-                        } else {
-                            colors::fg_secondary()
-                        }),
-                ),
+                .child(label().text(subtitle).font_size(text_size(12.)).color(
+                    if reclaimable > 0 {
+                        colors::brand()
+                    } else {
+                        colors::fg_secondary()
+                    },
+                )),
         )
         .child(refresh)
         .into_element()
@@ -158,7 +155,7 @@ fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
                         || t("oneclient.settings.storage.measuring").to_string(),
                         |scan| format!("{}…", scan.label),
                     ))
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .color(colors::fg_secondary()),
             ),
         );
@@ -167,7 +164,7 @@ fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
         header = header.child(
             label()
                 .text(format!("{} / {}", scan.current, scan.total))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         );
     }
@@ -177,7 +174,7 @@ fn scan_card(scan: Option<&StorageScanProgress>) -> impl IntoElement {
         .width(Size::fill())
         .spacing(10.)
         .padding(Gaps::new_symmetric(16., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(header)
         .child(proportion_bar(fraction, colors::brand()))
@@ -219,7 +216,7 @@ impl Component for ReclaimRow {
             .cross_align(Alignment::Center)
             .spacing(16.)
             .padding(Gaps::new_symmetric(12., 16.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .maybe(self.empty, |el| el.opacity(colors::disabled_opacity()))
             .child(Icon::new(self.icon))
@@ -231,14 +228,14 @@ impl Component for ReclaimRow {
                     .child(
                         label()
                             .text(self.title)
-                            .font_size(16.)
+                            .font_size(text_size(16.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
                     .child(
                         label()
                             .text(self.description.clone())
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -261,7 +258,7 @@ fn usage_row(entry: &StorageEntry, largest: u64, bar: Color) -> impl IntoElement
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_symmetric(12., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(
             rect()
@@ -271,7 +268,7 @@ fn usage_row(entry: &StorageEntry, largest: u64, bar: Color) -> impl IntoElement
                 .child(
                     label()
                         .text(entry.label.clone())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -280,7 +277,7 @@ fn usage_row(entry: &StorageEntry, largest: u64, bar: Color) -> impl IntoElement
         .child(
             label()
                 .text(format_bytes(entry.bytes))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .child(open_folder_button(entry.path.clone()))
@@ -291,13 +288,13 @@ fn proportion_bar(fraction: f32, fill: Color) -> impl IntoElement {
     rect()
         .width(Size::fill())
         .height(Size::px(4.))
-        .corner_radius(CornerRadius::new_all(2.))
+        .corner_radius(rounded(2.))
         .background(colors::component_bg())
         .child(
             rect()
                 .width(Size::percent(fraction.clamp(0.0, 1.0) * 100.))
                 .height(Size::fill())
-                .corner_radius(CornerRadius::new_all(2.))
+                .corner_radius(rounded(2.))
                 .background(fill),
         )
         .into_element()
@@ -395,12 +392,12 @@ fn empty_note(text: &'static str) -> impl IntoElement {
     rect()
         .width(Size::fill())
         .padding(Gaps::new_symmetric(14., 16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(
             label()
                 .text(text)
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -412,7 +409,7 @@ fn footnote() -> impl IntoElement {
         .child(
             label()
                 .text(t("oneclient.settings.storage.footnote"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

@@ -15,13 +15,17 @@ pub fn use_ipc_commands() {
         };
         let router = RouterContext::get();
 
-        spawn_forever(async move {
+        spawn_in_window(async move {
             while let Some(command) = inbox.recv().await {
                 match command {
                     IpcCommand::Focus => platform::focus_window(),
                     IpcCommand::Launch(folder) => {
                         platform::focus_window();
                         dispatch.request_launch_by_folder(folder);
+                    }
+                    IpcCommand::ImportShare(code) => {
+                        platform::focus_window();
+                        dispatch.request_share_import(code);
                     }
                     IpcCommand::Logs => {
                         platform::focus_window();

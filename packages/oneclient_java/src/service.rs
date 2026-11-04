@@ -436,8 +436,10 @@ impl JavaService {
             absolute_path: executable.to_string_lossy().into_owned(),
             major: parse_major_version(&info.version)?,
             version: info.version.clone(),
-            vendor: JavaVendor::from_str(&info.vendor)
-                .unwrap_or_else(|_| JavaVendor::Other(info.vendor.clone())),
+            vendor: crate::install::installed_vendor(executable).unwrap_or_else(|| {
+                JavaVendor::from_str(&info.vendor)
+                    .unwrap_or_else(|_| JavaVendor::Other(info.vendor.clone()))
+            }),
             os_arch: info.os_arch.clone(),
             is_jdk: info.is_jdk,
             probe_version: PROBE_VERSION,

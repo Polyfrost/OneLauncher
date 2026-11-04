@@ -4,7 +4,7 @@ use oneclient_core::game::{Analytics, Persona};
 
 use crate::components::{Icon, IconType};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, columns_for, flow_grid};
 use crate::utils::format_duration;
 
@@ -149,7 +149,7 @@ fn hero_tile(caption: &str, value: String, note: String) -> Element {
         .child(
             label()
                 .text(caption.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_secondary()),
         )
@@ -161,7 +161,7 @@ fn hero_tile(caption: &str, value: String, note: String) -> Element {
                 .child(
                     label()
                         .text(value)
-                        .font_size(30.)
+                        .font_size(text_size(30.))
                         .font_weight(FontWeight::BOLD)
                         .max_lines(1)
                         .color(colors::fg_primary()),
@@ -170,7 +170,7 @@ fn hero_tile(caption: &str, value: String, note: String) -> Element {
                     rect().margin(Gaps::new(0., 0., 5., 0.)).child(
                         label()
                             .text(note)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .max_lines(1)
                             .color(colors::fg_secondary()),
                     ),
@@ -187,7 +187,7 @@ fn stat_tile(caption: &str, value: String) -> Element {
         .child(
             label()
                 .text(caption.to_string())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(1)
                 .width(Size::fill())
                 .color(colors::fg_secondary()),
@@ -195,7 +195,7 @@ fn stat_tile(caption: &str, value: String) -> Element {
         .child(
             label()
                 .text(value)
-                .font_size(24.)
+                .font_size(text_size(24.))
                 .font_weight(FontWeight::BOLD)
                 .max_lines(1)
                 .color(colors::fg_primary()),
@@ -221,7 +221,7 @@ fn persona_badge(persona: Persona) -> Element {
         .cross_align(Alignment::Center)
         .spacing(7.)
         .padding(Gaps::new_symmetric(6., 11.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .child(
@@ -232,7 +232,7 @@ fn persona_badge(persona: Persona) -> Element {
         .child(
             label()
                 .text(persona.title().to_string())
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .max_lines(1)
                 .color(colors::fg_primary()),
@@ -240,7 +240,7 @@ fn persona_badge(persona: Persona) -> Element {
         .child(
             label()
                 .text(persona.description().to_string())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
         )

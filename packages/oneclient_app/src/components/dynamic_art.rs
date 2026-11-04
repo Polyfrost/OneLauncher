@@ -139,7 +139,12 @@ fn use_resolved_art(art: &DynamicArt) -> Option<(String, Bytes)> {
         skeleton: _,
     } = art.clone();
 
-    let cover_query = use_local_image(cover.clone().unwrap_or_default(), max_edge, cover_picked);
+    let cover_query = use_local_image(
+        cover.clone().unwrap_or_default(),
+        max_edge,
+        cover_picked,
+        false,
+    );
 
     let cover_bytes = cover.as_ref().and_then(|path| {
         settled_or_loading(&cover_query)

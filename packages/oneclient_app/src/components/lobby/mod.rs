@@ -295,7 +295,7 @@ pub fn act<T, F, Fut>(
         return;
     }
     state.write().busy = true;
-    spawn_forever(async move {
+    spawn_in_window(async move {
         let result = crate::launcher::off_ui(async move {
             let account = party_account().await?;
             work(account).await.map_err(party_message)

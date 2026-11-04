@@ -10,7 +10,7 @@ use crate::hooks::{
 use crate::i18n::{t, tf};
 use crate::notifications::{ClusterUpdateItem, ClusterUpdateSummary};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 420.;
@@ -166,7 +166,7 @@ fn dialog(
         .height(Size::px(DIALOG_H))
         .max_width(Size::window_percent(95.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -259,14 +259,14 @@ fn content(
                 .child(
                     label()
                         .text(t("oneclient.components.cluster_update_popup.title"))
-                        .font_size(17.)
+                        .font_size(text_size(17.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.5)
+                        .font_size(text_size(12.5))
                         .max_lines(2)
                         .color(colors::fg_secondary()),
                 ),
@@ -331,7 +331,7 @@ fn change_list(
                     .child(
                         label()
                             .text(tab.empty_text())
-                            .font_size(12.5)
+                            .font_size(text_size(12.5))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -355,7 +355,7 @@ fn change_list(
                     .child(
                         label()
                             .text(name.clone())
-                            .font_size(12.5)
+                            .font_size(text_size(12.5))
                             .max_lines(1)
                             .width(Size::flex(1.0))
                             .color(colors::fg_primary()),
@@ -380,14 +380,14 @@ fn cluster_header(group: &ClusterGroup, first: bool, dispatch: crate::Actions) -
         .spacing(8.)
         .padding(Gaps::new_symmetric(6., 8.))
         .margin(Gaps::new(if first { 0. } else { 8. }, 0., 3., 0.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .cursor(CursorIcon::Pointer)
         .on_press(move |_| open_cluster(&dispatch, cluster_id))
         .child(
             label()
                 .text(group.cluster_name.clone())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .max_lines(1)
                 .width(Size::flex(1.0))
@@ -396,7 +396,7 @@ fn cluster_header(group: &ClusterGroup, first: bool, dispatch: crate::Actions) -
         .child(
             label()
                 .text(count.to_string())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary()),
         )
         .child(

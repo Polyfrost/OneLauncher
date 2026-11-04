@@ -5,8 +5,8 @@ use crate::components::{
     AccountSwitcher, BlockedDownloadsPopup, BundleChoicesPopup, ClusterUpdatePopup, ControlCenter,
     FlaggedInstallPopup, GenericPromptOverlay, JavaPromptOverlay, MicrosoftJavaPromptOverlay,
     ModpackConfirmPopup, NotificationCenter, OptionalModsPopup, PackageUpdatePopup,
-    ReleaseMigrationPopup, SplashCurtain, StatusBar, Toasts, TooltipHost, UpdatePromptOverlay,
-    use_provide_tooltips,
+    ReleaseMigrationPopup, SplashCurtain, StatusBar, Toasts, TooltipHost, UnpublishedImportPopup,
+    UpdatePromptOverlay, use_provide_tooltips,
 };
 #[cfg(not(target_os = "macos"))]
 use crate::hooks::use_start_maximized;
@@ -14,7 +14,6 @@ use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
 use crate::layout::{HomeArtPrefetch, PendingLaunchDriver, use_ipc_commands};
 use crate::motion::AnimationClockDriver;
 use crate::routes::Route;
-use crate::theme;
 use crate::theme::colors;
 
 #[derive(PartialEq)]
@@ -34,7 +33,6 @@ impl Component for RootLayout {
             .height(Size::fill())
             .background(colors::page())
             .color(colors::fg_primary())
-            .font_family(theme::DEFAULT_FONT)
             .overflow(Overflow::Clip)
             .child(
                 rect()
@@ -56,6 +54,7 @@ impl Component for RootLayout {
             .child(BundleChoicesPopup)
             .child(BlockedDownloadsPopup)
             .child(ModpackConfirmPopup)
+            .child(UnpublishedImportPopup)
             .child(PackageUpdatePopup)
             .child(FlaggedInstallPopup)
             .child(ReleaseMigrationPopup)

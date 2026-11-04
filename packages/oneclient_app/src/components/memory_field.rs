@@ -2,7 +2,7 @@ use freya::prelude::*;
 
 use crate::components::{Dropdown, TextInput, validate_memory};
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::utils::{format_memory_gb, memory_presets_mb};
 
 /// Presets picker with an input for memory allocation
@@ -49,7 +49,7 @@ pub fn memory_field(
                 .trailing(
                     label()
                         .text("MB")
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 ),
         )

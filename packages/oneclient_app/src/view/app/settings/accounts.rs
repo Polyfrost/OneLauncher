@@ -17,7 +17,7 @@ use crate::hooks::{
     use_set_default_account,
 };
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 /// The shader scales the model off `res.y` alone so height makes the player bigger width only needs to clear the arms
@@ -160,7 +160,7 @@ fn hero(
         .cross_align(Alignment::Center)
         .spacing(16.)
         .padding(Gaps::new_all(16.))
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(model_frame(account.as_ref().map(|account| account.id)))
         .child(
@@ -176,14 +176,14 @@ fn hero(
                         .child(
                             label()
                                 .text(t("oneclient.settings.accounts.hero.active_account"))
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .font_weight(FontWeight::MEDIUM)
                                 .color(colors::fg_secondary()),
                         )
                         .child(
                             label()
                                 .text(name)
-                                .font_size(24.)
+                                .font_size(text_size(24.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .max_lines(1)
                                 .color(colors::fg_primary()),
@@ -191,7 +191,7 @@ fn hero(
                         .child(
                             label()
                                 .text(subtitle)
-                                .font_size(12.)
+                                .font_size(text_size(12.))
                                 .color(colors::fg_secondary()),
                         ),
                 )
@@ -254,7 +254,7 @@ fn model_frame(id: Option<Uuid>) -> impl IntoElement {
                 .height(Size::px(MODEL_HEIGHT_PX))
                 .center()
                 .overflow(Overflow::Clip)
-                .corner_radius(CornerRadius::new_all(12.))
+                .corner_radius(rounded(12.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::component_border()))
                 .child(match id {
@@ -272,7 +272,7 @@ fn model_frame(id: Option<Uuid>) -> impl IntoElement {
         .maybe_child(id.map(|_| {
             label()
                 .text(t("oneclient.settings.accounts.drag_to_rotate"))
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .color(colors::fg_secondary())
                 .into_element()
         }))
@@ -314,13 +314,13 @@ fn offline_dialog(
                         .max_width(Size::window_percent(90.))
                         .spacing(16.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(16.))
+                        .corner_radius(rounded(16.))
                         .background(colors::page_elevated())
                         .border(border_all_color(1., colors::component_border()))
                         .child(
                             label()
                                 .text(t("oneclient.settings.accounts.offline.title"))
-                                .font_size(18.)
+                                .font_size(text_size(18.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
@@ -345,7 +345,7 @@ fn offline_dialog(
                                 .child(
                                     label()
                                         .text(uuid_preview.unwrap_or_else(|| "-".to_string()))
-                                        .font_size(12.)
+                                        .font_size(text_size(12.))
                                         .color(colors::fg_secondary()),
                                 ),
                         )
@@ -380,7 +380,7 @@ fn offline_dialog(
 fn field_label(text: &str) -> impl IntoElement {
     label()
         .text(text.to_string())
-        .font_size(11.)
+        .font_size(text_size(11.))
         .font_weight(FontWeight::MEDIUM)
         .color(colors::fg_secondary())
         .into_element()
@@ -398,7 +398,7 @@ fn hint_line(icon: IconType, text: String, color: Color) -> impl IntoElement {
         .child(
             label()
                 .text(text)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .width(Size::flex(1.0))
                 .color(color),
         )
@@ -498,7 +498,7 @@ impl Component for AccountRow {
             .content(Content::Flex)
             .spacing(12.)
             .padding(Gaps::new_all(12.))
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .border(border_all_color(1., border_color))
             .opacity(if is_refreshing {
@@ -531,7 +531,7 @@ impl Component for AccountRow {
                             .child(
                                 label()
                                     .text(self.username.clone())
-                                    .font_size(15.)
+                                    .font_size(text_size(15.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .max_lines(1)
                                     .color(colors::fg_primary()),
@@ -548,7 +548,7 @@ impl Component for AccountRow {
                             } else {
                                 format!("{} · {id}", kind_label(self.kind))
                             })
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(1)
                             .color(colors::fg_secondary()),
                     ),
@@ -680,14 +680,14 @@ fn badge(icon: impl IntoElement, text: String, border: Color, fg: Color) -> impl
         .cross_align(Alignment::Center)
         .spacing(4.)
         .padding(Gaps::new_symmetric(2., 8.))
-        .corner_radius(CornerRadius::new_all(999.))
+        .corner_radius(rounded(999.))
         .border(border_all_color(1., border))
         .background(colors::component_bg())
         .child(icon)
         .child(
             label()
                 .text(text)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(fg),
         )
@@ -701,7 +701,7 @@ fn empty_state() -> Element {
         .center()
         .padding(Gaps::new_all(32.))
         .spacing(8.)
-        .corner_radius(CornerRadius::new_all(12.))
+        .corner_radius(rounded(12.))
         .background(colors::page_elevated())
         .child(
             Icon::new(IconType::Users01)
@@ -711,7 +711,7 @@ fn empty_state() -> Element {
         .child(
             label()
                 .text(t("oneclient.settings.accounts.empty"))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         )
         .into_element()

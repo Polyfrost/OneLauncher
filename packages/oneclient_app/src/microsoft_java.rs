@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::{Arc, Mutex};
 
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use oneclient_common::Patch;
 use oneclient_core::settings::store::save_settings_and_apply;
 use oneclient_core::{LauncherState, ProfileUpdate};
@@ -33,7 +33,7 @@ pub fn spawn_auto_install() {
 
 fn ui_refresh_channel() -> UnboundedSender<()> {
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<()>();
-    spawn_forever(async move {
+    spawn_in_window(async move {
         while rx.recv().await.is_some() {
             crate::hooks::invalidate_profile_queries().await;
         }
@@ -294,6 +294,10 @@ fn opted_out(state: &Arc<LauncherState>) -> bool {
     if std::env::var_os("ONECLIENT_DISABLE_JAVA_AUTOINSTALL")
         .is_some_and(|val| val.eq_ignore_ascii_case("1"))
     {
+        return true;
+    }
+
+    if oneclient_java::vendors::default_vendor() != JavaVendor::Microsoft {
         return true;
     }
 

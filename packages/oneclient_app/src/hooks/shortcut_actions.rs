@@ -1,4 +1,4 @@
-use freya::prelude::spawn_forever;
+use freya::prelude::spawn_in_window;
 use oneclient_db::models::ClusterId;
 
 use super::actions::Actions;
@@ -13,6 +13,23 @@ impl Actions {
         self.station()
             .write_channel(AppChannel::PendingLaunch)
             .pending_launch = Some(folder);
+    }
+
+    pub fn request_share_import(&self, code: String) {
+        self.station()
+            .write_channel(AppChannel::PendingLaunch)
+            .pending_share = Some(code);
+    }
+
+    pub fn take_pending_share(&self) -> Option<String> {
+        let waiting = self.station().peek().pending_share.is_some();
+        if !waiting {
+            return None;
+        }
+        self.station()
+            .write_channel(AppChannel::PendingLaunch)
+            .pending_share
+            .take()
     }
 
     pub fn take_pending_launch(&self) -> Option<String> {
@@ -50,7 +67,7 @@ impl Actions {
 
     pub fn create_cluster_shortcut(&self, cluster_id: ClusterId) {
         let actions = self.clone();
-        spawn_forever(async move {
+        spawn_in_window(async move {
             let Ok(state) = launcher::state() else { return };
 
             let cluster = match state.clusters.get(cluster_id).await {

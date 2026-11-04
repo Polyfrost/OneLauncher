@@ -3,7 +3,7 @@ use std::borrow::Cow;
 use freya::prelude::*;
 
 use crate::components::ScrollArea;
-use crate::theme::{self, colors};
+use crate::theme::{self, colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(PartialEq)]
@@ -19,7 +19,7 @@ pub struct CodeBlock {
 }
 
 impl KeyExt for CodeBlock {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -30,7 +30,7 @@ impl CodeBlock {
             code: code.into(),
             color: colors::fg_primary(),
             background: colors::component_bg(),
-            font_family: Cow::Borrowed(theme::MONO_FONT),
+            font_family: Cow::Owned(theme::mono_font()),
             font_size: 12.,
             max_lines: None,
             height: None,
@@ -75,7 +75,7 @@ impl Component for CodeBlock {
         let text = SelectableText::new()
             .span(self.code.clone())
             .font_family(self.font_family.clone())
-            .font_size(self.font_size)
+            .font_size(text_size(self.font_size))
             .max_lines(self.max_lines)
             .width(Size::fill())
             .color(self.color);
@@ -83,7 +83,7 @@ impl Component for CodeBlock {
         let block = rect()
             .width(Size::fill())
             .padding(Gaps::new_all(12.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(self.background)
             .border(border_all_color(1., colors::component_border()));
 

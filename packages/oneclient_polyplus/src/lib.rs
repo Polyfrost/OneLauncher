@@ -12,6 +12,7 @@ use oneclient_auth::MinecraftAccount;
 use oneclient_common::constants;
 
 pub mod api;
+pub mod instances;
 pub mod party;
 
 const MOJANG_JOIN_URL: &str = "https://sessionserver.mojang.com/session/minecraft/join";
@@ -64,6 +65,9 @@ pub enum PlusError {
 
     #[error(transparent)]
     Url(#[from] url::ParseError),
+
+    #[error(transparent)]
+    Io(#[from] std::io::Error),
 }
 
 #[derive(serde::Deserialize)]

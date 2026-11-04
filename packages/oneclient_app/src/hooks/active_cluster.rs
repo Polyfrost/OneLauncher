@@ -189,6 +189,7 @@ pub struct OnboardingSelectionState {
     pub import_folder: State<Option<String>>,
     pub import_dedicated: State<bool>,
     pub picks_location: State<bool>,
+    pub chrome_opacity: State<f32>,
 }
 
 pub fn use_provide_onboarding_selection(state: OnboardingSelectionState) {

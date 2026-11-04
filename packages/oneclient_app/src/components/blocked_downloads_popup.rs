@@ -10,7 +10,7 @@ use crate::hooks::{use_dispatch, use_folder_watch, use_notifications_snapshot};
 use crate::i18n::{t, tf};
 use crate::notifications::BlockedDownloads;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 const DIALOG_W: f32 = 560.;
@@ -66,7 +66,7 @@ struct ExtraFolderWatch {
 }
 
 impl KeyExt for ExtraFolderWatch {
-    fn write_key(&mut self) -> &mut DiffKey {
+    fn key_mut(&mut self) -> &mut DiffKey {
         &mut self.key
     }
 }
@@ -218,7 +218,7 @@ fn folder_row(
                 .cross_align(Alignment::Center)
                 .padding(Gaps::new_symmetric(8., 12.))
                 .spacing(10.)
-                .corner_radius(CornerRadius::new_all(10.))
+                .corner_radius(rounded(10.))
                 .background(colors::component_bg())
                 .border(border_all_color(1., colors::component_border()))
                 .child(
@@ -234,13 +234,13 @@ fn folder_row(
                         .child(
                             label()
                                 .text(t("oneclient.components.blocked_downloads.watching"))
-                                .font_size(11.)
+                                .font_size(text_size(11.))
                                 .color(colors::fg_secondary()),
                         )
                         .child(
                             label()
                                 .text(watched_text(downloads, chosen))
-                                .font_size(12.5)
+                                .font_size(text_size(12.5))
                                 .max_lines(2)
                                 .color(colors::fg_primary()),
                         ),
@@ -272,7 +272,7 @@ fn folder_row(
                     "Your browser saves to its own download folder. To save somewhere else, \
                      set it to ask where to save each file.",
                 )
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(2)
                 .color(colors::fg_secondary()),
         )
@@ -343,7 +343,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .max_height(Size::window_percent(85.))
         .overflow(Overflow::Clip)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -368,14 +368,14 @@ fn dialog(
                         .child(
                             label()
                                 .text(title)
-                                .font_size(17.)
+                                .font_size(text_size(17.))
                                 .font_weight(FontWeight::SEMI_BOLD)
                                 .color(colors::fg_primary()),
                         )
                         .child(
                             label()
                                 .text(subtitle)
-                                .font_size(12.5)
+                                .font_size(text_size(12.5))
                                 .max_lines(4)
                                 .color(colors::fg_secondary()),
                         ),
@@ -492,7 +492,7 @@ fn file_row(file: &BlockedFile, added: bool) -> impl IntoElement {
             .child(
                 label()
                     .text(t("oneclient.components.blocked_downloads.added"))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::SEMI_BOLD)
                     .color(colors::success()),
             )
@@ -521,7 +521,7 @@ fn file_row(file: &BlockedFile, added: bool) -> impl IntoElement {
         .cross_align(Alignment::Center)
         .padding(Gaps::new_symmetric(0., 12.))
         .spacing(10.)
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(background)
         .border(border_all_color(1., border))
         .child(
@@ -532,7 +532,7 @@ fn file_row(file: &BlockedFile, added: bool) -> impl IntoElement {
                 .child(
                     label()
                         .text(file.project_name.clone())
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .color(colors::fg_primary()),
@@ -540,7 +540,7 @@ fn file_row(file: &BlockedFile, added: bool) -> impl IntoElement {
                 .child(
                     label()
                         .text(file.file_name.clone())
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .color(colors::fg_secondary()),
                 ),

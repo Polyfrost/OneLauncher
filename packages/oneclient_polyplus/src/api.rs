@@ -233,13 +233,13 @@ pub struct OutfitUpdate {
     pub blank: Option<bool>,
 }
 
-fn client() -> Result<&'static reqwest::Client, PlusError> {
+pub(crate) fn client() -> Result<&'static reqwest::Client, PlusError> {
     CLIENT
         .as_ref()
         .map_err(|err| PlusError::Client(err.clone()))
 }
 
-async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -> Result<String, PlusError> {
+pub(crate) async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -> Result<String, PlusError> {
     let mut tokens = TOKENS.lock().await;
     if let Some((token, issued)) = tokens.get(&account.id)
         && issued.elapsed() < TOKEN_LIFETIME

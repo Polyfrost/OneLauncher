@@ -15,7 +15,7 @@ use crate::hooks::{
 use crate::i18n::{t, tf};
 use crate::layout::cluster_content;
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, fmt_date};
 use crate::utils::format_size;
 
@@ -246,7 +246,7 @@ impl Component for WorldCard {
                 .child(
                     label()
                         .text(info.folder_name.clone())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -268,7 +268,7 @@ impl Component for WorldCard {
                 .child(
                     label()
                         .text(info.folder_name.clone())
-                        .font_size(15.)
+                        .font_size(text_size(15.))
                         .font_weight(FontWeight::MEDIUM)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -278,7 +278,7 @@ impl Component for WorldCard {
                 .child(
                     label()
                         .text(last_played)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .width(Size::fill())
@@ -304,7 +304,7 @@ impl Component for WorldCard {
             card.height(Size::px(WORLD_ROWS.grid))
                 .spacing(11.)
                 .padding(Gaps::new_all(GRID_PAD))
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(if hovering {
                     colors::component_bg_hover()
                 } else {
@@ -328,7 +328,7 @@ impl Component for WorldCard {
             card.height(Size::px(WORLD_ROWS.list))
                 .spacing(12.)
                 .padding(Gaps::new_all(LIST_PAD))
-                .corner_radius(CornerRadius::new_all(8.))
+                .corner_radius(rounded(8.))
                 .background(colors::card())
                 .child(icon)
                 .child(text)

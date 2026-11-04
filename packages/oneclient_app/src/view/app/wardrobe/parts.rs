@@ -12,7 +12,7 @@ use crate::AppAssets;
 use crate::hooks::wardrobe::{use_cosmetic_bundle, use_swatch};
 use crate::hooks::{loaded_image, settled_or_loading, use_cached_image};
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, rounded_px, text_size};
 use crate::ui::{border_all_color, clamp_to_window};
 
 pub(super) const CARD_CHROME: f32 = 81.;
@@ -127,7 +127,7 @@ fn badge_tab(badge: &Badge) -> Element {
         .padding(Gaps::new_symmetric(0., 10.))
         .center()
         .spacing(4.)
-        .corner_radius(CornerRadius::new(0., 0., 7., 7.))
+        .corner_radius(CornerRadius::new(0., 0., rounded_px(7.), rounded_px(7.)))
         .background(background)
         .maybe_child(
             badge
@@ -138,7 +138,7 @@ fn badge_tab(badge: &Badge) -> Element {
             label()
                 .text(badge.label.clone())
                 .max_lines(1)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(color)
         }))
@@ -151,7 +151,7 @@ pub(super) fn detail_text(text: impl Into<String>) -> Element {
         .width(Size::fill())
         .max_lines(1)
         .text_overflow(TextOverflow::Ellipsis)
-        .font_size(12.)
+        .font_size(text_size(12.))
         .color(colors::fg_secondary())
         .into_element()
 }
@@ -173,13 +173,13 @@ pub(super) fn price_label(
         None => row.child(
             label()
                 .text("—")
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .color(colors::fg_secondary()),
         ),
         Some(price) if price <= 0. => row.child(
             label()
                 .text(t("oneclient.wardrobe.price.free"))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::success()),
         ),
@@ -187,21 +187,21 @@ pub(super) fn price_label(
             .child(
                 label()
                     .text(money(base.unwrap_or_default()))
-                    .font_size(10.)
+                    .font_size(text_size(10.))
                     .text_decoration(TextDecoration::LineThrough)
                     .color(colors::fg_secondary()),
             )
             .child(
                 label()
                     .text(money(price))
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::success()),
             ),
         Some(price) => row.child(
             label()
                 .text(money(price))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         ),
@@ -292,7 +292,7 @@ impl Component for VariantSwatch {
             rect()
                 .width(Size::px(14.))
                 .height(Size::px(22.))
-                .corner_radius(CornerRadius::new_all(5.))
+                .corner_radius(rounded(5.))
                 .background(colors::component_bg())
                 .overflow(Overflow::Clip)
                 .cursor(CursorIcon::Pointer)
@@ -309,7 +309,7 @@ impl Component for VariantSwatch {
                         .layer(Layer::Relative(1))
                         .width(Size::fill())
                         .height(Size::fill())
-                        .corner_radius(CornerRadius::new_all(5.))
+                        .corner_radius(rounded(5.))
                         .border(hairline(border))
                         .interactive(false),
                 ),
@@ -338,13 +338,13 @@ fn swatch_column(swatches: &[Swatch], on_pick: EventHandler<i32>) -> Element {
                 .height(Size::px(16.))
                 .padding(Gaps::new_symmetric(0., 2.))
                 .center()
-                .corner_radius(CornerRadius::new_all(5.))
+                .corner_radius(rounded(5.))
                 .background(colors::component_bg())
                 .border(hairline(colors::component_border()))
                 .child(
                     label()
                         .text(format!("+{hidden}"))
-                        .font_size(10.)
+                        .font_size(text_size(10.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -417,7 +417,7 @@ impl Component for WardrobeCard {
                 .width(Size::px(22.))
                 .height(Size::px(22.))
                 .center()
-                .corner_radius(CornerRadius::new_all(6.))
+                .corner_radius(rounded(6.))
                 .background(colors::component_bg())
                 .border(hairline(colors::component_border()))
                 .cursor(CursorIcon::Pointer)
@@ -480,7 +480,7 @@ impl Component for WardrobeCard {
             .width(Size::fill())
             .height(Size::fill())
             .content(Content::Flex)
-            .corner_radius(CornerRadius::new_all(12.))
+            .corner_radius(rounded(12.))
             .background(colors::page_elevated())
             .overflow(Overflow::Clip)
             .opacity(if enabled { 1. } else { 0.5 })
@@ -529,7 +529,7 @@ impl Component for WardrobeCard {
                         rect()
                             .width(Size::fill())
                             .height(Size::fill())
-                            .corner_radius(CornerRadius::new_all(5.))
+                            .corner_radius(rounded(5.))
                             .background(colors::page())
                             .border(hairline(colors::component_border()))
                             .overflow(Overflow::Clip)
@@ -557,7 +557,7 @@ impl Component for WardrobeCard {
                                     .width(Size::flex(1.0))
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
-                                    .font_size(14.)
+                                    .font_size(text_size(14.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::fg_primary()),
                             )
@@ -610,7 +610,7 @@ impl Component for WardrobeCard {
                     .child(
                         label()
                             .text(self.action_label)
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(strip_color),
                     ),
@@ -621,7 +621,7 @@ impl Component for WardrobeCard {
                     .layer(Layer::Relative(1))
                     .width(Size::percent(100.))
                     .height(Size::percent(100.))
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .border(hairline(outline))
                     .interactive(false),
             )
@@ -692,13 +692,13 @@ impl Component for RenamePopup {
                     .width(Size::px(RENAME_WIDTH))
                     .padding(Gaps::new_all(10.))
                     .spacing(8.)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(colors::page_elevated())
                     .border(hairline(colors::component_border()))
                     .child(
                         label()
                             .text(t("oneclient.wardrobe.rename.title"))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     )
@@ -760,7 +760,7 @@ impl Component for SectionChip {
             .padding(Gaps::new_symmetric(0., 12.))
             .cross_align(Alignment::Center)
             .spacing(8.)
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .background(if self.selected {
                 colors::brand()
             } else {
@@ -779,7 +779,7 @@ impl Component for SectionChip {
             .child(
                 label()
                     .text(self.text)
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(if self.selected {
                         FontWeight::MEDIUM
                     } else {
@@ -806,7 +806,7 @@ impl Component for AnchorChip {
             .height(Size::px(26.))
             .padding(Gaps::new_symmetric(0., 10.))
             .main_align(Alignment::Center)
-            .corner_radius(CornerRadius::new_all(6.))
+            .corner_radius(rounded(6.))
             .background(if self.active {
                 colors::component_bg()
             } else {
@@ -820,7 +820,7 @@ impl Component for AnchorChip {
                 label()
                     .text(self.text.clone())
                     .max_lines(1)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(if self.active {
                         FontWeight::MEDIUM
                     } else {
@@ -859,7 +859,7 @@ impl Component for InfoHeading {
             .child(
                 label()
                     .text(self.title.clone())
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(colors::fg_primary()),
             )
@@ -901,7 +901,7 @@ pub(super) fn divider(text: &str) -> Element {
         .child(
             label()
                 .text(text.to_uppercase())
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_secondary()),
         )
@@ -915,7 +915,7 @@ pub(super) fn notice(text: impl Into<String>) -> Element {
         .height(Size::px(57.))
         .padding(Gaps::new_symmetric(0., 16.))
         .main_align(Alignment::Center)
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .border(hairline(colors::component_border()))
         .child(
             label()
@@ -923,7 +923,7 @@ pub(super) fn notice(text: impl Into<String>) -> Element {
                 .width(Size::fill())
                 .max_lines(2)
                 .text_overflow(TextOverflow::Ellipsis)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -941,7 +941,7 @@ pub(super) fn library_intro(text: String, button: Option<Element>) -> Element {
             label()
                 .text(text)
                 .width(Size::flex(1.0))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .maybe_child(button)

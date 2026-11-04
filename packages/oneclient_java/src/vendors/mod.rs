@@ -10,23 +10,31 @@ mod adoptium;
 mod corretto;
 mod liberica;
 mod microsoft;
+mod mojang;
 mod zulu;
 
 pub use adoptium::AdoptiumRuntimeProvider;
 pub use corretto::CorrettoRuntimeProvider;
 pub use liberica::LibericaRuntimeProvider;
 pub use microsoft::MicrosoftRuntimeProvider;
+pub(crate) use mojang::INSTALL_PREFIX as MOJANG_INSTALL_PREFIX;
+pub use mojang::MojangRuntimeProvider;
 use serde::{Deserialize, Deserializer, Serialize};
 pub use zulu::ZuluRuntimeProvider;
 
 pub fn runtime_providers() -> Vec<Box<dyn JavaRuntimeProvider>> {
-    vec![
+    let mut providers: Vec<Box<dyn JavaRuntimeProvider>> = vec![
         Box::new(MicrosoftRuntimeProvider),
         Box::new(ZuluRuntimeProvider),
         Box::new(AdoptiumRuntimeProvider),
         Box::new(CorrettoRuntimeProvider),
         Box::new(LibericaRuntimeProvider),
-    ]
+        Box::new(MojangRuntimeProvider),
+    ];
+    if crate::platform::is_legacy_macos() {
+        providers.sort_by_key(|provider| provider.vendor() != JavaVendor::Mojang);
+    }
+    providers
 }
 
 // For making sure microsoft jdk provider is first
@@ -80,6 +88,7 @@ pub enum JavaVendor {
     Microsoft,
     Adoptium,
     Liberica,
+    Mojang,
     OpenJDK,
     Other(String),
 }
@@ -92,6 +101,7 @@ impl std::fmt::Display for JavaVendor {
             JavaVendor::Liberica => f.write_str("Liberica"),
             JavaVendor::Corretto => f.write_str("Corretto"),
             JavaVendor::Microsoft => f.write_str("Microsoft"),
+            JavaVendor::Mojang => f.write_str("Mojang"),
             JavaVendor::Oracle => f.write_str("Oracle"),
             JavaVendor::OpenJDK => f.write_str("OpenJDK"),
             JavaVendor::Other(other) => f.write_str(other),
@@ -110,6 +120,8 @@ impl FromStr for JavaVendor {
                 Self::Adoptium
             } else if v.contains("liberica") || v.contains("bellsoft") {
                 Self::Liberica
+            } else if v.contains("mojang") {
+                Self::Mojang
             } else if v.contains("microsoft") {
                 Self::Microsoft
             } else if v.contains("openjdk") {

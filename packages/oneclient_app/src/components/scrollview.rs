@@ -2,7 +2,7 @@
 use freya::prelude::*;
 use freya::torin::geometry::Point2D;
 
-use crate::theme::colors;
+use crate::theme::{colors, rounded};
 
 const LAZY_OVERSCAN: i64 = 3;
 const SCROLLBAR_GUTTER: f32 = 14.;
@@ -78,8 +78,8 @@ pub struct ScrollAreaCtx {
     pub corrected_y: f32,
     pub viewport_w: f32,
     pub viewport_h: f32,
-    pub viewport_top: f32,
-    pub viewport_left: f32,
+    pub viewport_top: State<f32>,
+    pub viewport_left: State<f32>,
 }
 
 #[derive(Clone, Copy)]
@@ -455,7 +455,7 @@ impl ScrollArea {
         let internal = use_scroll_controller(ScrollConfig::default);
         let mut controller = self.controller.unwrap_or(internal);
 
-        let scale_factor = Platform::get().scale_factor;
+        let scale_factor = Platform::get().current_window().scale_factor;
 
         let mut viewport_h = use_state(|| 0f32);
         let mut viewport_w = use_state(|| 0f32);
@@ -478,8 +478,6 @@ impl ScrollArea {
         let (scrolled_x, scrolled_y) = controller.into();
         let vp_h = *viewport_h.read();
         let vp_w = *viewport_w.read();
-        let vp_top = *viewport_top.read();
-        let vp_left = *viewport_left.read();
         let ct_h = *content_h.read();
 
         let target_y = corrected_scroll(ct_h, vp_h, scrolled_y as f32);
@@ -500,7 +498,7 @@ impl ScrollArea {
         let show_v = show_scrollbar && vp_h > 0. && vp_h < ct_h;
 
         let (scrollbar_x, scrollbar_width) = scrollbar_pos_and_size(content_w, vp_w, corrected_x);
-        let show_h = horizontal && vp_w > 0. && vp_w < content_w;
+        let show_h = show_scrollbar && horizontal && vp_w > 0. && vp_w < content_w;
 
         let pressing_v = use_memo(move || drag_start.read().is_some());
         let pressing_h = use_memo(move || drag_start_x.read().is_some());
@@ -526,8 +524,8 @@ impl ScrollArea {
             corrected_y,
             viewport_w: (vp_w - gutter).max(0.),
             viewport_h: vp_h,
-            viewport_top: vp_top,
-            viewport_left: vp_left,
+            viewport_top,
+            viewport_left,
         };
 
         if let Some(cb) = &self.on_ctx {
@@ -857,7 +855,7 @@ impl Component for ScrollThumb {
                 rect()
                     .width(bar_w)
                     .height(bar_h)
-                    .corner_radius(CornerRadius::new_all(12.))
+                    .corner_radius(rounded(12.))
                     .background(color.with_a(160)),
             )
     }

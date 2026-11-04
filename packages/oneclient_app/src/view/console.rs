@@ -12,7 +12,7 @@ use tracing::Level;
 
 use crate::components::{Button, Icon, IconType, LogViewer, Segment, SegmentedControl, TextInput};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 
 /// Old lines are dropped from the front this window can be left open for a whole session
 const MAX_LINES: usize = 5_000;
@@ -245,7 +245,7 @@ fn view_row(
         .child(
             label()
                 .text(tf("oneclient.console.line_count", &[&shown]))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
         )
@@ -293,7 +293,7 @@ fn filter_row(directives: State<String>, mut error: State<Option<String>>) -> im
         .child(
             label()
                 .text(t("oneclient.console.capture"))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary()),
         )
@@ -320,7 +320,7 @@ fn filter_row(directives: State<String>, mut error: State<Option<String>>) -> im
         .maybe_child(error.read().clone().map(|message| {
             label()
                 .text(message)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(2)
                 .width(Size::fill())
                 .padding(Gaps::new(0., 14., 10., 14.))

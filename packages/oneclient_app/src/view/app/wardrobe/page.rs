@@ -33,7 +33,7 @@ use crate::hooks::{
     use_current_account,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::ui::centered_note;
 use crate::view::app::cluster::confirm_dialog;
 
@@ -703,7 +703,7 @@ pub(super) fn perform_then(
     if let Some(pending) = keys.pending() {
         status.set(Some(pending));
     }
-    spawn_forever(async move {
+    spawn_in_window(async move {
         let reader = action.mutate_async(keys).await;
         let outcome = match &*reader.state() {
             MutationStateData::Settled { res, .. } => Some(res.clone()),
@@ -747,7 +747,7 @@ pub(super) fn add_to_cart(
     let discount_percent = item.discount_percent();
     let cover_asset_id = variant.cover_asset_id.or(item.cover_asset_id);
     let variant_id = variant.id;
-    spawn_forever(async move {
+    spawn_in_window(async move {
         let message = match api::store_product_id(variant_id).await {
             Ok(Some(product_id)) => {
                 if cart
@@ -1123,7 +1123,7 @@ impl Component for WardrobeBody {
                                 label()
                                     .text(t("oneclient.wardrobe.title"))
                                     .width(Size::flex(1.0))
-                                    .font_size(24.)
+                                    .font_size(text_size(24.))
                                     .font_weight(FontWeight::SEMI_BOLD)
                                     .color(colors::fg_primary()),
                             )
@@ -1325,7 +1325,7 @@ impl Header {
                 .child(
                     label()
                         .text(t("oneclient.wardrobe.history.title"))
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
@@ -1612,8 +1612,14 @@ fn visible_slots(ctx: &GridCtx, layout: &Layout, view: &ScrollAreaCtx) -> Elemen
     let mut column = rect().vertical().width(Size::fill());
     let lead = slots.get(first).map_or(layout.total, |slot| slot.y);
     if lead > 0. {
-        column = column.child(rect().width(Size::fill()).height(Size::px(lead)));
+        column = column.child(
+            rect()
+                .key("lead")
+                .width(Size::fill())
+                .height(Size::px(lead)),
+        );
     }
+
     for (index, slot) in slots[first..last].iter().enumerate() {
         column = column.child(
             rect()
@@ -1631,10 +1637,17 @@ fn visible_slots(ctx: &GridCtx, layout: &Layout, view: &ScrollAreaCtx) -> Elemen
                 ),
         );
     }
+
     let tail = slots.get(last).map_or(0., |slot| layout.total - slot.y);
     if tail > 0. {
-        column = column.child(rect().width(Size::fill()).height(Size::px(tail)));
+        column = column.child(
+            rect()
+                .key("tail")
+                .width(Size::fill())
+                .height(Size::px(tail)),
+        );
     }
+
     column.into_element()
 }
 
@@ -2197,7 +2210,7 @@ fn shop_card(ctx: &GridCtx, item: &StoreItem) -> Element {
         .maybe_child((variants.len() > 1).then(|| {
             label()
                 .text(tf("oneclient.wardrobe.variants", &[&variants.len()]))
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::fg_secondary())
         }))
         .into_element();

@@ -113,6 +113,8 @@ pub struct ProjectMember {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GalleryImage {
     pub url: String,
+    #[serde(default)]
+    pub thumbnail_url: Option<String>,
     pub title: Option<String>,
     #[serde(default)]
     pub featured: bool,
@@ -337,6 +339,8 @@ pub struct LinkedArtifactInfo {
     pub provider: Option<ProviderId>,
     /// Provider publish time RFC 3339
     pub published_at: Option<String>,
+    /// When the file was added to the cluster RFC 3339
+    pub added_at: Option<String>,
     /// Drives the new/updated badge in the package manager
     pub seen_status: SeenStatus,
 }

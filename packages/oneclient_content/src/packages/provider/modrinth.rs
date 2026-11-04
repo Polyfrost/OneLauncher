@@ -725,10 +725,14 @@ impl ModrinthProject {
             gallery: self
                 .gallery
                 .into_iter()
-                .map(|g| GalleryImage {
-                    url: g.raw_url.filter(|url| !url.is_empty()).unwrap_or(g.url),
-                    title: g.title.filter(|t| !t.is_empty()),
-                    featured: g.featured,
+                .map(|g| {
+                    let raw_url = g.raw_url.filter(|url| !url.is_empty());
+                    GalleryImage {
+                        thumbnail_url: raw_url.is_some().then(|| g.url.clone()),
+                        url: raw_url.unwrap_or(g.url),
+                        title: g.title.filter(|t| !t.is_empty()),
+                        featured: g.featured,
+                    }
                 })
                 .collect(),
             license,

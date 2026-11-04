@@ -9,7 +9,7 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::routes::Route;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::view::onboarding::{
     choice_row, onboarding_illustration, onboarding_slide, step_heading,
@@ -126,11 +126,7 @@ impl Component for OnboardingMigration {
                             .height(Size::fill())
                             .center()
                             .padding(Gaps::new_all(48.))
-                            .child(onboarding_illustration(if is_vanilla {
-                                IconType::FolderDownload
-                            } else {
-                                IconType::ClockRewind
-                            })),
+                            .child(onboarding_illustration(IconType::OnboardingMigration)),
                     )
                     .child(
                         rect()
@@ -205,7 +201,7 @@ fn import_body(
         .child(
             label()
                 .text(t("oneclient.onboarding.migration.detected_versions"))
-                .font_size(13.)
+                .font_size(text_size(13.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_secondary()),
         )
@@ -258,20 +254,30 @@ fn version_card(
                 .child(
                     label()
                         .text(instance.folder_name.clone())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
-                .child(label().text(subtitle).font_size(11.).color(if selected {
-                    colors::fg_primary()
-                } else {
-                    colors::fg_secondary()
-                }))
-                .child(label().text(categories).font_size(11.).color(if selected {
-                    colors::fg_primary()
-                } else {
-                    colors::fg_secondary()
-                })),
+                .child(
+                    label()
+                        .text(subtitle)
+                        .font_size(text_size(11.))
+                        .color(if selected {
+                            colors::fg_primary()
+                        } else {
+                            colors::fg_secondary()
+                        }),
+                )
+                .child(
+                    label()
+                        .text(categories)
+                        .font_size(text_size(11.))
+                        .color(if selected {
+                            colors::fg_primary()
+                        } else {
+                            colors::fg_secondary()
+                        }),
+                ),
         )
         // Selection affordance only when the instance actually has files
         .maybe_child(importable.then(|| {
@@ -280,7 +286,7 @@ fn version_card(
             } else {
                 label()
                     .text(t("oneclient.onboarding.migration.import_files"))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_secondary())
                     .into_element()
             }
@@ -291,7 +297,7 @@ fn version_card(
         .width(Size::fill())
         .spacing(12.)
         .padding(Gaps::new_symmetric(12., 14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(bg)
         .border(border_all_color(1., border_color))
         .child(header);
@@ -311,7 +317,7 @@ fn version_card(
             .child(
                 label()
                     .text(t("oneclient.onboarding.migration.target.title"))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_primary()),
             )
             .child(choice_row(
@@ -358,7 +364,7 @@ fn import_choice_card(
         .cross_align(Alignment::Center)
         .spacing(10.)
         .padding(Gaps::new_symmetric(12., 14.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(bg)
         .border(border_all_color(1., border_color))
         .a11y_role(AccessibilityRole::Button)
@@ -372,14 +378,14 @@ fn import_choice_card(
                 .child(
                     label()
                         .text(title.to_string())
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .font_weight(FontWeight::MEDIUM)
                         .color(colors::fg_primary()),
                 )
                 .child(
                     label()
                         .text(subtitle.to_string())
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .color(if active {
                             colors::fg_primary()
                         } else {

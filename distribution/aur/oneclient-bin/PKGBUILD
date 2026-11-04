@@ -17,8 +17,6 @@ depends=(
   'libxkbcommon'
   'wayland'
   'dbus'
-  'gtk3'
-  'libayatana-appindicator'
 )
 provides=('oneclient')
 conflicts=('oneclient')

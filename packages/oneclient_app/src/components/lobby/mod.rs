@@ -37,13 +37,14 @@ pub struct LobbyState {
     pub outgoing: Vec<PartyInvite>,
     pub error: Option<String>,
     pub busy: bool,
+    pub me: Option<Uuid>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Notice {
     Kicked,
     Disbanded,
-    Expired,
+    PartyLost,
     Invited(Uuid),
 }
 
@@ -70,9 +71,17 @@ impl LobbyState {
         self.outgoing.retain(|invite| invite.id != id);
     }
 
+    fn lost_party(&self, member_as: Option<Uuid>) -> bool {
+        member_as.is_some()
+            && self.me == member_as
+            && self.party.is_none()
+            && self.error.is_none()
+    }
+
     pub fn apply(&mut self, packet: PartyPacket) -> Option<Notice> {
         match packet {
             PartyPacket::PartyUpdated { party } => {
+                self.incoming.retain(|invite| invite.party_id != party.id);
                 self.party = Some(party);
                 None
             }
@@ -92,15 +101,14 @@ impl LobbyState {
                 None
             }
             PartyPacket::PartyLeft { party_id, reason } => {
-                if self.party.as_ref().is_none_or(|party| party.id != party_id) {
-                    return None;
-                }
-                self.party = None;
+                let party = self.party.take_if(|party| party.id == party_id)?;
                 match reason {
                     LeftReason::Kicked => Some(Notice::Kicked),
-                    LeftReason::Disbanded => Some(Notice::Disbanded),
-                    LeftReason::Expired => Some(Notice::Expired),
-                    LeftReason::Left | LeftReason::Other => None,
+                    LeftReason::Disbanded if !is_leader(&party, self.me) => {
+                        Some(Notice::Disbanded)
+                    }
+                    LeftReason::Expired => Some(Notice::PartyLost),
+                    LeftReason::Disbanded | LeftReason::Left | LeftReason::Other => None,
                 }
             }
             PartyPacket::PartyInviteReceived { invite } => {
@@ -181,7 +189,13 @@ async fn sync(mut state: State<LobbyState>, dispatch: Actions) {
     refresh(state).await;
     loop {
         match events.recv().await {
-            Ok(LiveEvent::Connected) | Err(RecvError::Lagged(_)) => refresh(state).await,
+            Ok(LiveEvent::Connected) | Err(RecvError::Lagged(_)) => {
+                let member_as = state.peek().party.as_ref().and(state.peek().me);
+                refresh(state).await;
+                if state.peek().lost_party(member_as) {
+                    announce(Notice::PartyLost, &dispatch);
+                }
+            }
             Ok(LiveEvent::Packet(packet)) => {
                 let notice = state.write().apply(*packet);
                 if let Some(notice) = notice {
@@ -199,13 +213,14 @@ pub async fn refresh(mut state: State<LobbyState>) {
         let party = party::current(&account).await.map_err(party_message)?;
         let incoming = party::incoming(&account).await.map_err(party_message)?;
         let outgoing = party::outgoing(&account).await.map_err(party_message)?;
-        Ok::<_, String>((party, incoming, outgoing))
+        Ok::<_, String>((account.id, party, incoming, outgoing))
     })
     .await;
 
     let mut guard = state.write();
     match result {
-        Ok((party, incoming, outgoing)) => {
+        Ok((me, party, incoming, outgoing)) => {
+            guard.me = Some(me);
             guard.party = party;
             guard.incoming = incoming;
             guard.outgoing = outgoing;
@@ -224,7 +239,7 @@ fn announce(notice: Notice, dispatch: &Actions) {
     let message = match notice {
         Notice::Kicked => t("oneclient.components.lobby.toast.you_were_kicked").to_string(),
         Notice::Disbanded => t("oneclient.components.lobby.toast.disbanded_by_leader").to_string(),
-        Notice::Expired => t("oneclient.components.lobby.toast.expired").to_string(),
+        Notice::PartyLost => t("oneclient.components.lobby.toast.party_lost").to_string(),
         Notice::Invited(sender) => {
             let dispatch = dispatch.clone();
             spawn(async move {
@@ -494,6 +509,12 @@ mod tests {
         assert_eq!(notice, Some(Notice::Invited(id(1))));
         assert_eq!(state.incoming.len(), 1);
 
+        let mut joined = p.clone();
+        joined.id = id(555);
+        state.apply(PartyPacket::PartyUpdated { party: joined });
+        assert!(state.incoming.is_empty());
+        state.apply(PartyPacket::PartyUpdated { party: p.clone() });
+
         assert_eq!(
             state.apply(PartyPacket::PartyLeft {
                 party_id: id(12345),
@@ -509,5 +530,43 @@ mod tests {
             Some(Notice::Kicked)
         );
         assert!(state.party.is_none());
+    }
+
+    #[test]
+    fn only_members_hear_that_the_leader_disbanded() {
+        let p = party(1, vec![member(1, 0, true), member(2, 1, true)]);
+        let disbanded = |me: u128| {
+            let mut state = LobbyState {
+                me: Some(id(me)),
+                party: Some(p.clone()),
+                ..LobbyState::default()
+            };
+            let notice = state.apply(PartyPacket::PartyLeft {
+                party_id: p.id,
+                reason: LeftReason::Disbanded,
+            });
+            assert!(state.party.is_none());
+            notice
+        };
+        assert_eq!(disbanded(1), None);
+        assert_eq!(disbanded(2), Some(Notice::Disbanded));
+    }
+
+    #[test]
+    fn losing_the_party_needs_the_same_account_and_a_clean_refresh() {
+        let mut state = LobbyState {
+            me: Some(id(1)),
+            ..LobbyState::default()
+        };
+        assert!(state.lost_party(Some(id(1))));
+        assert!(!state.lost_party(None));
+        assert!(!state.lost_party(Some(id(2))));
+
+        state.error = Some("offline".to_string());
+        assert!(!state.lost_party(Some(id(1))));
+
+        state.error = None;
+        state.party = Some(party(1, vec![member(1, 0, true)]));
+        assert!(!state.lost_party(Some(id(1))));
     }
 }

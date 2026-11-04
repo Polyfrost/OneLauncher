@@ -1,10 +1,14 @@
+use std::collections::HashMap;
+use std::hash::Hash;
+use std::sync::Arc;
+
 use freya::prelude::*;
 use uuid::Uuid;
 
-use oneclient_polyplus::{BlockedPlayer, Friend, FriendRequest, GroupKind, PlayerStatus};
+use oneclient_polyplus::{BlockedPlayer, Friend, FriendRequest, PlayerStatus};
 
 use crate::chat::{ChatConversation, ChatInvite, ChatRoster, FriendRequestStatus};
-use crate::components::{Avatar, ContextMenu, Icon, IconType, ScrollArea, TextInput};
+use crate::components::{Avatar, ContextMenu, Icon, IconType, LazySection, ScrollArea, TextInput};
 use crate::hooks::{
     Actions, use_chat_friend_request, use_chat_invites, use_chat_self_status, use_dispatch,
     use_player_online,
@@ -20,11 +24,20 @@ use super::common::{
 use super::panel::{PanelMode, PanelTab, PanelView};
 use super::people::NewGroupDialog;
 
+const CHAT_ROW_HEIGHT_PX: f32 = 59.;
+const FRIEND_ROW_HEIGHT_PX: f32 = 55.;
+const SECTION_HEADING_HEIGHT_PX: f32 = 35.;
+const LIST_ROW_GAP_PX: f32 = 2.;
+const LIST_PADDING: Gaps = Gaps::new(4., 8., 16., 8.);
+const PINNED_PADDING: Gaps = Gaps::new(4., 16., 6., 16.);
+const BELOW_PINNED_PADDING: Gaps = Gaps::new(0., 8., 16., 8.);
+
 #[derive(PartialEq)]
 pub(super) struct ListPane {
     pub expanded: bool,
     pub own_id: Uuid,
     pub conversations: Vec<ChatConversation>,
+    pub names: Arc<HashMap<Uuid, String>>,
     pub loading: bool,
     pub error: Option<String>,
     pub active: Option<i32>,
@@ -49,10 +62,19 @@ impl Component for ListPane {
             .count();
         let incoming = self.roster.requests.incoming.len();
 
+        let searching = !q.is_empty();
+        let names_dispatch = use_dispatch();
+        use_side_effect_with_deps(&searching, move |searching| {
+            if *searching {
+                names_dispatch.resolve_chat_names();
+            }
+        });
+
         let body = match active_tab {
             PanelTab::Chats => chats_tab(self, &q),
             PanelTab::Friends => FriendsTab {
                 roster: self.roster.clone(),
+                names: Arc::clone(&self.names),
                 query: q.clone(),
                 view: self.view,
             }
@@ -101,16 +123,10 @@ impl Component for ListPane {
             }))
             .maybe_child(self.error.clone().map(|error| ErrorBanner { error }))
             .child(
-                ScrollArea::new()
+                rect()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
-                    .child(
-                        rect()
-                            .vertical()
-                            .width(Size::fill())
-                            .padding(Gaps::new(4., 8., 16., 8.))
-                            .child(body),
-                    ),
+                    .child(body),
             )
             .maybe_child(group_open().then(|| {
                 NewGroupDialog {
@@ -503,6 +519,7 @@ impl Component for InviteRow {
         let group_id = self.invite.group_id;
         let view = self.view;
         let decline = dispatch.clone();
+        let join = dispatch.clone();
         let open = dispatch;
 
         rect()
@@ -545,7 +562,14 @@ impl Component for InviteRow {
             )
             .child(
                 rect()
+                    .horizontal()
+                    .spacing(4.)
+                    .cross_align(Alignment::Center)
                     .on_press(|e: Event<PressEventData>| e.stop_propagation())
+                    .child(accent_button(
+                        t("oneclient.chat.invites.join"),
+                        move |_| join.join_invite(id),
+                    ))
                     .child(HeaderButton {
                         icon: IconType::XClose,
                         tooltip: t("oneclient.chat.common.decline"),
@@ -652,36 +676,82 @@ fn open_chat(dispatch: &Actions, mut view: State<PanelView>, group_id: i32) {
     view.set(PanelView::Chat);
 }
 
-fn chats_tab(pane: &ListPane, query: &str) -> Element {
-    if pane.loading {
-        return hint(t("oneclient.chat.list.loading")).into_element();
-    }
+fn matches_query(name: Option<&String>, query: &str) -> bool {
+    name.is_none_or(|name| name.to_lowercase().contains(query))
+}
 
-    if pane.conversations.is_empty() {
-        return hint(t("oneclient.chat.list.empty")).into_element();
+fn chat_matches(
+    conversation: &ChatConversation,
+    own_id: Uuid,
+    names: &HashMap<Uuid, String>,
+    query: &str,
+) -> bool {
+    if query.is_empty() {
+        return true;
     }
+    let counterpart = conversation.counterpart(own_id);
+    if conversation.name.is_none() && counterpart.is_some_and(|id| !names.contains_key(&id)) {
+        return true;
+    }
+    let resolved = counterpart.and_then(|id| names.get(&id).cloned());
+    conversation_title(conversation, resolved)
+        .to_lowercase()
+        .contains(query)
+}
 
+fn keyed_row(key: impl Hash, row: impl IntoElement) -> Element {
     rect()
-        .vertical()
+        .key(key)
         .width(Size::fill())
-        .spacing(2.)
-        .children(
-            pane.conversations
-                .iter()
-                .map(|conversation| {
-                    ChatRow {
-                        selected: pane.expanded
-                            && *pane.view.read() == PanelView::Chat
-                            && pane.active == Some(conversation.id),
-                        conversation: conversation.clone(),
-                        own_id: pane.own_id,
-                        query: query.to_string(),
-                        view: pane.view,
-                    }
-                    .into_element()
-                })
-                .collect::<Vec<_>>(),
-        )
+        .height(Size::fill())
+        .child(row)
+        .into_element()
+}
+
+fn chats_tab(pane: &ListPane, query: &str) -> Element {
+    if pane.loading || pane.conversations.is_empty() {
+        let text = if pane.loading {
+            t("oneclient.chat.list.loading")
+        } else {
+            t("oneclient.chat.list.empty")
+        };
+        return rect()
+            .width(Size::fill())
+            .padding(LIST_PADDING)
+            .child(hint(text))
+            .into_element();
+    }
+
+    let own_id = pane.own_id;
+    let conversations: Vec<ChatConversation> = pane
+        .conversations
+        .iter()
+        .filter(|conversation| chat_matches(conversation, own_id, &pane.names, query))
+        .cloned()
+        .collect();
+    let count = conversations.len();
+    let expanded = pane.expanded;
+    let active = pane.active;
+    let view = pane.view;
+
+    ScrollArea::new()
+        .width(Size::fill())
+        .height(Size::fill())
+        .padding(LIST_PADDING)
+        .lazy(count, CHAT_ROW_HEIGHT_PX, LIST_ROW_GAP_PX, move |index| {
+            let conversation = conversations[index].clone();
+            keyed_row(
+                conversation.id,
+                ChatRow {
+                    selected: expanded
+                        && *view.read() == PanelView::Chat
+                        && active == Some(conversation.id),
+                    conversation,
+                    own_id,
+                    view,
+                },
+            )
+        })
         .into_element()
 }
 
@@ -690,7 +760,6 @@ struct ChatRow {
     conversation: ChatConversation,
     own_id: Uuid,
     selected: bool,
-    query: String,
     view: State<PanelView>,
 }
 
@@ -706,11 +775,8 @@ impl Component for ChatRow {
         let sender_name = use_player_name(sender);
 
         let title = conversation_title(&self.conversation, counterpart.map(|_| name));
-        if !self.query.is_empty() && !title.to_lowercase().contains(&self.query) {
-            return rect().into_element();
-        }
 
-        let is_group = self.conversation.kind == GroupKind::Group;
+        let is_group = self.conversation.kind.is_shared();
         let preview = self.conversation.preview.clone().map(|text| {
             if self.conversation.preview_sender == Some(self.own_id) {
                 tf("oneclient.chat.list.preview_you", &[&text])
@@ -741,6 +807,7 @@ impl Component for ChatRow {
         rect()
             .horizontal()
             .width(Size::fill())
+            .height(Size::px(CHAT_ROW_HEIGHT_PX))
             .padding(Gaps::new_all(8.))
             .spacing(10.)
             .content(Content::Flex)
@@ -798,7 +865,9 @@ impl Component for ChatRow {
                             .cross_align(Alignment::Center)
                             .child(
                                 label()
-                                    .text(preview.unwrap_or_default())
+                                    .text(preview.unwrap_or_else(|| {
+                                        t("oneclient.chat.list.no_messages").to_string()
+                                    }))
                                     .font_size(12.)
                                     .color(colors::fg_secondary())
                                     .width(Size::flex(1.0))
@@ -827,14 +896,21 @@ pub(super) fn conversation_title(
         .clone()
         .or(resolved)
         .unwrap_or_else(|| match conversation.kind {
-            GroupKind::Group => t("oneclient.chat.list.kind_group").to_string(),
+            kind if kind.is_shared() => t("oneclient.chat.list.kind_group").to_string(),
             _ => t("oneclient.chat.list.kind_direct").to_string(),
         })
+}
+
+#[derive(Clone)]
+enum FriendEntry {
+    Request { request: FriendRequest, incoming: bool },
+    Friend { player: Uuid, online: bool },
 }
 
 #[derive(PartialEq)]
 struct FriendsTab {
     roster: ChatRoster,
+    names: Arc<HashMap<Uuid, String>>,
     query: String,
     view: State<PanelView>,
 }
@@ -849,95 +925,125 @@ impl Component for FriendsTab {
                 .collect(),
         );
 
-        let requests: Vec<(FriendRequest, bool)> = self
+        let query = self.query.as_str();
+        let names = &self.names;
+        let visible = |player: &Uuid| query.is_empty() || matches_query(names.get(player), query);
+
+        let requests: Vec<FriendEntry> = self
             .roster
             .requests
             .incoming
             .iter()
-            .map(|request| (request.clone(), true))
+            .map(|request| (request, true))
             .chain(
                 self.roster
                     .requests
                     .outgoing
                     .iter()
-                    .map(|request| (request.clone(), false)),
+                    .map(|request| (request, false)),
             )
-            .collect();
-
-        let (online, offline): (Vec<Friend>, Vec<Friend>) = self
-            .roster
-            .friends
-            .iter()
-            .cloned()
-            .partition(|friend| presence.contains(&friend.player));
-
-        let query = self.query.clone();
-        let view = self.view;
-        let blocked = self.roster.blocked.len();
-
-        let request_rows: Vec<Element> = requests
-            .into_iter()
-            .map(|(request, incoming)| {
-                RequestRow {
-                    request,
-                    incoming,
-                    query: query.clone(),
-                }
-                .into_element()
+            .filter(|(request, _)| visible(&request.player))
+            .map(|(request, incoming)| FriendEntry::Request {
+                request: request.clone(),
+                incoming,
             })
             .collect();
 
-        let friend_rows = |friends: Vec<Friend>, online: bool| -> Vec<Element> {
+        let (online, offline): (Vec<&Friend>, Vec<&Friend>) = self
+            .roster
+            .friends
+            .iter()
+            .filter(|friend| visible(&friend.player))
+            .partition(|friend| presence.contains(&friend.player));
+
+        let friends = |friends: &[&Friend], online: bool| -> Vec<FriendEntry> {
             friends
-                .into_iter()
-                .map(|friend| {
-                    FriendRow {
-                        player: friend.player,
-                        online,
-                        query: query.clone(),
-                        view,
-                    }
-                    .into_element()
+                .iter()
+                .map(|friend| FriendEntry::Friend {
+                    player: friend.player,
+                    online,
                 })
                 .collect()
         };
 
-        let online_count = online.len();
-        let offline_count = offline.len();
-        let has_requests = !request_rows.is_empty();
+        let mut sections = Vec::new();
+        let mut headings = Vec::new();
+        let mut entries = Vec::new();
+        let mut section = |heading: String, rows: Vec<FriendEntry>| {
+            sections.push(LazySection {
+                header: true,
+                count: rows.len(),
+            });
+            headings.push(heading);
+            entries.extend(rows);
+        };
+
+        if !requests.is_empty() {
+            section(
+                tf("oneclient.chat.friends.requests_heading", &[&requests.len()]),
+                requests,
+            );
+        }
+        section(
+            tf("oneclient.chat.friends.online_heading", &[&online.len()]),
+            friends(&online, true),
+        );
+        section(
+            tf("oneclient.chat.friends.offline_heading", &[&offline.len()]),
+            friends(&offline, false),
+        );
+
+        let view = self.view;
 
         rect()
             .vertical()
             .width(Size::fill())
-            .spacing(2.)
+            .height(Size::fill())
+            .content(Content::Flex)
             .child(
                 rect()
                     .width(Size::fill())
-                    .padding(Gaps::new(0., 8., 6., 8.))
+                    .padding(PINNED_PADDING)
                     .child(AddFriend),
             )
-            .maybe_child(has_requests.then(|| {
-                section_heading(tf(
-                    "oneclient.chat.friends.requests_heading",
-                    &[&request_rows.len()],
-                ))
-                .into_element()
-            }))
-            .children(request_rows)
-            .child(section_heading(tf(
-                "oneclient.chat.friends.online_heading",
-                &[&online_count],
-            )))
-            .children(friend_rows(online, true))
-            .child(section_heading(tf(
-                "oneclient.chat.friends.offline_heading",
-                &[&offline_count],
-            )))
-            .children(friend_rows(offline, false))
-            .child(BlockedLink {
-                count: blocked,
-                view,
-            })
+            .child(
+                ScrollArea::new()
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .padding(Gaps::new(0., 8., 0., 8.))
+                    .lazy_sections(
+                        sections,
+                        FRIEND_ROW_HEIGHT_PX,
+                        LIST_ROW_GAP_PX,
+                        0.,
+                        1,
+                        SECTION_HEADING_HEIGHT_PX,
+                        move |index| match entries[index].clone() {
+                            FriendEntry::Request { request, incoming } => keyed_row(
+                                request.player,
+                                RequestRow { request, incoming },
+                            ),
+                            FriendEntry::Friend { player, online } => keyed_row(
+                                player,
+                                FriendRow {
+                                    player,
+                                    online,
+                                    view,
+                                },
+                            ),
+                        },
+                        move |index| section_heading(headings[index].clone()).into_element(),
+                    ),
+            )
+            .child(
+                rect()
+                    .width(Size::fill())
+                    .padding(Gaps::new(0., 8., 8., 8.))
+                    .child(BlockedLink {
+                        count: self.roster.blocked.len(),
+                        view,
+                    }),
+            )
     }
 }
 
@@ -1045,17 +1151,12 @@ fn send_request(dispatch: &Actions, mut name: State<String>, mut open: State<boo
 struct RequestRow {
     request: FriendRequest,
     incoming: bool,
-    query: String,
 }
 
 impl Component for RequestRow {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let name = use_player_name(self.request.player);
-
-        if !self.query.is_empty() && !name.to_lowercase().contains(&self.query) {
-            return rect().into_element();
-        }
 
         let id = self.request.id;
         let age = ago(self.request.created_at);
@@ -1128,6 +1229,7 @@ fn person_row(player: Uuid, name: String, sub: String, faded: bool) -> Rect {
     rect()
         .horizontal()
         .width(Size::fill())
+        .height(Size::px(FRIEND_ROW_HEIGHT_PX))
         .padding(Gaps::new_symmetric(6., 8.))
         .spacing(10.)
         .content(Content::Flex)
@@ -1172,7 +1274,6 @@ fn person_row(player: Uuid, name: String, sub: String, faded: bool) -> Rect {
 struct FriendRow {
     player: Uuid,
     online: bool,
-    query: String,
     view: State<PanelView>,
 }
 
@@ -1182,10 +1283,6 @@ impl Component for FriendRow {
         let name = use_player_name(self.player);
         let mut hovered = use_state(|| false);
         let mut menu = use_state(|| None::<(f32, f32)>);
-
-        if !self.query.is_empty() && !name.to_lowercase().contains(&self.query) {
-            return rect().into_element();
-        }
 
         let player = self.player;
         let online = self.online;
@@ -1243,6 +1340,7 @@ impl Component for FriendRow {
         rect()
             .horizontal()
             .width(Size::fill())
+            .height(Size::px(FRIEND_ROW_HEIGHT_PX))
             .padding(Gaps::new_symmetric(6., 8.))
             .spacing(10.)
             .content(Content::Flex)
@@ -1350,45 +1448,51 @@ impl Component for BlockedLink {
 }
 
 fn groups_tab(pane: &ListPane, query: &str, on_create: EventHandler<()>) -> Element {
-    let groups: Vec<Element> = pane
+    let groups: Vec<ChatConversation> = pane
         .conversations
         .iter()
-        .filter(|conversation| conversation.kind == GroupKind::Group)
+        .filter(|conversation| conversation.kind.is_shared())
         .filter(|conversation| {
             query.is_empty()
                 || conversation_title(conversation, None)
                     .to_lowercase()
                     .contains(query)
         })
-        .map(|conversation| {
-            GroupRow {
-                conversation: conversation.clone(),
-                view: pane.view,
-            }
-            .into_element()
-        })
+        .cloned()
         .collect();
+    let count = groups.len();
+    let view = pane.view;
+
+    let list = if groups.is_empty() {
+        hint(t("oneclient.chat.groups.empty")).into_element()
+    } else {
+        ScrollArea::new()
+            .width(Size::fill())
+            .height(Size::flex(1.0))
+            .padding(BELOW_PINNED_PADDING)
+            .lazy(count, CHAT_ROW_HEIGHT_PX, LIST_ROW_GAP_PX, move |index| {
+                let conversation = groups[index].clone();
+                keyed_row(conversation.id, GroupRow { conversation, view })
+            })
+            .into_element()
+    };
 
     rect()
         .vertical()
         .width(Size::fill())
-        .spacing(2.)
+        .height(Size::fill())
+        .content(Content::Flex)
         .child(
             rect()
                 .width(Size::fill())
-                .padding(Gaps::new(0., 8., 6., 8.))
+                .padding(PINNED_PADDING)
                 .child(chip_button(
                     IconType::Plus,
                     t("oneclient.chat.groups.create"),
                     move |_| on_create.call(()),
                 )),
         )
-        .maybe_child(
-            groups
-                .is_empty()
-                .then(|| hint(t("oneclient.chat.groups.empty")).into_element()),
-        )
-        .children(groups)
+        .child(list)
         .into_element()
 }
 
@@ -1402,19 +1506,20 @@ impl Component for GroupRow {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let mut hovered = use_state(|| false);
-        let online = crate::hooks::use_chat_online_set(self.conversation.members.clone());
+        let online = crate::hooks::use_chat_online_count(&self.conversation.members);
 
         let group_id = self.conversation.id;
         let view = self.view;
         let members = self.conversation.members.len();
         let sub = tf(
             "oneclient.chat.groups.members_online",
-            &[&members, &online.len()],
+            &[&online, &members],
         );
 
         rect()
             .horizontal()
             .width(Size::fill())
+            .height(Size::px(CHAT_ROW_HEIGHT_PX))
             .padding(Gaps::new_all(8.))
             .spacing(10.)
             .content(Content::Flex)
@@ -1592,5 +1697,137 @@ impl Component for BlockedRow {
                             .color(colors::fg_primary()),
                     ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use freya_testing::prelude::*;
+    use oneclient_polyplus::GroupKind;
+    use tokio::sync::mpsc;
+
+    use super::*;
+    use crate::hooks::use_provide_station;
+    use crate::state::AppState;
+
+    fn group(id: i32) -> ChatConversation {
+        ChatConversation {
+            id,
+            kind: GroupKind::Group,
+            name: Some(format!("group {id}")),
+            members: Vec::new(),
+            unread: false,
+            preview: None,
+            preview_sender: None,
+            last_activity: None,
+            special: false,
+        }
+    }
+
+    fn friend(id: u128) -> Friend {
+        Friend {
+            player: Uuid::from_u128(id << 96),
+            kind: oneclient_polyplus::RelationshipKind::Friend,
+            since: chrono::DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z").expect("timestamp"),
+            online: false,
+        }
+    }
+
+    fn pane(start: PanelTab) -> impl IntoElement {
+        let station = use_provide_station(AppState::default);
+        use_hook(move || {
+            let (pump, _) = mpsc::unbounded_channel();
+            let (events, _) = oneclient_events::EventBus::channel();
+            GlobalContexts::get().insert_context(Actions::new(station, pump, events));
+        });
+        let tab = use_state(|| start);
+        let view = use_state(|| PanelView::List);
+
+        rect()
+            .width(Size::px(348.))
+            .height(Size::px(600.))
+            .child(ListPane {
+                expanded: false,
+                own_id: Uuid::nil(),
+                conversations: (0..200).map(group).collect(),
+                names: Arc::default(),
+                loading: false,
+                error: None,
+                active: None,
+                roster: ChatRoster {
+                    friends: (0x10000000..0x10000000 + 200).map(friend).collect(),
+                    ..ChatRoster::default()
+                },
+                tab,
+                view,
+            })
+    }
+
+    fn chats() -> Element {
+        pane(PanelTab::Chats).into_element()
+    }
+
+    fn groups() -> Element {
+        pane(PanelTab::Groups).into_element()
+    }
+
+    fn friends() -> Element {
+        pane(PanelTab::Friends).into_element()
+    }
+
+    fn mounted(test: &TestingRunner, text: &str) -> bool {
+        test.find(|_, element| {
+            Label::try_downcast(element).filter(|label| label.text.as_ref() == text)
+        })
+        .is_some()
+    }
+
+    fn launch_test_settled(app: fn() -> Element) -> TestingRunner {
+        let mut test = launch_test(app);
+        for _ in 0..4 {
+            test.sync_and_update();
+        }
+        test
+    }
+
+    #[test]
+    fn only_the_visible_chats_are_mounted() {
+        let test = launch_test_settled(chats);
+        assert!(mounted(&test, "group 0"));
+        assert!(!mounted(&test, "group 199"));
+    }
+
+    #[test]
+    fn only_the_visible_groups_are_mounted() {
+        let test = launch_test_settled(groups);
+        assert!(mounted(&test, "group 0"));
+        assert!(!mounted(&test, "group 199"));
+    }
+
+    #[test]
+    fn only_the_visible_friends_are_mounted() {
+        let test = launch_test_settled(friends);
+        assert!(mounted(&test, "10000000"));
+        assert!(!mounted(&test, "100000c7"));
+    }
+
+    #[test]
+    fn a_search_matches_resolved_names_and_keeps_unknown_players() {
+        let own = Uuid::from_u128(1);
+        let alice = Uuid::from_u128(2);
+        let stranger = Uuid::from_u128(3);
+        let direct = |player: Uuid| ChatConversation {
+            kind: GroupKind::Dm,
+            name: None,
+            members: vec![own, player],
+            ..group(1)
+        };
+        let names = HashMap::from([(alice, "Alice".to_string())]);
+
+        assert!(chat_matches(&direct(alice), own, &names, "ali"));
+        assert!(!chat_matches(&direct(alice), own, &names, "bob"));
+        assert!(chat_matches(&direct(stranger), own, &names, "bob"));
+        assert!(chat_matches(&group(5), own, &names, "group 5"));
+        assert!(!chat_matches(&group(5), own, &names, "bob"));
     }
 }

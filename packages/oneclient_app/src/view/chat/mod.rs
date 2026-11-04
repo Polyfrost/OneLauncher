@@ -6,7 +6,6 @@ mod people;
 mod thread;
 mod window;
 
-pub(crate) use common::HeaderButton;
 pub use overlay::SocialOverlay;
 pub use window::{
     close_chat_window, close_chat_window_in, is_chat_window_focused, is_chat_window_open,

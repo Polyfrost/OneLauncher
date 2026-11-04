@@ -124,6 +124,15 @@ pub enum LoaderChoice {
 impl LoaderChoice {
     pub const ALL: [Self; 4] = [Self::Fabric, Self::Forge, Self::NeoForge, Self::Vanilla];
 
+    pub fn of(loader: GameLoader) -> Self {
+        match loader {
+            GameLoader::Forge => Self::Forge,
+            GameLoader::NeoForge => Self::NeoForge,
+            GameLoader::Vanilla => Self::Vanilla,
+            GameLoader::Fabric | GameLoader::Quilt | GameLoader::Ornithe => Self::Fabric,
+        }
+    }
+
     pub fn primary(self) -> GameLoader {
         match self {
             Self::Fabric => GameLoader::Fabric,

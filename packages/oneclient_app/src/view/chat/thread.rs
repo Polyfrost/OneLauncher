@@ -6,7 +6,8 @@ use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 use crate::chat::{ChatConversation, ChatMessage, MessageInvite, PendingMessage, ThreadStatus};
 use crate::components::{Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, TextInput};
 use crate::hooks::{
-    Actions, use_chat_online_set, use_chat_thread, use_dispatch, use_player_online,
+    Actions, use_chat_invite_game, use_chat_online_count, use_chat_thread, use_dispatch,
+    use_player_online,
 };
 use crate::i18n::{t, tf};
 use crate::theme::colors;
@@ -16,7 +17,7 @@ use super::common::{
     edge_border, group_heads, hairline, head_with_dot, hover_bg, inset_border, popup_shadow,
     presence_color, use_player_name,
 };
-use super::list::conversation_title;
+use super::list::{accent_button, conversation_title};
 use super::people::AddMembersDialog;
 
 const PAGE_TRIGGER_PX: f32 = 240.;
@@ -30,6 +31,9 @@ const EMOJI: [&str; 40] = [
     "❤️", "💙", "⭐", "👀", "💯", "✅", "❌", "🎮", "⚔️", "🛡️", "⛏️", "🏹", "💎", "🧱", "🪵", "🌲",
     "🍞", "🍎", "🐷", "🐑", "🐔", "🏠", "🌋", "🚀",
 ];
+
+const EDIT_PAD_X_PX: f32 = 6.;
+const EDIT_PAD_Y_PX: f32 = 2.;
 
 #[derive(PartialEq)]
 pub(super) struct ThreadView {
@@ -320,21 +324,14 @@ impl Component for ThreadHeader {
         let counterpart = self.conversation.counterpart(self.own_id);
         let name = use_player_name(counterpart.unwrap_or(self.own_id));
         let online = use_player_online(counterpart.unwrap_or(self.own_id));
-        let others: Vec<Uuid> = self
-            .conversation
-            .members
-            .iter()
-            .copied()
-            .filter(|member| *member != self.own_id)
-            .collect();
-        let online_members = use_chat_online_set(others).len();
+        let online_members = use_chat_online_count(&self.conversation.members);
 
         let title = conversation_title(&self.conversation, counterpart.map(|_| name));
 
         let sub = match (self.conversation.kind, counterpart) {
-            (GroupKind::Group, _) => tf(
+            (kind, _) if kind.is_shared() => tf(
                 "oneclient.chat.groups.members_online",
-                &[&self.conversation.members.len(), &online_members],
+                &[&online_members, &self.conversation.members.len()],
             ),
             (_, Some(_)) if online => t("oneclient.chat.status.online").to_string(),
             (_, Some(_)) => t("oneclient.chat.status.offline").to_string(),
@@ -469,6 +466,11 @@ impl Component for MessageRow {
         let name = use_player_name(self.message.sender);
         let mut menu = use_state(|| None::<(f32, f32)>);
         let editable = self.own && self.message.invite.is_none();
+        let being_edited = self
+            .editing
+            .read()
+            .as_ref()
+            .is_some_and(|(message_id, _)| *message_id == self.message.id);
 
         let context = (*menu.read()).filter(|_| editable).map(|(x, y)| {
             let mut editing = self.editing;
@@ -509,14 +511,19 @@ impl Component for MessageRow {
                 .child(match &self.message.invite {
                     Some(invite) => InviteCard {
                         invite: invite.clone(),
+                        own: self.own,
                     }
                     .into_element(),
-                    None => label()
-                        .text(self.message.content.clone())
-                        .font_size(14.)
-                        .line_height(1.4)
+                    None if being_edited => rect()
+                        .padding(Gaps::new_symmetric(EDIT_PAD_Y_PX, EDIT_PAD_X_PX))
+                        .margin(Gaps::new_symmetric(-EDIT_PAD_Y_PX, -EDIT_PAD_X_PX))
+                        .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
+                        .background(colors::brand().with_a(32))
+                        .border(inset_border(colors::brand().with_a(140)))
+                        .child(message_text(&self.message.content))
+                        .into_element(),
+                    None => message_text(&self.message.content)
                         .width(Size::fill())
-                        .color(colors::fg_primary())
                         .into_element(),
                 });
 
@@ -542,14 +549,54 @@ impl Component for MessageRow {
     }
 }
 
+fn message_text(content: &str) -> Label {
+    label()
+        .text(content.to_string())
+        .font_size(14.)
+        .line_height(1.4)
+        .color(colors::fg_primary())
+}
+
 #[derive(PartialEq)]
 struct InviteCard {
     invite: MessageInvite,
+    own: bool,
 }
 
 impl Component for InviteCard {
     fn render(&self) -> impl IntoElement {
-        let footer = if self.invite.is_open() {
+        let dispatch = use_dispatch();
+        let invite_id = self.invite.id;
+        let game = use_chat_invite_game(invite_id);
+        let facts = (self.invite.is_open() || game.is_some()).then(|| {
+            let game = game.unwrap_or_default();
+            let unknown = || t("oneclient.chat.invites.unknown").to_string();
+            rect()
+                .vertical()
+                .width(Size::fill())
+                .spacing(4.)
+                .child(invite_fact(
+                    t("oneclient.chat.invites.version"),
+                    game.version.unwrap_or_else(unknown),
+                ))
+                .child(invite_fact(
+                    t("oneclient.chat.invites.loader"),
+                    game.loader
+                        .map_or_else(unknown, |loader| loader.real_name()),
+                ))
+                .into_element()
+        });
+
+        let footer = if self.invite.is_open() && !self.own {
+            rect()
+                .width(Size::fill())
+                .center()
+                .child(accent_button(
+                    t("oneclient.chat.invites.join"),
+                    move |_| dispatch.join_invite(invite_id),
+                ))
+                .into_element()
+        } else if self.invite.is_open() {
             status_line(
                 None,
                 t("oneclient.chat.invites.join_in_game"),
@@ -609,8 +656,34 @@ impl Component for InviteCard {
                             .color(colors::fg_primary()),
                     ),
             )
+            .maybe_child(facts)
             .child(footer)
     }
+}
+
+fn invite_fact(name: &'static str, value: String) -> Element {
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .spacing(8.)
+        .child(
+            label()
+                .text(name)
+                .font_size(12.)
+                .width(Size::flex(1.0))
+                .color(colors::fg_secondary()),
+        )
+        .child(
+            label()
+                .text(value)
+                .font_size(12.)
+                .font_weight(FontWeight::MEDIUM)
+                .max_lines(1)
+                .text_overflow(TextOverflow::Ellipsis)
+                .color(colors::fg_primary()),
+        )
+        .into_element()
 }
 
 fn status_line(icon: Option<IconType>, text: &'static str, color: Color) -> Element {

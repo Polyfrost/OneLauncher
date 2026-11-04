@@ -349,6 +349,14 @@ fn dispatch(events: &EventBus, payload: &str) {
         ClientboundPacket::PlayerPresence { player, online } => {
             events.chat(ChatEvent::PresenceChanged { player, online });
         }
+        ClientboundPacket::SubscriptionSnapshot { users } => {
+            for player in users {
+                events.chat(ChatEvent::PresenceChanged {
+                    player,
+                    online: true,
+                });
+            }
+        }
         ClientboundPacket::FriendRequestReceived { sender, .. } => {
             events.chat(ChatEvent::FriendRequestReceived { sender });
         }

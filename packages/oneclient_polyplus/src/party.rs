@@ -191,23 +191,6 @@ pub async fn create(account: &MinecraftAccount) -> Result<Party, PlusError> {
     .await
 }
 
-pub async fn set_invite_policy(
-    account: &MinecraftAccount,
-    policy: InvitePolicy,
-) -> Result<Party, PlusError> {
-    let policy = match policy {
-        InvitePolicy::Leader => "leader",
-        InvitePolicy::Members => "members",
-    };
-    json_authorized(
-        account,
-        Method::PUT,
-        "/v1/party/settings",
-        Some(&serde_json::json!({ "invite_policy": policy })),
-    )
-    .await
-}
-
 pub async fn leave(account: &MinecraftAccount) -> Result<(), PlusError> {
     send_authorized(account, Method::POST, "/v1/party/leave", None).await?;
     Ok(())

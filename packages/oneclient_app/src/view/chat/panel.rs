@@ -105,6 +105,7 @@ impl Component for SocialPanel {
             expanded: self.expanded,
             own_id,
             conversations: chat.conversations.clone(),
+            names: chat.names.clone(),
             loading: chat.loading,
             error: chat
                 .error

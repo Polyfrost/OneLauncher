@@ -212,7 +212,7 @@ pub(super) fn count_badge(count: usize, background: Color, foreground: Color) ->
 }
 
 #[derive(PartialEq)]
-pub(crate) struct HeaderButton {
+pub(super) struct HeaderButton {
     pub icon: IconType,
     pub tooltip: &'static str,
     pub on_press: EventHandler<()>,

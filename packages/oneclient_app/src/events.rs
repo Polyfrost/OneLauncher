@@ -275,6 +275,7 @@ impl EventPump {
                         if guard.chat.conversation(group_id).is_none() {
                             folded.chat_unknown_group = true;
                         }
+                        folded.chat_invites |= invite_id.is_some();
 
                         let viewing = crate::chat::thread_in_view(
                             crate::view::chat::is_chat_window_focused() || guard.social_open,
@@ -290,9 +291,7 @@ impl EventPump {
                             let group_name = guard
                                 .chat
                                 .conversation(group_id)
-                                .filter(|conversation| {
-                                    conversation.kind == oneclient_polyplus::GroupKind::Group
-                                })
+                                .filter(|conversation| conversation.kind.is_shared())
                                 .and_then(|conversation| conversation.name.clone());
                             toasts.retain(|toast| toast.group_id() != Some(group_id));
                             toasts.push(match invite_id {
@@ -325,10 +324,15 @@ impl EventPump {
                     ChatEvent::RosterChanged => folded.chat_roster = true,
                     ChatEvent::FriendRequestReceived { sender } => {
                         folded.chat_roster = true;
-                        toasts.push(ChatToast::FriendRequest { sender });
+                        if !guard.chat.is_friend(sender) {
+                            toasts.push(ChatToast::FriendRequest { sender });
+                        }
                     }
                     ChatEvent::ConnectionChanged { connected } => {
                         guard.chat.connected = connected;
+                        if !connected {
+                            guard.chat.clear_presence();
+                        }
                         folded.chat_reconnected |= connected;
                         folded.chat_roster |= connected;
                     }
@@ -388,6 +392,10 @@ impl EventPump {
             let station = self.station;
             spawn_in_window(async move { crate::hooks::load_roster(station).await });
         }
+        if folded.chat_invites {
+            let station = self.station;
+            spawn_in_window(async move { crate::hooks::load_invite_games(station).await });
+        }
         if folded.chat_unknown_group {
             let station = self.station;
             spawn_in_window(async move { crate::hooks::load_conversations(station).await });
@@ -421,6 +429,7 @@ struct Folded {
     java: bool,
     chat_roster: bool,
     chat_unknown_group: bool,
+    chat_invites: bool,
     chat_reconnected: bool,
     chat_read: Vec<i32>,
 }

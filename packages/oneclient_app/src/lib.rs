@@ -9,6 +9,7 @@ pub mod cli;
 mod components;
 pub mod disable;
 pub mod essential;
+pub mod invite_join;
 pub mod events;
 pub(crate) mod file_content;
 pub mod hooks;

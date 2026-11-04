@@ -4,8 +4,10 @@ use std::sync::Arc;
 use chrono::{DateTime, FixedOffset, Utc};
 use uuid::Uuid;
 
+use oneclient_common::GameLoader;
 use oneclient_polyplus::{
-    BlockedPlayer, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary, PlayerStatus,
+    BlockedPlayer, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary,
+    IncomingSessionInvite, PlayerStatus,
 };
 
 use crate::state::{AsyncStatus, SocialTab};
@@ -152,6 +154,28 @@ pub enum FriendRequestStatus {
     Failed(String),
 }
 
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct InviteGame {
+    pub version: Option<String>,
+    pub loader: Option<GameLoader>,
+}
+
+impl InviteGame {
+    #[must_use]
+    pub fn known(&self) -> Option<(&str, GameLoader)> {
+        Some((self.version.as_deref()?, self.loader?))
+    }
+}
+
+impl From<&IncomingSessionInvite> for InviteGame {
+    fn from(invite: &IncomingSessionInvite) -> Self {
+        Self {
+            version: invite.minecraft_version.clone(),
+            loader: invite.loader.as_deref().and_then(|name| name.parse().ok()),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct ChatInvite {
     pub id: i32,
@@ -204,6 +228,7 @@ pub struct ChatInbox {
     pub active_gone: u64,
     pub connected: bool,
     pub error: Option<String>,
+    pub names: Arc<HashMap<Uuid, String>>,
 }
 
 impl ChatInbox {
@@ -249,6 +274,8 @@ pub struct ChatState {
     threads: HashMap<i32, ThreadStatus>,
     complete: HashMap<i32, bool>,
     dismissed_invites: HashSet<i32>,
+    names: Arc<HashMap<Uuid, String>>,
+    invite_games: HashMap<i32, InviteGame>,
 }
 
 impl ChatState {
@@ -302,7 +329,33 @@ impl ChatState {
             active_gone: self.active_gone,
             connected: self.connected,
             error: self.error.clone(),
+            names: Arc::clone(&self.names),
         }
+    }
+
+    #[must_use]
+    pub fn unnamed_players(&self) -> Vec<Uuid> {
+        let owner = self.owner.unwrap_or_default();
+        let players: HashSet<Uuid> = self
+            .conversations
+            .iter()
+            .filter_map(|conversation| conversation.counterpart(owner))
+            .chain(self.roster.friends.iter().map(|friend| friend.player))
+            .chain(
+                self.roster
+                    .requests
+                    .incoming
+                    .iter()
+                    .chain(&self.roster.requests.outgoing)
+                    .map(|request| request.player),
+            )
+            .filter(|player| !self.names.contains_key(player))
+            .collect();
+        players.into_iter().collect()
+    }
+
+    pub fn add_names(&mut self, names: impl IntoIterator<Item = (Uuid, String)>) {
+        Arc::make_mut(&mut self.names).extend(names);
     }
 
     #[must_use]
@@ -315,9 +368,57 @@ impl ChatState {
         !self.roster.requests.incoming.is_empty()
     }
 
-    pub fn set_roster(&mut self, roster: ChatRoster) {
+    pub fn set_roster(&mut self, mut roster: ChatRoster) {
+        let friends: HashSet<Uuid> = roster.friends.iter().map(|friend| friend.player).collect();
+        roster
+            .requests
+            .incoming
+            .retain(|request| !friends.contains(&request.player));
+
+        self.presence.retain(|player, _| !friends.contains(player));
         self.roster = roster;
+    }
+
+    pub fn clear_presence(&mut self) {
         self.presence.clear();
+    }
+
+    #[must_use]
+    pub fn online_count(&self, members: &[Uuid]) -> usize {
+        members
+            .iter()
+            .filter(|member| {
+                if self.owner == Some(**member) {
+                    self.connected && self.self_status == PlayerStatus::Online
+                } else {
+                    self.is_online(**member)
+                }
+            })
+            .count()
+    }
+
+    #[must_use]
+    pub fn watched_players(&self) -> Vec<Uuid> {
+        self.roster
+            .friends
+            .iter()
+            .map(|friend| friend.player)
+            .chain(
+                self.conversations
+                    .iter()
+                    .filter(|conversation| conversation.kind.is_shared())
+                    .flat_map(|conversation| conversation.members.iter().copied()),
+            )
+            .filter(|player| self.owner != Some(*player))
+            .collect()
+    }
+
+    #[must_use]
+    pub fn is_friend(&self, player: Uuid) -> bool {
+        self.roster
+            .friends
+            .iter()
+            .any(|friend| friend.player == player)
     }
 
     #[must_use]
@@ -480,6 +581,20 @@ impl ChatState {
 
     pub fn dismiss_invite(&mut self, invite_id: i32) {
         self.dismissed_invites.insert(invite_id);
+    }
+
+    pub fn restore_invite(&mut self, invite_id: i32) {
+        self.dismissed_invites.remove(&invite_id);
+    }
+
+    pub fn set_invite_games(&mut self, invites: &[IncomingSessionInvite]) {
+        self.invite_games
+            .extend(invites.iter().map(|invite| (invite.id, invite.into())));
+    }
+
+    #[must_use]
+    pub fn invite_game(&self, invite_id: i32) -> Option<&InviteGame> {
+        self.invite_games.get(&invite_id)
     }
 
     #[must_use]
@@ -990,6 +1105,137 @@ mod tests {
         });
 
         assert!(!chat.is_online(friend));
+    }
+
+    #[test]
+    fn a_friend_request_from_an_existing_friend_is_hidden() {
+        let since = DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z").expect("timestamp");
+        let request = |id: i32, player: Uuid| oneclient_polyplus::FriendRequest {
+            id,
+            player,
+            created_at: since,
+        };
+        let friend = Uuid::from_u128(2);
+        let stranger = Uuid::from_u128(3);
+
+        let mut chat = ChatState::default();
+        chat.set_roster(ChatRoster {
+            friends: vec![Friend {
+                player: friend,
+                kind: oneclient_polyplus::RelationshipKind::Friend,
+                since,
+                online: false,
+            }],
+            requests: FriendRequests {
+                incoming: vec![request(1, friend), request(2, stranger)],
+                outgoing: Vec::new(),
+            },
+            ..ChatRoster::default()
+        });
+
+        let incoming = chat.roster().requests.incoming;
+        assert_eq!(incoming.len(), 1);
+        assert_eq!(incoming[0].player, stranger);
+        assert!(chat.is_friend(friend));
+        assert!(!chat.is_friend(stranger));
+    }
+
+    #[test]
+    fn only_unknown_players_need_their_names_resolved() {
+        let friend = Uuid::from_u128(2);
+        let known = Uuid::from_u128(3);
+        let since = DateTime::parse_from_rfc3339("2026-01-01T00:00:00Z").expect("timestamp");
+        let friend_of = |player| Friend {
+            player,
+            kind: oneclient_polyplus::RelationshipKind::Friend,
+            since,
+            online: false,
+        };
+
+        let mut chat = ChatState::default();
+        chat.set_roster(ChatRoster {
+            friends: vec![friend_of(friend), friend_of(known)],
+            ..ChatRoster::default()
+        });
+        chat.add_names([(known, "Known".to_string())]);
+
+        assert_eq!(chat.unnamed_players(), vec![friend]);
+    }
+
+    fn shared_group(id: i32, members: Vec<Uuid>) -> GroupSummary {
+        GroupSummary {
+            kind: GroupKind::Group,
+            members,
+            ..summary(id, false)
+        }
+    }
+
+    #[test]
+    fn the_online_count_includes_you_unless_you_are_invisible() {
+        let me = Uuid::from_u128(1);
+        let other = Uuid::from_u128(2);
+        let members = [me, other];
+
+        let mut chat = ChatState::default();
+        chat.owner = Some(me);
+        assert_eq!(chat.online_count(&members), 0);
+
+        chat.connected = true;
+        assert_eq!(chat.online_count(&members), 1);
+
+        chat.set_presence(other, true);
+        assert_eq!(chat.online_count(&members), 2);
+
+        chat.self_status = PlayerStatus::Offline;
+        assert_eq!(chat.online_count(&members), 1);
+    }
+
+    #[test]
+    fn group_members_are_watched_but_not_you_or_direct_messages() {
+        let me = Uuid::from_u128(1);
+        let member = Uuid::from_u128(2);
+        let direct = Uuid::from_u128(3);
+
+        let mut chat = ChatState::default();
+        chat.owner = Some(me);
+        chat.set_conversations(vec![
+            shared_group(1, vec![me, member]),
+            GroupSummary {
+                members: vec![me, direct],
+                ..summary(2, false)
+            },
+        ]);
+
+        assert_eq!(chat.watched_players(), vec![member]);
+    }
+
+    #[test]
+    fn a_roster_reload_keeps_the_presence_of_non_friends() {
+        let member = Uuid::from_u128(2);
+        let mut chat = ChatState::default();
+        chat.set_presence(member, true);
+
+        chat.set_roster(ChatRoster::default());
+        assert!(chat.is_online(member));
+
+        chat.clear_presence();
+        assert!(!chat.is_online(member));
+    }
+
+    #[test]
+    fn a_failed_decline_brings_the_invite_back() {
+        let mut chat = ChatState::default();
+        chat.set_conversations(vec![summary(1, false)]);
+        let mut invite = message(10, "");
+        invite.invite = Some(MessageInvite::new(4, None));
+        chat.upsert(1, invite);
+        assert_eq!(chat.invites().len(), 1);
+
+        chat.dismiss_invite(4);
+        assert!(chat.invites().is_empty());
+
+        chat.restore_invite(4);
+        assert_eq!(chat.invites().len(), 1);
     }
 
     #[test]

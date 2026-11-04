@@ -10,7 +10,8 @@ mod sync_actions;
 mod view_state;
 
 pub use chat::{
-    ChatJob, load_conversations, load_roster, load_self_status, mark_read as mark_chat_read,
+    ChatJob, load_conversations, load_invite_games, load_roster, load_self_status,
+    mark_read as mark_chat_read,
     notify_chat, resync_chat,
 };
 
@@ -262,6 +263,27 @@ pub fn use_chat_online_set(players: Vec<uuid::Uuid>) -> std::collections::HashSe
         .into_iter()
         .filter(|player| state.chat.is_online(*player))
         .collect()
+}
+
+pub fn use_chat_online_count(members: &[uuid::Uuid]) -> usize {
+    let presence = use_radio(AppChannel::ChatPresence);
+    let roster = use_radio(AppChannel::ChatRoster);
+    let chat = use_radio(AppChannel::Chat);
+    let _ = roster.read();
+    let _ = presence.read();
+    chat.read().chat.online_count(members)
+}
+
+pub fn use_invite_join() -> Option<crate::state::InviteJoinPrompt> {
+    use_radio(AppChannel::Social).read().invite_join.clone()
+}
+
+pub fn use_chat_invite_game(invite_id: i32) -> Option<crate::chat::InviteGame> {
+    use_radio(AppChannel::Chat)
+        .read()
+        .chat
+        .invite_game(invite_id)
+        .cloned()
 }
 
 pub fn use_chat_invites() -> Vec<crate::chat::ChatInvite> {

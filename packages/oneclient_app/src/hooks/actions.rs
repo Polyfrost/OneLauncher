@@ -1112,6 +1112,17 @@ impl Actions {
     }
 
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
+        self.launch_with(cluster_id, None);
+    }
+
+    pub fn launch_cluster_for_invite(&self, cluster_id: ClusterId, invite_id: i32) {
+        self.launch_with(
+            cluster_id,
+            Some(crate::invite_join::join_jvm_arg(invite_id)),
+        );
+    }
+
+    fn launch_with(&self, cluster_id: ClusterId, extra_jvm_arg: Option<String>) {
         if let Some((title, body)) = cluster_busy(cluster_id) {
             self.notify(title).body(body).send();
             return;
@@ -1139,7 +1150,7 @@ impl Actions {
             let started = Instant::now();
             match cluster_busy_elsewhere(cluster_id).await {
                 Some((title, body)) => actions.notify(title).body(body).send(),
-                None => launch(&actions, cluster_id).await,
+                None => launch(&actions, cluster_id, extra_jvm_arg).await,
             }
 
             // An instant failure would hand the button back inside the same
@@ -2624,7 +2635,7 @@ pub fn update_check_running(cluster_id: ClusterId) -> bool {
     UPDATE_CHECKS.lock().unwrap().contains(&cluster_id)
 }
 
-async fn launch(actions: &Actions, cluster_id: ClusterId) {
+async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<String>) {
     let Ok(state) = launcher::state() else { return };
     let events = state.services.events.clone();
 
@@ -2697,11 +2708,14 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     }
 
     off_ui(async move {
-        if let Err(err) = oneclient_core::launch_cluster(&state, cluster_id, &account, true).await {
+        let extra = extra_jvm_arg.as_deref();
+        if let Err(err) =
+            oneclient_core::launch_cluster_with(&state, cluster_id, &account, true, extra).await
+        {
             // A missing file is the one failure the launcher can fix itself and a
             // path inside our metadata folder gives the user nothing to act on
             if err.indicates_missing_files() {
-                repair_and_relaunch(&state, cluster_id, &account, err).await;
+                repair_and_relaunch(&state, cluster_id, &account, err, extra).await;
                 return;
             }
 
@@ -2718,6 +2732,7 @@ async fn repair_and_relaunch(
     cluster_id: ClusterId,
     account: &oneclient_auth::MinecraftAccount,
     original: oneclient_core::LauncherError,
+    extra_jvm_arg: Option<&str>,
 ) {
     let events = state.services.events.clone();
 
@@ -2752,7 +2767,9 @@ async fn repair_and_relaunch(
         .body(report.summary())
         .send();
 
-    if let Err(err) = oneclient_core::launch_cluster(state, cluster_id, account, true).await {
+    if let Err(err) =
+        oneclient_core::launch_cluster_with(state, cluster_id, account, true, extra_jvm_arg).await
+    {
         tracing::error!(cluster_id, "launch failed again after repair: {err:#}");
         events.game_failed(cluster_id, format!("{err:#}"));
     }

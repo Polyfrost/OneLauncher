@@ -6,7 +6,7 @@ use oneclient_net::RequestError;
 
 use crate::models::{
     BlockedPlayer, CreateGroupRequest, EditMessageRequest, Friend, FriendRequest, GroupMessage,
-    GroupSummary, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, PlayerStatus, ResolveRequest, ResolveResponse,
+    GroupSummary, IncomingSessionInvite, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, PlayerStatus, ResolveRequest, ResolveResponse,
     ResolvedPlayer, SendMessageRequest, StatusBody,
 };
 use crate::{PlusClient, PlusError, base_url};
@@ -182,6 +182,20 @@ impl PlusClient {
         self.unit(
             Method::POST,
             self.url(&format!("/social/requests/{request_id}/decline"))?,
+            None,
+        )
+        .await
+    }
+
+    pub async fn incoming_session_invites(&self) -> Result<Vec<IncomingSessionInvite>, PlusError> {
+        self.json(Method::GET, self.url("/sessions/invites/incoming")?, None)
+            .await
+    }
+
+    pub async fn decline_session_invite(&self, invite_id: i32) -> Result<(), PlusError> {
+        self.unit(
+            Method::POST,
+            self.url(&format!("/sessions/invites/{invite_id}/decline"))?,
             None,
         )
         .await

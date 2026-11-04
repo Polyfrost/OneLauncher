@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
+use oneclient_common::GameLoader;
 use freya::router::RouterContext;
 use oneclient_core::GameVersionKind;
 use oneclient_core::clusters::{ClusterKind, ModpackSource};
@@ -136,26 +137,51 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
 #[derive(PartialEq)]
 pub struct CreateInstanceModal {
     on_close: EventHandler<()>,
+    prefill: Option<(String, GameLoader)>,
 }
 
 impl CreateInstanceModal {
     pub fn new(on_close: impl Into<EventHandler<()>>) -> Self {
         Self {
             on_close: on_close.into(),
+            prefill: None,
         }
+    }
+
+    pub fn prefill(mut self, version: String, loader: GameLoader) -> Self {
+        self.prefill = Some((version, loader));
+        self
     }
 }
 
 impl Component for CreateInstanceModal {
     fn render(&self) -> impl IntoElement {
         let mutation = use_cluster_mutation();
+        let prefilled = self.prefill.is_some();
+        let prefill_version = self.prefill.as_ref().map(|(version, _)| version.clone());
+        let prefill_loader = self
+            .prefill
+            .as_ref()
+            .map_or(LoaderChoice::Fabric, |(_, loader)| LoaderChoice::of(*loader));
         let wizard = Wizard {
             step: use_state(|| 0usize),
-            choice: use_state(|| TypeChoice::OneClient),
-            version: use_state(|| None::<String>),
-            filter: use_state(|| kind_bit(GameVersionKind::Release)),
+            choice: use_state(|| {
+                if prefilled {
+                    TypeChoice::Scratch
+                } else {
+                    TypeChoice::OneClient
+                }
+            }),
+            version: use_state(|| prefill_version),
+            filter: use_state(|| {
+                if prefilled {
+                    u8::MAX
+                } else {
+                    kind_bit(GameVersionKind::Release)
+                }
+            }),
             query: use_state(String::new),
-            loader: use_state(|| LoaderChoice::Fabric),
+            loader: use_state(|| prefill_loader),
             loader_version: use_state(|| None::<String>),
             declined: use_state(|| None::<HashSet<String>>),
             modpack_origin: use_state(|| ModpackOrigin::Browse),

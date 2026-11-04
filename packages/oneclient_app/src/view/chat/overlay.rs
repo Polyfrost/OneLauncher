@@ -1,6 +1,7 @@
 use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
 
+use crate::components::OverlayPopup;
 use crate::hooks::{use_chat_allowed, use_dispatch, use_social_open, use_social_popped_notice};
 use crate::i18n::t;
 use crate::theme::{self, colors};
@@ -10,14 +11,10 @@ use super::panel::{PanelMode, SocialPanel};
 
 const DOCKED_WIDTH_PX: f32 = 348.;
 const DOCKED_EDGE_PX: f32 = 12.;
+const DOCKED_LEVEL: u8 = 2;
 
 fn docked_panel_height() -> f32 {
-    let window = Platform::get().current_window();
-    let scale = match *window.scale_factor.read() as f32 {
-        scale if scale > 0. => scale,
-        _ => 1.,
-    };
-    let window_height = window.root_size.read().height / scale;
+    let window_height = Platform::get().current_window().root_size.read().height;
     (window_height - theme::NAVBAR_HEIGHT_PX - DOCKED_EDGE_PX).max(0.)
 }
 
@@ -52,32 +49,38 @@ impl Component for DockedPanel {
     fn render(&self) -> impl IntoElement {
         let intro = use_animation(|conf| {
             conf.on_creation(OnCreation::Run);
-            AnimNum::new(0., 1.).time(200).ease(Ease::Out)
+            AnimNum::new(0., 1.).time(90).ease(Ease::Out)
         });
         let progress = intro.read().value();
 
         let height = docked_panel_height();
+        let dispatch = use_dispatch();
 
-        rect()
+        OverlayPopup::new()
+            .backdrop(false)
+            .overlay_level(DOCKED_LEVEL)
             .position(
-                Position::new_absolute()
+                Position::new_global()
                     .top(theme::NAVBAR_HEIGHT_PX)
                     .right(DOCKED_EDGE_PX),
             )
-            .layer(Layer::Overlay)
-            .width(Size::px(DOCKED_WIDTH_PX))
-            .height(Size::px(height))
-            .opacity(progress)
-            .corner_radius(CornerRadius::new_all(CARD_RADIUS_PX))
-            .overflow(Overflow::Clip)
-            .background(colors::page().with_a(196))
-            .backdrop_blur(40.)
-            .border(inset_border(hairline()))
-            .shadow(popup_shadow())
-            .child(SocialPanel {
-                mode: PanelMode::Launcher,
-                expanded: false,
-            })
+            .on_close(move |()| dispatch.close_social())
+            .child(
+                rect()
+                    .width(Size::px(DOCKED_WIDTH_PX))
+                    .height(Size::px(height))
+                    .opacity(progress)
+                    .corner_radius(CornerRadius::new_all(CARD_RADIUS_PX))
+                    .overflow(Overflow::Clip)
+                    .background(colors::page().with_a(196))
+                    .backdrop_blur(40.)
+                    .border(inset_border(hairline()))
+                    .shadow(popup_shadow())
+                    .child(SocialPanel {
+                        mode: PanelMode::Launcher,
+                        expanded: false,
+                    }),
+            )
     }
 }
 
@@ -128,5 +131,28 @@ impl Component for PoppedNotice {
                             .color(colors::fg_primary()),
                     ),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use freya_testing::prelude::*;
+
+    use super::*;
+
+    fn app() -> impl IntoElement {
+        label().text(docked_panel_height().to_string())
+    }
+
+    fn height_at(scale: f64) -> Option<String> {
+        let (test, _) = TestingRunner::new(app, Size2D::new(1200., 1200.), |_| {}, scale);
+        test.find(|_, element| Label::try_downcast(element).map(|label| label.text.to_string()))
+    }
+
+    #[test]
+    fn the_docked_panel_fills_the_window_at_any_display_scale() {
+        assert_eq!(height_at(1.).as_deref(), Some("1108"));
+        assert_eq!(height_at(1.5).as_deref(), Some("708"));
+        assert_eq!(height_at(2.).as_deref(), Some("508"));
     }
 }

@@ -47,6 +47,24 @@ pub enum SocialTab {
     Party,
 }
 
+#[derive(Clone, Debug, PartialEq)]
+pub enum InviteJoinPrompt {
+    Pick {
+        invite_id: i32,
+        clusters: Vec<i64>,
+    },
+    Create {
+        invite_id: i32,
+        version: String,
+        loader: oneclient_common::GameLoader,
+        oneclient: bool,
+    },
+    Custom {
+        version: String,
+        loader: oneclient_common::GameLoader,
+    },
+}
+
 #[derive(Default)]
 pub struct AppState {
     pub launcher: LauncherInit,
@@ -64,6 +82,7 @@ pub struct AppState {
     pub social_open: bool,
     pub social_popped_notice: bool,
     pub social_tab: SocialTab,
+    pub invite_join: Option<InviteJoinPrompt>,
     pub microsoft_login: Option<LoginProgress>,
     pub installs: InstallState,
     pub chat: ChatState,

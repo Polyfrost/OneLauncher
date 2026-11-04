@@ -10,7 +10,15 @@ pub const MAX_RESOLVE_BATCH: usize = 100;
 pub enum GroupKind {
     Dm,
     Group,
+    Party,
     Unknown,
+}
+
+impl GroupKind {
+    #[must_use]
+    pub fn is_shared(self) -> bool {
+        matches!(self, Self::Group | Self::Party)
+    }
 }
 
 impl<'de> Deserialize<'de> for GroupKind {
@@ -18,6 +26,7 @@ impl<'de> Deserialize<'de> for GroupKind {
         Ok(match String::deserialize(deserializer)?.as_str() {
             "dm" => Self::Dm,
             "group" => Self::Group,
+            "party" => Self::Party,
             _ => Self::Unknown,
         })
     }
@@ -113,6 +122,15 @@ pub struct Friend {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct IncomingSessionInvite {
+    pub id: i32,
+    #[serde(default)]
+    pub minecraft_version: Option<String>,
+    #[serde(default)]
+    pub loader: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct FriendRequest {
     pub id: i32,
     pub player: Uuid,
@@ -176,6 +194,34 @@ mod tests {
             serde_json::from_str(r#"{"status":"away"}"#).expect("unknown should parse");
         assert_eq!(online.status, PlayerStatus::Online);
         assert_eq!(unknown.status, PlayerStatus::Online);
+    }
+
+    #[test]
+    fn party_chats_are_their_own_shared_kind() {
+        let summary: GroupSummary =
+            serde_json::from_str(r#"{"id":1,"kind":"party","members":[],"unread":false}"#)
+                .expect("a party chat should deserialize");
+
+        assert_eq!(summary.kind, GroupKind::Party);
+        assert!(summary.kind.is_shared());
+        assert!(GroupKind::Group.is_shared());
+        assert!(!GroupKind::Dm.is_shared());
+        assert!(!GroupKind::Unknown.is_shared());
+    }
+
+    #[test]
+    fn incoming_invites_read_the_game_and_tolerate_nulls() {
+        let invites: Vec<IncomingSessionInvite> = serde_json::from_str(
+            r#"[
+                {"id":1,"session_id":"0192f0d0-0000-7000-8000-000000000001","sender":"0192f0d0-0000-7000-8000-000000000002","eos_product_user_id":null,"eos_session_id":"x","created_at":"2026-11-04T12:00:00Z","status":"pending","minecraft_version":"1.21.1","loader":"neoforge"},
+                {"id":2,"minecraft_version":null,"loader":null}
+            ]"#,
+        )
+        .expect("invites should parse");
+
+        assert_eq!(invites[0].minecraft_version.as_deref(), Some("1.21.1"));
+        assert_eq!(invites[0].loader.as_deref(), Some("neoforge"));
+        assert_eq!(invites[1].minecraft_version, None);
     }
 
     #[test]

@@ -2,7 +2,10 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::time::{Duration, Instant};
 
+use freya::prelude::spawn_in_window;
 use freya::radio::RadioStation;
+use oneclient_common::GameLoader;
+use oneclient_content::packages::PackageStore;
 use uuid::Uuid;
 
 use oneclient_polyplus::{
@@ -10,11 +13,13 @@ use oneclient_polyplus::{
     PlusClient, PlusError,
 };
 
-use crate::chat::{ChatRoster, ChatToast, FriendRequestStatus, FriendRequests};
+use crate::chat::{ChatRoster, ChatToast, FriendRequestStatus, FriendRequests, InviteGame};
 use crate::components::IconType;
 use crate::hooks::{Actions, PumpSignal};
 use crate::i18n::{t, tf};
-use crate::state::{AppChannel, AppState, AsyncStatus, SocialTab};
+use crate::invite_join::{self, InviteJoin};
+use crate::launcher;
+use crate::state::{AppChannel, AppState, AsyncStatus, InviteJoinPrompt, SocialTab};
 
 const PAGE_SIZE: u64 = 50;
 
@@ -85,6 +90,14 @@ async fn open_group(station: Station, group_id: i32) {
     load_group(station, group_id).await;
 }
 
+fn restore_invite(station: Station, invite_id: i32) {
+    station
+        .clone()
+        .write_channel(AppChannel::Chat)
+        .chat
+        .restore_invite(invite_id);
+}
+
 async fn roster_change(station: Station, result: Result<(), PlusError>) {
     match result {
         Ok(()) => {
@@ -132,18 +145,19 @@ pub async fn load_roster(station: Station) {
                 *last = Some(Instant::now());
             }
 
-            oneclient_polyplus::watch_players(
-                roster.friends.iter().map(|friend| friend.player).collect(),
-            );
-
             station
                 .clone()
                 .write_channel(AppChannel::ChatRoster)
                 .chat
                 .set_roster(roster);
+            watch_members(station);
         }
         Err(err) => report(station, &err),
     }
+}
+
+fn watch_members(station: Station) {
+    oneclient_polyplus::watch_players(station.peek().chat.watched_players());
 }
 
 fn roster_is_fresh() -> bool {
@@ -171,11 +185,14 @@ pub async fn load_conversations(station: Station) {
     }
 
     match groups {
-        Ok(groups) => station
-            .clone()
-            .write_channel(AppChannel::Chat)
-            .chat
-            .set_conversations(groups),
+        Ok(groups) => {
+            station
+                .clone()
+                .write_channel(AppChannel::Chat)
+                .chat
+                .set_conversations(groups);
+            watch_members(station);
+        }
         Err(err) => {
             report(station, &err);
             return;
@@ -195,6 +212,188 @@ pub async fn load_conversations(station: Station) {
 
     for group_id in unread {
         load_messages(station, group_id).await;
+    }
+}
+
+pub async fn load_invite_games(station: Station) {
+    let Some(client) = client() else { return };
+    let owner = owner_of(station);
+
+    let invites = client.incoming_session_invites().await;
+    if owner_of(station) != owner {
+        return;
+    }
+
+    match invites {
+        Ok(invites) => station
+            .clone()
+            .write_channel(AppChannel::Chat)
+            .chat
+            .set_invite_games(&invites),
+        Err(err) => tracing::warn!("could not load incoming world invites: {err:#}"),
+    }
+}
+
+async fn invite_game(station: Station, invite_id: i32) -> Result<Option<InviteGame>, PlusError> {
+    let Some(client) = client() else {
+        return Ok(station.peek().chat.invite_game(invite_id).cloned());
+    };
+
+    match client.incoming_session_invites().await {
+        Ok(invites) => {
+            let game = invites
+                .iter()
+                .find(|invite| invite.id == invite_id)
+                .map(InviteGame::from);
+            station
+                .clone()
+                .write_channel(AppChannel::Chat)
+                .chat
+                .set_invite_games(&invites);
+            Ok(game)
+        }
+        Err(err) => match station.peek().chat.invite_game(invite_id).cloned() {
+            Some(game) => {
+                tracing::warn!("using the cached world invite: {err:#}");
+                Ok(Some(game))
+            }
+            None => Err(err),
+        },
+    }
+}
+
+async fn invite_candidates(game: InviteGame) -> Option<(Vec<i64>, bool)> {
+    let state = launcher::state().ok()?;
+    let lookup = state.clone();
+
+    launcher::off_ui(async move {
+        let content = lookup.services.content();
+        let clusters = match lookup.clusters.list().await {
+            Ok(clusters) => clusters,
+            Err(err) => {
+                tracing::error!("could not list clusters for a world invite: {err:#}");
+                return None;
+            }
+        };
+
+        let mut candidates = Vec::new();
+        for cluster in clusters {
+            if !invite_join::cluster_matches(&game, &cluster.mc_version, cluster.mc_loader) {
+                continue;
+            }
+            let artifacts = PackageStore::list_linked_artifacts(cluster.id, &content)
+                .await
+                .unwrap_or_default();
+            if invite_join::has_polyplus(&artifacts) {
+                candidates.push(cluster.id);
+            }
+        }
+
+        let meta_url_base = lookup.services.requester.config().meta_url_base.clone();
+        let metadata = lookup.versions.metadata(&meta_url_base).await;
+        let oneclient = game.known().is_some_and(|(version, loader)| {
+            invite_join::oneclient_supports(&metadata, version, loader)
+        });
+
+        Some((candidates, oneclient))
+    })
+    .await
+}
+
+async fn start_invite_join(actions: Actions, invite_id: i32) {
+    let station = actions.station();
+
+    let game = match invite_game(station, invite_id).await {
+        Ok(Some(game)) => game,
+        Ok(None) => {
+            actions
+                .notify(t("oneclient.components.invite_join.expired"))
+                .error()
+                .toast_only()
+                .send();
+            return;
+        }
+        Err(err) => {
+            report(station, &err);
+            return;
+        }
+    };
+
+    let Some((candidates, oneclient)) = invite_candidates(game.clone()).await else {
+        return;
+    };
+
+    if candidates
+        .iter()
+        .any(|id| station.peek().game.is_active(*id))
+    {
+        actions
+            .notify(t("oneclient.components.invite_join.running_title"))
+            .body(t("oneclient.components.invite_join.running_body"))
+            .send();
+        return;
+    }
+
+    let prompt = match invite_join::plan(&game, candidates, oneclient) {
+        InviteJoin::Launch(cluster_id) => {
+            actions.close_social();
+            actions.launch_cluster_for_invite(cluster_id, invite_id);
+            return;
+        }
+        InviteJoin::Pick(clusters) => InviteJoinPrompt::Pick {
+            invite_id,
+            clusters,
+        },
+        InviteJoin::Create {
+            version,
+            loader,
+            oneclient,
+        } => InviteJoinPrompt::Create {
+            invite_id,
+            version,
+            loader,
+            oneclient,
+        },
+        InviteJoin::Unknown => {
+            actions
+                .notify(t("oneclient.components.invite_join.unknown_title"))
+                .body(t("oneclient.components.invite_join.unknown_body"))
+                .send();
+            return;
+        }
+    };
+
+    set_invite_join(station, Some(prompt));
+}
+
+fn set_invite_join(station: Station, prompt: Option<InviteJoinPrompt>) {
+    station
+        .clone()
+        .write_channel(AppChannel::Social)
+        .invite_join = prompt;
+}
+
+async fn load_names(station: Station) {
+    let Some(client) = client() else { return };
+    let owner = owner_of(station);
+
+    let players = station.peek().chat.unnamed_players();
+    if players.is_empty() {
+        return;
+    }
+
+    let resolved = client.resolve_players(&players).await;
+    if owner_of(station) != owner {
+        return;
+    }
+
+    match resolved {
+        Ok(resolved) => station
+            .clone()
+            .write_channel(AppChannel::Chat)
+            .chat
+            .add_names(resolved.into_iter().map(|player| (player.id, player.username))),
+        Err(err) => tracing::warn!("could not resolve player names: {err:#}"),
     }
 }
 
@@ -320,6 +519,7 @@ fn stamp_resync() {
 
 async fn resync_once(station: Station) {
     load_conversations(station).await;
+    load_invite_games(station).await;
 
     let active = station.peek().chat.active;
     if let Some(group_id) = active {
@@ -424,6 +624,7 @@ pub enum ChatJob {
     AddFriend(String),
     AcceptRequest(i32),
     DeclineRequest(i32),
+    DeclineInvite(i32),
     CancelRequest(i32),
     RemoveFriend(Uuid),
     Block(Uuid),
@@ -434,6 +635,7 @@ pub enum ChatJob {
         members: Vec<Uuid>,
     },
     LeaveGroup(i32),
+    ResolveNames,
     SwitchOwner {
         signed_in: bool,
     },
@@ -542,6 +744,16 @@ impl ChatJob {
                 };
 
                 let outcome = match client.lookup_username(&username).await {
+                    Ok(Some(player)) if station.peek().chat.is_friend(player) => {
+                        settle_friend_request(
+                            station,
+                            FriendRequestStatus::Failed(tf(
+                                "oneclient.chat.errors.already_friends",
+                                &[&username],
+                            )),
+                        );
+                        return;
+                    }
                     Ok(Some(player)) => client.send_friend_request(player).await.map(drop),
                     Ok(None) => {
                         settle_friend_request(
@@ -574,6 +786,26 @@ impl ChatJob {
                 let Some(client) = client() else { return };
                 roster_change(station, client.accept_request(request_id).await).await;
                 load_conversations(station).await;
+            }
+            Self::DeclineInvite(invite_id) => {
+                let Some(client) = client() else {
+                    restore_invite(station, invite_id);
+                    return;
+                };
+                let owner = owner_of(station);
+
+                let declined = client.decline_session_invite(invite_id).await;
+                if owner_of(station) != owner {
+                    return;
+                }
+
+                match declined {
+                    Err(err) if !err.is_not_found() => {
+                        restore_invite(station, invite_id);
+                        report(station, &err);
+                    }
+                    _ => {}
+                }
             }
             Self::DeclineRequest(request_id) => {
                 let Some(client) = client() else { return };
@@ -626,6 +858,7 @@ impl ChatJob {
                 }
                 load_conversations(station).await;
             }
+            Self::ResolveNames => load_names(station).await,
             Self::LeaveGroup(group_id) => {
                 let Some(client) = client() else { return };
                 let Some(owner) = owner_of(station) else {
@@ -771,6 +1004,26 @@ impl Actions {
     pub fn refresh_chat(&self) {
         self.chat_job(ChatJob::Resync { floored: false });
         self.chat_job(ChatJob::Roster { floored: true });
+    }
+
+    pub fn join_invite(&self, invite_id: i32) {
+        let actions = self.clone();
+        spawn_in_window(async move { start_invite_join(actions, invite_id).await });
+    }
+
+    pub fn clear_invite_join(&self) {
+        set_invite_join(self.station(), None);
+    }
+
+    pub fn custom_invite_cluster(&self, version: String, loader: GameLoader) {
+        set_invite_join(
+            self.station(),
+            Some(InviteJoinPrompt::Custom { version, loader }),
+        );
+    }
+
+    pub fn resolve_chat_names(&self) {
+        self.chat_job(ChatJob::ResolveNames);
     }
 
     pub fn sync_chat(&self) {
@@ -1031,6 +1284,7 @@ impl Actions {
             .write_channel(AppChannel::Chat)
             .chat
             .dismiss_invite(invite_id);
+        self.chat_job(ChatJob::DeclineInvite(invite_id));
     }
 
     pub fn sync_chat_owner(&self, owner: Option<Uuid>) {

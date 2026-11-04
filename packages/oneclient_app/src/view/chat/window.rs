@@ -14,6 +14,7 @@ use super::panel::{PanelMode, SocialPanel};
 const WINDOW_WIDTH_PX: f64 = 940.;
 const WINDOW_HEIGHT_PX: f64 = 720.;
 const WINDOW_GAP_PX: f64 = 12.;
+const EXPANDED_MIN_WIDTH_PX: f32 = 640.;
 
 static CHAT_WINDOW: SingleWindow = SingleWindow::new();
 
@@ -120,7 +121,7 @@ fn window_config(position: Option<PhysicalPosition<i32>>) -> WindowConfig {
             "../../../icons/128x128.png"
         )))
         .with_size(WINDOW_WIDTH_PX, WINDOW_HEIGHT_PX)
-        .with_min_size(640., 400.)
+        .with_min_size(360., 400.)
         .with_decorations(true)
         .with_background(colors::page())
         .with_window_attributes(move |attrs, _| match position {
@@ -143,6 +144,9 @@ impl App for ChatApp {
 
         track_focus(&dispatch);
 
+        let expanded = Platform::get().current_window().root_size.read().width
+            >= EXPANDED_MIN_WIDTH_PX;
+
         use_drop({
             let dispatch = dispatch.clone();
             move || dispatch.dismiss_social_notice()
@@ -157,7 +161,7 @@ impl App for ChatApp {
             .overflow(Overflow::Clip)
             .child(SocialPanel {
                 mode: PanelMode::Window,
-                expanded: true,
+                expanded,
             })
     }
 }

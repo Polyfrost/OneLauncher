@@ -8,6 +8,11 @@ pub enum ClientboundPacket {
         online: bool,
     },
 
+    SubscriptionSnapshot {
+        #[serde(default)]
+        users: Vec<Uuid>,
+    },
+
     FriendRequestReceived {
         request_id: i32,
         sender: Uuid,
@@ -112,6 +117,20 @@ mod tests {
         .expect("unknown packets should fall back rather than fail");
 
         assert!(matches!(packet, ClientboundPacket::Unhandled));
+    }
+
+    #[test]
+    fn a_subscription_snapshot_lists_the_live_players() {
+        let player = Uuid::from_u128(5);
+        let packet: ClientboundPacket = serde_json::from_str(&format!(
+            r#"{{"type":"SubscriptionSnapshot","equipped":{{}},"active_emotes":{{}},"particle_colors":{{}},"users":["{player}"],"rejected":[],"request_id":null}}"#
+        ))
+        .expect("packet should parse");
+
+        assert!(matches!(
+            packet,
+            ClientboundPacket::SubscriptionSnapshot { users } if users == vec![player]
+        ));
     }
 
     #[test]

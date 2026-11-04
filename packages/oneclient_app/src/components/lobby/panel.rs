@@ -2,7 +2,7 @@ use std::time::Instant;
 
 use freya::prelude::*;
 use oneclient_polyplus::party::{
-    self, InvitePolicy, LocationKind, MAX_PARTY_SIZE, Party, PartyInvite, PartyMember,
+    self, LocationKind, MAX_PARTY_SIZE, Party, PartyInvite, PartyMember,
 };
 use uuid::Uuid;
 
@@ -13,13 +13,12 @@ use super::{
 };
 use crate::components::cluster_menu::open_menu_at;
 use crate::components::{
-    Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, toggle_controlled,
+    Avatar, Button, ContextMenu, Icon, IconType, ScrollArea,
 };
 use crate::hooks::use_dispatch;
 use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::{border_all_color, divider, relative_time};
-use crate::view::chat::HeaderButton;
 
 #[derive(Clone, PartialEq)]
 pub(super) enum Dialog {
@@ -79,7 +78,7 @@ fn section_header(title: &'static str, count: Option<String>) -> Rect {
         }))
 }
 
-fn header(title: String, subtitle: Option<String>, settings: Option<Element>) -> Rect {
+fn header(title: String, subtitle: Option<String>) -> Rect {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -109,7 +108,6 @@ fn header(title: String, subtitle: Option<String>, settings: Option<Element>) ->
                         .into_element()
                 })),
         )
-        .maybe_child(settings)
 }
 
 fn since(at: chrono::DateTime<chrono::Utc>) -> String {
@@ -150,7 +148,6 @@ impl Component for NoLobby {
             .spacing(10.)
             .child(header(
                 t("oneclient.components.lobby.title").to_string(),
-                None,
                 None,
             ))
             .child(
@@ -225,7 +222,6 @@ impl Component for InLobby {
     fn render(&self) -> impl IntoElement {
         let me = use_my_uuid();
         let snapshot = use_lobby().read().clone();
-        let mut show_settings = use_state(|| false);
         let party = &self.party;
         let mut dialog = self.dialog;
         let leads = is_leader(party, me);
@@ -243,15 +239,6 @@ impl Component for InLobby {
             &[&party.members.len(), &MAX_PARTY_SIZE, &online_count(party)],
         );
 
-        let settings_button = leads.then(|| {
-            HeaderButton {
-                icon: IconType::Settings02,
-                tooltip: t("oneclient.components.lobby.settings.title"),
-                on_press: EventHandler::new(move |_| show_settings.toggle()),
-            }
-            .into_element()
-        });
-
         let invitable = can_invite(party, me) && !is_full(party);
         let outgoing = snapshot.party_outgoing();
         let leave = Confirm::leave(leads, next.map(|_| next_name), &leader_name);
@@ -262,19 +249,12 @@ impl Component for InLobby {
             .height(Size::fill())
             .content(Content::Flex)
             .spacing(10.)
-            .child(header(title, Some(subtitle), settings_button))
+            .child(header(title, Some(subtitle)))
             .child(
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
                     .spacing(14.)
-                    .children((*show_settings.read() && leads).then(|| {
-                        LobbySettings {
-                            policy: party.settings.invite_policy,
-                            busy: snapshot.busy,
-                        }
-                        .into_element()
-                    }))
                     .child(
                         rect()
                             .vertical()
@@ -301,8 +281,8 @@ impl Component for InLobby {
                                 .into_element()
                             })),
                     )
-                    .children((!outgoing.is_empty()).then(|| pending(&outgoing)))
-                    .children(incoming(&snapshot.incoming, true)),
+                    .append_children((!outgoing.is_empty()).then(|| pending(&outgoing)))
+                    .append_children(incoming(&snapshot.incoming, true)),
             )
             .child(divider())
             .child(footer(
@@ -313,67 +293,6 @@ impl Component for InLobby {
                 snapshot.busy,
                 dialog,
             ))
-    }
-}
-
-#[derive(PartialEq)]
-struct LobbySettings {
-    policy: InvitePolicy,
-    busy: bool,
-}
-
-impl Component for LobbySettings {
-    fn render(&self) -> impl IntoElement {
-        let state = use_lobby();
-        let dispatch = use_dispatch();
-        let next = match self.policy {
-            InvitePolicy::Leader => InvitePolicy::Members,
-            InvitePolicy::Members => InvitePolicy::Leader,
-        };
-        let busy = self.busy;
-
-        rect()
-            .vertical()
-            .width(Size::fill())
-            .spacing(10.)
-            .padding(Gaps::new_all(12.))
-            .corner_radius(CornerRadius::new_all(10.))
-            .background(colors::card())
-            .border(border_all_color(1., colors::component_border()))
-            .child(section_label(t(
-                "oneclient.components.lobby.settings.title",
-            )))
-            .child(
-                rect()
-                    .horizontal()
-                    .width(Size::fill())
-                    .content(Content::Flex)
-                    .cross_align(Alignment::Center)
-                    .child(
-                        label()
-                            .text(t("oneclient.components.lobby.settings.members_invite"))
-                            .width(Size::flex(1.0))
-                            .font_size(13.)
-                            .color(colors::fg_primary()),
-                    )
-                    .child(toggle_controlled(
-                        self.policy == InvitePolicy::Members,
-                        (move |()| {
-                            if busy {
-                                return;
-                            }
-                            act(
-                                state,
-                                dispatch.clone(),
-                                move |account| async move {
-                                    party::set_invite_policy(&account, next).await
-                                },
-                                |lobby: &mut LobbyState, party| lobby.party = Some(party),
-                            );
-                        })
-                        .into(),
-                    )),
-            )
     }
 }
 
@@ -504,17 +423,7 @@ impl Component for MemberRow {
             .child(
                 rect()
                     .opacity(if self.member.online { 1. } else { 0.6 })
-                    .child(Avatar::new(player.to_string()).size(32.))
-                    .child(
-                        rect()
-                            .position(Position::new_absolute().bottom(-3.).right(-3.))
-                            .width(Size::px(12.))
-                            .height(Size::px(12.))
-                            .corner_radius(CornerRadius::from(6.))
-                            .background(status_color)
-                            .border(border_all_color(2., colors::card()))
-                            .layer(Layer::Relative(2)),
-                    ),
+                    .child(Avatar::new(player.to_string()).size(32.)),
             )
             .child(
                 rect()
@@ -937,5 +846,64 @@ impl Component for DialogHost {
             .into_element(),
             None => rect().into_element(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use freya_testing::prelude::*;
+    use oneclient_polyplus::party::{InvitePolicy, PartySettings};
+    use tokio::sync::mpsc;
+
+    use super::*;
+    use crate::hooks::{Actions, use_provide_station};
+    use crate::state::AppState;
+
+    const NAMED: u128 = 0xabcdef12 << 96;
+
+    fn member(id: u128) -> PartyMember {
+        PartyMember {
+            player: Uuid::from_u128(id),
+            joined_at: chrono::Utc::now(),
+            online: true,
+            state: None,
+        }
+    }
+
+    fn app() -> impl IntoElement {
+        let station = use_provide_station(AppState::default);
+        use_hook(move || {
+            let (pump, _) = mpsc::unbounded_channel();
+            let (events, _) = oneclient_events::EventBus::channel();
+            GlobalContexts::get().insert_context(Actions::new(station, pump, events));
+        });
+        let dialog = use_state(|| None::<Dialog>);
+
+        rect()
+            .width(Size::px(348.))
+            .height(Size::px(600.))
+            .child(InLobby {
+                party: Party {
+                    id: Uuid::from_u128(100),
+                    leader: Uuid::from_u128(1),
+                    settings: PartySettings {
+                        invite_policy: InvitePolicy::Leader,
+                    },
+                    chat_group_id: None,
+                    members: vec![member(1), member(NAMED)],
+                },
+                dialog,
+            })
+    }
+
+    #[test]
+    fn a_party_with_no_invites_still_lists_its_members() {
+        let test = launch_test(app);
+
+        let row = test.find(|_, element| {
+            Label::try_downcast(element).filter(|label| label.text.as_ref() == "abcdef12")
+        });
+
+        assert!(row.is_some(), "the member row should be mounted");
     }
 }

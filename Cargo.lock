@@ -4940,6 +4940,8 @@ dependencies = [
  "image",
  "oneclient_auth",
  "oneclient_common",
+ "oneclient_events",
+ "oneclient_net",
  "polyio",
  "rand 0.10.3",
  "reqwest 0.13.5",

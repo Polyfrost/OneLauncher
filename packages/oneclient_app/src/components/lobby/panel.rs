@@ -1,6 +1,5 @@
 use std::time::Instant;
 
-use freya::animation::{AnimNum, Ease, OnCreation, use_animation};
 use freya::prelude::*;
 use oneclient_polyplus::party::{
     self, InvitePolicy, LocationKind, MAX_PARTY_SIZE, Party, PartyInvite, PartyMember,
@@ -9,21 +8,18 @@ use uuid::Uuid;
 
 use super::dialogs::{Confirm, ConfirmDialog, InviteDialog};
 use super::{
-    LobbyState, act, can_invite, is_full, is_leader, online_count, sorted_members, successor,
-    use_lobby, use_my_uuid, use_player_name,
+    LobbyState, act, can_invite, is_full, is_leader, online_count, refresh, sorted_members,
+    successor, use_lobby, use_my_uuid, use_player_name,
 };
 use crate::components::cluster_menu::open_menu_at;
 use crate::components::{
-    Avatar, Button, ButtonVariant, ContextMenu, Icon, IconType, OverlayPopup, ScrollArea,
-    toggle_controlled,
+    Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, toggle_controlled,
 };
 use crate::hooks::use_dispatch;
 use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::{border_all_color, divider, relative_time};
-
-const PANEL_WIDTH: f32 = 380.;
-const PANEL_TOP: f32 = 72.;
+use crate::view::chat::HeaderButton;
 
 #[derive(Clone, PartialEq)]
 pub(super) enum Dialog {
@@ -32,70 +28,29 @@ pub(super) enum Dialog {
 }
 
 #[derive(PartialEq)]
-pub struct LobbyPanel;
+pub struct PartyTab;
 
-impl Component for LobbyPanel {
+impl Component for PartyTab {
     fn render(&self) -> impl IntoElement {
-        let mut state = use_lobby();
+        let state = use_lobby();
         let dialog = use_state(|| None::<Dialog>);
 
-        if !state.read().open {
-            return rect().into_element();
-        }
-
-        OverlayPopup::new()
-            .backdrop(false)
-            .position(Position::new_global().top(PANEL_TOP).right(40.))
-            .on_close(move |()| state.write().open = false)
-            .child(PanelCard { dialog })
-            .child(DialogHost { dialog })
-            .into_element()
-    }
-}
-
-#[derive(PartialEq)]
-struct PanelCard {
-    dialog: State<Option<Dialog>>,
-}
-
-impl Component for PanelCard {
-    fn render(&self) -> impl IntoElement {
-        let intro = use_animation(|conf| {
-            conf.on_creation(OnCreation::Run);
-            AnimNum::new(0., 1.).time(200).ease(Ease::Out)
+        use_hook(move || {
+            spawn(refresh(state));
         });
-        let progress = intro.read().value();
-        let party = use_lobby().read().party.clone();
 
-        let body = match party {
-            Some(party) => InLobby {
-                party,
-                dialog: self.dialog,
-            }
-            .into_element(),
+        let body = match state.read().party.clone() {
+            Some(party) => InLobby { party, dialog }.into_element(),
             None => NoLobby.into_element(),
         };
 
         rect()
             .vertical()
-            .width(Size::px(PANEL_WIDTH))
-            .max_height(Size::window_percent(100.))
+            .width(Size::fill())
+            .height(Size::fill())
             .padding(Gaps::new_all(12.))
-            .spacing(10.)
-            .opacity(progress)
-            .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
-            .background(colors::page_elevated().with_a(230))
-            .backdrop_blur(12.)
-            .corner_radius(CornerRadius::new_all(14.))
-            .border(border_all_color(1., colors::component_border()))
-            .shadow(Shadow::from((
-                0.,
-                8.,
-                32.,
-                0.,
-                Color::from_argb(120, 0, 0, 0),
-            )))
             .child(body)
+            .child(DialogHost { dialog })
     }
 }
 
@@ -125,8 +80,6 @@ fn section_header(title: &'static str, count: Option<String>) -> Rect {
 }
 
 fn header(title: String, subtitle: Option<String>, settings: Option<Element>) -> Rect {
-    let mut state = use_lobby();
-
     rect()
         .horizontal()
         .width(Size::fill())
@@ -157,14 +110,6 @@ fn header(title: String, subtitle: Option<String>, settings: Option<Element>) ->
                 })),
         )
         .maybe_child(settings)
-        .child(
-            Button::new()
-                .ghost()
-                .icon()
-                .tooltip(t("oneclient.common.close"))
-                .on_press(move |_| state.write().open = false)
-                .child(Icon::new(IconType::X).size(18.)),
-        )
 }
 
 fn since(at: chrono::DateTime<chrono::Utc>) -> String {
@@ -299,17 +244,12 @@ impl Component for InLobby {
         );
 
         let settings_button = leads.then(|| {
-            Button::new()
-                .variant(if *show_settings.read() {
-                    ButtonVariant::Secondary
-                } else {
-                    ButtonVariant::Ghost
-                })
-                .icon()
-                .tooltip(t("oneclient.components.lobby.settings.title"))
-                .on_press(move |_| show_settings.toggle())
-                .child(Icon::new(IconType::Settings02).size(18.))
-                .into_element()
+            HeaderButton {
+                icon: IconType::Settings02,
+                tooltip: t("oneclient.components.lobby.settings.title"),
+                on_press: EventHandler::new(move |_| show_settings.toggle()),
+            }
+            .into_element()
         });
 
         let invitable = can_invite(party, me) && !is_full(party);
@@ -319,12 +259,14 @@ impl Component for InLobby {
         rect()
             .vertical()
             .width(Size::fill())
+            .height(Size::fill())
+            .content(Content::Flex)
             .spacing(10.)
             .child(header(title, Some(subtitle), settings_button))
             .child(
                 ScrollArea::new()
                     .width(Size::fill())
-                    .max_height(Size::window_percent(58.))
+                    .height(Size::flex(1.0))
                     .spacing(14.)
                     .children((*show_settings.read() && leads).then(|| {
                         LobbySettings {
@@ -622,7 +564,11 @@ impl Component for MemberRow {
                     .icon()
                     .tooltip(t("oneclient.components.lobby.member.more"))
                     .on_press(open_menu_at(menu))
-                    .child(Icon::new(IconType::DotsVertical).size(18.))
+                    .child(
+                        Icon::new(IconType::DotsVertical)
+                            .size(16.)
+                            .color(colors::fg_primary().with_a(178)),
+                    )
                     .into_element()
             }))
             .maybe_child(context)

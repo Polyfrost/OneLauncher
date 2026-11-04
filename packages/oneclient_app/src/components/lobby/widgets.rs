@@ -1,9 +1,10 @@
 use freya::prelude::*;
-use oneclient_polyplus::party::{MAX_PARTY_SIZE, Party};
+use oneclient_polyplus::party::Party;
 use uuid::Uuid;
 
-use super::{LobbyState, refresh, sorted_members, use_lobby, use_my_uuid};
-use crate::components::{Avatar, Button, Icon, IconType};
+use super::{sorted_members, use_lobby, use_my_uuid};
+use crate::components::Avatar;
+use crate::hooks::use_dispatch;
 use crate::i18n::{t, tf};
 use crate::theme::colors;
 use crate::ui::border_all_color;
@@ -28,62 +29,6 @@ pub fn avatar_stack(party: &Party, me: Option<Uuid>, limit: usize, size: f32, ri
     )
 }
 
-fn set_open(mut state: State<LobbyState>, open: bool) {
-    state.write().open = open;
-    if open {
-        spawn(refresh(state));
-    }
-}
-
-#[derive(PartialEq)]
-pub struct NavbarLobbyButton {
-    pub foreground: Option<Color>,
-}
-
-impl Component for NavbarLobbyButton {
-    fn render(&self) -> impl IntoElement {
-        let state = use_lobby();
-        let me = use_my_uuid();
-        let snapshot = state.read().clone();
-        let toggle = move |_| {
-            let open = state.peek().open;
-            set_open(state, !open);
-        };
-
-        let Some(party) = snapshot.party else {
-            return super::super::navbar::navbar_button(self.foreground)
-                .tooltip(t("oneclient.components.lobby.title"))
-                .on_press(toggle)
-                .child(Icon::new(IconType::Users01).size(20.))
-                .into_element();
-        };
-
-        let ring = if snapshot.open {
-            colors::brand()
-        } else {
-            colors::component_border_hover()
-        };
-
-        Button::new()
-            .ghost()
-            .foreground(self.foreground)
-            .height(Size::px(36.))
-            .padding(Gaps::new(0., 12., 0., 4.))
-            .corner_radius(CornerRadius::new_all(8.))
-            .border(border_all_color(1., ring))
-            .tooltip(t("oneclient.components.lobby.title"))
-            .on_press(toggle)
-            .child(avatar_stack(&party, me, 3, 20., colors::page_elevated()))
-            .child(
-                label()
-                    .text(format!("{}/{MAX_PARTY_SIZE}", party.members.len()))
-                    .font_size(13.)
-                    .font_weight(FontWeight::SEMI_BOLD),
-            )
-            .into_element()
-    }
-}
-
 #[derive(PartialEq)]
 pub struct LobbyHeroChip;
 
@@ -91,6 +36,7 @@ impl Component for LobbyHeroChip {
     fn render(&self) -> impl IntoElement {
         let state = use_lobby();
         let me = use_my_uuid();
+        let dispatch = use_dispatch();
         let mut hovered = use_state(|| false);
 
         let Some(party) = state.read().party.clone() else {
@@ -116,7 +62,7 @@ impl Component for LobbyHeroChip {
             .a11y_role(AccessibilityRole::Button)
             .on_pointer_enter(move |_| hovered.set(true))
             .on_pointer_leave(move |_| hovered.set(false))
-            .on_press(move |_| set_open(state, true))
+            .on_press(move |_| dispatch.show_party())
             .child(avatar_stack(&party, me, 4, 20., Color::TRANSPARENT))
             .child(
                 label()

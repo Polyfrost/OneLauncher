@@ -16,6 +16,8 @@ path = "src/lib.rs"
 [dependencies]
 oneclient_auth.workspace = true
 oneclient_common.workspace = true
+oneclient_events.workspace = true
+oneclient_net.workspace = true
 polyio.workspace = true
 
 reqwest.workspace = true

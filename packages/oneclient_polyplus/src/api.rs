@@ -11,13 +11,14 @@ use uuid::Uuid;
 
 use oneclient_auth::MinecraftAccount;
 
-use crate::{PlusError, REQUEST_TIMEOUT, base_url, build_client, login, plus_blocked};
+use crate::session::{build_socket_client, login};
+use crate::{PlusError, REQUEST_TIMEOUT, base_url, plus_blocked};
 
 const TOKEN_LIFETIME: Duration = Duration::from_secs(100 * 60);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 
 static CLIENT: LazyLock<Result<reqwest::Client, String>> =
-    LazyLock::new(|| build_client().map_err(|err| err.to_string()));
+    LazyLock::new(|| build_socket_client().map_err(|err| err.to_string()));
 
 static TOKENS: LazyLock<Mutex<HashMap<Uuid, (String, Instant)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -248,7 +249,9 @@ pub(crate) async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -
         return Ok(token.clone());
     }
 
-    let token = login(client()?, account).await?;
+    let plus = crate::client()
+        .ok_or_else(|| PlusError::Client("the Poly+ client has not started".into()))?;
+    let token = login(&plus.requester, account).await?;
     tokens.insert(account.id, (token.clone(), Instant::now()));
     Ok(token)
 }

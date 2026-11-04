@@ -12,6 +12,7 @@ use oneclient_core::relocate::{RelocationOutcome, RelocationPlan};
 use oneclient_core::settings::LauncherSettings;
 use oneclient_events::LaunchStage;
 
+use crate::chat::ChatState;
 use crate::notifications::{InboxEntry, NotificationState, PendingPrompt};
 
 /// Writing through a channel wakes only the components that subscribed to it
@@ -25,6 +26,10 @@ pub enum AppChannel {
     ControlCenter,
     MicrosoftLogin,
     Installs,
+    Chat,
+    ChatRoster,
+    ChatPresence,
+    Social,
     StorageScan,
     Relocation,
     PendingLaunch,
@@ -34,6 +39,13 @@ pub enum AppChannel {
 }
 
 impl RadioChannel<AppState> for AppChannel {}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SocialTab {
+    #[default]
+    Chat,
+    Party,
+}
 
 #[derive(Default)]
 pub struct AppState {
@@ -49,8 +61,12 @@ pub struct AppState {
     pub game: GameState,
     pub account_switcher_open: bool,
     pub control_center_open: bool,
+    pub social_open: bool,
+    pub social_popped_notice: bool,
+    pub social_tab: SocialTab,
     pub microsoft_login: Option<LoginProgress>,
     pub installs: InstallState,
+    pub chat: ChatState,
     pub storage_scan: Option<StorageScanProgress>,
     pub relocation: RelocationState,
     pub pending_launch: Option<String>,

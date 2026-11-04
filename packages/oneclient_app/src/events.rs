@@ -6,10 +6,13 @@ use std::time::Duration;
 
 use freya::prelude::spawn_in_window;
 use freya::radio::RadioStation;
-use oneclient_events::{Event, EventReceiver, GameEvent, LaunchStage, ProgressEvent, Signal};
+use oneclient_events::{
+    ChatEvent, Event, EventReceiver, GameEvent, LaunchStage, ProgressEvent, Signal,
+};
 use tokio::sync::mpsc;
 
-use crate::hooks::PumpSignal;
+use crate::chat::{ChatMessage, ChatToast};
+use crate::hooks::{Actions, PumpSignal};
 use crate::i18n::t;
 use crate::notifications::{MESSAGE_TOAST_TTL, PendingPromptView};
 use crate::state::{AppChannel, AppState, LoginProgress, StorageScanProgress};
@@ -23,6 +26,7 @@ pub struct EventPump {
     pub events: EventReceiver,
     pub signals: mpsc::UnboundedReceiver<PumpSignal>,
     pub station: RadioStation<AppState, AppChannel>,
+    pub actions: Actions,
 }
 
 impl EventPump {
@@ -111,6 +115,10 @@ impl EventPump {
                 signal = self.signals.recv() => {
                     let Some(signal) = signal else { break };
                     match signal {
+                        PumpSignal::Chat(job) => {
+                            let station = self.station;
+                            spawn_in_window(job.run(station));
+                        }
                         PumpSignal::Reconcile => reconcile(&self.station, &mut armed, paused),
                         PumpSignal::PauseToasts => {
                             paused = true;
@@ -140,9 +148,15 @@ impl EventPump {
         let mut login: Option<Option<LoginProgress>> = None;
         let mut storage_scan: Option<Option<StorageScanProgress>> = None;
         let mut sync_complete = false;
+        let mut chat_events: Vec<ChatEvent> = Vec::new();
+        let mut presence: Vec<(uuid::Uuid, bool)> = Vec::new();
 
         for event in batch {
             match event {
+                Event::Chat(ChatEvent::PresenceChanged { player, online }) => {
+                    presence.push((player, online));
+                }
+                Event::Chat(event) => chat_events.push(event),
                 Event::Signal(Signal::ClustersChanged) => {
                     folded.clusters = true;
                     crate::hooks::cloud_sync_signal(crate::hooks::CloudSignal::Changed(None));
@@ -232,6 +246,103 @@ impl EventPump {
             }
         }
 
+        let mut toasts: Vec<ChatToast> = Vec::new();
+        if !chat_events.is_empty() {
+            let mut guard = self.station.write_channel(AppChannel::Chat);
+            for event in chat_events {
+                match event {
+                    ChatEvent::MessageReceived {
+                        group_id,
+                        message_id,
+                        sender,
+                        content,
+                        invite_id,
+                        invite_status,
+                    } => {
+                        guard.chat.upsert(
+                            group_id,
+                            ChatMessage {
+                                id: message_id,
+                                sender,
+                                content: content.clone(),
+                                sent_at: Some(chrono::Utc::now().fixed_offset()),
+                                edited: false,
+                                invite: invite_id
+                                    .map(|id| crate::chat::MessageInvite::new(id, invite_status)),
+                            },
+                        );
+
+                        if guard.chat.conversation(group_id).is_none() {
+                            folded.chat_unknown_group = true;
+                        }
+
+                        let viewing = crate::chat::thread_in_view(
+                            crate::view::chat::is_chat_window_focused() || guard.social_open,
+                            guard.social_tab,
+                            guard.chat.active,
+                            group_id,
+                        );
+                        let own = guard.chat.owner == Some(sender);
+                        if viewing && !own && !folded.chat_read.contains(&group_id) {
+                            folded.chat_read.push(group_id);
+                        }
+                        if !viewing && !own {
+                            let group_name = guard
+                                .chat
+                                .conversation(group_id)
+                                .filter(|conversation| {
+                                    conversation.kind == oneclient_polyplus::GroupKind::Group
+                                })
+                                .and_then(|conversation| conversation.name.clone());
+                            toasts.retain(|toast| toast.group_id() != Some(group_id));
+                            toasts.push(match invite_id {
+                                Some(_) => ChatToast::Invite { group_id, sender },
+                                None => ChatToast::Message {
+                                    group_id,
+                                    sender,
+                                    group_name,
+                                    content: content.clone(),
+                                },
+                            });
+                        }
+                        guard
+                            .chat
+                            .note_activity(group_id, sender, content, !viewing && !own);
+                    }
+                    ChatEvent::MessageEdited {
+                        group_id,
+                        message_id,
+                        content,
+                        invite_status,
+                    } => guard
+                        .chat
+                        .edit(group_id, message_id, content, invite_status),
+                    ChatEvent::MessageDeleted {
+                        group_id,
+                        message_id,
+                    } => guard.chat.remove(group_id, message_id),
+                    ChatEvent::PresenceChanged { .. } => {}
+                    ChatEvent::RosterChanged => folded.chat_roster = true,
+                    ChatEvent::FriendRequestReceived { sender } => {
+                        folded.chat_roster = true;
+                        toasts.push(ChatToast::FriendRequest { sender });
+                    }
+                    ChatEvent::ConnectionChanged { connected } => {
+                        guard.chat.connected = connected;
+                        folded.chat_reconnected |= connected;
+                        folded.chat_roster |= connected;
+                    }
+                }
+            }
+        }
+
+        if !presence.is_empty() {
+            let mut guard = self.station.write_channel(AppChannel::ChatPresence);
+            for (player, online) in presence {
+                guard.chat.set_presence(player, online);
+            }
+        }
+
         if sync_complete {
             self.station
                 .write_channel(AppChannel::Launcher)
@@ -273,6 +384,27 @@ impl EventPump {
         if folded.java {
             spawn_in_window(async move { crate::hooks::invalidate_java_queries().await });
         }
+        if folded.chat_roster {
+            let station = self.station;
+            spawn_in_window(async move { crate::hooks::load_roster(station).await });
+        }
+        if folded.chat_unknown_group {
+            let station = self.station;
+            spawn_in_window(async move { crate::hooks::load_conversations(station).await });
+        }
+        if folded.chat_reconnected {
+            let station = self.station;
+            spawn_in_window(async move { crate::hooks::resync_chat(station).await });
+            spawn_in_window(async move { crate::hooks::load_self_status(station).await });
+        }
+        for toast in toasts {
+            let actions = self.actions.clone();
+            spawn_in_window(async move { crate::hooks::notify_chat(actions, toast).await });
+        }
+        for group_id in std::mem::take(&mut folded.chat_read) {
+            let station = self.station;
+            spawn_in_window(async move { crate::hooks::mark_chat_read(station, group_id).await });
+        }
 
         folded
     }
@@ -287,6 +419,10 @@ struct Folded {
     launched: Vec<i64>,
     clusters: bool,
     java: bool,
+    chat_roster: bool,
+    chat_unknown_group: bool,
+    chat_reconnected: bool,
+    chat_read: Vec<i32>,
 }
 
 fn reconcile(
@@ -367,7 +503,11 @@ pub async fn start_launcher(
 
     oneclient_net::status::start(state.services.requester.clone());
     crate::translations::start(state.services.requester.clone());
-    oneclient_polyplus::start(std::sync::Arc::clone(&state.auth));
+    oneclient_polyplus::start(
+        std::sync::Arc::clone(&state.auth),
+        state.services.requester.clone(),
+        state.services.events.clone(),
+    );
     oneclient_core::run_startup_tasks(&state);
 
     let data_dir = oneclient_common::paths::data_dir()

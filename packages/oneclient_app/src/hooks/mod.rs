@@ -1,5 +1,6 @@
 mod actions;
 mod active_cluster;
+mod chat;
 mod debounce;
 mod overlay_claims;
 mod queries;
@@ -7,6 +8,11 @@ mod selection;
 mod shortcut_actions;
 mod sync_actions;
 mod view_state;
+
+pub use chat::{
+    ChatJob, load_conversations, load_roster, load_self_status, mark_read as mark_chat_read,
+    notify_chat, resync_chat,
+};
 
 pub use debounce::use_debounced;
 pub use overlay_claims::{
@@ -97,21 +103,36 @@ pub use queries::{
 pub use queries::{external_launchers, use_external_launchers};
 pub use queries::{import_screening, retry_import_screening, use_import_screening};
 
+use crate::chat::{ChatInbox, ChatRoster, ChatThread};
 use crate::notifications::NotificationSnapshot;
 use crate::state::{
-    AppChannel, GameState, InstallState, LauncherInit, LoginProgress, ReleaseMigrationPrompt,
-    RelocationState, SettingsState, StorageScanProgress,
+    AppChannel, AppState, GameState, InstallState, LauncherInit, LoginProgress,
+    ReleaseMigrationPrompt, RelocationState, SettingsState, StorageScanProgress,
 };
 use freya::prelude::*;
-use freya::radio::use_radio;
+use freya::radio::{RadioStation, use_radio};
+
+pub fn use_provide_station(
+    init: impl FnOnce() -> AppState + 'static,
+) -> RadioStation<AppState, AppChannel> {
+    let contexts = GlobalContexts::get();
+    let station = use_hook(move || {
+        contexts
+            .get_context_or_insert(|| RadioStation::<AppState, AppChannel>::create_global(init()))
+    });
+
+    use_provide_context(|| station);
+    station
+}
 
 pub fn use_provide_actions(actions: &Actions) {
     let actions = actions.clone();
-    use_provide_root_context(move || actions.clone());
+    let contexts = GlobalContexts::get();
+    use_hook(move || contexts.insert_context(actions));
 }
 
 pub fn use_dispatch() -> Actions {
-    consume_root_context::<Actions>()
+    GlobalContexts::get().get_context::<Actions>()
 }
 
 /// Wakes its component only when that channel is written so a toast tick does
@@ -178,12 +199,89 @@ pub fn use_share_progress(cluster_id: i64) -> Option<crate::state::ShareProgress
         .cloned()
 }
 
+pub fn use_chat_allowed() -> bool {
+    let settings = use_radio(AppChannel::Settings);
+    crate::chat::chat_allowed(
+        &settings.read().settings.settings,
+        oneclient_common::consent::declined(),
+    )
+}
+
+pub fn use_social_open() -> bool {
+    use_radio(AppChannel::Social).read().social_open
+}
+
+pub fn use_social_tab() -> crate::state::SocialTab {
+    use_radio(AppChannel::Social).read().social_tab
+}
+
+pub fn use_social_popped_notice() -> bool {
+    use_radio(AppChannel::Social).read().social_popped_notice
+}
+
 pub fn use_game_snapshot() -> GameState {
     use_radio(AppChannel::Game).read().game.clone()
 }
 
 pub fn use_installs_snapshot() -> InstallState {
     use_radio(AppChannel::Installs).read().installs.clone()
+}
+
+pub fn use_chat_inbox() -> ChatInbox {
+    use_radio(AppChannel::Chat).read().chat.inbox()
+}
+
+pub fn use_chat_roster() -> ChatRoster {
+    use_radio(AppChannel::ChatRoster).read().chat.roster()
+}
+
+pub fn use_chat_thread(group_id: i32) -> ChatThread {
+    use_radio(AppChannel::Chat).read().chat.thread(group_id)
+}
+
+pub fn use_chat_unread() -> bool {
+    let roster = use_radio(AppChannel::ChatRoster);
+    let chat = use_radio(AppChannel::Chat);
+    let incoming = roster.read().chat.has_incoming_requests();
+    incoming || chat.read().chat.has_unread()
+}
+
+pub fn use_player_online(player: uuid::Uuid) -> bool {
+    let presence = use_radio(AppChannel::ChatPresence);
+    let roster = use_radio(AppChannel::ChatRoster);
+    let _ = roster.read();
+    presence.read().chat.is_online(player)
+}
+
+pub fn use_chat_online_set(players: Vec<uuid::Uuid>) -> std::collections::HashSet<uuid::Uuid> {
+    let presence = use_radio(AppChannel::ChatPresence);
+    let roster = use_radio(AppChannel::ChatRoster);
+    let _ = roster.read();
+    let state = presence.read();
+    players
+        .into_iter()
+        .filter(|player| state.chat.is_online(*player))
+        .collect()
+}
+
+pub fn use_chat_invites() -> Vec<crate::chat::ChatInvite> {
+    use_radio(AppChannel::Chat).read().chat.invites()
+}
+
+pub fn use_chat_friend_request() -> crate::chat::FriendRequestStatus {
+    use_radio(AppChannel::Chat)
+        .read()
+        .chat
+        .friend_request
+        .clone()
+}
+
+pub fn use_chat_self_status() -> oneclient_polyplus::PlayerStatus {
+    use_radio(AppChannel::Chat).read().chat.self_status
+}
+
+pub fn use_chat_error() -> Option<String> {
+    use_radio(AppChannel::Chat).read().chat.error.clone()
 }
 
 pub fn use_storage_scan_progress() -> Option<StorageScanProgress> {

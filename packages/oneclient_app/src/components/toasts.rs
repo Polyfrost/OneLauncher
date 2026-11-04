@@ -404,6 +404,7 @@ fn action_row(
     let review_kind = action.map(|a| a.kind);
     let review_icon = match review_kind {
         Some(NotificationActionKind::OpenUrl(_)) => IconType::LinkExternal01,
+        Some(NotificationActionKind::OpenChat(_)) => IconType::MessageTextSquare01,
         _ => IconType::Eye,
     };
 

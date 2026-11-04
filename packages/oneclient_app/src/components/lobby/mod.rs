@@ -24,14 +24,13 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 
-pub use panel::LobbyPanel;
-pub use widgets::{LobbyHeroChip, NavbarLobbyButton};
+pub use panel::PartyTab;
+pub use widgets::LobbyHeroChip;
 
 const FRIENDS_STALE: Duration = Duration::from_secs(30);
 
 #[derive(Clone, PartialEq, Default, Debug)]
 pub struct LobbyState {
-    pub open: bool,
     pub party: Option<Party>,
     pub incoming: Vec<PartyInvite>,
     pub outgoing: Vec<PartyInvite>,
@@ -172,16 +171,34 @@ pub fn successor(party: &Party, me: Option<Uuid>) -> Option<Uuid> {
 struct LobbyContext(State<LobbyState>);
 
 pub fn use_provide_lobby() {
-    let state = use_state(LobbyState::default);
+    let state = use_lobby();
     let dispatch = use_dispatch();
+    let mut chat_key = use_state(|| None::<(Uuid, Option<i32>)>);
+
+    use_side_effect({
+        let dispatch = dispatch.clone();
+        move || {
+            let key = state
+                .read()
+                .party
+                .as_ref()
+                .map(|party| (party.id, party.chat_group_id));
+            if *chat_key.peek() != key {
+                chat_key.set(key);
+                dispatch.refresh_chat();
+            }
+        }
+    });
+
     use_hook(move || {
-        provide_root_context(LobbyContext(state));
         spawn(sync(state, dispatch));
     });
 }
 
 pub fn use_lobby() -> State<LobbyState> {
-    consume_root_context::<LobbyContext>().0
+    GlobalContexts::get()
+        .get_context_or_insert(|| LobbyContext(State::create_global(LobbyState::default())))
+        .0
 }
 
 async fn sync(mut state: State<LobbyState>, dispatch: Actions) {
@@ -295,7 +312,7 @@ pub fn act<T, F, Fut>(
         return;
     }
     state.write().busy = true;
-    spawn_in_window(async move {
+    spawn_global(async move {
         let result = crate::launcher::off_ui(async move {
             let account = party_account().await?;
             work(account).await.map_err(party_message)
@@ -420,6 +437,7 @@ mod tests {
             settings: PartySettings {
                 invite_policy: InvitePolicy::Leader,
             },
+            chat_group_id: None,
             members,
         }
     }

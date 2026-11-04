@@ -73,7 +73,8 @@ impl Component for ActiveClusterPanel {
                         .text(t("oneclient.components.active_cluster_panel.empty"))
                         .font_size(text_size(24.))
                         .color(colors::on_art_secondary()),
-                );
+                )
+                .child(LobbyHeroChip);
         };
 
         let version = format!("{} {}", cluster.mc_version, cluster.mc_loader);

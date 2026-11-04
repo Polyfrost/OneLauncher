@@ -21,6 +21,8 @@ pub struct Party {
     pub id: Uuid,
     pub leader: Uuid,
     pub settings: PartySettings,
+    #[serde(default)]
+    pub chat_group_id: Option<i32>,
     pub members: Vec<PartyMember>,
 }
 
@@ -317,9 +319,25 @@ mod tests {
             panic!("wrong packet");
         };
         assert_eq!(party.settings.invite_policy, InvitePolicy::Members);
+        assert_eq!(party.chat_group_id, None);
         let location = &party.members[0].state.as_ref().expect("state").location;
         assert_eq!(location.kind, LocationKind::Server);
         assert_eq!(location.display.as_deref(), Some("Hypixel"));
+    }
+
+    #[test]
+    fn reads_the_party_chat_group() {
+        let party: Party = serde_json::from_str(
+            r#"{
+                "id": "0192f0d0-0000-7000-8000-000000000001",
+                "leader": "4b8c6a1e-2f3d-4e5a-9b7c-1d2e3f4a5b61",
+                "settings": { "invite_policy": "leader" },
+                "chat_group_id": 38,
+                "members": []
+            }"#,
+        )
+        .expect("parses");
+        assert_eq!(party.chat_group_id, Some(38));
     }
 
     #[test]

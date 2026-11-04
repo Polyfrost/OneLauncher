@@ -16,7 +16,8 @@ use oneclient_core::clusters::Cluster;
 use oneclient_core::settings::ViewLayout;
 
 use crate::components::{
-    Dropdown, Icon, IconType, Pagination, ScrollArea, Segment, SegmentedControl, TextInput,
+    Dropdown, Icon, IconType, Pagination, ScrollArea, Segment, SegmentedControl, TabBar, TabItem,
+    TextInput,
 };
 use crate::hooks::use_cluster;
 use crate::hooks::{
@@ -427,6 +428,11 @@ impl Component for BrowserBody {
                 query,
                 controls_width,
             ))
+            .child(TypePicker {
+                cluster_id,
+                package_type: package_type.clone(),
+                pick_cluster: self.pick_cluster,
+            })
             .child(
                 rect()
                     .horizontal()
@@ -438,12 +444,6 @@ impl Component for BrowserBody {
                             .vertical()
                             .width(Size::px(CATEGORY_SIDEBAR_W))
                             .height(Size::fill())
-                            .spacing(14.)
-                            .child(TypePicker {
-                                cluster_id,
-                                package_type: package_type.clone(),
-                                pick_cluster: self.pick_cluster,
-                            })
                             .maybe(!all_categories.is_empty(), |el| {
                                 el.child(CategorySidebar {
                                     categories: all_categories,
@@ -734,37 +734,56 @@ impl Component for TypePicker {
     fn render(&self) -> impl IntoElement {
         let cluster_id = self.cluster_id;
         let pick_cluster = self.pick_cluster;
-        let current = self.package_type.clone();
+        let current = self.package_type.as_str();
         let cluster = use_cluster(cluster_id);
         let datapacks = cluster
             .as_ref()
             .is_none_or(|c| supports_datapacks(&c.mc_version));
         let mod_loader = cluster.as_ref().is_none_or(|c| !c.lacks_mod_loader());
 
-        let types: Vec<(&str, &str)> = browse_types()
+        let tabs = browse_types()
             .into_iter()
             .filter(|(slug, _)| datapacks || *slug != DATAPACK_SLUG)
             .filter(|(slug, _)| mod_loader || !LOADER_SLUGS.contains(slug))
-            .collect();
-        let labels: Vec<String> = types
-            .iter()
-            .map(|(_, title)| (*title).to_string())
-            .collect();
-        let selected = type_title(&self.package_type).to_string();
-
-        Dropdown::new(selected, labels)
-            .width(Size::px(CATEGORY_SIDEBAR_W))
-            .height(Size::px(30.))
-            .on_select(move |idx: usize| {
-                let picked = types.get(idx).filter(|(slug, _)| *slug != current);
-                if let Some((slug, _)) = picked {
-                    let _ = RouterContext::get().push(Route::Browser {
-                        cluster_id,
-                        package_type: (*slug).to_string(),
-                        pick_cluster,
-                    });
+            .map(|(slug, title)| {
+                let active = slug == current;
+                let tab = TabItem::new(title, active);
+                if active {
+                    return tab;
                 }
-            })
+                let route = Route::Browser {
+                    cluster_id,
+                    package_type: slug.to_string(),
+                    pick_cluster,
+                };
+                tab.on_press(move |_| {
+                    let _ = RouterContext::get().push(route.clone());
+                })
+            });
+
+        rect()
+            .horizontal()
+            .width(Size::fill())
+            .height(Size::px(38.))
+            .cross_align(Alignment::Center)
+            .border(
+                Border::new()
+                    .fill(colors::component_border())
+                    .width(BorderWidth {
+                        top: 0.,
+                        right: 0.,
+                        bottom: 1.,
+                        left: 0.,
+                    }),
+            )
+            .child(
+                TabBar::new()
+                    .width(Size::auto())
+                    .height(Size::fill())
+                    .spacing(22.)
+                    .font_size(text_size(13.))
+                    .tabs(tabs),
+            )
     }
 }
 

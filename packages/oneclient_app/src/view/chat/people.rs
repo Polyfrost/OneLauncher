@@ -5,75 +5,43 @@ use uuid::Uuid;
 
 use oneclient_polyplus::Friend;
 
-use crate::components::{Avatar, Button, Icon, IconType, OverlayPopup, ScrollArea, TextInput};
+use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TextInput};
 use crate::hooks::{use_chat_roster, use_dispatch};
 use crate::i18n::t;
 use crate::theme::colors;
 use crate::ui::border_all_color;
 
 use super::common::{hint, section_heading, use_player_name};
+use super::list::{FRIEND_ROW_HEIGHT_PX, person_row};
 
 const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_WIDTH_PX: f32 = 520.;
 const DIALOG_HEIGHT_PX: f32 = 540.;
-const LIST_RADIUS_PX: f32 = 8.;
+const MEMBER_ROW_GAP_PX: f32 = 4.;
 
-fn person_row(player: Uuid, name: String, note: Option<String>) -> Rect {
-    rect()
-        .horizontal()
+fn member_list(
+    players: Vec<Uuid>,
+    chosen: HashSet<Uuid>,
+    mut picked: State<HashSet<Uuid>>,
+    empty: &'static str,
+) -> Element {
+    if players.is_empty() {
+        return rect()
+            .width(Size::fill())
+            .height(Size::flex(1.0))
+            .child(hint(empty))
+            .into_element();
+    }
+
+    ScrollArea::new()
         .width(Size::fill())
-        .padding(Gaps::new(6., 8., 6., 8.))
-        .spacing(8.)
-        .content(Content::Flex)
-        .cross_align(Alignment::Center)
-        .corner_radius(CornerRadius::from(LIST_RADIUS_PX))
-        .background(colors::page_elevated())
-        .child(Avatar::new(player.to_string()))
-        .child(
-            rect()
-                .vertical()
-                .width(Size::flex(1.0))
-                .child(
-                    label()
-                        .text(name)
-                        .font_size(13.)
-                        .color(colors::fg_primary())
-                        .max_lines(1),
-                )
-                .maybe_child(note.map(|note| {
-                    label()
-                        .text(note)
-                        .font_size(10.)
-                        .color(colors::fg_secondary())
-                })),
-        )
-}
-
-#[derive(PartialEq)]
-pub(super) struct NewGroupDialog {
-    pub friends: Vec<Friend>,
-    pub on_close: EventHandler<()>,
-}
-
-impl Component for NewGroupDialog {
-    fn render(&self) -> impl IntoElement {
-        let dispatch = use_dispatch();
-        let name = use_state(String::new);
-        let mut picked = use_state(HashSet::<Uuid>::new);
-
-        let friends = &self.friends;
-        let chosen = picked.read().clone();
-
-        let title = name.read().clone();
-        let can_create = !title.trim().is_empty() && !chosen.is_empty();
-
-        let close = self.on_close.clone();
-        let creating = self.on_close.clone();
-
-        let rows: Vec<Element> = friends
-            .iter()
-            .map(|friend| {
-                let player = friend.player;
+        .height(Size::flex(1.0))
+        .lazy(
+            players.len(),
+            FRIEND_ROW_HEIGHT_PX,
+            MEMBER_ROW_GAP_PX,
+            move |index| {
+                let player = players[index];
                 MemberOption {
                     player,
                     selected: chosen.contains(&player),
@@ -86,8 +54,32 @@ impl Component for NewGroupDialog {
                     }),
                 }
                 .into_element()
-            })
-            .collect();
+            },
+        )
+        .into_element()
+}
+
+#[derive(PartialEq)]
+pub(super) struct NewGroupDialog {
+    pub friends: Vec<Friend>,
+    pub on_close: EventHandler<()>,
+}
+
+impl Component for NewGroupDialog {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let name = use_state(String::new);
+        let picked = use_state(HashSet::<Uuid>::new);
+
+        let chosen = picked.read().clone();
+
+        let title = name.read().clone();
+        let can_create = !title.trim().is_empty() && !chosen.is_empty();
+
+        let close = self.on_close.clone();
+        let creating = self.on_close.clone();
+
+        let players: Vec<Uuid> = self.friends.iter().map(|friend| friend.player).collect();
 
         let members: Vec<Uuid> = chosen.iter().copied().collect();
 
@@ -106,21 +98,12 @@ impl Component for NewGroupDialog {
                         .placeholder(t("oneclient.chat.new_group.name_placeholder")),
                 )
                 .child(section_heading(t("oneclient.chat.new_group.members")))
-                .child(
-                    ScrollArea::new()
-                        .width(Size::fill())
-                        .height(Size::flex(1.0))
-                        .child(if rows.is_empty() {
-                            hint(t("oneclient.chat.new_group.no_friends")).into_element()
-                        } else {
-                            rect()
-                                .vertical()
-                                .width(Size::fill())
-                                .spacing(4.)
-                                .children(rows)
-                                .into_element()
-                        }),
-                )
+                .child(member_list(
+                    players,
+                    chosen,
+                    picked,
+                    t("oneclient.chat.new_group.no_friends"),
+                ))
                 .child(
                     rect()
                         .horizontal()
@@ -154,32 +137,18 @@ impl Component for AddMembersDialog {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let roster = use_chat_roster();
-        let mut picked = use_state(HashSet::<Uuid>::new);
+        let picked = use_state(HashSet::<Uuid>::new);
 
         let chosen = picked.read().clone();
         let group_id = self.group_id;
         let close = self.on_close.clone();
         let adding = self.on_close.clone();
 
-        let rows: Vec<Element> = roster
+        let players: Vec<Uuid> = roster
             .friends
             .iter()
-            .filter(|friend| !self.members.contains(&friend.player))
-            .map(|friend| {
-                let player = friend.player;
-                MemberOption {
-                    player,
-                    selected: chosen.contains(&player),
-                    on_toggle: EventHandler::new(move |_| {
-                        let mut next = picked.read().clone();
-                        if !next.remove(&player) {
-                            next.insert(player);
-                        }
-                        picked.set(next);
-                    }),
-                }
-                .into_element()
-            })
+            .map(|friend| friend.player)
+            .filter(|player| !self.members.contains(player))
             .collect();
 
         let additions: Vec<Uuid> = chosen.iter().copied().collect();
@@ -193,21 +162,12 @@ impl Component for AddMembersDialog {
                 .content(Content::Flex)
                 .spacing(14.)
                 .child(dialog_title(t("oneclient.chat.groups.add_members"), close))
-                .child(
-                    ScrollArea::new()
-                        .width(Size::fill())
-                        .height(Size::flex(1.0))
-                        .child(if rows.is_empty() {
-                            hint(t("oneclient.chat.groups.no_friends_to_add")).into_element()
-                        } else {
-                            rect()
-                                .vertical()
-                                .width(Size::fill())
-                                .spacing(4.)
-                                .children(rows)
-                                .into_element()
-                        }),
-                )
+                .child(member_list(
+                    players,
+                    chosen,
+                    picked,
+                    t("oneclient.chat.groups.no_friends_to_add"),
+                ))
                 .child(
                     rect()
                         .horizontal()
@@ -243,7 +203,8 @@ impl Component for MemberOption {
         let toggle = self.on_toggle.clone();
         let selected = self.selected;
 
-        person_row(self.player, name, None)
+        person_row(self.player, name, None, false)
+            .background(colors::page_elevated())
             .cursor(CursorIcon::Pointer)
             .on_all_press(move |_| toggle.call(()))
             .child(
@@ -299,6 +260,7 @@ fn dialog(on_close: EventHandler<()>, body: Element) -> Element {
                         .width(Size::px(DIALOG_WIDTH_PX))
                         .height(Size::px(DIALOG_HEIGHT_PX))
                         .max_width(Size::window_percent(92.))
+                        .max_height(Size::window_percent(92.))
                         .padding(Gaps::new_all(20.))
                         .corner_radius(CornerRadius::new_all(14.))
                         .background(CARD_BG)

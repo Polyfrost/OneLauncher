@@ -70,7 +70,8 @@ mod version_card;
 mod warning_card;
 
 pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
-pub use lobby::{LobbyHeroChip, PartyTab, use_provide_lobby};
+pub(crate) use lobby::modal;
+pub use lobby::{LobbyHeroChip, PartyTab, use_player_name, use_provide_lobby};
 pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use asset_image::AssetImage;

@@ -172,6 +172,7 @@ impl Component for CreateInstanceModal {
             .as_ref()
             .map_or(LoaderChoice::Fabric, |(_, loader)| LoaderChoice::of(*loader));
         let wizard = Wizard {
+            exact_loader: self.prefill.as_ref().map(|(_, loader)| *loader),
             step: use_state(|| 0usize),
             choice: use_state(|| {
                 if prefilled {
@@ -229,12 +230,16 @@ impl Component for CreateInstanceModal {
         let mut step = wizard.step;
         let mut query = wizard.query;
 
-        let invite = self.invite.filter(|_| {
-            self.prefill.as_ref().is_some_and(|(version, loader)| {
-                picks.versions.chosen.as_ref() == Some(version)
-                    && picks.loader.chosen == Some(*loader)
-            })
-        });
+        let invite = crate::invite_join::wizard_invite(
+            self.invite,
+            self.prefill.as_ref(),
+            picks.versions.chosen.as_deref(),
+            picks.loader.chosen,
+        );
+        let off_invite = self.invite.is_some()
+            && invite.is_none()
+            && picks.versions.chosen.is_some()
+            && picks.loader.chosen.is_some();
         let close_x = self.on_close.clone();
         let close_cancel = self.on_close.clone();
         let close_created = self.on_close.clone();
@@ -252,7 +257,11 @@ impl Component for CreateInstanceModal {
                 picks.step,
                 Step::Folder | Step::Version | Step::Import | Step::ImportReview
             ),
-            note: footer_note(&picks),
+            note: if off_invite {
+                t("oneclient.clusters.instance.create.invite_mismatch").to_string()
+            } else {
+                footer_note(&picks)
+            },
             secondary_label: if first {
                 t("oneclient.common.cancel")
             } else {
@@ -283,7 +292,7 @@ impl Component for CreateInstanceModal {
                 (false, _) if last => t("oneclient.clusters.instance.create.create").to_string(),
                 (false, _) => t("oneclient.common.next").to_string(),
             },
-            primary_enabled: is_ready(&picks),
+            primary_enabled: is_ready(&picks) && !(last && off_invite),
             on_close: (move |()| close_x.call(())).into(),
             on_secondary: (move |()| {
                 if first {

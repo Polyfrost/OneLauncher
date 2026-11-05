@@ -173,6 +173,16 @@ impl LoaderChoice {
         }
     }
 
+    pub fn resolve_exact(
+        self,
+        available: &[GameLoader],
+        exact: Option<GameLoader>,
+    ) -> Option<GameLoader> {
+        exact
+            .filter(|loader| Self::of(*loader) == self && available.contains(loader))
+            .or_else(|| self.resolve(available))
+    }
+
     pub fn resolve(self, available: &[GameLoader]) -> Option<GameLoader> {
         match self {
             Self::Vanilla => Some(GameLoader::Vanilla),
@@ -307,6 +317,7 @@ impl VersionList {
 
 #[derive(Clone, Copy)]
 pub struct Wizard {
+    pub exact_loader: Option<GameLoader>,
     pub step: State<usize>,
     pub choice: State<TypeChoice>,
     pub version: State<Option<String>>,
@@ -341,8 +352,16 @@ mod tests {
             Some(GameLoader::Ornithe)
         );
         assert_eq!(
-            choice.resolve(&[GameLoader::Fabric, GameLoader::Ornithe]),
-            Some(GameLoader::Fabric)
+            choice.resolve_exact(
+                &[GameLoader::Fabric, GameLoader::Ornithe],
+                Some(GameLoader::Ornithe),
+            ),
+            Some(GameLoader::Ornithe)
+        );
+        assert_eq!(
+            LoaderChoice::Forge
+                .resolve_exact(&[GameLoader::Forge], Some(GameLoader::Ornithe)),
+            Some(GameLoader::Forge)
         );
     }
 }

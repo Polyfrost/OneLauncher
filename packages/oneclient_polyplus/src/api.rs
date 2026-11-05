@@ -250,17 +250,28 @@ pub(crate) async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -
         return Ok(token.clone());
     }
 
-    let plus = crate::client()
-        .ok_or_else(|| PlusError::Client("the Poly+ client has not started".into()))?;
-    let token = login(&plus.requester, account).await?;
+    let token = login(client()?, account).await?;
     tokens.insert(key, (token.clone(), Instant::now()));
     Ok(token)
+}
+
+pub(crate) async fn forget_token(account: Uuid) {
+    TOKENS.lock().await.retain(|(_, owner), _| *owner != account);
 }
 
 pub(crate) async fn send_authorized(
     account: &MinecraftAccount,
     method: Method,
     path: &str,
+    body: Option<&serde_json::Value>,
+) -> Result<reqwest::Response, PlusError> {
+    send_to(account, method, &format!("{}{path}", base_url()), body).await
+}
+
+pub(crate) async fn send_to(
+    account: &MinecraftAccount,
+    method: Method,
+    url: &str,
     body: Option<&serde_json::Value>,
 ) -> Result<reqwest::Response, PlusError> {
     if plus_blocked() {
@@ -270,12 +281,11 @@ pub(crate) async fn send_authorized(
         return Err(PlusError::OfflineAccount);
     }
 
-    let url = format!("{}{path}", base_url());
     let mut stale: Option<String> = None;
     loop {
         let token = token_for(account, stale.as_deref()).await?;
         let mut request = client()?
-            .request(method.clone(), &url)
+            .request(method.clone(), url)
             .timeout(REQUEST_TIMEOUT)
             .bearer_auth(&token)
             .header("Accept", "application/json");

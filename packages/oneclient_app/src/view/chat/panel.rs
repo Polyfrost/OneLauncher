@@ -2,9 +2,10 @@ use freya::prelude::*;
 use uuid::Uuid;
 
 use crate::components::{IconType, PartyTab};
+use crate::chat::ThreadStatus;
 use crate::hooks::{
-    settled_or_loading, use_chat_inbox, use_chat_roster, use_current_account, use_dispatch,
-    use_social_tab,
+    settled_or_loading, use_chat_inbox, use_chat_roster, use_chat_thread, use_current_account,
+    use_dispatch, use_social_tab,
 };
 use crate::i18n::t;
 use crate::state::SocialTab;
@@ -70,7 +71,7 @@ impl Component for SocialPanel {
         });
 
         let social_tab = use_social_tab();
-        let tab = use_state(|| PanelTab::Chats);
+        let mut tab = use_state(|| PanelTab::Chats);
         let mut view = use_state(|| {
             if chat.active.is_some() {
                 PanelView::Chat
@@ -93,6 +94,25 @@ impl Component for SocialPanel {
             view.set(PanelView::Chat);
         }
 
+        if chat.open_friends {
+            dispatch.friends_shown();
+            tab.set(PanelTab::Friends);
+            view.set(PanelView::List);
+        }
+
+        let load_failure = match use_chat_thread(chat.active.unwrap_or_default()).status {
+            ThreadStatus::Error(message) => Some(message),
+            _ => None,
+        };
+
+        let back_to_list = {
+            let dispatch = dispatch.clone();
+            EventHandler::new(move |_| {
+                dispatch.close_conversation();
+                view.set(PanelView::List);
+            })
+        };
+
         let current = *view.read();
         let thread = chat
             .active
@@ -102,7 +122,7 @@ impl Component for SocialPanel {
                     conversation,
                     own_id,
                     expanded: self.expanded,
-                    on_back: EventHandler::new(move |_| view.set(PanelView::List)),
+                    on_back: back_to_list.clone(),
                 }
                 .into_element()
             });
@@ -135,8 +155,8 @@ impl Component for SocialPanel {
             PanelView::Blocked => blocked(),
             PanelView::Chat => thread.unwrap_or_else(|| {
                 opening(
-                    &chat.error,
-                    (!self.expanded).then(|| EventHandler::new(move |_| view.set(PanelView::List))),
+                    &chat.error.clone().or(load_failure),
+                    (!self.expanded).then(|| back_to_list.clone()),
                 )
             }),
             PanelView::List => empty_detail(),

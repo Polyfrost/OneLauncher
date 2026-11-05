@@ -8,14 +8,13 @@ mod session;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use tokio::sync::RwLock;
 use uuid::Uuid;
 
 use oneclient_common::constants;
 use oneclient_events::EventBus;
-use oneclient_net::{RequestClient, RequestError};
+use oneclient_net::RequestError;
 
 pub use models::{
     BlockedPlayer, Friend, FriendRequest, GroupKind, GroupMessage, GroupSummary,
@@ -81,7 +80,9 @@ impl PlusError {
     #[must_use]
     pub fn status(&self) -> Option<u16> {
         match self {
-            Self::Request(RequestError::HttpStatus { status, .. }) => Some(*status),
+            Self::Api { status, .. } | Self::Request(RequestError::HttpStatus { status, .. }) => {
+                Some(*status)
+            }
             Self::Websocket(reqwest_websocket::Error::Handshake(
                 reqwest_websocket::HandshakeError::UnexpectedStatusCode(status),
             )) => Some(status.as_u16()),
@@ -105,40 +106,19 @@ impl PlusError {
     }
 }
 
-struct CachedToken {
-    owner: Uuid,
-    url: String,
-    token: String,
-    issued: Instant,
-}
-
-impl CachedToken {
-    fn valid_for(&self, owner: Option<Uuid>, url: &str) -> bool {
-        Some(self.owner) == owner && self.url == url && self.issued.elapsed() < api::TOKEN_LIFETIME
-    }
-}
-
 pub struct PlusClient {
-    requester: RequestClient,
     auth: Arc<oneclient_auth::AuthService>,
     events: EventBus,
-    token: RwLock<Option<CachedToken>>,
     session_account: std::sync::Mutex<Option<Uuid>>,
     restart: tokio::sync::watch::Sender<u64>,
     watched: tokio::sync::watch::Sender<Vec<Uuid>>,
 }
 
 impl PlusClient {
-    fn new(
-        auth: Arc<oneclient_auth::AuthService>,
-        requester: RequestClient,
-        events: EventBus,
-    ) -> Self {
+    fn new(auth: Arc<oneclient_auth::AuthService>, events: EventBus) -> Self {
         Self {
-            requester,
             auth,
             events,
-            token: RwLock::new(None),
             session_account: std::sync::Mutex::new(None),
             restart: tokio::sync::watch::Sender::new(0),
             watched: tokio::sync::watch::Sender::new(Vec::new()),
@@ -147,45 +127,6 @@ impl PlusClient {
 
     pub fn events(&self) -> &EventBus {
         &self.events
-    }
-
-    pub(crate) async fn authorize(&self) -> Result<String, PlusError> {
-        if plus_blocked() {
-            return Err(PlusError::ConsentRequired);
-        }
-
-        let owner = self.auth.default_account().await?.map(|account| account.id);
-        let url = base_url();
-
-        if let Some(cached) = self.token.read().await.as_ref()
-            && cached.valid_for(owner, &url)
-        {
-            return Ok(cached.token.clone());
-        }
-
-        let mut guard = self.token.write().await;
-        if let Some(cached) = guard.as_ref()
-            && cached.valid_for(owner, &url)
-        {
-            return Ok(cached.token.clone());
-        }
-
-        let account = session::current_account(&self.auth)
-            .await?
-            .ok_or(PlusError::NoAccount)?;
-        let token = session::login(&self.requester, &account).await?;
-        *guard = Some(CachedToken {
-            owner: account.id,
-            url,
-            token: token.clone(),
-            issued: Instant::now(),
-        });
-
-        Ok(token)
-    }
-
-    pub(crate) async fn forget_token(&self) {
-        self.token.write().await.take();
     }
 
     pub(crate) fn set_session_account(&self, account: Option<Uuid>) {
@@ -201,7 +142,7 @@ impl PlusClient {
             .await
             .ok()
             .flatten()
-            .filter(oneclient_auth::MinecraftAccount::is_microsoft)
+            .filter(|account| account.is_microsoft() && !account.needs_sign_in())
             .map(|account| account.id);
 
         let current = self
@@ -229,12 +170,8 @@ impl PlusClient {
     }
 }
 
-pub fn start(
-    auth: Arc<oneclient_auth::AuthService>,
-    requester: RequestClient,
-    events: EventBus,
-) -> Arc<PlusClient> {
-    let client = CLIENT.get_or_init(|| Arc::new(PlusClient::new(auth, requester, events)));
+pub fn start(auth: Arc<oneclient_auth::AuthService>, events: EventBus) -> Arc<PlusClient> {
+    let client = CLIENT.get_or_init(|| Arc::new(PlusClient::new(auth, events)));
 
     if !STARTED.swap(true, Ordering::SeqCst) {
         if plus_blocked() {
@@ -312,29 +249,13 @@ pub fn base_url() -> String {
 mod tests {
     use super::*;
 
-    fn cached(issued: Instant) -> CachedToken {
-        CachedToken {
-            owner: Uuid::from_u128(1),
-            url: "https://plus.example.test".to_string(),
-            token: "token".to_string(),
-            issued,
-        }
-    }
-
     #[test]
-    fn a_cached_token_is_only_used_for_its_account_url_and_lifetime() {
-        let owner = Some(Uuid::from_u128(1));
-        let url = "https://plus.example.test";
-        let fresh = cached(Instant::now());
-        assert!(fresh.valid_for(owner, url));
-        assert!(!fresh.valid_for(owner, "https://other.example.test"));
-        assert!(!fresh.valid_for(Some(Uuid::from_u128(2)), url));
-        assert!(!fresh.valid_for(None, url));
-
-        let lifetime = api::TOKEN_LIFETIME + Duration::from_secs(1);
-        if let Some(issued) = Instant::now().checked_sub(lifetime) {
-            assert!(!cached(issued).valid_for(owner, url));
-        }
+    fn an_api_failure_reports_its_status() {
+        let err = PlusError::Api {
+            status: 404,
+            body: String::new(),
+        };
+        assert!(err.is_not_found());
     }
 
     #[test]

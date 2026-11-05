@@ -44,4 +44,4 @@ pub use events::EventPump;
 pub use hooks::*;
 pub use routes::{Route, router};
 pub use state::{AppChannel, AppState};
-pub use view::chat::close_chat_window_in;
+pub use view::chat::close_chat_window;

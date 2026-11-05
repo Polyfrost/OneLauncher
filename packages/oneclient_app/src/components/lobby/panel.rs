@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use freya::prelude::*;
 use oneclient_polyplus::party::{
     self, LocationKind, MAX_PARTY_SIZE, Party, PartyInvite, PartyMember,
@@ -15,10 +13,11 @@ use crate::components::cluster_menu::open_menu_at;
 use crate::components::{
     Avatar, Button, ContextMenu, Icon, IconType, ScrollArea,
 };
-use crate::hooks::use_dispatch;
+use crate::chat::ChatRoster;
+use crate::hooks::{use_chat_roster, use_dispatch};
 use crate::i18n::{t, tf};
 use crate::theme::colors;
-use crate::ui::{border_all_color, divider, relative_time};
+use crate::ui::{border_all_color, divider, relative_since};
 
 #[derive(Clone, PartialEq)]
 pub(super) enum Dialog {
@@ -32,7 +31,14 @@ pub struct PartyTab;
 impl Component for PartyTab {
     fn render(&self) -> impl IntoElement {
         let state = use_lobby();
-        let dialog = use_state(|| None::<Dialog>);
+        let mut dialog = use_state(|| None::<Dialog>);
+
+        let party_key = state.read().party.as_ref().map(|party| (party.id, party.leader));
+        let mut shown_party = use_state(|| party_key);
+        if *shown_party.peek() != party_key {
+            shown_party.set(party_key);
+            dialog.set(None);
+        }
 
         use_hook(move || {
             spawn(refresh(state));
@@ -110,11 +116,6 @@ fn header(title: String, subtitle: Option<String>) -> Rect {
         )
 }
 
-fn since(at: chrono::DateTime<chrono::Utc>) -> String {
-    let elapsed = (chrono::Utc::now() - at).to_std().unwrap_or_default();
-    relative_time(Instant::now().checked_sub(elapsed).unwrap_or_else(Instant::now))
-}
-
 #[derive(PartialEq)]
 struct NoLobby;
 
@@ -123,6 +124,7 @@ impl Component for NoLobby {
         let state = use_lobby();
         let dispatch = use_dispatch();
         let snapshot = state.read().clone();
+        let invites = visible_invites(&snapshot.incoming, &use_chat_roster());
 
         let create = move |_| {
             let dispatch_done = dispatch.clone();
@@ -209,7 +211,7 @@ impl Component for NoLobby {
                             .text(t("oneclient.components.lobby.empty.create")),
                     ),
             )
-            .children(incoming(&snapshot.incoming, None))
+            .children(incoming(&invites, None))
     }
 }
 
@@ -223,6 +225,7 @@ impl Component for InLobby {
     fn render(&self) -> impl IntoElement {
         let me = use_my_uuid();
         let snapshot = use_lobby().read().clone();
+        let invites = visible_invites(&snapshot.incoming, &use_chat_roster());
         let party = &self.party;
         let mut dialog = self.dialog;
         let leads = is_leader(party, me);
@@ -283,10 +286,7 @@ impl Component for InLobby {
                             })),
                     )
                     .append_children((!outgoing.is_empty()).then(|| pending(&outgoing)))
-                    .append_children(incoming(
-                        &snapshot.incoming,
-                        Some((leave.clone(), self.dialog)),
-                    )),
+                    .append_children(incoming(&invites, Some((leave.clone(), self.dialog)))),
             )
             .child(divider())
             .child(footer(
@@ -595,7 +595,7 @@ impl Component for PendingRow {
             format!(
                 "{} · {}",
                 t("oneclient.components.lobby.invited_by_you"),
-                since(self.invite.created_at)
+                relative_since(self.invite.created_at)
             ),
             Button::new()
                 .ghost()
@@ -645,6 +645,14 @@ fn invite_row(player: Uuid, name: String, sub: String, trailing: Element) -> Ele
         )
         .child(trailing)
         .into_element()
+}
+
+fn visible_invites(invites: &[PartyInvite], roster: &ChatRoster) -> Vec<PartyInvite> {
+    invites
+        .iter()
+        .filter(|invite| !roster.is_blocked(invite.sender))
+        .cloned()
+        .collect()
 }
 
 fn incoming(
@@ -732,7 +740,7 @@ impl Component for IncomingRow {
                     "oneclient.components.lobby.incoming.size",
                     &[&self.invite.party_size, &MAX_PARTY_SIZE]
                 ),
-                since(self.invite.created_at)
+                relative_since(self.invite.created_at)
             ),
             rect()
                 .horizontal()

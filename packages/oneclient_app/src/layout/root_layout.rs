@@ -9,8 +9,6 @@ use crate::components::{
     ReleaseMigrationPopup, SplashCurtain, StatusBar, Toasts, TooltipHost, UnpublishedImportPopup,
     UpdatePromptOverlay, use_provide_tooltips,
 };
-#[cfg(not(target_os = "macos"))]
-use crate::hooks::use_start_maximized;
 use crate::hooks::{SplashState, use_provide_overlay_claims, use_provide_splash};
 use crate::layout::{HomeArtPrefetch, PendingLaunchDriver, use_ipc_commands};
 use crate::motion::AnimationClockDriver;

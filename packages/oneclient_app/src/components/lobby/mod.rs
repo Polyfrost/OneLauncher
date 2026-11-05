@@ -18,12 +18,14 @@ use tokio::sync::broadcast::error::RecvError;
 use uuid::Uuid;
 
 use crate::components::IconType;
+use crate::chat::short_player_id;
 use crate::hooks::{
     Actions, player_name, settled_or_loading, try_default_account, use_chat_allowed,
     use_current_account, use_dispatch, use_player_profile, wardrobe::plus_message,
 };
 use crate::i18n::{t, tf};
 
+pub(crate) use dialogs::modal;
 pub use panel::PartyTab;
 pub use widgets::LobbyHeroChip;
 
@@ -304,6 +306,10 @@ fn announce(notice: Notice, dispatch: &Actions) {
             t("oneclient.components.lobby.toast.party_lost_body"),
         ),
         Notice::Invited(sender) => {
+            if dispatch.station().peek().chat.is_blocked(sender) {
+                return;
+            }
+
             let dispatch = dispatch.clone();
             spawn(async move {
                 let name = player_name(sender).await;
@@ -377,13 +383,16 @@ pub fn act<T, F, Fut>(
     spawn_global(async move {
         let result = crate::launcher::off_ui(async move {
             let account = party_account().await?;
-            work(account).await.map_err(party_message)
+            let id = account.id;
+            let value = work(account).await.map_err(party_message)?;
+            Ok::<_, String>((id, value))
         })
         .await;
 
         state.write().busy = false;
         match result {
-            Ok(value) => {
+            Ok((id, _)) if state.peek().me != Some(id) => refresh(state).await,
+            Ok((_, value)) => {
                 let mut guard = state.write();
                 guard.revision += 1;
                 guard.error = None;
@@ -413,12 +422,8 @@ pub fn use_player_name(player: Uuid) -> String {
     let profile = settled_or_loading(&use_player_profile(player.to_string(), None::<String>));
     match me {
         Some(account) if account.id == player => account.username,
-        _ => profile.map_or_else(|| short_uuid(player), |profile| profile.username),
+        _ => profile.map_or_else(|| short_player_id(player), |profile| profile.username),
     }
-}
-
-fn short_uuid(player: Uuid) -> String {
-    player.simple().to_string()[..8].to_string()
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -458,7 +463,7 @@ impl QueryCapability for FriendsQuery {
                     name: names
                         .get(&friend.player)
                         .cloned()
-                        .unwrap_or_else(|| short_uuid(friend.player)),
+                        .unwrap_or_else(|| short_player_id(friend.player)),
                     online: friend.online,
                 })
                 .collect();

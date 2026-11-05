@@ -11,8 +11,8 @@ mod view_state;
 
 pub use chat::{
     start_invite_join,
-    ChatJob, load_conversations, load_invite_games, load_roster, load_self_status,
-    mark_read as mark_chat_read, notify_chat, player_name, resync_chat,
+    ChatJob, chat_draft, load_conversations, load_invite_games, load_roster, load_self_status,
+    mark_read as mark_chat_read, notify_chat, player_name, resync_chat, save_chat_draft,
 };
 
 pub use debounce::use_debounced;
@@ -300,10 +300,6 @@ pub fn use_chat_friend_request() -> crate::chat::FriendRequestStatus {
 
 pub fn use_chat_self_status() -> oneclient_polyplus::PlayerStatus {
     use_radio(AppChannel::Chat).read().chat.self_status
-}
-
-pub fn use_chat_error() -> Option<String> {
-    use_radio(AppChannel::Chat).read().chat.error.clone()
 }
 
 pub fn use_storage_scan_progress() -> Option<StorageScanProgress> {

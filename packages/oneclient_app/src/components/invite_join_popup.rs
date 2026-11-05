@@ -2,13 +2,12 @@ use freya::prelude::*;
 use oneclient_common::GameLoader;
 use oneclient_db::models::ClusterKind;
 
-use crate::components::{Button, OVERLAY_MAX_LEVEL, OverlayPopup};
+use crate::components::{Button, modal};
 use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch, use_invite_join};
 use crate::i18n::{t, tf};
 use crate::invite_join::custom_loader;
 use crate::state::InviteJoinPrompt;
-use crate::theme::{colors, rounded};
-use crate::ui::border_all_color;
+use crate::theme::colors;
 use crate::view::app::{ClusterPickerModal, CreateInstanceModal};
 
 const DIALOG_WIDTH_PX: f32 = 400.;
@@ -41,41 +40,63 @@ impl Component for InviteJoinPopup {
                 version,
                 loader,
                 oneclient,
+                unlinked,
             }) => {
                 let game = format!("{version} {}", loader.real_name());
                 let creating = dispatch.clone();
                 let custom = dispatch.clone();
                 let custom_version = version.clone();
+                let offer_custom = custom_loader(loader) && !unlinked;
 
-                let recommended = oneclient.then(|| {
+                let recommended = (oneclient || unlinked).then(|| {
                     Button::new()
                         .primary()
                         .width(Size::fill())
                         .on_press(move |_| {
-                            let action = oneclient_cluster(version.clone(), loader);
                             creating.clear_invite_join();
-                            creating.create_cluster_and_join(mutation, action, invite_id);
+                            if unlinked {
+                                creating.link_polyplus_and_join(invite_id);
+                            } else {
+                                let action = oneclient_cluster(version.clone(), loader);
+                                creating.create_cluster_and_join(mutation, action, invite_id);
+                            }
                         })
-                        .text(t("oneclient.components.invite_join.create_oneclient"))
+                        .text(if unlinked {
+                            t("oneclient.components.invite_join.add_polyplus")
+                        } else {
+                            t("oneclient.components.invite_join.create_oneclient")
+                        })
                         .into_element()
                 });
 
+                let (title, body) = if unlinked {
+                    (
+                        tf("oneclient.components.invite_join.unlinked_title", &[&game]),
+                        t("oneclient.components.invite_join.unlinked_body"),
+                    )
+                } else {
+                    (
+                        tf("oneclient.components.invite_join.none_title", &[&game]),
+                        if oneclient {
+                            t("oneclient.components.invite_join.none_body")
+                        } else if custom_loader(loader) {
+                            t("oneclient.components.invite_join.none_body_unsupported")
+                        } else {
+                            t("oneclient.components.invite_join.none_body_no_custom")
+                        },
+                    )
+                };
+
                 dialog(
-                    tf("oneclient.components.invite_join.none_title", &[&game]),
-                    if oneclient {
-                        t("oneclient.components.invite_join.none_body").to_string()
-                    } else if custom_loader(loader) {
-                        t("oneclient.components.invite_join.none_body_unsupported").to_string()
-                    } else {
-                        t("oneclient.components.invite_join.none_body_no_custom").to_string()
-                    },
+                    title,
+                    body.to_string(),
                     on_close.clone(),
                     rect()
                         .vertical()
                         .width(Size::fill())
                         .spacing(8.)
                         .maybe_child(recommended)
-                        .maybe_child(custom_loader(loader).then(|| {
+                        .maybe_child(offer_custom.then(|| {
                             Button::new()
                                 .secondary()
                                 .width(Size::fill())
@@ -128,41 +149,25 @@ fn oneclient_cluster(version: String, loader: GameLoader) -> ClusterAction {
 }
 
 fn dialog(title: String, body: String, on_close: EventHandler<()>, actions: Rect) -> Element {
-    OverlayPopup::new()
-        .overlay_level(OVERLAY_MAX_LEVEL)
-        .on_close(move |()| on_close.call(()))
-        .child(
-            rect()
-                .width(Size::window_percent(100.))
-                .height(Size::window_percent(100.))
-                .center()
-                .child(
-                    rect()
-                        .vertical()
-                        .width(Size::px(DIALOG_WIDTH_PX))
-                        .max_width(Size::window_percent(90.))
-                        .spacing(14.)
-                        .padding(Gaps::new_all(20.))
-                        .corner_radius(rounded(14.))
-                        .background(colors::page_elevated())
-                        .border(border_all_color(1., colors::component_border()))
-                        .child(
-                            label()
-                                .text(title)
-                                .width(Size::fill())
-                                .font_size(16.)
-                                .font_weight(FontWeight::SEMI_BOLD)
-                                .color(colors::fg_primary()),
-                        )
-                        .child(
-                            label()
-                                .text(body)
-                                .width(Size::fill())
-                                .font_size(13.)
-                                .color(colors::fg_secondary()),
-                        )
-                        .child(actions),
-                ),
-        )
-        .into_element()
+    modal(
+        DIALOG_WIDTH_PX,
+        on_close,
+        rect()
+            .child(
+                label()
+                    .text(title)
+                    .width(Size::fill())
+                    .font_size(16.)
+                    .font_weight(FontWeight::SEMI_BOLD)
+                    .color(colors::fg_primary()),
+            )
+            .child(
+                label()
+                    .text(body)
+                    .width(Size::fill())
+                    .font_size(13.)
+                    .color(colors::fg_secondary()),
+            )
+            .child(actions),
+    )
 }

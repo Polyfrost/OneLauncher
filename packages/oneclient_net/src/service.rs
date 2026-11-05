@@ -27,10 +27,6 @@ fn retry_after(response: &Response) -> Option<std::time::Duration> {
     Some(std::time::Duration::from_secs(secs.min(60)))
 }
 
-fn backs_off(status: reqwest::StatusCode, replay: bool) -> bool {
-    status == reqwest::StatusCode::TOO_MANY_REQUESTS || (replay && status.is_server_error())
-}
-
 fn backoff_delay(attempt: u32) -> std::time::Duration {
     let base = 500u64.saturating_mul(1 << attempt.min(6));
     let capped = base.min(30_000);
@@ -146,7 +142,7 @@ impl RequestClient {
         let cloned_backup = request.request.try_clone();
         let cloneable = cloned_backup.is_some();
 
-        let max_retries = if cloneable && request.options.replay {
+        let max_retries = if cloneable {
             request.options.max_retries
         } else {
             0
@@ -170,7 +166,7 @@ impl RequestClient {
             match self.client.execute(active_request).await {
                 Ok(response) => {
                     let status = response.status();
-                    let retryable = backs_off(status, request.options.replay);
+                    let retryable = status.as_u16() == 429 || status.is_server_error();
 
                     if retryable && cloneable && throttle_retries < MAX_THROTTLE_RETRIES {
                         throttle_retries += 1;
@@ -316,15 +312,6 @@ mod tests {
         req.headers()
             .get("x-api-key")
             .map(|v| v.to_str().unwrap().to_string())
-    }
-
-    #[test]
-    fn a_request_without_replay_only_waits_out_rate_limits() {
-        let throttled = reqwest::StatusCode::TOO_MANY_REQUESTS;
-        let broken = reqwest::StatusCode::BAD_GATEWAY;
-        assert!(backs_off(throttled, false));
-        assert!(!backs_off(broken, false));
-        assert!(backs_off(broken, true));
     }
 
     #[test]

@@ -19,6 +19,7 @@ const EXPANDED_MIN_WIDTH_PX: f32 = 640.;
 static CHAT_WINDOW: SingleWindow = SingleWindow::new();
 
 static CHAT_FOCUSED: AtomicBool = AtomicBool::new(false);
+pub(super) static MAIN_FOCUSED: AtomicBool = AtomicBool::new(false);
 
 pub fn open_chat_window() {
     let opening = match CHAT_WINDOW.claim() {
@@ -52,10 +53,6 @@ pub fn open_chat_window() {
     });
 }
 
-fn set_chat_focus(focused: bool) {
-    CHAT_FOCUSED.store(focused, Ordering::Relaxed);
-}
-
 pub fn is_chat_window_open() -> bool {
     CHAT_WINDOW.is_open()
 }
@@ -64,8 +61,12 @@ pub fn is_chat_window_focused() -> bool {
     CHAT_WINDOW.is_open() && CHAT_FOCUSED.load(Ordering::Relaxed)
 }
 
-pub fn close_chat_window_in(ctx: &mut RendererContext<'_>) {
-    CHAT_WINDOW.close_in(ctx);
+pub fn chat_on_screen(social_open: bool) -> bool {
+    crate::chat::chat_visible(
+        is_chat_window_focused(),
+        social_open,
+        MAIN_FOCUSED.load(Ordering::Relaxed),
+    )
 }
 
 struct Anchor {
@@ -142,7 +143,7 @@ impl App for ChatApp {
         use_provide_station(AppState::default);
         let dispatch = use_dispatch();
 
-        track_focus(&dispatch);
+        track_focus(&dispatch, &CHAT_FOCUSED);
 
         let expanded = Platform::get().current_window().root_size.read().width
             >= EXPANDED_MIN_WIDTH_PX;
@@ -166,11 +167,11 @@ impl App for ChatApp {
     }
 }
 
-fn track_focus(dispatch: &crate::hooks::Actions) {
+pub(super) fn track_focus(dispatch: &crate::hooks::Actions, flag: &AtomicBool) {
     let focused = *Platform::get().current_window().is_app_focused.read();
     let mut was_focused = use_state(|| focused);
 
-    set_chat_focus(focused);
+    flag.store(focused, Ordering::Relaxed);
 
     if focused && !*was_focused.peek() {
         dispatch.sync_chat();

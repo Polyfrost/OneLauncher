@@ -6,6 +6,7 @@ use crate::theme::{colors, rounded};
 
 const LAZY_OVERSCAN: i64 = 3;
 const SCROLLBAR_GUTTER: f32 = 14.;
+const BOTTOM_SLOP: f32 = 2.;
 
 pub(crate) fn normalize_wheel_delta(delta: f64, scale_factor: f64) -> f32 {
     if delta == 0.0 {
@@ -59,6 +60,10 @@ pub(crate) fn corrected_scroll(inner: f32, viewport: f32, pos: f32) -> f32 {
     pos
 }
 
+pub(crate) fn scrolled_to_bottom(inner: f32, viewport: f32, target: f32) -> bool {
+    -target >= inner - viewport - BOTTOM_SLOP
+}
+
 pub(crate) fn scrollbar_pos_and_size(inner: f32, viewport: f32, scroll: f32) -> (f32, f32) {
     if viewport >= inner {
         return (0.0, inner);
@@ -78,6 +83,7 @@ pub struct ScrollAreaCtx {
     pub corrected_y: f32,
     pub viewport_w: f32,
     pub viewport_h: f32,
+    pub at_bottom: bool,
     pub viewport_top: State<f32>,
     pub viewport_left: State<f32>,
 }
@@ -109,6 +115,7 @@ pub struct ScrollArea {
     horizontal: bool,
     content_width: f32,
     stick_bottom: bool,
+    anchor_key: Option<i64>,
     reset_key: Option<u64>,
     controller: Option<ScrollController>,
     on_user_scroll: Option<EventHandler<()>>,
@@ -136,6 +143,7 @@ impl ScrollArea {
             horizontal: false,
             content_width: 0.,
             stick_bottom: false,
+            anchor_key: None,
             reset_key: None,
             controller: None,
             on_user_scroll: None,
@@ -198,6 +206,11 @@ impl ScrollArea {
 
     pub fn scroll_controller(mut self, controller: ScrollController) -> Self {
         self.controller = Some(controller);
+        self
+    }
+
+    pub fn anchor_bottom(mut self, key: Option<i64>) -> Self {
+        self.anchor_key = key;
         self
     }
 
@@ -450,6 +463,7 @@ impl ScrollArea {
         let show_scrollbar = self.show_scrollbar;
         let scrollbar_gutter = self.scrollbar_gutter;
         let stick_bottom = self.stick_bottom;
+        let anchor_key = self.anchor_key;
         let on_user_scroll = self.on_user_scroll.clone();
 
         let internal = use_scroll_controller(ScrollConfig::default);
@@ -462,6 +476,7 @@ impl ScrollArea {
         let mut viewport_top = use_state(|| 0f32);
         let mut viewport_left = use_state(|| 0f32);
         let mut content_h = use_state(|| 0f32);
+        let mut anchored = use_state(|| anchor_key);
         let mut drag_start = use_state::<Option<(f32, i32)>>(|| None);
         let mut drag_start_x = use_state::<Option<(f32, f32)>>(|| None);
         let mut shift_held = use_state(|| false);
@@ -533,6 +548,7 @@ impl ScrollArea {
             corrected_y,
             viewport_w: (vp_w - gutter).max(0.),
             viewport_h: vp_h,
+            at_bottom: scrolled_to_bottom(ct_h, vp_h, target_y),
             viewport_top,
             viewport_left,
         };
@@ -725,6 +741,10 @@ impl ScrollArea {
                         let left = e.area.min_x();
                         if (*viewport_h.read() - h).abs() > 0.5 {
                             viewport_h.set(h);
+                            if stick_bottom {
+                                let target = -((*content_h.read() - h).max(0.).ceil());
+                                controller.scroll_to_y(target as i32);
+                            }
                         }
                         if (*viewport_w.read() - w).abs() > 0.5 {
                             viewport_w.set(w);
@@ -743,14 +763,20 @@ impl ScrollArea {
                             .offset_y(corrected_y)
                             .on_sized(move |e: Event<SizedEventData>| {
                                 let h = e.area.height();
-                                if (*content_h.read() - h).abs() > 0.5 {
+                                let grown = h - *content_h.read();
+                                if grown.abs() > 0.5 {
                                     content_h.set(h);
                                     if stick_bottom {
                                         let vp = *viewport_h.read();
                                         let target = -((h - vp).max(0.).ceil());
                                         controller.scroll_to_y(target as i32);
+                                    } else if *anchored.peek() != anchor_key {
+                                        let (_, y) = controller.into();
+                                        controller.stop();
+                                        controller.scroll_to_y(y - grown.round() as i32);
                                     }
                                 }
+                                anchored.set_if_modified(anchor_key);
                             })
                             .child(content_el),
                     )
@@ -793,6 +819,7 @@ impl PartialEq for ScrollArea {
             && self.horizontal == other.horizontal
             && self.content_width == other.content_width
             && self.stick_bottom == other.stick_bottom
+            && self.anchor_key == other.anchor_key
             && self.reset_key == other.reset_key
             && self.children == other.children
     }
@@ -867,5 +894,18 @@ impl Component for ScrollThumb {
                     .corner_radius(rounded(12.))
                     .background(color.with_a(160)),
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn being_within_the_slop_of_the_end_counts_as_the_bottom() {
+        assert!(scrolled_to_bottom(1000., 300., -700.));
+        assert!(scrolled_to_bottom(1000., 300., -699.));
+        assert!(!scrolled_to_bottom(1000., 300., -600.));
+        assert!(scrolled_to_bottom(200., 300., 0.));
     }
 }

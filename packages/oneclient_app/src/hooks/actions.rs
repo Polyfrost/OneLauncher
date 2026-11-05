@@ -820,6 +820,12 @@ impl Actions {
         });
     }
 
+    pub fn clear_chat_notices(&self) {
+        self.with_engine(|state| {
+            state.notifications.clear_chat_notices(&mut state.inbox);
+        });
+    }
+
     pub fn dismiss_toast(&self, entry_id: u64) {
         self.with_engine(|state| {
             state

@@ -257,6 +257,7 @@ impl EventPump {
             for event in chat_events {
                 match event {
                     ChatEvent::MessageReceived {
+                        account,
                         group_id,
                         message_id,
                         sender,
@@ -264,54 +265,37 @@ impl EventPump {
                         invite_id,
                         invite_status,
                     } => {
-                        guard.chat.upsert(
+                        if guard.chat.owner != Some(account) {
+                            continue;
+                        }
+
+                        folded.chat_invites |= invite_id.is_some();
+
+                        let visible = crate::view::chat::chat_on_screen(guard.social_open);
+                        let tab = guard.social_tab;
+                        let received = guard.chat.receive(
                             group_id,
                             ChatMessage {
                                 id: message_id,
                                 sender,
-                                content: content.clone(),
+                                content,
                                 sent_at: Some(chrono::Utc::now().fixed_offset()),
                                 edited: false,
                                 invite: invite_id
                                     .map(|id| crate::chat::MessageInvite::new(id, invite_status)),
                             },
+                            visible,
+                            tab,
                         );
 
-                        if guard.chat.conversation(group_id).is_none() {
-                            folded.chat_unknown_group = true;
-                        }
-                        folded.chat_invites |= invite_id.is_some();
-
-                        let viewing = crate::chat::thread_in_view(
-                            crate::view::chat::is_chat_window_focused() || guard.social_open,
-                            guard.social_tab,
-                            guard.chat.active,
-                            group_id,
-                        );
-                        let own = guard.chat.owner == Some(sender);
-                        if viewing && !own && !folded.chat_read.contains(&group_id) {
+                        folded.chat_unknown_group |= received.unknown_group;
+                        if received.read && !folded.chat_read.contains(&group_id) {
                             folded.chat_read.push(group_id);
                         }
-                        if !viewing && !own {
-                            let group_name = guard
-                                .chat
-                                .conversation(group_id)
-                                .filter(|conversation| conversation.kind.is_shared())
-                                .and_then(|conversation| conversation.name.clone());
-                            toasts.retain(|toast| toast.group_id() != Some(group_id));
-                            toasts.push(match invite_id {
-                                Some(_) => ChatToast::Invite { group_id, sender },
-                                None => ChatToast::Message {
-                                    group_id,
-                                    sender,
-                                    group_name,
-                                    content: content.clone(),
-                                },
-                            });
+                        if let Some(toast) = received.toast {
+                            toasts.retain(|known| known.group_id() != Some(group_id));
+                            toasts.push(toast);
                         }
-                        guard
-                            .chat
-                            .note_activity(group_id, sender, content, !viewing && !own);
                     }
                     ChatEvent::MessageEdited {
                         group_id,
@@ -327,9 +311,9 @@ impl EventPump {
                     } => guard.chat.remove(group_id, message_id),
                     ChatEvent::PresenceChanged { .. } => {}
                     ChatEvent::RosterChanged => folded.chat_roster = true,
-                    ChatEvent::FriendRequestReceived { sender } => {
+                    ChatEvent::FriendRequestReceived { account, sender } => {
                         folded.chat_roster = true;
-                        if !guard.chat.is_friend(sender) {
+                        if guard.chat.owner == Some(account) && !guard.chat.is_friend(sender) {
                             toasts.push(ChatToast::FriendRequest { sender });
                         }
                     }
@@ -523,7 +507,6 @@ pub async fn start_launcher(
     crate::translations::start(state.services.requester.clone());
     oneclient_polyplus::start(
         std::sync::Arc::clone(&state.auth),
-        state.services.requester.clone(),
         state.services.events.clone(),
     );
     oneclient_core::run_startup_tasks(&state);

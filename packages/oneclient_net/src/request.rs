@@ -17,7 +17,6 @@ impl From<reqwest::Request> for HttpRequest {
 pub struct RequestOptions {
     pub use_semaphore: bool,
     pub max_retries: usize,
-    pub replay: bool,
 }
 
 impl Default for RequestOptions {
@@ -25,7 +24,6 @@ impl Default for RequestOptions {
         Self {
             use_semaphore: true,
             max_retries: 1,
-            replay: true,
         }
     }
 }
@@ -38,11 +36,6 @@ impl RequestOptions {
 
     pub fn with_retries(mut self, retries: usize) -> Self {
         self.max_retries = retries;
-        self
-    }
-
-    pub fn no_replay(mut self) -> Self {
-        self.replay = false;
         self
     }
 }

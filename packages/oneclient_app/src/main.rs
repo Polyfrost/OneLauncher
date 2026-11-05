@@ -253,11 +253,11 @@ fn main() {
     .with_background(Color::BLACK)
     // A half-copied data folder is unrecoverable, so the window refuses to
     // close while one is being moved; the move screen says as much
-    .with_on_close(|mut ctx, _| {
+    .with_on_close(|_, _| {
         if oneclient_core::relocate::in_progress() {
             tracing::warn!("close request ignored, the data folder is still being moved");
         } else {
-            oneclient_app::close_chat_window_in(&mut ctx);
+            oneclient_app::close_chat_window();
             ipc::send(ipc::IpcCommand::Close);
         }
         CloseDecision::KeepOpen

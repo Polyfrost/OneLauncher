@@ -15,17 +15,19 @@ use crate::hooks::{
 };
 use crate::i18n::{t, tf};
 use crate::theme::colors;
+use crate::ui::relative_since;
 
 use super::common::{
-    CARD_RADIUS_PX, CHIP_RADIUS_PX, HeaderButton, ROW_RADIUS_PX, ago, card_bg, chip_bg,
-    chip_button, count_badge, edge_border, group_heads, hairline, head_with_dot, hint, hover_bg,
-    inset_border, popup_shadow, presence_color, row_time, section_heading, use_player_name,
+    CARD_RADIUS_PX, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains,
+    card_bg, chip_bg, chip_button, count_badge, edge_border, group_heads, hairline, head_with_dot,
+    hint, hover_bg, inset_border, popup_shadow, presence_color, row_time, section_heading,
+    use_player_name,
 };
 use super::panel::{PanelMode, PanelTab, PanelView};
 use super::people::NewGroupDialog;
 
 const CHAT_ROW_HEIGHT_PX: f32 = 59.;
-const FRIEND_ROW_HEIGHT_PX: f32 = 55.;
+pub(super) const FRIEND_ROW_HEIGHT_PX: f32 = 55.;
 const SECTION_HEADING_HEIGHT_PX: f32 = 35.;
 const LIST_ROW_GAP_PX: f32 = 2.;
 const LIST_PADDING: Gaps = Gaps::new(4., 8., 16., 8.);
@@ -151,6 +153,7 @@ impl Component for PanelHeader {
         let dispatch = use_dispatch();
         let picked = use_chat_self_status();
         let mut status_menu = use_state(|| false);
+        let mut status_area = use_state(Area::default);
 
         let (dot, status) = match (self.connected, picked) {
             (false, _) => (
@@ -195,6 +198,9 @@ impl Component for PanelHeader {
                             .spacing(4.)
                             .cross_align(Alignment::Center)
                             .cursor(CursorIcon::Pointer)
+                            .on_sized(move |e: Event<SizedEventData>| {
+                                status_area.set_if_modified(e.area)
+                            })
                             .on_press(move |_| status_menu.toggle())
                             .child(
                                 label()
@@ -232,6 +238,7 @@ impl Component for PanelHeader {
             )
             .maybe_child(status_menu().then(|| {
                 StatusMenu {
+                    trigger: status_area,
                     on_close: EventHandler::new(move |_| status_menu.set(false)),
                 }
                 .into_element()
@@ -241,6 +248,7 @@ impl Component for PanelHeader {
 
 #[derive(PartialEq)]
 struct StatusMenu {
+    trigger: State<Area>,
     on_close: EventHandler<()>,
 }
 
@@ -248,6 +256,10 @@ impl Component for StatusMenu {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
         let picked = use_chat_self_status();
+        let mut menu_area = use_state(Area::default);
+        let trigger = self.trigger;
+        let outside = self.on_close.clone();
+        let escape = self.on_close.clone();
 
         let option = |status: PlayerStatus, text: &'static str, note: &'static str| {
             let dispatch = dispatch.clone();
@@ -270,6 +282,16 @@ impl Component for StatusMenu {
         rect()
             .position(Position::new_absolute().top(54.).left(52.))
             .layer(Layer::Overlay)
+            .on_sized(move |e: Event<SizedEventData>| menu_area.set_if_modified(e.area))
+            .on_global_pointer_down(move |e: Event<PointerEventData>| {
+                let at = e.data().global_location();
+                let (x, y) = (at.x as f32, at.y as f32);
+                if !area_contains(&menu_area.read(), x, y) && !area_contains(&trigger.read(), x, y)
+                {
+                    outside.call(());
+                }
+            })
+            .child(EscapeGuard { on_escape: escape })
             .vertical()
             .width(Size::px(180.))
             .padding(Gaps::new_all(6.))
@@ -708,18 +730,21 @@ fn keyed_row(key: impl Hash, row: impl IntoElement) -> Element {
         .into_element()
 }
 
+fn list_hint(text: impl Into<String>) -> Element {
+    rect()
+        .width(Size::fill())
+        .padding(LIST_PADDING)
+        .child(hint(text))
+        .into_element()
+}
+
 fn chats_tab(pane: &ListPane, query: &str) -> Element {
     if pane.loading || pane.conversations.is_empty() {
-        let text = if pane.loading {
+        return list_hint(if pane.loading {
             t("oneclient.chat.list.loading")
         } else {
             t("oneclient.chat.list.empty")
-        };
-        return rect()
-            .width(Size::fill())
-            .padding(LIST_PADDING)
-            .child(hint(text))
-            .into_element();
+        });
     }
 
     let own_id = pane.own_id;
@@ -730,6 +755,10 @@ fn chats_tab(pane: &ListPane, query: &str) -> Element {
         .cloned()
         .collect();
     let count = conversations.len();
+    if count == 0 {
+        return list_hint(t("oneclient.chat.list.no_results"));
+    }
+
     let expanded = pane.expanded;
     let active = pane.active;
     let view = pane.view;
@@ -1159,7 +1188,7 @@ impl Component for RequestRow {
         let name = use_player_name(self.request.player);
 
         let id = self.request.id;
-        let age = ago(self.request.created_at);
+        let age = relative_since(self.request.created_at.with_timezone(&chrono::Utc));
         let sub = if self.incoming {
             tf("oneclient.chat.friends.incoming_request", &[&age])
         } else {
@@ -1169,7 +1198,7 @@ impl Component for RequestRow {
         let accept = dispatch.clone();
         let incoming = self.incoming;
 
-        person_row(self.request.player, name, sub, false)
+        person_row(self.request.player, name, Some(sub), false)
             .maybe_child(incoming.then(|| {
                 square_button(
                     IconType::Check,
@@ -1225,7 +1254,19 @@ fn square_button(
         }))
 }
 
-fn person_row(player: Uuid, name: String, sub: String, faded: bool) -> Rect {
+pub(super) fn person_row(player: Uuid, name: String, sub: Option<String>, faded: bool) -> Rect {
+    let avatar = rect()
+        .opacity(if faded { 0.45 } else { 1. })
+        .child(
+            Avatar::new(player.to_string())
+                .size(32.)
+                .radius(CHIP_RADIUS_PX),
+        )
+        .into_element();
+    person_line(avatar, name, sub, faded)
+}
+
+fn person_line(avatar: Element, name: String, sub: Option<String>, faded: bool) -> Rect {
     rect()
         .horizontal()
         .width(Size::fill())
@@ -1235,13 +1276,7 @@ fn person_row(player: Uuid, name: String, sub: String, faded: bool) -> Rect {
         .content(Content::Flex)
         .cross_align(Alignment::Center)
         .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
-        .child(
-            rect().opacity(if faded { 0.45 } else { 1. }).child(
-                Avatar::new(player.to_string())
-                    .size(32.)
-                    .radius(CHIP_RADIUS_PX),
-            ),
-        )
+        .child(avatar)
         .child(
             rect()
                 .vertical()
@@ -1259,14 +1294,14 @@ fn person_row(player: Uuid, name: String, sub: String, faded: bool) -> Rect {
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis),
                 )
-                .child(
+                .maybe_child(sub.map(|sub| {
                     label()
                         .text(sub)
                         .font_size(12.)
                         .color(colors::fg_secondary())
                         .max_lines(1)
-                        .text_overflow(TextOverflow::Ellipsis),
-                ),
+                        .text_overflow(TextOverflow::Ellipsis)
+                })),
         )
 }
 
@@ -1337,15 +1372,7 @@ impl Component for FriendRow {
                 .into_element()
         };
 
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .height(Size::px(FRIEND_ROW_HEIGHT_PX))
-            .padding(Gaps::new_symmetric(6., 8.))
-            .spacing(10.)
-            .content(Content::Flex)
-            .cross_align(Alignment::Center)
-            .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
+        let row = person_line(avatar, name, Some(activity.to_string()), !online)
             .background(if hovered() {
                 hover_bg()
             } else {
@@ -1370,32 +1397,11 @@ impl Component for FriendRow {
                         m.global_location.y as f32,
                     )));
                 }
-            })
-            .child(avatar)
-            .child(
-                rect()
-                    .vertical()
-                    .width(Size::flex(1.0))
-                    .spacing(4.)
-                    .child(
-                        label()
-                            .text(name)
-                            .font_size(14.)
-                            .color(if online {
-                                colors::fg_primary()
-                            } else {
-                                colors::fg_secondary()
-                            })
-                            .max_lines(1)
-                            .text_overflow(TextOverflow::Ellipsis),
-                    )
-                    .child(
-                        label()
-                            .text(activity)
-                            .font_size(12.)
-                            .color(colors::fg_secondary()),
-                    ),
-            )
+            });
+
+        rect()
+            .width(Size::fill())
+            .child(row)
             .maybe_child(context)
             .into_element()
     }
@@ -1576,6 +1582,7 @@ pub(super) struct BlockedPane {
 
 impl Component for BlockedPane {
     fn render(&self) -> impl IntoElement {
+        let players: Vec<Uuid> = self.blocked.iter().map(|entry| entry.player).collect();
         let mut view = self.view;
 
         rect()
@@ -1616,33 +1623,29 @@ impl Component for BlockedPane {
                             .color(colors::fg_secondary()),
                     ),
             )
-            .child(
+            .child(if players.is_empty() {
+                rect()
+                    .width(Size::fill())
+                    .height(Size::flex(1.0))
+                    .padding(Gaps::new_all(8.))
+                    .child(hint(t("oneclient.chat.blocked.empty")))
+                    .into_element()
+            } else {
                 ScrollArea::new()
                     .width(Size::fill())
                     .height(Size::flex(1.0))
-                    .child(
+                    .lazy(players.len(), FRIEND_ROW_HEIGHT_PX, 0., move |index| {
                         rect()
-                            .vertical()
                             .width(Size::fill())
-                            .padding(Gaps::new_all(8.))
-                            .maybe_child(
-                                self.blocked.is_empty().then(|| {
-                                    hint(t("oneclient.chat.blocked.empty")).into_element()
-                                }),
-                            )
-                            .children(
-                                self.blocked
-                                    .iter()
-                                    .map(|entry| {
-                                        BlockedRow {
-                                            player: entry.player,
-                                        }
-                                        .into_element()
-                                    })
-                                    .collect::<Vec<_>>(),
-                            ),
-                    ),
-            )
+                            .height(Size::fill())
+                            .padding(Gaps::new_symmetric(0., 8.))
+                            .child(BlockedRow {
+                                player: players[index],
+                            })
+                            .into_element()
+                    })
+                    .into_element()
+            })
     }
 }
 
@@ -1657,28 +1660,7 @@ impl Component for BlockedRow {
         let name = use_player_name(self.player);
         let player = self.player;
 
-        rect()
-            .horizontal()
-            .width(Size::fill())
-            .padding(Gaps::new_symmetric(6., 8.))
-            .spacing(10.)
-            .content(Content::Flex)
-            .cross_align(Alignment::Center)
-            .child(
-                rect().opacity(0.45).child(
-                    Avatar::new(player.to_string())
-                        .size(32.)
-                        .radius(CHIP_RADIUS_PX),
-                ),
-            )
-            .child(
-                label()
-                    .text(name)
-                    .font_size(14.)
-                    .color(colors::fg_primary())
-                    .width(Size::flex(1.0))
-                    .max_lines(1),
-            )
+        person_row(player, name, None, true)
             .child(
                 rect()
                     .height(Size::px(28.))

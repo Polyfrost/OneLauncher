@@ -6,21 +6,24 @@ use oneclient_polyplus::{GroupKind, MAX_MESSAGE_LENGTH};
 use crate::chat::{ChatConversation, ChatMessage, MessageInvite, PendingMessage, ThreadStatus};
 use crate::components::{Avatar, Button, ContextMenu, Icon, IconType, ScrollArea, TextInput};
 use crate::hooks::{
-    Actions, use_chat_invite_game, use_chat_online_count, use_chat_thread, use_dispatch,
-    use_player_online,
+    Actions, chat_draft, save_chat_draft, use_chat_invite_game, use_chat_online_count,
+    use_chat_roster, use_chat_thread, use_dispatch, use_player_online,
 };
 use crate::i18n::{t, tf};
 use crate::theme::colors;
 
 use super::common::{
-    CARD_RADIUS_PX, CHIP_RADIUS_PX, HeaderButton, ROW_RADIUS_PX, card_bg, clock, day_label,
-    edge_border, group_heads, hairline, head_with_dot, hover_bg, inset_border, popup_shadow,
-    presence_color, use_player_name,
+    CARD_RADIUS_PX, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains,
+    card_bg, clock, day_label, day_of, edge_border, group_heads, hairline, head_with_dot, hover_bg,
+    inset_border, popup_shadow, presence_color, use_player_name,
 };
 use super::list::{accent_button, conversation_title};
 use super::people::AddMembersDialog;
 
 const PAGE_TRIGGER_PX: f32 = 240.;
+
+const ROW_WINDOW: usize = 200;
+const ROW_WINDOW_STEP: usize = 100;
 
 const EMOJI_CELL_PX: f32 = 34.;
 const EMOJI_GAP_PX: f32 = 2.;
@@ -66,38 +69,66 @@ impl Component for ThreadView {
         let mut shown = use_state(|| group_id);
         let mut editing = use_state(|| None::<(i64, String)>);
         let mut adding = use_state(|| false);
+        let mut first_shown = use_state(|| None::<i64>);
 
         if *shown.peek() != group_id {
             shown.set(group_id);
+            first_shown.set(None);
             pinned.set(true);
             may_page.set(false);
             editing.set(None);
             adding.set(false);
         }
 
+        let edit_gone = editing.peek().as_ref().is_some_and(|(id, _)| {
+            messages
+                .binary_search_by_key(id, |message| message.id)
+                .is_err()
+        });
+        if edit_gone {
+            editing.set(None);
+        }
+
         let paging = dispatch.clone();
 
-        let mut rows: Vec<Element> = Vec::with_capacity(messages.len() + pending.len());
+        let hidden = match *first_shown.read() {
+            Some(first) => messages.partition_point(|message| message.id < first),
+            None => messages.len().saturating_sub(ROW_WINDOW),
+        };
+        let older = messages.clone();
+        let shown_messages = &messages[hidden..];
+        let oldest_shown = shown_messages.first().map(|message| message.id);
+
+        let mut rows: Vec<Element> = Vec::with_capacity(shown_messages.len() + pending.len());
         let mut previous: Option<&ChatMessage> = None;
-        for message in messages.iter() {
-            let day = message.sent_at.map(day_label);
+        for message in shown_messages {
+            let day = message.sent_at.map(day_of);
             let new_day =
-                day.is_some() && day != previous.and_then(|prev| prev.sent_at.map(day_label));
-            if let Some(day) = day.filter(|_| new_day) {
-                rows.push(day_divider(day).into_element());
+                day.is_some() && day != previous.and_then(|prev| prev.sent_at.map(day_of));
+            if let Some(at) = message.sent_at.filter(|_| new_day) {
+                rows.push(
+                    rect()
+                        .key(day)
+                        .width(Size::fill())
+                        .child(day_divider(day_label(at)))
+                        .into_element(),
+                );
             }
 
             let show_head = new_day || previous.is_none_or(|prev| prev.sender != message.sender);
             rows.push(
-                MessageRow {
-                    message: message.clone(),
-                    group_id,
-                    own: message.sender == own_id,
-                    show_head,
-                    first: previous.is_none(),
-                    editing,
-                }
-                .into_element(),
+                rect()
+                    .key(message.id)
+                    .width(Size::fill())
+                    .child(MessageRow {
+                        message: message.clone(),
+                        group_id,
+                        own: message.sender == own_id,
+                        show_head,
+                        first: previous.is_none(),
+                        editing,
+                    })
+                    .into_element(),
             );
             previous = Some(message);
         }
@@ -105,13 +136,16 @@ impl Component for ThreadView {
         let mut last_sender = previous.map(|prev| prev.sender);
         for pending in pending {
             rows.push(
-                PendingRow {
-                    group_id,
-                    show_head: last_sender != Some(own_id),
-                    own_id,
-                    pending,
-                }
-                .into_element(),
+                rect()
+                    .key(pending.key)
+                    .width(Size::fill())
+                    .child(PendingRow {
+                        group_id,
+                        show_head: last_sender != Some(own_id),
+                        own_id,
+                        pending,
+                    })
+                    .into_element(),
             );
             last_sender = Some(own_id);
         }
@@ -159,12 +193,17 @@ impl Component for ThreadView {
                     .width(Size::fill())
                     .height(Size::flex(1.0))
                     .stick_bottom(*pinned.read())
-                    .on_user_scroll(move |_| {
-                        pinned.set_if_modified(false);
-                        may_page.set_if_modified(true);
-                    })
+                    .anchor_bottom(oldest_shown)
+                    .on_user_scroll(move |_| may_page.set_if_modified(true))
                     .on_ctx(move |ctx: crate::components::ScrollAreaCtx| {
-                        if exhausted || !*may_page.peek() || ctx.viewport_h <= 0. {
+                        if ctx.at_bottom {
+                            first_shown.set_if_modified(None);
+                        } else if first_shown.peek().is_none() {
+                            first_shown.set(oldest_shown);
+                        }
+                        pinned.set_if_modified(ctx.at_bottom);
+
+                        if !*may_page.peek() || ctx.viewport_h <= 0. {
                             return;
                         }
                         if ctx.corrected_y < -PAGE_TRIGGER_PX {
@@ -172,7 +211,13 @@ impl Component for ThreadView {
                         }
 
                         may_page.set(false);
-                        paging.load_older_messages(group_id);
+                        if hidden > 0 {
+                            let first = older[hidden.saturating_sub(ROW_WINDOW_STEP)].id;
+                            first_shown.set(Some(first));
+                        } else if !exhausted {
+                            first_shown.set(Some(i64::MIN));
+                            paging.load_older_messages(group_id);
+                        }
                     })
                     .child(
                         rect()
@@ -511,6 +556,7 @@ impl Component for MessageRow {
                 .child(match &self.message.invite {
                     Some(invite) => InviteCard {
                         invite: invite.clone(),
+                        sender: self.message.sender,
                         own: self.own,
                     }
                     .into_element(),
@@ -525,7 +571,13 @@ impl Component for MessageRow {
                     None => message_text(&self.message.content)
                         .width(Size::fill())
                         .into_element(),
-                });
+                })
+                .maybe_child((!self.show_head && self.message.edited).then(|| {
+                    label()
+                        .text(t("oneclient.chat.thread.edited"))
+                        .font_size(10.)
+                        .color(colors::fg_secondary())
+                }));
 
         rect()
             .width(Size::fill())
@@ -560,6 +612,7 @@ fn message_text(content: &str) -> Label {
 #[derive(PartialEq)]
 struct InviteCard {
     invite: MessageInvite,
+    sender: Uuid,
     own: bool,
 }
 
@@ -568,6 +621,7 @@ impl Component for InviteCard {
         let dispatch = use_dispatch();
         let invite_id = self.invite.id;
         let game = use_chat_invite_game(invite_id);
+        let blocked = use_chat_roster().is_blocked(self.sender);
         let facts = (self.invite.is_open() || game.is_some()).then(|| {
             let game = game.unwrap_or_default();
             let unknown = || t("oneclient.chat.invites.unknown").to_string();
@@ -587,7 +641,9 @@ impl Component for InviteCard {
                 .into_element()
         });
 
-        let footer = if self.invite.is_open() && !self.own {
+        let footer = if self.invite.is_open() && blocked {
+            rect().into_element()
+        } else if self.invite.is_open() && !self.own {
             rect()
                 .width(Size::fill())
                 .center()
@@ -824,13 +880,15 @@ impl KeyExt for Composer {
 impl Component for Composer {
     fn render(&self) -> impl IntoElement {
         let dispatch = use_dispatch();
-        let mut draft = use_state(String::new);
+        let own_id = self.own_id;
+        let group_id = self.group_id;
+        let mut draft = use_state(|| chat_draft(own_id, group_id));
         let mut emoji_open = use_state(|| false);
         let mut picker_area = use_state(Area::default);
         let mut toggle_area = use_state(Area::default);
         let mut loaded_edit = use_state(|| None::<i64>);
         let mut stashed = use_state(String::new);
-        let group_id = self.group_id;
+        let mut edit_ended = use_state(|| false);
         let editing = self.editing;
         let mut cancel_edit = self.editing;
 
@@ -845,7 +903,18 @@ impl Component for Composer {
                 None => draft.set(std::mem::take(&mut *stashed.write())),
             }
             loaded_edit.set(edit_id);
+            edit_ended.set(edit_id.is_none());
         }
+
+        save_chat_draft(
+            own_id,
+            group_id,
+            if edit_id.is_some() {
+                stashed.peek().clone()
+            } else {
+                draft.peek().clone()
+            },
+        );
 
         let counterpart = self.placeholder.counterpart(self.own_id);
         let name = use_player_name(counterpart.unwrap_or(self.own_id));
@@ -866,7 +935,8 @@ impl Component for Composer {
                 .on_global_pointer_down(move |e: Event<PointerEventData>| {
                     let at = e.data().global_location();
                     let (x, y) = (at.x as f32, at.y as f32);
-                    if !contains(&picker_area.read(), x, y) && !contains(&toggle_area.read(), x, y)
+                    if !area_contains(&picker_area.read(), x, y)
+                        && !area_contains(&toggle_area.read(), x, y)
                     {
                         emoji_open.set(false);
                     }
@@ -949,6 +1019,7 @@ impl Component for Composer {
             }))
             .child(
                 rect()
+                    .key("input")
                     .horizontal()
                     .width(Size::fill())
                     .height(Size::px(38.))
@@ -980,11 +1051,13 @@ impl Component for Composer {
                             .bare()
                             .width(Size::flex(1.0))
                             .font_size(14.)
+                            .auto_focus(*edit_ended.peek())
                             .placeholder(tf("oneclient.chat.thread.message_placeholder", &[&title]))
                             .on_submit(move |_| {
                                 emoji_open.set(false);
                                 submit_draft(&on_key, draft, editing, group_id, &sent_by_key);
-                            }),
+                            })
+                            .key(edit_id),
                     )
                     .child(
                         rect()
@@ -1004,19 +1077,27 @@ impl Component for Composer {
             )
             .maybe_child(too_long.then(|| {
                 label()
-                    .text(tf("oneclient.chat.thread.too_long", &[&MAX_MESSAGE_LENGTH]))
+                    .text(t("oneclient.chat.thread.too_long"))
                     .font_size(11.)
                     .color(colors::danger())
+            }))
+            .maybe_child((emoji_open() || current_edit.is_some()).then(|| {
+                EscapeGuard {
+                    on_escape: EventHandler::new(move |_| {
+                        if emoji_open() {
+                            emoji_open.set(false);
+                        } else {
+                            cancel_edit.set(None);
+                        }
+                    }),
+                }
+                .into_element()
             }))
     }
 
     fn render_key(&self) -> DiffKey {
         self.key.clone().or(self.default_key())
     }
-}
-
-fn contains(area: &Area, x: f32, y: f32) -> bool {
-    x >= area.min_x() && x <= area.max_x() && y >= area.min_y() && y <= area.max_y()
 }
 
 #[derive(PartialEq)]

@@ -10,10 +10,12 @@ use uuid::Uuid;
 
 use oneclient_auth::MinecraftAccount;
 use oneclient_events::{ChatEvent, EventBus};
-use oneclient_net::{RequestClient, RequestError};
+use oneclient_net::RequestError;
 
 use crate::packets::{ClientboundPacket, ServerboundPacket};
-use crate::{PlusClient, PlusError, base_url, party, plus_blocked, social_allowed};
+use crate::{
+    PlusClient, PlusError, REQUEST_TIMEOUT, api, base_url, party, plus_blocked, social_allowed,
+};
 
 const MOJANG_JOIN_URL: &str = "https://sessionserver.mojang.com/session/minecraft/join";
 
@@ -72,10 +74,7 @@ pub(crate) fn spawn(client: Arc<PlusClient>) {
             let outcome = session(&client, &socket, &mut restart).await;
             let restarted = matches!(outcome, Outcome::Restart);
 
-            delay = match outcome {
-                Outcome::Restart | Outcome::Connected | Outcome::NoAccount => RECONNECT_DELAY,
-                Outcome::Failed => (delay * 2).min(MAX_RECONNECT_DELAY),
-            };
+            delay = next_delay(&outcome, delay);
 
             if restarted {
                 continue;
@@ -135,7 +134,7 @@ async fn session(
         }
         Err(err) => {
             if err.is_unauthorized() {
-                client.forget_token().await;
+                api::forget_token(id).await;
             }
             tracing::warn!("[plus] session for {id} failed: {err}");
         }
@@ -162,7 +161,7 @@ async fn run_session(
     restart: &mut tokio::sync::watch::Receiver<u64>,
 ) -> Result<Ended, PlusError> {
     let session_url = base_url();
-    let token = client.authorize().await?;
+    let token = api::token_for(account, None).await?;
 
     let mut websocket = socket
         .get(format!("{session_url}/websocket"))
@@ -244,7 +243,7 @@ where
                 sync_watched(websocket, &mut subscribed, &wanted).await?;
             }
             Frame::Message(Some(Message::Text(payload))) => {
-                dispatch(events, &payload);
+                dispatch(events, account_id, &payload);
                 party::dispatch(&payload);
             }
             Frame::Message(Some(Message::Close { code, reason })) => {
@@ -294,7 +293,7 @@ async fn send(
     Ok(())
 }
 
-fn dispatch(events: &EventBus, payload: &str) {
+fn dispatch(events: &EventBus, account: Uuid, payload: &str) {
     let packet = match serde_json::from_str::<ClientboundPacket>(payload) {
         Ok(packet) => packet,
         Err(err) => {
@@ -312,6 +311,7 @@ fn dispatch(events: &EventBus, payload: &str) {
             session_invite_id,
             session_invite_status,
         } => events.chat(ChatEvent::MessageReceived {
+            account,
             group_id,
             message_id,
             sender,
@@ -349,7 +349,7 @@ fn dispatch(events: &EventBus, payload: &str) {
             }
         }
         ClientboundPacket::FriendRequestReceived { sender, .. } => {
-            events.chat(ChatEvent::FriendRequestReceived { sender });
+            events.chat(ChatEvent::FriendRequestReceived { account, sender });
         }
         ClientboundPacket::FriendRequestUpdated { .. }
         | ClientboundPacket::FriendRemoved { .. } => events.chat(ChatEvent::RosterChanged),
@@ -376,6 +376,13 @@ pub(crate) async fn current_account(
     Ok(usable(&account, social_allowed()).then_some(account))
 }
 
+fn next_delay(outcome: &Outcome, delay: Duration) -> Duration {
+    match outcome {
+        Outcome::Restart | Outcome::Connected | Outcome::NoAccount => RECONNECT_DELAY,
+        Outcome::Failed => (delay * 2).min(MAX_RECONNECT_DELAY),
+    }
+}
+
 pub(crate) fn usable(account: &MinecraftAccount, allowed: bool) -> bool {
     allowed
         && account.is_microsoft()
@@ -385,39 +392,37 @@ pub(crate) fn usable(account: &MinecraftAccount, allowed: bool) -> bool {
 
 async fn account_changed(auth: &oneclient_auth::AuthService, id: Uuid) -> bool {
     match auth.default_account().await {
-        Ok(Some(account)) => account.id != id,
+        Ok(Some(account)) => account.id != id || account.needs_sign_in(),
         Ok(None) => true,
         Err(_) => false,
     }
 }
 
 pub(crate) async fn login(
-    requester: &RequestClient,
+    client: &reqwest::Client,
     account: &MinecraftAccount,
 ) -> Result<String, PlusError> {
+    if plus_blocked() {
+        return Err(PlusError::ConsentRequired);
+    }
+
     let server_id = generate_server_id();
 
-    let mut join =
-        reqwest::Request::new(reqwest::Method::POST, reqwest::Url::parse(MOJANG_JOIN_URL)?);
-    join.headers_mut().insert(
-        reqwest::header::CONTENT_TYPE,
-        reqwest::header::HeaderValue::from_static("application/json"),
-    );
-    let payload = serde_json::json!({
-        "accessToken": account.access_token,
-        "selectedProfile": account.id.simple().to_string(),
-        "serverId": server_id,
-    });
-    *join.body_mut() = Some(
-        serde_json::to_vec(&payload)
-            .map_err(RequestError::SerializeError)?
-            .into(),
-    );
+    let join = client
+        .post(MOJANG_JOIN_URL)
+        .timeout(REQUEST_TIMEOUT)
+        .header("Accept", "application/json")
+        .json(&serde_json::json!({
+            "accessToken": account.access_token,
+            "selectedProfile": account.id.simple().to_string(),
+            "serverId": server_id,
+        }))
+        .send()
+        .await?;
 
-    let joined = requester.send(join).await?;
-    if !joined.status().is_success() {
+    if !join.status().is_success() {
         return Err(PlusError::JoinRejected {
-            status: joined.status().as_u16(),
+            status: join.status().as_u16(),
         });
     }
 
@@ -426,17 +431,21 @@ pub(crate) async fn login(
         .append_pair("username", &account.username)
         .append_pair("server_id", &server_id);
 
-    requester
-        .send_json::<LoginResponse>(reqwest::Method::POST, url, None, &[])
-        .await
-        .map(|response| response.token)
-        .map_err(|err| match err {
-            RequestError::HttpStatus { status, .. } => PlusError::LoginRejected {
-                username: account.username.clone(),
-                status,
-            },
-            other => PlusError::Request(other),
-        })
+    let login = client
+        .post(url)
+        .timeout(REQUEST_TIMEOUT)
+        .header("Accept", "application/json")
+        .send()
+        .await?;
+
+    if !login.status().is_success() {
+        return Err(PlusError::LoginRejected {
+            username: account.username.clone(),
+            status: login.status().as_u16(),
+        });
+    }
+
+    Ok(login.json::<LoginResponse>().await?.token)
 }
 
 fn generate_server_id() -> String {
@@ -456,6 +465,15 @@ mod tests {
     use tokio::net::TcpListener;
 
     use super::*;
+
+    #[test]
+    fn failures_back_off_up_to_the_cap_and_any_connection_resets_the_wait() {
+        assert_eq!(next_delay(&Outcome::Failed, RECONNECT_DELAY), RECONNECT_DELAY * 2);
+        assert_eq!(next_delay(&Outcome::Failed, MAX_RECONNECT_DELAY), MAX_RECONNECT_DELAY);
+        assert_eq!(next_delay(&Outcome::Connected, MAX_RECONNECT_DELAY), RECONNECT_DELAY);
+        assert_eq!(next_delay(&Outcome::NoAccount, MAX_RECONNECT_DELAY), RECONNECT_DELAY);
+        assert_eq!(next_delay(&Outcome::Restart, MAX_RECONNECT_DELAY), RECONNECT_DELAY);
+    }
 
     fn account(kind: oneclient_auth::AccountKind, token: &str, signed_out: bool) -> MinecraftAccount {
         MinecraftAccount {
@@ -707,6 +725,7 @@ mod tests {
 
         dispatch(
             &events,
+            sender,
             &format!(
                 r#"{{"type":"GroupMessageReceived","group_id":3,"message_id":9,"sender":"{sender}","content":"hey"}}"#
             ),
@@ -717,11 +736,13 @@ mod tests {
             .expect("an event should have been emitted")
         {
             oneclient_events::Event::Chat(ChatEvent::MessageReceived {
+                account,
                 group_id,
                 message_id,
                 content,
                 ..
             }) => {
+                assert_eq!(account, sender);
                 assert_eq!(group_id, 3);
                 assert_eq!(message_id, 9);
                 assert_eq!(content, "hey");
@@ -737,6 +758,7 @@ mod tests {
 
         dispatch(
             &events,
+            sender,
             &format!(
                 r#"{{"type":"GroupMessageReceived","group_id":3,"message_id":9,"sender":"{sender}","content":"","session_invite_id":12,"session_invite_status":"pending"}}"#
             ),
@@ -764,6 +786,7 @@ mod tests {
 
         dispatch(
             &events,
+            Uuid::nil(),
             r#"{"type":"PlayerEmoteStopped","player":"00000000-0000-0000-0000-000000000000"}"#,
         );
 

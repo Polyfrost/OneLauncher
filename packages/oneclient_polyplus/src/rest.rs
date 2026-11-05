@@ -2,16 +2,16 @@ use reqwest::{Method, Url};
 use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
-use oneclient_net::{HttpRequest, RequestError, RequestOptions};
+use oneclient_auth::MinecraftAccount;
+use oneclient_net::RequestError;
 
+use crate::api::send_to;
 use crate::models::{
     BlockedPlayer, CreateGroupRequest, EditMessageRequest, Friend, FriendRequest, GroupMessage,
     GroupSummary, IncomingSessionInvite, MAX_PAGE_SIZE, MAX_RESOLVE_BATCH, PlayerStatus, ResolveRequest, ResolveResponse,
     ResolvedPlayer, SendMessageRequest, StatusBody,
 };
-use crate::{PlusClient, PlusError, base_url};
-
-const SNIPPET_LIMIT: usize = 200;
+use crate::{PlusClient, PlusError, base_url, session};
 
 impl PlusClient {
     pub async fn groups(&self) -> Result<Vec<GroupSummary>, PlusError> {
@@ -31,15 +31,6 @@ impl PlusClient {
         let body = serialize(&CreateGroupRequest { name, members })?;
         self.json(Method::POST, self.url("/groups")?, Some(body))
             .await
-    }
-
-    pub async fn claim_group(&self, group_id: i32) -> Result<GroupSummary, PlusError> {
-        self.json(
-            Method::POST,
-            self.url(&format!("/groups/{group_id}/claim"))?,
-            None,
-        )
-        .await
     }
 
     pub async fn add_member(&self, group_id: i32, player: Uuid) -> Result<(), PlusError> {
@@ -277,29 +268,22 @@ impl PlusClient {
         Ok(Url::parse(&format!("{}{path}", base_url()))?)
     }
 
+    async fn account(&self) -> Result<MinecraftAccount, PlusError> {
+        session::current_account(&self.auth)
+            .await?
+            .ok_or(PlusError::NoAccount)
+    }
+
     async fn json<T: DeserializeOwned>(
         &self,
         method: Method,
         url: Url,
         body: Option<serde_json::Value>,
     ) -> Result<T, PlusError> {
-        let token = self.authorize().await?;
-
-        let attempt = self
-            .requester
-            .send_as::<T>(build(method.clone(), url.clone(), body.clone(), &token)?)
-            .await;
-
-        if !matches!(attempt, Err(RequestError::HttpStatus { status: 401, .. })) {
-            return Ok(attempt?);
-        }
-
-        self.forget_token().await;
-        let token = self.authorize().await?;
-
-        Ok(self
-            .requester
-            .send_as::<T>(build(method, url, body, &token)?)
+        let account = self.account().await?;
+        Ok(send_to(&account, method, url.as_str(), body.as_ref())
+            .await?
+            .json::<T>()
             .await?)
     }
 
@@ -309,93 +293,13 @@ impl PlusClient {
         url: Url,
         body: Option<serde_json::Value>,
     ) -> Result<(), PlusError> {
-        let token = self.authorize().await?;
-        let response = self
-            .requester
-            .send(build(method.clone(), url.clone(), body.clone(), &token)?)
-            .await?;
-
-        let response = if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-            self.forget_token().await;
-            let token = self.authorize().await?;
-            self.requester.send(build(method, url, body, &token)?).await?
-        } else {
-            response
-        };
-
-        if response.status().is_success() {
-            return Ok(());
-        }
-
-        let status = response.status().as_u16();
-        let url = response.url().to_string();
-        let snippet = response.text().await.unwrap_or_default();
-
-        Err(PlusError::Request(RequestError::HttpStatus {
-            status,
-            url,
-            snippet: snippet.chars().take(SNIPPET_LIMIT).collect(),
-        }))
+        let account = self.account().await?;
+        send_to(&account, method, url.as_str(), body.as_ref()).await?;
+        Ok(())
     }
-}
-
-fn bearer(token: &str) -> String {
-    format!("Bearer {token}")
 }
 
 fn serialize<T: serde::Serialize>(value: &T) -> Result<serde_json::Value, PlusError> {
     serde_json::to_value(value)
         .map_err(|err| PlusError::Request(RequestError::SerializeError(err)))
-}
-
-fn build(
-    method: Method,
-    url: Url,
-    body: Option<serde_json::Value>,
-    token: &str,
-) -> Result<HttpRequest, PlusError> {
-    let options = if method == Method::GET {
-        RequestOptions::default()
-    } else {
-        RequestOptions::default().no_replay()
-    };
-    let mut request = reqwest::Request::new(method, url);
-
-    let mut value = reqwest::header::HeaderValue::try_from(bearer(token))
-        .map_err(|err| PlusError::Request(RequestError::from(err)))?;
-    value.set_sensitive(true);
-    request
-        .headers_mut()
-        .insert(reqwest::header::AUTHORIZATION, value);
-
-    if let Some(body) = body {
-        request.headers_mut().insert(
-            reqwest::header::CONTENT_TYPE,
-            reqwest::header::HeaderValue::from_static("application/json"),
-        );
-        *request.body_mut() = Some(
-            serde_json::to_vec(&body)
-                .map_err(|err| PlusError::Request(RequestError::SerializeError(err)))?
-                .into(),
-        );
-    }
-
-    Ok(HttpRequest { request, options })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn replays(method: Method) -> bool {
-        let url = Url::parse("https://plus.example.test/groups").unwrap();
-        build(method, url, None, "token").unwrap().options.replay
-    }
-
-    #[test]
-    fn only_reads_are_replayed() {
-        assert!(replays(Method::GET));
-        assert!(!replays(Method::POST));
-        assert!(!replays(Method::DELETE));
-    }
 }

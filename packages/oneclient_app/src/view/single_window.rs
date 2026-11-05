@@ -1,6 +1,5 @@
 use std::sync::{Mutex, MutexGuard};
 
-use freya::prelude::RendererContext;
 use freya::winit::window::WindowId;
 
 enum WindowState {
@@ -61,12 +60,6 @@ impl SingleWindow {
 
     pub fn is_open(&self) -> bool {
         matches!(*self.state(), WindowState::Open(_))
-    }
-
-    pub fn close_in(&self, ctx: &mut RendererContext<'_>) {
-        if let Some(id) = self.take() {
-            ctx.windows.remove(&id);
-        }
     }
 }
 

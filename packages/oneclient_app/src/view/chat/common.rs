@@ -1,11 +1,14 @@
-use chrono::{DateTime, FixedOffset, Local, Utc};
+use chrono::{DateTime, FixedOffset, Local};
 use freya::prelude::*;
 use uuid::Uuid;
 
-use crate::components::{Avatar, Icon, IconType};
-use crate::hooks::{settled_or_loading, use_player_profile};
-use crate::i18n::{t, tf};
+use crate::components::{
+    Avatar, Icon, IconType, overlay_is_topmost, use_open_level,
+};
+use crate::i18n::t;
 use crate::theme::colors;
+
+pub(super) use crate::components::use_player_name;
 
 pub(super) const LIST_WIDTH_PX: f32 = 320.;
 pub(super) const ROW_RADIUS_PX: f32 = 8.;
@@ -55,16 +58,30 @@ pub(super) fn edge_border(color: Color, top: f32, right: f32, bottom: f32) -> Bo
         .alignment(BorderAlignment::Inner)
 }
 
-pub(super) fn short_id(player: Uuid) -> String {
-    player.simple().to_string().chars().take(8).collect()
+const ESCAPE_LEVEL: u8 = 4;
+
+#[derive(PartialEq)]
+pub(super) struct EscapeGuard {
+    pub on_escape: EventHandler<()>,
 }
 
-pub(super) fn use_player_name(player: Uuid) -> String {
-    let profile = use_player_profile(player.to_string(), None::<String>);
+impl Component for EscapeGuard {
+    fn render(&self) -> impl IntoElement {
+        use_open_level(ESCAPE_LEVEL);
+        let on_escape = self.on_escape.clone();
 
-    settled_or_loading(&profile)
-        .map(|view| view.username)
-        .unwrap_or_else(|| short_id(player))
+        rect()
+            .position(Position::new_absolute())
+            .on_global_key_down(move |e: Event<KeyboardEventData>| {
+                if e.key == Key::Named(NamedKey::Escape) && overlay_is_topmost(ESCAPE_LEVEL) {
+                    on_escape.call(());
+                }
+            })
+    }
+}
+
+pub(super) fn area_contains(area: &Area, x: f32, y: f32) -> bool {
+    x >= area.min_x() && x <= area.max_x() && y >= area.min_y() && y <= area.max_y()
 }
 
 pub(super) fn clock(at: DateTime<FixedOffset>) -> String {
@@ -83,6 +100,10 @@ pub(super) fn row_time(at: DateTime<FixedOffset>) -> String {
     }
 }
 
+pub(super) fn day_of(at: DateTime<FixedOffset>) -> chrono::NaiveDate {
+    at.with_timezone(&Local).date_naive()
+}
+
 pub(super) fn day_label(at: DateTime<FixedOffset>) -> String {
     let local = at.with_timezone(&Local);
     let days = (Local::now().date_naive() - local.date_naive()).num_days();
@@ -91,20 +112,6 @@ pub(super) fn day_label(at: DateTime<FixedOffset>) -> String {
         ..=0 => t("oneclient.chat.time.today").to_string(),
         1 => t("oneclient.chat.time.yesterday").to_string(),
         _ => local.format("%B %-d").to_string(),
-    }
-}
-
-pub(super) fn ago(at: DateTime<FixedOffset>) -> String {
-    let elapsed = Utc::now().signed_duration_since(at);
-
-    if elapsed.num_minutes() < 1 {
-        t("oneclient.chat.time.just_now").to_string()
-    } else if elapsed.num_hours() < 1 {
-        tf("oneclient.chat.time.minutes", &[&elapsed.num_minutes()])
-    } else if elapsed.num_days() < 1 {
-        tf("oneclient.chat.time.hours", &[&elapsed.num_hours()])
-    } else {
-        tf("oneclient.chat.time.days", &[&elapsed.num_days()])
     }
 }
 

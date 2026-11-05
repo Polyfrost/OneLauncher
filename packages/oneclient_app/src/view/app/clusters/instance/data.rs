@@ -426,7 +426,9 @@ pub fn resolve(w: Wizard) -> Picks {
     let loader = match choice {
         TypeChoice::OneClient => version.as_ref().and_then(|id| catalogue.loader_for(id)),
         TypeChoice::Scratch | TypeChoice::Modpack | TypeChoice::Import => {
-            w.loader.read().resolve(available.as_deref().unwrap_or(&[]))
+            w.loader
+                .read()
+                .resolve_exact(available.as_deref().unwrap_or(&[]), w.exact_loader)
         }
     };
 

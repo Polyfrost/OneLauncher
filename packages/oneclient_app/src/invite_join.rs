@@ -18,12 +18,18 @@ pub enum InviteJoin {
         version: String,
         loader: GameLoader,
         oneclient: bool,
+        unlinked: bool,
     },
     Unknown,
 }
 
 #[must_use]
-pub fn plan(game: &InviteGame, candidates: Vec<i64>, oneclient: bool) -> InviteJoin {
+pub fn plan(
+    game: &InviteGame,
+    candidates: Vec<i64>,
+    unlinked: bool,
+    oneclient: bool,
+) -> InviteJoin {
     let Some((version, loader)) = game.known() else {
         return if candidates.is_empty() {
             InviteJoin::Unknown
@@ -37,6 +43,7 @@ pub fn plan(game: &InviteGame, candidates: Vec<i64>, oneclient: bool) -> InviteJ
             version: version.to_string(),
             loader,
             oneclient,
+            unlinked,
         },
         [only] => InviteJoin::Launch(*only),
         _ => InviteJoin::Pick(candidates),
@@ -50,17 +57,42 @@ pub fn cluster_matches(game: &InviteGame, version: &str, loader: GameLoader) -> 
 }
 
 #[must_use]
+pub fn wizard_invite(
+    invite: Option<i32>,
+    prefill: Option<&(String, GameLoader)>,
+    version: Option<&str>,
+    loader: Option<GameLoader>,
+) -> Option<i32> {
+    invite.filter(|_| {
+        prefill.is_some_and(|(wanted, wanted_loader)| {
+            version == Some(wanted.as_str()) && loader == Some(*wanted_loader)
+        })
+    })
+}
+
+#[must_use]
 pub fn custom_loader(loader: GameLoader) -> bool {
     loader != GameLoader::Quilt
 }
 
 #[must_use]
 pub fn has_polyplus(artifacts: &[LinkedArtifactInfo]) -> bool {
-    artifacts.iter().any(|artifact| {
-        artifact.enabled
-            && artifact.provider == Some(POLYPLUS.provider)
-            && artifact.project_id.as_deref() == Some(POLYPLUS.project_id)
-    })
+    artifacts
+        .iter()
+        .any(|artifact| artifact.enabled && is_polyplus(artifact))
+}
+
+#[must_use]
+pub fn disabled_polyplus(artifacts: &[LinkedArtifactInfo]) -> Option<&str> {
+    artifacts
+        .iter()
+        .find(|artifact| !artifact.enabled && is_polyplus(artifact))
+        .map(|artifact| artifact.hash.as_str())
+}
+
+fn is_polyplus(artifact: &LinkedArtifactInfo) -> bool {
+    artifact.provider == Some(POLYPLUS.provider)
+        && artifact.project_id.as_deref() == Some(POLYPLUS.project_id)
 }
 
 #[must_use]
@@ -101,18 +133,19 @@ mod tests {
 
     #[test]
     fn one_match_launches_and_several_ask() {
-        assert_eq!(plan(&known(), vec![4], true), InviteJoin::Launch(4));
-        assert_eq!(plan(&known(), vec![4, 5], true), InviteJoin::Pick(vec![4, 5]));
+        assert_eq!(plan(&known(), vec![4], false, true), InviteJoin::Launch(4));
+        assert_eq!(plan(&known(), vec![4, 5], false, true), InviteJoin::Pick(vec![4, 5]));
     }
 
     #[test]
     fn no_match_offers_to_create_and_remembers_support() {
         assert_eq!(
-            plan(&known(), Vec::new(), true),
+            plan(&known(), Vec::new(), false, true),
             InviteJoin::Create {
                 version: "1.21.1".to_string(),
                 loader: GameLoader::Fabric,
                 oneclient: true,
+                unlinked: false,
             }
         );
     }
@@ -121,8 +154,8 @@ mod tests {
     fn an_unknown_game_never_launches_on_its_own() {
         let unknown = InviteGame::default();
 
-        assert_eq!(plan(&unknown, vec![4], true), InviteJoin::Pick(vec![4]));
-        assert_eq!(plan(&unknown, Vec::new(), true), InviteJoin::Unknown);
+        assert_eq!(plan(&unknown, vec![4], false, true), InviteJoin::Pick(vec![4]));
+        assert_eq!(plan(&unknown, Vec::new(), false, true), InviteJoin::Unknown);
     }
 
     #[test]
@@ -132,7 +165,38 @@ mod tests {
             loader: None,
         };
 
-        assert_eq!(plan(&game, vec![4], true), InviteJoin::Pick(vec![4]));
+        assert_eq!(plan(&game, vec![4], false, true), InviteJoin::Pick(vec![4]));
+    }
+
+    #[test]
+    fn a_matching_cluster_without_polyplus_is_offered_for_reuse() {
+        assert!(matches!(
+            plan(&known(), Vec::new(), true, true),
+            InviteJoin::Create { unlinked: true, .. }
+        ));
+    }
+
+    #[test]
+    fn the_wizard_only_joins_when_it_still_makes_the_invited_game() {
+        let prefill = ("1.21.1".to_string(), GameLoader::Fabric);
+        let wanted = Some(&prefill);
+
+        assert_eq!(
+            wizard_invite(Some(3), wanted, Some("1.21.1"), Some(GameLoader::Fabric)),
+            Some(3)
+        );
+        assert_eq!(
+            wizard_invite(Some(3), wanted, Some("1.20.1"), Some(GameLoader::Fabric)),
+            None
+        );
+        assert_eq!(
+            wizard_invite(Some(3), wanted, Some("1.21.1"), Some(GameLoader::Forge)),
+            None
+        );
+        assert_eq!(
+            wizard_invite(None, wanted, Some("1.21.1"), Some(GameLoader::Fabric)),
+            None
+        );
     }
 
     #[test]
@@ -161,6 +225,38 @@ mod tests {
         assert!(oneclient_supports(&catalogue, "1.21.1", GameLoader::Fabric));
         assert!(!oneclient_supports(&catalogue, "1.21.1", GameLoader::Forge));
         assert!(!oneclient_supports(&catalogue, "1.21.2", GameLoader::Fabric));
+    }
+
+    fn artifact(hash: &str, enabled: bool, project: &str) -> LinkedArtifactInfo {
+        LinkedArtifactInfo {
+            hash: hash.to_string(),
+            cluster_file_name: String::new(),
+            enabled,
+            content_type: oneclient_common::ContentType::Mod,
+            file_name: String::new(),
+            size_bytes: None,
+            project_id: Some(project.to_string()),
+            version_id: None,
+            display_name: None,
+            display_version: None,
+            provider: Some(POLYPLUS.provider),
+            published_at: None,
+            added_at: None,
+            seen_status: oneclient_core::SeenStatus::Seen,
+        }
+    }
+
+    #[test]
+    fn a_disabled_polyplus_is_enabled_instead_of_installed_again() {
+        let disabled = [artifact("other", false, "else"), artifact("plus", false, POLYPLUS.project_id)];
+        assert!(!has_polyplus(&disabled));
+        assert_eq!(disabled_polyplus(&disabled), Some("plus"));
+
+        let enabled = [artifact("plus", true, POLYPLUS.project_id)];
+        assert!(has_polyplus(&enabled));
+        assert_eq!(disabled_polyplus(&enabled), None);
+
+        assert_eq!(disabled_polyplus(&[artifact("other", false, "else")]), None);
     }
 
     #[test]

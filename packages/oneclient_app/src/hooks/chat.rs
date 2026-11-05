@@ -1,5 +1,6 @@
-use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use freya::prelude::spawn_in_window;
@@ -11,8 +12,8 @@ use oneclient_content::packages::PackageStore;
 use uuid::Uuid;
 
 use oneclient_polyplus::{
-    BlockedPlayer, Friend, FriendRequest, MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE, PlayerStatus,
-    PlusClient, PlusError,
+    BlockedPlayer, Friend, FriendRequest, GroupSummary, MAX_MESSAGE_LENGTH, MAX_PAGE_SIZE,
+    PlayerStatus, PlusClient, PlusError,
 };
 
 use crate::chat::{ChatRoster, ChatToast, FriendRequestStatus, FriendRequests, InviteGame};
@@ -36,8 +37,67 @@ static LAST_RESYNC: Mutex<Option<Instant>> = Mutex::new(None);
 static LAST_ROSTER: Mutex<Option<Instant>> = Mutex::new(None);
 static STATUS_TURN: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 static STATUS_UNSAVED: AtomicUsize = AtomicUsize::new(0);
+static ROSTER_TICKET: AtomicU64 = AtomicU64::new(0);
+static ROSTER_APPLIED: AtomicU64 = AtomicU64::new(0);
+static CONVERSATIONS_TICKET: AtomicU64 = AtomicU64::new(0);
+static CONVERSATIONS_APPLIED: AtomicU64 = AtomicU64::new(0);
+static DRAFTS: LazyLock<Mutex<HashMap<(Uuid, i32), String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+static JOINING: Mutex<Vec<i32>> = Mutex::new(Vec::new());
 
 type Station = RadioStation<AppState, AppChannel>;
+
+fn next_ticket(tickets: &AtomicU64) -> u64 {
+    tickets.fetch_add(1, Ordering::SeqCst) + 1
+}
+
+fn is_newest(applied: &AtomicU64, ticket: u64) -> bool {
+    applied.fetch_max(ticket, Ordering::SeqCst) < ticket
+}
+
+#[must_use]
+pub fn chat_draft(owner: Uuid, group_id: i32) -> String {
+    DRAFTS
+        .lock()
+        .ok()
+        .and_then(|drafts| drafts.get(&(owner, group_id)).cloned())
+        .unwrap_or_default()
+}
+
+pub fn save_chat_draft(owner: Uuid, group_id: i32, draft: String) {
+    if let Ok(mut drafts) = DRAFTS.lock() {
+        if draft.is_empty() {
+            drafts.remove(&(owner, group_id));
+        } else {
+            drafts.insert((owner, group_id), draft);
+        }
+    }
+}
+
+struct JoinClaim(i32);
+
+impl Drop for JoinClaim {
+    fn drop(&mut self) {
+        if let Ok(mut joining) = JOINING.lock() {
+            joining.retain(|invite_id| *invite_id != self.0);
+        }
+    }
+}
+
+fn claim_join(invite_id: i32) -> Option<JoinClaim> {
+    let mut joining = JOINING.lock().ok()?;
+    if joining.contains(&invite_id) {
+        return None;
+    }
+    joining.push(invite_id);
+    Some(JoinClaim(invite_id))
+}
+
+fn join_claimed(invite_id: i32) -> bool {
+    JOINING
+        .lock()
+        .is_ok_and(|joining| joining.contains(&invite_id))
+}
 
 fn client() -> Option<std::sync::Arc<PlusClient>> {
     oneclient_polyplus::client()
@@ -144,6 +204,7 @@ fn collect_roster(
 pub async fn load_roster(station: Station) {
     let Some(client) = client() else { return };
     let owner = owner_of(station);
+    let ticket = next_ticket(&ROSTER_TICKET);
 
     let (friends, incoming, outgoing, blocked) = tokio::join!(
         client.friends(),
@@ -158,6 +219,10 @@ pub async fn load_roster(station: Station) {
 
     match collect_roster(friends, incoming, outgoing, blocked) {
         Ok(roster) => {
+            if !is_newest(&ROSTER_APPLIED, ticket) {
+                return;
+            }
+
             if let Ok(mut last) = LAST_ROSTER.lock() {
                 *last = Some(Instant::now());
             }
@@ -186,34 +251,8 @@ fn roster_is_fresh() -> bool {
 }
 
 pub async fn load_conversations(station: Station) {
-    let Some(client) = client() else { return };
-    let owner = owner_of(station);
-
-    {
-        let mut guard = station.clone().write_channel(AppChannel::Chat);
-        if guard.chat.conversations().is_empty() {
-            guard.chat.status = AsyncStatus::Loading;
-        }
-    }
-
-    let groups = client.groups().await;
-    if owner_of(station) != owner {
+    if !refresh_conversations(station).await {
         return;
-    }
-
-    match groups {
-        Ok(groups) => {
-            station
-                .clone()
-                .write_channel(AppChannel::Chat)
-                .chat
-                .set_conversations(groups);
-            watch_members(station);
-        }
-        Err(err) => {
-            report(station, &err);
-            return;
-        }
     }
 
     let unread: Vec<i32> = {
@@ -230,6 +269,45 @@ pub async fn load_conversations(station: Station) {
     for group_id in unread {
         load_messages(station, group_id).await;
     }
+}
+
+async fn refresh_conversations(station: Station) -> bool {
+    let Some(client) = client() else { return false };
+    let owner = owner_of(station);
+
+    {
+        let mut guard = station.clone().write_channel(AppChannel::Chat);
+        if guard.chat.conversations().is_empty() {
+            guard.chat.status = AsyncStatus::Loading;
+        }
+    }
+
+    let ticket = next_ticket(&CONVERSATIONS_TICKET);
+    let groups = client.groups().await;
+    if owner_of(station) != owner {
+        return false;
+    }
+
+    match groups {
+        Ok(groups) => {
+            if !is_newest(&CONVERSATIONS_APPLIED, ticket) {
+                return false;
+            }
+
+            station
+                .clone()
+                .write_channel(AppChannel::Chat)
+                .chat
+                .set_conversations(groups);
+            watch_members(station);
+        }
+        Err(err) => {
+            report(station, &err);
+            return false;
+        }
+    }
+
+    true
 }
 
 pub async fn load_invite_games(station: Station) {
@@ -255,6 +333,7 @@ async fn invite_game(station: Station, invite_id: i32) -> Result<Option<InviteGa
     let Some(client) = client() else {
         return Ok(station.peek().chat.invite_game(invite_id).cloned());
     };
+    let owner = owner_of(station);
 
     match client.incoming_session_invites().await {
         Ok(invites) => {
@@ -262,11 +341,13 @@ async fn invite_game(station: Station, invite_id: i32) -> Result<Option<InviteGa
                 .iter()
                 .find(|invite| invite.id == invite_id)
                 .map(InviteGame::from);
-            station
-                .clone()
-                .write_channel(AppChannel::Chat)
-                .chat
-                .set_invite_games(&invites);
+            if owner_of(station) == owner {
+                station
+                    .clone()
+                    .write_channel(AppChannel::Chat)
+                    .chat
+                    .set_invite_games(&invites);
+            }
             Ok(game)
         }
         Err(err) => match station.peek().chat.invite_game(invite_id).cloned() {
@@ -279,7 +360,13 @@ async fn invite_game(station: Station, invite_id: i32) -> Result<Option<InviteGa
     }
 }
 
-async fn invite_candidates(game: InviteGame) -> Option<(Vec<i64>, bool)> {
+struct InviteClusters {
+    ready: Vec<i64>,
+    unlinked: Option<i64>,
+    oneclient: bool,
+}
+
+async fn invite_candidates(game: InviteGame) -> Option<InviteClusters> {
     let state = launcher::state().ok()?;
     let lookup = state.clone();
 
@@ -293,7 +380,8 @@ async fn invite_candidates(game: InviteGame) -> Option<(Vec<i64>, bool)> {
             }
         };
 
-        let mut candidates = Vec::new();
+        let mut ready = Vec::new();
+        let mut unlinked = None;
         for cluster in clusters {
             if !invite_join::cluster_matches(&game, &cluster.mc_version, cluster.mc_loader) {
                 continue;
@@ -302,7 +390,9 @@ async fn invite_candidates(game: InviteGame) -> Option<(Vec<i64>, bool)> {
                 .await
                 .unwrap_or_default();
             if invite_join::has_polyplus(&artifacts) {
-                candidates.push(cluster.id);
+                ready.push(cluster.id);
+            } else {
+                unlinked = unlinked.max(Some(cluster.id));
             }
         }
 
@@ -312,9 +402,31 @@ async fn invite_candidates(game: InviteGame) -> Option<(Vec<i64>, bool)> {
             invite_join::oneclient_supports(&metadata, version, loader)
         });
 
-        Some((candidates, oneclient))
+        Some(InviteClusters {
+            unlinked: unlinked.filter(|_| ready.is_empty() && game.known().is_some()),
+            ready,
+            oneclient,
+        })
     })
     .await
+}
+
+async fn polyplus_ready(
+    cluster_id: i64,
+    content: &oneclient_content::ContentCtx,
+) -> anyhow::Result<bool> {
+    let artifacts = PackageStore::list_linked_artifacts(cluster_id, content)
+        .await
+        .unwrap_or_default();
+    if invite_join::has_polyplus(&artifacts) {
+        return Ok(true);
+    }
+
+    let Some(hash) = invite_join::disabled_polyplus(&artifacts) else {
+        return Ok(false);
+    };
+    oneclient_content::bundles::set_artifact_enabled_to(cluster_id, hash, true, content).await?;
+    Ok(true)
 }
 
 async fn add_polyplus(actions: &Actions, invite_id: i32) -> bool {
@@ -340,11 +452,30 @@ async fn add_polyplus(actions: &Actions, invite_id: i32) -> bool {
             .max_by_key(|cluster| cluster.id)
             .ok_or_else(|| anyhow::anyhow!("the new cluster does not match the invite"))?;
 
-        let artifacts = PackageStore::list_linked_artifacts(newest.id, &content)
-            .await
-            .unwrap_or_default();
-        if invite_join::has_polyplus(&artifacts) {
+        if polyplus_ready(newest.id, &content).await? {
             return Ok(None);
+        }
+
+        if newest.uses_bundles() {
+            let session = oneclient_events::GroupedProgressSession::start(
+                &state.services.events,
+                tf("oneclient.mutations.setting_up", &[&newest.name]),
+            );
+            if let Err(err) = oneclient_content::bundles::install_cluster_bundles(
+                newest.id,
+                state.bundles.as_ref(),
+                Some(&session),
+                &content,
+            )
+            .await
+            {
+                tracing::warn!(cluster_id = newest.id, error = %err, "failed to install bundle content before joining an invite");
+            }
+            session.finish();
+
+            if polyplus_ready(newest.id, &content).await? {
+                return Ok(None);
+            }
         }
 
         let provider = state.services.packages.get(POLYPLUS.provider)?;
@@ -397,7 +528,25 @@ async fn add_polyplus(actions: &Actions, invite_id: i32) -> bool {
     }
 }
 
+async fn finish_invite_join(
+    actions: Actions,
+    invite_id: i32,
+    owner: Option<Uuid>,
+    claim: JoinClaim,
+) {
+    let same_owner = |actions: &Actions| owner_of(actions.station()) == owner;
+    let ready = same_owner(&actions) && add_polyplus(&actions, invite_id).await;
+    drop(claim);
+    if ready && same_owner(&actions) {
+        start_invite_join(actions, invite_id).await;
+    }
+}
+
 pub async fn start_invite_join(actions: Actions, invite_id: i32) {
+    if join_claimed(invite_id) {
+        return;
+    }
+
     let station = actions.station();
 
     let game = match invite_game(station, invite_id).await {
@@ -417,12 +566,14 @@ pub async fn start_invite_join(actions: Actions, invite_id: i32) {
         }
     };
 
-    let Some((candidates, oneclient)) = invite_candidates(game.clone()).await else {
+    let Some(clusters) = invite_candidates(game.clone()).await else {
         return;
     };
 
-    if candidates
+    if clusters
+        .ready
         .iter()
+        .chain(&clusters.unlinked)
         .any(|id| station.peek().game.is_active(*id))
     {
         actions
@@ -432,7 +583,12 @@ pub async fn start_invite_join(actions: Actions, invite_id: i32) {
         return;
     }
 
-    let prompt = match invite_join::plan(&game, candidates, oneclient) {
+    let prompt = match invite_join::plan(
+        &game,
+        clusters.ready,
+        clusters.unlinked.is_some(),
+        clusters.oneclient,
+    ) {
         InviteJoin::Launch(cluster_id) => {
             actions.close_social();
             actions.launch_cluster_for_invite(cluster_id, invite_id);
@@ -446,11 +602,13 @@ pub async fn start_invite_join(actions: Actions, invite_id: i32) {
             version,
             loader,
             oneclient,
+            unlinked,
         } => InviteJoinPrompt::Create {
             invite_id,
             version,
             loader,
             oneclient,
+            unlinked,
         },
         InviteJoin::Unknown => {
             actions
@@ -462,6 +620,7 @@ pub async fn start_invite_join(actions: Actions, invite_id: i32) {
     };
 
     set_invite_join(station, Some(prompt));
+    crate::platform::focus_window();
 }
 
 fn set_invite_join(station: Station, prompt: Option<InviteJoinPrompt>) {
@@ -512,7 +671,7 @@ pub async fn load_messages(station: Station, group_id: i32) {
         .begin_thread_load(group_id);
 
     let owner = owner_of(station);
-    let known = station.peek().chat.newest_message(group_id);
+    let known = station.peek().chat.synced_to(group_id);
     let limit = PAGE_SIZE.min(MAX_PAGE_SIZE);
     let page = client.messages(group_id, None, Some(limit)).await;
     if owner_of(station) != owner {
@@ -581,8 +740,15 @@ pub async fn mark_read(station: Station, group_id: i32) {
         return;
     };
 
+    let owner = owner_of(station);
     if let Err(err) = client.mark_read(group_id, message_id).await {
         tracing::warn!("could not mark conversation {group_id} read: {err:#}");
+        return;
+    }
+
+    if owner_of(station) != owner
+        || station.peek().chat.newest_message(group_id) != Some(message_id)
+    {
         return;
     }
 
@@ -616,10 +782,22 @@ fn stamp_resync() {
 }
 
 async fn resync_once(station: Station) {
-    load_conversations(station).await;
+    refresh_conversations(station).await;
     load_invite_games(station).await;
 
     let active = station.peek().chat.active;
+    let unread: Vec<i32> = station
+        .peek()
+        .chat
+        .conversations()
+        .iter()
+        .filter(|conversation| conversation.unread && Some(conversation.id) != active)
+        .map(|conversation| conversation.id)
+        .collect();
+    for group_id in unread {
+        load_messages(station, group_id).await;
+    }
+
     if let Some(group_id) = active {
         load_messages(station, group_id).await;
         if unread_in_view(station, group_id) {
@@ -631,7 +809,7 @@ async fn resync_once(station: Station) {
 fn unread_in_view(station: Station, group_id: i32) -> bool {
     let state = station.peek();
     crate::chat::thread_in_view(
-        crate::view::chat::is_chat_window_focused() || state.social_open,
+        crate::view::chat::chat_on_screen(state.social_open),
         state.social_tab,
         state.chat.active,
         group_id,
@@ -717,7 +895,6 @@ pub enum ChatJob {
     Roster {
         floored: bool,
     },
-    Conversations,
     OpenGroup(i32),
     OlderMessages(i32),
     Deliver {
@@ -774,7 +951,6 @@ impl ChatJob {
                 }
                 load_roster(station).await;
             }
-            Self::Conversations => load_conversations(station).await,
             Self::OpenGroup(group_id) => load_group(station, group_id).await,
             Self::OlderMessages(group_id) => load_older_messages(station, group_id).await,
             Self::Deliver {
@@ -827,33 +1003,13 @@ impl ChatJob {
                 let Some(client) = client() else { return };
                 let owner = owner_of(station);
                 let opened = client.open_direct_message(player).await;
-                if owner_of(station) != owner {
-                    return;
-                }
-
-                match opened {
-                    Ok(summary) => {
-                        load_conversations(station).await;
-                        open_group(station, summary.id).await;
-                    }
-                    Err(err) => report(station, &err),
-                }
+                enter_new_group(station, owner, opened).await;
             }
             Self::CreateGroup { name, members } => {
                 let Some(client) = client() else { return };
                 let owner = owner_of(station);
                 let created = client.create_group(&name, &members).await;
-                if owner_of(station) != owner {
-                    return;
-                }
-
-                match created {
-                    Ok(summary) => {
-                        load_conversations(station).await;
-                        open_group(station, summary.id).await;
-                    }
-                    Err(err) => report(station, &err),
-                }
+                enter_new_group(station, owner, created).await;
             }
             Self::AddFriend(username) => {
                 let Some(client) = client() else {
@@ -1024,10 +1180,33 @@ impl ChatJob {
     }
 }
 
+async fn enter_new_group(
+    station: Station,
+    owner: Option<Uuid>,
+    opened: Result<GroupSummary, PlusError>,
+) {
+    if owner_of(station) != owner {
+        return;
+    }
+
+    match opened {
+        Ok(summary) => {
+            load_conversations(station).await;
+            open_group(station, summary.id).await;
+        }
+        Err(err) => report(station, &err),
+    }
+}
+
 const TOAST_PREVIEW_CHARS: usize = 120;
 
 pub async fn notify_chat(actions: Actions, toast: ChatToast) {
+    let owner = owner_of(actions.station());
     let name = player_name(toast.sender()).await;
+    if owner_of(actions.station()) != owner {
+        return;
+    }
+
     let group_id = toast.group_id();
 
     let (title, body, toast_only) = match toast {
@@ -1081,7 +1260,7 @@ fn preview(content: &str) -> String {
 }
 
 pub async fn player_name(player: Uuid) -> String {
-    let fallback = player.simple().to_string().chars().take(8).collect();
+    let fallback = crate::chat::short_player_id(player);
 
     launcher::off_ui(async move {
         let state = launcher::state().ok()?;
@@ -1141,16 +1320,28 @@ impl Actions {
         action: ClusterAction,
         invite_id: i32,
     ) {
+        let Some(claim) = claim_join(invite_id) else {
+            return;
+        };
         let actions = self.clone();
+        let owner = owner_of(self.station());
         spawn_in_window(async move {
             let failed = matches!(
                 &*mutation.mutate_async(action).await.state(),
                 MutationStateData::Settled { res: Err(_), .. }
             );
-            if !failed && add_polyplus(&actions, invite_id).await {
-                start_invite_join(actions, invite_id).await;
+            if !failed {
+                finish_invite_join(actions, invite_id, owner, claim).await;
             }
         });
+    }
+
+    pub fn link_polyplus_and_join(&self, invite_id: i32) {
+        let Some(claim) = claim_join(invite_id) else {
+            return;
+        };
+        let owner = owner_of(self.station());
+        spawn_in_window(finish_invite_join(self.clone(), invite_id, owner, claim));
     }
 
     pub fn clear_invite_join(&self) {
@@ -1176,8 +1367,12 @@ impl Actions {
         self.chat_job(ChatJob::Resync { floored: true });
     }
 
-    pub fn reload_roster(&self) {
-        self.chat_job(ChatJob::Roster { floored: false });
+    pub fn close_conversation(&self) {
+        self.station()
+            .clone()
+            .write_channel(AppChannel::Chat)
+            .chat
+            .active = None;
     }
 
     pub fn open_conversation(&self, group_id: i32) {
@@ -1371,6 +1566,10 @@ impl Actions {
             self.open_conversation(group_id);
             let mut guard = self.station().clone().write_channel(AppChannel::Chat);
             guard.chat.active_opened = guard.chat.active_opened.wrapping_add(1);
+        } else {
+            let mut guard = self.station().clone().write_channel(AppChannel::Chat);
+            guard.chat.active = None;
+            guard.chat.open_friends = true;
         }
 
         let popped = crate::view::chat::is_chat_window_open();
@@ -1385,6 +1584,14 @@ impl Actions {
         if popped {
             crate::view::chat::open_chat_window();
         }
+    }
+
+    pub fn friends_shown(&self) {
+        self.station()
+            .clone()
+            .write_channel(AppChannel::Chat)
+            .chat
+            .open_friends = false;
     }
 
     pub fn show_party(&self) {
@@ -1461,6 +1668,9 @@ impl Actions {
             return;
         }
 
+        set_invite_join(station.clone(), None);
+        self.clear_chat_notices();
+
         if owner.is_none() {
             crate::view::chat::close_chat_window();
             self.close_social();
@@ -1469,5 +1679,41 @@ impl Actions {
         self.chat_job(ChatJob::SwitchOwner {
             signed_in: owner.is_some(),
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_older_reply_loses_to_a_newer_one() {
+        let applied = AtomicU64::new(0);
+        assert!(is_newest(&applied, 2));
+        assert!(!is_newest(&applied, 1));
+        assert!(is_newest(&applied, 3));
+    }
+
+    #[test]
+    fn a_join_in_progress_blocks_a_second_one_until_it_ends() {
+        let claim = claim_join(9_001).expect("first claim");
+        assert!(join_claimed(9_001));
+        assert!(claim_join(9_001).is_none());
+
+        drop(claim);
+        assert!(!join_claimed(9_001));
+    }
+
+    #[test]
+    fn a_draft_belongs_to_one_account_and_group() {
+        let owner = Uuid::from_u128(77);
+        save_chat_draft(owner, 1, "hello".to_string());
+
+        assert_eq!(chat_draft(owner, 1), "hello");
+        assert_eq!(chat_draft(owner, 2), "");
+        assert_eq!(chat_draft(Uuid::from_u128(78), 1), "");
+
+        save_chat_draft(owner, 1, String::new());
+        assert_eq!(chat_draft(owner, 1), "");
     }
 }

@@ -168,7 +168,7 @@ fn run_confirm(state: State<LobbyState>, dispatch: Actions, confirm: Confirm) {
     }
 }
 
-fn modal(width: f32, on_close: EventHandler<()>, card: Rect) -> Element {
+pub(crate) fn modal(width: f32, on_close: EventHandler<()>, card: Rect) -> Element {
     OverlayPopup::new()
         .overlay_level(OVERLAY_MAX_LEVEL)
         .on_close(move |()| on_close.call(()))

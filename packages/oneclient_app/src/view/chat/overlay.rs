@@ -8,6 +8,7 @@ use crate::theme::{self, colors};
 
 use super::common::{CARD_RADIUS_PX, ROW_RADIUS_PX, chip_bg, hairline, inset_border, popup_shadow};
 use super::panel::{PanelMode, SocialPanel};
+use super::window::{MAIN_FOCUSED, track_focus};
 
 const DOCKED_WIDTH_PX: f32 = 348.;
 const DOCKED_EDGE_PX: f32 = 12.;
@@ -27,6 +28,9 @@ impl Component for SocialOverlay {
         let open = use_social_open();
         let notice = use_social_popped_notice();
         let allowed = use_chat_allowed();
+        let dispatch = use_dispatch();
+
+        track_focus(&dispatch, &MAIN_FOCUSED);
 
         if !allowed || (!open && !notice) {
             return rect().into_element();

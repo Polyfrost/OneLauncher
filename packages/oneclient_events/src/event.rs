@@ -248,6 +248,7 @@ impl LaunchStage {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChatEvent {
     MessageReceived {
+        account: Uuid,
         group_id: i32,
         message_id: i64,
         sender: Uuid,
@@ -276,6 +277,7 @@ pub enum ChatEvent {
     RosterChanged,
 
     FriendRequestReceived {
+        account: Uuid,
         sender: Uuid,
     },
 

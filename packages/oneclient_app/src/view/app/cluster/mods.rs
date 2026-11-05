@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use freya::prelude::*;
 use oneclient_content::packages::ContentType;
 
-use crate::components::PackageEntry;
+use crate::components::{CopyStatus, PackageEntry};
 use crate::hooks::{
     bundle_overrides_map, bundles_with_status_items, cluster_content_items, modpack_sources_map,
     stale_hashes, use_bisect, use_bundle_overrides, use_bundles_with_status, use_cluster_content,
@@ -52,6 +52,7 @@ impl Component for ClusterMods {
             ContentType::Mod,
         );
         let sources = modpack_sources_map(&sources);
+        let skipped: HashSet<&String> = shadowed.copies.values().flatten().collect();
         for item in &mut items {
             item.locked = bisect.is_some();
             item.modpack = item
@@ -61,8 +62,7 @@ impl Component for ClusterMods {
             let Some(hash) = &item.hash else {
                 continue;
             };
-            item.shadowed = shadowed.shadowed.contains(hash);
-            item.outranked = shadowed.outranked.contains(hash);
+            item.copy_status = skipped.contains(hash).then_some(CopyStatus::Skipped);
             item.bisect_role = bisect.as_ref().and_then(|status| status.role_of(hash));
         }
         let present: HashSet<&String> =

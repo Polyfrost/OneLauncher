@@ -419,9 +419,10 @@ impl Component for BrowserBody {
                         };
                         (verb, c.name.clone())
                     }),
-                (self.pick_cluster && targets_cluster).then(|| ClusterPicker {
+                self.pick_cluster.then(|| ClusterPicker {
                     cluster_id,
                     package_type: package_type.clone(),
+                    disabled: !targets_cluster,
                 }),
                 provider,
                 curseforge_blocked,
@@ -792,6 +793,7 @@ impl Component for TypePicker {
 struct ClusterPicker {
     cluster_id: i64,
     package_type: String,
+    disabled: bool,
 }
 
 impl Component for ClusterPicker {
@@ -816,6 +818,7 @@ impl Component for ClusterPicker {
                 only: None,
                 width: Size::px(240.),
                 height: 28.,
+                disabled: self.disabled,
                 on_pick: (move |cluster: Cluster| {
                     let to_type = browsable_type(&package_type, &cluster);
                     let carried = (to_type == package_type)

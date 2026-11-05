@@ -38,14 +38,14 @@ const SETTINGS_KEY: &str = ",";
 const BACK_KEY: &str = "[";
 const FORWARD_KEY: &str = "]";
 
-/// The character of a Cmd chord with no Shift or Alt, matched by what the key
+/// The character of a Cmd chord with no Control, Shift or Alt, matched by what the key
 /// types so it follows the keyboard layout. macOS only for now
-fn shortcut_character(e: &KeyboardEventData) -> Option<&str> {
+fn shortcut_character(key: &Key, modifiers: Modifiers) -> Option<&str> {
     let held = cfg!(target_os = "macos")
-        && e.modifiers.contains(Modifiers::META)
-        && !e.modifiers.intersects(Modifiers::SHIFT | Modifiers::ALT);
+        && modifiers.contains(Modifiers::META)
+        && !modifiers.intersects(Modifiers::CONTROL | Modifiers::SHIFT | Modifiers::ALT);
 
-    match &e.key {
+    match key {
         Key::Character(character) if held => Some(character.as_str()),
         _ => None,
     }
@@ -165,7 +165,7 @@ impl Component for AnimatedAppOutlet {
             }
 
             if !key_claims.any()
-                && let Some(character) = shortcut_character(&e)
+                && let Some(character) = shortcut_character(&e.key, e.modifiers)
             {
                 match character {
                     SETTINGS_KEY => {
@@ -329,5 +329,17 @@ mod tests {
             EscapeAction::ExitSection
         );
         assert_eq!(escape_action(&Route::Clusters {}), EscapeAction::Back);
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn only_a_bare_cmd_chord_is_a_shortcut() {
+        let key = Key::Character("[".to_string());
+
+        assert_eq!(shortcut_character(&key, Modifiers::META), Some("["));
+        for extra in [Modifiers::SHIFT, Modifiers::ALT, Modifiers::CONTROL] {
+            assert_eq!(shortcut_character(&key, Modifiers::META | extra), None);
+        }
+        assert_eq!(shortcut_character(&key, Modifiers::empty()), None);
     }
 }

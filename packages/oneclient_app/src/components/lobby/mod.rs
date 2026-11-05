@@ -273,7 +273,7 @@ pub async fn refresh(mut state: State<LobbyState>) {
     loop {
         let seen = state.peek().revision;
         let result = crate::launcher::off_ui(async {
-            let account = party_account().await.map_err(|err| (None, err))?;
+            let account = lobby_account().await?;
             let id = account.id;
             let failed = |err: PlusError| (Some(id), party_message(err));
             let party = party::current(&account).await.map_err(failed)?;
@@ -331,20 +331,33 @@ pub fn party_message(err: PlusError) -> String {
     party::error_message(&err).unwrap_or_else(|| plus_message(err))
 }
 
-async fn party_account() -> Result<MinecraftAccount, String> {
-    let state = crate::launcher::state().map_err(|err| err.to_string())?;
-    let account = state
-        .auth
-        .default_account_for_launch()
-        .await
-        .map_err(|err| err.to_string())?
-        .filter(MinecraftAccount::is_microsoft)
-        .filter(|_| oneclient_polyplus::social_allowed())
-        .ok_or_else(|| t("oneclient.wardrobe.account.signed_out").to_string())?;
+fn renewing_owner(stored: Option<MinecraftAccount>, allowed: bool) -> Option<Uuid> {
+    stored
+        .filter(|account| allowed && account.is_microsoft())
+        .map(|account| account.id)
+}
+
+async fn lobby_account() -> Result<MinecraftAccount, (Option<Uuid>, String)> {
+    let state = crate::launcher::state().map_err(|err| (None, err.to_string()))?;
+    let allowed = oneclient_polyplus::social_allowed();
+    let account = match state.auth.default_account_for_launch().await {
+        Ok(account) => account,
+        Err(err) => {
+            let stored = state.auth.default_account().await.ok().flatten();
+            return Err((renewing_owner(stored, allowed), err.to_string()));
+        }
+    }
+    .filter(MinecraftAccount::is_microsoft)
+    .filter(|_| allowed)
+    .ok_or_else(|| (None, t("oneclient.wardrobe.account.signed_out").to_string()))?;
     if account.needs_sign_in() || account.access_token.is_empty() {
-        return Err(t("oneclient.wardrobe.account.needs_sign_in").into());
+        return Err((None, t("oneclient.wardrobe.account.needs_sign_in").into()));
     }
     Ok(account)
+}
+
+async fn party_account() -> Result<MinecraftAccount, String> {
+    lobby_account().await.map_err(|(_, err)| err)
 }
 
 pub fn act<T, F, Fut>(
@@ -497,6 +510,26 @@ mod tests {
 
         assert_eq!(state.party, Some(joined));
         assert_eq!(state.error.as_deref(), Some("offline"));
+    }
+
+    #[test]
+    fn a_failed_renewal_only_keeps_a_social_account() {
+        let account = |kind| MinecraftAccount {
+            id: id(1),
+            username: "player".to_string(),
+            access_token: "token".to_string(),
+            refresh_token: String::new(),
+            expires: Utc::now(),
+            kind,
+            signed_out: false,
+        };
+        let microsoft = oneclient_auth::AccountKind::Microsoft;
+        let offline = oneclient_auth::AccountKind::Offline;
+
+        assert_eq!(renewing_owner(Some(account(microsoft)), true), Some(id(1)));
+        assert_eq!(renewing_owner(Some(account(microsoft)), false), None);
+        assert_eq!(renewing_owner(Some(account(offline)), true), None);
+        assert_eq!(renewing_owner(None, true), None);
     }
 
     #[test]

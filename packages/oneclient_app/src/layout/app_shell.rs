@@ -56,11 +56,7 @@ impl Component for AppShell {
 
         let dispatch = use_dispatch();
         if let Some(account) = settled_or_loading(&use_current_account()) {
-            dispatch.sync_chat_owner(
-                account
-                    .filter(|account| account.is_microsoft())
-                    .map(|account| account.id),
-            );
+            dispatch.sync_chat_owner(account.as_ref());
         }
 
         // `FileDrop` bubbles so anything a drop zone doesn't `stop_propagation()` lands here

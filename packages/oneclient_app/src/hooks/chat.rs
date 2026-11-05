@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use freya::prelude::spawn_in_window;
 use freya::query::{MutationStateData, UseMutation};
 use freya::radio::RadioStation;
+use oneclient_auth::MinecraftAccount;
 use oneclient_common::GameLoader;
 use oneclient_content::packages::PackageStore;
 use uuid::Uuid;
@@ -1441,7 +1442,10 @@ impl Actions {
         self.chat_job(ChatJob::DeclineInvite(invite_id));
     }
 
-    pub fn sync_chat_owner(&self, owner: Option<Uuid>) {
+    pub fn sync_chat_owner(&self, account: Option<&MinecraftAccount>) {
+        let owner = account
+            .filter(|account| account.is_microsoft())
+            .map(|account| account.id);
         let station = self.station();
         if station.peek().chat.owner == owner {
             return;

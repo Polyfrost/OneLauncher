@@ -327,3 +327,22 @@ pub struct Wizard {
     pub folder: State<FolderChoice>,
     pub details: DetailsState,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_ornithe_invite_stays_ornithe_in_the_wizard() {
+        let choice = LoaderChoice::of(GameLoader::Ornithe);
+
+        assert_eq!(
+            choice.resolve(&[GameLoader::Forge, GameLoader::Ornithe]),
+            Some(GameLoader::Ornithe)
+        );
+        assert_eq!(
+            choice.resolve(&[GameLoader::Fabric, GameLoader::Ornithe]),
+            Some(GameLoader::Fabric)
+        );
+    }
+}

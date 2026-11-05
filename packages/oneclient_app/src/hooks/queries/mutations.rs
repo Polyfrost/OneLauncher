@@ -18,6 +18,10 @@ use super::settings_profiles::{
 };
 use crate::i18n::{t, tf};
 
+fn blocking_bundle_failure(failure: Option<String>, required: bool) -> Option<String> {
+    failure.filter(|_| required)
+}
+
 async fn timed(step: &'static str, fut: impl std::future::Future<Output = ()>) {
     let started = std::time::Instant::now();
     fut.await;
@@ -600,7 +604,7 @@ impl MutationCapability for ClusterMutation {
                             }
                             session.finish();
                         }
-                        match bundle_failure.filter(|_| *require_bundles) {
+                        match blocking_bundle_failure(bundle_failure, *require_bundles) {
                             Some(reason) => {
                                 match state.clusters.delete(cluster.id, true).await {
                                     Ok(_) => {
@@ -855,4 +859,17 @@ fn notify_reset(
 
 pub fn use_cluster_mutation() -> UseMutation<ClusterMutation> {
     use_mutation(Mutation::new(ClusterMutation))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::blocking_bundle_failure;
+
+    #[test]
+    fn only_a_required_bundle_failure_removes_the_new_instance() {
+        let failure = || Some("offline".to_string());
+        assert_eq!(blocking_bundle_failure(failure(), true), failure());
+        assert_eq!(blocking_bundle_failure(failure(), false), None);
+        assert_eq!(blocking_bundle_failure(None, true), None);
+    }
 }

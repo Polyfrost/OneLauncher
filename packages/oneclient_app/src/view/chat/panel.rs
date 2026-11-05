@@ -51,12 +51,7 @@ impl Component for SocialPanel {
 
         let account = settled_or_loading(&use_current_account());
         if let Some(account) = account.clone() {
-            dispatch.sync_chat_owner(
-                account
-                    .as_ref()
-                    .filter(|account| account.is_microsoft())
-                    .map(|account| account.id),
-            );
+            dispatch.sync_chat_owner(account.as_ref());
         }
 
         let (own_id, username) = account

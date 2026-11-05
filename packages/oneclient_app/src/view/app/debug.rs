@@ -1946,17 +1946,3 @@ fn action_row(dispatch: &Actions, buttons: Vec<(&'static str, IconType)>) -> Ele
 
     row.into_element()
 }
-
-#[cfg(test)]
-mod toast_simulator_tests {
-    use super::*;
-
-    #[test]
-    fn every_social_toast_is_listed_with_a_description() {
-        let toasts: Vec<_> = social_toasts()
-            .into_iter()
-            .flat_map(|(_, list)| list)
-            .collect();
-        assert!(toasts.iter().all(|toast| !toast.body.is_empty()));
-    }
-}

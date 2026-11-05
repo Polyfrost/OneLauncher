@@ -51,7 +51,7 @@ pub fn cluster_matches(game: &InviteGame, version: &str, loader: GameLoader) -> 
 
 #[must_use]
 pub fn custom_loader(loader: GameLoader) -> bool {
-    !matches!(loader, GameLoader::Quilt | GameLoader::Ornithe)
+    loader != GameLoader::Quilt
 }
 
 #[must_use]
@@ -133,6 +133,13 @@ mod tests {
         };
 
         assert_eq!(plan(&game, vec![4], true), InviteJoin::Pick(vec![4]));
+    }
+
+    #[test]
+    fn a_custom_cluster_is_offered_for_every_loader_the_wizard_keeps() {
+        assert!(custom_loader(GameLoader::Ornithe));
+        assert!(custom_loader(GameLoader::Fabric));
+        assert!(!custom_loader(GameLoader::Quilt));
     }
 
     #[test]

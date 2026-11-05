@@ -13,7 +13,7 @@ use oneclient_events::{ChatEvent, EventBus};
 use oneclient_net::{RequestClient, RequestError};
 
 use crate::packets::{ClientboundPacket, ServerboundPacket};
-use crate::{PlusClient, PlusError, base_url, party, plus_blocked};
+use crate::{PlusClient, PlusError, base_url, party, plus_blocked, social_allowed};
 
 const MOJANG_JOIN_URL: &str = "https://sessionserver.mojang.com/session/minecraft/join";
 
@@ -183,7 +183,7 @@ async fn run_session(
     let account_id = account.id;
     let mut watched = client.watched_players();
     let url = session_url.as_str();
-    let ended = pump(
+    pump(
         &mut websocket,
         &client.events,
         PING_INTERVAL,
@@ -191,16 +191,13 @@ async fn run_session(
         restart,
         &mut watched,
         || async move {
-            plus_blocked() || base_url() != url || account_changed(&client.auth, account_id).await
+            plus_blocked()
+                || !social_allowed()
+                || base_url() != url
+                || account_changed(&client.auth, account_id).await
         },
     )
-    .await;
-
-    if base_url() != session_url {
-        client.forget_token().await;
-    }
-
-    ended
+    .await
 }
 
 async fn pump<F, Fut>(
@@ -267,13 +264,7 @@ async fn sync_watched(
     subscribed: &mut HashSet<Uuid>,
     wanted: &[Uuid],
 ) -> Result<(), PlusError> {
-    let wanted: HashSet<Uuid> = wanted
-        .iter()
-        .copied()
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .take(MAX_WATCHED_PLAYERS)
-        .collect();
+    let wanted: HashSet<Uuid> = wanted.iter().copied().take(MAX_WATCHED_PLAYERS).collect();
 
     let removed: Vec<Uuid> = subscribed.difference(&wanted).copied().collect();
     let added: Vec<Uuid> = wanted.difference(subscribed).copied().collect();
@@ -374,11 +365,22 @@ fn dispatch(events: &EventBus, payload: &str) {
 pub(crate) async fn current_account(
     auth: &oneclient_auth::AuthService,
 ) -> Result<Option<MinecraftAccount>, PlusError> {
+    if !social_allowed() {
+        return Ok(None);
+    }
+
     let Some(account) = auth.default_account_for_launch().await? else {
         return Ok(None);
     };
 
-    Ok(account.is_microsoft().then_some(account))
+    Ok(usable(&account, social_allowed()).then_some(account))
+}
+
+pub(crate) fn usable(account: &MinecraftAccount, allowed: bool) -> bool {
+    allowed
+        && account.is_microsoft()
+        && !account.needs_sign_in()
+        && !account.access_token.is_empty()
 }
 
 async fn account_changed(auth: &oneclient_auth::AuthService, id: Uuid) -> bool {
@@ -454,6 +456,29 @@ mod tests {
     use tokio::net::TcpListener;
 
     use super::*;
+
+    fn account(kind: oneclient_auth::AccountKind, token: &str, signed_out: bool) -> MinecraftAccount {
+        MinecraftAccount {
+            id: Uuid::from_u128(1),
+            username: "player".to_string(),
+            access_token: token.to_string(),
+            refresh_token: String::new(),
+            expires: chrono::Utc::now(),
+            kind,
+            signed_out,
+        }
+    }
+
+    #[test]
+    fn only_a_signed_in_microsoft_account_with_a_token_is_usable() {
+        use oneclient_auth::AccountKind::{Microsoft, Offline};
+
+        assert!(usable(&account(Microsoft, "token", false), true));
+        assert!(!usable(&account(Microsoft, "token", false), false));
+        assert!(!usable(&account(Microsoft, "token", true), true));
+        assert!(!usable(&account(Microsoft, "", false), true));
+        assert!(!usable(&account(Offline, "token", false), true));
+    }
 
     async fn ping_counting_server(close_after_pings: usize) -> (String, Arc<AtomicUsize>) {
         let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");

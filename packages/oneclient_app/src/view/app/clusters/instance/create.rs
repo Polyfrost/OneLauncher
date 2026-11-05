@@ -40,6 +40,7 @@ fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
         cover_source: wizard.details.cover.read().clone(),
         bundles: (picks.kind == ClusterKind::OneClient && picks.bundles.loaded)
             .then(|| picks.bundles.taken()),
+        require_bundles: false,
         dedicated: picks.kind == ClusterKind::OneClient && picks.folder == FolderChoice::Dedicated,
         shared_group: match &picks.folder {
             FolderChoice::Custom(group) if picks.kind == ClusterKind::OneClient => {
@@ -138,6 +139,7 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
 pub struct CreateInstanceModal {
     on_close: EventHandler<()>,
     prefill: Option<(String, GameLoader)>,
+    invite: Option<i32>,
 }
 
 impl CreateInstanceModal {
@@ -145,11 +147,17 @@ impl CreateInstanceModal {
         Self {
             on_close: on_close.into(),
             prefill: None,
+            invite: None,
         }
     }
 
     pub fn prefill(mut self, version: String, loader: GameLoader) -> Self {
         self.prefill = Some((version, loader));
+        self
+    }
+
+    pub fn join_invite(mut self, invite_id: i32) -> Self {
+        self.invite = Some(invite_id);
         self
     }
 }
@@ -221,6 +229,12 @@ impl Component for CreateInstanceModal {
         let mut step = wizard.step;
         let mut query = wizard.query;
 
+        let invite = self.invite.filter(|_| {
+            self.prefill.as_ref().is_some_and(|(version, loader)| {
+                picks.versions.chosen.as_ref() == Some(version)
+                    && picks.loader.chosen == Some(*loader)
+            })
+        });
         let close_x = self.on_close.clone();
         let close_cancel = self.on_close.clone();
         let close_created = self.on_close.clone();
@@ -297,7 +311,11 @@ impl Component for CreateInstanceModal {
                     );
                 } else if last {
                     if let Some(action) = action.clone() {
-                        mutation.mutate(action);
+                        if let Some(invite_id) = invite {
+                            dispatch.create_cluster_and_join(mutation, action, invite_id);
+                        } else {
+                            mutation.mutate(action);
+                        }
                         close_created.call(());
                     }
                 } else {

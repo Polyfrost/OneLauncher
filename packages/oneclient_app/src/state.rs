@@ -60,6 +60,7 @@ pub enum InviteJoinPrompt {
         oneclient: bool,
     },
     Custom {
+        invite_id: i32,
         version: String,
         loader: oneclient_common::GameLoader,
     },

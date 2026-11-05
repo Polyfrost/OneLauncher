@@ -51,7 +51,12 @@ impl Component for SocialPanel {
 
         let account = settled_or_loading(&use_current_account());
         if let Some(account) = account.clone() {
-            dispatch.sync_chat_owner(account.as_ref().map(|account| account.id));
+            dispatch.sync_chat_owner(
+                account
+                    .as_ref()
+                    .filter(|account| account.is_microsoft())
+                    .map(|account| account.id),
+            );
         }
 
         let (own_id, username) = account
@@ -85,6 +90,12 @@ impl Component for SocialPanel {
             if *view.peek() == PanelView::Chat {
                 view.set(PanelView::List);
             }
+        }
+
+        let mut active_opened = use_state(|| chat.active_opened);
+        if *active_opened.peek() != chat.active_opened {
+            active_opened.set(chat.active_opened);
+            view.set(PanelView::Chat);
         }
 
         let current = *view.read();

@@ -18,9 +18,10 @@ use crate::hooks::{
     invalidate_auth_queries, settled_or_loading, try_default_account, use_active_cluster_id,
     use_clusters, use_current_account, use_dispatch,
 };
+use crate::i18n::{t, tf};
 use crate::notifications::{
     ClusterUpdateItem, ClusterUpdateSummary, NotificationAction, NotificationActionKind,
-    OptionalModsGroup,
+    NotificationSpec, OptionalModsGroup,
 };
 use crate::routes::Route;
 use crate::theme::{self, colors, rounded, text_size};
@@ -82,6 +83,11 @@ impl Component for Debug {
                     ))
                     .child(divider())
                     .child(section(
+                        "Toast Simulator",
+                        vec![ToastSimulator.into_element()],
+                    ))
+                    .child(divider())
+                    .child(section(
                         "Cluster Update Simulator",
                         vec![ClusterUpdateSimulator.into_element()],
                     ))
@@ -134,6 +140,261 @@ impl Component for Debug {
                     )),
             )
     }
+}
+
+const SAMPLE_PLAYER: &str = "Steve";
+const SAMPLE_GROUP: &str = "Test Group";
+const SAMPLE_MESSAGE: &str = "Anyone up for a game?";
+const SAMPLE_ERROR: &str = "Simulated failure reason";
+
+fn toast_spec(title: impl Into<String>, body: impl Into<String>) -> NotificationSpec {
+    NotificationSpec {
+        title: title.into(),
+        body: body.into(),
+        level: oneclient_events::Level::Info,
+        icon: None,
+        progress: None,
+        actions: Vec::new(),
+        toast_only: false,
+    }
+}
+
+fn error_toast(title: impl Into<String>, body: impl Into<String>) -> NotificationSpec {
+    NotificationSpec {
+        level: oneclient_events::Level::Error,
+        toast_only: true,
+        ..toast_spec(title, body)
+    }
+}
+
+fn party_toast(title: impl Into<String>, body: impl Into<String>) -> NotificationSpec {
+    NotificationSpec {
+        icon: Some(IconType::Users01),
+        toast_only: true,
+        ..toast_spec(title, body)
+    }
+}
+
+fn chat_toast(
+    title: impl Into<String>,
+    body: impl Into<String>,
+    toast_only: bool,
+) -> NotificationSpec {
+    NotificationSpec {
+        icon: Some(IconType::MessageTextSquare01),
+        actions: vec![NotificationAction {
+            label: t("oneclient.chat.notify.open").to_string(),
+            kind: NotificationActionKind::OpenChat(None),
+        }],
+        toast_only,
+        ..toast_spec(title, body)
+    }
+}
+
+fn social_toasts() -> Vec<(&'static str, Vec<NotificationSpec>)> {
+    let name: &[&dyn std::fmt::Display] = &[&SAMPLE_PLAYER];
+    vec![
+        (
+            "Party: things that happen to you",
+            vec![
+                party_toast(
+                    tf("oneclient.components.lobby.toast.invite_received", name),
+                    t("oneclient.components.lobby.toast.invite_received_body"),
+                ),
+                party_toast(
+                    t("oneclient.components.lobby.toast.you_were_kicked"),
+                    t("oneclient.components.lobby.toast.you_were_kicked_body"),
+                ),
+                party_toast(
+                    t("oneclient.components.lobby.toast.disbanded_by_leader"),
+                    t("oneclient.components.lobby.toast.disbanded_by_leader_body"),
+                ),
+                party_toast(
+                    t("oneclient.components.lobby.toast.party_lost"),
+                    t("oneclient.components.lobby.toast.party_lost_body"),
+                ),
+            ],
+        ),
+        (
+            "Party: your own actions",
+            vec![
+                party_toast(
+                    t("oneclient.components.lobby.toast.created"),
+                    t("oneclient.components.lobby.toast.created_body"),
+                ),
+                party_toast(
+                    tf("oneclient.components.lobby.toast.joined", name),
+                    t("oneclient.components.lobby.toast.joined_body"),
+                ),
+                party_toast(
+                    tf("oneclient.components.lobby.toast.invited", name),
+                    t("oneclient.components.lobby.toast.invited_body"),
+                ),
+                NotificationSpec {
+                    toast_only: true,
+                    ..toast_spec(
+                        tf("oneclient.components.lobby.toast.invite_cancelled", name),
+                        t("oneclient.components.lobby.toast.invite_cancelled_body"),
+                    )
+                },
+                party_toast(
+                    tf("oneclient.components.lobby.toast.kicked", name),
+                    t("oneclient.components.lobby.toast.kicked_body"),
+                ),
+                party_toast(
+                    tf("oneclient.components.lobby.toast.promoted", name),
+                    t("oneclient.components.lobby.toast.promoted_body"),
+                ),
+                party_toast(
+                    t("oneclient.components.lobby.toast.left"),
+                    t("oneclient.components.lobby.toast.left_body"),
+                ),
+                party_toast(
+                    t("oneclient.components.lobby.toast.disbanded"),
+                    t("oneclient.components.lobby.toast.disbanded_body"),
+                ),
+                error_toast(t("oneclient.components.lobby.toast.failed"), SAMPLE_ERROR),
+            ],
+        ),
+        (
+            "Chat",
+            vec![
+                chat_toast(SAMPLE_PLAYER, SAMPLE_MESSAGE, true),
+                chat_toast(
+                    tf(
+                        "oneclient.chat.notify.group_message",
+                        &[&SAMPLE_PLAYER, &SAMPLE_GROUP],
+                    ),
+                    SAMPLE_MESSAGE,
+                    true,
+                ),
+                chat_toast(
+                    tf("oneclient.chat.notify.invite", name),
+                    t("oneclient.chat.notify.invite_body"),
+                    false,
+                ),
+                chat_toast(
+                    tf("oneclient.chat.notify.friend_request", name),
+                    t("oneclient.chat.notify.friend_request_body"),
+                    false,
+                ),
+            ],
+        ),
+        (
+            "Joining a world invite",
+            vec![
+                error_toast(
+                    t("oneclient.components.invite_join.expired"),
+                    t("oneclient.components.invite_join.expired_body"),
+                ),
+                toast_spec(
+                    t("oneclient.components.invite_join.running_title"),
+                    t("oneclient.components.invite_join.running_body"),
+                ),
+                toast_spec(
+                    t("oneclient.components.invite_join.unknown_title"),
+                    t("oneclient.components.invite_join.unknown_body"),
+                ),
+            ],
+        ),
+    ]
+}
+
+#[derive(PartialEq)]
+struct ToastSimulator;
+
+impl Component for ToastSimulator {
+    fn render(&self) -> impl IntoElement {
+        let dispatch = use_dispatch();
+        let mut open = use_state(|| false);
+        let is_open = open();
+        let groups = social_toasts();
+        let count: usize = groups.iter().map(|(_, toasts)| toasts.len()).sum();
+
+        rect()
+            .vertical()
+            .width(Size::fill())
+            .spacing(10.)
+            .child(
+                Button::new()
+                    .secondary()
+                    .child(
+                        Icon::new(if is_open {
+                            IconType::ChevronDown
+                        } else {
+                            IconType::ChevronRight
+                        })
+                        .size(16.),
+                    )
+                    .text(format!("Social ({count})"))
+                    .on_press(move |_| open.set(!is_open)),
+            )
+            .maybe_child(is_open.then(|| {
+                rect()
+                    .vertical()
+                    .width(Size::fill())
+                    .spacing(14.)
+                    .children(
+                        groups
+                            .into_iter()
+                            .map(|(title, toasts)| toast_group(title, toasts, &dispatch)),
+                    )
+                    .into_element()
+            }))
+    }
+}
+
+fn toast_group(title: &'static str, toasts: Vec<NotificationSpec>, dispatch: &Actions) -> Element {
+    rect()
+        .vertical()
+        .width(Size::fill())
+        .spacing(6.)
+        .child(
+            label()
+                .text(title)
+                .font_size(text_size(13.))
+                .font_weight(FontWeight::SEMI_BOLD)
+                .color(colors::fg_secondary()),
+        )
+        .children(toasts.into_iter().map(|toast| toast_row(toast, dispatch)))
+        .into_element()
+}
+
+fn toast_row(toast: NotificationSpec, dispatch: &Actions) -> Element {
+    let dispatch = dispatch.clone();
+    rect()
+        .horizontal()
+        .width(Size::fill())
+        .content(Content::Flex)
+        .cross_align(Alignment::Center)
+        .spacing(12.)
+        .padding(Gaps::new_symmetric(10., 14.))
+        .corner_radius(rounded(10.))
+        .background(colors::page_elevated())
+        .child(
+            rect()
+                .vertical()
+                .width(Size::flex(1.0))
+                .child(
+                    label()
+                        .text(toast.title.clone())
+                        .font_size(text_size(14.))
+                        .color(colors::fg_primary()),
+                )
+                .child(
+                    label()
+                        .text(toast.body.clone())
+                        .font_size(text_size(12.))
+                        .color(colors::fg_secondary()),
+                ),
+        )
+        .child(
+            Button::new()
+                .secondary()
+                .text("Simulate")
+                .on_press(move |_| dispatch.push_notification(toast.clone())),
+        )
+        .into_element()
 }
 
 #[derive(PartialEq)]
@@ -1684,4 +1945,18 @@ fn action_row(dispatch: &Actions, buttons: Vec<(&'static str, IconType)>) -> Ele
     }
 
     row.into_element()
+}
+
+#[cfg(test)]
+mod toast_simulator_tests {
+    use super::*;
+
+    #[test]
+    fn every_social_toast_is_listed_with_a_description() {
+        let toasts: Vec<_> = social_toasts()
+            .into_iter()
+            .flat_map(|(_, list)| list)
+            .collect();
+        assert!(toasts.iter().all(|toast| !toast.body.is_empty()));
+    }
 }

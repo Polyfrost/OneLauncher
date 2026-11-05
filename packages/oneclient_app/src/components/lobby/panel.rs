@@ -203,13 +203,13 @@ impl Component for NoLobby {
                         Button::new()
                             .primary()
                             .margin(Gaps::new(4., 0., 0., 0.))
-                            .enabled(!snapshot.busy && snapshot.error.is_none())
+                            .enabled(!snapshot.busy)
                             .on_press(create)
                             .child(Icon::new(IconType::Plus).size(14.))
                             .text(t("oneclient.components.lobby.empty.create")),
                     ),
             )
-            .children(incoming(&snapshot.incoming, false))
+            .children(incoming(&snapshot.incoming, None))
     }
 }
 
@@ -283,7 +283,10 @@ impl Component for InLobby {
                             })),
                     )
                     .append_children((!outgoing.is_empty()).then(|| pending(&outgoing)))
-                    .append_children(incoming(&snapshot.incoming, true)),
+                    .append_children(incoming(
+                        &snapshot.incoming,
+                        Some((leave.clone(), self.dialog)),
+                    )),
             )
             .child(divider())
             .child(footer(
@@ -644,7 +647,10 @@ fn invite_row(player: Uuid, name: String, sub: String, trailing: Element) -> Ele
         .into_element()
 }
 
-fn incoming(invites: &[PartyInvite], in_party: bool) -> Option<Element> {
+fn incoming(
+    invites: &[PartyInvite],
+    switching: Option<(Confirm, State<Option<Dialog>>)>,
+) -> Option<Element> {
     (!invites.is_empty()).then(|| {
         rect()
             .vertical()
@@ -657,7 +663,7 @@ fn incoming(invites: &[PartyInvite], in_party: bool) -> Option<Element> {
             .children(invites.iter().map(|invite| {
                 IncomingRow {
                     invite: invite.clone(),
-                    in_party,
+                    switching: switching.clone(),
                 }
                 .into_element()
             }))
@@ -668,7 +674,7 @@ fn incoming(invites: &[PartyInvite], in_party: bool) -> Option<Element> {
 #[derive(PartialEq)]
 struct IncomingRow {
     invite: PartyInvite,
-    in_party: bool,
+    switching: Option<(Confirm, State<Option<Dialog>>)>,
 }
 
 impl Component for IncomingRow {
@@ -678,22 +684,25 @@ impl Component for IncomingRow {
         let dispatch = use_dispatch();
         let sender = self.invite.sender;
         let id = self.invite.id;
-        let leave_current = self.in_party;
+        let switching = self.switching.clone();
         let name = use_player_name(sender);
 
         let accept = {
             let dispatch = dispatch.clone();
             let name = name.clone();
             move |_| {
+                if let Some((leave, mut dialog)) = switching.clone() {
+                    dialog.set(Some(Dialog::Confirm(Confirm::accept(id, &name, leave))));
+                    return;
+                }
                 let dispatch_done = dispatch.clone();
                 let name = name.clone();
                 act(
                     state,
                     dispatch.clone(),
-                    move |account| async move { party::accept(&account, id, leave_current).await },
+                    move |account| async move { party::accept(&account, id, false).await },
                     move |lobby: &mut LobbyState, party| {
-                        lobby.party = Some(party);
-                        lobby.incoming.clear();
+                        lobby.apply(party::PartyPacket::PartyUpdated { party });
                         dispatch_done
                             .notify(tf("oneclient.components.lobby.toast.joined", &[&name]))
                             .body(t("oneclient.components.lobby.toast.joined_body"))

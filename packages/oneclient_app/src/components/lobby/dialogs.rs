@@ -19,6 +19,7 @@ pub enum ConfirmKind {
     Promote(Uuid),
     Leave,
     Disband,
+    Accept(Uuid),
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -80,6 +81,18 @@ impl Confirm {
         }
     }
 
+    pub fn accept(invite: Uuid, host: &str, leave: Self) -> Self {
+        Self {
+            kind: ConfirmKind::Accept(invite),
+            title: t("oneclient.components.lobby.confirm.accept.title").to_string(),
+            body: leave.body,
+            action: t("oneclient.components.lobby.incoming.accept"),
+            danger: true,
+            toast: tf("oneclient.components.lobby.toast.joined", &[&host]),
+            toast_body: t("oneclient.components.lobby.toast.joined_body"),
+        }
+    }
+
     pub fn disband(players: usize) -> Self {
         Self {
             kind: ConfirmKind::Disband,
@@ -131,6 +144,15 @@ fn run_confirm(state: State<LobbyState>, dispatch: Actions, confirm: Confirm) {
             |account| async move { party::leave(&account).await },
             move |lobby: &mut LobbyState, ()| {
                 lobby.party = None;
+                announce();
+            },
+        ),
+        ConfirmKind::Accept(invite) => act(
+            state,
+            dispatch,
+            move |account| async move { party::accept(&account, invite, true).await },
+            move |lobby: &mut LobbyState, party| {
+                lobby.apply(party::PartyPacket::PartyUpdated { party });
                 announce();
             },
         ),

@@ -292,8 +292,8 @@ impl Component for NavbarRight {
         let unread_chats = use_chat_unread();
         let chat_allowed = use_chat_allowed();
 
-        let has_account =
-            settled_or_loading(&current_account).is_none_or(|account| account.is_some());
+        let has_account = settled_or_loading(&current_account)
+            .is_none_or(|account| account.is_some_and(|account| account.is_microsoft()));
 
         let account_uuid = try_default_account(&current_account)
             .map(|account| account.id.to_string())

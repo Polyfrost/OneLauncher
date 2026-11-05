@@ -10,9 +10,9 @@ mod sync_actions;
 mod view_state;
 
 pub use chat::{
+    start_invite_join,
     ChatJob, load_conversations, load_invite_games, load_roster, load_self_status,
-    mark_read as mark_chat_read,
-    notify_chat, resync_chat,
+    mark_read as mark_chat_read, notify_chat, player_name, resync_chat,
 };
 
 pub use debounce::use_debounced;

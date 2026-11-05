@@ -106,12 +106,6 @@ pub enum LeftReason {
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
-pub struct Friend {
-    pub player: Uuid,
-    pub online: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(tag = "type", rename_all = "PascalCase")]
 pub enum PartyPacket {
     PartyUpdated {
@@ -196,6 +190,17 @@ pub async fn leave(account: &MinecraftAccount) -> Result<(), PlusError> {
     Ok(())
 }
 
+pub async fn leave_for_sign_out(account: &MinecraftAccount) -> Result<(), PlusError> {
+    if !crate::session::usable(account, crate::social_allowed()) {
+        return Ok(());
+    }
+
+    if current(account).await?.is_some() {
+        leave(account).await?;
+    }
+    Ok(())
+}
+
 pub async fn disband(account: &MinecraftAccount) -> Result<(), PlusError> {
     send_authorized(account, Method::DELETE, "/v1/party", None).await?;
     Ok(())
@@ -260,10 +265,6 @@ pub async fn cancel_invite(account: &MinecraftAccount, invite: Uuid) -> Result<(
     let path = format!("/v1/party/invites/{invite}");
     send_authorized(account, Method::DELETE, &path, None).await?;
     Ok(())
-}
-
-pub async fn friends(account: &MinecraftAccount) -> Result<Vec<Friend>, PlusError> {
-    json_authorized(account, Method::GET, "/social/friends", None).await
 }
 
 #[cfg(test)]

@@ -50,6 +50,11 @@ pub fn cluster_matches(game: &InviteGame, version: &str, loader: GameLoader) -> 
 }
 
 #[must_use]
+pub fn custom_loader(loader: GameLoader) -> bool {
+    !matches!(loader, GameLoader::Quilt | GameLoader::Ornithe)
+}
+
+#[must_use]
 pub fn has_polyplus(artifacts: &[LinkedArtifactInfo]) -> bool {
     artifacts.iter().any(|artifact| {
         artifact.enabled

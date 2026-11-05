@@ -5,6 +5,7 @@ use oneclient_db::models::ClusterKind;
 use crate::components::{Button, OVERLAY_MAX_LEVEL, OverlayPopup};
 use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch, use_invite_join};
 use crate::i18n::{t, tf};
+use crate::invite_join::custom_loader;
 use crate::state::InviteJoinPrompt;
 use crate::theme::{colors, rounded};
 use crate::ui::border_all_color;
@@ -52,12 +53,8 @@ impl Component for InviteJoinPopup {
                         .width(Size::fill())
                         .on_press(move |_| {
                             let action = oneclient_cluster(version.clone(), loader);
-                            let actions = creating.clone();
-                            actions.clear_invite_join();
-                            spawn_in_window(async move {
-                                mutation.mutate_async(action).await;
-                                actions.join_invite(invite_id);
-                            });
+                            creating.clear_invite_join();
+                            creating.create_cluster_and_join(mutation, action, invite_id);
                         })
                         .text(t("oneclient.components.invite_join.create_oneclient"))
                         .into_element()
@@ -67,8 +64,10 @@ impl Component for InviteJoinPopup {
                     tf("oneclient.components.invite_join.none_title", &[&game]),
                     if oneclient {
                         t("oneclient.components.invite_join.none_body").to_string()
-                    } else {
+                    } else if custom_loader(loader) {
                         t("oneclient.components.invite_join.none_body_unsupported").to_string()
+                    } else {
+                        t("oneclient.components.invite_join.none_body_no_custom").to_string()
                     },
                     on_close.clone(),
                     rect()
@@ -76,15 +75,20 @@ impl Component for InviteJoinPopup {
                         .width(Size::fill())
                         .spacing(8.)
                         .maybe_child(recommended)
-                        .child(
+                        .maybe_child(custom_loader(loader).then(|| {
                             Button::new()
                                 .secondary()
                                 .width(Size::fill())
                                 .on_press(move |_| {
-                                    custom.custom_invite_cluster(custom_version.clone(), loader);
+                                    custom.custom_invite_cluster(
+                                        invite_id,
+                                        custom_version.clone(),
+                                        loader,
+                                    );
                                 })
-                                .text(t("oneclient.components.invite_join.create_custom")),
-                        )
+                                .text(t("oneclient.components.invite_join.create_custom"))
+                                .into_element()
+                        }))
                         .child(
                             Button::new()
                                 .ghost()
@@ -94,11 +98,14 @@ impl Component for InviteJoinPopup {
                         ),
                 )
             }
-            Some(InviteJoinPrompt::Custom { version, loader }) => {
-                CreateInstanceModal::new(on_close)
-                    .prefill(version, loader)
-                    .into_element()
-            }
+            Some(InviteJoinPrompt::Custom {
+                invite_id,
+                version,
+                loader,
+            }) => CreateInstanceModal::new(on_close)
+                .prefill(version, loader)
+                .join_invite(invite_id)
+                .into_element(),
         }
     }
 }
@@ -114,6 +121,7 @@ fn oneclient_cluster(version: String, loader: GameLoader) -> ClusterAction {
         tags: Vec::new(),
         cover_source: None,
         bundles: None,
+        require_bundles: true,
         dedicated: false,
         shared_group: None,
     }

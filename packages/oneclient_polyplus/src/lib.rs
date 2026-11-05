@@ -8,7 +8,7 @@ mod session;
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -28,6 +28,7 @@ pub use packets::ClientboundPacket;
 pub(crate) const REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 
 static STARTED: AtomicBool = AtomicBool::new(false);
+static SOCIAL_ALLOWED: AtomicBool = AtomicBool::new(false);
 static BASE_URL: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
 static CLIENT: std::sync::OnceLock<Arc<PlusClient>> = std::sync::OnceLock::new();
 
@@ -81,7 +82,9 @@ impl PlusError {
     pub fn status(&self) -> Option<u16> {
         match self {
             Self::Request(RequestError::HttpStatus { status, .. }) => Some(*status),
-            Self::JoinRejected { status } | Self::LoginRejected { status, .. } => Some(*status),
+            Self::Websocket(reqwest_websocket::Error::Handshake(
+                reqwest_websocket::HandshakeError::UnexpectedStatusCode(status),
+            )) => Some(status.as_u16()),
             _ => None,
         }
     }
@@ -102,11 +105,24 @@ impl PlusError {
     }
 }
 
+struct CachedToken {
+    owner: Uuid,
+    url: String,
+    token: String,
+    issued: Instant,
+}
+
+impl CachedToken {
+    fn valid_for(&self, owner: Option<Uuid>, url: &str) -> bool {
+        Some(self.owner) == owner && self.url == url && self.issued.elapsed() < api::TOKEN_LIFETIME
+    }
+}
+
 pub struct PlusClient {
     requester: RequestClient,
     auth: Arc<oneclient_auth::AuthService>,
     events: EventBus,
-    token: RwLock<Option<(Uuid, String)>>,
+    token: RwLock<Option<CachedToken>>,
     session_account: std::sync::Mutex<Option<Uuid>>,
     restart: tokio::sync::watch::Sender<u64>,
     watched: tokio::sync::watch::Sender<Vec<Uuid>>,
@@ -139,25 +155,31 @@ impl PlusClient {
         }
 
         let owner = self.auth.default_account().await?.map(|account| account.id);
+        let url = base_url();
 
-        if let Some((id, token)) = self.token.read().await.clone()
-            && Some(id) == owner
+        if let Some(cached) = self.token.read().await.as_ref()
+            && cached.valid_for(owner, &url)
         {
-            return Ok(token);
+            return Ok(cached.token.clone());
         }
 
         let mut guard = self.token.write().await;
-        if let Some((id, token)) = guard.clone()
-            && Some(id) == owner
+        if let Some(cached) = guard.as_ref()
+            && cached.valid_for(owner, &url)
         {
-            return Ok(token);
+            return Ok(cached.token.clone());
         }
 
         let account = session::current_account(&self.auth)
             .await?
             .ok_or(PlusError::NoAccount)?;
         let token = session::login(&self.requester, &account).await?;
-        *guard = Some((account.id, token.clone()));
+        *guard = Some(CachedToken {
+            owner: account.id,
+            url,
+            token: token.clone(),
+            issued: Instant::now(),
+        });
 
         Ok(token)
     }
@@ -250,6 +272,19 @@ pub async fn restart_session() {
     }
 }
 
+pub fn set_social_allowed(allowed: bool) {
+    if SOCIAL_ALLOWED.swap(allowed, Ordering::SeqCst) != allowed
+        && let Some(client) = client()
+    {
+        client.request_restart();
+    }
+}
+
+#[must_use]
+pub fn social_allowed() -> bool {
+    SOCIAL_ALLOWED.load(Ordering::SeqCst)
+}
+
 pub fn plus_blocked() -> bool {
     oneclient_common::consent::blocks_url(&base_url())
 }
@@ -276,6 +311,51 @@ pub fn base_url() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn cached(issued: Instant) -> CachedToken {
+        CachedToken {
+            owner: Uuid::from_u128(1),
+            url: "https://plus.example.test".to_string(),
+            token: "token".to_string(),
+            issued,
+        }
+    }
+
+    #[test]
+    fn a_cached_token_is_only_used_for_its_account_url_and_lifetime() {
+        let owner = Some(Uuid::from_u128(1));
+        let url = "https://plus.example.test";
+        let fresh = cached(Instant::now());
+        assert!(fresh.valid_for(owner, url));
+        assert!(!fresh.valid_for(owner, "https://other.example.test"));
+        assert!(!fresh.valid_for(Some(Uuid::from_u128(2)), url));
+        assert!(!fresh.valid_for(None, url));
+
+        let lifetime = api::TOKEN_LIFETIME + Duration::from_secs(1);
+        if let Some(issued) = Instant::now().checked_sub(lifetime) {
+            assert!(!cached(issued).valid_for(owner, url));
+        }
+    }
+
+    #[test]
+    fn a_rejected_login_says_nothing_about_the_resource() {
+        assert!(!PlusError::JoinRejected { status: 403 }.is_forbidden());
+        let login = PlusError::LoginRejected {
+            username: String::new(),
+            status: 404,
+        };
+        assert!(!login.is_not_found());
+    }
+
+    #[test]
+    fn a_rejected_websocket_handshake_counts_as_unauthorized() {
+        let err = PlusError::Websocket(reqwest_websocket::Error::Handshake(
+            reqwest_websocket::HandshakeError::UnexpectedStatusCode(
+                reqwest::StatusCode::UNAUTHORIZED,
+            ),
+        ));
+        assert!(err.is_unauthorized());
+    }
 
     #[test]
     fn base_url_follows_the_pushed_setting() {

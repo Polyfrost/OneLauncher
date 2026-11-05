@@ -139,6 +139,7 @@ pub enum PumpSignal {
     PauseToasts,
     ResumeToasts,
     Chat(super::chat::ChatJob),
+    JoinInvite(i32),
 }
 
 #[derive(Clone)]
@@ -1096,7 +1097,7 @@ impl Actions {
         }
     }
 
-    fn push_notification(&self, spec: NotificationSpec) {
+    pub fn push_notification(&self, spec: NotificationSpec) {
         self.with_engine(|state| {
             state.notifications.push_custom(&mut state.inbox, spec);
         });
@@ -1546,65 +1547,75 @@ impl Actions {
                 }
             };
 
-            // Replaces the download's progress notification in place rather
-            // than arriving as a second one
-            let spec = match &install.result {
-                Ok(name) => NotificationSpec {
-                    title: t("oneclient.actions.installed").to_string(),
-                    body: crate::install::install_body(
-                        name,
-                        &install.dependencies,
-                        &install.missing_dependencies,
-                        install.live_deferred,
-                    ),
-                    level: Level::Info,
-                    icon: Some(IconType::Download01),
-                    progress: None,
-                    actions: Vec::new(),
-                    toast_only: true,
-                },
-                Err(err) => NotificationSpec {
-                    title: t("oneclient.actions.install_failed").to_string(),
-                    body: err.to_string(),
-                    level: Level::Error,
-                    icon: None,
-                    progress: None,
-                    actions: Vec::new(),
-                    toast_only: false,
-                },
-            };
-
-            let session_id = install.session_id.unwrap_or_else(uuid::Uuid::nil);
-            actions.with_engine(|app| {
-                app.notifications
-                    .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
-            });
-
-            if install.result.is_ok() {
-                // Before the refresh below so the version list never renders
-                // the moment where both copies read as active
-                if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
-                    cluster_id,
-                    &state.services.content(),
-                )
-                .await
-                {
-                    tracing::warn!(%err, "failed to resolve duplicate package versions");
-                }
-
-                super::invalidate_cluster_content_queries().await;
-                if let Some(world) = world {
-                    super::invalidate_world_contents(cluster_id, world).await;
-                }
-
-                state
-                    .services
-                    .events
-                    .signal(oneclient_events::Signal::ClustersChanged);
-            }
+            actions.settle_install(&state, cluster_id, install, world).await;
 
             finish(&actions);
         });
+    }
+
+    pub(super) async fn settle_install(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        cluster_id: ClusterId,
+        install: crate::install::PackageInstall,
+        world: Option<String>,
+    ) {
+        // Replaces the download's progress notification in place rather
+        // than arriving as a second one
+        let spec = match &install.result {
+            Ok(name) => NotificationSpec {
+                title: t("oneclient.actions.installed").to_string(),
+                body: crate::install::install_body(
+                    name,
+                    &install.dependencies,
+                    &install.missing_dependencies,
+                    install.live_deferred,
+                ),
+                level: Level::Info,
+                icon: Some(IconType::Download01),
+                progress: None,
+                actions: Vec::new(),
+                toast_only: true,
+            },
+            Err(err) => NotificationSpec {
+                title: t("oneclient.actions.install_failed").to_string(),
+                body: err.to_string(),
+                level: Level::Error,
+                icon: None,
+                progress: None,
+                actions: Vec::new(),
+                toast_only: false,
+            },
+        };
+
+        let session_id = install.session_id.unwrap_or_else(uuid::Uuid::nil);
+        self.with_engine(|app| {
+            app.notifications
+                .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
+        });
+
+        if install.result.is_ok() {
+            // Before the refresh below so the version list never renders
+            // the moment where both copies read as active
+            if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
+                cluster_id,
+                &state.services.content(),
+            )
+            .await
+            {
+                tracing::warn!(%err, "failed to resolve duplicate package versions");
+            }
+
+            super::invalidate_cluster_content_queries().await;
+            if let Some(world) = world {
+                super::invalidate_world_contents(cluster_id, world).await;
+            }
+
+            state
+                .services
+                .events
+                .signal(oneclient_events::Signal::ClustersChanged);
+        }
     }
 
     /// Shares the installs channel with [`Self::install_package`] so every row's

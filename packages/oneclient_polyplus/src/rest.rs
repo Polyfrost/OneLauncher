@@ -2,7 +2,7 @@ use reqwest::{Method, Url};
 use serde::de::DeserializeOwned;
 use uuid::Uuid;
 
-use oneclient_net::RequestError;
+use oneclient_net::{HttpRequest, RequestError, RequestOptions};
 
 use crate::models::{
     BlockedPlayer, CreateGroupRequest, EditMessageRequest, Friend, FriendRequest, GroupMessage,
@@ -284,16 +284,10 @@ impl PlusClient {
         body: Option<serde_json::Value>,
     ) -> Result<T, PlusError> {
         let token = self.authorize().await?;
-        let header = bearer(&token);
 
         let attempt = self
             .requester
-            .send_json::<T>(
-                method.clone(),
-                url.clone(),
-                body.clone(),
-                &[("Authorization", header.as_str())],
-            )
+            .send_as::<T>(build(method.clone(), url.clone(), body.clone(), &token)?)
             .await;
 
         if !matches!(attempt, Err(RequestError::HttpStatus { status: 401, .. })) {
@@ -302,11 +296,10 @@ impl PlusClient {
 
         self.forget_token().await;
         let token = self.authorize().await?;
-        let header = bearer(&token);
 
         Ok(self
             .requester
-            .send_json::<T>(method, url, body, &[("Authorization", header.as_str())])
+            .send_as::<T>(build(method, url, body, &token)?)
             .await?)
     }
 
@@ -360,7 +353,12 @@ fn build(
     url: Url,
     body: Option<serde_json::Value>,
     token: &str,
-) -> Result<reqwest::Request, PlusError> {
+) -> Result<HttpRequest, PlusError> {
+    let options = if method == Method::GET {
+        RequestOptions::default()
+    } else {
+        RequestOptions::default().no_replay()
+    };
     let mut request = reqwest::Request::new(method, url);
 
     let mut value = reqwest::header::HeaderValue::try_from(bearer(token))
@@ -382,5 +380,22 @@ fn build(
         );
     }
 
-    Ok(request)
+    Ok(HttpRequest { request, options })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn replays(method: Method) -> bool {
+        let url = Url::parse("https://plus.example.test/groups").unwrap();
+        build(method, url, None, "token").unwrap().options.replay
+    }
+
+    #[test]
+    fn only_reads_are_replayed() {
+        assert!(replays(Method::GET));
+        assert!(!replays(Method::POST));
+        assert!(!replays(Method::DELETE));
+    }
 }

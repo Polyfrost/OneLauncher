@@ -119,6 +119,10 @@ impl EventPump {
                             let station = self.station;
                             spawn_in_window(job.run(station));
                         }
+                        PumpSignal::JoinInvite(invite_id) => {
+                            let actions = self.actions.clone();
+                            spawn_in_window(crate::hooks::start_invite_join(actions, invite_id));
+                        }
                         PumpSignal::Reconcile => reconcile(&self.station, &mut armed, paused),
                         PumpSignal::PauseToasts => {
                             paused = true;
@@ -247,6 +251,7 @@ impl EventPump {
         }
 
         let mut toasts: Vec<ChatToast> = Vec::new();
+        let mut presence_lost = false;
         if !chat_events.is_empty() {
             let mut guard = self.station.write_channel(AppChannel::Chat);
             for event in chat_events {
@@ -331,7 +336,8 @@ impl EventPump {
                     ChatEvent::ConnectionChanged { connected } => {
                         guard.chat.connected = connected;
                         if !connected {
-                            guard.chat.clear_presence();
+                            presence.clear();
+                            presence_lost = true;
                         }
                         folded.chat_reconnected |= connected;
                         folded.chat_roster |= connected;
@@ -340,8 +346,11 @@ impl EventPump {
             }
         }
 
-        if !presence.is_empty() {
+        if presence_lost || !presence.is_empty() {
             let mut guard = self.station.write_channel(AppChannel::ChatPresence);
+            if presence_lost {
+                guard.chat.clear_presence();
+            }
             for (player, online) in presence {
                 guard.chat.set_presence(player, online);
             }

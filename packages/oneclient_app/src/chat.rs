@@ -226,6 +226,7 @@ pub struct ChatInbox {
     pub loading: bool,
     pub active: Option<i32>,
     pub active_gone: u64,
+    pub active_opened: u64,
     pub connected: bool,
     pub error: Option<String>,
     pub names: Arc<HashMap<Uuid, String>>,
@@ -263,6 +264,7 @@ pub struct ChatState {
     pub error: Option<String>,
     pub active: Option<i32>,
     pub active_gone: u64,
+    pub active_opened: u64,
     pub owner: Option<Uuid>,
     pub self_status: PlayerStatus,
     pub friend_request: FriendRequestStatus,
@@ -327,6 +329,7 @@ impl ChatState {
                 && matches!(self.status, AsyncStatus::Idle | AsyncStatus::Loading),
             active: self.active,
             active_gone: self.active_gone,
+            active_opened: self.active_opened,
             connected: self.connected,
             error: self.error.clone(),
             names: Arc::clone(&self.names),
@@ -490,7 +493,10 @@ impl ChatState {
         messages.sort_by_key(|message| message.id);
         messages.dedup_by_key(|message| message.id);
 
-        let first = messages.first().map(|message| message.id);
+        let first = messages
+            .first()
+            .map(|message| message.id)
+            .filter(|first| known.is_some_and(|known| known >= *first));
         let last = messages.last().map_or(i64::MIN, |message| message.id);
         let newer = last.max(known.unwrap_or(i64::MIN));
         messages.extend(
@@ -714,8 +720,14 @@ impl ChatState {
 
     pub fn clear(&mut self) {
         let connected = self.connected;
+        let active_gone = self
+            .active_gone
+            .wrapping_add(u64::from(self.active.is_some()));
+        let active_opened = self.active_opened;
         *self = Self::default();
         self.connected = connected;
+        self.active_gone = active_gone;
+        self.active_opened = active_opened;
     }
 
     fn sort(&mut self) {
@@ -1065,6 +1077,30 @@ mod tests {
     }
 
     #[test]
+    fn a_page_that_skips_messages_replaces_the_older_history() {
+        let mut chat = ChatState::default();
+        chat.upsert(1, message(10, "before the gap"));
+        chat.upsert(1, message(100, "before the gap"));
+
+        chat.set_messages(
+            1,
+            vec![
+                fetched(131, "after the gap", "2026-01-01T00:00:00Z"),
+                fetched(180, "after the gap", "2026-01-01T00:01:00Z"),
+            ],
+            chat.newest_message(1),
+        );
+
+        assert_eq!(
+            chat.messages_for(1)
+                .iter()
+                .map(|m| m.id)
+                .collect::<Vec<_>>(),
+            vec![131, 180]
+        );
+    }
+
+    #[test]
     fn reloading_the_newest_page_drops_messages_deleted_while_away() {
         let mut chat = ChatState::default();
         chat.upsert(1, message(10, "kept"));
@@ -1267,6 +1303,21 @@ mod tests {
         assert_eq!(chat.active, None);
         assert_eq!(chat.active_gone, 1);
         assert!(!chat.has_messages(1));
+    }
+
+    #[test]
+    fn switching_owner_closes_the_open_thread() {
+        let mut chat = ChatState {
+            active: Some(1),
+            active_opened: 3,
+            ..ChatState::default()
+        };
+
+        chat.set_owner(Some(Uuid::from_u128(1)));
+
+        assert_eq!(chat.active, None);
+        assert_eq!(chat.active_gone, 1);
+        assert_eq!(chat.active_opened, 3);
     }
 
     #[test]

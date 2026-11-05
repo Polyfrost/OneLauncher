@@ -2,12 +2,12 @@ mod dialogs;
 mod panel;
 mod widgets;
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::time::Duration;
 
 use freya::prelude::*;
 use freya::query::{Query, QueryCapability, UseQuery, use_query};
-use futures_util::future::join_all;
 use oneclient_auth::MinecraftAccount;
 use oneclient_polyplus::PlusError;
 use oneclient_polyplus::party::{
@@ -19,8 +19,8 @@ use uuid::Uuid;
 
 use crate::components::IconType;
 use crate::hooks::{
-    Actions, settled_or_loading, try_default_account, use_current_account, use_dispatch,
-    use_player_profile, wardrobe::plus_message,
+    Actions, player_name, settled_or_loading, try_default_account, use_chat_allowed,
+    use_current_account, use_dispatch, use_player_profile, wardrobe::plus_message,
 };
 use crate::i18n::{t, tf};
 
@@ -28,6 +28,8 @@ pub use panel::PartyTab;
 pub use widgets::LobbyHeroChip;
 
 const FRIENDS_STALE: Duration = Duration::from_secs(30);
+
+type Snapshot = (Uuid, Option<Party>, Vec<PartyInvite>, Vec<PartyInvite>);
 
 #[derive(Clone, PartialEq, Default, Debug)]
 pub struct LobbyState {
@@ -37,6 +39,7 @@ pub struct LobbyState {
     pub error: Option<String>,
     pub busy: bool,
     pub me: Option<Uuid>,
+    revision: u64,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -77,7 +80,38 @@ impl LobbyState {
             && self.error.is_none()
     }
 
+    fn absorb(&mut self, seen: u64, result: Result<Snapshot, (Option<Uuid>, String)>) -> bool {
+        if self.revision != seen {
+            return false;
+        }
+        self.revision += 1;
+
+        match result {
+            Ok((me, party, incoming, outgoing)) => {
+                self.me = Some(me);
+                self.party = party;
+                self.incoming = incoming;
+                self.outgoing = outgoing;
+                self.error = None;
+            }
+            Err((account, err)) => {
+                if account.is_none() || account != self.me {
+                    self.me = account;
+                    self.party = None;
+                    self.incoming.clear();
+                    self.outgoing.clear();
+                }
+                self.error = Some(err);
+            }
+        }
+        true
+    }
+
     pub fn apply(&mut self, packet: PartyPacket) -> Option<Notice> {
+        if !matches!(packet, PartyPacket::PartyMemberStateChanged { .. }) {
+            self.revision += 1;
+        }
+
         match packet {
             PartyPacket::PartyUpdated { party } => {
                 self.incoming.retain(|invite| invite.party_id != party.id);
@@ -174,6 +208,17 @@ pub fn use_provide_lobby() {
     let state = use_lobby();
     let dispatch = use_dispatch();
     let mut chat_key = use_state(|| None::<(Uuid, Option<i32>)>);
+    let owner = use_my_uuid();
+    let chat_allowed = use_chat_allowed();
+    oneclient_polyplus::set_social_allowed(chat_allowed);
+    let mut synced_for = use_state(|| (owner, chat_allowed));
+
+    use_side_effect_with_deps(&(owner, chat_allowed), move |current| {
+        if *synced_for.peek() != *current {
+            synced_for.set(*current);
+            spawn(refresh(state));
+        }
+    });
 
     use_side_effect({
         let dispatch = dispatch.clone();
@@ -225,29 +270,21 @@ async fn sync(mut state: State<LobbyState>, dispatch: Actions) {
 }
 
 pub async fn refresh(mut state: State<LobbyState>) {
-    let result = crate::launcher::off_ui(async {
-        let account = party_account().await?;
-        let party = party::current(&account).await.map_err(party_message)?;
-        let incoming = party::incoming(&account).await.map_err(party_message)?;
-        let outgoing = party::outgoing(&account).await.map_err(party_message)?;
-        Ok::<_, String>((account.id, party, incoming, outgoing))
-    })
-    .await;
+    loop {
+        let seen = state.peek().revision;
+        let result = crate::launcher::off_ui(async {
+            let account = party_account().await.map_err(|err| (None, err))?;
+            let id = account.id;
+            let failed = |err: PlusError| (Some(id), party_message(err));
+            let party = party::current(&account).await.map_err(failed)?;
+            let incoming = party::incoming(&account).await.map_err(failed)?;
+            let outgoing = party::outgoing(&account).await.map_err(failed)?;
+            Ok::<Snapshot, (Option<Uuid>, String)>((id, party, incoming, outgoing))
+        })
+        .await;
 
-    let mut guard = state.write();
-    match result {
-        Ok((me, party, incoming, outgoing)) => {
-            guard.me = Some(me);
-            guard.party = party;
-            guard.incoming = incoming;
-            guard.outgoing = outgoing;
-            guard.error = None;
-        }
-        Err(err) => {
-            guard.party = None;
-            guard.incoming.clear();
-            guard.outgoing.clear();
-            guard.error = Some(err);
+        if state.write().absorb(seen, result) {
+            break;
         }
     }
 }
@@ -302,6 +339,7 @@ async fn party_account() -> Result<MinecraftAccount, String> {
         .await
         .map_err(|err| err.to_string())?
         .filter(MinecraftAccount::is_microsoft)
+        .filter(|_| oneclient_polyplus::social_allowed())
         .ok_or_else(|| t("oneclient.wardrobe.account.signed_out").to_string())?;
     if account.needs_sign_in() || account.access_token.is_empty() {
         return Err(t("oneclient.wardrobe.account.needs_sign_in").into());
@@ -332,7 +370,12 @@ pub fn act<T, F, Fut>(
 
         state.write().busy = false;
         match result {
-            Ok(value) => done(&mut state.write(), value),
+            Ok(value) => {
+                let mut guard = state.write();
+                guard.revision += 1;
+                guard.error = None;
+                done(&mut guard, value);
+            }
             Err(err) => {
                 dispatch
                     .notify(t("oneclient.components.lobby.toast.failed"))
@@ -365,22 +408,6 @@ fn short_uuid(player: Uuid) -> String {
     player.simple().to_string()[..8].to_string()
 }
 
-async fn player_name(player: Uuid) -> String {
-    crate::launcher::off_ui(async move {
-        let state = crate::launcher::state().ok()?;
-        oneclient_mc::fetch_player_profile_view(
-            &state.services.requester,
-            &player.to_string(),
-            None,
-        )
-        .await
-        .ok()
-        .map(|profile| profile.username)
-    })
-    .await
-    .unwrap_or_else(|| short_uuid(player))
-}
-
 #[derive(Clone, Debug, PartialEq)]
 pub struct FriendView {
     pub player: Uuid,
@@ -398,15 +425,27 @@ impl QueryCapability for FriendsQuery {
 
     async fn run(&self, _account: &Self::Keys) -> Result<Self::Ok, Self::Err> {
         crate::launcher::off_ui(async {
-            let account = party_account().await?;
-            let friends = party::friends(&account).await.map_err(party_message)?;
-            let names = join_all(friends.iter().map(|friend| player_name(friend.player))).await;
+            party_account().await?;
+            let client = oneclient_polyplus::client()
+                .ok_or_else(|| t("oneclient.chat.errors.unavailable").to_string())?;
+            let friends = client.friends().await.map_err(party_message)?;
+            let players: Vec<Uuid> = friends.iter().map(|friend| friend.player).collect();
+            let names: HashMap<Uuid, String> = client
+                .resolve_players(&players)
+                .await
+                .inspect_err(|err| tracing::warn!("could not resolve friend names: {err:#}"))
+                .unwrap_or_default()
+                .into_iter()
+                .map(|player| (player.id, player.username))
+                .collect();
             let mut views: Vec<_> = friends
                 .into_iter()
-                .zip(names)
-                .map(|(friend, name)| FriendView {
+                .map(|friend| FriendView {
                     player: friend.player,
-                    name,
+                    name: names
+                        .get(&friend.player)
+                        .cloned()
+                        .unwrap_or_else(|| short_uuid(friend.player)),
                     online: friend.online,
                 })
                 .collect();
@@ -430,6 +469,65 @@ mod tests {
 
     fn id(n: u128) -> Uuid {
         Uuid::from_u128(n)
+    }
+
+    fn snapshot(me: Uuid, party: Option<Party>) -> Result<Snapshot, (Option<Uuid>, String)> {
+        Ok((me, party, Vec::new(), Vec::new()))
+    }
+
+    #[test]
+    fn a_refresh_older_than_a_change_is_discarded() {
+        let joined = party(1, vec![member(1, 0, true)]);
+        let mut state = LobbyState::default();
+        state.apply(PartyPacket::PartyUpdated {
+            party: joined.clone(),
+        });
+
+        assert!(!state.absorb(0, snapshot(id(1), None)));
+        assert_eq!(state.party, Some(joined));
+    }
+
+    #[test]
+    fn a_failed_refresh_keeps_the_party_of_the_same_account() {
+        let joined = party(1, vec![member(1, 0, true)]);
+        let mut state = LobbyState::default();
+        assert!(state.absorb(0, snapshot(id(1), Some(joined.clone()))));
+
+        assert!(state.absorb(1, Err((Some(id(1)), "offline".into()))));
+
+        assert_eq!(state.party, Some(joined));
+        assert_eq!(state.error.as_deref(), Some("offline"));
+    }
+
+    #[test]
+    fn a_failed_refresh_drops_the_party_of_another_account() {
+        let joined = party(1, vec![member(1, 0, true)]);
+        let mut state = LobbyState::default();
+        assert!(state.absorb(0, snapshot(id(1), Some(joined.clone()))));
+        assert!(state.absorb(1, Err((Some(id(2)), "offline".into()))));
+        assert_eq!(state.party, None);
+
+        assert!(state.absorb(2, snapshot(id(1), Some(joined))));
+        assert!(state.absorb(3, Err((None, "signed out".into()))));
+        assert_eq!(state.party, None);
+        assert_eq!(state.me, None);
+    }
+
+    #[test]
+    fn joining_a_party_keeps_invites_from_other_parties() {
+        let mut state = LobbyState::default();
+        let joined = party(1, vec![member(1, 0, true)]);
+        let other = id(999);
+        state.incoming = vec![invite(7, joined.id, 2), invite(8, other, 2)];
+
+        state.apply(PartyPacket::PartyUpdated { party: joined });
+
+        let left: Vec<Uuid> = state
+            .incoming
+            .iter()
+            .map(|invite| invite.party_id)
+            .collect();
+        assert_eq!(left, vec![other]);
     }
 
     fn member(n: u128, joined: i64, online: bool) -> PartyMember {

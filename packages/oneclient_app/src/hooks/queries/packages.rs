@@ -112,7 +112,7 @@ pub fn search_total(query: &UseQuery<PackageSearchQuery>) -> usize {
 }
 
 pub fn search_pending(query: &UseQuery<PackageSearchQuery>) -> bool {
-    super::state::query_is_busy(query)
+    super::state::query_is_busy(query) && super::state::settled_or_loading(query).is_none()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

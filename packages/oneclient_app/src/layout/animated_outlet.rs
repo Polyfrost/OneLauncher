@@ -34,6 +34,30 @@ fn is_sidebar_route(route: &Route) -> bool {
     )
 }
 
+const SETTINGS_KEY: &str = ",";
+const BACK_KEY: &str = "[";
+const FORWARD_KEY: &str = "]";
+
+/// The character of a Cmd chord with no Shift or Alt, matched by what the key
+/// types so it follows the keyboard layout. macOS only for now
+fn shortcut_character(e: &KeyboardEventData) -> Option<&str> {
+    let held = cfg!(target_os = "macos")
+        && e.modifiers.contains(Modifiers::META)
+        && !e.modifiers.intersects(Modifiers::SHIFT | Modifiers::ALT);
+
+    match &e.key {
+        Key::Character(character) if held => Some(character.as_str()),
+        _ => None,
+    }
+}
+
+fn navigate_forward() {
+    let router = RouterContext::get();
+    if router.can_go_forward() {
+        router.go_forward();
+    }
+}
+
 fn is_cluster_route(route: &Route) -> bool {
     matches!(
         route,
@@ -108,6 +132,7 @@ impl Component for AnimatedAppOutlet {
         let route = use_route::<Route>();
         let at_home = matches!(&route, Route::Home {});
         let escape = escape_action(&route);
+        let in_settings = is_sidebar_route(&route);
 
         let mut origin_route = use_state(|| route.clone());
         let mut last_route = use_state(|| route.clone());
@@ -139,6 +164,28 @@ impl Component for AnimatedAppOutlet {
                 return;
             }
 
+            if !key_claims.any()
+                && let Some(character) = shortcut_character(&e)
+            {
+                match character {
+                    SETTINGS_KEY => {
+                        if !in_settings {
+                            let _ = RouterContext::get().push(Route::SettingsLauncher {});
+                        }
+                        return;
+                    }
+                    BACK_KEY => {
+                        navigate_back(at_home);
+                        return;
+                    }
+                    FORWARD_KEY => {
+                        navigate_forward();
+                        return;
+                    }
+                    _ => {}
+                }
+            }
+
             if e.key != Key::Named(NamedKey::Escape) || key_claims.any() {
                 return;
             }
@@ -163,12 +210,7 @@ impl Component for AnimatedAppOutlet {
             }
             match e.button() {
                 Some(MouseButton::Back) => navigate_back(at_home),
-                Some(MouseButton::Forward) => {
-                    let router = RouterContext::get();
-                    if router.can_go_forward() {
-                        router.go_forward();
-                    }
-                }
+                Some(MouseButton::Forward) => navigate_forward(),
                 _ => {}
             }
         };

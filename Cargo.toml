@@ -119,7 +119,7 @@ libc = {version = "=0.2.189"}
 notify = {version = "=8.2.0"}
 open = {version = "=5.4.4", features = ["shellexecute-on-windows"]}
 parking_lot = {version = "=0.12.5"}
-pulldown-cmark = {version = "=0.13.4", default-features = false}
+pulldown-cmark = {version = "=0.13.6", default-features = false}
 rand = {version = "=0.10.3"}
 regex = {version = "=1.13.1"}
 rfd = {version = "=0.17.2"}
@@ -145,10 +145,10 @@ syn = {version = "=3.0.6"}
 thiserror = {version = "=2.0.21"}
 
 # ui
-freya = {git = "https://github.com/marc2332/freya", rev = "cb9b0c688b33f5edc8735716d7ba7a63e6c9cf40", features = ["engine", "winit", "router", "remote-asset", "sdk-tokio", "query", "radio", "borderless", "titlebar", "tray", "metrics"]}
-freya-core = {git = "https://github.com/marc2332/freya", rev = "cb9b0c688b33f5edc8735716d7ba7a63e6c9cf40"}
-freya-testing = {git = "https://github.com/marc2332/freya", rev = "cb9b0c688b33f5edc8735716d7ba7a63e6c9cf40"}
-freya-winit = {git = "https://github.com/marc2332/freya", rev = "cb9b0c688b33f5edc8735716d7ba7a63e6c9cf40"}
+freya = {version = "0.5.0", features = ["engine", "winit", "router", "remote-asset", "sdk-tokio", "query", "radio", "borderless", "titlebar", "tray", "metrics"]}
+freya-core = "0.5.0"
+freya-testing = "0.5.0"
+freya-winit = "0.5.0"
 freya-skia-safe = "=0.104.0" # draws the plusrenderer player model
 plusrenderer = {git = "https://github.com/Polyfrost/plusrenderer", rev = "914ddf8cae388126407d86925a05fa3db085ebbc"}
 image = {version = "=0.25.10", default-features = false, features = ["png", "jpeg", "ico"]}

@@ -11,7 +11,8 @@ use super::panel::{PanelMode, SocialPanel};
 
 const DOCKED_WIDTH_PX: f32 = 348.;
 const DOCKED_EDGE_PX: f32 = 12.;
-const DOCKED_LEVEL: u8 = 2;
+const DOCKED_LEVEL: u8 = 3;
+pub const DOCKED_INSET_PX: f32 = DOCKED_EDGE_PX + DOCKED_WIDTH_PX;
 
 fn docked_panel_height() -> f32 {
     let window_height = Platform::get().current_window().root_size.read().height;

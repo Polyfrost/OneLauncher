@@ -253,16 +253,26 @@ pub async fn refresh(mut state: State<LobbyState>) {
 }
 
 fn announce(notice: Notice, dispatch: &Actions) {
-    let message = match notice {
-        Notice::Kicked => t("oneclient.components.lobby.toast.you_were_kicked").to_string(),
-        Notice::Disbanded => t("oneclient.components.lobby.toast.disbanded_by_leader").to_string(),
-        Notice::PartyLost => t("oneclient.components.lobby.toast.party_lost").to_string(),
+    let (title, body) = match notice {
+        Notice::Kicked => (
+            t("oneclient.components.lobby.toast.you_were_kicked"),
+            t("oneclient.components.lobby.toast.you_were_kicked_body"),
+        ),
+        Notice::Disbanded => (
+            t("oneclient.components.lobby.toast.disbanded_by_leader"),
+            t("oneclient.components.lobby.toast.disbanded_by_leader_body"),
+        ),
+        Notice::PartyLost => (
+            t("oneclient.components.lobby.toast.party_lost"),
+            t("oneclient.components.lobby.toast.party_lost_body"),
+        ),
         Notice::Invited(sender) => {
             let dispatch = dispatch.clone();
             spawn(async move {
                 let name = player_name(sender).await;
                 dispatch
                     .notify(tf("oneclient.components.lobby.toast.invite_received", &[&name]))
+                    .body(t("oneclient.components.lobby.toast.invite_received_body"))
                     .info()
                     .icon(IconType::Users01)
                     .toast_only()
@@ -272,7 +282,8 @@ fn announce(notice: Notice, dispatch: &Actions) {
         }
     };
     dispatch
-        .notify(message)
+        .notify(title)
+        .body(body)
         .info()
         .icon(IconType::Users01)
         .toast_only()

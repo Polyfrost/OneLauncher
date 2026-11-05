@@ -308,6 +308,7 @@ async fn start_invite_join(actions: Actions, invite_id: i32) {
         Ok(None) => {
             actions
                 .notify(t("oneclient.components.invite_join.expired"))
+                .body(t("oneclient.components.invite_join.expired_body"))
                 .error()
                 .toast_only()
                 .send();
@@ -926,12 +927,12 @@ pub async fn notify_chat(actions: Actions, toast: ChatToast) {
         ),
         ChatToast::Invite { .. } => (
             tf("oneclient.chat.notify.invite", &[&name]),
-            String::new(),
+            t("oneclient.chat.notify.invite_body").to_string(),
             false,
         ),
         ChatToast::FriendRequest { .. } => (
             tf("oneclient.chat.notify.friend_request", &[&name]),
-            String::new(),
+            t("oneclient.chat.notify.friend_request_body").to_string(),
             false,
         ),
     };

@@ -134,6 +134,7 @@ impl Component for NoLobby {
                     lobby.party = Some(party);
                     dispatch_done
                         .notify(t("oneclient.components.lobby.toast.created"))
+                        .body(t("oneclient.components.lobby.toast.created_body"))
                         .info()
                         .icon(IconType::Users01)
                         .toast_only()
@@ -262,7 +263,7 @@ impl Component for InLobby {
                             .spacing(4.)
                             .child(section_header(
                                 t("oneclient.components.lobby.players"),
-                                Some(format!("{}/{MAX_PARTY_SIZE}", party.members.len())),
+                                None,
                             ))
                             .children(sorted_members(party, me).into_iter().map(|member| {
                                 MemberRow {
@@ -576,6 +577,7 @@ impl Component for PendingRow {
                                 "oneclient.components.lobby.toast.invite_cancelled",
                                 &[&name],
                             ))
+                            .body(t("oneclient.components.lobby.toast.invite_cancelled_body"))
                             .info()
                             .toast_only()
                             .send();
@@ -694,6 +696,7 @@ impl Component for IncomingRow {
                         lobby.incoming.clear();
                         dispatch_done
                             .notify(tf("oneclient.components.lobby.toast.joined", &[&name]))
+                            .body(t("oneclient.components.lobby.toast.joined_body"))
                             .info()
                             .icon(IconType::Users01)
                             .toast_only()

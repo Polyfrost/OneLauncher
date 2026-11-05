@@ -29,6 +29,7 @@ pub struct Confirm {
     action: &'static str,
     danger: bool,
     toast: String,
+    toast_body: &'static str,
 }
 
 impl Confirm {
@@ -40,6 +41,7 @@ impl Confirm {
             action: t("oneclient.components.lobby.member.kick"),
             danger: true,
             toast: tf("oneclient.components.lobby.toast.kicked", &[&name]),
+            toast_body: t("oneclient.components.lobby.toast.kicked_body"),
         }
     }
 
@@ -51,6 +53,7 @@ impl Confirm {
             action: t("oneclient.components.lobby.member.make_leader"),
             danger: false,
             toast: tf("oneclient.components.lobby.toast.promoted", &[&name]),
+            toast_body: t("oneclient.components.lobby.toast.promoted_body"),
         }
     }
 
@@ -73,6 +76,7 @@ impl Confirm {
             action: t("oneclient.components.lobby.leave"),
             danger: true,
             toast: t("oneclient.components.lobby.toast.left").to_string(),
+            toast_body: t("oneclient.components.lobby.toast.left_body"),
         }
     }
 
@@ -87,16 +91,19 @@ impl Confirm {
             action: t("oneclient.components.lobby.disband"),
             danger: true,
             toast: t("oneclient.components.lobby.toast.disbanded").to_string(),
+            toast_body: t("oneclient.components.lobby.toast.disbanded_body"),
         }
     }
 }
 
 fn run_confirm(state: State<LobbyState>, dispatch: Actions, confirm: Confirm) {
     let toast = confirm.toast.clone();
+    let toast_body = confirm.toast_body;
     let notify = dispatch.clone();
     let announce = move || {
         notify
             .notify(toast)
+            .body(toast_body)
             .info()
             .icon(IconType::Users01)
             .toast_only()
@@ -421,6 +428,7 @@ impl Component for FriendRow {
                                 lobby.outgoing.push(invite);
                             }
                             done.notify(tf("oneclient.components.lobby.toast.invited", &[&name]))
+                                .body(t("oneclient.components.lobby.toast.invited_body"))
                                 .info()
                                 .icon(IconType::Users01)
                                 .toast_only()

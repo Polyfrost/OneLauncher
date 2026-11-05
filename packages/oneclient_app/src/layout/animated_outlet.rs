@@ -38,12 +38,13 @@ const SETTINGS_KEY: &str = ",";
 const BACK_KEY: &str = "[";
 const FORWARD_KEY: &str = "]";
 
-/// The character of a Cmd chord with no Control, Shift or Alt, matched by what the key
-/// types so it follows the keyboard layout. macOS only for now
+/// The character of a Cmd (macOS) or Ctrl chord with no other modifier, matched
+/// by what the key types so it follows the keyboard layout
 fn shortcut_character(key: &Key, modifiers: Modifiers) -> Option<&str> {
-    let held = cfg!(target_os = "macos")
-        && modifiers.contains(Modifiers::META)
-        && !modifiers.intersects(Modifiers::CONTROL | Modifiers::SHIFT | Modifiers::ALT);
+    let primary = Modifiers::ctrl_or_meta();
+    let others = (Modifiers::META | Modifiers::CONTROL | Modifiers::SHIFT | Modifiers::ALT)
+        .difference(primary);
+    let held = modifiers.contains(primary) && !modifiers.intersects(others);
 
     match key {
         Key::Character(character) if held => Some(character.as_str()),
@@ -331,14 +332,19 @@ mod tests {
         assert_eq!(escape_action(&Route::Clusters {}), EscapeAction::Back);
     }
 
-    #[cfg(target_os = "macos")]
     #[test]
-    fn only_a_bare_cmd_chord_is_a_shortcut() {
+    fn only_a_bare_primary_chord_is_a_shortcut() {
         let key = Key::Character("[".to_string());
+        let primary = Modifiers::ctrl_or_meta();
+        let other = if cfg!(target_os = "macos") {
+            Modifiers::CONTROL
+        } else {
+            Modifiers::META
+        };
 
-        assert_eq!(shortcut_character(&key, Modifiers::META), Some("["));
-        for extra in [Modifiers::SHIFT, Modifiers::ALT, Modifiers::CONTROL] {
-            assert_eq!(shortcut_character(&key, Modifiers::META | extra), None);
+        assert_eq!(shortcut_character(&key, primary), Some("["));
+        for extra in [Modifiers::SHIFT, Modifiers::ALT, other] {
+            assert_eq!(shortcut_character(&key, primary | extra), None);
         }
         assert_eq!(shortcut_character(&key, Modifiers::empty()), None);
     }

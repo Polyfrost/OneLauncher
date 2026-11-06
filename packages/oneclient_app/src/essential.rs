@@ -22,7 +22,7 @@ impl Eq for EssentialPackage {}
 pub const ESSENTIAL_PACKAGES: &[EssentialPackage] = &[EssentialPackage {
     provider: ProviderId::Modrinth,
     project_id: "Iw9mZi4a",
-    name: "PolyPlus+",
+    name: "Poly+",
     disable_body: || t("oneclient.essential.polyplus.disable_body"),
     remove_body: || t("oneclient.essential.polyplus.remove_body"),
 }];
@@ -41,7 +41,7 @@ mod tests {
     fn polyplus_is_essential_on_modrinth_only() {
         assert_eq!(
             lookup(ProviderId::Modrinth, "Iw9mZi4a").map(|p| p.name),
-            Some("PolyPlus+")
+            Some("Poly+")
         );
         assert!(lookup(ProviderId::CurseForge, "Iw9mZi4a").is_none());
         assert!(lookup(ProviderId::Local, "Iw9mZi4a").is_none());

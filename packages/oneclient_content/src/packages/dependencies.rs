@@ -20,6 +20,8 @@ const MAX_DEPTH: usize = 4;
 
 const VERSION_WINDOW: usize = 50;
 
+const PRERELEASE_TAGS: [&str; 6] = ["alpha", "beta", "rc", "pre", "snapshot", "dev"];
+
 #[derive(Debug, Clone)]
 pub struct ResolvedDependency {
     pub project: ProjectDetail,
@@ -259,13 +261,34 @@ fn numeric_parts(text: &str) -> Option<Vec<u64>> {
     parts.filter(|parts| !parts.is_empty())
 }
 
-fn release_number(version: &str, mc_version: &str) -> Option<Vec<u64>> {
-    version
+fn prerelease_identifiers(token: &str) -> Option<Vec<String>> {
+    let lowered = token.to_ascii_lowercase();
+    PRERELEASE_TAGS
+        .iter()
+        .any(|tag| lowered.starts_with(tag))
+        .then(|| token.split('.').map(str::to_owned).collect())
+}
+
+#[derive(Debug, PartialEq, Eq)]
+struct Release {
+    core: Vec<u64>,
+    prerelease: Option<Vec<String>>,
+}
+
+fn release_number(version: &str, mc_version: &str) -> Option<Release> {
+    let mut tokens = version
         .split(['+', '-', '_', ' '])
         .filter(|token| !token.is_empty())
         .filter(|token| !token.to_ascii_lowercase().starts_with("mc"))
-        .filter(|token| *token != mc_version)
-        .find_map(numeric_parts)
+        .filter(|token| *token != mc_version);
+
+    let core = tokens.by_ref().find_map(numeric_parts)?;
+    let prerelease = match tokens.next() {
+        Some(token) => prerelease_identifiers(token),
+        None => version.ends_with('-').then(Vec::new),
+    };
+
+    Some(Release { core, prerelease })
 }
 
 fn compare_parts(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
@@ -274,6 +297,30 @@ fn compare_parts(a: &[u64], b: &[u64]) -> std::cmp::Ordering {
         .map(|index| a.get(index).unwrap_or(&0).cmp(b.get(index).unwrap_or(&0)))
         .find(|ordering| ordering.is_ne())
         .unwrap_or(std::cmp::Ordering::Equal)
+}
+
+fn compare_prereleases(a: &[String], b: &[String]) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+
+    a.iter()
+        .zip(b)
+        .map(|(a, b)| match (a.parse::<u64>(), b.parse::<u64>()) {
+            (Ok(a), Ok(b)) => a.cmp(&b),
+            (Ok(_), Err(_)) => Ordering::Less,
+            (Err(_), Ok(_)) => Ordering::Greater,
+            (Err(_), Err(_)) => a.cmp(b),
+        })
+        .find(|ordering| ordering.is_ne())
+        .unwrap_or_else(|| a.len().cmp(&b.len()))
+}
+
+fn compare_releases(a: &Release, b: &Release) -> std::cmp::Ordering {
+    compare_parts(&a.core, &b.core).then_with(|| match (&a.prerelease, &b.prerelease) {
+        (None, None) => std::cmp::Ordering::Equal,
+        (None, Some(_)) => std::cmp::Ordering::Greater,
+        (Some(_), None) => std::cmp::Ordering::Less,
+        (Some(a), Some(b)) => compare_prereleases(a, b),
+    })
 }
 
 fn satisfies(range: &VersionRange, version: &str, mc_version: &str) -> bool {
@@ -285,14 +332,14 @@ fn satisfies(range: &VersionRange, version: &str, mc_version: &str) -> bool {
         |bound: &Option<String>| bound.as_deref().and_then(|bound| release_number(bound, ""));
 
     if let Some(min) = bound(&range.min) {
-        let ordering = compare_parts(&found, &min);
+        let ordering = compare_releases(&found, &min);
         if ordering.is_lt() || (ordering.is_eq() && !range.min_inclusive) {
             return false;
         }
     }
 
     if let Some(max) = bound(&range.max) {
-        let ordering = compare_parts(&found, &max);
+        let ordering = compare_releases(&found, &max);
         if ordering.is_gt() || (ordering.is_eq() && !range.max_inclusive) {
             return false;
         }
@@ -693,7 +740,11 @@ mod tests {
             ("26.3.0.0.9", vec![26, 3, 0, 0, 9]),
             ("v2.1", vec![2, 1]),
         ] {
-            assert_eq!(release_number(version, "26.3"), Some(expected), "{version}");
+            assert_eq!(
+                release_number(version, "26.3").map(|release| release.core),
+                Some(expected),
+                "{version}"
+            );
         }
 
         assert_eq!(release_number("beta", "26.3"), None);
@@ -724,6 +775,28 @@ mod tests {
     #[test]
     fn an_unreadable_version_never_satisfies_a_range() {
         assert!(!satisfies(&VersionRange::at_least("1.0"), "beta", "26.3"));
+    }
+
+    #[test]
+    fn a_prerelease_sorts_below_its_release() {
+        let at_least = VersionRange::at_least("1.0.0");
+        assert!(!satisfies(&at_least, "1.0.0-beta.1", "26.3"));
+        assert!(!satisfies(&at_least, "mc26.3-1.0.0-rc.2+fabric", "26.3"));
+        assert!(satisfies(&at_least, "1.0.0", "26.3"));
+        assert!(satisfies(&at_least, "1.0.0-fabric", "26.3"));
+        assert!(satisfies(&at_least, "1.0.1-beta.1", "26.3"));
+
+        let beta = VersionRange::at_least("1.0.0-beta.2");
+        assert!(satisfies(&beta, "1.0.0-beta.10", "26.3"));
+        assert!(satisfies(&beta, "1.0.0-rc.1", "26.3"));
+        assert!(!satisfies(&beta, "1.0.0-beta.1", "26.3"));
+        assert!(!satisfies(&beta, "1.0.0-beta", "26.3"));
+
+        assert!(satisfies(
+            &VersionRange::at_least("1.0.0-"),
+            "1.0.0-alpha",
+            "26.3"
+        ));
     }
 
     #[test]

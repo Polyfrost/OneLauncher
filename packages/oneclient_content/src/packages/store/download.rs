@@ -119,7 +119,9 @@ async fn record_release(
     // this is the only moment it is guaranteed to be in hand. Keeping it is what
     // lets the launcher answer "what needs this?" later without a round trip
     // per installed package — see `crate::packages::dependents`.
-    store_release_dependencies(provider, project_id, version, ctx).await?;
+    if !version.is_cached() {
+        store_release_dependencies(provider, project_id, version, ctx).await?;
+    }
 
     Ok(())
 }

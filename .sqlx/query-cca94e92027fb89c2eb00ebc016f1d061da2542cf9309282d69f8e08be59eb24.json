@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT dependencies_synced_at IS NOT NULL as \"synced!: bool\"\n\t\tFROM provider_releases\n\t\tWHERE provider = ? AND project_id = ? AND version_id = ?\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "synced!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cca94e92027fb89c2eb00ebc016f1d061da2542cf9309282d69f8e08be59eb24"
+}

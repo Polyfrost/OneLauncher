@@ -12,7 +12,7 @@ mod release_migration_waitlist;
 mod setting_profile;
 
 pub use artifact::{
-    ArtifactRow, ClusterArtifactRow, ClusterDependencyEdgeRow, GlobalArtifactRow,
+    ArtifactRow, ClusterArtifactRow, ClusterDependencyEdgeRow, ClusterReleaseRow, GlobalArtifactRow,
     LinkedArtifactRow, ProviderReleaseRow, ReleaseDependencyRow, SeenStatus, UnsyncedReleaseRow,
 };
 pub use browser_package_update::BrowserPackageUpdateRow;

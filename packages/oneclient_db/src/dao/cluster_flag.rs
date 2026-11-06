@@ -7,6 +7,7 @@ pub enum ClusterFlag {
     ResetUnfinished,
     BundleJavaOverride,
     LoaderUpdate,
+    PinsUnsettled,
 }
 
 impl ClusterFlag {
@@ -16,6 +17,7 @@ impl ClusterFlag {
             Self::ResetUnfinished => "reset-unfinished",
             Self::BundleJavaOverride => "bundle-java-override",
             Self::LoaderUpdate => "loader-update",
+            Self::PinsUnsettled => "pins-unsettled",
         }
     }
 }

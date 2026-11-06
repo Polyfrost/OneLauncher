@@ -360,6 +360,7 @@ pub async fn install_package(
             provider,
             &version,
             cluster_id,
+            &state.bundles,
             &state.services.content(),
         )
         .await

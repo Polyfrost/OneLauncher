@@ -87,9 +87,11 @@ pub use oneclient_content::packages::dependents::{
     DependentPackage, DisableImpact, DisableRoot, disable_impact, ensure_cluster_dependencies,
 };
 pub use oneclient_content::packages::updates::{
-    BrowserPackageUpdate, BrowserUpdateCheck, apply_browser_package_update,
-    cached_browser_package_updates, check_browser_package_updates, refresh_browser_package_updates,
-    skip_browser_package_update,
+    BrowserPackageUpdate, BrowserUpdateCheck, StagedPackageUpdate, apply_browser_package_update,
+    bundle_changes_left,
+    apply_staged_package_update, cached_browser_package_updates, check_browser_package_updates,
+    cluster_wants_bundle_catalog, refresh_all_browser_package_updates, refresh_browser_package_updates, settle_pins, skip_browser_package_update,
+    stage_browser_package_update,
 };
 pub use oneclient_db::models::SeenStatus;
 pub use oneclient_discord::{DiscordRpc, Presence};

@@ -329,7 +329,7 @@ pub async fn install_package_from_bundle(
     Ok(hash)
 }
 
-async fn resolve_bundle_version(
+pub(crate) async fn resolve_bundle_version(
     provider: ProviderId,
     project_id: &str,
     version_id: &str,
@@ -339,7 +339,12 @@ async fn resolve_bundle_version(
     if is_base62(version_id) {
         return crate::packages::get_version_cached(ctx, provider, project_id, version_id).await;
     }
-    if let Ok(Some((_, version))) = ctx.providers.lookup_version(sha1, ctx).await {
+    if let Some(version) =
+        crate::packages::cached_version_by_hash(ctx, provider, project_id, sha1).await
+    {
+        return Ok(version);
+    }
+    if let Ok(Some(version)) = ctx.providers.lookup_version_on(provider, sha1, ctx).await {
         return Ok(version);
     }
     crate::packages::get_version_cached(ctx, provider, project_id, version_id).await
@@ -1214,7 +1219,11 @@ pub async fn remove_artifact_from_cluster(
     Ok(())
 }
 
-pub(crate) async fn detach_artifact(cluster_id: i64, hash: &str, ctx: &ContentCtx) -> ContentResult<()> {
+pub(crate) async fn detach_artifact(
+    cluster_id: i64,
+    hash: &str,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
     // Looked up first but never allowed to block removal
     // a package whose artifact row has gone missing must still be removable
     let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;

@@ -111,6 +111,50 @@ pub async fn get_version_cached(
         .await
 }
 
+#[tracing::instrument(level = "debug", skip(ctx, version), fields(version_id = %version.version_id))]
+pub(crate) async fn with_recorded_dependencies(
+    ctx: &ContentCtx,
+    provider: ProviderId,
+    version: VersionDetail,
+) -> ContentResult<VersionDetail> {
+    if !version.is_cached()
+        || artifact_dao::release_dependencies_synced(
+            &ctx.db,
+            provider as i64,
+            &version.project_id,
+            &version.version_id,
+        )
+        .await?
+    {
+        return Ok(version);
+    }
+
+    ctx.providers
+        .get(provider)?
+        .get_version(&version.project_id, &version.version_id, ctx)
+        .await
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub(crate) async fn cached_version_by_hash(
+    ctx: &ContentCtx,
+    provider: ProviderId,
+    project_id: &str,
+    sha1: &str,
+) -> Option<VersionDetail> {
+    let release = artifact_dao::get_project_release_by_hash(
+        &ctx.db,
+        provider as i64,
+        project_id,
+        &polyio::normalize_hash(sha1),
+    )
+    .await
+    .ok()
+    .flatten()?;
+
+    cached_version_detail(ctx, provider, project_id, &release.version_id).await
+}
+
 #[tracing::instrument(level = "debug", skip(ctx))]
 async fn cached_version_detail(
     ctx: &ContentCtx,
@@ -129,7 +173,7 @@ async fn cached_version_detail(
         .flatten()?;
 
     let path = artifact_absolute_path(&artifact.path).ok()?;
-    if !path.exists() {
+    if !oneclient_net::matches_on_disk(&path, &release.hash).await {
         return None;
     }
 
@@ -181,8 +225,6 @@ async fn cached_version_detail(
             fingerprint: None,
         }],
         // Recorded alongside the release since the reverse lookup needed them
-        // offline, so a cached version is no longer a version without a
-        // dependency list. A release from before that is simply empty here.
         dependencies,
     })
 }

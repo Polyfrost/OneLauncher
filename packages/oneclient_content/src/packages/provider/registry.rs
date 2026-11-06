@@ -122,25 +122,43 @@ impl PackageProviderRegistry {
         self.first_match(identity.clone(), ctx).await
     }
 
+    pub async fn lookup_version_on(
+        &self,
+        id: ProviderId,
+        sha1: impl AsRef<str>,
+        ctx: &ContentCtx,
+    ) -> ContentResult<Option<VersionDetail>> {
+        self.ask(id, &mut FileIdentity::from_sha1(sha1), ctx).await
+    }
+
     async fn first_match(
         &self,
         mut identity: FileIdentity,
         ctx: &ContentCtx,
     ) -> ContentResult<Option<(ProviderId, VersionDetail)>> {
         for id in self.remote_ids() {
-            if id == ProviderId::CurseForge {
-                enrich_curseforge_fingerprint(&mut identity, ctx).await?;
-            }
-
-            let provider = self.get(id)?;
-            let mut found = provider
-                .lookup_versions(std::slice::from_ref(&identity), ctx)
-                .await?;
-            if let Some(version) = found.remove(&identity.sha1) {
+            if let Some(version) = self.ask(id, &mut identity, ctx).await? {
                 return Ok(Some((id, version)));
             }
         }
         Ok(None)
+    }
+
+    async fn ask(
+        &self,
+        id: ProviderId,
+        identity: &mut FileIdentity,
+        ctx: &ContentCtx,
+    ) -> ContentResult<Option<VersionDetail>> {
+        if id == ProviderId::CurseForge {
+            enrich_curseforge_fingerprint(identity, ctx).await?;
+        }
+
+        let mut found = self
+            .get(id)?
+            .lookup_versions(std::slice::from_ref(identity), ctx)
+            .await?;
+        Ok(found.remove(&identity.sha1))
     }
 }
 

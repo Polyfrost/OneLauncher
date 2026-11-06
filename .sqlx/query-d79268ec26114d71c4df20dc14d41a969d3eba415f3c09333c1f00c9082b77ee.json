@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n\t\tSELECT\n\t\t\tca.hash,\n\t\t\tca.enabled,\n\t\t\tpr.provider as \"provider!: i64\",\n\t\t\tpr.project_id,\n\t\t\tpr.version_id,\n\t\t\tpr.display_name\n\t\tFROM cluster_artifacts ca\n\t\tJOIN provider_releases pr ON pr.hash = ca.hash\n\t\tWHERE ca.cluster_id = ?\n\t\tORDER BY pr.published_at DESC, pr.provider, pr.project_id, pr.version_id\n\t\t",
+  "describe": {
+    "columns": [
+      {
+        "name": "hash",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "hash"
+          }
+        }
+      },
+      {
+        "name": "enabled",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cluster_artifacts",
+            "name": "enabled"
+          }
+        }
+      },
+      {
+        "name": "provider!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "project_id",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "project_id"
+          }
+        }
+      },
+      {
+        "name": "version_id",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "version_id"
+          }
+        }
+      },
+      {
+        "name": "display_name",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "provider_releases",
+            "name": "display_name"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "d79268ec26114d71c4df20dc14d41a969d3eba415f3c09333c1f00c9082b77ee"
+}

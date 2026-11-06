@@ -5,27 +5,44 @@
 //! The `browser_package_updates` cache is only narrowed by a check that reached
 //! the provider so an offline run is a no-op rather than "all up to date"
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
-use futures_util::StreamExt;
+use futures_util::{StreamExt};
 
-use oneclient_common::domain::{ContentType, ProviderId};
+use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_db::dao::artifact as artifact_dao;
 use oneclient_db::dao::browser_package_update as update_dao;
+use oneclient_db::dao::cluster_bisect as bisect_dao;
 use oneclient_db::dao::cluster_bundle as bundle_dao;
-use oneclient_db::models::{BrowserPackageUpdateRow, ClusterRow, SeenStatus};
-use oneclient_events::GroupedProgressChild;
+use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
+use oneclient_db::models::{
+    BrowserPackageUpdateRow, ClusterReleaseRow, ClusterRow, OverrideType,
+    SeenStatus,
+};
+use oneclient_events::{GroupedProgressChild};
 
+use crate::bundles::install::{resolve_bundle_version, taken_bundle_names};
+use crate::bundles::{
+    BundleFile, BundleFileKind, BundlesManager, check_bundle_updates, cluster_has_bundle_content,
+    effective_enabled,
+};
 use crate::ctx::ContentCtx;
 use crate::error::{ContentError, ContentResult};
-use crate::packages::dependencies::{pick_version, resolve_required, resolves_dependencies};
-use crate::packages::store::PackageStore;
-use crate::packages::types::LinkedArtifactInfo;
+use crate::packages::dependencies::{
+    DependencyResolution, ResolvedDependency, pick_version, resolve_required_or_unpinned, resolve_required_pinned, resolves_dependencies,
+    };
+use crate::packages::metadata_cache::with_recorded_dependencies;
+use crate::packages::store::{PackageStore};
+use crate::packages::types::{LinkedArtifactInfo, ProjectDetail, VersionDetail};
+use crate::packages::{cached_project_detail, get_version_cached};
 
 /// Matches the bundle installer's fan-out
 /// the providers are the bottleneck
 const UPDATE_CHECK_CONCURRENCY: usize = 6;
+
+const PLAIN_LOOKUP_BUDGET: Duration = Duration::from_secs(4);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BrowserPackageUpdate {
@@ -68,14 +85,30 @@ pub struct BrowserUpdateCheck {
     /// Unreachable this run
     /// their cached rows are preserved not cleared
     pub unchecked: Vec<String>,
+    pub bundled: HashMap<String, String>,
+    pub unchecked_pins: Vec<String>,
+    pub pins_frozen: bool,
 }
 
 impl BrowserUpdateCheck {
     #[must_use]
     pub fn pending(&self) -> Vec<BrowserPackageUpdate> {
+        self.not_skipped(false)
+    }
+
+    #[must_use]
+    pub fn bundled_pending(&self) -> Vec<BrowserPackageUpdate> {
+        if self.unchecked_pins.is_empty() && !self.pins_frozen {
+            self.not_skipped(true)
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn not_skipped(&self, bundled: bool) -> Vec<BrowserPackageUpdate> {
         self.updates
             .iter()
-            .filter(|u| !u.skipped)
+            .filter(|u| !u.skipped && self.bundled.contains_key(&u.hash) == bundled)
             .cloned()
             .collect()
     }
@@ -141,14 +174,106 @@ pub(crate) fn browser_installed_any(
         .collect()
 }
 
-/// An unreachable project lands in [`BrowserUpdateCheck::unchecked`]
-/// only an unreadable cluster errors
-#[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn check_browser_package_updates(
-    cluster_id: i64,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct BundlePin {
+    pub(crate) version_id: String,
+    pub(crate) sha1: String,
+}
+
+pub(crate) type BundlePins = HashMap<(ProviderId, String), BundlePin>;
+
+fn pin_for<'a>(pins: &'a BundlePins, candidate: &Candidate) -> Option<&'a BundlePin> {
+    pins.get(&(candidate.provider, candidate.project_id.clone()))
+        .or_else(|| pins.values().find(|pin| pin.sha1 == candidate.hash))
+}
+
+fn pinned_release<'a>(
+    pins: &'a BundlePins,
+    releases: &'a [ClusterReleaseRow],
+    hash: &str,
+) -> Option<(&'a ClusterReleaseRow, ProviderId, &'a BundlePin)> {
+    releases
+        .iter()
+        .filter(|release| release.hash == hash)
+        .find_map(|release| {
+            let provider = ProviderId::from_repr(release.provider as u8)?;
+            let pin = pins.get(&(provider, release.project_id.clone()))?;
+            Some((release, provider, pin))
+        })
+}
+
+fn bundle_pins<'a>(files: impl Iterator<Item = &'a BundleFile>) -> BundlePins {
+    let mut pins = HashMap::new();
+    for file in files {
+        if let BundleFileKind::Managed {
+            provider,
+            project_id,
+            version_id,
+            sha1,
+        } = &file.kind
+        {
+            pins.entry((*provider, project_id.clone()))
+                .or_insert_with(|| BundlePin {
+                    version_id: version_id.clone(),
+                    sha1: sha1.clone(),
+                });
+        }
+    }
+    pins
+}
+
+pub(crate) async fn cluster_bundle_pins(
+    cluster: &ClusterRow,
+    bundles: &BundlesManager,
     ctx: &ContentCtx,
-) -> ContentResult<BrowserUpdateCheck> {
-    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+) -> ContentResult<BundlePins> {
+    let loader = GameLoader::from_repr(cluster.mc_loader as u8);
+    let (true, Some(loader)) = (cluster.uses_bundles(), loader) else {
+        return Ok(HashMap::new());
+    };
+
+    let archives = bundles
+        .archives_for(ctx, &cluster.mc_version, loader)
+        .await?;
+
+    let taken = taken_bundle_names(cluster.id, &archives, ctx).await?;
+    let live: HashSet<String> = bundle_dao::list_bundle_tracked(&ctx.db, cluster.id)
+        .await?
+        .into_iter()
+        .filter(|row| row.enabled != 0)
+        .filter_map(|row| row.bundle_name)
+        .collect();
+    let overrides: HashMap<(String, String), OverrideType> =
+        bundle_dao::list_overrides(&ctx.db, cluster.id)
+            .await?
+            .into_iter()
+            .filter_map(|row| {
+                let override_type = OverrideType::parse(&row.override_type)?;
+                Some(((row.bundle_name, row.package_id), override_type))
+            })
+            .collect();
+    let mut ranked: Vec<_> = archives
+        .iter()
+        .flat_map(|archive| {
+            let name = &archive.manifest.name;
+            archive.manifest.files.iter().map(move |file| (name, file))
+        })
+        .collect();
+    ranked.sort_by_key(|(name, file)| {
+        let user_override = overrides
+            .get(&((*name).clone(), file.kind.package_id()))
+            .copied();
+        (
+            !live.contains(*name),
+            !taken.contains(*name),
+            !effective_enabled(file, user_override),
+        )
+    });
+
+    Ok(bundle_pins(ranked.into_iter().map(|(_, file)| file)))
+}
+
+async fn plain_candidates(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<Vec<Candidate>> {
     let linked = PackageStore::list_linked_artifacts(cluster_id, ctx).await?;
 
     let tracked = bundle_dao::list_bundle_tracked(&ctx.db, cluster_id).await?;
@@ -158,25 +283,129 @@ pub async fn check_browser_package_updates(
         .collect();
     let bundle_hashes: HashSet<String> = tracked.into_iter().map(|row| row.hash).collect();
 
-    let candidates = browser_installed(&linked, &bundle_hashes, &bundle_projects);
-    if candidates.is_empty() {
-        return Ok(BrowserUpdateCheck {
-            cluster_id,
-            ..Default::default()
-        });
-    }
+    Ok(browser_installed(&linked, &bundle_hashes, &bundle_projects))
+}
 
-    let skipped: HashSet<String> = update_dao::list_for_cluster(&ctx.db, cluster_id)
+async fn bind_to_pinned_release(
+    candidates: &mut [Candidate],
+    cluster_id: i64,
+    pins: &BundlePins,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let releases = artifact_dao::list_cluster_releases(&ctx.db, cluster_id).await?;
+    for candidate in candidates {
+        if let Some((release, provider, _)) = pinned_release(pins, &releases, &candidate.hash) {
+            candidate.provider = provider;
+            candidate.project_id.clone_from(&release.project_id);
+            candidate.version_id.clone_from(&release.version_id);
+            candidate.published_at = artifact_dao::get_project_release_by_hash(
+                &ctx.db,
+                provider as i64,
+                &release.project_id,
+                &candidate.hash,
+            )
+            .await?
+            .and_then(|row| row.published_at)
+            .as_deref()
+            .and_then(parse_published);
+        }
+    }
+    Ok(())
+}
+
+async fn declined_versions(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<HashSet<String>> {
+    Ok(update_dao::list_for_cluster(&ctx.db, cluster_id)
         .await?
         .into_iter()
         .filter(|row| row.skipped != 0)
         .map(|row| format!("{}:{}", row.hash, row.latest_version_id))
-        .collect();
+        .collect())
+}
 
+fn is_on_pin(candidate: &Candidate, pin: &BundlePin) -> bool {
+    pin.version_id == candidate.version_id || pin.sha1 == candidate.hash
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn cluster_wants_bundle_catalog(
+    cluster_id: i64,
+    ctx: &ContentCtx,
+) -> ContentResult<bool> {
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    Ok(cluster.uses_bundles() && !plain_candidates(cluster_id, ctx).await?.is_empty())
+}
+
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
+pub async fn bundle_changes_left(
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<Vec<String>> {
+    if !flag_dao::is_set(&ctx.db, cluster_id, ClusterFlag::PinsUnsettled).await?
+        || bisect_dao::is_active(&ctx.db, cluster_id).await?
+        || !cluster_has_bundle_content(cluster_id, ctx).await?
+    {
+        return Ok(Vec::new());
+    }
+
+    let check = check_bundle_updates(cluster_id, bundles, ctx).await?;
+    let updates = check.updates_available.iter().map(|u| &u.new_file);
+    let additions = check.additions_available.iter().map(|a| &a.new_file);
+    Ok(updates
+        .chain(additions)
+        .map(BundleFile::display_name)
+        .chain(check.removals_available.into_iter().map(|r| r.package_id))
+        .collect())
+}
+
+#[tracing::instrument(level = "debug", skip(ctx))]
+pub async fn settle_pins(cluster_id: i64, ctx: &ContentCtx) -> ContentResult<()> {
+    flag_dao::clear(&ctx.db, cluster_id, ClusterFlag::PinsUnsettled).await?;
+    Ok(())
+}
+
+/// An unreachable project lands in [`BrowserUpdateCheck::unchecked`]
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
+pub async fn check_browser_package_updates(
+    cluster_id: i64,
+    plain_budget: Option<Duration>,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<BrowserUpdateCheck> {
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let pins_frozen = bisect_dao::is_active(&ctx.db, cluster_id).await?;
+
+    let mut candidates = plain_candidates(cluster_id, ctx).await?;
+    if candidates.is_empty() {
+        return Ok(BrowserUpdateCheck {
+            cluster_id,
+            pins_frozen,
+            ..Default::default()
+        });
+    }
+
+    let skipped = declined_versions(cluster_id, ctx).await?;
+
+    let pins = cluster_bundle_pins(&cluster, bundles, ctx).await?;
+    let pin_of = |candidate: &Candidate| pin_for(&pins, candidate);
+
+    bind_to_pinned_release(&mut candidates, cluster_id, &pins, ctx).await?;
+    candidates.sort_by_key(|candidate| pin_of(candidate).is_none());
+
+    let plain_deadline = plain_budget.map(|budget| tokio::time::Instant::now() + budget);
     let results = futures_util::stream::iter(candidates.into_iter().map(|candidate| {
         let cluster = &cluster;
+        let pin = pin_of(&candidate);
+        let deadline = plain_deadline.filter(|_| pin.is_none());
         async move {
-            let outcome = latest_for(&candidate, cluster, ctx).await;
+            let lookup = latest_for(&candidate, cluster, pin, ctx);
+            let outcome = match deadline {
+                Some(deadline) => match tokio::time::timeout_at(deadline, lookup).await {
+                    Ok(outcome) => outcome,
+                    Err(elapsed) => Err(std::io::Error::from(elapsed).into()),
+                },
+                None => lookup.await,
+            };
             (candidate, outcome)
         }
     }))
@@ -186,13 +415,20 @@ pub async fn check_browser_package_updates(
 
     let mut check = BrowserUpdateCheck {
         cluster_id,
+        pins_frozen,
         ..Default::default()
     };
 
     for (candidate, outcome) in results {
+        let pin = pin_of(&candidate);
         match outcome {
             Ok(Some((latest_version_id, latest_version_name))) => {
                 let key = format!("{}:{latest_version_id}", candidate.hash);
+                if let Some(pin) = pin {
+                    check
+                        .bundled
+                        .insert(candidate.hash.clone(), pin.version_id.clone());
+                }
                 check.updates.push(BrowserPackageUpdate {
                     cluster_id,
                     hash: candidate.hash,
@@ -203,7 +439,7 @@ pub async fn check_browser_package_updates(
                     latest_version_id,
                     latest_version_name,
                     display_name: candidate.display_name,
-                    skipped: skipped.contains(&key),
+                    skipped: pin.is_none() && skipped.contains(&key),
                 });
             }
             Ok(None) => {}
@@ -221,6 +457,9 @@ pub async fn check_browser_package_updates(
                         error = %err,
                         "update check failed for package"
                     );
+                }
+                if pin.is_some() {
+                    check.unchecked_pins.push(candidate.display_name);
                 }
                 check.unchecked.push(candidate.hash);
             }
@@ -243,44 +482,97 @@ fn is_upgrade(installed_published: Option<DateTime<Utc>>, latest_published: Date
 async fn latest_for(
     candidate: &Candidate,
     cluster: &ClusterRow,
+    pin: Option<&BundlePin>,
     ctx: &ContentCtx,
 ) -> ContentResult<Option<(String, String)>> {
-    let provider = ctx.providers.get(candidate.provider)?;
-    let Some(latest) = pick_version(provider, &candidate.project_id, cluster, ctx).await? else {
-        return Ok(None);
-    };
-
-    if latest.version_id == candidate.version_id {
+    if pin.is_some_and(|pin| is_on_pin(candidate, pin)) {
         return Ok(None);
     }
 
-    if !is_upgrade(candidate.published_at, latest.published) {
+    let (version_id, name, version_number, published) = match pin {
+        Some(pin) => {
+            let version = resolve_bundle_version(
+                candidate.provider,
+                &candidate.project_id,
+                &pin.version_id,
+                &pin.sha1,
+                ctx,
+            )
+            .await?;
+            (
+                version.version_id,
+                version.name,
+                version.version_number,
+                version.published,
+            )
+        }
+        None => {
+            let provider = ctx.providers.get(candidate.provider)?;
+            let Some(latest) = pick_version(provider, &candidate.project_id, cluster, ctx).await?
+            else {
+                return Ok(None);
+            };
+            (
+                latest.version_id,
+                latest.name,
+                latest.version_number,
+                latest.published,
+            )
+        }
+    };
+
+    if version_id == candidate.version_id {
+        return Ok(None);
+    }
+
+    // A pin is a floor, so a copy newer than it stays
+    if !is_upgrade(candidate.published_at, published) {
         tracing::debug!(
             project_id = %candidate.project_id,
             installed = %candidate.version_id,
-            offered = %latest.version_id,
+            offered = %version_id,
             "update not offered, the installed version is not older than the pick"
         );
         return Ok(None);
     }
 
-    let name = if latest.version_number.is_empty() {
-        latest.name
+    let name = if version_number.is_empty() {
+        name
     } else {
-        latest.version_number
+        version_number
     };
 
-    Ok(Some((latest.version_id, name)))
+    Ok(Some((version_id, name)))
+}
+
+pub async fn refresh_browser_package_updates(
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<BrowserUpdateCheck> {
+    refresh_with_budget(cluster_id, Some(PLAIN_LOOKUP_BUDGET), bundles, ctx).await
+}
+
+pub async fn refresh_all_browser_package_updates(
+    cluster_id: i64,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<BrowserUpdateCheck> {
+    refresh_with_budget(cluster_id, None, bundles, ctx).await
 }
 
 /// Unreported rows are dropped except unreachable ones which keep their last
 /// known state
-#[tracing::instrument(level = "debug", skip(ctx))]
-pub async fn refresh_browser_package_updates(
+#[tracing::instrument(level = "debug", skip(bundles, ctx))]
+async fn refresh_with_budget(
     cluster_id: i64,
+    plain_budget: Option<Duration>,
+    bundles: &BundlesManager,
     ctx: &ContentCtx,
 ) -> ContentResult<BrowserUpdateCheck> {
-    let check = check_browser_package_updates(cluster_id, ctx).await?;
+    let check = check_browser_package_updates(cluster_id, plain_budget, bundles, ctx).await?;
+
+    let rows = update_dao::list_for_cluster(&ctx.db, cluster_id).await?;
 
     let mut keep: Vec<String> = check.unchecked.clone();
     let mut stored = Vec::with_capacity(check.updates.len());
@@ -297,19 +589,31 @@ pub async fn refresh_browser_package_updates(
             &update.latest_version_id,
             &update.latest_version_name,
             &update.display_name,
+            update.skipped,
+            check.bundled.get(&update.hash).map(String::as_str),
         )
         .await?;
         keep.push(row.hash.clone());
-        // The row is the authority on `skipped` for this exact version
         stored.push(BrowserPackageUpdate::from_row(row));
     }
+
+    let disabled: HashSet<String> = PackageStore::list_linked_artifacts(cluster_id, ctx)
+        .await?
+        .into_iter()
+        .filter(|info| !info.enabled)
+        .map(|info| info.hash)
+        .collect();
+    keep.extend(
+        rows.into_iter()
+            .filter(|row| row.skipped != 0 && disabled.contains(&row.hash))
+            .map(|row| row.hash),
+    );
 
     update_dao::retain_hashes(&ctx.db, cluster_id, &keep).await?;
 
     Ok(BrowserUpdateCheck {
-        cluster_id,
         updates: stored,
-        unchecked: check.unchecked,
+        ..check
     })
 }
 
@@ -339,13 +643,17 @@ pub async fn skip_browser_package_update(
     Ok(())
 }
 
-/// Download first unlink second so a failed download leaves the cluster as it was
-#[tracing::instrument(level = "debug", skip(update, child, ctx), fields(cluster_id = update.cluster_id, project_id = %update.project_id))]
-pub async fn apply_browser_package_update(
+pub struct StagedPackageUpdate {
+    update: BrowserPackageUpdate,
+    project: ProjectDetail,
+    version: VersionDetail,
+    dependencies: Vec<ResolvedDependency>,
+}
+
+async fn ensure_not_bundle_owned(
     update: &BrowserPackageUpdate,
-    child: Option<&GroupedProgressChild>,
     ctx: &ContentCtx,
-) -> ContentResult<String> {
+) -> ContentResult<()> {
     // Never touch anything a bundle owns however this was called
     if bundle_dao::get_bundle_tracked(&ctx.db, update.cluster_id, &update.hash)
         .await?
@@ -358,27 +666,183 @@ pub async fn apply_browser_package_update(
             ),
         });
     }
+    Ok(())
+}
+
+async fn resolve_dependencies_on_pins(
+    provider: ProviderId,
+    cluster_id: i64,
+    version: &VersionDetail,
+    bundles: &BundlesManager,
+    ctx: &ContentCtx,
+) -> ContentResult<DependencyResolution> {
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let pins = cluster_bundle_pins(&cluster, bundles, ctx).await?;
+    resolve_required_pinned(provider, version, cluster_id, &pins, ctx).await
+}
+
+#[tracing::instrument(level = "debug", skip(update, bundles, child, ctx), fields(cluster_id = update.cluster_id, project_id = %update.project_id))]
+pub async fn stage_browser_package_update(
+    update: &BrowserPackageUpdate,
+    bundles: &BundlesManager,
+    child: Option<&GroupedProgressChild>,
+    ctx: &ContentCtx,
+) -> ContentResult<StagedPackageUpdate> {
+    ensure_not_bundle_owned(update, ctx).await?;
+
+    let content_type = artifact_dao::get_artifact_by_hash(&ctx.db, &update.hash)
+        .await?
+        .and_then(|artifact| ContentType::from_repr(artifact.content_type as u8))
+        .unwrap_or(ContentType::Mod);
+    let project =
+        cached_project_detail(ctx, update.provider, &update.project_id, content_type).await;
+    let version = get_version_cached(
+        ctx,
+        update.provider,
+        &update.project_id,
+        &update.latest_version_id,
+    )
+    .await?;
+    let version = with_recorded_dependencies(ctx, update.provider, version).await?;
+
+    let resolution = if resolves_dependencies(project.content_type) {
+        let resolution = resolve_dependencies_on_pins(
+            update.provider,
+            update.cluster_id,
+            &version,
+            bundles,
+            ctx,
+        )
+        .await?;
+        if !resolution.unresolved.is_empty() {
+            return Err(ContentError::InvalidData {
+                reason: format!(
+                    "{} needs {}, which could not be resolved",
+                    update.display_name,
+                    resolution.unresolved.join(", ")
+                ),
+            });
+        }
+        if !resolution.switched_off.is_empty() {
+            return Err(ContentError::InvalidData {
+                reason: format!(
+                    "{} needs {}, which is switched off",
+                    update.display_name,
+                    resolution.switched_off.join(", ")
+                ),
+            });
+        }
+        resolution
+    } else {
+        DependencyResolution::default()
+    };
+    for dependency in &resolution.install {
+        PackageStore::download_and_cache(
+            update.provider,
+            &dependency.project,
+            &dependency.version,
+            false,
+            None,
+            ctx,
+        )
+        .await?;
+    }
+    PackageStore::download_and_cache(update.provider, &project, &version, false, child, ctx)
+        .await?;
+
+    Ok(StagedPackageUpdate {
+        update: update.clone(),
+        project,
+        version,
+        dependencies: resolution.install,
+    })
+}
+
+#[tracing::instrument(level = "debug", skip(staged, ctx), fields(cluster_id = staged.update.cluster_id, project_id = %staged.update.project_id))]
+pub async fn apply_staged_package_update(
+    staged: &StagedPackageUpdate,
+    ctx: &ContentCtx,
+) -> ContentResult<String> {
+    flag_dao::set(
+        &ctx.db,
+        staged.update.cluster_id,
+        ClusterFlag::PinsUnsettled,
+        None,
+    )
+    .await?;
+
+    for dependency in &staged.dependencies {
+        install_dependency(
+            staged.update.provider,
+            staged.update.cluster_id,
+            dependency,
+            ctx,
+        )
+        .await?;
+    }
+
+    replace_package(&staged.update, &staged.project, &staged.version, None, ctx).await
+}
+
+/// Download first unlink second so a failed download leaves the cluster as it was
+#[tracing::instrument(level = "debug", skip(update, bundles, child, ctx), fields(cluster_id = update.cluster_id, project_id = %update.project_id))]
+pub async fn apply_browser_package_update(
+    update: &BrowserPackageUpdate,
+    bundles: &BundlesManager,
+    child: Option<&GroupedProgressChild>,
+    ctx: &ContentCtx,
+) -> ContentResult<String> {
+    ensure_not_bundle_owned(update, ctx).await?;
 
     let provider = ctx.providers.get(update.provider)?;
     let project = provider.get_project(&update.project_id, ctx).await?;
     let version = provider
         .get_version(&update.project_id, &update.latest_version_id, ctx)
         .await?;
+    let dependencies = new_dependencies(
+        update.provider,
+        update.cluster_id,
+        &project,
+        &version,
+        bundles,
+        ctx,
+    )
+    .await?;
 
+    for dependency in &dependencies {
+        if let Err(err) =
+            install_dependency(update.provider, update.cluster_id, dependency, ctx).await
+        {
+            tracing::warn!(
+                dependency = %dependency.project.name,
+                %err,
+                "failed to install a dependency the newer version needs"
+            );
+        }
+    }
+
+    replace_package(update, &project, &version, child, ctx).await
+}
+
+async fn replace_package(
+    update: &BrowserPackageUpdate,
+    project: &ProjectDetail,
+    version: &VersionDetail,
+    child: Option<&GroupedProgressChild>,
+    ctx: &ContentCtx,
+) -> ContentResult<String> {
     let enabled_before =
         artifact_dao::get_cluster_artifact(&ctx.db, update.cluster_id, &update.hash)
             .await?
             .map(|link| link.enabled != 0);
-
-    install_new_dependencies(update.provider, update.cluster_id, &project, &version, ctx).await;
 
     // Compatibility is not re-checked
     // a provider disagreeing at install time would strand the user on a build
     // they cannot move off
     let (installed, _) = PackageStore::install_to_cluster(
         update.provider,
-        &project,
-        &version,
+        project,
+        version,
         update.cluster_id,
         true,
         false,
@@ -413,66 +877,61 @@ pub async fn apply_browser_package_update(
     Ok(installed.hash)
 }
 
-#[tracing::instrument(level = "debug", skip(project, version, ctx))]
-pub(crate) async fn install_new_dependencies(
+#[tracing::instrument(level = "debug", skip(project, version, bundles, ctx))]
+async fn new_dependencies(
     provider: ProviderId,
     cluster_id: i64,
-    project: &crate::packages::types::ProjectDetail,
-    version: &crate::packages::types::VersionDetail,
+    project: &ProjectDetail,
+    version: &VersionDetail,
+    bundles: &BundlesManager,
     ctx: &ContentCtx,
-) {
+) -> ContentResult<Vec<ResolvedDependency>> {
     if !resolves_dependencies(project.content_type) {
-        return;
+        return Ok(Vec::new());
     }
 
-    let resolution = match resolve_required(provider, version, cluster_id, ctx).await {
-        Ok(resolution) => resolution,
-        Err(err) => {
-            tracing::warn!(%err, "dependency resolution failed, updating the package alone");
-            return;
-        }
-    };
+    let cluster = PackageStore::get_cluster(cluster_id, ctx).await?;
+    let mut pins = cluster_bundle_pins(&cluster, bundles, ctx).await?;
+    let resolution =
+        resolve_required_or_unpinned(provider, version, cluster_id, &mut pins, ctx).await?;
 
     for missing in &resolution.unresolved {
         tracing::warn!(dependency = %missing, "no compatible version for a new dependency");
     }
 
-    for dependency in &resolution.install {
-        match PackageStore::install_to_cluster(
-            provider,
-            &dependency.project,
-            &dependency.version,
-            cluster_id,
-            true,
-            false,
-            None,
-            ctx,
-        )
-        .await
-        {
-            Ok((artifact, _)) => {
-                tracing::info!(
-                    dependency = %dependency.project.name,
-                    "installed a dependency the newer version needs"
-                );
-                if let Err(err) = artifact_dao::set_seen_status(
-                    &ctx.db,
-                    cluster_id,
-                    &artifact.hash,
-                    SeenStatus::New,
-                )
-                .await
-                {
-                    tracing::debug!(%err, "could not mark a new dependency as new");
-                }
-            }
-            Err(err) => tracing::warn!(
-                dependency = %dependency.project.name,
-                %err,
-                "failed to install a dependency the newer version needs"
-            ),
-        }
+    Ok(resolution.install)
+}
+
+#[tracing::instrument(level = "debug", skip(dependency, ctx))]
+async fn install_dependency(
+    provider: ProviderId,
+    cluster_id: i64,
+    dependency: &ResolvedDependency,
+    ctx: &ContentCtx,
+) -> ContentResult<()> {
+    let (artifact, _) = PackageStore::install_to_cluster(
+        provider,
+        &dependency.project,
+        &dependency.version,
+        cluster_id,
+        true,
+        false,
+        None,
+        ctx,
+    )
+    .await?;
+
+    tracing::info!(
+        dependency = %dependency.project.name,
+        "installed a dependency the newer version needs"
+    );
+    if let Err(err) =
+        artifact_dao::set_seen_status(&ctx.db, cluster_id, &artifact.hash, SeenStatus::New).await
+    {
+        tracing::debug!(%err, "could not mark a new dependency as new");
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -585,11 +1044,104 @@ mod tests {
             cluster_id: 1,
             updates: vec![make("a", true), make("b", false)],
             unchecked: Vec::new(),
+            bundled: HashMap::new(),
+            unchecked_pins: Vec::new(),
+            pins_frozen: false,
         };
 
         let pending = check.pending();
         assert_eq!(pending.len(), 1);
         assert_eq!(pending[0].hash, "b");
+    }
+
+    #[test]
+    fn a_pinned_update_leaves_the_mode_gated_list() {
+        let make = |hash: &str, skipped: bool| BrowserPackageUpdate {
+            cluster_id: 1,
+            hash: hash.into(),
+            provider: ProviderId::Modrinth,
+            project_id: hash.into(),
+            installed_version_id: "v1".into(),
+            installed_version_name: "1.0".into(),
+            latest_version_id: "v2".into(),
+            latest_version_name: "2.0".into(),
+            display_name: hash.into(),
+            skipped,
+        };
+
+        let check = BrowserUpdateCheck {
+            cluster_id: 1,
+            updates: vec![
+                make("pinned", false),
+                make("declined", true),
+                make("own", false),
+            ],
+            unchecked: Vec::new(),
+            bundled: ["pinned", "declined"]
+                .into_iter()
+                .map(|hash| (hash.to_string(), "v2".to_string()))
+                .collect(),
+            unchecked_pins: Vec::new(),
+            pins_frozen: false,
+        };
+
+        let hashes = |updates: Vec<BrowserPackageUpdate>| -> Vec<String> {
+            updates.into_iter().map(|update| update.hash).collect()
+        };
+        assert_eq!(hashes(check.bundled_pending()), ["pinned"]);
+        assert_eq!(hashes(check.pending()), ["own"]);
+
+        let waiting = BrowserUpdateCheck {
+            unchecked_pins: vec!["other".to_string()],
+            ..check.clone()
+        };
+        assert!(
+            waiting.bundled_pending().is_empty(),
+            "a pin that could not be looked up holds the others back"
+        );
+        assert_eq!(hashes(waiting.pending()), ["own"]);
+
+        let frozen = BrowserUpdateCheck {
+            pins_frozen: true,
+            ..check
+        };
+        assert!(frozen.bundled_pending().is_empty());
+        assert_eq!(hashes(frozen.pending()), ["own"]);
+    }
+
+    #[test]
+    fn a_declined_bundle_still_pins_what_it_ships() {
+        let managed = |project: &str, version: &str| BundleFile {
+            enabled: false,
+            hidden: false,
+            path: format!("mods/{project}.jar"),
+            size: 1,
+            file_type: crate::bundles::BundleFileType::Normal,
+            kind: BundleFileKind::Managed {
+                provider: ProviderId::Modrinth,
+                project_id: project.into(),
+                version_id: version.into(),
+                sha1: "a".repeat(40),
+            },
+        };
+
+        let pins = bundle_pins(
+            [
+                managed("evergreenhud", "v3.9.13"),
+                managed("evergreenhud", "v0"),
+            ]
+            .iter(),
+        );
+
+        assert_eq!(pins.len(), 1);
+        assert_eq!(
+            pins.get(&(ProviderId::Modrinth, "evergreenhud".to_string())),
+            Some(&BundlePin {
+                version_id: "v3.9.13".to_string(),
+                sha1: "a".repeat(40),
+            }),
+            "the first bundle listing a project sets its pin"
+        );
     }
 
     #[test]

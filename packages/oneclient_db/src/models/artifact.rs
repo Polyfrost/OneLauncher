@@ -112,6 +112,16 @@ pub struct ClusterDependencyEdgeRow {
 	pub kind: String,
 }
 
+#[derive(Debug, Clone, FromRow)]
+pub struct ClusterReleaseRow {
+	pub hash: String,
+	pub enabled: i64,
+	pub provider: i64,
+	pub project_id: String,
+	pub version_id: String,
+	pub display_name: String,
+}
+
 /// A release the cluster has installed whose dependency list was never
 /// recorded.
 #[derive(Debug, Clone, FromRow)]

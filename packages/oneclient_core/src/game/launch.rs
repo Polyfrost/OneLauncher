@@ -48,6 +48,17 @@ pub async fn launch_cluster(
     account: &MinecraftAccount,
     search_for_java: bool,
 ) -> LauncherResult<LaunchedGame> {
+    launch_cluster_with(state, cluster_id, account, search_for_java, None).await
+}
+
+#[tracing::instrument(skip(state, account))]
+pub async fn launch_cluster_with(
+    state: &Arc<LauncherState>,
+    cluster_id: i64,
+    account: &MinecraftAccount,
+    search_for_java: bool,
+    extra_jvm_arg: Option<&str>,
+) -> LauncherResult<LaunchedGame> {
     tracing::info!(cluster_id, search_for_java, "launching cluster");
 
     // Parallel clusters or not a cluster runs only once a second game would
@@ -60,7 +71,7 @@ pub async fn launch_cluster(
         return Err(GameError::AlreadyRunning(cluster_id).into());
     }
 
-    let result = start(state, cluster_id, account, search_for_java).await;
+    let result = start(state, cluster_id, account, search_for_java, extra_jvm_arg).await;
 
     if result.is_err() {
         state.games.remove(cluster_id);
@@ -73,11 +84,20 @@ pub async fn launch_cluster(
     result
 }
 
+fn jvm_args_with(profile_args: Option<&str>, extra: Option<&str>) -> String {
+    match (profile_args.unwrap_or_default(), extra) {
+        ("", Some(extra)) => extra.to_string(),
+        (args, Some(extra)) => format!("{args} {extra}"),
+        (args, None) => args.to_string(),
+    }
+}
+
 async fn start(
     state: &Arc<LauncherState>,
     cluster_id: i64,
     account: &MinecraftAccount,
     search_for_java: bool,
+    extra_jvm_arg: Option<&str>,
 ) -> LauncherResult<LaunchedGame> {
     let events = state.services.events.clone();
     let stage = |s: LaunchStage| {
@@ -391,7 +411,7 @@ async fn start(
         profile
             .mem_max
             .unwrap_or_else(oneclient_common::default_mem_max),
-        profile.launch_args.clone().unwrap_or_default(),
+        jvm_args_with(profile.launch_args.as_deref(), extra_jvm_arg),
         &java.os_arch,
         java.major,
     )?;
@@ -1223,5 +1243,18 @@ mod tests {
     fn an_unobserved_exit_counts_when_the_game_wrote_a_crash_report() {
         assert!(counts_as_crash(&Exit::Inferred, None, true));
         assert!(!counts_as_crash(&Exit::Inferred, None, false));
+    }
+}
+
+#[cfg(test)]
+mod jvm_arg_tests {
+    use super::jvm_args_with;
+
+    #[test]
+    fn the_extra_argument_lands_after_the_profile() {
+        assert_eq!(jvm_args_with(Some("-Xss2m"), Some("-Da=1")), "-Xss2m -Da=1");
+        assert_eq!(jvm_args_with(None, Some("-Da=1")), "-Da=1");
+        assert_eq!(jvm_args_with(Some("-Xss2m"), None), "-Xss2m");
+        assert_eq!(jvm_args_with(None, None), "");
     }
 }

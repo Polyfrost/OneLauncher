@@ -70,7 +70,10 @@ pub async fn commit(
             {
                 reply.retry_after
             }
-            Err(PlusError::Request(err)) if err.is_timeout() || err.is_connect() => None,
+            Err(
+                PlusError::Reqwest(err)
+                | PlusError::Request(oneclient_net::RequestError::ReqwestError(err)),
+            ) if err.is_timeout() || err.is_connect() => None,
             _ => return sent,
         };
         if attempt >= COMMIT_ATTEMPTS {

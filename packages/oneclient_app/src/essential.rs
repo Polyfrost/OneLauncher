@@ -19,13 +19,15 @@ impl PartialEq for EssentialPackage {
 
 impl Eq for EssentialPackage {}
 
-pub const ESSENTIAL_PACKAGES: &[EssentialPackage] = &[EssentialPackage {
+pub const POLYPLUS: EssentialPackage = EssentialPackage {
     provider: ProviderId::Modrinth,
     project_id: "Iw9mZi4a",
     name: "Poly+",
     disable_body: || t("oneclient.essential.polyplus.disable_body"),
     remove_body: || t("oneclient.essential.polyplus.remove_body"),
-}];
+};
+
+pub const ESSENTIAL_PACKAGES: &[EssentialPackage] = &[POLYPLUS];
 
 pub fn lookup(provider: ProviderId, package_id: &str) -> Option<&'static EssentialPackage> {
     ESSENTIAL_PACKAGES

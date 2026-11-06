@@ -11,7 +11,7 @@ use crate::Route;
 use crate::components::Button;
 use crate::components::{
     ART_PREVIEW_EDGE, AppNavbar, CodeBlock, CrashDialog, DynamicArt, FileDropOverlay, Icon,
-    IconType, OverlayPopup, accept_drop, copy_button,
+    IconType, OverlayPopup, accept_drop, copy_button, use_provide_lobby,
 };
 use crate::i18n::{t, tf};
 use crate::layout::AnimatedAppOutlet;
@@ -22,9 +22,10 @@ use oneclient_db::models::ClusterId;
 
 use crate::hooks::{
     ActiveClusterState, BROWSER_COMPAT_DEFAULT, BrowserCompatState, BrowserStateStore,
-    BrowserTypeState, DataPackWorldState, use_active_cluster_id, use_clusters, use_dispatch,
-    use_game_snapshot, use_launcher, use_provide_active_cluster, use_provide_browser_compat,
-    use_provide_browser_state, use_provide_browser_type, use_provide_datapack_world, use_splash,
+    BrowserTypeState, DataPackWorldState, settled_or_loading, use_active_cluster_id,
+    use_clusters, use_current_account, use_dispatch, use_game_snapshot, use_launcher,
+    use_provide_active_cluster, use_provide_browser_compat, use_provide_browser_state,
+    use_provide_browser_type, use_provide_datapack_world, use_splash,
 };
 use crate::theme::{colors, rounded, text_size};
 use crate::utils::home_cluster;
@@ -39,6 +40,7 @@ impl Component for AppShell {
     fn render(&self) -> impl IntoElement {
         let active_cluster = use_state(|| None::<ClusterId>);
         use_provide_active_cluster(ActiveClusterState(active_cluster));
+        use_provide_lobby();
 
         let browser_compat = use_state(|| BROWSER_COMPAT_DEFAULT);
         use_provide_browser_compat(BrowserCompatState(browser_compat));
@@ -51,6 +53,11 @@ impl Component for AppShell {
 
         let datapack_world = use_state(HashMap::new);
         use_provide_datapack_world(DataPackWorldState(datapack_world));
+
+        let dispatch = use_dispatch();
+        if let Some(account) = settled_or_loading(&use_current_account()) {
+            dispatch.sync_chat_owner(account.as_ref());
+        }
 
         // `FileDrop` bubbles so anything a drop zone doesn't `stop_propagation()` lands here
         let mut drop_hovering = use_state(|| false);

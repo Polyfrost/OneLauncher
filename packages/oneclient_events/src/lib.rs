@@ -13,8 +13,8 @@ pub mod prompt;
 pub use bus::{EventBus, EventReceiver, NotificationBuilder};
 pub use error::{EventError, EventResult};
 pub use event::{
-    CrashFix, CrashMod, CrashModAction, CrashModIssue, CrashModIssueKind, CrashRemedy, Event,
-    GameCrash, GameEvent, LaunchStage, Level, Message, Notification, ProgressEvent, Signal,
+    ChatEvent, CrashFix, CrashMod, CrashModAction, CrashModIssue, CrashModIssueKind, CrashRemedy,
+    Event, GameCrash, GameEvent, LaunchStage, Level, Message, Notification, ProgressEvent, Signal,
     VersionRange,
 };
 pub use progress::{

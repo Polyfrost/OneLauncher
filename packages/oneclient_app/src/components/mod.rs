@@ -24,11 +24,13 @@ mod file_drop;
 mod filter_menu;
 mod flagged_install_popup;
 mod generic_prompt;
+mod invite_join_popup;
 mod icons;
 mod instance_row;
 mod java_install_manager;
 mod java_prompt;
 mod link_confirm;
+mod lobby;
 mod local_image;
 mod log_viewer;
 mod markdown;
@@ -68,6 +70,8 @@ mod version_card;
 mod warning_card;
 
 pub use cluster_menu::{ClusterContextMenu, ClusterMenuTarget};
+pub(crate) use lobby::modal;
+pub use lobby::{LobbyHeroChip, PartyTab, use_player_name, use_provide_lobby};
 pub use account_switcher::AccountSwitcher;
 pub use active_cluster_panel::ActiveClusterPanel;
 pub use asset_image::AssetImage;
@@ -94,6 +98,7 @@ pub use filter_menu::{FilterMenu, FilterOption};
 pub use flagged_install_popup::FlaggedInstallPopup;
 pub(crate) use flagged_install_popup::explanation_panel;
 pub use generic_prompt::GenericPromptOverlay;
+pub use invite_join_popup::InviteJoinPopup;
 pub use icons::{Icon, IconTint, IconType};
 pub use instance_row::InstanceRow;
 pub use java_install_manager::JavaInstallManager;
@@ -111,7 +116,10 @@ pub(crate) use navbar::window_controls;
 pub use navbar::{AppNavbar, OnboardingNavbar};
 pub use notifications::{ChevronToggle, NotificationCenter};
 pub use optional_mods_popup::OptionalModsPopup;
-pub use overlay_popup::{OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost, use_open_level};
+pub use overlay_popup::{
+    OVERLAY_BASE_LEVEL, OVERLAY_MAX_LEVEL, OverlayPopup, overlay_is_topmost, popup_surface,
+    use_open_level, use_popup_intro,
+};
 pub use package_delete_dialog::use_shared_delete;
 pub(crate) use package_row::{
     CARD_GRID_H, CARD_H, GRID_GAP, GRID_MIN_W, badge, bundled_delete_action, disable_request,

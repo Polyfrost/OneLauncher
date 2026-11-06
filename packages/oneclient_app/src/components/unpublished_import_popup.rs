@@ -7,7 +7,7 @@ use crate::components::{
 use crate::hooks::{use_dispatch, use_notifications_snapshot};
 use crate::i18n::{t, tf};
 use crate::notifications::{UnpublishedImport, UnpublishedInstance};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 use crate::utils::count_label;
 
@@ -122,7 +122,7 @@ fn dialog(
         .max_width(Size::window_percent(95.))
         .spacing(SECTION_GAP)
         .padding(Gaps::new_all(DIALOG_PAD))
-        .corner_radius(CornerRadius::new_all(16.))
+        .corner_radius(rounded(16.))
         .background(colors::card())
         .border(border_all_color(1., colors::component_border()))
         .shadow(Shadow::from((
@@ -140,7 +140,7 @@ fn dialog(
                 .child(
                     label()
                         .text(title)
-                        .font_size(17.)
+                        .font_size(text_size(17.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(2)
                         .color(colors::fg_primary()),
@@ -148,7 +148,7 @@ fn dialog(
                 .child(
                     label()
                         .text(subtitle)
-                        .font_size(12.5)
+                        .font_size(text_size(12.5))
                         .max_lines(3)
                         .color(colors::fg_secondary()),
                 ),

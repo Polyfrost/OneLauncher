@@ -4957,10 +4957,13 @@ version = "2.9.0"
 dependencies = [
  "async-tungstenite 0.35.0",
  "bytes 1.12.1",
+ "chrono",
  "futures-util",
  "image",
  "oneclient_auth",
  "oneclient_common",
+ "oneclient_events",
+ "oneclient_net",
  "polyio",
  "rand 0.10.3",
  "reqwest 0.13.5",

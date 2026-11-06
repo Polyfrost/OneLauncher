@@ -2,7 +2,7 @@ use freya::animation::*;
 use freya::prelude::*;
 use freya::router::RouterContext;
 
-use crate::components::{Button, Icon, IconType};
+use crate::components::{Button, Icon, IconType, LobbyHeroChip};
 use oneclient_common::parse_mc_version;
 use oneclient_core::clusters::ClusterKind;
 
@@ -73,7 +73,8 @@ impl Component for ActiveClusterPanel {
                         .text(t("oneclient.components.active_cluster_panel.empty"))
                         .font_size(text_size(24.))
                         .color(colors::on_art_secondary()),
-                );
+                )
+                .child(LobbyHeroChip);
         };
 
         let version = format!("{} {}", cluster.mc_version, cluster.mc_loader);
@@ -132,6 +133,7 @@ impl Component for ActiveClusterPanel {
                     ))
                     .child(cluster_settings_button(cluster_id)),
             )
+            .child(LobbyHeroChip)
     }
 }
 

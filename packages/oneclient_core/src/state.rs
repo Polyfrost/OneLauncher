@@ -75,9 +75,9 @@ impl LauncherState {
         let settings = store::load_settings(Some(&services.events)).await;
 
         oneclient_common::consent::init(settings.declined_tos);
-        services
-            .requester
-            .set_config(crate::settings::net_config(&settings));
+        let net_config = crate::settings::net_config(&settings);
+        oneclient_polyplus::set_base_url(&net_config.plus_api_url);
+        services.requester.set_config(net_config);
         let auth =
             Arc::new(AuthService::load(services.requester.clone(), services.events.clone()).await?);
         let java = JavaService::new(

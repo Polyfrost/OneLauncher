@@ -107,6 +107,11 @@ pub fn relative_time(created_at: Instant) -> String {
     }
 }
 
+pub fn relative_since(at: chrono::DateTime<chrono::Utc>) -> String {
+    let elapsed = (chrono::Utc::now() - at).to_std().unwrap_or_default();
+    relative_time(Instant::now().checked_sub(elapsed).unwrap_or_else(Instant::now))
+}
+
 pub fn last_played_label(ts: Option<chrono::DateTime<chrono::Utc>>) -> String {
     let Some(ts) = ts else {
         return t("oneclient.ui.last_played.never").to_string();

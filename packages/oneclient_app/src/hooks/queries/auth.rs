@@ -8,6 +8,8 @@ use oneclient_auth::{AccountKind, MicrosoftLoginSession, MinecraftAccount};
 use oneclient_core::LauncherError;
 use uuid::Uuid;
 
+const SIGN_OUT_LEAVE_LIMIT: std::time::Duration = std::time::Duration::from_secs(10);
+
 static HANDLED_LOGIN_CODE: Mutex<Option<String>> = Mutex::new(None);
 
 pub fn login_code_already_handled(user_code: &str) -> bool {
@@ -233,6 +235,28 @@ impl MutationCapability for AddOfflineAccountMutation {
     }
 }
 
+async fn leave_party_before_sign_out(auth: std::sync::Arc<oneclient_auth::AuthService>, id: Uuid) {
+    let left = crate::launcher::off_ui(async move {
+        tokio::time::timeout(SIGN_OUT_LEAVE_LIMIT, async {
+            let account = auth
+                .account_for_launch(id)
+                .await
+                .map_err(|err| err.to_string())?;
+            oneclient_polyplus::party::leave_for_sign_out(&account)
+                .await
+                .map_err(|err| err.to_string())
+        })
+        .await
+        .map_err(|_| "timed out".to_string())
+        .and_then(|left| left)
+    })
+    .await;
+
+    if let Err(err) = left {
+        tracing::warn!(%id, "could not leave the party before signing out: {err}");
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct RemoveAccountMutation;
 
@@ -247,10 +271,9 @@ impl MutationCapability for RemoveAccountMutation {
     type Keys = RemoveAccountKeys;
 
     async fn run(&self, keys: &Self::Keys) -> Result<Self::Ok, Self::Err> {
-        Ok(crate::launcher::state()?
-            .auth
-            .remove_account(keys.id)
-            .await?)
+        let state = crate::launcher::state()?;
+        leave_party_before_sign_out(state.auth.clone(), keys.id).await;
+        Ok(state.auth.remove_account(keys.id).await?)
     }
 
     async fn on_settled(&self, keys: &Self::Keys, result: &Result<Self::Ok, Self::Err>) {

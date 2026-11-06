@@ -1,12 +1,11 @@
-use freya::{
-    animation::{AnimNum, Ease, OnCreation, use_animation},
-    prelude::*,
-    router::RouterContext,
-};
+use freya::{prelude::*, router::RouterContext};
 
 use crate::{
     Route,
-    components::{Avatar, Button, Icon, IconType, OVERLAY_MAX_LEVEL, OverlayPopup},
+    components::{
+        Avatar, Button, Icon, IconType, OVERLAY_MAX_LEVEL, OverlayPopup, popup_surface,
+        use_popup_intro,
+    },
     hooks::{
         RemoveAccountKeys, query_error, query_is_loading, try_accounts, try_default_account,
         use_accounts, use_control_center_open, use_current_account, use_dispatch,
@@ -44,35 +43,10 @@ struct ControlPanel;
 
 impl Component for ControlPanel {
     fn render(&self) -> impl IntoElement {
-        let intro = use_animation(|conf| {
-            conf.on_creation(OnCreation::Run);
-            AnimNum::new(0., 1.).time(200).ease(Ease::Out)
-        });
-        let progress = intro.read().value();
-
-        rect()
-            .vertical()
+        popup_surface(use_popup_intro())
             .width(Size::px(PANEL_WIDTH))
             .padding(Gaps::new_all(12.))
             .spacing(10.)
-            .opacity(progress)
-            .margin(Gaps::new((1.0 - progress) * -8.0, 0., 0., 0.))
-            .background(colors::page_elevated().with_a(220))
-            .backdrop_blur(12.)
-            .corner_radius(rounded(14.))
-            .border(
-                Border::new()
-                    .fill(colors::component_border())
-                    .width(1.)
-                    .alignment(BorderAlignment::Inner),
-            )
-            .shadow(Shadow::from((
-                0.,
-                8.,
-                32.,
-                0.,
-                Color::from_argb(120, 0, 0, 0),
-            )))
             .child(AccountHeader)
             .child(divider())
             .child(

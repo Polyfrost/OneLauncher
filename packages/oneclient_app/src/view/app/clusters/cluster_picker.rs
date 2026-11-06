@@ -110,11 +110,11 @@ impl Component for ClusterPickerButton {
 }
 
 #[derive(PartialEq)]
-struct ClusterPickerModal {
-    selected: Option<i64>,
-    only: Option<Vec<i64>>,
-    on_pick: EventHandler<Cluster>,
-    on_close: EventHandler<()>,
+pub struct ClusterPickerModal {
+    pub selected: Option<i64>,
+    pub only: Option<Vec<i64>>,
+    pub on_pick: EventHandler<Cluster>,
+    pub on_close: EventHandler<()>,
 }
 
 impl Component for ClusterPickerModal {

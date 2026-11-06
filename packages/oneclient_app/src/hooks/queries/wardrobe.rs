@@ -108,10 +108,13 @@ pub fn plus_message(err: PlusError) -> String {
             t("oneclient.wardrobe.plus.server_error").into()
         }
         PlusError::Api { body, .. } if !body.trim().is_empty() => body.trim().to_string(),
-        PlusError::Request(err) if err.is_decode() => {
+        PlusError::Reqwest(err) if err.is_decode() => {
             t("oneclient.wardrobe.plus.unexpected_response").into()
         }
-        PlusError::Request(_) | PlusError::Websocket(_) => {
+        PlusError::Request(oneclient_net::RequestError::DeserializeError { .. }) => {
+            t("oneclient.wardrobe.plus.unexpected_response").into()
+        }
+        PlusError::Request(_) | PlusError::Reqwest(_) | PlusError::Websocket(_) => {
             t("oneclient.wardrobe.plus.unreachable").into()
         }
         other => other.to_string(),

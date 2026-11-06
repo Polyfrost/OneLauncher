@@ -124,6 +124,15 @@ pub enum LoaderChoice {
 impl LoaderChoice {
     pub const ALL: [Self; 4] = [Self::Fabric, Self::Forge, Self::NeoForge, Self::Vanilla];
 
+    pub fn of(loader: GameLoader) -> Self {
+        match loader {
+            GameLoader::Forge => Self::Forge,
+            GameLoader::NeoForge => Self::NeoForge,
+            GameLoader::Vanilla => Self::Vanilla,
+            GameLoader::Fabric | GameLoader::Quilt | GameLoader::Ornithe => Self::Fabric,
+        }
+    }
+
     pub fn primary(self) -> GameLoader {
         match self {
             Self::Fabric => GameLoader::Fabric,
@@ -162,6 +171,16 @@ impl LoaderChoice {
             Self::NeoForge => t("oneclient.clusters.instance.model.loader.neoforge"),
             Self::Vanilla => t("oneclient.clusters.instance.model.loader.vanilla"),
         }
+    }
+
+    pub fn resolve_exact(
+        self,
+        available: &[GameLoader],
+        exact: Option<GameLoader>,
+    ) -> Option<GameLoader> {
+        exact
+            .filter(|loader| Self::of(*loader) == self && available.contains(loader))
+            .or_else(|| self.resolve(available))
     }
 
     pub fn resolve(self, available: &[GameLoader]) -> Option<GameLoader> {
@@ -298,6 +317,7 @@ impl VersionList {
 
 #[derive(Clone, Copy)]
 pub struct Wizard {
+    pub exact_loader: Option<GameLoader>,
     pub step: State<usize>,
     pub choice: State<TypeChoice>,
     pub version: State<Option<String>>,
@@ -317,4 +337,31 @@ pub struct Wizard {
     pub import_decisions: State<HashMap<DecisionKey, ModDecision>>,
     pub folder: State<FolderChoice>,
     pub details: DetailsState,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_ornithe_invite_stays_ornithe_in_the_wizard() {
+        let choice = LoaderChoice::of(GameLoader::Ornithe);
+
+        assert_eq!(
+            choice.resolve(&[GameLoader::Forge, GameLoader::Ornithe]),
+            Some(GameLoader::Ornithe)
+        );
+        assert_eq!(
+            choice.resolve_exact(
+                &[GameLoader::Fabric, GameLoader::Ornithe],
+                Some(GameLoader::Ornithe),
+            ),
+            Some(GameLoader::Ornithe)
+        );
+        assert_eq!(
+            LoaderChoice::Forge
+                .resolve_exact(&[GameLoader::Forge], Some(GameLoader::Ornithe)),
+            Some(GameLoader::Forge)
+        );
+    }
 }

@@ -219,6 +219,7 @@ pub enum ClusterAction {
         tags: Vec<String>,
         cover_source: Option<PathBuf>,
         bundles: Option<Vec<String>>,
+        require_bundles: bool,
         dedicated: bool,
         shared_group: Option<String>,
     },
@@ -471,6 +472,7 @@ impl MutationCapability for ClusterMutation {
                 tags,
                 cover_source,
                 bundles,
+                require_bundles,
                 dedicated,
                 shared_group,
             } => {
@@ -537,6 +539,7 @@ impl MutationCapability for ClusterMutation {
                             tracing::warn!(cluster_id = cluster.id, error = %err, "failed to store the instance cover");
                         }
 
+                        let mut bundle_failure = None;
                         if cluster.uses_bundles() {
                             if let Some(selected) = bundles {
                                 let archives = state
@@ -582,6 +585,7 @@ impl MutationCapability for ClusterMutation {
                             .await
                             {
                                 tracing::warn!(cluster_id = cluster.id, error = %err, "failed to install bundle content for the new instance");
+                                bundle_failure = Some(err.to_string());
                             }
                             if let Err(err) = oneclient_core::apply_bundle_java_override(
                                 &state,
@@ -596,7 +600,24 @@ impl MutationCapability for ClusterMutation {
                             }
                             session.finish();
                         }
-                        Ok(())
+                        match bundle_failure.filter(|_| *require_bundles) {
+                            Some(reason) => {
+                                match state.clusters.delete(cluster.id, true).await {
+                                    Ok(_) => {
+                                        crate::hooks::forget_deleted_cluster(&state, cluster.id)
+                                            .await;
+                                        services
+                                            .events
+                                            .signal(oneclient_events::Signal::ClustersChanged);
+                                    }
+                                    Err(err) => {
+                                        tracing::warn!(cluster_id = cluster.id, error = %err, "failed to remove the instance whose bundles did not install");
+                                    }
+                                }
+                                Err(oneclient_content::ContentError::InvalidData { reason })
+                            }
+                            None => Ok(()),
+                        }
                     }
                     Err(err) => Err(oneclient_content::ContentError::InvalidData {
                         reason: err.to_string(),

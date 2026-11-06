@@ -11,15 +11,16 @@ use uuid::Uuid;
 
 use oneclient_auth::MinecraftAccount;
 
-use crate::{PlusError, REQUEST_TIMEOUT, base_url, build_client, login, plus_blocked};
+use crate::session::{build_socket_client, login};
+use crate::{PlusError, REQUEST_TIMEOUT, base_url, plus_blocked};
 
-const TOKEN_LIFETIME: Duration = Duration::from_secs(100 * 60);
+pub(crate) const TOKEN_LIFETIME: Duration = Duration::from_secs(100 * 60);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
 
 static CLIENT: LazyLock<Result<reqwest::Client, String>> =
-    LazyLock::new(|| build_client().map_err(|err| err.to_string()));
+    LazyLock::new(|| build_socket_client().map_err(|err| err.to_string()));
 
-static TOKENS: LazyLock<Mutex<HashMap<Uuid, (String, Instant)>>> =
+static TOKENS: LazyLock<Mutex<HashMap<(String, Uuid), (String, Instant)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, PartialOrd, Ord)]
@@ -240,8 +241,9 @@ pub(crate) fn client() -> Result<&'static reqwest::Client, PlusError> {
 }
 
 pub(crate) async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -> Result<String, PlusError> {
+    let key = (base_url(), account.id);
     let mut tokens = TOKENS.lock().await;
-    if let Some((token, issued)) = tokens.get(&account.id)
+    if let Some((token, issued)) = tokens.get(&key)
         && issued.elapsed() < TOKEN_LIFETIME
         && stale != Some(token.as_str())
     {
@@ -249,14 +251,27 @@ pub(crate) async fn token_for(account: &MinecraftAccount, stale: Option<&str>) -
     }
 
     let token = login(client()?, account).await?;
-    tokens.insert(account.id, (token.clone(), Instant::now()));
+    tokens.insert(key, (token.clone(), Instant::now()));
     Ok(token)
 }
 
-async fn send_authorized(
+pub(crate) async fn forget_token(account: Uuid) {
+    TOKENS.lock().await.retain(|(_, owner), _| *owner != account);
+}
+
+pub(crate) async fn send_authorized(
     account: &MinecraftAccount,
     method: Method,
     path: &str,
+    body: Option<&serde_json::Value>,
+) -> Result<reqwest::Response, PlusError> {
+    send_to(account, method, &format!("{}{path}", base_url()), body).await
+}
+
+pub(crate) async fn send_to(
+    account: &MinecraftAccount,
+    method: Method,
+    url: &str,
     body: Option<&serde_json::Value>,
 ) -> Result<reqwest::Response, PlusError> {
     if plus_blocked() {
@@ -266,12 +281,11 @@ async fn send_authorized(
         return Err(PlusError::OfflineAccount);
     }
 
-    let url = format!("{}{path}", base_url());
     let mut stale: Option<String> = None;
     loop {
         let token = token_for(account, stale.as_deref()).await?;
         let mut request = client()?
-            .request(method.clone(), &url)
+            .request(method.clone(), url)
             .timeout(REQUEST_TIMEOUT)
             .bearer_auth(&token)
             .header("Accept", "application/json");
@@ -294,7 +308,7 @@ async fn send_authorized(
     }
 }
 
-async fn json_authorized<T: DeserializeOwned>(
+pub(crate) async fn json_authorized<T: DeserializeOwned>(
     account: &MinecraftAccount,
     method: Method,
     path: &str,

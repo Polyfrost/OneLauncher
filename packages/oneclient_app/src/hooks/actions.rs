@@ -133,11 +133,13 @@ fn clusters_pinned_to_java(
 
 /// The pump alone owns the toast timers so adding or removing a toast has to
 /// tell it to re-arm hover-pause is a timer property not component state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PumpSignal {
     Reconcile,
     PauseToasts,
     ResumeToasts,
+    Chat(super::chat::ChatJob),
+    JoinInvite(i32),
 }
 
 #[derive(Clone)]
@@ -174,7 +176,7 @@ impl Actions {
         }
     }
 
-    fn nudge(&self, signal: PumpSignal) {
+    pub(super) fn nudge(&self, signal: PumpSignal) {
         let _ = self.pump.send(signal);
     }
 
@@ -402,6 +404,12 @@ impl Actions {
 
     pub fn decline_tos(&self) {
         oneclient_common::consent::decline();
+        crate::view::chat::close_chat_window();
+        {
+            let mut guard = self.station.clone().write_channel(AppChannel::Social);
+            guard.social_open = false;
+            guard.social_popped_notice = false;
+        }
 
         if let Some(updated) = self.mutate_settings(|settings| {
             settings.declined_tos = true;
@@ -765,6 +773,43 @@ impl Actions {
             .control_center_open = false;
     }
 
+    pub fn toggle_social(&self) {
+        let open = self.station.peek().social_open;
+        let mut guard = self.station.clone().write_channel(AppChannel::Social);
+        guard.social_open = !open;
+        guard.social_popped_notice = false;
+    }
+
+    pub fn close_social(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Social)
+            .social_open = false;
+    }
+
+    pub fn pop_out_social(&self) {
+        {
+            let mut guard = self.station.clone().write_channel(AppChannel::Social);
+            guard.social_open = false;
+            guard.social_popped_notice = true;
+        }
+        crate::view::chat::open_chat_window();
+    }
+
+    pub fn dock_social(&self) {
+        crate::view::chat::close_chat_window();
+        let mut guard = self.station.clone().write_channel(AppChannel::Social);
+        guard.social_open = true;
+        guard.social_popped_notice = false;
+    }
+
+    pub fn dismiss_social_notice(&self) {
+        self.station
+            .clone()
+            .write_channel(AppChannel::Social)
+            .social_popped_notice = false;
+    }
+
     pub fn close_notification_center(&self) {
         self.with_engine(|state| state.center_open = false);
     }
@@ -772,6 +817,12 @@ impl Actions {
     pub fn clear_notification_inbox(&self) {
         self.with_engine(|state| {
             state.notifications.clear_inbox(&mut state.inbox);
+        });
+    }
+
+    pub fn clear_chat_notices(&self) {
+        self.with_engine(|state| {
+            state.notifications.clear_chat_notices(&mut state.inbox);
         });
     }
 
@@ -1052,7 +1103,7 @@ impl Actions {
         }
     }
 
-    fn push_notification(&self, spec: NotificationSpec) {
+    pub fn push_notification(&self, spec: NotificationSpec) {
         self.with_engine(|state| {
             state.notifications.push_custom(&mut state.inbox, spec);
         });
@@ -1068,6 +1119,17 @@ impl Actions {
     }
 
     pub fn launch_cluster(&self, cluster_id: ClusterId) {
+        self.launch_with(cluster_id, None);
+    }
+
+    pub fn launch_cluster_for_invite(&self, cluster_id: ClusterId, invite_id: i32) {
+        self.launch_with(
+            cluster_id,
+            Some(crate::invite_join::join_jvm_arg(invite_id)),
+        );
+    }
+
+    fn launch_with(&self, cluster_id: ClusterId, extra_jvm_arg: Option<String>) {
         if let Some((title, body)) = cluster_busy(cluster_id) {
             self.notify(title).body(body).send();
             return;
@@ -1095,7 +1157,7 @@ impl Actions {
             let started = Instant::now();
             match cluster_busy_elsewhere(cluster_id).await {
                 Some((title, body)) => actions.notify(title).body(body).send(),
-                None => launch(&actions, cluster_id).await,
+                None => launch(&actions, cluster_id, extra_jvm_arg).await,
             }
 
             // An instant failure would hand the button back inside the same
@@ -1491,65 +1553,75 @@ impl Actions {
                 }
             };
 
-            // Replaces the download's progress notification in place rather
-            // than arriving as a second one
-            let spec = match &install.result {
-                Ok(name) => NotificationSpec {
-                    title: t("oneclient.actions.installed").to_string(),
-                    body: crate::install::install_body(
-                        name,
-                        &install.dependencies,
-                        &install.missing_dependencies,
-                        install.live_deferred,
-                    ),
-                    level: Level::Info,
-                    icon: Some(IconType::Download01),
-                    progress: None,
-                    actions: Vec::new(),
-                    toast_only: true,
-                },
-                Err(err) => NotificationSpec {
-                    title: t("oneclient.actions.install_failed").to_string(),
-                    body: err.to_string(),
-                    level: Level::Error,
-                    icon: None,
-                    progress: None,
-                    actions: Vec::new(),
-                    toast_only: false,
-                },
-            };
-
-            let session_id = install.session_id.unwrap_or_else(uuid::Uuid::nil);
-            actions.with_engine(|app| {
-                app.notifications
-                    .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
-            });
-
-            if install.result.is_ok() {
-                // Before the refresh below so the version list never renders
-                // the moment where both copies read as active
-                if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
-                    cluster_id,
-                    &state.services.content(),
-                )
-                .await
-                {
-                    tracing::warn!(%err, "failed to resolve duplicate package versions");
-                }
-
-                super::invalidate_cluster_content_queries().await;
-                if let Some(world) = world {
-                    super::invalidate_world_contents(cluster_id, world).await;
-                }
-
-                state
-                    .services
-                    .events
-                    .signal(oneclient_events::Signal::ClustersChanged);
-            }
+            actions.settle_install(&state, cluster_id, install, world).await;
 
             finish(&actions);
         });
+    }
+
+    pub(super) async fn settle_install(
+        &self,
+        state: &Arc<oneclient_core::LauncherState>,
+        cluster_id: ClusterId,
+        install: crate::install::PackageInstall,
+        world: Option<String>,
+    ) {
+        // Replaces the download's progress notification in place rather
+        // than arriving as a second one
+        let spec = match &install.result {
+            Ok(name) => NotificationSpec {
+                title: t("oneclient.actions.installed").to_string(),
+                body: crate::install::install_body(
+                    name,
+                    &install.dependencies,
+                    &install.missing_dependencies,
+                    install.live_deferred,
+                ),
+                level: Level::Info,
+                icon: Some(IconType::Download01),
+                progress: None,
+                actions: Vec::new(),
+                toast_only: true,
+            },
+            Err(err) => NotificationSpec {
+                title: t("oneclient.actions.install_failed").to_string(),
+                body: err.to_string(),
+                level: Level::Error,
+                icon: None,
+                progress: None,
+                actions: Vec::new(),
+                toast_only: false,
+            },
+        };
+
+        let session_id = install.session_id.unwrap_or_else(uuid::Uuid::nil);
+        self.with_engine(|app| {
+            app.notifications
+                .finish_grouped_as_actions(&mut app.inbox, session_id, Some(spec));
+        });
+
+        if install.result.is_ok() {
+            // Before the refresh below so the version list never renders
+            // the moment where both copies read as active
+            if let Err(err) = oneclient_content::packages::reconcile_duplicate_activity(
+                cluster_id,
+                &state.services.content(),
+            )
+            .await
+            {
+                tracing::warn!(%err, "failed to resolve duplicate package versions");
+            }
+
+            super::invalidate_cluster_content_queries().await;
+            if let Some(world) = world {
+                super::invalidate_world_contents(cluster_id, world).await;
+            }
+
+            state
+                .services
+                .events
+                .signal(oneclient_events::Signal::ClustersChanged);
+        }
     }
 
     /// Shares the installs channel with [`Self::install_package`] so every row's
@@ -2580,7 +2652,7 @@ pub fn update_check_running(cluster_id: ClusterId) -> bool {
     UPDATE_CHECKS.lock().unwrap().contains(&cluster_id)
 }
 
-async fn launch(actions: &Actions, cluster_id: ClusterId) {
+async fn launch(actions: &Actions, cluster_id: ClusterId, extra_jvm_arg: Option<String>) {
     let Ok(state) = launcher::state() else { return };
     let events = state.services.events.clone();
 
@@ -2653,11 +2725,14 @@ async fn launch(actions: &Actions, cluster_id: ClusterId) {
     }
 
     off_ui(async move {
-        if let Err(err) = oneclient_core::launch_cluster(&state, cluster_id, &account, true).await {
+        let extra = extra_jvm_arg.as_deref();
+        if let Err(err) =
+            oneclient_core::launch_cluster_with(&state, cluster_id, &account, true, extra).await
+        {
             // A missing file is the one failure the launcher can fix itself and a
             // path inside our metadata folder gives the user nothing to act on
             if err.indicates_missing_files() {
-                repair_and_relaunch(&state, cluster_id, &account, err).await;
+                repair_and_relaunch(&state, cluster_id, &account, err, extra).await;
                 return;
             }
 
@@ -2674,6 +2749,7 @@ async fn repair_and_relaunch(
     cluster_id: ClusterId,
     account: &oneclient_auth::MinecraftAccount,
     original: oneclient_core::LauncherError,
+    extra_jvm_arg: Option<&str>,
 ) {
     let events = state.services.events.clone();
 
@@ -2708,7 +2784,9 @@ async fn repair_and_relaunch(
         .body(report.summary())
         .send();
 
-    if let Err(err) = oneclient_core::launch_cluster(state, cluster_id, account, true).await {
+    if let Err(err) =
+        oneclient_core::launch_cluster_with(state, cluster_id, account, true, extra_jvm_arg).await
+    {
         tracing::error!(cluster_id, "launch failed again after repair: {err:#}");
         events.game_failed(cluster_id, format!("{err:#}"));
     }

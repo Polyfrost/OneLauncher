@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use freya::prelude::*;
+use oneclient_common::GameLoader;
 use freya::router::RouterContext;
 use oneclient_core::GameVersionKind;
 use oneclient_core::clusters::{ClusterKind, ModpackSource};
@@ -39,6 +40,7 @@ fn create_action(wizard: Wizard, picks: &Picks) -> Option<ClusterAction> {
         cover_source: wizard.details.cover.read().clone(),
         bundles: (picks.kind == ClusterKind::OneClient && picks.bundles.loaded)
             .then(|| picks.bundles.taken()),
+        require_bundles: false,
         dedicated: picks.kind == ClusterKind::OneClient && picks.folder == FolderChoice::Dedicated,
         shared_group: match &picks.folder {
             FolderChoice::Custom(group) if picks.kind == ClusterKind::OneClient => {
@@ -136,26 +138,59 @@ fn wizard_rail(wizard: Wizard, picks: &Picks) -> Element {
 #[derive(PartialEq)]
 pub struct CreateInstanceModal {
     on_close: EventHandler<()>,
+    prefill: Option<(String, GameLoader)>,
+    invite: Option<i32>,
 }
 
 impl CreateInstanceModal {
     pub fn new(on_close: impl Into<EventHandler<()>>) -> Self {
         Self {
             on_close: on_close.into(),
+            prefill: None,
+            invite: None,
         }
+    }
+
+    pub fn prefill(mut self, version: String, loader: GameLoader) -> Self {
+        self.prefill = Some((version, loader));
+        self
+    }
+
+    pub fn join_invite(mut self, invite_id: i32) -> Self {
+        self.invite = Some(invite_id);
+        self
     }
 }
 
 impl Component for CreateInstanceModal {
     fn render(&self) -> impl IntoElement {
         let mutation = use_cluster_mutation();
+        let prefilled = self.prefill.is_some();
+        let prefill_version = self.prefill.as_ref().map(|(version, _)| version.clone());
+        let prefill_loader = self
+            .prefill
+            .as_ref()
+            .map_or(LoaderChoice::Fabric, |(_, loader)| LoaderChoice::of(*loader));
         let wizard = Wizard {
+            exact_loader: self.prefill.as_ref().map(|(_, loader)| *loader),
             step: use_state(|| 0usize),
-            choice: use_state(|| TypeChoice::OneClient),
-            version: use_state(|| None::<String>),
-            filter: use_state(|| kind_bit(GameVersionKind::Release)),
+            choice: use_state(|| {
+                if prefilled {
+                    TypeChoice::Scratch
+                } else {
+                    TypeChoice::OneClient
+                }
+            }),
+            version: use_state(|| prefill_version),
+            filter: use_state(|| {
+                if prefilled {
+                    u8::MAX
+                } else {
+                    kind_bit(GameVersionKind::Release)
+                }
+            }),
             query: use_state(String::new),
-            loader: use_state(|| LoaderChoice::Fabric),
+            loader: use_state(|| prefill_loader),
             loader_version: use_state(|| None::<String>),
             declined: use_state(|| None::<HashSet<String>>),
             modpack_origin: use_state(|| ModpackOrigin::Browse),
@@ -195,6 +230,16 @@ impl Component for CreateInstanceModal {
         let mut step = wizard.step;
         let mut query = wizard.query;
 
+        let invite = crate::invite_join::wizard_invite(
+            self.invite,
+            self.prefill.as_ref(),
+            picks.versions.chosen.as_deref(),
+            picks.loader.chosen,
+        );
+        let off_invite = self.invite.is_some()
+            && invite.is_none()
+            && picks.versions.chosen.is_some()
+            && picks.loader.chosen.is_some();
         let close_x = self.on_close.clone();
         let close_cancel = self.on_close.clone();
         let close_created = self.on_close.clone();
@@ -212,7 +257,11 @@ impl Component for CreateInstanceModal {
                 picks.step,
                 Step::Folder | Step::Version | Step::Import | Step::ImportReview
             ),
-            note: footer_note(&picks),
+            note: if off_invite {
+                t("oneclient.clusters.instance.create.invite_mismatch").to_string()
+            } else {
+                footer_note(&picks)
+            },
             secondary_label: if first {
                 t("oneclient.common.cancel")
             } else {
@@ -243,7 +292,7 @@ impl Component for CreateInstanceModal {
                 (false, _) if last => t("oneclient.clusters.instance.create.create").to_string(),
                 (false, _) => t("oneclient.common.next").to_string(),
             },
-            primary_enabled: is_ready(&picks),
+            primary_enabled: is_ready(&picks) && !(last && off_invite),
             on_close: (move |()| close_x.call(())).into(),
             on_secondary: (move |()| {
                 if first {
@@ -271,7 +320,11 @@ impl Component for CreateInstanceModal {
                     );
                 } else if last {
                     if let Some(action) = action.clone() {
-                        mutation.mutate(action);
+                        if let Some(invite_id) = invite {
+                            dispatch.create_cluster_and_join(mutation, action, invite_id);
+                        } else {
+                            mutation.mutate(action);
+                        }
                         close_created.call(());
                     }
                 } else {

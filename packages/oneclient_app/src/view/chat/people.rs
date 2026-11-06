@@ -8,13 +8,12 @@ use oneclient_polyplus::Friend;
 use crate::components::{Button, Icon, IconType, OverlayPopup, ScrollArea, TextInput};
 use crate::hooks::{use_chat_roster, use_dispatch};
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 use super::common::{hint, section_heading, use_player_name};
 use super::list::{FRIEND_ROW_HEIGHT_PX, person_row};
 
-const CARD_BG: Color = Color::from_rgb(26, 34, 41);
 const DIALOG_WIDTH_PX: f32 = 520.;
 const DIALOG_HEIGHT_PX: f32 = 540.;
 const MEMBER_ROW_GAP_PX: f32 = 4.;
@@ -212,7 +211,7 @@ impl Component for MemberOption {
                     .width(Size::px(18.))
                     .height(Size::px(18.))
                     .center()
-                    .corner_radius(CornerRadius::from(4.))
+                    .corner_radius(rounded(4.))
                     .background(if selected {
                         colors::brand()
                     } else {
@@ -232,7 +231,7 @@ fn dialog_title(text: &str, on_close: EventHandler<()>) -> impl IntoElement {
         .child(
             label()
                 .text(text.to_string())
-                .font_size(16.)
+                .font_size(text_size(16.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(colors::fg_primary())
                 .width(Size::flex(1.0)),
@@ -262,8 +261,8 @@ fn dialog(on_close: EventHandler<()>, body: Element) -> Element {
                         .max_width(Size::window_percent(92.))
                         .max_height(Size::window_percent(92.))
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
-                        .background(CARD_BG)
+                        .corner_radius(rounded(14.))
+                        .background(colors::card())
                         .border(border_all_color(1., colors::component_border()))
                         .child(body),
                 ),

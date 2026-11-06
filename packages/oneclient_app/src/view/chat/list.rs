@@ -14,14 +14,13 @@ use crate::hooks::{
     use_player_online,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::relative_since;
 
 use super::common::{
     CARD_RADIUS_PX, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains,
-    card_bg, chip_bg, chip_button, count_badge, edge_border, group_heads, hairline, head_with_dot,
-    hint, hover_bg, inset_border, popup_shadow, presence_color, row_time, section_heading,
-    use_player_name,
+    chip_button, count_badge, edge_border, group_heads, head_with_dot, hint, inset_border,
+    popup_shadow, presence_color, row_time, section_heading, use_player_name,
 };
 use super::panel::{PanelMode, PanelTab, PanelView};
 use super::people::NewGroupDialog;
@@ -98,7 +97,7 @@ impl Component for ListPane {
             .height(Size::fill())
             .content(Content::Flex)
             .maybe(self.expanded, |el| {
-                el.border(edge_border(hairline(), 0., 1., 0.))
+                el.border(edge_border(colors::component_border(), 0., 1., 0.))
             })
             .child(
                 rect()
@@ -108,7 +107,7 @@ impl Component for ListPane {
                         TextInput::new(query)
                             .width(Size::fill())
                             .height(Size::px(32.))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .placeholder(t("oneclient.chat.list.search_placeholder"))
                             .leading(
                                 Icon::new(IconType::SearchMd)
@@ -157,12 +156,12 @@ impl Component for PanelHeader {
 
         let (dot, status) = match (self.connected, picked) {
             (false, _) => (
-                super::common::offline_dot(),
+                colors::fg_secondary(),
                 t("oneclient.chat.status.offline"),
             ),
             (true, PlayerStatus::Online) => (colors::success(), t("oneclient.chat.status.online")),
             (true, PlayerStatus::Offline) => (
-                super::common::offline_dot(),
+                colors::fg_secondary(),
                 t("oneclient.chat.status.invisible"),
             ),
         };
@@ -186,7 +185,7 @@ impl Component for PanelHeader {
                     .child(
                         label()
                             .text(self.username.clone())
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary())
                             .max_lines(1)
@@ -205,7 +204,7 @@ impl Component for PanelHeader {
                             .child(
                                 label()
                                     .text(status)
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary()),
                             )
                             .child(
@@ -267,7 +266,7 @@ impl Component for StatusMenu {
             StatusOption {
                 dot: match status {
                     PlayerStatus::Online => colors::success(),
-                    PlayerStatus::Offline => super::common::offline_dot(),
+                    PlayerStatus::Offline => colors::fg_secondary(),
                 },
                 text,
                 note,
@@ -296,9 +295,9 @@ impl Component for StatusMenu {
             .width(Size::px(180.))
             .padding(Gaps::new_all(6.))
             .spacing(2.)
-            .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
+            .corner_radius(rounded(ROW_RADIUS_PX))
             .background(colors::component_bg())
-            .border(inset_border(hairline()))
+            .border(inset_border(colors::component_border()))
             .shadow(popup_shadow())
             .child(option(
                 PlayerStatus::Online,
@@ -334,9 +333,9 @@ impl Component for StatusOption {
             .spacing(8.)
             .content(Content::Flex)
             .cross_align(Alignment::Center)
-            .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
+            .corner_radius(rounded(CHIP_RADIUS_PX))
             .background(if hovered() {
-                hover_bg()
+                colors::ghost_overlay()
             } else {
                 Color::TRANSPARENT
             })
@@ -348,7 +347,7 @@ impl Component for StatusOption {
                 rect()
                     .width(Size::px(8.))
                     .height(Size::px(8.))
-                    .corner_radius(CornerRadius::from(4.))
+                    .corner_radius(rounded(4.))
                     .background(self.dot),
             )
             .child(
@@ -359,13 +358,13 @@ impl Component for StatusOption {
                     .child(
                         label()
                             .text(self.text)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_primary()),
                     )
                     .child(
                         label()
                             .text(self.note)
-                            .font_size(10.)
+                            .font_size(text_size(10.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -398,13 +397,13 @@ impl Component for ErrorBanner {
                     .spacing(4.)
                     .content(Content::Flex)
                     .cross_align(Alignment::Center)
-                    .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
+                    .corner_radius(rounded(ROW_RADIUS_PX))
                     .background(colors::danger().with_a(30))
                     .border(inset_border(colors::danger().with_a(90)))
                     .child(
                         label()
                             .text(self.error.clone())
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(colors::fg_primary())
                             .width(Size::flex(1.0))
                             .max_lines(3)
@@ -415,13 +414,13 @@ impl Component for ErrorBanner {
                             .height(Size::px(24.))
                             .padding(Gaps::new_symmetric(0., 8.))
                             .center()
-                            .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
+                            .corner_radius(rounded(CHIP_RADIUS_PX))
                             .cursor(CursorIcon::Pointer)
                             .on_press(move |_| dispatch.retry_chat())
                             .child(
                                 label()
                                     .text(t("oneclient.chat.common.try_again"))
-                                    .font_size(11.)
+                                    .font_size(text_size(11.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::fg_primary()),
                             ),
@@ -459,9 +458,9 @@ impl Component for InvitesCard {
                 rect()
                     .vertical()
                     .width(Size::fill())
-                    .corner_radius(CornerRadius::from(CARD_RADIUS_PX))
-                    .background(card_bg())
-                    .border(inset_border(hairline()))
+                    .corner_radius(rounded(CARD_RADIUS_PX))
+                    .background(colors::card())
+                    .border(inset_border(colors::component_border()))
                     .overflow(Overflow::Clip)
                     .child(
                         rect()
@@ -482,7 +481,7 @@ impl Component for InvitesCard {
                             .child(
                                 label()
                                     .text(t("oneclient.chat.invites.title"))
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .color(colors::fg_primary())
                                     .width(Size::flex(1.0)),
@@ -512,11 +511,11 @@ impl Component for InvitesCard {
                             rect()
                                 .width(Size::fill())
                                 .padding(Gaps::new(9., 14., 10., 14.))
-                                .border(edge_border(hairline(), 1., 0., 0.))
+                                .border(edge_border(colors::component_border(), 1., 0., 0.))
                                 .child(
                                     label()
                                         .text(t("oneclient.chat.invites.in_game_only"))
-                                        .font_size(11.)
+                                        .font_size(text_size(11.))
                                         .width(Size::fill())
                                         .color(colors::fg_secondary()),
                                 ),
@@ -551,7 +550,7 @@ impl Component for InviteRow {
             .spacing(10.)
             .content(Content::Flex)
             .cross_align(Alignment::Center)
-            .border(edge_border(hairline(), 1., 0., 0.))
+            .border(edge_border(colors::component_border(), 1., 0., 0.))
             .cursor(CursorIcon::Pointer)
             .on_press(move |_| open_chat(&open, view, group_id))
             .child(
@@ -567,7 +566,7 @@ impl Component for InviteRow {
                     .child(
                         label()
                             .text(t("oneclient.chat.invites.world_invite"))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary())
                             .max_lines(1)
@@ -576,7 +575,7 @@ impl Component for InviteRow {
                     .child(
                         label()
                             .text(tf("oneclient.chat.invites.from", &[&from]))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(colors::fg_secondary())
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis),
@@ -609,14 +608,14 @@ pub(super) fn accent_button(
         .height(Size::px(28.))
         .padding(Gaps::new_symmetric(0., 12.))
         .center()
-        .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
+        .corner_radius(rounded(ROW_RADIUS_PX))
         .background(colors::brand())
         .cursor(CursorIcon::Pointer)
         .on_press(on_press)
         .child(
             label()
                 .text(text)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(Color::WHITE),
         )
@@ -638,7 +637,7 @@ fn tab_strip(
             .height(Size::px(28.))
             .center()
             .spacing(6.)
-            .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
+            .corner_radius(rounded(CHIP_RADIUS_PX))
             .background(if selected {
                 colors::brand()
             } else {
@@ -649,7 +648,7 @@ fn tab_strip(
             .child(
                 label()
                     .text(text)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(if selected {
                         Color::WHITE
@@ -661,7 +660,7 @@ fn tab_strip(
                 if selected {
                     label()
                         .text(count.to_string())
-                        .font_size(10.)
+                        .font_size(text_size(10.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .color(Color::WHITE.with_a(204))
                         .into_element()
@@ -681,8 +680,8 @@ fn tab_strip(
                 .padding(Gaps::new_all(3.))
                 .spacing(2.)
                 .content(Content::Flex)
-                .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
-                .background(chip_bg())
+                .corner_radius(rounded(ROW_RADIUS_PX))
+                .background(colors::component_bg())
                 .child(tab(PanelTab::Chats, t("oneclient.chat.tabs.chats"), unread))
                 .child(tab(
                     PanelTab::Friends,
@@ -826,9 +825,9 @@ impl Component for ChatRow {
         let view = self.view;
 
         let (background, border) = if self.selected {
-            (card_bg(), inset_border(colors::brand()))
+            (colors::card(), inset_border(colors::brand()))
         } else if hovered() {
-            (hover_bg(), inset_border(hairline()))
+            (colors::ghost_overlay(), inset_border(colors::component_border()))
         } else {
             (Color::TRANSPARENT, inset_border(Color::TRANSPARENT))
         };
@@ -841,7 +840,7 @@ impl Component for ChatRow {
             .spacing(10.)
             .content(Content::Flex)
             .cross_align(Alignment::Center)
-            .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
+            .corner_radius(rounded(ROW_RADIUS_PX))
             .background(background)
             .border(border)
             .cursor(CursorIcon::Pointer)
@@ -867,7 +866,7 @@ impl Component for ChatRow {
                             .child(
                                 label()
                                     .text(title)
-                                    .font_size(14.)
+                                    .font_size(text_size(14.))
                                     .font_weight(if unread {
                                         FontWeight::MEDIUM
                                     } else {
@@ -881,7 +880,7 @@ impl Component for ChatRow {
                             .child(
                                 label()
                                     .text(time)
-                                    .font_size(11.)
+                                    .font_size(text_size(11.))
                                     .color(colors::fg_secondary()),
                             ),
                     )
@@ -897,7 +896,7 @@ impl Component for ChatRow {
                                     .text(preview.unwrap_or_else(|| {
                                         t("oneclient.chat.list.no_messages").to_string()
                                     }))
-                                    .font_size(12.)
+                                    .font_size(text_size(12.))
                                     .color(colors::fg_secondary())
                                     .width(Size::flex(1.0))
                                     .max_lines(1)
@@ -907,7 +906,7 @@ impl Component for ChatRow {
                                 rect()
                                     .width(Size::px(8.))
                                     .height(Size::px(8.))
-                                    .corner_radius(CornerRadius::from(4.))
+                                    .corner_radius(rounded(4.))
                                     .background(colors::brand())
                             })),
                     ),
@@ -1106,7 +1105,7 @@ impl Component for AddFriend {
             rect().padding(Gaps::new(8., 2., 0., 2.)).child(
                 label()
                     .text(note)
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .width(Size::fill())
                     .color(note_color),
             )
@@ -1142,7 +1141,7 @@ impl Component for AddFriend {
                         TextInput::new(name)
                             .width(Size::flex(1.0))
                             .height(Size::px(32.))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .auto_focus(true)
                             .placeholder(t("oneclient.chat.friends.username_placeholder"))
                             .on_submit(move |_| send_request(&send_key, name, open)),
@@ -1237,12 +1236,12 @@ fn square_button(
         .width(Size::px(28.))
         .height(Size::px(28.))
         .center()
-        .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
-        .background(if accent { colors::brand() } else { chip_bg() })
+        .corner_radius(rounded(ROW_RADIUS_PX))
+        .background(if accent { colors::brand() } else { colors::component_bg() })
         .border(inset_border(if accent {
             Color::TRANSPARENT
         } else {
-            hairline()
+            colors::component_border()
         }))
         .cursor(CursorIcon::Pointer)
         .a11y_alt(alt)
@@ -1275,7 +1274,7 @@ fn person_line(avatar: Element, name: String, sub: Option<String>, faded: bool) 
         .spacing(10.)
         .content(Content::Flex)
         .cross_align(Alignment::Center)
-        .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
+        .corner_radius(rounded(ROW_RADIUS_PX))
         .child(avatar)
         .child(
             rect()
@@ -1285,7 +1284,7 @@ fn person_line(avatar: Element, name: String, sub: Option<String>, faded: bool) 
                 .child(
                     label()
                         .text(name)
-                        .font_size(14.)
+                        .font_size(text_size(14.))
                         .color(if faded {
                             colors::fg_secondary()
                         } else {
@@ -1297,7 +1296,7 @@ fn person_line(avatar: Element, name: String, sub: Option<String>, faded: bool) 
                 .maybe_child(sub.map(|sub| {
                     label()
                         .text(sub)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary())
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -1374,12 +1373,12 @@ impl Component for FriendRow {
 
         let row = person_line(avatar, name, Some(activity.to_string()), !online)
             .background(if hovered() {
-                hover_bg()
+                colors::ghost_overlay()
             } else {
                 Color::TRANSPARENT
             })
             .border(inset_border(if hovered() {
-                hairline()
+                colors::component_border()
             } else {
                 Color::TRANSPARENT
             }))
@@ -1431,7 +1430,7 @@ impl Component for BlockedLink {
             .spacing(10.)
             .content(Content::Flex)
             .cross_align(Alignment::Center)
-            .border(edge_border(hairline(), 1., 0., 0.))
+            .border(edge_border(colors::component_border(), 1., 0., 0.))
             .cursor(CursorIcon::Pointer)
             .on_pointer_over(move |_| hovered.set(true))
             .on_pointer_out(move |_| hovered.set(false))
@@ -1439,14 +1438,14 @@ impl Component for BlockedLink {
             .child(
                 label()
                     .text(t("oneclient.chat.blocked.title"))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(color)
                     .width(Size::flex(1.0)),
             )
             .child(
                 label()
                     .text(self.count.to_string())
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(color),
             )
             .child(Icon::new(IconType::ChevronRight).size(14.).color(color))
@@ -1530,14 +1529,14 @@ impl Component for GroupRow {
             .spacing(10.)
             .content(Content::Flex)
             .cross_align(Alignment::Center)
-            .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
+            .corner_radius(rounded(ROW_RADIUS_PX))
             .background(if hovered() {
-                hover_bg()
+                colors::ghost_overlay()
             } else {
                 Color::TRANSPARENT
             })
             .border(inset_border(if hovered() {
-                hairline()
+                colors::component_border()
             } else {
                 Color::TRANSPARENT
             }))
@@ -1554,7 +1553,7 @@ impl Component for GroupRow {
                     .child(
                         label()
                             .text(conversation_title(&self.conversation, None))
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .color(colors::fg_primary())
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis),
@@ -1562,7 +1561,7 @@ impl Component for GroupRow {
                     .child(
                         label()
                             .text(sub)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(colors::fg_secondary()),
                     ),
             )
@@ -1597,7 +1596,7 @@ impl Component for BlockedPane {
                     .padding(Gaps::new(12., 10., 12., 8.))
                     .spacing(8.)
                     .cross_align(Alignment::Center)
-                    .border(edge_border(hairline(), 0., 0., 1.))
+                    .border(edge_border(colors::component_border(), 0., 0., 1.))
                     .child(HeaderButton {
                         icon: IconType::ArrowLeft,
                         tooltip: t("oneclient.chat.common.back"),
@@ -1606,7 +1605,7 @@ impl Component for BlockedPane {
                     .child(
                         label()
                             .text(t("oneclient.chat.blocked.title"))
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     ),
@@ -1618,7 +1617,7 @@ impl Component for BlockedPane {
                     .child(
                         label()
                             .text(t("oneclient.chat.blocked.description"))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .width(Size::fill())
                             .color(colors::fg_secondary()),
                     ),
@@ -1666,15 +1665,15 @@ impl Component for BlockedRow {
                     .height(Size::px(28.))
                     .padding(Gaps::new_symmetric(0., 12.))
                     .center()
-                    .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
-                    .background(chip_bg())
-                    .border(inset_border(hairline()))
+                    .corner_radius(rounded(ROW_RADIUS_PX))
+                    .background(colors::component_bg())
+                    .border(inset_border(colors::component_border()))
                     .cursor(CursorIcon::Pointer)
                     .on_press(move |_| dispatch.unblock_player(player))
                     .child(
                         label()
                             .text(t("oneclient.chat.blocked.unblock"))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     ),

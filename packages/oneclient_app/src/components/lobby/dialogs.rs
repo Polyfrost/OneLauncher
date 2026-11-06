@@ -10,7 +10,7 @@ use crate::components::{
 };
 use crate::hooks::{Actions, use_dispatch};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -183,7 +183,7 @@ pub(crate) fn modal(width: f32, on_close: EventHandler<()>, card: Rect) -> Eleme
                         .max_width(Size::window_percent(90.))
                         .spacing(14.)
                         .padding(Gaps::new_all(20.))
-                        .corner_radius(CornerRadius::new_all(14.))
+                        .corner_radius(rounded(14.))
                         .background(colors::page_elevated())
                         .border(border_all_color(1., colors::component_border())),
                 ),
@@ -209,7 +209,7 @@ fn modal_title(
             label()
                 .text(title)
                 .width(Size::flex(1.0))
-                .font_size(16.)
+                .font_size(text_size(16.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .max_lines(1)
                 .text_overflow(TextOverflow::Ellipsis)
@@ -271,7 +271,7 @@ impl Component for ConfirmDialog {
                         .text(self.confirm.body.clone())
                         .width(Size::fill())
                         .max_lines(4)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary()),
                 )
                 .child(
@@ -386,7 +386,7 @@ fn hint_text(text: String, color: Color) -> Element {
         .max_lines(3)
         .text_align(TextAlign::Center)
         .padding(Gaps::new_symmetric(12., 0.))
-        .font_size(12.)
+        .font_size(text_size(12.))
         .color(color)
         .into_element()
 }
@@ -420,7 +420,7 @@ impl Component for FriendRow {
         let trailing = if self.in_party {
             label()
                 .text(t("oneclient.components.lobby.invite.in_lobby"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary())
                 .into_element()
         } else if self.invited {
@@ -473,7 +473,7 @@ impl Component for FriendRow {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_symmetric(6., 8.))
-            .corner_radius(CornerRadius::new_all(8.))
+            .corner_radius(rounded(8.))
             .child(Avatar::new(friend.player.to_string()).size(32.))
             .child(
                 rect()
@@ -483,7 +483,7 @@ impl Component for FriendRow {
                     .child(
                         label()
                             .text(friend.name.clone())
-                            .font_size(13.)
+                            .font_size(text_size(13.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
@@ -492,7 +492,7 @@ impl Component for FriendRow {
                     .child(
                         label()
                             .text(presence)
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .max_lines(1)
                             .color(presence_color),
                     ),

@@ -10,12 +10,12 @@ use crate::hooks::{
     use_chat_roster, use_chat_thread, use_dispatch, use_player_online,
 };
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 
 use super::common::{
-    CARD_RADIUS_PX, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains,
-    card_bg, clock, day_label, day_of, edge_border, group_heads, hairline, head_with_dot, hover_bg,
-    inset_border, popup_shadow, presence_color, use_player_name,
+    CARD_RADIUS_PX, CHIP_RADIUS_PX, EscapeGuard, HeaderButton, ROW_RADIUS_PX, area_contains, clock,
+    day_label, day_of, edge_border, group_heads, head_with_dot, inset_border, popup_shadow,
+    presence_color, use_player_name,
 };
 use super::list::{accent_button, conversation_title};
 use super::people::AddMembersDialog;
@@ -264,7 +264,7 @@ fn day_divider(day: String) -> impl IntoElement {
         .child(
             label()
                 .text(day)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .width(Size::fill())
                 .text_align(TextAlign::Center)
                 .color(colors::fg_secondary()),
@@ -286,7 +286,7 @@ fn thread_notice(
         .child(
             label()
                 .text(text.into())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(color)
                 .max_lines(3),
         )
@@ -311,7 +311,7 @@ fn thread_banner(message: String, on_retry: EventHandler<Event<PressEventData>>)
         .child(
             label()
                 .text(message)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .color(colors::danger())
                 .width(Size::flex(1.0))
                 .max_lines(2),
@@ -395,7 +395,7 @@ impl Component for ThreadHeader {
             .spacing(10.)
             .content(Content::Flex)
             .cross_align(Alignment::Center)
-            .border(edge_border(hairline(), 0., 0., 1.))
+            .border(edge_border(colors::component_border(), 0., 0., 1.))
             .maybe_child(self.show_back.then(|| HeaderButton {
                 icon: IconType::ArrowLeft,
                 tooltip: t("oneclient.chat.common.back"),
@@ -413,7 +413,7 @@ impl Component for ThreadHeader {
                     .child(
                         label()
                             .text(title)
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary())
                             .max_lines(1)
@@ -422,7 +422,7 @@ impl Component for ThreadHeader {
                     .child(
                         label()
                             .text(sub)
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .color(colors::fg_secondary())
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis),
@@ -477,20 +477,20 @@ fn sender_line(name: String, time: Option<String>, edited: bool) -> impl IntoEle
         .child(
             label()
                 .text(name)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
         .maybe_child(time.map(|time| {
             label()
                 .text(time)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .color(colors::fg_secondary())
         }))
         .maybe_child(edited.then(|| {
             label()
                 .text(t("oneclient.chat.thread.edited"))
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .color(colors::fg_secondary())
         }))
 }
@@ -563,7 +563,7 @@ impl Component for MessageRow {
                     None if being_edited => rect()
                         .padding(Gaps::new_symmetric(EDIT_PAD_Y_PX, EDIT_PAD_X_PX))
                         .margin(Gaps::new_symmetric(-EDIT_PAD_Y_PX, -EDIT_PAD_X_PX))
-                        .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
+                        .corner_radius(rounded(CHIP_RADIUS_PX))
                         .background(colors::brand().with_a(32))
                         .border(inset_border(colors::brand().with_a(140)))
                         .child(message_text(&self.message.content))
@@ -575,7 +575,7 @@ impl Component for MessageRow {
                 .maybe_child((!self.show_head && self.message.edited).then(|| {
                     label()
                         .text(t("oneclient.chat.thread.edited"))
-                        .font_size(10.)
+                        .font_size(text_size(10.))
                         .color(colors::fg_secondary())
                 }));
 
@@ -604,7 +604,7 @@ impl Component for MessageRow {
 fn message_text(content: &str) -> Label {
     label()
         .text(content.to_string())
-        .font_size(14.)
+        .font_size(text_size(14.))
         .line_height(1.4)
         .color(colors::fg_primary())
 }
@@ -689,9 +689,9 @@ impl Component for InviteCard {
             .margin(Gaps::new(2., 0., 0., 0.))
             .padding(Gaps::new_all(12.))
             .spacing(10.)
-            .corner_radius(CornerRadius::from(CARD_RADIUS_PX))
-            .background(card_bg())
-            .border(inset_border(hairline()))
+            .corner_radius(rounded(CARD_RADIUS_PX))
+            .background(colors::card())
+            .border(inset_border(colors::component_border()))
             .child(
                 rect()
                     .vertical()
@@ -699,7 +699,7 @@ impl Component for InviteCard {
                     .child(
                         label()
                             .text(t("oneclient.chat.invites.card_label"))
-                            .font_size(10.)
+                            .font_size(text_size(10.))
                             .font_weight(FontWeight::MEDIUM)
                             .letter_spacing(0.6)
                             .color(colors::fg_secondary()),
@@ -707,7 +707,7 @@ impl Component for InviteCard {
                     .child(
                         label()
                             .text(t("oneclient.chat.invites.shared_session"))
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     ),
@@ -726,14 +726,14 @@ fn invite_fact(name: &'static str, value: String) -> Element {
         .child(
             label()
                 .text(name)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .width(Size::flex(1.0))
                 .color(colors::fg_secondary()),
         )
         .child(
             label()
                 .text(value)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::MEDIUM)
                 .max_lines(1)
                 .text_overflow(TextOverflow::Ellipsis)
@@ -753,7 +753,7 @@ fn status_line(icon: Option<IconType>, text: &'static str, color: Color) -> Elem
         .child(
             label()
                 .text(text)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(color),
         )
@@ -785,7 +785,7 @@ impl Component for PendingRow {
             .child(
                 label()
                     .text(self.pending.content.clone())
-                    .font_size(14.)
+                    .font_size(text_size(14.))
                     .line_height(1.4)
                     .width(Size::fill())
                     .color(colors::fg_secondary()),
@@ -802,7 +802,7 @@ impl Component for PendingRow {
                             } else {
                                 t("oneclient.chat.thread.sending")
                             })
-                            .font_size(10.)
+                            .font_size(text_size(10.))
                             .color(if failed {
                                 colors::danger()
                             } else {
@@ -944,15 +944,15 @@ impl Component for Composer {
                 .vertical()
                 .padding(Gaps::new_symmetric(10., EMOJI_SIDE_PX))
                 .spacing(8.)
-                .corner_radius(CornerRadius::from(CARD_RADIUS_PX))
+                .corner_radius(rounded(CARD_RADIUS_PX))
                 .background(colors::component_bg())
-                .border(inset_border(hairline()))
+                .border(inset_border(colors::component_border()))
                 .shadow(popup_shadow())
                 .child(
                     rect().padding(Gaps::new(2., 0., 0., 0.)).child(
                         label()
                             .text(t("oneclient.chat.thread.emoji_heading"))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .font_weight(FontWeight::MEDIUM)
                             .letter_spacing(0.44)
                             .color(colors::fg_secondary()),
@@ -1005,7 +1005,7 @@ impl Component for Composer {
                     .child(
                         label()
                             .text(t("oneclient.chat.thread.editing"))
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .width(Size::flex(1.0))
                             .color(colors::fg_secondary()),
                     )
@@ -1027,15 +1027,15 @@ impl Component for Composer {
                     .spacing(4.)
                     .content(Content::Flex)
                     .cross_align(Alignment::Center)
-                    .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
+                    .corner_radius(rounded(ROW_RADIUS_PX))
                     .background(colors::component_bg())
-                    .border(inset_border(hairline()))
+                    .border(inset_border(colors::component_border()))
                     .child(
                         rect()
                             .width(Size::px(30.))
                             .height(Size::px(30.))
                             .center()
-                            .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
+                            .corner_radius(rounded(CHIP_RADIUS_PX))
                             .cursor(CursorIcon::Pointer)
                             .a11y_alt(t("oneclient.chat.thread.emoji"))
                             .on_sized(move |e: Event<SizedEventData>| {
@@ -1050,7 +1050,7 @@ impl Component for Composer {
                         TextInput::new(draft)
                             .bare()
                             .width(Size::flex(1.0))
-                            .font_size(14.)
+                            .font_size(text_size(14.))
                             .auto_focus(*edit_ended.peek())
                             .placeholder(tf("oneclient.chat.thread.message_placeholder", &[&title]))
                             .on_submit(move |_| {
@@ -1064,7 +1064,7 @@ impl Component for Composer {
                             .width(Size::px(30.))
                             .height(Size::px(30.))
                             .center()
-                            .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
+                            .corner_radius(rounded(CHIP_RADIUS_PX))
                             .background(colors::brand())
                             .cursor(CursorIcon::Pointer)
                             .a11y_alt(t("oneclient.chat.common.send"))
@@ -1078,7 +1078,7 @@ impl Component for Composer {
             .maybe_child(too_long.then(|| {
                 label()
                     .text(t("oneclient.chat.thread.too_long"))
-                    .font_size(11.)
+                    .font_size(text_size(11.))
                     .color(colors::danger())
             }))
             .maybe_child((emoji_open() || current_edit.is_some()).then(|| {
@@ -1115,9 +1115,9 @@ impl Component for EmojiCell {
             .width(Size::px(EMOJI_CELL_PX))
             .height(Size::px(EMOJI_CELL_PX))
             .center()
-            .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
+            .corner_radius(rounded(CHIP_RADIUS_PX))
             .background(if hovered() {
-                hover_bg()
+                colors::ghost_overlay()
             } else {
                 Color::TRANSPARENT
             })
@@ -1128,7 +1128,7 @@ impl Component for EmojiCell {
             .child(
                 label()
                     .text(self.emoji)
-                    .font_size(20.)
+                    .font_size(text_size(20.))
                     .line_height(1.)
                     .text_align(TextAlign::Center)
                     .width(Size::fill()),

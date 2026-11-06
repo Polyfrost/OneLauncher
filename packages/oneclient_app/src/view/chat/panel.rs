@@ -9,9 +9,9 @@ use crate::hooks::{
 };
 use crate::i18n::t;
 use crate::state::SocialTab;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 
-use super::common::{HeaderButton, ROW_RADIUS_PX, chip_bg, hairline, hover_bg, inset_border};
+use super::common::{HeaderButton, ROW_RADIUS_PX, inset_border};
 use super::list::{BlockedPane, ListPane, PanelHeader};
 use super::thread::ThreadView;
 
@@ -225,9 +225,9 @@ fn social_tabs(current: SocialTab) -> Element {
                 .height(Size::px(SWITCH_HEIGHT_PX))
                 .content(Content::Flex)
                 .padding(Gaps::new_all(SWITCH_INSET_PX))
-                .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
-                .background(chip_bg())
-                .border(inset_border(hairline()))
+                .corner_radius(rounded(ROW_RADIUS_PX))
+                .background(colors::component_bg())
+                .border(inset_border(colors::component_border()))
                 .child(side(SocialTab::Chat, t("oneclient.chat.tabs.social_chat")))
                 .child(side(SocialTab::Party, t("oneclient.chat.tabs.party"))),
         )
@@ -252,10 +252,10 @@ impl Component for SwitchSide {
             .width(Size::flex(1.0))
             .height(Size::fill())
             .center()
-            .corner_radius(CornerRadius::from(ROW_RADIUS_PX - SWITCH_INSET_PX))
+            .corner_radius(rounded(ROW_RADIUS_PX - SWITCH_INSET_PX))
             .background(match (self.active, hovered()) {
                 (true, _) => colors::component_bg(),
-                (false, true) => hover_bg(),
+                (false, true) => colors::ghost_overlay(),
                 (false, false) => Color::TRANSPARENT,
             })
             .maybe(focus().is_focused(), |el| {
@@ -271,7 +271,7 @@ impl Component for SwitchSide {
             .child(
                 label()
                     .text(self.label)
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .font_weight(FontWeight::MEDIUM)
                     .max_lines(1)
                     .color(if self.active {
@@ -294,14 +294,14 @@ fn empty_detail() -> Element {
         .child(
             label()
                 .text(t("oneclient.chat.panel.no_chat_selected"))
-                .font_size(14.)
+                .font_size(text_size(14.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )
         .child(
             label()
                 .text(t("oneclient.chat.panel.no_chat_selected_hint"))
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .color(colors::fg_secondary()),
         )
         .into_element()
@@ -335,7 +335,7 @@ fn opening(error: &Option<String>, on_back: Option<EventHandler<()>>) -> Element
                                 .clone()
                                 .unwrap_or_else(|| t("oneclient.chat.panel.opening").to_string()),
                         )
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(match error {
                             Some(_) => colors::danger(),
                             None => colors::fg_secondary(),

@@ -158,7 +158,7 @@ impl App for ChatApp {
             .height(Size::fill())
             .background(colors::page())
             .color(colors::fg_primary())
-            .font_family(theme::DEFAULT_FONT)
+            .font_family(theme::font())
             .overflow(Overflow::Clip)
             .child(SocialPanel {
                 mode: PanelMode::Window,

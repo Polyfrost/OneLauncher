@@ -1,7 +1,7 @@
 use freya::prelude::*;
 
 use crate::components::{Icon, IconType};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::border_all_color;
 
 pub fn warning_card(title: impl Into<String>, body: impl Into<String>) -> Rect {
@@ -18,7 +18,7 @@ fn tinted_card(accent: Color, title: String, body: String) -> Rect {
         .width(Size::fill())
         .spacing(8.)
         .padding(Gaps::new_all(12.))
-        .corner_radius(CornerRadius::new_all(10.))
+        .corner_radius(rounded(10.))
         .background(accent.with_a(24))
         .border(border_all_color(1., accent.with_a(110)))
         .child(
@@ -33,7 +33,7 @@ fn tinted_card(accent: Color, title: String, body: String) -> Rect {
                     label()
                         .text(title)
                         .width(Size::flex(1.))
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(2)
                         .color(colors::fg_primary()),
@@ -43,7 +43,7 @@ fn tinted_card(accent: Color, title: String, body: String) -> Rect {
             label()
                 .text(body)
                 .width(Size::fill())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .max_lines(4)
                 .color(colors::fg_secondary()),
         )
@@ -55,7 +55,7 @@ pub fn warning_list(rows: impl IntoIterator<Item = (String, Option<String>)>) ->
         .width(Size::fill())
         .spacing(6.)
         .padding(Gaps::new_all(10.))
-        .corner_radius(CornerRadius::new_all(8.))
+        .corner_radius(rounded(8.))
         .background(colors::component_bg())
         .border(border_all_color(1., colors::component_border()))
         .children(rows.into_iter().map(|(name, note)| list_row(name, note)))
@@ -72,7 +72,7 @@ fn list_row(name: String, note: Option<String>) -> Element {
             label()
                 .text(name)
                 .width(Size::flex(1.))
-                .font_size(12.5)
+                .font_size(text_size(12.5))
                 .max_lines(1)
                 .text_overflow(TextOverflow::Ellipsis)
                 .color(colors::fg_primary()),
@@ -80,7 +80,7 @@ fn list_row(name: String, note: Option<String>) -> Element {
         .maybe_child(note.map(|note| {
             label()
                 .text(note)
-                .font_size(11.)
+                .font_size(text_size(11.))
                 .max_lines(1)
                 .color(colors::fg_secondary())
                 .into_element()

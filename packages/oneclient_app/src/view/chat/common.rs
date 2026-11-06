@@ -6,7 +6,7 @@ use crate::components::{
     Avatar, Icon, IconType, overlay_is_topmost, use_open_level,
 };
 use crate::i18n::t;
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 
 pub(super) use crate::components::use_player_name;
 
@@ -14,26 +14,6 @@ pub(super) const LIST_WIDTH_PX: f32 = 320.;
 pub(super) const ROW_RADIUS_PX: f32 = 8.;
 pub(super) const CARD_RADIUS_PX: f32 = 16.;
 pub(super) const CHIP_RADIUS_PX: f32 = 6.;
-
-pub(super) fn chip_bg() -> Color {
-    Color::from_argb(178, 35, 45, 50)
-}
-
-pub(super) fn card_bg() -> Color {
-    Color::from_argb(89, 35, 45, 50)
-}
-
-pub(super) fn hairline() -> Color {
-    Color::from_argb(26, 255, 255, 255)
-}
-
-pub(super) fn hover_bg() -> Color {
-    Color::from_argb(10, 255, 255, 255)
-}
-
-pub(super) fn offline_dot() -> Color {
-    Color::from_rgb(117, 120, 131)
-}
 
 pub(super) fn popup_shadow() -> Shadow {
     Shadow::from((0., 8., 24., 0., Color::from_argb(89, 0, 0, 0)))
@@ -119,7 +99,7 @@ pub(super) fn presence_color(online: bool) -> Color {
     if online {
         colors::success()
     } else {
-        offline_dot()
+        colors::fg_secondary()
     }
 }
 
@@ -138,7 +118,7 @@ pub(super) fn head_with_dot(player: Uuid, size: f32, dot: Color) -> impl IntoEle
                 .layer(Layer::Relative(2))
                 .width(Size::px(10.))
                 .height(Size::px(10.))
-                .corner_radius(CornerRadius::from(5.))
+                .corner_radius(rounded(5.))
                 .background(dot)
                 .border(
                     Border::new()
@@ -179,7 +159,7 @@ pub(super) fn section_heading(text: impl Into<String>) -> impl IntoElement {
     rect().padding(Gaps::new(12., 8., 6., 8.)).child(
         label()
             .text(text.into().to_uppercase())
-            .font_size(11.)
+            .font_size(text_size(11.))
             .font_weight(FontWeight::MEDIUM)
             .letter_spacing(0.44)
             .color(colors::fg_secondary()),
@@ -194,7 +174,7 @@ pub(super) fn hint(text: impl Into<String>) -> impl IntoElement {
         .child(
             label()
                 .text(text.into())
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .text_align(TextAlign::Center)
                 .width(Size::fill())
                 .color(colors::fg_secondary()),
@@ -207,12 +187,12 @@ pub(super) fn count_badge(count: usize, background: Color, foreground: Color) ->
         .height(Size::px(16.))
         .padding(Gaps::new_symmetric(0., 4.))
         .center()
-        .corner_radius(CornerRadius::from(CHIP_RADIUS_PX))
+        .corner_radius(rounded(CHIP_RADIUS_PX))
         .background(background)
         .child(
             label()
                 .text(count.to_string())
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(foreground),
         )
@@ -235,8 +215,8 @@ impl Component for HeaderButton {
             .width(Size::px(30.))
             .height(Size::px(30.))
             .center()
-            .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
-            .background(if hot { hover_bg() } else { Color::TRANSPARENT })
+            .corner_radius(rounded(ROW_RADIUS_PX))
+            .background(if hot { colors::ghost_overlay() } else { Color::TRANSPARENT })
             .cursor(CursorIcon::Pointer)
             .on_pointer_over(move |_| hovered.set(true))
             .on_pointer_out(move |_| hovered.set(false))
@@ -261,16 +241,16 @@ pub(super) fn chip_button(
         .height(Size::px(32.))
         .center()
         .spacing(8.)
-        .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
-        .background(chip_bg())
-        .border(inset_border(hairline()))
+        .corner_radius(rounded(ROW_RADIUS_PX))
+        .background(colors::component_bg())
+        .border(inset_border(colors::component_border()))
         .cursor(CursorIcon::Pointer)
         .on_press(on_press)
         .child(Icon::new(icon).size(14.))
         .child(
             label()
                 .text(text)
-                .font_size(12.)
+                .font_size(text_size(12.))
                 .font_weight(FontWeight::MEDIUM)
                 .color(colors::fg_primary()),
         )

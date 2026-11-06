@@ -16,7 +16,7 @@ use crate::components::{
 use crate::chat::ChatRoster;
 use crate::hooks::{use_chat_roster, use_dispatch};
 use crate::i18n::{t, tf};
-use crate::theme::colors;
+use crate::theme::{colors, rounded, text_size};
 use crate::ui::{border_all_color, divider, relative_since};
 
 #[derive(Clone, PartialEq)]
@@ -62,7 +62,7 @@ impl Component for PartyTab {
 fn section_label(text: impl Into<String>) -> Label {
     label()
         .text(text.into())
-        .font_size(11.)
+        .font_size(text_size(11.))
         .letter_spacing(0.8)
         .font_weight(FontWeight::SEMI_BOLD)
         .color(colors::fg_secondary())
@@ -100,7 +100,7 @@ fn header(title: String, subtitle: Option<String>) -> Rect {
                 .child(
                     label()
                         .text(title)
-                        .font_size(16.)
+                        .font_size(text_size(16.))
                         .font_weight(FontWeight::SEMI_BOLD)
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
@@ -109,7 +109,7 @@ fn header(title: String, subtitle: Option<String>) -> Rect {
                 .maybe_child(subtitle.map(|subtitle| {
                     label()
                         .text(subtitle)
-                        .font_size(12.)
+                        .font_size(text_size(12.))
                         .color(colors::fg_secondary())
                         .into_element()
                 })),
@@ -164,7 +164,7 @@ impl Component for NoLobby {
                         rect()
                             .width(Size::px(52.))
                             .height(Size::px(52.))
-                            .corner_radius(CornerRadius::new_all(14.))
+                            .corner_radius(rounded(14.))
                             .background(colors::component_bg())
                             .border(border_all_color(1., colors::component_border()))
                             .center()
@@ -177,7 +177,7 @@ impl Component for NoLobby {
                     .child(
                         label()
                             .text(t("oneclient.components.lobby.empty.title"))
-                            .font_size(15.)
+                            .font_size(text_size(15.))
                             .font_weight(FontWeight::SEMI_BOLD)
                             .color(colors::fg_primary()),
                     )
@@ -194,7 +194,7 @@ impl Component for NoLobby {
                             .width(Size::fill())
                             .max_lines(3)
                             .text_align(TextAlign::Center)
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .color(if snapshot.error.is_some() {
                                 colors::code_warn()
                             } else {
@@ -348,12 +348,12 @@ fn presence(member: &PartyMember) -> (String, Color) {
 fn tag(text: &'static str, color: Color) -> Element {
     rect()
         .padding(Gaps::new_symmetric(1., 6.))
-        .corner_radius(CornerRadius::new_all(5.))
+        .corner_radius(rounded(5.))
         .background(color.with_a(36))
         .child(
             label()
                 .text(text)
-                .font_size(10.)
+                .font_size(text_size(10.))
                 .font_weight(FontWeight::SEMI_BOLD)
                 .color(color),
         )
@@ -420,7 +420,7 @@ impl Component for MemberRow {
             .cross_align(Alignment::Center)
             .spacing(10.)
             .padding(Gaps::new_all(8.))
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(colors::card())
             .border(border_all_color(1., colors::component_border()))
             .maybe(manageable, |el| el.on_secondary_down(open_menu_at(menu)))
@@ -442,7 +442,7 @@ impl Component for MemberRow {
                             .child(
                                 label()
                                     .text(name.clone())
-                                    .font_size(13.)
+                                    .font_size(text_size(13.))
                                     .font_weight(FontWeight::MEDIUM)
                                     .max_lines(1)
                                     .text_overflow(TextOverflow::Ellipsis)
@@ -464,7 +464,7 @@ impl Component for MemberRow {
                     .child(
                         label()
                             .text(status_label)
-                            .font_size(11.)
+                            .font_size(text_size(11.))
                             .font_weight(FontWeight::MEDIUM)
                             .max_lines(1)
                             .text_overflow(TextOverflow::Ellipsis)
@@ -509,7 +509,7 @@ impl Component for InviteSlot {
             .height(Size::px(48.))
             .center()
             .spacing(8.)
-            .corner_radius(CornerRadius::new_all(10.))
+            .corner_radius(rounded(10.))
             .background(if *hovered.read() {
                 colors::ghost_overlay_hover()
             } else {
@@ -525,7 +525,7 @@ impl Component for InviteSlot {
             .child(
                 label()
                     .text(t("oneclient.components.lobby.invite_slot"))
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .font_weight(FontWeight::MEDIUM)
                     .color(color),
             )
@@ -629,7 +629,7 @@ fn invite_row(player: Uuid, name: String, sub: String, trailing: Element) -> Ele
                 .child(
                     label()
                         .text(name)
-                        .font_size(13.)
+                        .font_size(text_size(13.))
                         .font_weight(FontWeight::MEDIUM)
                         .max_lines(1)
                         .color(colors::fg_primary()),
@@ -637,7 +637,7 @@ fn invite_row(player: Uuid, name: String, sub: String, trailing: Element) -> Ele
                 .child(
                     label()
                         .text(sub)
-                        .font_size(11.)
+                        .font_size(text_size(11.))
                         .max_lines(1)
                         .text_overflow(TextOverflow::Ellipsis)
                         .color(colors::fg_secondary()),
@@ -798,7 +798,7 @@ fn footer(
             ))
             .width(Size::fill())
             .text_align(TextAlign::Center)
-            .font_size(12.)
+            .font_size(text_size(12.))
             .color(colors::fg_secondary())
             .into_element()
     };

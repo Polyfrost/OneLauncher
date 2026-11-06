@@ -4,9 +4,9 @@ use freya::prelude::*;
 use crate::components::OverlayPopup;
 use crate::hooks::{use_chat_allowed, use_dispatch, use_social_open, use_social_popped_notice};
 use crate::i18n::t;
-use crate::theme::{self, colors};
+use crate::theme::{self, colors, rounded, text_size};
 
-use super::common::{CARD_RADIUS_PX, ROW_RADIUS_PX, chip_bg, hairline, inset_border, popup_shadow};
+use super::common::{CARD_RADIUS_PX, ROW_RADIUS_PX, inset_border, popup_shadow};
 use super::panel::{PanelMode, SocialPanel};
 use super::window::{MAIN_FOCUSED, track_focus};
 
@@ -74,11 +74,11 @@ impl Component for DockedPanel {
                     .width(Size::px(DOCKED_WIDTH_PX))
                     .height(Size::px(height))
                     .opacity(progress)
-                    .corner_radius(CornerRadius::new_all(CARD_RADIUS_PX))
+                    .corner_radius(rounded(CARD_RADIUS_PX))
                     .overflow(Overflow::Clip)
                     .background(colors::page().with_a(196))
                     .backdrop_blur(40.)
-                    .border(inset_border(hairline()))
+                    .border(inset_border(colors::component_border()))
                     .shadow(popup_shadow())
                     .child(SocialPanel {
                         mode: PanelMode::Launcher,
@@ -107,14 +107,14 @@ impl Component for PoppedNotice {
             .padding(Gaps::new(0., 8., 0., 14.))
             .spacing(12.)
             .cross_align(Alignment::Center)
-            .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
+            .corner_radius(rounded(ROW_RADIUS_PX))
             .background(colors::page().with_a(209))
             .backdrop_blur(40.)
-            .border(inset_border(hairline()))
+            .border(inset_border(colors::component_border()))
             .child(
                 label()
                     .text(t("oneclient.chat.overlay.popped_out"))
-                    .font_size(12.)
+                    .font_size(text_size(12.))
                     .color(colors::fg_primary()),
             )
             .child(
@@ -122,15 +122,15 @@ impl Component for PoppedNotice {
                     .height(Size::px(28.))
                     .padding(Gaps::new_symmetric(0., 10.))
                     .center()
-                    .corner_radius(CornerRadius::from(ROW_RADIUS_PX))
-                    .background(chip_bg())
-                    .border(inset_border(hairline()))
+                    .corner_radius(rounded(ROW_RADIUS_PX))
+                    .background(colors::component_bg())
+                    .border(inset_border(colors::component_border()))
                     .cursor(CursorIcon::Pointer)
                     .on_press(move |_| dispatch.dock_social())
                     .child(
                         label()
                             .text(t("oneclient.chat.overlay.dock_back"))
-                            .font_size(12.)
+                            .font_size(text_size(12.))
                             .font_weight(FontWeight::MEDIUM)
                             .color(colors::fg_primary()),
                     ),

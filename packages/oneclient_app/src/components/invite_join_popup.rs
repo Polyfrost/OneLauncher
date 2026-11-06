@@ -7,7 +7,7 @@ use crate::hooks::{ClusterAction, use_cluster_mutation, use_dispatch, use_invite
 use crate::i18n::{t, tf};
 use crate::invite_join::custom_loader;
 use crate::state::InviteJoinPrompt;
-use crate::theme::colors;
+use crate::theme::{colors, text_size};
 use crate::view::app::{ClusterPickerModal, CreateInstanceModal};
 
 const DIALOG_WIDTH_PX: f32 = 400.;
@@ -157,7 +157,7 @@ fn dialog(title: String, body: String, on_close: EventHandler<()>, actions: Rect
                 label()
                     .text(title)
                     .width(Size::fill())
-                    .font_size(16.)
+                    .font_size(text_size(16.))
                     .font_weight(FontWeight::SEMI_BOLD)
                     .color(colors::fg_primary()),
             )
@@ -165,7 +165,7 @@ fn dialog(title: String, body: String, on_close: EventHandler<()>, actions: Rect
                 label()
                     .text(body)
                     .width(Size::fill())
-                    .font_size(13.)
+                    .font_size(text_size(13.))
                     .color(colors::fg_secondary()),
             )
             .child(actions),

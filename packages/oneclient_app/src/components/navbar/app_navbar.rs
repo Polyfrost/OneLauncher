@@ -387,7 +387,7 @@ fn social_icon(unread: bool) -> impl IntoElement {
                 .position(Position::new_absolute().top(-2.).right(-2.))
                 .width(Size::px(8.))
                 .height(Size::px(8.))
-                .corner_radius(CornerRadius::from(4.))
+                .corner_radius(theme::rounded(4.))
                 .background(theme::colors::brand())
                 .layer(Layer::Relative(3))
                 .into_element()

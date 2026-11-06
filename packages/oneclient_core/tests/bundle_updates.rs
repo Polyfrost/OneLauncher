@@ -1,9 +1,13 @@
+use std::collections::HashMap;
+use std::sync::Arc;
+
 use oneclient_common::domain::{ContentType, GameLoader, ProviderId};
 use oneclient_content::bundles::{
     BundleFile, BundleFileKind, BundleFileType, BundleManifest, check_bundle_updates,
     get_bundles_with_update_status, install_cluster_bundles, on_user_disable_artifact,
     on_user_remove_artifact, set_bundle_package_enabled,
 };
+use oneclient_content::ContentCtx;
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
 use oneclient_db::dao::{
@@ -1862,5 +1866,297 @@ async fn a_failed_download_applies_nothing() {
             .unwrap()
             .is_some(),
         "the mod due for removal stays until the whole batch can be applied"
+    );
+}
+
+fn pinned_to(version_id: &str) -> BundleFile {
+    BundleFile {
+        kind: BundleFileKind::Managed {
+            provider: ProviderId::Modrinth,
+            project_id: PROJECT_ID.to_string(),
+            version_id: version_id.to_string(),
+            sha1: "cccccccccccccccccccccccccccccccccccccccc".to_string(),
+        },
+        ..managed_file(true)
+    }
+}
+
+async fn mrpack(scratch: &str) -> Vec<u8> {
+    let scratch = polyio::testing::ScratchDir::new(scratch);
+    let path = scratch.path().join("served.mrpack");
+    let index = serde_json::json!({
+        "category": "test",
+        "enabled": true,
+        "versionId": "1",
+        "name": "Served",
+        "dependencies": { "minecraft": MC_VERSION, "fabric-loader": "0.16.0" },
+    });
+
+    let file = tokio::fs::File::create(&path).await.unwrap();
+    let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
+    let entry = async_zip::ZipEntryBuilder::new(
+        "modrinth.index.json".to_string().into(),
+        async_zip::Compression::Stored,
+    );
+    writer
+        .write_entry_whole(entry, &serde_json::to_vec(&index).unwrap())
+        .await
+        .unwrap();
+    writer.close().await.unwrap();
+
+    tokio::fs::read(&path).await.unwrap()
+}
+
+async fn content_serving(
+    state: &LauncherState,
+    entries: Vec<(&'static str, &'static str, Vec<u8>)>,
+) -> ContentCtx {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    let mut loaders: HashMap<&str, Vec<serde_json::Value>> = HashMap::new();
+    for (loader, path, archive) in &entries {
+        loaders.entry(loader).or_default().push(serde_json::json!({
+            "path": path,
+            "sha1": polyio::sha1_bytes(archive),
+        }));
+    }
+    let catalog = serde_json::json!({ "versions": { MC_VERSION: loaders } })
+        .to_string()
+        .into_bytes();
+
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let mut request = [0u8; 1024];
+            let read = stream.read(&mut request).await.unwrap_or(0);
+            let request = String::from_utf8_lossy(&request[..read]).to_string();
+            let body = entries
+                .iter()
+                .find(|(_, path, _)| request.starts_with(&format!("GET {path} ")))
+                .map_or(&catalog, |(_, _, archive)| archive);
+            let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+            let _ = stream.write_all(head.as_bytes()).await;
+            let _ = stream.write_all(body).await;
+        }
+    });
+
+    let mut content = state.services.content();
+    content.net = oneclient_net::RequestClient::new(oneclient_net::NetConfig {
+        meta_url_base: format!("http://127.0.0.1:{port}"),
+        ..oneclient_net::NetConfig::default()
+    })
+    .unwrap();
+    content
+}
+
+async fn listed_bundles(state: &LauncherState, content: &ContentCtx) -> Vec<String> {
+    state
+        .bundles
+        .list_for(content, MC_VERSION, GameLoader::Fabric)
+        .await
+        .unwrap()
+        .into_iter()
+        .map(|bundle| bundle.name)
+        .collect()
+}
+
+#[tokio::test]
+async fn an_archive_that_fails_to_stage_keeps_the_previous_catalog() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
+        .await
+        .unwrap();
+    let content = content_serving(
+        &state,
+        vec![
+            ("fabric", "/stages-fine.mrpack", mrpack("stages-fine").await),
+            ("fabric", "/not-a-zip.mrpack", b"junk".to_vec()),
+        ],
+    )
+    .await;
+
+    let before = state.bundles.catalog_revision();
+    assert!(!state.bundles.sync(&content).await.unwrap());
+
+    let root = oneclient_common::paths::bundles_dir().unwrap();
+    assert_eq!(state.bundles.catalog_revision(), before);
+    assert_eq!(listed_bundles(&state, &content).await, [BUNDLE]);
+    assert!(!root.join("bundles/stages-fine.mrpack").exists());
+}
+
+#[tokio::test]
+async fn an_unknown_loader_does_not_hold_the_catalog_back() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let content = content_serving(
+        &state,
+        vec![
+            ("fabric", "/runnable.mrpack", mrpack("runnable").await),
+            ("loader-from-the-future", "/future.mrpack", b"junk".to_vec()),
+        ],
+    )
+    .await;
+
+    assert!(state.bundles.sync(&content).await.unwrap());
+    assert_eq!(listed_bundles(&state, &content).await, ["Served"]);
+}
+
+#[tokio::test]
+async fn entries_named_alike_publish_their_own_archives() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let archive = mrpack("named-alike").await;
+    let content = content_serving(
+        &state,
+        vec![
+            ("fabric", "/a/named-alike.mrpack", archive.clone()),
+            ("fabric", "/b/named-alike.mrpack", archive),
+        ],
+    )
+    .await;
+
+    assert!(state.bundles.sync(&content).await.unwrap());
+
+    let bundles = state
+        .bundles
+        .list_for(&content, MC_VERSION, GameLoader::Fabric)
+        .await
+        .unwrap();
+    assert_eq!(bundles.len(), 2);
+    assert_ne!(bundles[0].path, bundles[1].path);
+    assert!(bundles.iter().all(|bundle| bundle.path.exists()));
+}
+
+async fn serve_catalog(
+    arrived: Arc<tokio::sync::Notify>,
+    release: Arc<tokio::sync::Notify>,
+) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let archive = mrpack("revision").await;
+    let catalog = serde_json::json!({ "versions": { MC_VERSION: { "fabric": [{
+        "path": "/archive.mrpack",
+        "sha1": polyio::sha1_bytes(&archive),
+    }]}}})
+    .to_string()
+    .into_bytes();
+
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let (archive, catalog) = (archive.clone(), catalog.clone());
+            let (arrived, release) = (arrived.clone(), release.clone());
+            tokio::spawn(async move {
+                let mut request = [0u8; 1024];
+                let read = stream.read(&mut request).await.unwrap_or(0);
+                let is_archive =
+                    String::from_utf8_lossy(&request[..read]).starts_with("GET /archive.mrpack");
+                let body = if is_archive {
+                    arrived.notify_one();
+                    release.notified().await;
+                    archive
+                } else {
+                    catalog
+                };
+                let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+                let _ = stream.write_all(head.as_bytes()).await;
+                let _ = stream.write_all(&body).await;
+            });
+        }
+    });
+
+    format!("http://127.0.0.1:{port}")
+}
+
+#[tokio::test]
+async fn a_revision_moves_only_once_the_archives_are_in() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let arrived = Arc::new(tokio::sync::Notify::new());
+    let release = Arc::new(tokio::sync::Notify::new());
+    let meta_url_base = serve_catalog(arrived.clone(), release.clone()).await;
+
+    let mut content = state.services.content();
+    content.net = oneclient_net::RequestClient::new(oneclient_net::NetConfig {
+        meta_url_base,
+        ..oneclient_net::NetConfig::default()
+    })
+    .unwrap();
+
+    let before = state.bundles.catalog_revision();
+    let (synced, ()) = tokio::join!(state.bundles.sync(&content), async {
+        arrived.notified().await;
+        assert_eq!(
+            state.bundles.catalog_revision(),
+            before,
+            "a check now would read the old archives"
+        );
+        release.notify_one();
+    });
+
+    assert!(synced.unwrap());
+    assert_eq!(state.bundles.catalog_revision(), before + 1);
+}
+
+async fn serve_stalling_catalog() -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    let archive = b"archive".to_vec();
+    let catalog = serde_json::json!({ "versions": { MC_VERSION: { "fabric": [
+        { "path": "/first-of-two.mrpack", "sha1": polyio::sha1_bytes(&archive) },
+        { "path": "/stalled.mrpack", "sha1": polyio::sha1_bytes(b"never sent") },
+    ]}}})
+    .to_string()
+    .into_bytes();
+
+    tokio::spawn(async move {
+        while let Ok((mut stream, _)) = listener.accept().await {
+            let (archive, catalog) = (archive.clone(), catalog.clone());
+            tokio::spawn(async move {
+                let mut request = [0u8; 1024];
+                let read = stream.read(&mut request).await.unwrap_or(0);
+                let request = String::from_utf8_lossy(&request[..read]).to_string();
+                if request.starts_with("GET /stalled.mrpack") {
+                    std::future::pending::<()>().await;
+                }
+                let body = if request.starts_with("GET /first-of-two.mrpack") {
+                    archive
+                } else {
+                    catalog
+                };
+                let head = format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len());
+                let _ = stream.write_all(head.as_bytes()).await;
+                let _ = stream.write_all(&body).await;
+            });
+        }
+    });
+
+    format!("http://127.0.0.1:{port}")
+}
+
+#[tokio::test]
+async fn a_timed_out_sync_publishes_no_archive() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let mut content = state.services.content();
+    content.net = oneclient_net::RequestClient::new(oneclient_net::NetConfig {
+        meta_url_base: serve_stalling_catalog().await,
+        ..oneclient_net::NetConfig::default()
+    })
+    .unwrap();
+
+    let before = state.bundles.catalog_revision();
+    let budget = std::time::Duration::from_millis(500);
+    tokio::time::timeout(budget, state.bundles.sync(&content))
+        .await
+        .expect_err("the second archive never arrives");
+
+    let root = oneclient_common::paths::bundles_dir().unwrap();
+    assert_eq!(state.bundles.catalog_revision(), before);
+    assert!(!root.join("bundles/first-of-two.mrpack").exists());
+    assert!(
+        root.join("bundles/first-of-two.mrpack.staged").exists(),
+        "the next sync resumes from it"
     );
 }

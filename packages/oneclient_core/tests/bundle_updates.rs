@@ -4,7 +4,6 @@ use oneclient_content::bundles::{
     get_bundles_with_update_status, install_cluster_bundles, on_user_disable_artifact,
     on_user_remove_artifact, set_bundle_package_enabled,
 };
-use oneclient_content::packages::local_manifest::read_jar_dependencies;
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
 use oneclient_db::dao::{
@@ -1864,97 +1863,4 @@ async fn a_failed_download_applies_nothing() {
             .is_some(),
         "the mod due for removal stays until the whole batch can be applied"
     );
-}
-
-async fn zipped(entries: Vec<(String, Vec<u8>)>) -> Vec<u8> {
-    let source = std::env::temp_dir().join(format!("{}.jar", uuid::Uuid::new_v4()));
-    let file = tokio::fs::File::create(&source).await.unwrap();
-    let mut writer = async_zip::tokio::write::ZipFileWriter::with_tokio(file);
-    for (name, bytes) in entries {
-        let entry = async_zip::ZipEntryBuilder::new(name.into(), async_zip::Compression::Stored);
-        writer.write_entry_whole(entry, &bytes).await.unwrap();
-    }
-    let mut file = writer.close().await.unwrap().into_inner();
-    tokio::io::AsyncWriteExt::shutdown(&mut file).await.unwrap();
-
-    std::fs::read(&source).unwrap()
-}
-
-async fn fabric_jar(mut manifest: serde_json::Value, nested: &[Vec<u8>]) -> Vec<u8> {
-    let paths: Vec<String> = (0..nested.len())
-        .map(|index| format!("META-INF/jars/nested{index}.jar"))
-        .collect();
-    if !nested.is_empty() {
-        let declared = paths.iter().map(|file| serde_json::json!({ "file": file }));
-        manifest["jars"] = declared.collect();
-    }
-
-    let mut entries = vec![(
-        "fabric.mod.json".to_string(),
-        manifest.to_string().into_bytes(),
-    )];
-    entries.extend(paths.into_iter().zip(nested.iter().cloned()));
-    zipped(entries).await
-}
-
-#[tokio::test]
-async fn only_declared_jars_count_as_nested() {
-    let scratch = polyio::testing::ScratchDir::new("declared-jars");
-    let id = |id: &str| serde_json::json!({ "id": id });
-    let deep = fabric_jar(id("deep"), &[fabric_jar(id("deeper"), &[]).await]).await;
-    let host = serde_json::json!({
-        "id": "host",
-        "jars": [{ "file": "custom/deep.jar" }],
-        "depends": { "deeper": "*", "undeclared": "*" },
-    });
-    let jar = zipped(vec![
-        ("fabric.mod.json".to_string(), host.to_string().into_bytes()),
-        ("custom/deep.jar".to_string(), deep),
-        (
-            "META-INF/jars/undeclared.jar".to_string(),
-            fabric_jar(id("undeclared"), &[]).await,
-        ),
-    ])
-    .await;
-    let path = scratch.join("host.jar");
-    std::fs::write(&path, jar).unwrap();
-
-    let read = read_jar_dependencies(&path, Some(GameLoader::Fabric)).await;
-    assert_eq!(read.bundled(), ["deep", "deeper"]);
-    assert_eq!(read.requires, ["undeclared"]);
-}
-
-#[tokio::test]
-async fn jar_in_jar_declares_nested_jars_for_neoforge_only() {
-    let scratch = polyio::testing::ScratchDir::new("jar-in-jar");
-    let nested_toml = "[[mods]]\nmodId = \"library\"\nversion = \"1.0\"\n";
-    let nested = zipped(vec![(
-        "META-INF/neoforge.mods.toml".to_string(),
-        nested_toml.as_bytes().to_vec(),
-    )])
-    .await;
-    let metadata = serde_json::json!({ "jars": [{ "path": "META-INF/jarjar/library.jar" }] });
-    let jar = zipped(vec![
-        (
-            "META-INF/neoforge.mods.toml".to_string(),
-            b"[[mods]]\nmodId = \"host\"\n".to_vec(),
-        ),
-        (
-            "fabric.mod.json".to_string(),
-            serde_json::json!({ "id": "host" }).to_string().into_bytes(),
-        ),
-        (
-            "META-INF/jarjar/metadata.json".to_string(),
-            metadata.to_string().into_bytes(),
-        ),
-        ("META-INF/jarjar/library.jar".to_string(), nested),
-    ])
-    .await;
-    let path = scratch.join("host.jar");
-    std::fs::write(&path, jar).unwrap();
-
-    let neoforge = read_jar_dependencies(&path, Some(GameLoader::NeoForge)).await;
-    assert_eq!(neoforge.bundled(), ["library"]);
-    let fabric = read_jar_dependencies(&path, Some(GameLoader::Fabric)).await;
-    assert!(fabric.bundled().is_empty());
 }

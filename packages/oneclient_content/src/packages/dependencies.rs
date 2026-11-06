@@ -266,7 +266,20 @@ fn prerelease_identifiers(token: &str) -> Option<Vec<String>> {
     PRERELEASE_TAGS
         .iter()
         .any(|tag| lowered.starts_with(tag))
-        .then(|| token.split('.').map(str::to_owned).collect())
+        .then(|| {
+            lowered
+                .split('.')
+                .flat_map(|part| {
+                    let (tag, number) = part.split_at(
+                        part.find(|c: char| c.is_ascii_digit())
+                            .unwrap_or(part.len()),
+                    );
+                    [tag, number]
+                })
+                .filter(|part| !part.is_empty())
+                .map(str::to_owned)
+                .collect()
+        })
 }
 
 #[derive(Debug, PartialEq, Eq)]

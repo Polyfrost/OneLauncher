@@ -8,7 +8,7 @@ use freya::query::{MutationStateData, UseMutation};
 use freya::radio::RadioStation;
 use oneclient_auth::MinecraftAccount;
 use oneclient_common::GameLoader;
-use oneclient_content::packages::PackageStore;
+use oneclient_content::packages::{LinkedArtifactInfo, PackageStore};
 use uuid::Uuid;
 
 use oneclient_polyplus::{
@@ -389,7 +389,8 @@ async fn invite_candidates(game: InviteGame) -> Option<InviteClusters> {
             let artifacts = PackageStore::list_linked_artifacts(cluster.id, &content)
                 .await
                 .unwrap_or_default();
-            if invite_join::has_polyplus(&artifacts) {
+            let local = local_polyplus(&artifacts, &content).await;
+            if invite_join::has_polyplus(&artifacts, &local) {
                 ready.push(cluster.id);
             } else {
                 unlinked = unlinked.max(Some(cluster.id));
@@ -418,15 +419,30 @@ async fn polyplus_ready(
     let artifacts = PackageStore::list_linked_artifacts(cluster_id, content)
         .await
         .unwrap_or_default();
-    if invite_join::has_polyplus(&artifacts) {
+    let local = local_polyplus(&artifacts, content).await;
+    if invite_join::has_polyplus(&artifacts, &local) {
         return Ok(true);
     }
 
-    let Some(hash) = invite_join::disabled_polyplus(&artifacts) else {
+    let Some(hash) = invite_join::disabled_polyplus(&artifacts, &local) else {
         return Ok(false);
     };
     oneclient_content::bundles::set_artifact_enabled_to(cluster_id, hash, true, content).await?;
     Ok(true)
+}
+
+async fn local_polyplus(
+    artifacts: &[LinkedArtifactInfo],
+    content: &oneclient_content::ContentCtx,
+) -> Vec<String> {
+    let mut hashes = Vec::new();
+    for artifact in artifacts.iter().filter(|a| invite_join::maybe_local(a)) {
+        let id = oneclient_content::packages::artifact_mod_id(&artifact.hash, content).await;
+        if id.as_deref() == Some(invite_join::POLYPLUS_MOD_ID) {
+            hashes.push(artifact.hash.clone());
+        }
+    }
+    hashes
 }
 
 async fn add_polyplus(actions: &Actions, invite_id: i32) -> bool {

@@ -76,23 +76,38 @@ pub fn custom_loader(loader: GameLoader) -> bool {
 }
 
 #[must_use]
-pub fn has_polyplus(artifacts: &[LinkedArtifactInfo]) -> bool {
+pub fn has_polyplus(artifacts: &[LinkedArtifactInfo], local: &[String]) -> bool {
     artifacts
         .iter()
-        .any(|artifact| artifact.enabled && is_polyplus(artifact))
+        .any(|artifact| artifact.enabled && is_polyplus(artifact, local))
 }
 
 #[must_use]
-pub fn disabled_polyplus(artifacts: &[LinkedArtifactInfo]) -> Option<&str> {
+pub fn disabled_polyplus<'a>(
+    artifacts: &'a [LinkedArtifactInfo],
+    local: &[String],
+) -> Option<&'a str> {
     artifacts
         .iter()
-        .find(|artifact| !artifact.enabled && is_polyplus(artifact))
+        .find(|artifact| !artifact.enabled && is_polyplus(artifact, local))
         .map(|artifact| artifact.hash.as_str())
 }
 
-fn is_polyplus(artifact: &LinkedArtifactInfo) -> bool {
-    artifact.provider == Some(POLYPLUS.provider)
-        && artifact.project_id.as_deref() == Some(POLYPLUS.project_id)
+pub const POLYPLUS_MOD_ID: &str = "polyplus";
+
+#[must_use]
+pub fn maybe_local(artifact: &LinkedArtifactInfo) -> bool {
+    artifact.content_type == oneclient_common::ContentType::Mod
+        && matches!(
+            artifact.provider,
+            None | Some(oneclient_common::ProviderId::Local)
+        )
+}
+
+fn is_polyplus(artifact: &LinkedArtifactInfo, local: &[String]) -> bool {
+    (artifact.provider == Some(POLYPLUS.provider)
+        && artifact.project_id.as_deref() == Some(POLYPLUS.project_id))
+        || local.contains(&artifact.hash)
 }
 
 #[must_use]
@@ -249,14 +264,31 @@ mod tests {
     #[test]
     fn a_disabled_polyplus_is_enabled_instead_of_installed_again() {
         let disabled = [artifact("other", false, "else"), artifact("plus", false, POLYPLUS.project_id)];
-        assert!(!has_polyplus(&disabled));
-        assert_eq!(disabled_polyplus(&disabled), Some("plus"));
+        assert!(!has_polyplus(&disabled, &[]));
+        assert_eq!(disabled_polyplus(&disabled, &[]), Some("plus"));
 
         let enabled = [artifact("plus", true, POLYPLUS.project_id)];
-        assert!(has_polyplus(&enabled));
-        assert_eq!(disabled_polyplus(&enabled), None);
+        assert!(has_polyplus(&enabled, &[]));
+        assert_eq!(disabled_polyplus(&enabled, &[]), None);
 
-        assert_eq!(disabled_polyplus(&[artifact("other", false, "else")]), None);
+        assert_eq!(disabled_polyplus(&[artifact("other", false, "else")], &[]), None);
+    }
+
+    #[test]
+    fn a_local_polyplus_counts_too() {
+        let mut local = artifact("dev", true, "dev");
+        local.provider = Some(oneclient_common::ProviderId::Local);
+        let hashes = ["dev".to_string()];
+
+        assert!(maybe_local(&local));
+        assert!(!has_polyplus(std::slice::from_ref(&local), &[]));
+        assert!(has_polyplus(std::slice::from_ref(&local), &hashes));
+
+        local.enabled = false;
+        assert_eq!(
+            disabled_polyplus(std::slice::from_ref(&local), &hashes),
+            Some("dev")
+        );
     }
 
     #[test]

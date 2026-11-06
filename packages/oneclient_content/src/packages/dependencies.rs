@@ -472,18 +472,19 @@ async fn installed_mod_ids(cluster_id: i64, ctx: &ContentCtx) -> HashSet<String>
         .iter()
         .filter(|a| a.enabled && a.content_type == ContentType::Mod)
     {
-        let Ok(Some(row)) = artifact_dao::get_artifact_by_hash(&ctx.db, &artifact.hash).await
-        else {
-            continue;
-        };
-        let Ok(jar) = artifact_absolute_path(&row.path) else {
-            continue;
-        };
-        if let Some(id) = read_jar_mod_id(&jar).await {
-            ids.insert(id.id);
+        if let Some(id) = artifact_mod_id(&artifact.hash, ctx).await {
+            ids.insert(id);
         }
     }
     ids
+}
+
+pub async fn artifact_mod_id(hash: &str, ctx: &ContentCtx) -> Option<String> {
+    let row = artifact_dao::get_artifact_by_hash(&ctx.db, hash)
+        .await
+        .ok()??;
+    let jar = artifact_absolute_path(&row.path).ok()?;
+    read_jar_mod_id(&jar).await.map(|id| id.id)
 }
 
 /// False for modpacks they bring their own file list

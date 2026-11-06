@@ -62,7 +62,6 @@ impl Component for DockedPanel {
         let dispatch = use_dispatch();
 
         OverlayPopup::new()
-            .backdrop(false)
             .overlay_level(DOCKED_LEVEL)
             .position(
                 Position::new_global()

@@ -120,7 +120,6 @@ pub struct ClusterReleaseRow {
 	pub project_id: String,
 	pub version_id: String,
 	pub display_name: String,
-	pub dependencies_settled: bool,
 }
 
 /// A release the cluster has installed whose dependency list was never

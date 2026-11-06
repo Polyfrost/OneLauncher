@@ -463,28 +463,6 @@ pub async fn replace_release_dependencies(
 	tx.commit().await
 }
 
-pub async fn mark_release_dependencies_unavailable(
-	pool: &SqlitePool,
-	provider_id: i64,
-	project_id: &str,
-	version_id: &str,
-) -> Result<(), sqlx::Error> {
-	sqlx::query!(
-		r#"
-		UPDATE provider_releases
-		SET dependencies_unavailable_at = datetime('now')
-		WHERE provider = ? AND project_id = ? AND version_id = ?
-		"#,
-		provider_id,
-		project_id,
-		version_id
-	)
-	.execute(pool)
-	.await?;
-
-	Ok(())
-}
-
 pub async fn list_release_dependencies(
 	pool: &SqlitePool,
 	provider_id: i64,
@@ -554,9 +532,7 @@ pub async fn list_releases_missing_dependencies(
 			pr.version_id
 		FROM cluster_artifacts ca
 		JOIN provider_releases pr ON pr.hash = ca.hash
-		WHERE ca.cluster_id = ?
-			AND pr.dependencies_synced_at IS NULL
-			AND pr.dependencies_unavailable_at IS NULL
+		WHERE ca.cluster_id = ? AND pr.dependencies_synced_at IS NULL
 		"#,
 		cluster_id
 	)
@@ -577,9 +553,7 @@ pub async fn list_cluster_releases(
 			pr.provider as "provider!: i64",
 			pr.project_id,
 			pr.version_id,
-			pr.display_name,
-			(pr.dependencies_synced_at IS NOT NULL
-				OR pr.dependencies_unavailable_at IS NOT NULL) as "dependencies_settled!: bool"
+			pr.display_name
 		FROM cluster_artifacts ca
 		JOIN provider_releases pr ON pr.hash = ca.hash
 		WHERE ca.cluster_id = ?

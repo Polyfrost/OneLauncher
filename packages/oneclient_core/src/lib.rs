@@ -90,8 +90,7 @@ pub use oneclient_content::packages::updates::{
     BrowserPackageUpdate, BrowserUpdateCheck, StagedPackageUpdate, apply_browser_package_update,
     bundle_changes_left,
     apply_staged_package_update, cached_browser_package_updates, check_browser_package_updates,
-    cluster_wants_bundle_catalog, ensure_staged_versions_agree, pins_must_settle,
-    refresh_all_browser_package_updates, refresh_browser_package_updates, settle_pins, skip_browser_package_update,
+    cluster_wants_bundle_catalog, refresh_all_browser_package_updates, refresh_browser_package_updates, settle_pins, skip_browser_package_update,
     stage_browser_package_update,
 };
 pub use oneclient_db::models::SeenStatus;

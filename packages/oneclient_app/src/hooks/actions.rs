@@ -2175,7 +2175,6 @@ impl Actions {
                 match oneclient_core::apply_browser_package_update(
                     update,
                     &state.bundles,
-                    None,
                     Some(&child),
                     &content,
                 )
@@ -2406,7 +2405,6 @@ impl Actions {
                     let result = oneclient_core::apply_browser_package_update(
                         &update,
                         &state.bundles,
-                        None,
                         Some(&child),
                         &state.services.content(),
                     )

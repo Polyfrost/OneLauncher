@@ -1,3 +1,5 @@
+#![recursion_limit = "256"]
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -13,17 +15,15 @@ use oneclient_content::packages::{
     PackageProvider, PackageStore, Page, ProjectDetail, ProjectSummary, ReleaseType, SearchFilters,
     VersionDependency, VersionDetail, VersionFile, VersionLookup, VersionSummary,
     apply_browser_package_update, apply_staged_package_update, bundle_changes_left,
-    cached_browser_package_updates, cluster_wants_bundle_catalog, ensure_staged_versions_agree,
-    get_version_cached, hold_against_bundle_pin, hold_import_against_bundle_pin, pins_must_settle,
-    read_jar_dependencies, refresh_all_browser_package_updates, refresh_browser_package_updates,
-    resolve_required, settle_pins, skip_browser_package_update, stage_browser_package_update,
+    cluster_wants_bundle_catalog, get_version_cached, refresh_all_browser_package_updates, refresh_browser_package_updates,
+    resolve_required, stage_browser_package_update,
 };
 use oneclient_content::{ContentCtx, ContentError, ContentResult};
 use oneclient_core::LauncherState;
 use oneclient_core::clusters::CreateClusterOptions;
 use oneclient_db::dao::cluster_flag::{self as flag_dao, ClusterFlag};
 use oneclient_db::dao::{
-    artifact as artifact_dao, browser_package_update as update_dao, cluster_bisect as bisect_dao,
+    artifact as artifact_dao, cluster_bisect as bisect_dao,
     cluster_bundle as bundle_dao,
 };
 use oneclient_db::models::OverrideType;
@@ -461,20 +461,6 @@ fn offline_pin_content(state: &LauncherState) -> ContentCtx {
     content
 }
 
-async fn hold_installed_version(state: &LauncherState, cluster_id: i64, content: &ContentCtx) {
-    hold_against_bundle_pin(
-        cluster_id,
-        HASH,
-        ProviderId::Modrinth,
-        PROJECT_ID,
-        VERSION_ID,
-        state.bundles.as_ref(),
-        content,
-    )
-    .await
-    .unwrap();
-}
-
 async fn cluster_with_tracked_mod(state: &LauncherState) -> i64 {
     let cluster_id = cluster_with_plain_mod(state).await;
 
@@ -541,36 +527,7 @@ async fn cluster_with_plain_mod(state: &LauncherState) -> i64 {
     cluster_id
 }
 
-#[tokio::test]
-async fn a_hold_survives_the_mod_being_switched_off() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-
-    PackageStore::set_artifact_enabled_to(cluster_id, HASH, false, &content)
-        .await
-        .unwrap();
-    refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    PackageStore::set_artifact_enabled_to(cluster_id, HASH, true, &content)
-        .await
-        .unwrap();
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    assert_eq!(check.updates.len(), 1);
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn a_bundle_rollback_moves_a_newer_copy_back() {
+async fn check_with_installed_date(published_at: &str) -> oneclient_core::BrowserUpdateCheck {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v0")]))
         .await
@@ -584,21 +541,48 @@ async fn a_bundle_rollback_moves_a_newer_copy_back() {
         HASH,
         "Sodium",
         "1.0.0",
-        Some("2026-06-01T00:00:00Z"),
+        Some(published_at),
         MC_VERSION,
         "fabric",
     )
     .await
     .unwrap();
 
-    let check =
-        refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &pin_content(&state))
-            .await
-            .unwrap();
+    refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &pin_content(&state))
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn a_copy_newer_than_its_pin_stays() {
+    let check = check_with_installed_date("2026-06-01T00:00:00Z").await;
+
+    assert!(check.updates.is_empty(), "{:?}", check.updates);
+}
+
+#[tokio::test]
+async fn a_copy_older_than_its_pin_moves_up() {
+    let check = check_with_installed_date("2025-06-01T00:00:00Z").await;
 
     let bundled = check.bundled_pending();
     assert_eq!(bundled.len(), 1);
     assert_eq!(bundled[0].latest_version_id, "v0");
+}
+
+#[tokio::test]
+async fn a_pin_reaches_a_copy_through_its_other_release() {
+    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
+    let cluster_id = cluster_with_a_second_release(&state).await;
+    let content = pin_content(&state);
+
+    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
+        .await
+        .unwrap();
+
+    let bundled = check.bundled_pending();
+    assert_eq!(bundled.len(), 1, "{:?}", check.updates);
+    assert_eq!(bundled[0].project_id, PROJECT_ID);
+    assert_eq!(bundled[0].installed_version_id, VERSION_ID);
 }
 
 async fn seed_unreadable_archive(state: &LauncherState, hidden: bool) {
@@ -621,109 +605,6 @@ async fn seed_unreadable_archive(state: &LauncherState, hidden: bool) {
     )
     .await
     .unwrap();
-}
-
-#[tokio::test]
-async fn an_unreadable_archive_leaves_a_hold_alone() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-    refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    seed_unreadable_archive(&state, false).await;
-
-    refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap_err();
-
-    let rows = update_dao::list_for_cluster(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].latest_version_id, "v2");
-    assert_eq!(rows[0].skipped, 1);
-}
-
-#[tokio::test]
-async fn a_pick_made_while_the_catalog_is_unreadable_binds_once_it_reads() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    seed_unreadable_archive(&state, false).await;
-
-    hold_installed_version(&state, cluster_id, &content).await;
-    refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap_err();
-    assert!(
-        cached_browser_package_updates(cluster_id, &content)
-            .await
-            .unwrap()
-            .is_empty(),
-        "a hold with no pin yet has no update to show"
-    );
-
-    seed_unreadable_archive(&state, true).await;
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-    let rows = update_dao::list_for_cluster(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].latest_version_id, "v2");
-    assert_eq!(rows[0].skipped, 1);
-}
-
-#[tokio::test]
-async fn an_imported_version_is_held_against_the_pin() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-
-    hold_import_against_bundle_pin(cluster_id, HASH, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    assert_eq!(check.updates.len(), 1);
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn picking_the_pinned_version_holds_nothing() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![managed_file(true)]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-
-    refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    let rows = update_dao::list_for_cluster(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    assert!(rows.is_empty(), "the pin itself needs no hold: {rows:?}");
 }
 
 #[tokio::test]
@@ -854,7 +735,7 @@ async fn a_plain_update_waits_for_a_catalog_it_can_read() {
     let update = stage_update(cluster_id);
 
     seed_unreadable_archive(&state, false).await;
-    apply_browser_package_update(&update, state.bundles.as_ref(), None, None, &content)
+    apply_browser_package_update(&update, state.bundles.as_ref(), None, &content)
         .await
         .unwrap_err();
     assert!(
@@ -865,7 +746,7 @@ async fn a_plain_update_waits_for_a_catalog_it_can_read() {
     );
 
     seed_unreadable_archive(&state, true).await;
-    apply_browser_package_update(&update, state.bundles.as_ref(), None, None, &content)
+    apply_browser_package_update(&update, state.bundles.as_ref(), None, &content)
         .await
         .unwrap();
 }
@@ -943,71 +824,6 @@ async fn flag_pins_unsettled(state: &LauncherState, cluster_id: i64) {
 }
 
 #[tokio::test]
-async fn unsettled_pins_block_a_launch_until_settled_or_no_copy_is_behind() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    let must_settle = || pins_must_settle(cluster_id, state.bundles.as_ref(), &content);
-
-    assert!(!must_settle().await.unwrap(), "nothing moved yet");
-
-    flag_pins_unsettled(&state, cluster_id).await;
-    assert!(must_settle().await.unwrap());
-
-    settle_pins(cluster_id, &content).await.unwrap();
-    assert!(!must_settle().await.unwrap());
-}
-
-#[tokio::test]
-async fn an_ordinary_skip_does_not_hold_a_copy_off_a_pin_on_that_version() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    update_dao::upsert(
-        &state.services.db,
-        cluster_id,
-        HASH,
-        ProviderId::Modrinth as i64,
-        PROJECT_ID,
-        VERSION_ID,
-        "",
-        "v2",
-        "v2",
-        "",
-        false,
-        None,
-    )
-    .await
-    .unwrap();
-    skip_browser_package_update(cluster_id, HASH, &content)
-        .await
-        .unwrap();
-    flag_pins_unsettled(&state, cluster_id).await;
-
-    assert!(
-        pins_must_settle(cluster_id, state.bundles.as_ref(), &content)
-            .await
-            .unwrap()
-    );
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    assert_eq!(check.bundled_pending().len(), 1, "{:?}", check.updates);
-    let rows = update_dao::list_for_cluster(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    assert_eq!(rows[0].skipped, 0);
-    assert_eq!(rows[0].pin_version_id.as_deref(), Some("v2"));
-}
-
-#[tokio::test]
 async fn unsettled_pins_wait_for_tracked_mods_behind_the_catalog() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
@@ -1049,68 +865,6 @@ async fn unsettled_pins_ignore_a_bundle_the_cluster_never_took() {
         .await
         .unwrap()
         .is_empty()
-    );
-}
-
-#[tokio::test]
-async fn unsettled_pins_ignore_a_copy_already_on_its_pin() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to(VERSION_ID)]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    flag_pins_unsettled(&state, cluster_id).await;
-
-    assert!(
-        !pins_must_settle(cluster_id, state.bundles.as_ref(), &pin_content(&state))
-            .await
-            .unwrap()
-    );
-}
-
-#[tokio::test]
-async fn unsettled_pins_ignore_a_copy_held_off_its_pin() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-    flag_pins_unsettled(&state, cluster_id).await;
-
-    assert!(
-        !pins_must_settle(cluster_id, state.bundles.as_ref(), &content)
-            .await
-            .unwrap()
-    );
-}
-
-#[tokio::test]
-async fn a_bisect_freezes_pins_and_lets_its_launches_through() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    flag_pins_unsettled(&state, cluster_id).await;
-    bisect_dao::start(&state.services.db, cluster_id, &[])
-        .await
-        .unwrap();
-
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    assert!(check.pins_frozen);
-    assert_eq!(check.updates.len(), 1);
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-    assert!(check.pending().is_empty(), "{:?}", check.updates);
-    assert!(
-        !pins_must_settle(cluster_id, state.bundles.as_ref(), &content)
-            .await
-            .unwrap()
     );
 }
 
@@ -1157,149 +911,6 @@ async fn a_plain_copy_wants_the_catalog_before_any_bundle_ships_it() {
             .await
             .unwrap()
     );
-}
-
-#[tokio::test]
-async fn a_pick_with_no_pin_is_not_a_choice_against_a_later_one() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    seed_unreadable_archive(&state, true).await;
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-
-    assert!(
-        update_dao::list_for_cluster(&state.services.db, cluster_id)
-            .await
-            .unwrap()
-            .is_empty()
-    );
-
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    let bundled = check.bundled_pending();
-    assert_eq!(bundled.len(), 1, "{:?}", check.updates);
-    assert_eq!(bundled[0].latest_version_id, "v2");
-}
-
-#[tokio::test]
-async fn a_pick_made_before_any_catalog_binds_to_the_first_one() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-
-    refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-    let rows = update_dao::list_for_cluster(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    assert_eq!(rows.len(), 1, "a check before the catalog keeps the hold");
-    assert_eq!(rows[0].skipped, 1);
-
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-    let rows = update_dao::list_for_cluster(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].latest_version_id, "v2");
-    assert_eq!(rows[0].skipped, 1);
-}
-
-#[tokio::test]
-async fn a_hold_keeps_its_catalog_id_past_a_failed_lookup() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(
-        &state,
-        manifest(vec![
-            pinned_to(OFFLINE_VERSION_NUMBER),
-            other_mod_pinned_to("v2"),
-        ]),
-    )
-    .await
-    .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    add_other_plain_copy(&state, cluster_id).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-
-    refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-    let rows = update_dao::list_for_cluster(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    let held = rows.iter().find(|row| row.hash == HASH).unwrap();
-    assert_eq!(held.latest_version_id, RESOLVED_VERSION_ID);
-    assert_eq!(held.pin_version_id.as_deref(), Some(OFFLINE_VERSION_NUMBER));
-    assert_eq!(held.skipped, 1);
-
-    let check = refresh_browser_package_updates(
-        cluster_id,
-        state.bundles.as_ref(),
-        &offline_pin_content(&state),
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(check.unchecked, [HASH]);
-    assert!(
-        check.unchecked_pins.is_empty(),
-        "{:?}",
-        check.unchecked_pins
-    );
-}
-
-#[tokio::test]
-async fn a_version_picked_over_the_pin_is_held_until_the_pin_moves() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-
-    hold_installed_version(&state, cluster_id, &content).await;
-    refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    let rows = update_dao::list_for_cluster(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].latest_version_id, "v2");
-    assert_eq!(rows[0].skipped, 1, "the launch check must leave it alone");
-
-    let moved = update_dao::upsert(
-        &state.services.db,
-        cluster_id,
-        HASH,
-        ProviderId::Modrinth as i64,
-        PROJECT_ID,
-        VERSION_ID,
-        "",
-        "v3",
-        "v3",
-        "",
-        false,
-        Some("v3"),
-    )
-    .await
-    .unwrap();
-    assert_eq!(moved.skipped, 0, "a moved pin updates the mod again");
 }
 
 fn other_mod_pinned_to(version_id: &str) -> BundleFile {
@@ -1370,35 +981,6 @@ async fn a_failed_pin_lookup_holds_the_other_pins_back() {
     assert_eq!(check.unchecked_pins, ["Lithium"]);
     assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
     assert!(check.pending().is_empty(), "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn a_held_copy_that_cannot_be_looked_up_holds_nothing_back() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(
-        &state,
-        manifest(vec![
-            pinned_to(OFFLINE_VERSION_ID),
-            other_mod_pinned_to("v2"),
-        ]),
-    )
-    .await
-    .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    add_other_plain_copy(&state, cluster_id).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    assert!(
-        check.unchecked_pins.is_empty(),
-        "{:?}",
-        check.unchecked_pins
-    );
-    assert_eq!(check.bundled_pending().len(), 1);
 }
 
 #[tokio::test]
@@ -1792,115 +1374,6 @@ fn requires_installed_version() -> Vec<(String, String, String)> {
 }
 
 #[tokio::test]
-async fn a_pin_leaves_a_version_another_mod_requires_exactly() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(
-        &state,
-        manifest(vec![pinned_to("v2"), other_mod_pinned_to(VERSION_ID)]),
-    )
-    .await
-    .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    add_other_plain_copy(&state, cluster_id).await;
-    artifact_dao::replace_release_dependencies(
-        &state.services.db,
-        ProviderId::Modrinth as i64,
-        OTHER_PROJECT_ID,
-        VERSION_ID,
-        &requires_installed_version(),
-    )
-    .await
-    .unwrap();
-
-    let check =
-        refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &pin_content(&state))
-            .await
-            .unwrap();
-
-    assert!(check.updates.is_empty(), "{:?}", check.updates);
-    assert!(check.unchecked_pins.is_empty());
-}
-
-#[tokio::test]
-async fn a_pin_waits_for_a_requirement_nobody_recorded_yet() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let other_on_its_pin = BundleFile {
-        kind: BundleFileKind::Managed {
-            provider: ProviderId::Modrinth,
-            project_id: OTHER_PROJECT_ID.to_string(),
-            version_id: VERSION_ID.to_string(),
-            sha1: OTHER_HASH.to_string(),
-        },
-        ..managed_file(true)
-    };
-    oneclient_core::dev::seed_bundle_archive(
-        &state,
-        manifest(vec![pinned_to("v2"), other_on_its_pin]),
-    )
-    .await
-    .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    add_other_plain_copy(&state, cluster_id).await;
-    record_release(
-        &state,
-        OTHER_PROJECT_ID,
-        NEEDS_INSTALLED_VERSION_ID,
-        OTHER_HASH,
-        None,
-    )
-    .await;
-
-    let check =
-        refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &pin_content(&state))
-            .await
-            .unwrap();
-
-    assert!(check.updates.is_empty(), "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn a_batch_must_land_the_versions_it_names() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    add_other_plain_copy(&state, cluster_id).await;
-    let (content, _) = content_with_dependency_files(&state, cluster_id).await;
-    let stage = |update: BrowserPackageUpdate| {
-        let (state, content) = (&state, &content);
-        async move {
-            stage_browser_package_update(&update, state.bundles.as_ref(), None, content)
-                .await
-                .unwrap()
-        }
-    };
-    let needs_exact = stage(BrowserPackageUpdate {
-        latest_version_id: NEEDS_EXACT_DEP_VERSION_ID.to_string(),
-        ..stage_update(cluster_id)
-    })
-    .await;
-    let other_to = |version_id: &str| BrowserPackageUpdate {
-        hash: OTHER_HASH.to_string(),
-        project_id: OTHER_PROJECT_ID.to_string(),
-        latest_version_id: version_id.to_string(),
-        ..stage_update(cluster_id)
-    };
-
-    let wrong = stage(other_to(PINNED_DEP_VERSION_ID)).await;
-    ensure_staged_versions_agree(&[needs_exact, wrong], None, &content)
-        .await
-        .expect_err("the batch moves lithium off the build sodium needs");
-
-    let needs_exact = stage(BrowserPackageUpdate {
-        latest_version_id: NEEDS_EXACT_DEP_VERSION_ID.to_string(),
-        ..stage_update(cluster_id)
-    })
-    .await;
-    let right = stage(other_to(EXACT_DEP_VERSION_ID)).await;
-    ensure_staged_versions_agree(&[needs_exact, right], None, &content)
-        .await
-        .unwrap();
-}
-
-#[tokio::test]
 async fn a_requirement_moves_with_a_dependent_on_its_way_off_that_version() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     oneclient_core::dev::seed_bundle_archive(
@@ -1981,89 +1454,6 @@ async fn a_file_shipped_on_decides_a_pin_over_one_shipped_off() {
     assert_eq!(check.updates[0].latest_version_id, "v3");
 }
 
-#[tokio::test]
-async fn an_import_is_held_under_the_release_the_check_reads() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let file = BundleFile {
-        kind: BundleFileKind::Managed {
-            provider: ProviderId::Modrinth,
-            project_id: OTHER_PROJECT_ID.to_string(),
-            version_id: "v2".to_string(),
-            sha1: "cccccccccccccccccccccccccccccccccccccccc".to_string(),
-        },
-        ..managed_file(true)
-    };
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![file]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    artifact_dao::upsert_provider_release(
-        &state.services.db,
-        ProviderId::Modrinth as i64,
-        OTHER_PROJECT_ID,
-        "mirror",
-        HASH,
-        "Lithium",
-        "1.0.0",
-        Some("2026-06-01T00:00:00+00:00"),
-        MC_VERSION,
-        "fabric",
-    )
-    .await
-    .unwrap();
-    let content = pin_content(&state);
-
-    hold_import_against_bundle_pin(cluster_id, HASH, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    assert_eq!(check.updates.len(), 1);
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn a_requirement_the_cluster_cannot_meet_stops_the_batch() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    add_other_plain_copy(&state, cluster_id).await;
-    let (content, _) = content_with_dependency_files(&state, cluster_id).await;
-    let update = BrowserPackageUpdate {
-        latest_version_id: NEEDS_EXACT_DEP_VERSION_ID.to_string(),
-        ..stage_update(cluster_id)
-    };
-    let staged = [
-        stage_browser_package_update(&update, state.bundles.as_ref(), None, &content)
-            .await
-            .unwrap(),
-    ];
-
-    ensure_staged_versions_agree(&staged, None, &content)
-        .await
-        .expect_err("lithium is installed on another version");
-
-    record_release(
-        &state,
-        OTHER_PROJECT_ID,
-        EXACT_DEP_VERSION_ID,
-        OTHER_HASH,
-        Some(&[]),
-    )
-    .await;
-    ensure_staged_versions_agree(&staged, None, &content)
-        .await
-        .unwrap();
-
-    PackageStore::set_artifact_enabled_to(cluster_id, OTHER_HASH, false, &content)
-        .await
-        .unwrap();
-    ensure_staged_versions_agree(&staged, None, &content)
-        .await
-        .expect_err("a disabled copy does not meet a requirement");
-}
-
 async fn check_past_a_staying_release(version_id: &str) -> oneclient_core::BrowserUpdateCheck {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     let other_on_its_pin = BundleFile {
@@ -2088,22 +1478,6 @@ async fn check_past_a_staying_release(version_id: &str) -> oneclient_core::Brows
     refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &pin_content(&state))
         .await
         .unwrap()
-}
-
-#[tokio::test]
-async fn a_pin_waits_for_a_dependency_list_the_provider_would_not_give() {
-    let check = check_past_a_staying_release(OFFLINE_VERSION_ID).await;
-
-    assert!(!check.unchecked_pins.is_empty());
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn a_pin_waits_for_a_dependency_list_that_ran_out_of_time() {
-    let check = check_past_a_staying_release(HANGING_VERSION_ID).await;
-
-    assert!(!check.unchecked_pins.is_empty());
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
 }
 
 #[tokio::test]
@@ -2225,11 +1599,11 @@ async fn check_past_a_range(
 }
 
 #[tokio::test]
-async fn a_pin_stays_inside_the_range_a_jar_asks_for() {
+async fn a_pin_lands_outside_the_range_a_jar_asks_for() {
     let check = check_past_a_range(">=3", false, false).await;
 
     assert_eq!(check.unchecked_pins, Vec::<String>::new());
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
+    assert_eq!(check.bundled_pending().len(), 1, "{:?}", check.updates);
 }
 
 #[tokio::test]
@@ -2240,343 +1614,10 @@ async fn a_pin_inside_a_jars_range_moves() {
 }
 
 #[tokio::test]
-async fn a_local_mod_holds_a_pin_out_of_its_range() {
-    let check = check_past_a_range(">=3", false, true).await;
-
-    assert_eq!(check.unchecked_pins, Vec::<String>::new());
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-}
-
-#[tokio::test]
 async fn a_local_mod_lets_a_pin_inside_its_range_move() {
     let check = check_past_a_range("*", false, true).await;
 
     assert_eq!(check.bundled_pending().len(), 1, "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn a_hold_another_mod_needs_moved_is_reported() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = empty_cluster(&state).await;
-    linked_fabric_jar(
-        &state,
-        cluster_id,
-        serde_json::json!({ "id": "sodium", "version": "1.0" }),
-        PROJECT_ID,
-        VERSION_ID,
-    )
-    .await;
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    local_fabric_jar(&state, cluster_id, needs_sodium("<2")).await;
-    local_fabric_jar(
-        &state,
-        cluster_id,
-        serde_json::json!({ "id": "iris", "depends": { "sodium": ">=2" } }),
-    )
-    .await;
-
-    let check = refresh_all_browser_package_updates(
-        cluster_id,
-        state.bundles.as_ref(),
-        &pin_content(&state),
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(check.unchecked_pins.len(), 1, "{:?}", check.unchecked_pins);
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn a_hold_a_bundle_update_needs_moved_stays_unsettled() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = empty_cluster(&state).await;
-    let hash = linked_fabric_jar(
-        &state,
-        cluster_id,
-        serde_json::json!({ "id": "sodium", "version": "1.0" }),
-        PROJECT_ID,
-        VERSION_ID,
-    )
-    .await;
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let content = pin_content(&state);
-    hold_against_bundle_pin(
-        cluster_id,
-        &hash,
-        ProviderId::Modrinth,
-        PROJECT_ID,
-        VERSION_ID,
-        state.bundles.as_ref(),
-        &content,
-    )
-    .await
-    .unwrap();
-    flag_pins_unsettled(&state, cluster_id).await;
-    let must_settle = || pins_must_settle(cluster_id, state.bundles.as_ref(), &content);
-    assert!(
-        !must_settle().await.unwrap(),
-        "nothing disputes the hold yet"
-    );
-
-    let tracked = local_fabric_jar(
-        &state,
-        cluster_id,
-        serde_json::json!({ "id": "iris", "depends": { "sodium": ">=2" } }),
-    )
-    .await;
-
-    assert!(must_settle().await.unwrap());
-    let check = refresh_all_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-    assert_eq!(check.unchecked_pins.len(), 1, "{:?}", check.unchecked_pins);
-
-    artifact_dao::unlink_cluster_artifact(&state.services.db, cluster_id, &tracked)
-        .await
-        .unwrap();
-    assert!(!must_settle().await.unwrap());
-}
-
-async fn stage_landing_jar(
-    state: &LauncherState,
-    cluster_id: i64,
-    jar: Vec<u8>,
-) -> ContentResult<()> {
-    stage_jar_over(state, cluster_id, HASH, jar).await
-}
-
-async fn stage_jar_over(
-    state: &LauncherState,
-    cluster_id: i64,
-    hash: &str,
-    jar: Vec<u8>,
-) -> ContentResult<()> {
-    let package = cached_file(state, cluster_id, &jar).await;
-    let mut content = state.services.content();
-    content
-        .providers
-        .register(Arc::new(PinProvider(Some(package.hash), false, None)));
-
-    let update = BrowserPackageUpdate {
-        hash: hash.to_string(),
-        ..stage_update(cluster_id)
-    };
-    let staged = stage_browser_package_update(&update, state.bundles.as_ref(), None, &content)
-        .await
-        .unwrap();
-    ensure_staged_versions_agree(&[staged], None, &content).await
-}
-
-async fn stage_jar_depending_on(depends: serde_json::Value) -> ContentResult<()> {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let jar = fabric_jar(
-        serde_json::json!({ "id": "sodium", "depends": depends }),
-        &[],
-    )
-    .await;
-    stage_landing_jar(&state, cluster_id, jar).await
-}
-
-#[tokio::test]
-async fn a_staged_jar_needs_a_provider_for_each_id() {
-    let err = stage_jar_depending_on(serde_json::json!({ "minecraft": "*", "absent": "*" }))
-        .await
-        .unwrap_err();
-    assert!(format!("{err}").contains("needs absent"), "{err}");
-}
-
-#[tokio::test]
-async fn the_game_and_its_loader_provide_their_own_ids() {
-    stage_jar_depending_on(serde_json::json!({
-        "fabricloader": "*", "minecraft": "*", "java": "*"
-    }))
-    .await
-    .unwrap();
-}
-
-async fn stage_past_a_nested_library(version: &str) -> ContentResult<()> {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let library = fabric_jar(
-        serde_json::json!({ "id": "library", "version": version }),
-        &[],
-    )
-    .await;
-    let host = fabric_jar(
-        serde_json::json!({ "id": "host", "version": "1.0" }),
-        &[library],
-    )
-    .await;
-    link_jar(&state, cluster_id, &host).await;
-    let landing = fabric_jar(
-        serde_json::json!({ "id": "sodium", "depends": { "library": ">=2" } }),
-        &[],
-    )
-    .await;
-    stage_landing_jar(&state, cluster_id, landing).await
-}
-
-#[tokio::test]
-async fn a_server_only_nested_mod_answers_for_nothing_on_a_client() {
-    let scratch = polyio::testing::ScratchDir::new("server-jars");
-    let id = |id: &str| serde_json::json!({ "id": id });
-    let server = fabric_jar(
-        serde_json::json!({ "id": "server", "environment": "server" }),
-        &[fabric_jar(id("beneath"), &[]).await],
-    )
-    .await;
-    let client = fabric_jar(id("client"), &[]).await;
-    let host = fabric_jar(
-        serde_json::json!({ "id": "host", "depends": { "server": "*", "beneath": "*" } }),
-        &[server, client],
-    )
-    .await;
-    let path = scratch.join("host.jar");
-    std::fs::write(&path, host).unwrap();
-
-    let read = read_jar_dependencies(&path, Some(GameLoader::Fabric)).await;
-    assert_eq!(read.bundled(), ["client"]);
-    assert_eq!(read.requires, ["beneath", "server"]);
-}
-
-#[tokio::test]
-async fn a_nested_copy_too_old_for_a_staged_jar_stops_it() {
-    let err = stage_past_a_nested_library("1.0").await.unwrap_err();
-    assert!(
-        format!("{err}").contains("another version of library"),
-        "{err}"
-    );
-}
-
-#[tokio::test]
-async fn a_nested_copy_new_enough_lets_a_staged_jar_land() {
-    stage_past_a_nested_library("2.1").await.unwrap();
-}
-
-async fn stage_jar_nesting_its_own_library(version: &str) -> ContentResult<()> {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let library = fabric_jar(
-        serde_json::json!({ "id": "library", "version": version }),
-        &[],
-    )
-    .await;
-    let landing = fabric_jar(
-        serde_json::json!({ "id": "sodium", "depends": { "library": ">=2" } }),
-        &[library],
-    )
-    .await;
-    stage_landing_jar(&state, cluster_id, landing).await
-}
-
-#[tokio::test]
-async fn a_jars_own_nested_copy_is_held_to_its_range() {
-    let err = stage_jar_nesting_its_own_library("1.0").await.unwrap_err();
-    assert!(
-        format!("{err}").contains("another version of library"),
-        "{err}"
-    );
-    stage_jar_nesting_its_own_library("2.1").await.unwrap();
-}
-
-#[tokio::test]
-async fn a_nested_mod_needs_a_provider_too() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let inner = fabric_jar(
-        serde_json::json!({ "id": "inner", "depends": { "absent": "*" } }),
-        &[],
-    )
-    .await;
-    let landing = fabric_jar(serde_json::json!({ "id": "sodium" }), &[inner]).await;
-
-    let err = stage_landing_jar(&state, cluster_id, landing)
-        .await
-        .unwrap_err();
-    assert!(format!("{err}").contains("needs absent"), "{err}");
-}
-
-async fn update_a_provider_of_renderer(landing: serde_json::Value) -> ContentResult<()> {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = empty_cluster(&state).await;
-    let hash = linked_fabric_jar(
-        &state,
-        cluster_id,
-        serde_json::json!({ "id": "sodium", "provides": ["renderer"] }),
-        PROJECT_ID,
-        VERSION_ID,
-    )
-    .await;
-    local_fabric_jar(
-        &state,
-        cluster_id,
-        serde_json::json!({ "id": "lithium", "depends": { "renderer": "*" } }),
-    )
-    .await;
-
-    let jar = fabric_jar(landing, &[]).await;
-    stage_jar_over(&state, cluster_id, &hash, jar).await
-}
-
-#[tokio::test]
-async fn an_update_cannot_drop_an_id_a_mod_that_stays_needs() {
-    let err = update_a_provider_of_renderer(serde_json::json!({ "id": "sodium" }))
-        .await
-        .unwrap_err();
-    assert!(format!("{err}").contains("needs renderer"), "{err}");
-}
-
-#[tokio::test]
-async fn an_update_that_keeps_the_id_lands() {
-    update_a_provider_of_renderer(serde_json::json!({ "id": "sodium", "provides": ["renderer"] }))
-        .await
-        .unwrap();
-}
-
-#[tokio::test]
-async fn a_jar_for_two_loaders_only_answers_for_the_clusters() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    local_fabric_jar(
-        &state,
-        cluster_id,
-        serde_json::json!({ "id": "library", "version": "2.0" }),
-    )
-    .await;
-    let landing = zipped(vec![
-        (
-            "fabric.mod.json".to_string(),
-            serde_json::json!({ "id": "sodium", "depends": { "library": ">=1" } })
-                .to_string()
-                .into_bytes(),
-        ),
-        (
-            "META-INF/neoforge.mods.toml".to_string(),
-            br#"
-            [[mods]]
-            modId = "sodium"
-            [[dependencies.sodium]]
-            modId = "library"
-            type = "required"
-            versionRange = "[9,)"
-            [[dependencies.sodium]]
-            modId = "neo_only"
-            type = "required"
-            "#
-            .to_vec(),
-        ),
-    ])
-    .await;
-
-    stage_landing_jar(&state, cluster_id, landing)
-        .await
-        .unwrap();
 }
 
 async fn plain_update_onto_a_pinned_dependency(
@@ -2614,31 +1655,16 @@ async fn plain_update_onto_a_pinned_dependency(
         ..stage_update(cluster_id)
     };
     let result =
-        apply_browser_package_update(&update, state.bundles.as_ref(), None, None, &content).await;
+        apply_browser_package_update(&update, state.bundles.as_ref(), None, &content).await;
     (result, state, cluster_id, dependency.hash)
 }
 
 #[tokio::test]
-async fn a_plain_update_stays_put_when_its_pinned_dependency_is_too_old() {
-    let (result, state, cluster_id, dependency) =
-        plain_update_onto_a_pinned_dependency("1.0").await;
-
-    let err = result.unwrap_err();
-    assert!(
-        format!("{err}").contains("another version of lithium"),
-        "{err}"
-    );
-    let linked = |hash: String| {
-        let db = state.services.db.clone();
-        async move {
-            artifact_dao::get_cluster_artifact(&db, cluster_id, &hash)
-                .await
-                .unwrap()
-                .is_some()
-        }
-    };
-    assert!(linked(HASH.to_string()).await, "the mod stays where it was");
-    assert!(!linked(dependency).await);
+async fn a_plain_update_lands_when_its_pinned_dependency_is_too_old() {
+    plain_update_onto_a_pinned_dependency("1.0")
+        .await
+        .0
+        .unwrap();
 }
 
 async fn plain_update_beside_an_installed_library(
@@ -2670,25 +1696,16 @@ async fn plain_update_beside_an_installed_library(
         ..stage_update(cluster_id)
     };
     let result =
-        apply_browser_package_update(&update, state.bundles.as_ref(), None, None, &content).await;
+        apply_browser_package_update(&update, state.bundles.as_ref(), None, &content).await;
     (result, state, cluster_id)
 }
 
 #[tokio::test]
-async fn a_plain_update_stays_put_beside_a_library_too_old_for_it() {
-    let (result, state, cluster_id) = plain_update_beside_an_installed_library("1.0").await;
-
-    let err = result.unwrap_err();
-    assert!(
-        format!("{err}").contains("another version of lithium"),
-        "{err}"
-    );
-    assert!(
-        artifact_dao::get_cluster_artifact(&state.services.db, cluster_id, HASH)
-            .await
-            .unwrap()
-            .is_some()
-    );
+async fn a_plain_update_lands_beside_a_library_too_old_for_it() {
+    plain_update_beside_an_installed_library("1.0")
+        .await
+        .0
+        .unwrap();
 }
 
 #[tokio::test]
@@ -2724,21 +1741,16 @@ async fn plain_update_beside_a_mod_on_version(
         &stage_update(cluster_id),
         state.bundles.as_ref(),
         None,
-        None,
         &content,
     )
     .await
 }
 
 #[tokio::test]
-async fn a_plain_update_stays_put_when_a_mod_on_its_pin_needs_the_old_version() {
-    let err = plain_update_beside_a_mod_on_version(PINNED_DEP_VERSION_ID, None)
+async fn a_plain_update_lands_when_a_mod_on_its_pin_needs_the_old_version() {
+    plain_update_beside_a_mod_on_version(PINNED_DEP_VERSION_ID, None)
         .await
-        .unwrap_err();
-    assert!(
-        format!("{err}").contains("another version of sodium"),
-        "{err}"
-    );
+        .unwrap();
 }
 
 #[tokio::test]
@@ -2749,12 +1761,11 @@ async fn a_plain_update_passes_a_mod_behind_its_pin() {
 }
 
 #[tokio::test]
-async fn a_plain_update_stays_put_when_a_mod_on_its_pin_names_the_old_version() {
+async fn a_plain_update_lands_when_a_mod_on_its_pin_names_the_old_version() {
     let exact = requires_installed_version();
-    let err = plain_update_beside_a_mod_on_version(PINNED_DEP_VERSION_ID, Some(&exact))
+    plain_update_beside_a_mod_on_version(PINNED_DEP_VERSION_ID, Some(&exact))
         .await
-        .unwrap_err();
-    assert!(format!("{err}").contains("a pinned mod needs"), "{err}");
+        .unwrap();
 }
 
 async fn resolve_past_an_unavailable_pin(
@@ -2787,7 +1798,6 @@ async fn resolve_past_an_unavailable_pin(
 
     resolve_required(
         ProviderId::Modrinth,
-        &root_project(content).await,
         &root,
         cluster_id,
         state.bundles.as_ref(),
@@ -2849,7 +1859,6 @@ async fn a_fresh_install_takes_a_dependency_on_its_pin() {
 
     let resolution = resolve_required(
         ProviderId::Modrinth,
-        &root_project(&content).await,
         &root,
         cluster_id,
         state.bundles.as_ref(),
@@ -2864,11 +1873,6 @@ async fn a_fresh_install_takes_a_dependency_on_its_pin() {
         resolution.install[0].version.version_id,
         PINNED_DEP_VERSION_ID
     );
-}
-
-async fn root_project(content: &ContentCtx) -> ProjectDetail {
-    let provider = content.providers.get(ProviderId::Modrinth).unwrap();
-    provider.get_project(PROJECT_ID, content).await.unwrap()
 }
 
 async fn fresh_install_beside_a_pinned_dependency(
@@ -2911,7 +1915,6 @@ async fn fresh_install_beside_a_pinned_dependency(
 
     resolve_required(
         ProviderId::Modrinth,
-        &root_project(&content).await,
         &root,
         cluster_id,
         state.bundles.as_ref(),
@@ -2931,16 +1934,6 @@ async fn a_fresh_install_keeps_a_pin_it_can_run_on() {
 }
 
 #[tokio::test]
-async fn a_fresh_install_passes_over_a_pin_too_old_for_it() {
-    let resolution = fresh_install_beside_a_pinned_dependency("1.0").await;
-    assert!(
-        resolution.install.is_empty(),
-        "this provider lists nothing else"
-    );
-    assert_eq!(resolution.unresolved, [OTHER_PROJECT_ID]);
-}
-
-#[tokio::test]
 async fn an_unreadable_catalog_keeps_a_fresh_installs_dependencies() {
     let state = oneclient_core::dev::ephemeral_state().await.unwrap();
     seed_unreadable_archive(&state, false).await;
@@ -2957,7 +1950,6 @@ async fn an_unreadable_catalog_keeps_a_fresh_installs_dependencies() {
 
     resolve_required(
         ProviderId::Modrinth,
-        &root_project(&content).await,
         &root,
         cluster_id,
         state.bundles.as_ref(),
@@ -2979,176 +1971,6 @@ async fn a_plain_update_lands_on_a_pinned_dependency_that_fits() {
             .unwrap()
             .is_some()
     );
-}
-
-#[tokio::test]
-async fn a_deleted_release_holds_a_pin_out_of_its_files_range() {
-    let check = check_past_a_range(">=3", true, false).await;
-
-    assert_eq!(check.unchecked_pins, Vec::<String>::new());
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn a_deleted_release_records_nothing_another_cluster_would_read() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_pinned_sodium(&state).await;
-    linked_fabric_jar(
-        &state,
-        cluster_id,
-        needs_sodium("*"),
-        OTHER_PROJECT_ID,
-        GONE_VERSION_ID,
-    )
-    .await;
-
-    let check =
-        refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &pin_content(&state))
-            .await
-            .unwrap();
-
-    assert_eq!(check.bundled_pending().len(), 1, "{:?}", check.updates);
-    let recorded = artifact_dao::list_release_dependencies(
-        &state.services.db,
-        ProviderId::Modrinth as i64,
-        OTHER_PROJECT_ID,
-        GONE_VERSION_ID,
-    )
-    .await
-    .unwrap();
-    assert!(recorded.is_empty(), "{recorded:?}");
-    assert!(
-        !artifact_dao::release_dependencies_synced(
-            &state.services.db,
-            ProviderId::Modrinth as i64,
-            OTHER_PROJECT_ID,
-            GONE_VERSION_ID,
-        )
-        .await
-        .unwrap(),
-        "a deleted release's list stays unknown"
-    );
-    assert!(
-        artifact_dao::list_releases_missing_dependencies(&state.services.db, cluster_id)
-            .await
-            .unwrap()
-            .iter()
-            .all(|release| release.version_id != GONE_VERSION_ID),
-        "the backfill stops asking the provider for it"
-    );
-}
-
-#[tokio::test]
-async fn a_jar_speaks_for_a_library_on_another_provider() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_pinned_sodium(&state).await;
-    let staying = local_fabric_jar(&state, cluster_id, needs_sodium(">=3")).await;
-    artifact_dao::upsert_provider_release(
-        &state.services.db,
-        ProviderId::CurseForge as i64,
-        OTHER_PROJECT_ID,
-        VERSION_ID,
-        &staying,
-        "Lithium",
-        "1.0.0",
-        None,
-        MC_VERSION,
-        "fabric",
-    )
-    .await
-    .unwrap();
-    artifact_dao::replace_release_dependencies(
-        &state.services.db,
-        ProviderId::CurseForge as i64,
-        OTHER_PROJECT_ID,
-        VERSION_ID,
-        &[],
-    )
-    .await
-    .unwrap();
-
-    let check = refresh_all_browser_package_updates(
-        cluster_id,
-        state.bundles.as_ref(),
-        &pin_content(&state),
-    )
-    .await
-    .unwrap();
-
-    assert_eq!(check.unchecked_pins, Vec::<String>::new());
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn a_held_mover_keeps_what_its_own_jar_asks_for() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_pinned_sodium(&state).await;
-    linked_fabric_jar(
-        &state,
-        cluster_id,
-        needs_sodium(">=3"),
-        OTHER_PROJECT_ID,
-        VERSION_ID,
-    )
-    .await;
-    linked_fabric_jar(
-        &state,
-        cluster_id,
-        serde_json::json!({ "id": "app", "depends": { "lithium": ">=3" } }),
-        "app",
-        VERSION_ID,
-    )
-    .await;
-    let lithium_pin = BundleFile {
-        kind: BundleFileKind::Managed {
-            provider: ProviderId::Modrinth,
-            project_id: OTHER_PROJECT_ID.to_string(),
-            version_id: "v2".to_string(),
-            sha1: "f".repeat(40),
-        },
-        ..managed_file(true)
-    };
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2"), lithium_pin]))
-        .await
-        .unwrap();
-
-    let check =
-        refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &pin_content(&state))
-            .await
-            .unwrap();
-
-    assert!(
-        check.bundled_pending().is_empty(),
-        "app holds lithium and lithium holds sodium: {:?}",
-        check.updates
-    );
-}
-
-#[tokio::test]
-async fn a_slow_backfill_lands_for_a_later_check() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_pinned_sodium(&state).await;
-    linked_fabric_jar(
-        &state,
-        cluster_id,
-        serde_json::json!({ "id": "lithium" }),
-        OTHER_PROJECT_ID,
-        SLOW_VERSION_ID,
-    )
-    .await;
-    let content = pin_content(&state);
-
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-    assert!(!check.unchecked_pins.is_empty());
-
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-    assert_eq!(check.unchecked_pins, Vec::<String>::new());
-    assert_eq!(check.bundled_pending().len(), 1, "{:?}", check.updates);
 }
 
 #[tokio::test]
@@ -3174,39 +1996,6 @@ async fn a_manual_check_waits_out_a_slow_backfill() {
 
     assert_eq!(check.unchecked_pins, Vec::<String>::new());
     assert_eq!(check.bundled_pending().len(), 1, "{:?}", check.updates);
-}
-
-#[tokio::test]
-async fn a_batch_cannot_lean_on_a_release_it_moves_through_an_alias() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    add_other_plain_copy(&state, cluster_id).await;
-    record_release(&state, "sodium-alias", VERSION_ID, HASH, Some(&[])).await;
-    let (content, _) = content_with_dependency_files(&state, cluster_id).await;
-
-    let mut staged = Vec::new();
-    for update in [
-        BrowserPackageUpdate {
-            project_id: "sodium-alias".to_string(),
-            ..stage_update(cluster_id)
-        },
-        BrowserPackageUpdate {
-            hash: OTHER_HASH.to_string(),
-            project_id: OTHER_PROJECT_ID.to_string(),
-            latest_version_id: NEEDS_INSTALLED_VERSION_ID.to_string(),
-            ..stage_update(cluster_id)
-        },
-    ] {
-        staged.push(
-            stage_browser_package_update(&update, state.bundles.as_ref(), None, &content)
-                .await
-                .unwrap(),
-        );
-    }
-
-    ensure_staged_versions_agree(&staged, None, &content)
-        .await
-        .expect_err("the file behind sodium v1 leaves under its other project");
 }
 
 #[tokio::test]
@@ -3418,132 +2207,6 @@ async fn cluster_with_a_second_release(state: &LauncherState) -> i64 {
     .await
     .unwrap();
     cluster_id
-}
-
-#[tokio::test]
-async fn a_pin_reaches_a_copy_through_its_other_release() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    let cluster_id = cluster_with_a_second_release(&state).await;
-    flag_pins_unsettled(&state, cluster_id).await;
-    let content = pin_content(&state);
-
-    assert!(
-        pins_must_settle(cluster_id, state.bundles.as_ref(), &content)
-            .await
-            .unwrap()
-    );
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    let bundled = check.bundled_pending();
-    assert_eq!(bundled.len(), 1, "{:?}", check.updates);
-    assert_eq!(bundled[0].project_id, PROJECT_ID);
-    assert_eq!(bundled[0].installed_version_id, VERSION_ID);
-}
-
-#[tokio::test]
-async fn a_hold_picked_through_any_release_reaches_the_pin() {
-    for (project_id, version_id) in [(PROJECT_ID, VERSION_ID), (OTHER_PROJECT_ID, "mirror")] {
-        let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-        let cluster_id = cluster_with_a_second_release(&state).await;
-        let content = pin_content(&state);
-
-        hold_against_bundle_pin(
-            cluster_id,
-            HASH,
-            ProviderId::Modrinth,
-            project_id,
-            version_id,
-            state.bundles.as_ref(),
-            &content,
-        )
-        .await
-        .unwrap();
-        let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-            .await
-            .unwrap();
-
-        assert_eq!(check.updates.len(), 1);
-        assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-    }
-}
-
-#[tokio::test]
-async fn a_hanging_held_pin_does_not_stall_the_check() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to(HANGING_VERSION_ID)]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-
-    let check = tokio::time::timeout(
-        std::time::Duration::from_secs(10),
-        refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content),
-    )
-    .await
-    .expect("the check must outlive a held pin's lookup")
-    .unwrap();
-
-    assert!(check.unchecked_pins.is_empty());
-    let rows = update_dao::list_for_cluster(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    assert_eq!(rows.len(), 1);
-    assert_eq!(rows[0].skipped, 1, "the hold must survive the lookup");
-}
-
-#[tokio::test]
-async fn a_hold_stays_on_the_pin_it_was_picked_over() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v2")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-    assert!(
-        cached_browser_package_updates(cluster_id, &content)
-            .await
-            .unwrap()
-            .is_empty(),
-        "a hold has no update to show before a check names its pin"
-    );
-
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("v3")]))
-        .await
-        .unwrap();
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    let bundled = check.bundled_pending();
-    assert_eq!(bundled.len(), 1, "{:?}", check.updates);
-    assert_eq!(bundled[0].latest_version_id, "v3");
-}
-
-#[tokio::test]
-async fn a_hold_on_a_pin_by_version_number_survives_its_resolved_id() {
-    let state = oneclient_core::dev::ephemeral_state().await.unwrap();
-    oneclient_core::dev::seed_bundle_archive(&state, manifest(vec![pinned_to("1.2.3")]))
-        .await
-        .unwrap();
-    let cluster_id = cluster_with_plain_mod(&state).await;
-    let content = pin_content(&state);
-    hold_installed_version(&state, cluster_id, &content).await;
-
-    let check = refresh_browser_package_updates(cluster_id, state.bundles.as_ref(), &content)
-        .await
-        .unwrap();
-
-    assert!(check.bundled_pending().is_empty(), "{:?}", check.updates);
-    let rows = update_dao::list_for_cluster(&state.services.db, cluster_id)
-        .await
-        .unwrap();
-    assert_eq!(rows[0].latest_version_id, RESOLVED_VERSION_ID);
-    assert_eq!(rows[0].skipped, 1);
 }
 
 const BUNDLE_NAME_ORDERS: [(&str, &str); 2] = [("A Bundle", "Z Bundle"), ("Z Bundle", "A Bundle")];
@@ -5362,68 +4025,6 @@ async fn a_failed_download_applies_nothing() {
             .is_some(),
         "the mod due for removal stays until the whole batch can be applied"
     );
-}
-
-#[tokio::test]
-async fn only_declared_jars_count_as_nested() {
-    let scratch = polyio::testing::ScratchDir::new("declared-jars");
-    let id = |id: &str| serde_json::json!({ "id": id });
-    let deep = fabric_jar(id("deep"), &[fabric_jar(id("deeper"), &[]).await]).await;
-    let host = serde_json::json!({
-        "id": "host",
-        "jars": [{ "file": "custom/deep.jar" }],
-        "depends": { "deeper": "*", "undeclared": "*" },
-    });
-    let jar = zipped(vec![
-        ("fabric.mod.json".to_string(), host.to_string().into_bytes()),
-        ("custom/deep.jar".to_string(), deep),
-        (
-            "META-INF/jars/undeclared.jar".to_string(),
-            fabric_jar(id("undeclared"), &[]).await,
-        ),
-    ])
-    .await;
-    let path = scratch.join("host.jar");
-    std::fs::write(&path, jar).unwrap();
-
-    let read = read_jar_dependencies(&path, Some(GameLoader::Fabric)).await;
-    assert_eq!(read.bundled(), ["deep", "deeper"]);
-    assert_eq!(read.requires, ["undeclared"]);
-}
-
-#[tokio::test]
-async fn jar_in_jar_declares_nested_jars_for_neoforge_only() {
-    let scratch = polyio::testing::ScratchDir::new("jar-in-jar");
-    let nested_toml = "[[mods]]\nmodId = \"library\"\nversion = \"1.0\"\n";
-    let nested = zipped(vec![(
-        "META-INF/neoforge.mods.toml".to_string(),
-        nested_toml.as_bytes().to_vec(),
-    )])
-    .await;
-    let metadata = serde_json::json!({ "jars": [{ "path": "META-INF/jarjar/library.jar" }] });
-    let jar = zipped(vec![
-        (
-            "META-INF/neoforge.mods.toml".to_string(),
-            b"[[mods]]\nmodId = \"host\"\n".to_vec(),
-        ),
-        (
-            "fabric.mod.json".to_string(),
-            serde_json::json!({ "id": "host" }).to_string().into_bytes(),
-        ),
-        (
-            "META-INF/jarjar/metadata.json".to_string(),
-            metadata.to_string().into_bytes(),
-        ),
-        ("META-INF/jarjar/library.jar".to_string(), nested),
-    ])
-    .await;
-    let path = scratch.join("host.jar");
-    std::fs::write(&path, jar).unwrap();
-
-    let neoforge = read_jar_dependencies(&path, Some(GameLoader::NeoForge)).await;
-    assert_eq!(neoforge.bundled(), ["library"]);
-    let fabric = read_jar_dependencies(&path, Some(GameLoader::Fabric)).await;
-    assert!(fabric.bundled().is_empty());
 }
 
 async fn mrpack(scratch: &str) -> Vec<u8> {

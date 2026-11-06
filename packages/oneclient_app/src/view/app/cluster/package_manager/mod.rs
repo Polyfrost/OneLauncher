@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use freya::prelude::*;
 use oneclient_common::search::{MatchScore, SearchQuery};
 use oneclient_content::packages::{CachedPackageMeta, ContentType, ProviderId};
+use oneclient_core::clusters::Cluster;
 use oneclient_core::{
     BundleFileKind, BundleFileType, BundleWithUpdateStatus, FileUpdateStatus, LinkedArtifactInfo,
 };
@@ -420,13 +421,35 @@ fn export_rows(items: &[PackageEntry], hidden: HiddenFilter) -> Vec<PackageEntry
         .collect()
 }
 
-fn package_list_text(rows: &[PackageEntry], content_type: ContentType) -> String {
+fn list_header(cluster: &Cluster) -> String {
+    let loader = if cluster.mc_loader.is_modded() {
+        cluster.mc_loader.to_string()
+    } else {
+        "Vanilla".to_string()
+    };
+    let loader_version = cluster
+        .mc_loader_version
+        .as_deref()
+        .map_or_else(String::new, |version| format!(" {version}"));
+    format!("Minecraft {} · {loader}{loader_version}", cluster.mc_version)
+}
+
+fn package_list_text(
+    rows: &[PackageEntry],
+    content_type: ContentType,
+    header: Option<&str>,
+) -> String {
     let mut rows: Vec<&PackageEntry> = rows.iter().collect();
     rows.sort_by_key(|p| p.name.to_lowercase());
-    rows.iter()
+    let list = rows
+        .iter()
         .map(|row| export_line(row, content_type))
         .collect::<Vec<_>>()
-        .join("\n")
+        .join("\n");
+    match header {
+        Some(header) => format!("{header}\n\n{list}"),
+        None => list,
+    }
 }
 
 #[derive(Clone)]
@@ -911,6 +934,7 @@ impl Component for PackageManager {
                 &bulk,
                 noun_plural,
                 export_rows(&items, hidden),
+                cluster.as_ref().map(list_header),
             ))
             .child(
                 ContentBox::new(
@@ -1091,7 +1115,7 @@ mod tests {
         assert_eq!(ids, ["kept"]);
         let kept = &exported[0];
         assert_eq!(
-            package_list_text(&exported, ContentType::Mod),
+            package_list_text(&exported, ContentType::Mod, None),
             format!(
                 "- {} | {} | enabled",
                 kept.name,

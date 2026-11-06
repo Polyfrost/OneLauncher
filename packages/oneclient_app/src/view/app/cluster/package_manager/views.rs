@@ -388,6 +388,7 @@ pub(super) fn toolbar_bar(
     bulk: &Bulk,
     noun_plural: &'static str,
     export: Vec<PackageEntry>,
+    header: Option<String>,
 ) -> impl IntoElement {
     let local_tab = matches!(tabs.get(active_idx), Some(Tab::Local));
 
@@ -446,7 +447,7 @@ pub(super) fn toolbar_bar(
             export.len(),
             noun_one(content_type),
             noun_plural,
-            move || package_list_text(&export, content_type),
+            move || package_list_text(&export, content_type, header.as_deref()),
         ));
     }
     controls.push(
